@@ -66,6 +66,9 @@ fun HomeScreen(
     dateLabel: String = HomeDemoData.todayLabel(),
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
+    /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
+    signedIn: Boolean = false,
+    onSignOut: (() -> Unit)? = null,
 ) {
     var topTab by rememberSaveable { mutableStateOf(TopTab.Home) }
     var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
@@ -142,6 +145,8 @@ fun HomeScreen(
                 theme = roomTheme,
                 herd = herd,
                 onOpenDex = onOpenDex,
+                signedIn = signedIn,
+                onSignOut = onSignOut,
                 profileBreed = profileBreed,
                 onPickProfile = { profileBreed = it },
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -182,6 +187,8 @@ private fun RoomSection(
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
+    signedIn: Boolean,
+    onSignOut: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
     modifier: Modifier = Modifier,
@@ -245,6 +252,8 @@ private fun RoomSection(
                 },
                 profileBreed = profileBreed,
                 onPickProfile = onPickProfile,
+                signedIn = signedIn,
+                onSignOut = onSignOut,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }

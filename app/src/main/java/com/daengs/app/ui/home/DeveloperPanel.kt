@@ -77,6 +77,8 @@ fun DeveloperPanel(
     onPickBreed: (DogBreed?) -> Unit,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    signedIn: Boolean = false,
+    onSignOut: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -87,12 +89,28 @@ fun DeveloperPanel(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(
-            "격자 ${RoomSpec.GRID}x${RoomSpec.GRID} · 소품 ${state.items.size} · 강아지 ${herd?.dogs?.size ?: 0}",
-            color = PanelText,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "격자 ${RoomSpec.GRID}x${RoomSpec.GRID} · 소품 ${state.items.size} · 강아지 ${herd?.dogs?.size ?: 0}",
+                color = PanelText,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            // 로그아웃 자리가 여기인 이유: `마이` 탭이 아직 껍데기다. 진짜 화면이
+            // 생기면 그리로 옮긴다.
+            if (signedIn && onSignOut != null) {
+                Text(
+                    "로그아웃",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(PanelPick)
+                        .clickable(onClick = onSignOut)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
+        }
 
         // 소품 목록은 여기 안 넣는다. 좌표는 이미 방 위에 라벨로 그려지고 있어서
         // 중복인데, 개수만큼 패널이 길어져서 **방을 절반이나 가렸다.**
