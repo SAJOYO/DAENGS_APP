@@ -77,17 +77,47 @@ object RoomSpec {
     const val INSET = 0.94f
 
     /**
-     * 남는 세로 여백 중 **위쪽에 줄 몫**. 0 = 위 붙임, 0.5 = 가운데, 1 = 아래 붙임.
+     * 방 PNG 안의 **투명 여백** (원본 픽셀 기준).
      *
-     * 예전 값 0.85 는 방이 상자보다 커서 잘려 나가던 시절의 값이다. "남을 때도
-     * 아래로 붙인다"는 뜻이었는데, [INSET] 때문에 이제는 **항상** 남는다.
-     * 그대로 두면 방이 상자 바닥에 붙어 앞모서리가 카드에 닿아 보인다.
+     * 그림은 1122x1402 지만 실제로 칠해진 영역은 알파 바운딩 박스
+     * `(4, 39) - (1121, 1401)` 뿐이다. 위쪽 39px 이 통째로 비어 있다.
      *
-     * 0.45 는 가운데에서 한 뼘 위다. 아래를 조금 더 남기는 이유는 바닥 앞모서리와
-     * 울타리가 방에서 가장 앞이라 숨통이 필요해서고, 위쪽은 벽 몰딩뿐이라 좁아도
-     * 티가 안 난다.
+     * 이 값을 빼지 않고 공칭 사각형을 가운데 두면, 눈에 보이는 위 여백이
+     * 계산값보다 그 39px 만큼 넓어진다. 390x844 에서 계산값 8.2 / 실제 16.1 로
+     * 두 배 가까이 벌어졌다 — [V_BIAS] 로 "가운데보다 살짝 위" 를 의도했는데
+     * 실제로는 가운데보다 아래에 앉아 있었다.
+     *
+     * **여섯 테마가 모두 같은 값이다.** 우연이 아니라 만드는 방법이 그렇다 —
+     * 한 장의 원본을 `build_room_theme_assets.ps1` 가 색만 바꿔 찍어내고
+     * (테마 README: "실루엣과 크기를 그대로 유지한다"),
+     * `tools/import_room_assets.py` 가 그대로 반입한다. 그래서 상수로 박는다.
+     * 런타임에 1122x1402 알파를 훑는 건 테마를 바꿀 때마다 드는 값비싼 짓이다.
+     *
+     * 다만 **새 방 아트를 넣으면 반드시 다시 재야 한다.** 안 재면 방이 몇 px
+     * 위아래로 밀릴 뿐 터지지는 않아서 알아채기 어렵다.
+     * 재는 방법은 `tools/preview` 의 "알파 바운딩 박스" 측정.
      */
-    const val V_BIAS = 0.45f
+    const val ART_PAD_LEFT = 4f
+    const val ART_PAD_TOP = 39f
+    const val ART_PAD_RIGHT = 0f
+    const val ART_PAD_BOTTOM = 0f
+
+    /**
+     * 남는 여백 중 **위쪽에 줄 몫**. 0 = 위 붙임, 0.5 = 가운데, 1 = 아래 붙임.
+     *
+     * 공칭 사각형이 아니라 [ART_PAD_TOP] 등을 뺀 **칠해진 영역** 기준이다.
+     * 그래서 이 값이 곧 눈에 보이는 위:아래 여백의 비가 된다 — 0.40 이면 40:60.
+     *
+     * 아래를 더 주는 이유: 방에서 가장 앞이 바닥 앞모서리·흰 굽도리·울타리라
+     * 여기가 카드에 닿으면 잘린 것처럼 보인다. 위쪽은 벽 몰딩뿐이라 좁아도
+     * 티가 안 난다. 광학적으로도 물체는 기하학적 중앙보다 살짝 위에 있을 때
+     * 가운데로 보인다.
+     *
+     * 하한이 있다. 이 값이 작아지면 공칭 사각형의 위쪽(투명한 39px 띠)이
+     * 상자 밖으로 나가는데, 대략 0.30 아래로 내려가면 그 띠를 다 쓰고
+     * 칠해진 부분이 잘리기 시작한다. 0.40 은 그 위로 한 뼘 여유가 있다.
+     */
+    const val V_BIAS = 0.40f
 }
 
 /**
@@ -287,8 +317,12 @@ data class RoomGeometry(
             val s = contain * RoomSpec.INSET
             val w = RoomSpec.ROOM_PNG_W * s
             val h = RoomSpec.ROOM_PNG_H * s
-            val left = (widthPx - w) / 2f
-            val top = (heightPx - h) * RoomSpec.V_BIAS
+            // 놓는 기준은 공칭 사각형이 아니라 **칠해진 부분**이다. 그림 위쪽 39px 이
+            // 투명이라(RoomSpec.ART_PAD_TOP) 공칭으로 재면 눈에 보이는 여백이 어긋난다.
+            val artW = w - (RoomSpec.ART_PAD_LEFT + RoomSpec.ART_PAD_RIGHT) * s
+            val artH = h - (RoomSpec.ART_PAD_TOP + RoomSpec.ART_PAD_BOTTOM) * s
+            val left = (widthPx - artW) / 2f - RoomSpec.ART_PAD_LEFT * s
+            val top = (heightPx - artH) * RoomSpec.V_BIAS - RoomSpec.ART_PAD_TOP * s
             return RoomGeometry(Rect(left, top, left + w, top + h), s)
         }
 
