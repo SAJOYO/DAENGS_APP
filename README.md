@@ -40,6 +40,37 @@ sdk.dir=C:/Users/<이름>/AppData/Local/Android/Sdk
 **슬래시(`/`)로 쓰는 게 편하다.** 역슬래시를 쓰면 `C\:\\Users\\...` 처럼 두 번 겹쳐
 써야 하고, 하나라도 틀리면 `java.io.IOException: Invalid file path` 가 난다.
 
+### 카카오 로그인을 켜려면 (선택)
+
+**안 채워도 앱은 돌아간다.** 랜딩 화면에서 `둘러보기` 를 누르면 방까지 들어가진다.
+로그인을 실제로 써 보려면 `local.properties` 에 두 줄을 더 넣는다.
+
+```properties
+daengs.kakaoNativeAppKey=<카카오 콘솔의 네이티브 앱 키>
+daengs.apiBaseUrl=http://<서버주소>:8000
+```
+
+- **네이티브 앱 키**는 백엔드가 쓰는 REST API 키와 **다른 키**다.
+  콘솔 → 내 애플리케이션 → 앱 키 → `네이티브 앱 키`.
+- 카카오 콘솔 → 플랫폼 → Android 에 **키 해시**를 등록해야 한다.
+  패키지명은 `com.daengs.app`, 키 해시는 아래 하나면 된다.
+
+  ```
+  c7dmwvr4JCn9xS6xmZnszm8/0Bw=
+  ```
+
+  저장소의 `keystore/debug.keystore` 에서 뽑은 값이라 **팀원 전체의 디버그 빌드가
+  이거 하나로 된다.** 각자 키를 등록할 필요가 없다 (키를 커밋해 둔 이유가 이것이다).
+  직접 확인하려면:
+
+  ```bash
+  keytool -exportcert -alias androiddebugkey -keystore keystore/debug.keystore     -storepass android | openssl sha1 -binary | openssl base64
+  ```
+
+- 서버는 `http://` 라 평문이다. 안드로이드가 기본으로 막으므로 **디버그 빌드에만**
+  풀어 뒀다 (`app/src/debug/AndroidManifest.xml`). 자체 서버라 **폰이 같은 네트워크에
+  있어야** 닿는다.
+
 ### 빌드 · 테스트 · 설치
 
 ```bash

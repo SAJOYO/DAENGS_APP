@@ -1,5 +1,24 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.Daengs" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      앱을 켤 때 잠깐 뜨는 화면.
+
+      core-splashscreen 을 쓰는 이유는 minSdk 가 26 이라서다. 시스템 스플래시는 API 31
+      부터라, 그것만 믿으면 낮은 기기에서는 흰 화면이 번쩍하고 만다.
+
+      배경은 CreamBg(ui/theme/Color.kt) 와 **같은 색**이다. 다르면 스플래시에서 앱으로
+      넘어가는 순간 바탕색이 한 번 바뀌어서 깜빡인 것처럼 보인다.
+    -->
+    <style name="Theme.Daengs.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/cream_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Daengs</item>
+    </style>
+
+    <style name="Theme.Daengs" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 스플래시가 걷힌 뒤 Compose 가 첫 프레임을 그리기까지의 바탕. 흰색으로
+             두면 그 틈에 흰 판이 한 번 보인다. -->
+        <item name="android:windowBackground">@color/cream_bg</item>
+    </style>
+
 </resources>

@@ -3,6 +3,24 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// local.properties 에서 설정값을 읽는다. **커밋되는 파일이 아니다** — sdk.dir 이
+// 들어 있는 그 파일이고 .gitignore 에 있다. 키를 저장소에 넣지 않으려면 여기가 맞다.
+//
+// providers.fileContents 를 쓰는 이유: gradle.properties 에 configuration-cache 가
+// 켜져 있어서, 파일을 직접 읽으면 설정 캐시가 그 읽기를 못 따라간다.
+fun localSetting(key: String): String =
+    providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+        .asText.orNull
+        ?.lineSequence()
+        ?.map { it.trim() }
+        ?.firstOrNull { it.startsWith("$key=") }
+        ?.substringAfter("=")
+        ?.trim()
+        ?: ""
+
+val kakaoNativeAppKey = localSetting("daengs.kakaoNativeAppKey")
+val apiBaseUrl = localSetting("daengs.apiBaseUrl")
+
 android {
     namespace = "com.daengs.app"
     compileSdk {
@@ -17,6 +35,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 값이 없으면 빈 문자열이다. 그 상태로도 앱은 켜지고 "둘러보기" 로 방까지
+        // 들어가진다 — 랜딩 화면이 설정이 없다고 알려 준다.
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+
+        // 카카오 리다이렉트 스킴. 매니페스트가 이 자리를 비워 두고 여기서 꽂는다.
+        manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
     }
 
     // 디버그 서명 키를 저장소에 넣어 공유한다.
@@ -45,6 +71,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -56,7 +83,10 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.kakao.user)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

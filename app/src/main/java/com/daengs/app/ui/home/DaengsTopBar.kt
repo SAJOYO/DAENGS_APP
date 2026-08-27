@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.ui.DaengsLogo
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -84,32 +85,6 @@ fun DaengsTopBar(
             DogAvatar(avatar, Modifier.size(32.dp))
             DaengsIconView(DaengsIcon.CaretDown, Modifier.size(15.dp), tint = TextMuted)
         }
-    }
-}
-
-@Composable
-private fun DaengsLogo() {
-    Column {
-        Row(verticalAlignment = Alignment.Top) {
-            Text(
-                "댕스",
-                color = DaengPinkDeep,
-                fontWeight = FontWeight.Black,
-                fontSize = 21.sp,
-            )
-            DaengsIconView(
-                DaengsIcon.Paw,
-                Modifier.size(13.dp).padding(top = 1.dp),
-                tint = DaengPink,
-            )
-        }
-        Text(
-            "DAENGS",
-            color = TextMuted,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 8.sp,
-            letterSpacing = 2.6.sp,
-        )
     }
 }
 
