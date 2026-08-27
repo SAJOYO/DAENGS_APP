@@ -9,8 +9,11 @@
 | [`STATUS.md`](STATUS.md) | **지금 어디까지 됐나** · 다음 결정 · 알려진 문제 |
 | [`HISTORY.md`](HISTORY.md) | 어떻게 여기까지 왔나. 배경지식 없이 읽을 수 있게 쓴 작업 일지 |
 | [`CONTEXT.md`](CONTEXT.md) | 기획·결정 사항 (앱 전체) |
+| [`CLAUDE.md`](CLAUDE.md) | 코드 규칙. 사람도 Claude 도 시작 전에 읽는다 |
+| [`docs/collaboration.md`](docs/collaboration.md) | **협업 규칙** — 우선순위 · Iteration · PR 기준 · 회고 |
 
-처음이면 **STATUS.md** 부터 보는 게 빠르다.
+처음이면 **STATUS.md** 부터 보는 게 빠르다. 같이 일하게 됐다면
+**docs/collaboration.md** 를 먼저 본다.
 
 ---
 
@@ -71,7 +74,7 @@ app/          안드로이드 앱 (Kotlin + Jetpack Compose)
     miniroom/   미니룸 — 좌표계·배치·강아지·그리기
     ui/         홈 화면, 인벤토리, 개발자 패널
   src/main/res/drawable-nodpi/   픽셀 아트 (WebP)
-  src/test/     단위 테스트 48개
+  src/test/     단위 테스트 57개
 tools/        파이썬 도구 (에셋 반입·가공)
 docs/         에셋 제작 워크플로, 아이소메트릭 템플릿
 design/       화면 시안
@@ -120,10 +123,11 @@ uv run tools/<이름>.py
 방·소품·강아지 PNG 는 팀 다른 저장소에서 만든다.
 
 - 저장소 **`frankie516c/dog-training-rag`**
-- 최신 브랜치 **`feature/pastel-room-themes`**
+- 브랜치: 테마는 **`feature/pastel-room-themes`**, 견종은 **`main`** 에서 받는다
 - 경로 `ui-experiments/main-screen/assets/`
   - `themes/<테마>/*.png` — 방·소품 (테마 6종)
-  - `dogs/<견종>/walk.png` — 강아지 워크 시트 (견종 16종, 2328×568 / 4프레임)
+  - `dogs/<견종>/walk.png` — 강아지 워크 시트 (견종 25종, 2328×568 / 4프레임)
+  - `dogs/<견종>/portrait.png` — 프로필 얼굴 (256×256). 아바타가 쓴다
 - 견종별 크기 표 `ui-experiments/main-screen/drafts/dog-presets.js`
   (`visualWidth`·`bodyRadius`·`speed` — **저쪽 격자는 16, 우리는 12** 라 환산한다.
   `miniroom/art/DogShapes.kt` 참고)
@@ -132,7 +136,7 @@ uv run tools/<이름>.py
 2MB 라 그냥 받으면 0바이트로 온다.
 
 ```bash
-gh api "repos/frankie516c/dog-training-rag/contents/<경로>?ref=feature/pastel-room-themes" \
+gh api "repos/frankie516c/dog-training-rag/contents/<경로>?ref=<브랜치>" \
   -H "Accept: application/vnd.github.raw" > out.png
 ```
 
@@ -150,5 +154,5 @@ gh api "repos/frankie516c/dog-training-rag/contents/<경로>?ref=feature/pastel-
 ./gradlew :app:testDebugUnitTest
 ```
 
-단위 테스트 48개가 좌표 변환·배치·앞뒤 정렬·문 터치·견종 규격을 잡는다.
+단위 테스트 57개가 좌표 변환·배치·앞뒤 정렬·문 터치·견종 규격을 잡는다.
 **그림이 예쁜지는 테스트가 못 잡는다** — 그건 실기기에서 본다.
