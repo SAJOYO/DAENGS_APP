@@ -1,5 +1,6 @@
 package com.daengs.app.auth
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,5 +79,52 @@ class SessionTest {
         val s = Session("u", "a", "r", accessExpiresAtMs = 0L, refreshExpiresAtMs = 0L)
         assertFalse(s.accessAlive(now))
         assertFalse(s.refreshAlive(now))
+    }
+}
+
+/**
+ * 서버가 주는 시각 문자열을 못 읽으면 **모든 세션이 만료로 보인다.**
+ *
+ * 안드로이드 8 의 `Instant.parse` 는 `Z` 만 받는다. FastAPI 가 `+00:00` 으로 내보내면
+ * 거기서 던져서, **최신 폰에서는 되고 낮은 기기에서만 로그인이 안 풀리는** 형태로
+ * 갈린다. 그 조합을 여기서 고정한다.
+ */
+class IsoTimeTest {
+
+    private fun parse(text: String): Long = with(AuthApi) { text.toEpochMs() }
+
+    private val expected = 1_800_000_000_000L // 2027-01-15T08:00:00Z
+
+    @Test
+    fun `Z 로 끝나는 것`() {
+        assertEquals(expected, parse("2027-01-15T08:00:00Z"))
+    }
+
+    @Test
+    fun `소수 자리가 붙은 것`() {
+        assertEquals(expected, parse("2027-01-15T08:00:00.000Z"))
+    }
+
+    @Test
+    fun `시간대가 오프셋으로 붙은 것`() {
+        assertEquals(expected, parse("2027-01-15T08:00:00+00:00"))
+    }
+
+    @Test
+    fun `한국 시간 오프셋`() {
+        assertEquals(expected, parse("2027-01-15T17:00:00+09:00"))
+    }
+
+    /** 시간대가 없으면 UTC 로 읽는다. 서버가 naive datetime 을 줄 때다. */
+    @Test
+    fun `시간대가 없는 것은 UTC 로 본다`() {
+        assertEquals(expected, parse("2027-01-15T08:00:00"))
+    }
+
+    /** 못 읽으면 0. 0 은 만료라서 앱이 재발급으로 스스로 회복한다. */
+    @Test
+    fun `못 읽으면 0`() {
+        assertEquals(0L, parse("어제쯤"))
+        assertEquals(0L, parse(""))
     }
 }

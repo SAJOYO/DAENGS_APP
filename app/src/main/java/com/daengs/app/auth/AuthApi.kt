@@ -7,7 +7,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
-import java.time.format.DateTimeParseException
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 /**
  * 우리 서버의 앱 회원 인증 API.
@@ -52,7 +54,13 @@ object AuthApi {
         withContext(Dispatchers.IO) {
             runCatching {
                 val body = JSONObject().apply { put("refresh_token", refreshToken) }
-                open("/auth/app/logout", "POST").use { it.send(body.toString()) }
+                open("/auth/app/logout", "POST").use {
+                    it.send(body.toString())
+                    // **응답 코드를 읽어야 요청이 실제로 나간다.** HttpURLConnection 은
+                    // 게을러서, 본문만 쓰고 끊으면 서버에 아무것도 안 갈 수 있다.
+                    // 로그아웃은 응답을 안 쓰지만 그래도 읽어야 한다.
+                    it.responseCode
+                }
                 Unit
             }
         }
@@ -121,13 +129,23 @@ object AuthApi {
             disconnect()
         }
 
-    /** 서버는 ISO-8601 로 준다. 실패하면 0 — 만료된 것으로 쳐서 재발급을 타게 한다. */
-    private fun String.toEpochMs(): Long =
-        try {
-            Instant.parse(if (endsWith("Z") || contains('+')) this else this + "Z").toEpochMilli()
-        } catch (_: DateTimeParseException) {
-            0L
-        }
+    /**
+     * 서버는 ISO-8601 로 준다. **모양이 셋일 수 있어서 차례로 시도한다.**
+     *
+     * FastAPI 는 `datetime` 에 시간대가 붙어 있으면 `+00:00` 을, 없으면 아무것도 안
+     * 붙여서 내보낸다. 그리고 안드로이드 8(API 26)의 `Instant.parse` 는 **`Z` 만**
+     * 받는다 — `+00:00` 을 주면 거기서 던진다. 최신 폰에서만 되고 낮은 기기에서는
+     * 모든 세션이 만료로 보이는, 찾기 고약한 형태로 갈린다.
+     *
+     * 실패하면 0 이다. **0 은 만료로 취급된다**([Session.accessAlive]) — 그래야 앱이
+     * 재발급 경로를 타서 스스로 회복한다. 살아 있다고 보면 영영 401 을 맞는다.
+     */
+    internal fun String.toEpochMs(): Long {
+        runCatching { return Instant.parse(this).toEpochMilli() }
+        runCatching { return OffsetDateTime.parse(this).toInstant().toEpochMilli() }
+        runCatching { return LocalDateTime.parse(this).toInstant(ZoneOffset.UTC).toEpochMilli() }
+        return 0L
+    }
 
     private const val TIMEOUT_MS = 10_000
 }
