@@ -347,16 +347,31 @@ private fun DrawScope.drawShell(
         canvas.restore()
     }
 
-    // 그림자 — 누끼를 통째로 검게 칠해 고리로 오린 것. 흐리기는 안 건다. 마스크가
-    // 이미 넓게 페이드돼서 경계가 부드럽고, 블러는 API 31 부터라 minSdk 26 에서 못 쓴다.
-    layer(
-        dx = shell.z * 0.055f,
-        dy = shell.z * 0.1f,
-        tint = ColorFilter.tint(Color.Black, BlendMode.SrcIn),
-        alpha = shell.shadow,
+    // 그림자 — 누끼를 통째로 검게 칠해 고리로 오린 것.
+    //
+    // **흐려야 한다.** 딱 떨어지는 검은 복사본을 몇 px 밀어 놓으면 그림자가 아니라
+    // **잔상**으로 보인다. 잎 가장자리 옆에 어두운 띠가 생기고, 그 너머로 같은 잎이
+    // 다시 나오니 "인쇄가 밀린 두 장"이 된다. 실제로 그렇게 보인다는 지적을 받았다.
+    //
+    // Compose 의 흐리기(`RenderEffect`)는 API 31 부터라 minSdk 26 에서 못 쓴다.
+    // 그래서 **여러 장을 조금씩 어긋나게 겹쳐** 흉내 낸다. 다섯 장이면 고리 마스크가
+    // 이미 부드러운 것과 합쳐져 띠가 안 보인다. 버전을 안 타는 것도 이점이다.
+    val blur = shell.z * 0.13f
+    val taps = listOf(
+        0f to 0f,
+        -blur to 0f, blur to 0f,
+        0f to -blur, 0f to blur,
     )
+    taps.forEach { (bx, by) ->
+        layer(
+            dx = shell.z * 0.055f + bx,
+            dy = shell.z * 0.1f + by,
+            tint = ColorFilter.tint(Color.Black, BlendMode.SrcIn),
+            alpha = shell.shadow / taps.size,
+        )
+    }
     // 고리 본체. 누끼의 색 보정만 따라간다 — 실루엣 그림자는 누끼가 이미 지고 있다.
-    layer(dx = 0f, dy = 0f, tint = filterOf(0.92f, 1.02f, 1.03f), alpha = 1f)
+    layer(dx = 0f, dy = 0f, tint = filterOf(0.92f, 1.02f, 1.03f), alpha = shell.opacity)
 }
 
 /** 창의 자리와, 화면을 다 덮고도 남게 벌어지는 배율. */
