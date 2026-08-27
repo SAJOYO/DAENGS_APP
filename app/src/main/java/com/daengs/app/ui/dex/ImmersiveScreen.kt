@@ -96,6 +96,17 @@ private const val WIN_OVERSHOOT = 1.22f
  */
 private const val AMBIENT_OVERSCAN = 1.06f
 
+/**
+ * 무대에 선 주인공의 폭. **화면 폭 대비.**
+ *
+ * 1.05 였다가 줄였다 — 양옆으로 넘쳐서 밭에 서 있는 게 아니라 배추 사진 위에 앉은
+ * 것처럼 보였다. 사방에 밭이 남아야 안에 들어와 있는 것으로 읽힌다.
+ */
+private const val SUBJECT_WIDTH = 0.70f
+
+/** 주인공의 세로 중심. 화면 높이 대비. 아래 글자와 위 하늘 사이에 앉힌다. */
+private const val SUBJECT_CENTER_Y = 0.50f
+
 @Composable
 fun ImmersiveScreen(
     scene: ImmersiveScene = CABBAGE_SCENE,
@@ -423,22 +434,9 @@ private fun DrawScope.drawScene(
     // 카드는 여기서 안 그린다. 창 연출에서는 무대가 창 안으로 잘리는데, 카드와 틀은
     // 그 바깥에도 보여야 하기 때문이다 — [drawStage] 가 자르기 밖에서 그린다.
 
-    // 7. 앞잎사귀 — 크고 흐리게. 초점이 안쪽에 맞은 것처럼 보이게 하는 층이다
-    run {
-        val d = parallax(aim, Par.FORE)
-        translate(d.x, d.y) {
-            parts.leaves.forEach { l ->
-                val sway = sin(timeMs / 1400f + l.phase) * 6f
-                val w = size.width * 0.42f * l.scale
-                val h = w * 0.62f
-                drawOval(
-                    color = Color(0xFF2E4A12).copy(alpha = l.alpha),
-                    topLeft = Offset(l.at.x * size.width - w / 2f + sway, l.at.y * size.height - h / 2f),
-                    size = Size(w, h),
-                )
-            }
-        }
-    }
+    // 앞잎사귀 층은 뺐다. 저쪽 웹판에는 있지만 여기서는 **흙을 뭉갤 뿐**이었다.
+    // 잎 모양이 아니라 큰 타원이라 초점이 나간 잎으로 안 읽히고, 화면 아래쪽에
+    // 어두운 덩어리로 남아 밭을 가렸다. 그림으로 그린 잎이 오면 그때 다시 본다.
 
     // 8. 이슬 — 카메라 유리에 맺힌 방울. **이 층만 시차가 0 이다.**
     parts.dew.forEach { dw ->
@@ -476,10 +474,14 @@ private fun subjectRect(
     )
     val fromSize = Size(cardSize.width * scene.fit.w / 100f, cardSize.height * scene.fit.h / 100f)
 
-    // 무대 가득. 가로를 채우고 아래쪽에 앉힌다.
-    val toW = stage.width * 1.05f
+    // 무대에서의 자리.
+    //
+    // **화면을 채우면 안 된다.** 예전엔 폭 105% 라 배추가 양옆으로 넘쳤고, 그러면
+    // 밭에 서 있는 게 아니라 배추 사진 위에 앉은 것처럼 보인다. 사방에 밭이 보여야
+    // "안에 들어와 있다"가 된다.
+    val toW = stage.width * SUBJECT_WIDTH
     val toH = toW * subject.height / subject.width
-    val to = Offset((stage.width - toW) / 2f, stage.height * 0.52f - toH / 2f)
+    val to = Offset((stage.width - toW) / 2f, stage.height * SUBJECT_CENTER_Y - toH / 2f)
     val toSize = Size(toW, toH)
 
     val e = enter.coerceIn(0f, 1f)
