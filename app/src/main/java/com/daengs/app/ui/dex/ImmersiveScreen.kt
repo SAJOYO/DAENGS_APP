@@ -156,7 +156,7 @@ fun ImmersiveScreen(
 
     // 시선. 손가락이 없으면 자이로가 맡는다.
     val rub = rememberRubState()
-    val tracker = remember { TiltTracker() }
+    val tracker = remember { TiltTracker(TiltTracker.RANGE_SCENE) }
     DeviceTilt { b, g -> tracker.feed(b, g) }
     val aim = if (rub.input.intensity > 0f) rub.input.p else (tracker.input?.p ?: Offset(0.5f, 0.5f))
 
