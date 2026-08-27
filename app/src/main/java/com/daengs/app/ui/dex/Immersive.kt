@@ -89,8 +89,8 @@ data class ImmersiveScene(
      * 보이고, 두세 단이면 두께로 읽힌다.
      */
     val shells: List<Shell> = listOf(
-        Shell(z = 34f, r0 = 14f, r1 = 44f, r2 = 54f, r3 = 86f, shadow = 0.22f),
-        Shell(z = 70f, r0 = 44f, r1 = 62f, r2 = 62f, r3 = 72f, shadow = 0.5f),
+        Shell(z = 16f, r0 = 14f, r1 = 44f, r2 = 54f, r3 = 86f, shadow = 0.18f, opacity = 1f),
+        Shell(z = 32f, r0 = 44f, r1 = 62f, r2 = 62f, r3 = 72f, shadow = 0.32f, opacity = 1f),
     ),
     val fit: Fit = Fit(6.06f, 14.15f, 87.43f, 62.70f),
     val motes: Int = 52,
@@ -117,8 +117,16 @@ data class ImmersiveScene(
      * 가장자리에서 속과 겹쳐 보이고, 같은 픽셀이라 그 자리가 제일 티가 난다.
      *
      * @param z 앞으로 띄운 높이. 클수록 기울일 때 많이 어긋나고 그림자도 길어진다.
+     *   **잔상은 이 값으로 잡는다.** 저쪽 값(34 · 70)을 그대로 썼더니 잎 윤곽이 두 번
+     *   그려져 잔상으로 보인다는 지적을 받았다. 절반으로 줄이니 사라졌고, 겹은 여전히
+     *   속보다 5px · 10px 더 움직여 두께는 남는다. 겹마다 그린 원화가 오면 그때는
+     *   겹이 속과 다른 그림이라 다시 올려도 된다.
      * @param shadow 뒤에 드리우는 그림자의 진하기. 뒤쪽 겹까지 또렷하면 고리 경계가
      *   테두리 선처럼 드러나서, 두께가 아니라 오려 붙인 원으로 보인다.
+     * @param opacity 겹의 불투명도. **1 로 둔다.**
+     *   잔상을 없애려고 0.55 로 비쳐 보게 해 봤는데 **더 나빠졌다** — 밀린 복사본이
+     *   속에 녹는 게 아니라 이중노출처럼 번져서, 두께가 아니라 초점이 나간 것으로
+     *   보였다. 이 값이 아니라 [z] 로 잡아야 한다.
      */
     @Immutable
     data class Shell(
@@ -128,6 +136,7 @@ data class ImmersiveScene(
         val r2: Float,
         val r3: Float,
         val shadow: Float,
+        val opacity: Float,
     )
 }
 
