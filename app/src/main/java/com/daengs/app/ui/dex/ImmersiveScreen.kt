@@ -48,6 +48,9 @@ import kotlin.math.sin
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.hypot
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.ColorFilter
 
 // ---------------------------------------------------------------------------
 // 이머시브 무대 그리기
@@ -106,6 +109,21 @@ private const val SUBJECT_WIDTH = 0.70f
 
 /** 주인공의 세로 중심. 화면 높이 대비. 아래 글자와 위 하늘 사이에 앉힌다. */
 private const val SUBJECT_CENTER_Y = 0.50f
+
+/**
+ * 저쪽 겹 높이(`z`)가 기준으로 삼은 누끼 높이. 우리 크기로 환산하려고 쓴다.
+ *
+ * 저쪽 `--hh` 는 `min(58svh, 560px)` 이라 폰에서 사실상 이 값에 붙어 있다.
+ */
+private const val SHELL_Z_REF_H = 560f
+
+/**
+ * 겹이 `z` 만큼 앞에 있을 때 옆으로 어긋나는 비율. `sin(9도)` 다.
+ *
+ * 저쪽은 `rotateY(px * 9deg)` 로 기울인다. 세로는 6도인데 그 비(0.67)가 우리
+ * [parallax] 의 세로 계수 0.68 과 거의 같아서 따로 안 나눈다.
+ */
+private const val SHELL_TILT = 0.156f
 
 @Composable
 fun ImmersiveScreen(
@@ -280,6 +298,67 @@ private fun DrawScope.drawStage(
     }
 }
 
+/**
+ * 겉잎 한 겹을 그린다. 고리로 오려낸 **같은 누끼**를 그림자와 함께 얹는다.
+ *
+ * 그림자를 먼저 깐다 — 가림이 없으면 앞뒤가 아니라 나란히 놓인 걸로 읽힌다.
+ * 광원이 왼쪽 위라 오른쪽 아래로 진다. 띄운 높이에 비례해 길어진다.
+ */
+private fun DrawScope.drawShell(
+    subject: ImageBitmap,
+    pos: Offset,
+    sz: Size,
+    shell: ImmersiveScene.Shell,
+    shift: Offset,
+) {
+    // 고리 마스크. 반지름의 단위는 중심에서 가장 먼 귀퉁이까지의 거리다
+    // (저쪽 `radial-gradient(circle at 50% 46%)` 의 기본값이 farthest-corner).
+    val cx = pos.x + sz.width * 0.5f + shift.x
+    val cy = pos.y + sz.height * 0.46f + shift.y
+    val reach = hypot(sz.width * 0.5f, sz.height * 0.54f)
+
+    val ring = Brush.radialGradient(
+        0f to Color.Transparent,
+        (shell.r0 / 100f) to Color.Transparent,
+        (shell.r1 / 100f) to Color.Black,
+        (shell.r2 / 100f).coerceAtLeast(shell.r1 / 100f) to Color.Black,
+        (shell.r3 / 100f).coerceAtMost(1f) to Color.Transparent,
+        1f to Color.Transparent,
+        center = Offset(cx, cy),
+        radius = reach,
+    )
+
+    fun layer(dx: Float, dy: Float, tint: ColorFilter?, alpha: Float) {
+        if (alpha <= 0.004f) return
+        val canvas = drawContext.canvas
+        canvas.saveLayer(Rect(Offset.Zero, size), Paint().apply { this.alpha = alpha })
+        drawImage(
+            image = subject,
+            dstOffset = androidx.compose.ui.unit.IntOffset(
+                (pos.x + shift.x + dx).roundToInt(),
+                (pos.y + shift.y + dy).roundToInt(),
+            ),
+            dstSize = androidx.compose.ui.unit.IntSize(sz.width.roundToInt(), sz.height.roundToInt()),
+            colorFilter = tint,
+            filterQuality = FilterQuality.High,
+        )
+        // 고리 밖을 지운다. 화면 전체에 찍어야 고리 바깥이 확실히 비워진다.
+        drawRect(ring, blendMode = BlendMode.DstIn)
+        canvas.restore()
+    }
+
+    // 그림자 — 누끼를 통째로 검게 칠해 고리로 오린 것. 흐리기는 안 건다. 마스크가
+    // 이미 넓게 페이드돼서 경계가 부드럽고, 블러는 API 31 부터라 minSdk 26 에서 못 쓴다.
+    layer(
+        dx = shell.z * 0.055f,
+        dy = shell.z * 0.1f,
+        tint = ColorFilter.tint(Color.Black, BlendMode.SrcIn),
+        alpha = shell.shadow,
+    )
+    // 고리 본체. 누끼의 색 보정만 따라간다 — 실루엣 그림자는 누끼가 이미 지고 있다.
+    layer(dx = 0f, dy = 0f, tint = filterOf(0.92f, 1.02f, 1.03f), alpha = 1f)
+}
+
 /** 창의 자리와, 화면을 다 덮고도 남게 벌어지는 배율. */
 private class WindowGeom(
     val cx: Float,
@@ -419,15 +498,26 @@ private fun DrawScope.drawScene(
     // 5. 주인공 — 카드 안 제자리에서 시작해 무대 크기로 자란다.
     //    **여기가 진입 연출의 핵심이다.** 카드가 녹는 동안 캐릭터가 안 움직여야 한다.
     if (subject != null) {
+        val r = subjectRect(scene, subject, size, grow, cardPos, cardSize)
+        val pos = r.first
+        val sz = r.second
+
+        // 속. 시차 하나로 통째로 움직인다.
         val d = parallax(aim, Par.SUBJECT)
         translate(d.x, d.y) {
-            val r = subjectRect(scene, subject, size, grow, cardPos, cardSize)
             drawImage(
                 image = subject,
-                dstOffset = androidx.compose.ui.unit.IntOffset(r.first.x.roundToInt(), r.first.y.roundToInt()),
-                dstSize = androidx.compose.ui.unit.IntSize(r.second.width.roundToInt(), r.second.height.roundToInt()),
+                dstOffset = androidx.compose.ui.unit.IntOffset(pos.x.roundToInt(), pos.y.roundToInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(sz.width.roundToInt(), sz.height.roundToInt()),
                 filterQuality = FilterQuality.High,
             )
+        }
+
+        // 겉잎 겹. 뒤에서 앞으로. 속보다 더 움직여야 앞에 있는 것으로 읽힌다.
+        scene.shells.forEach { sh ->
+            val extra = sh.z * SHELL_TILT * (sz.height / SHELL_Z_REF_H)
+            val sd = parallax(aim, Par.SUBJECT + extra)
+            drawShell(subject, pos, sz, sh, sd)
         }
     }
 
