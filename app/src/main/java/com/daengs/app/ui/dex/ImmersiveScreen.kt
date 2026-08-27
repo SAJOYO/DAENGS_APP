@@ -34,8 +34,10 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,13 +51,39 @@ import kotlin.math.sin
 //
 // 평면 일곱 장을 시차를 두고 겹친다. 구조와 숫자는 [Immersive] 에 적어 뒀다.
 //
-// 진입 연출이 이 뷰의 요점이다 — 카드가 화면만 하게 커지고, **틀이 녹으면서**
-// 그 안의 배추가 그대로 남아 무대가 된다. 캐릭터가 한 픽셀도 안 움직여야 "안으로
-// 들어갔다"로 읽힌다. 그래서 누끼를 카드 안 제자리([ImmersiveScene.fit])에 놓고
-// 시작해서, 카드가 사라지는 동안 서서히 무대 크기로 키운다.
+// 진입 연출이 이 뷰의 요점이다 — 카드가 서고, **그림이 녹아 틀만 남고**, 그 틀의
+// 창이 벌어지면서 화면을 삼킨다. 창을 통과해 안으로 들어가는 것으로 읽힌다.
+// 저쪽 `immersive.mjs` 의 `setWindow` 를 옮긴 것이다 (SAJOYO/DAENGS_dev PR #21).
+//
+// 캐릭터가 한 픽셀도 안 움직여야 "안으로 들어갔다"가 된다. 그래서 누끼를 카드 안
+// 제자리([ImmersiveScene.fit])에 놓고 시작해서, **창이 벌어지는 동안에만** 무대
+// 크기로 키운다. 카드가 녹는 구간에는 가만히 있는다.
 // ---------------------------------------------------------------------------
 
 private const val ENTER_MS = 2100
+
+// 진입의 세 구간. 저쪽 `plate-in` 키프레임의 비율을 그대로 쓴다.
+//
+// 카드가 **다 서고 나서** 창을 열어야 한다. 서는 중에 열면 창 자리가 매 프레임
+// 달라져서 틀과 창이 어긋난다 (저쪽이 판을 44% 에 세워 두는 이유가 이것이다).
+
+/** 카드가 제자리에 서기까지. */
+private const val SETTLE_END = 0.44f
+
+/** 카드 그림이 녹아 틀이 드러나는 구간. */
+private const val MELT_FROM = 0.30f
+private const val MELT_TO = 0.62f
+
+/** 창이 벌어지는 구간. */
+private const val OPEN_FROM = 0.62f
+
+/**
+ * 화면을 다 덮고 나서도 이만큼 더 벌어진다.
+ *
+ * 딱 덮는 데서 멈추면 "가려졌다"이지 "통과했다"가 아니다. 여기서부터는 이미 화면
+ * 밖이라 틀이 어디로 가든 안 보인다. 저쪽 `--win-k-end` 와 같은 1.22 배다.
+ */
+private const val WIN_OVERSHOOT = 1.22f
 
 /**
  * 배경을 화면보다 이만큼 크게 깐다.
@@ -73,6 +101,7 @@ fun ImmersiveScreen(
     val back = rememberAssetImage(scene.back)
     val subject = rememberAssetImage(scene.subject)
     val card = rememberAssetImage(scene.card)
+    val frame = scene.frame?.let { rememberAssetImage(it) }
     val parts = remember(scene) { buildScene(scene, seedOf("cabbage")) }
 
     BackHandler(onBack = onClose)
@@ -113,14 +142,17 @@ fun ImmersiveScreen(
             ),
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            drawStage(scene, parts, back, subject, card, aim, enter, t.toLong())
+            drawStage(scene, parts, back, subject, card, frame, aim, enter, t.toLong())
         }
 
+        // 글자는 창이 벌어진 뒤에 뜬다. 진입 내내 떠 있으면 카드 위에 겹쳐서,
+        // 아직 들어가지도 않았는데 도착한 것처럼 보인다.
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .systemBarsPadding()
-                .padding(bottom = 28.dp),
+                .padding(bottom = 28.dp)
+                .graphicsLayer { alpha = ((enter - OPEN_FROM) / (1f - OPEN_FROM)).coerceIn(0f, 1f) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("CABBAGE NEO", color = Color(0xFFEFFBE2), fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -139,9 +171,132 @@ private fun DrawScope.drawStage(
     back: ImageBitmap?,
     subject: ImageBitmap?,
     card: ImageBitmap?,
+    frame: ImageBitmap?,
     aim: Offset,
     enter: Float,
     timeMs: Long,
+) {
+    val settle = (enter / SETTLE_END).coerceIn(0f, 1f)
+    val melt = ((enter - MELT_FROM) / (MELT_TO - MELT_FROM)).coerceIn(0f, 1f)
+    val open = ((enter - OPEN_FROM) / (1f - OPEN_FROM)).coerceIn(0f, 1f)
+
+    // 틀이 없는 카드는 예전 연출로 돈다 — 카드가 커지면서 통째로 녹는다.
+    if (card == null || frame == null) {
+        drawScene(scene, parts, back, subject, aim, enter, timeMs)
+        if (card != null && enter < 1f) {
+            val alpha = (1f - enter * 1.6f).coerceIn(0f, 1f)
+            if (alpha > 0.001f) {
+                val (pos, sz) = grownCardRect(card, size, enter)
+                drawImage(
+                    image = card,
+                    dstOffset = androidx.compose.ui.unit.IntOffset(pos.x.roundToInt(), pos.y.roundToInt()),
+                    dstSize = androidx.compose.ui.unit.IntSize(sz.width.roundToInt(), sz.height.roundToInt()),
+                    alpha = alpha,
+                    filterQuality = FilterQuality.High,
+                )
+            }
+        }
+        return
+    }
+
+    val (cardPos, cardSize) = settledCardRect(card, size, settle)
+    val win = windowOf(scene, cardPos, cardSize, size)
+
+    // 창이 벌어지는 배율. **끝을 향해 빨라진다** — 등속으로 벌리면 통과가 아니라
+    // 그냥 확대로 읽힌다. 화면을 다 덮는 건 이 곡선의 8할쯤이고, 나머지는 화면 밖이다.
+    val k = 1f + (win.kEnd - 1f) * (open * open)
+
+    // 무대는 **창 안에만** 그린다. 창이 화면을 넘어서면 이 자르기는 아무것도 안 한다.
+    clipRect(
+        left = win.cx - win.hw * k,
+        top = win.cy - win.hh * k,
+        right = win.cx + win.hw * k,
+        bottom = win.cy + win.hh * k,
+    ) {
+        drawScene(scene, parts, back, subject, aim, open, timeMs, cardPos, cardSize)
+    }
+
+    // 틀. **창과 같은 중심에서 같은 배율로** 커진다. 둘이 같은 값을 읽으므로 어긋날
+    // 수가 없다 — 창은 중심에서 반너비 x 배율로, 틀은 창 중심 기준 확대로 커지는데
+    // 기준점이 같아서 결과가 맞는다.
+    if (k < win.kEnd || open < 1f) {
+        val fp = Offset(
+            win.cx + (cardPos.x - win.cx) * k,
+            win.cy + (cardPos.y - win.cy) * k,
+        )
+        drawImage(
+            image = frame,
+            dstOffset = androidx.compose.ui.unit.IntOffset(fp.x.roundToInt(), fp.y.roundToInt()),
+            dstSize = androidx.compose.ui.unit.IntSize(
+                (cardSize.width * k).roundToInt(),
+                (cardSize.height * k).roundToInt(),
+            ),
+            filterQuality = FilterQuality.High,
+        )
+    }
+
+    // 카드 그림. 틀 위에 같은 자리로 얹혀 있다가 녹는다. 녹고 나면 아래의 틀이 드러나
+    // 창틀이 된다 — 그림이 지워진 자리가 곧 창이다.
+    if (melt < 1f) {
+        drawImage(
+            image = card,
+            dstOffset = androidx.compose.ui.unit.IntOffset(cardPos.x.roundToInt(), cardPos.y.roundToInt()),
+            dstSize = androidx.compose.ui.unit.IntSize(
+                cardSize.width.roundToInt(),
+                cardSize.height.roundToInt(),
+            ),
+            alpha = 1f - melt,
+            filterQuality = FilterQuality.High,
+        )
+    }
+}
+
+/** 창의 자리와, 화면을 다 덮고도 남게 벌어지는 배율. */
+private class WindowGeom(
+    val cx: Float,
+    val cy: Float,
+    val hw: Float,
+    val hh: Float,
+    val kEnd: Float,
+)
+
+/**
+ * 창이 화면 어디인지, 얼마나 벌어져야 화면을 넘는지.
+ *
+ * 필요한 배율을 **고정값으로 박으면 안 된다.** 창은 카드 그림 영역이라 거의 정사각인데
+ * 화면은 세로로 길어서, 같은 배율로 벌리면 한쪽이 먼저 끝나고 다른 쪽이 한참 남는다.
+ * 창은 자기 중심에서 벌어지므로 **중심에서 먼 쪽 변까지의 거리를 반너비로 나눈 값**이
+ * 곧 필요한 배율이다.
+ */
+private fun windowOf(
+    scene: ImmersiveScene,
+    cardPos: Offset,
+    cardSize: Size,
+    stage: Size,
+): WindowGeom {
+    val w = scene.window
+    val cx = cardPos.x + cardSize.width * (w.x + w.w / 2f) / 100f
+    val cy = cardPos.y + cardSize.height * (w.y + w.h / 2f) / 100f
+    val hw = cardSize.width * w.w / 200f
+    val hh = cardSize.height * w.h / 200f
+    val cover = maxOf(
+        maxOf(cx, stage.width - cx) / hw,
+        maxOf(cy, stage.height - cy) / hh,
+    )
+    return WindowGeom(cx, cy, hw, hh, cover * WIN_OVERSHOOT)
+}
+
+/** 평면 일곱 장. 뒤에서 앞으로. */
+private fun DrawScope.drawScene(
+    scene: ImmersiveScene,
+    parts: SceneParts,
+    back: ImageBitmap?,
+    subject: ImageBitmap?,
+    aim: Offset,
+    grow: Float,
+    timeMs: Long,
+    cardPos: Offset? = null,
+    cardSize: Size? = null,
 ) {
     // 1. 하늘 — 해 뜨기 직전의 텃밭
     drawRect(
@@ -233,11 +388,11 @@ private fun DrawScope.drawStage(
     }
 
     // 5. 주인공 — 카드 안 제자리에서 시작해 무대 크기로 자란다.
-    //    **여기가 진입 연출의 핵심이다.** 틀이 녹는 동안 캐릭터가 안 움직여야 한다.
+    //    **여기가 진입 연출의 핵심이다.** 카드가 녹는 동안 캐릭터가 안 움직여야 한다.
     if (subject != null) {
         val d = parallax(aim, Par.SUBJECT)
         translate(d.x, d.y) {
-            val r = subjectRect(scene, subject, size, enter)
+            val r = subjectRect(scene, subject, size, grow, cardPos, cardSize)
             drawImage(
                 image = subject,
                 dstOffset = androidx.compose.ui.unit.IntOffset(r.first.x.roundToInt(), r.first.y.roundToInt()),
@@ -247,20 +402,8 @@ private fun DrawScope.drawStage(
         }
     }
 
-    // 6. 카드 틀 — 진입하는 동안만 보인다. 녹듯이 사라진다.
-    if (card != null && enter < 1f) {
-        val alpha = (1f - enter * 1.6f).coerceIn(0f, 1f)
-        if (alpha > 0.001f) {
-            val (pos, sz) = cardRect(card, size, enter)
-            drawImage(
-                image = card,
-                dstOffset = androidx.compose.ui.unit.IntOffset(pos.x.roundToInt(), pos.y.roundToInt()),
-                dstSize = androidx.compose.ui.unit.IntSize(sz.width.roundToInt(), sz.height.roundToInt()),
-                alpha = alpha,
-                filterQuality = FilterQuality.High,
-            )
-        }
-    }
+    // 카드는 여기서 안 그린다. 창 연출에서는 무대가 창 안으로 잘리는데, 카드와 틀은
+    // 그 바깥에도 보여야 하기 때문이다 — [drawStage] 가 자르기 밖에서 그린다.
 
     // 7. 앞잎사귀 — 크고 흐리게. 초점이 안쪽에 맞은 것처럼 보이게 하는 층이다
     run {
@@ -300,8 +443,14 @@ private fun subjectRect(
     subject: ImageBitmap,
     stage: Size,
     enter: Float,
+    atPos: Offset? = null,
+    atSize: Size? = null,
 ): Pair<Offset, Size> {
-    val (cardPos, cardSize) = cardRect(subject, stage, enter)
+    // 창 연출에서는 카드가 선 자리를 그대로 받는다. 예전 연출에서는 카드가 커지는
+    // 중이라 매번 다시 잰다.
+    val (cardPos, cardSize) =
+        if (atPos != null && atSize != null) atPos to atSize
+        else grownCardRect(subject, stage, enter)
     // 카드 안에서의 자리 (카드 크기 대비 %)
     val from = Offset(
         cardPos.x + cardSize.width * scene.fit.x / 100f,
@@ -325,8 +474,26 @@ private fun subjectRect(
     )
 }
 
-/** 카드가 놓일 자리. 들어오는 동안 화면만 하게 커진다. */
-private fun cardRect(card: ImageBitmap, stage: Size, enter: Float): Pair<Offset, Size> {
+/**
+ * 창 연출에서 카드가 **서는** 자리. [settle] 1 이면 다 선 것이다.
+ *
+ * 다 섰을 때 화면 안에 들어와야 한다. 저쪽은 판 배율 1 이 화면보다 큰 크기라 따로
+ * 줄여 앉히는데(`--set-s`), 여기서는 처음부터 그 크기로 잡는다 — 가로 86% 와
+ * 세로 80% 중 **작은 쪽**을 따른다. 창이 벌어지는 구간에는 이 자리가 고정이라야
+ * 창과 틀이 안 어긋난다.
+ */
+private fun settledCardRect(card: ImageBitmap, stage: Size, settle: Float): Pair<Offset, Size> {
+    val ratio = card.width.toFloat() / card.height
+    val endW = minOf(stage.width * 0.86f, stage.height * 0.80f * ratio)
+    // 확대 뷰에서 이어지도록, 시작은 그 크기에서 조금 작게.
+    val startW = endW * 0.88f
+    val w = startW + (endW - startW) * settle.coerceIn(0f, 1f)
+    val h = w / ratio
+    return Offset((stage.width - w) / 2f, (stage.height - h) / 2f) to Size(w, h)
+}
+
+/** 틀이 없는 카드의 예전 연출. 들어오는 동안 화면만 하게 커진다. */
+private fun grownCardRect(card: ImageBitmap, stage: Size, enter: Float): Pair<Offset, Size> {
     val ratio = card.width.toFloat() / card.height
     // 시작은 확대 뷰와 같은 크기, 끝은 화면보다 살짝 크게
     val startW = stage.width * 0.92f
