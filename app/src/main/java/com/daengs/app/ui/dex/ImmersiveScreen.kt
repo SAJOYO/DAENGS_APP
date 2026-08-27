@@ -45,6 +45,9 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.art.rememberAssetImage
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.geometry.Rect
 
 // ---------------------------------------------------------------------------
 // 이머시브 무대 그리기
@@ -96,6 +99,13 @@ private const val AMBIENT_OVERSCAN = 1.06f
 @Composable
 fun ImmersiveScreen(
     scene: ImmersiveScene = CABBAGE_SCENE,
+    /**
+     * 눌린 카드의 **창 위** 자리. 여기서 출발한다.
+     *
+     * [Rect.Zero] 면 자리를 모른다는 뜻이고, 그때는 가운데에서 조금 작게 시작한다.
+     * 저쪽도 `fromRect` 가 없으면 그렇게 한다.
+     */
+    from: Rect = Rect.Zero,
     onClose: () -> Unit,
 ) {
     val back = rememberAssetImage(scene.back)
@@ -130,9 +140,14 @@ fun ImmersiveScreen(
         label = "t",
     )
 
+    // 넘어온 자리는 창 좌표다. 이 화면이 창 어디에 있는지 빼야 캔버스 좌표가 된다.
+    // 지금은 둘이 같은 자리지만, 나중에 인셋이 끼면 여기서 갈린다.
+    var rootAt by remember { mutableStateOf(Offset.Zero) }
+
     Box(
         Modifier
             .fillMaxSize()
+            .onGloballyPositioned { rootAt = it.boundsInWindow().topLeft }
             .background(Color(0xFF0B1408))
             .rubbable(rub)
             .clickable(
@@ -142,7 +157,9 @@ fun ImmersiveScreen(
             ),
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            drawStage(scene, parts, back, subject, card, frame, aim, enter, t.toLong())
+            val fromHere =
+                if (from.width > 0f) from.translate(-rootAt.x, -rootAt.y) else Rect.Zero
+            drawStage(scene, parts, back, subject, card, frame, aim, enter, t.toLong(), fromHere)
         }
 
         // 글자는 창이 벌어진 뒤에 뜬다. 진입 내내 떠 있으면 카드 위에 겹쳐서,
@@ -175,6 +192,7 @@ private fun DrawScope.drawStage(
     aim: Offset,
     enter: Float,
     timeMs: Long,
+    from: Rect,
 ) {
     val settle = (enter / SETTLE_END).coerceIn(0f, 1f)
     val melt = ((enter - MELT_FROM) / (MELT_TO - MELT_FROM)).coerceIn(0f, 1f)
@@ -199,7 +217,7 @@ private fun DrawScope.drawStage(
         return
     }
 
-    val (cardPos, cardSize) = settledCardRect(card, size, settle)
+    val (cardPos, cardSize) = settledCardRect(card, size, settle, from)
     val win = windowOf(scene, cardPos, cardSize, size)
 
     // 창이 벌어지는 배율. **끝을 향해 빨라진다** — 등속으로 벌리면 통과가 아니라
@@ -482,14 +500,45 @@ private fun subjectRect(
  * 세로 80% 중 **작은 쪽**을 따른다. 창이 벌어지는 구간에는 이 자리가 고정이라야
  * 창과 틀이 안 어긋난다.
  */
-private fun settledCardRect(card: ImageBitmap, stage: Size, settle: Float): Pair<Offset, Size> {
+private fun settledCardRect(
+    card: ImageBitmap,
+    stage: Size,
+    settle: Float,
+    from: Rect,
+): Pair<Offset, Size> {
     val ratio = card.width.toFloat() / card.height
     val endW = minOf(stage.width * 0.86f, stage.height * 0.80f * ratio)
-    // 확대 뷰에서 이어지도록, 시작은 그 크기에서 조금 작게.
-    val startW = endW * 0.88f
-    val w = startW + (endW - startW) * settle.coerceIn(0f, 1f)
+    val endPos = Offset((stage.width - endW) / 2f, (stage.height - endW / ratio) / 2f)
+
+    // 출발 자리를 모르면 가운데에서 조금 작게 시작한다.
+    if (from.width <= 0f) {
+        val startW = endW * 0.88f
+        val w = startW + (endW - startW) * settle.coerceIn(0f, 1f)
+        val h = w / ratio
+        return Offset((stage.width - w) / 2f, (stage.height - h) / 2f) to Size(w, h)
+    }
+
+    // 눌린 카드 자리에서 출발한다.
+    //
+    // **날아오다가 작아지면 안 된다.** 지금은 2열이라 그리드 카드가 다 선 카드보다
+    // 훨씬 작지만, 열 수를 줄이면 뒤집힌다 — 저쪽은 모바일 1열에서 그걸 겪고 중간
+    // 배율을 출발 크기보다 크게 잡는 규칙을 넣었다. 여기서는 출발 폭을 도착 폭으로
+    // 잘라서, 커지거나 제자리일 뿐 절대 작아지지 않게 한다.
+    val startW = minOf(from.width, endW)
+    val startH = startW / ratio
+    // 잘렸으면 카드 가운데를 기준으로 다시 앉힌다. 안 그러면 잘린 만큼 어긋난다.
+    val startPos = Offset(
+        from.center.x - startW / 2f,
+        from.center.y - startH / 2f,
+    )
+
+    val e = settle.coerceIn(0f, 1f)
+    val w = startW + (endW - startW) * e
     val h = w / ratio
-    return Offset((stage.width - w) / 2f, (stage.height - h) / 2f) to Size(w, h)
+    return Offset(
+        startPos.x + (endPos.x - startPos.x) * e,
+        startPos.y + (endPos.y - startPos.y) * e,
+    ) to Size(w, h)
 }
 
 /** 틀이 없는 카드의 예전 연출. 들어오는 동안 화면만 하게 커진다. */

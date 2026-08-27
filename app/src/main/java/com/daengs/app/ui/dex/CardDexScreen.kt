@@ -46,6 +46,9 @@ import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.geometry.Rect
 
 // ---------------------------------------------------------------------------
 // 네오 채소 도감
@@ -79,6 +82,8 @@ private const val SLOT_RATIO = 1.25f
 fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var opened by remember { mutableStateOf<Int?>(null) }
     var immersive by remember { mutableStateOf(false) }
+    // 이머시브가 출발할 자리. 그리드가 사라진 뒤에도 써야 하므로 여기 둔다.
+    var from by remember { mutableStateOf(Rect.Zero) }
 
     BackHandler {
         when {
@@ -89,7 +94,7 @@ fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     }
 
     if (immersive) {
-        ImmersiveScreen(onClose = { immersive = false })
+        ImmersiveScreen(from = from, onClose = { immersive = false })
         return
     }
 
@@ -97,7 +102,10 @@ fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         DexGrid(
             onOpen = { opened = it },
             onClose = onClose,
-            onImmersive = { immersive = true },
+            onImmersive = { at ->
+                from = at
+                immersive = true
+            },
         )
 
         AnimatedVisibility(
@@ -114,7 +122,7 @@ fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 // -- 그리드 -----------------------------------------------------------------
 
 @Composable
-private fun DexGrid(onOpen: (Int) -> Unit, onClose: () -> Unit, onImmersive: () -> Unit) {
+private fun DexGrid(onOpen: (Int) -> Unit, onClose: () -> Unit, onImmersive: (Rect) -> Unit) {
     LazyVerticalGrid(
         // 두 칸. 웹판에서 한 칸이면 카드가 화면을 꽉 채워 무거웠다.
         columns = GridCells.Fixed(2),
@@ -164,10 +172,15 @@ private fun DexHeader(onClose: () -> Unit) {
 }
 
 @Composable
-private fun GridCard(card: DexCard, onOpen: () -> Unit, onImmersive: (() -> Unit)?) {
+private fun GridCard(card: DexCard, onOpen: () -> Unit, onImmersive: ((Rect) -> Unit)?) {
     // 그리드에서는 작게 그리므로 절반 크기로 읽는다. 12장을 원본으로 들면 55MB 다.
     val art = rememberAssetImage(card.art, sample = 2)
-    val rub = rememberRubState(onTap = onOpen, onHold = onImmersive)
+
+    // 이머시브가 **이 카드 자리에서** 출발하도록 화면 위 사각형을 들고 있는다.
+    // 창 위 좌표라 이머시브가 자기 자리를 빼서 쓴다 — 둘 다 같은 창이라 그걸로 맞는다.
+    var at by remember { mutableStateOf(Rect.Zero) }
+    val enter = onImmersive?.let { go -> { go(at) } }
+    val rub = rememberRubState(onTap = onOpen, onHold = enter)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         // **카드 높이를 칸마다 똑같이 맞춘다.** 그림 비율이 두 종류라(0.72 와 0.80)
@@ -188,6 +201,7 @@ private fun GridCard(card: DexCard, onOpen: () -> Unit, onImmersive: (() -> Unit
                 // 칸 폭의 4:5. 웹판 `.slot .frame` 과 같은 비율이다.
                 modifier = Modifier
                     .height(maxWidth * SLOT_RATIO)
+                    .onGloballyPositioned { at = it.boundsInWindow() }
                     // **드래그를 안 먹는다.** 먹으면 카드를 짚고 쓸어내릴 때 목록이
                     // 안 움직인다.
                     .rubbable(rub, consume = false),
@@ -209,7 +223,7 @@ private fun GridCard(card: DexCard, onOpen: () -> Unit, onImmersive: (() -> Unit
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(card.accent.copy(alpha = 0.25f))
-                    .clickable(onClick = onImmersive)
+                    .clickable { onImmersive(at) }
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
