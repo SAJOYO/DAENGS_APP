@@ -56,6 +56,25 @@ data class ImmersiveScene(
     val back: String = "neo-hologram/art/cabbage-back.webp",
     val subject: String = "neo-hologram/art/cabbage-subject.webp",
     val card: String = "neo-hologram/art/cabbage-card.webp",
+    /**
+     * 그림 영역만 투명하게 지운 카드. [card] 아래에 같은 자리로 깔려 있다가, 카드가
+     * 녹으면 드러나서 **창틀**이 된다. 없으면(`null`) 예전처럼 카드가 녹기만 한다.
+     */
+    val frame: String? = "neo-hologram/art/cabbage-card-frame.webp",
+    /**
+     * 틀에서 **뒤가 비치는 자리 전부**를 감싸는 상자 (카드 크기 대비 %).
+     *
+     * [fit] 과 다르다. [fit] 은 누끼가 놓이는 자리이고, 이쪽은 **뒤를 받쳐 줄 범위**다.
+     * 틀에는 그림창 말고도 뚫린 데가 있다 — 원래 카드에서 그림 위에 얹혀 있던 반투명
+     * 판들이라, 그림을 지울 때 뒤가 같이 비었다. 그림창만 재서 넣으면 그 자리가
+     * 검게 남는다.
+     *
+     * 창이 뚫린 데보다 커도 상관없다. 넘치는 만큼은 틀의 불투명한 부분이 가린다 —
+     * 모양은 틀의 알파가 잡고, 이 상자는 범위만 정한다. 다만 **카드 바깥 둥근
+     * 모서리까지 삼키면 안 된다.** 받쳐 주면 둥근 귀퉁이로 텃밭이 새어 나와 카드가
+     * 직사각형으로 보인다.
+     */
+    val window: Win = Win(4.91f, 10.28f, 90.51f, 81.58f),
     val fit: Fit = Fit(6.06f, 14.15f, 87.43f, 62.70f),
     val motes: Int = 52,
     val leaves: Int = 7,
@@ -65,6 +84,10 @@ data class ImmersiveScene(
 ) {
     @Immutable
     data class Fit(val x: Float, val y: Float, val w: Float, val h: Float)
+
+    /** [window] 의 상자. 값은 전부 카드 크기 대비 %. */
+    @Immutable
+    data class Win(val x: Float, val y: Float, val w: Float, val h: Float)
 }
 
 /** No.01 배추만 이머시브다. 저쪽도 지금은 한 장뿐이다. */
