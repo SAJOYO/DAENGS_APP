@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.daengs.app.auth.AuthApi
 import com.daengs.app.auth.CancelledByUser
 import com.daengs.app.auth.Session
+import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
@@ -109,5 +110,6 @@ class MainActivity : ComponentActivity() {
 /** 카카오에서 `id_token` 을 받아 우리 서버 세션으로 바꾼다. */
 private suspend fun signIn(context: android.content.Context): Result<Session> =
     loginWithKakao(context).mapCatching { kakao ->
+        logIdTokenShape(kakao.idToken, kakao.nonce)
         AuthApi.loginWithKakao(kakao.idToken, kakao.nonce).getOrThrow()
     }

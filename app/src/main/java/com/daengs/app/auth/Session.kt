@@ -3,6 +3,9 @@ package com.daengs.app.auth
 import android.content.Context
 import androidx.compose.runtime.Immutable
 import com.kakao.sdk.auth.model.OAuthToken
+import android.util.Log
+import com.kakao.sdk.common.model.AuthError
+import com.kakao.sdk.common.model.AuthErrorCause
 import com.kakao.sdk.common.model.ClientError
 import com.kakao.sdk.common.model.ClientErrorCause
 import com.kakao.sdk.user.UserApiClient
@@ -78,9 +81,11 @@ suspend fun loginWithKakao(context: Context): Result<KakaoLogin> {
 
     val token = if (client.isKakaoTalkLoginAvailable(context)) {
         val first = awaitLogin { cb -> client.loginWithKakaoTalk(context, nonce = nonce, callback = cb) }
-        val cause = (first.exceptionOrNull() as? ClientError)?.reason
-        if (cause == ClientErrorCause.Cancelled) {
-            return Result.failure(CancelledByUser)
+        first.exceptionOrNull()?.let { e ->
+            if (e.isUserCancel()) return Result.failure(CancelledByUser)
+            // 취소가 아닌 실패만 웹으로 넘긴다. 무엇 때문이었는지는 남겨 둔다 —
+            // 여기서 조용히 웹으로 새면 원인을 다시는 못 본다.
+            Log.i(TAG, "카카오톡 로그인 실패, 웹으로 넘어간다: ${e.javaClass.simpleName} $e")
         }
         if (first.isSuccess) first else {
             awaitLogin { cb -> client.loginWithKakaoAccount(context, nonce = nonce, callback = cb) }
@@ -88,6 +93,8 @@ suspend fun loginWithKakao(context: Context): Result<KakaoLogin> {
     } else {
         awaitLogin { cb -> client.loginWithKakaoAccount(context, nonce = nonce, callback = cb) }
     }
+
+    token.exceptionOrNull()?.let { if (it.isUserCancel()) return Result.failure(CancelledByUser) }
 
     return token.mapCatching {
         val id = it.idToken
@@ -101,6 +108,22 @@ data class KakaoLogin(val idToken: String, val nonce: String)
 
 /** 사용자가 직접 취소한 것. 오류 문구를 띄우지 않는다. */
 object CancelledByUser : Exception("사용자가 로그인을 취소했습니다.")
+
+/**
+ * 사용자가 그만둔 것인가. **모양이 둘이다.**
+ *
+ * - [ClientErrorCause.Cancelled] — 카카오톡 화면을 뒤로가기로 벗어난 경우
+ * - [AuthErrorCause.AccessDenied] — **동의 화면에서 `취소` 를 누른 경우.** 이쪽은
+ *   카카오 서버가 "거부"로 응답하는 것이라 클라이언트 오류가 아니다
+ *
+ * 처음에 앞의 것만 봤더니, 동의 화면에서 취소했는데 **웹 로그인 창이 또 떴다.**
+ * 그만두겠다고 누른 사람에게 다른 창을 들이미는 꼴이었다.
+ */
+private fun Throwable.isUserCancel(): Boolean =
+    (this as? ClientError)?.reason == ClientErrorCause.Cancelled ||
+        (this as? AuthError)?.reason == AuthErrorCause.AccessDenied
+
+private const val TAG = "DaengsAuth"
 
 private suspend fun awaitLogin(
     start: ((OAuthToken?, Throwable?) -> Unit) -> Unit,
