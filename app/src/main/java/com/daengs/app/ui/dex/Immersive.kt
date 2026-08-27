@@ -77,7 +77,6 @@ data class ImmersiveScene(
     val window: Win = Win(4.91f, 10.28f, 90.51f, 81.58f),
     val fit: Fit = Fit(6.06f, 14.15f, 87.43f, 62.70f),
     val motes: Int = 52,
-    val leaves: Int = 7,
     val dew: Int = 15,
     val accent: Color = Color(0xFF8FD94A),
     val accent2: Color = Color(0xFFD8F07A),
@@ -110,7 +109,6 @@ object Par {
     const val MOTES = 30f
     const val SUBJECT = 52f
     const val HUD = 30f
-    const val FORE = 100f
 
     /** 이슬만 0 이다 — 카메라 유리에 맺힌 것이라 화면을 따라 움직이면 안 된다. */
     const val DEW = 0f
@@ -139,10 +137,6 @@ fun seedOf(text: String): Int = text.fold(7) { h, c -> h * 31 + c.code }
 @Immutable
 data class Mote(val at: Offset, val r: Float, val alpha: Float, val phase: Float, val speed: Float)
 
-/** 앞에 크게 흐리게 지나가는 잎. */
-@Immutable
-data class Leaf(val at: Offset, val scale: Float, val rot: Float, val alpha: Float, val phase: Float)
-
 /** 카메라 유리에 맺힌 이슬. */
 @Immutable
 data class Dew(val at: Offset, val r: Float, val alpha: Float, val runs: Boolean)
@@ -164,15 +158,6 @@ fun buildScene(scene: ImmersiveScene, seed: Int): SceneParts {
             speed = rng.range(0.15f, 0.5f),
         )
     }
-    val leaves = List(scene.leaves) {
-        Leaf(
-            at = Offset(rng.range(-0.15f, 1.15f), rng.range(-0.1f, 1.1f)),
-            scale = rng.range(0.5f, 1.4f),
-            rot = rng.range(-40f, 40f),
-            alpha = rng.range(0.10f, 0.28f),
-            phase = rng.range(0f, (2 * PI).toFloat()),
-        )
-    }
     val dew = List(scene.dew) {
         // 가운데를 피해 자리를 잡는다
         var p = Offset(rng.next(), rng.next())
@@ -182,11 +167,11 @@ fun buildScene(scene: ImmersiveScene, seed: Int): SceneParts {
         }
         Dew(at = p, r = rng.range(2.5f, 7f), alpha = rng.range(0.18f, 0.5f), runs = it < 3)
     }
-    return SceneParts(motes, leaves, dew)
+    return SceneParts(motes, dew)
 }
 
 @Immutable
-data class SceneParts(val motes: List<Mote>, val leaves: List<Leaf>, val dew: List<Dew>)
+data class SceneParts(val motes: List<Mote>, val dew: List<Dew>)
 
 /** 먼지가 떠다니는 위치. 시간에 따라 아주 느리게 흔들린다. */
 fun Mote.drift(timeMs: Long, size: Size): Offset {
