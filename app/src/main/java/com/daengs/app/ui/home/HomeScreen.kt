@@ -54,6 +54,22 @@ import com.daengs.app.ui.theme.DaengsTheme
 internal val CardSlotHeight = 146.dp
 
 /**
+ * 이름표가 앉는 자리 — **방 그림 기준 백분율**이다.
+ *
+ * 울타리가 방 앞쪽 오른편에 서 있으므로 그 위에 얹히도록 잡았다.
+ * 바닥 앞 꼭짓점(FloorQuad.front, 43%)보다 오른쪽이라 앞모서리를 가리지 않는다.
+ *
+ * 화면 크기가 바뀌어도 방 그림 안에서의 자리는 그대로다.
+ */
+private object NamePlateSpec {
+    /** 이름표 오른쪽 끝 (방 그림 폭 %) */
+    const val RIGHT = 80f
+
+    /** 이름표 아래 끝 (방 그림 높이 %) */
+    const val BOTTOM = 95f
+}
+
+/**
  * 홈 화면.
  *
  * @param frameTimeMs null 이 아니면 애니메이션을 그 시각에 고정한다 (@Preview 용).
@@ -249,11 +265,31 @@ private fun RoomSection(
             )
         }
 
-        // 아래 한가운데에 두면 방의 앞쪽 바닥을 가려서, 방을 아래로 당길 수가 없었다.
-        // 오른쪽 끝으로 보내면 바닥 앞모서리가 통째로 드러난다.
+        // 이름표는 **상자가 아니라 방 그림**에 붙인다.
+        //
+        // 상자 오른쪽 끝(BottomEnd)에 두면 방이 상자보다 작아진 뒤로 이름표의
+        // 3분의 2가 방 밖 배경 위에 떠 버린다 (에뮬 실측 64%). 방 크기는
+        // 화면·카드 높이에 따라 계속 변하므로 상자 기준으로는 맞출 수가 없다.
+        //
+        // 정렬 자체는 BottomEnd 로 두고 offset 으로만 끌어온다 — 그래야
+        // 이름표 크기를 재지 않아도 되고, 글꼴 크기가 커져도 안 흔들린다.
         NamePlate(
             label = HomeDemoData.ROOM_LABEL,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 4.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .offset {
+                    if (boxSize.width == 0) return@offset IntOffset.Zero
+                    val g = RoomGeometry.of(
+                        boxSize.width.toFloat(),
+                        boxSize.height.toFloat(),
+                    )
+                    IntOffset(
+                        (g.stage.left + NamePlateSpec.RIGHT / 100f * g.stage.width
+                            - boxSize.width).toInt(),
+                        (g.stage.top + NamePlateSpec.BOTTOM / 100f * g.stage.height
+                            - boxSize.height).toInt(),
+                    )
+                },
         )
 
         // 선택된 가구 위에 뜨는 버튼. 캔버스가 아니라 오버레이라 터치·그림자가 공짜다.
