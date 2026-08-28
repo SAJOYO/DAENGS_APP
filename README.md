@@ -71,6 +71,37 @@ daengs.apiBaseUrl=http://<서버주소>:8000
   풀어 뒀다 (`app/src/debug/AndroidManifest.xml`). 자체 서버라 **폰이 같은 네트워크에
   있어야** 닿는다.
 
+### 피부 진단 서버를 켜려면 (선택)
+
+**안 채워도 앱은 돌아간다.** 채팅의 사진 진단 버튼이 "진단 서버가 아직 없어요"라고
+알려 줄 뿐이다. 실제로 써 보려면 한 줄을 더 넣는다.
+
+```properties
+daengs.screenUrl=http://<PC의 LAN 주소>:8000
+```
+
+**카카오 쪽 `daengs.apiBaseUrl` 과 다른 서버다.** 모델은 저쪽 저장소
+([`gayeoniee/deeplearning_test`](https://github.com/gayeoniee/deeplearning_test))에서
+따로 돌고, 아직 어디에도 띄워 두지 않았다. 각자 PC 에서 띄운다.
+
+```bash
+# 저쪽 저장소에서. 가중치 없이 화면만 보려면 --mock
+uv run --extra train --extra serve python serve.py --release <release폴더> --host 0.0.0.0
+```
+
+- **`--host 0.0.0.0` 이 중요하다.** 기본값 `127.0.0.1` 은 그 PC 안에서만 보여서,
+  같은 와이파이라도 폰이 못 닿는다.
+- 폰과 PC 가 **같은 네트워크**에 있어야 한다. 평문 `http://` 라 디버그 빌드에서만
+  된다 (위 카카오 항목과 같은 이유).
+- USB 로 이어 놨다면 LAN 대신 `adb reverse` 로도 된다. 이 다리는 USB 를 뺐다 꽂거나
+  adb 가 재시작하면 **말없이 사라진다** — 앱은 잘 떠 있는데 진단만 안 되면 여기부터
+  본다.
+
+  ```bash
+  adb reverse tcp:8000 tcp:8000   # daengs.screenUrl=http://127.0.0.1:8000
+  adb reverse --list              # 걸려 있는지 확인
+  ```
+
 ### 빌드 · 테스트 · 설치
 
 ```bash
