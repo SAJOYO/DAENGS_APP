@@ -25,9 +25,12 @@ class DogBreedPresetTest {
         val widths = DogBreed.ALL.map { it.visualWidth }.toSet()
         assertTrue("전 견종이 같은 폭이면 견종 구분이 안 된다", widths.size > 1)
         assertEquals("가장 작은 견종은 치와와", 9.5f, DogBreed.ALL.minOf { it.visualWidth }, 0.001f)
+        // 폭이 가장 큰 것은 보더콜리다. 개가 제일 커서가 아니라 **프레임 안에
+        // 작게 그려져서** 그렇다 — 낮게 달리는 자세라 프레임의 86x74% 만 쓴다.
+        // visualWidth 는 프레임의 폭이므로 그만큼 키워야 다른 개와 같아 보인다.
         assertEquals(
-            "가장 큰 견종은 장모 닥스훈트",
-            17f,
+            "폭이 가장 큰 견종은 보더콜리",
+            18.5f,
             DogBreed.ALL.maxOf { it.visualWidth },
             0.001f,
         )

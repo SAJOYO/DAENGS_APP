@@ -141,8 +141,62 @@ enum class DogBreed(
 
     LABRADOR_RETRIEVER(
         "dog_labrador_retriever", "래브라도 리트리버", R.drawable.dog_labrador_retriever,
-        portraitRes = R.drawable.dog_labrador_retriever_portrait,
+        portraitRes = R.drawable.dog_labrador_retriever_portrait_v2,
         visualWidth = 16.5f, refBodyRadius = 0.75f, refSpeed = 0.48f,
+    ),
+
+    /**
+     * 걷기 시트를 `_puppy` 에서 무리 시트로 바꿨다.
+     *
+     * 퍼피 시트는 혼자 화풍이 달랐다 — 무리 25종은 머리가 크고 다리가 짧은
+     * 치비인데 그것만 날씬하고 사실적이라, 한 방에 서면 다른 그림에서 오려온
+     * 것처럼 보였다. 비율 문제라 필터로는 못 고치고 다시 그려야 한다.
+     *
+     * `dog_golden_retriever.webp` 는 원래 **래브라도 시트와 바이트까지 같았다**
+     * (md5 43eaa39b). 그대로 쓰면 두 마리가 같은 개가 되므로 황금빛을 진하게
+     * 밀어 갈라놓았다 — 시바·포메·푸들 변형을 만든 방법과 같다.
+     */
+    GOLDEN_RETRIEVER(
+        "dog_golden_retriever", "골든리트리버", R.drawable.dog_golden_retriever,
+        portraitRes = R.drawable.dog_golden_retriever_portrait_v2,
+        visualWidth = 16.5f, refBodyRadius = 0.78f, refSpeed = 0.46f,
+    ),
+
+    /**
+     * **저쪽 표에 없는 견종이다.** `dog-presets.js` 는 25종이고 스피츠와
+     * 골든리트리버는 거기 없다 — 둘은 이 저장소에서 나중에 추가됐다. 그래서
+     * 이 세 숫자는 옮겨온 값이 아니라 여기서 정한 값이고, 고쳐도 저쪽과
+     * 어긋나지 않는다.
+     *
+     * 폭이 14.5 -> 16.0 -> 14.0 으로 두 번 움직였다. **시트를 바꿨기 때문이다.**
+     * 옛 `_puppy` 시트는 개가 프레임에 작고 날씬하게 그려져 있어서 16.0 에서도
+     * 화면에는 57x51px 로 나왔다 — 11.5% 인 흰 포메(58x57)보다도 작았다. 16.0 은
+     * 그 시트를 보정하던 값이고, 프레임을 제대로 채우는 지금 시트에서는 과하다.
+     * 14.0 이면 70x69px 로, 진돗개(68x73)보다 살짝 작고 웰시코기(77x57)와 덩치가
+     * 비슷하며 흰 포메보다는 확실히 크다.
+     *
+     * 반경도 같이 내렸다(0.66 -> 0.60). 폭에 비례한 값보다 낮게 잡는다 — 스피츠는
+     * 털이 부푼 견종이라 실루엣만큼 몸이 크지 않다. 진돗개가 14.5 에 0.64 인데
+     * 그보다 작은 개가 더 큰 반경을 가질 이유가 없다.
+     *
+     * **0.66 이 위쪽 한계다.** [DogHerd.blockedAt] 이 몸의 네 모서리만 보기 때문에,
+     * 우리 격자 반경이 0.5 를 넘으면 네 모서리가 1칸짜리 가구를 건너뛰어 그 위에
+     * 서 있는데도 안 막힌 것으로 나온다. 0.68 로 올렸다가
+     * `DogBlockingTest.가구 밑에 깔려도 걸어 나온다` 가 깨졌다. 0.60 은 0.45 다.
+     *
+     * 걷기 시트는 **흰 포메라니안 시트를 순백으로 리컬러한 것**이다. 원래 쓰던
+     * `_puppy` 시트가 골든과 같은 이유로 혼자 화풍이 달랐는데, 무리 안에 흰
+     * 스피츠형 개는 흰 포메 하나뿐이다 (말티즈·비숑은 귀가 처지고 털이 곱슬이라
+     * 실루엣이 안 맞는다). 일본 스피츠는 포메보다 크고 더 새하얗다 — 크기는
+     * visualWidth 16.0 대 11.5 가 갈라주고 색은 크림기를 뺐다.
+     *
+     * **진짜 스피츠 그림이 오면 이 파일만 갈아끼우면 된다.** 그러라고 포메를
+     * 직접 가리키지 않고 제 이름의 리소스를 따로 뒀다.
+     */
+    JAPANESE_SPITZ(
+        "dog_japanese_spitz", "스피츠", R.drawable.dog_japanese_spitz,
+        portraitRes = R.drawable.dog_japanese_spitz_portrait,
+        visualWidth = 14.0f, refBodyRadius = 0.60f, refSpeed = 0.54f,
     ),
 
     JINDO(
@@ -193,10 +247,24 @@ enum class DogBreed(
         visualWidth = 11.5f, refBodyRadius = 0.46f, refSpeed = 0.57f,
     ),
 
+    /**
+     * **폭이 27종 중 가장 크지만 가장 큰 개는 아니다.** [visualWidth] 는 시트
+     * 프레임의 폭이지 개의 폭이 아니다. 프레임 안에 개가 얼마나 크게 그려졌는지는
+     * 견종마다 다른데, 보더콜리는 낮은 자세로 달리는 그림이라 프레임의 86x74%
+     * 만 쓴다. 진돗개는 꼬리를 말아올려 83x93% 를 쓴다.
+     *
+     * 그래서 저쪽 값 15.5 로는 14.5 인 진돗개보다 **작아 보였다** — 발끝을 맞춰
+     * 세우면 진돗개 73px, 보더콜리 64px 이었다. 래브라도(16.5, 75px)에 맞추려면
+     * 18.5 가 필요하다. 17.0 이면 69px 로 아직 진돗개보다 작다.
+     *
+     * 반경은 0.68 그대로 뒀다. 보이는 크기와 따로 노는 값이고, 이미 0.5 를 넘어
+     * [DogHerd.blockedAt] 의 네 모서리 검사가 성립하지 않는 견종이다 — 그걸
+     * 고치기 전에 더 올리면 나빠지기만 한다.
+     */
     BORDER_COLLIE(
         "dog_border_collie", "보더콜리", R.drawable.dog_border_collie,
         portraitRes = R.drawable.dog_border_collie_portrait,
-        visualWidth = 15.5f, refBodyRadius = 0.68f, refSpeed = 0.59f,
+        visualWidth = 18.5f, refBodyRadius = 0.68f, refSpeed = 0.59f,
     ),
 
     WELSH_CORGI(
@@ -267,6 +335,13 @@ enum class DogBreed(
         private val GRID_RATIO = RoomSpec.GRID / REF_GRID
 
         val ALL: List<DogBreed> = entries
+
+        /** 홈 미니룸에서 실제로 돌아다니는 MVP 품종. 프로필 목록과 분리한다. */
+        val ROOM_BREEDS: List<DogBreed> = listOf(
+            JAPANESE_SPITZ,
+            LABRADOR_RETRIEVER,
+            GOLDEN_RETRIEVER,
+        )
 
         private val index = entries.associateBy { it.id }
 

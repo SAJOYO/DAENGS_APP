@@ -111,7 +111,7 @@ class DogHerd(count: Int, seed: Int = 7) {
     private fun newDog(i: Int): DogActor {
         val d = DogActor(
             id = i,
-            breed = DogBreed.ALL[i % DogBreed.ALL.size],
+            breed = DogBreed.ROOM_BREEDS[i % DogBreed.ROOM_BREEDS.size],
             sizeScale = 1f,
             // 무작위가 아니라 대기 주기(8프레임 / 6fps ≈ 1333ms)를 마리 수로 나눠 흩는다.
             // 무작위면 둘이 우연히 겹쳐서 여전히 같이 움직이는 판이 나온다.
@@ -147,8 +147,9 @@ class DogHerd(count: Int, seed: Int = 7) {
      * @param breed null 이면 원래대로 [DogBreed.ALL] 을 차례로 돌린다
      */
     fun setBreedOverride(breed: DogBreed?) {
+        val selected = breed?.takeIf { it in DogBreed.ROOM_BREEDS }
         dogs.forEachIndexed { i, d ->
-            d.breed = breed ?: DogBreed.ALL[i % DogBreed.ALL.size]
+            d.breed = selected ?: DogBreed.ROOM_BREEDS[i % DogBreed.ROOM_BREEDS.size]
         }
     }
 

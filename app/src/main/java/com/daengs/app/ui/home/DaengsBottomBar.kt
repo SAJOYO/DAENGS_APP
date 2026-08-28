@@ -37,7 +37,7 @@ import com.daengs.app.ui.theme.TextMuted
 enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Home("홈", DaengsIcon.Home),
     Walks("산책기록", DaengsIcon.Paws),
-    Community("커뮤니티", DaengsIcon.Chat),
+    Dex("도감", DaengsIcon.Book),
     My("마이", DaengsIcon.Person),
 }
 
@@ -82,7 +82,7 @@ fun DaengsBottomBar(
                 BottomItem(BottomTab.Walks, selected, onSelect, Modifier.weight(1f))
                 // 가운데 버튼 자리
                 Spacer(Modifier.weight(1f))
-                BottomItem(BottomTab.Community, selected, onSelect, Modifier.weight(1f))
+                BottomItem(BottomTab.Dex, selected, onSelect, Modifier.weight(1f))
                 BottomItem(BottomTab.My, selected, onSelect, Modifier.weight(1f))
             }
         }
