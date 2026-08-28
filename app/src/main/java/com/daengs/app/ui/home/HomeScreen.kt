@@ -63,11 +63,17 @@ internal val CardSlotHeight = 146.dp
  * 화면 크기가 바뀌어도 방 그림 안에서의 자리는 그대로다.
  */
 private object NamePlateSpec {
-    /** 이름표 오른쪽 끝 (방 그림 폭 %) */
-    const val RIGHT = 80f
-
-    /** 이름표 아래 끝 (방 그림 높이 %) */
-    const val BOTTOM = 95f
+    /**
+     * 이름표 아래 끝 (방 그림 높이 %).
+     *
+     * 가로는 **방 그림의 정중앙**이라 상수가 없다 — [Alignment.BottomCenter] 로
+     * 맞추면 글자가 길어져도 가운데가 유지된다. 백분율로 잡으면 이름이 길어질 때
+     * 한쪽으로 밀린다.
+     *
+     * 세로만 여기서 정한다. 100 이면 방 아래 끝에 딱 걸리고, 그보다 크면 방 밖으로
+     * 내려간다. 102 는 울타리 아래에 살짝 걸치는 자리다.
+     */
+    const val BOTTOM = 102f
 }
 
 /**
@@ -289,16 +295,17 @@ private fun RoomSection(
         NamePlate(
             label = HomeDemoData.ROOM_LABEL,
             modifier = Modifier
-                .align(Alignment.BottomEnd)
+                .align(Alignment.BottomCenter)
                 .offset {
                     if (boxSize.width == 0) return@offset IntOffset.Zero
                     val g = RoomGeometry.of(
                         boxSize.width.toFloat(),
                         boxSize.height.toFloat(),
                     )
+                    // 가로는 안 건드린다. BottomCenter 가 방 상자의 가운데를 잡아
+                    // 주는데, 방 그림도 상자 가운데에 놓이므로 결과가 같다.
                     IntOffset(
-                        (g.stage.left + NamePlateSpec.RIGHT / 100f * g.stage.width
-                            - boxSize.width).toInt(),
+                        0,
                         (g.stage.top + NamePlateSpec.BOTTOM / 100f * g.stage.height
                             - boxSize.height).toInt(),
                     )

@@ -334,6 +334,25 @@ fun DrawScope.drawPawStamp(center: Offset, r: Float, color: Color) {
  * 벽이 물러나는 평면이라 **액자도 같이 기울어야** 벽에 붙어 보인다. 그림에서 벽의
  * 위 가장자리를 재보니 가로 1% 갈 때마다 세로로 0.35% 내려간다 ([SLOPE]).
  */
+/**
+ * 액자에 걸 때 보여줄 **카드 안의 그림창** (카드 크기 대비 %).
+ *
+ * `ImmersiveScene.fit` 과 같은 값이다. 거기서 참조하지 않고 여기 적어 둔 이유는
+ * `miniroom` 이 `ui.dex` 를 모르게 두기 위해서다 — 방이 도감을 알면 의존이 거꾸로
+ * 흐른다. 카드 그림이 바뀌면 두 곳을 같이 고친다.
+ */
+private object PictureRoi {
+    const val x = 6.06f
+    const val y = 14.15f
+    const val w = 87.43f
+    const val h = 62.70f
+}
+
+private val PICTURE_ROI = PictureRoi
+
+/** 그림창을 액자 속에 넣을 때 남기는 여유. 1 이면 딱 맞고, 작을수록 물러난다. */
+private const val PICTURE_FIT = 0.94f
+
 object FrameSpec {
     /** 왼쪽 모서리 (스테이지 가로 %) */
     const val LEFT = 72f
@@ -422,16 +441,33 @@ fun DrawScope.drawWallFrame(g: RoomGeometry, picture: ImageBitmap?, pulse: Float
         val artH = height - (border + mat) * 2f
         if (picture != null) {
             clipRect(artLeft, artTop, artLeft + artW, artTop + artH) {
-                // 카드는 세로로 긴 그림이다. 가로를 채우고 위쪽을 보여준다 —
-                // 카드 얼굴이 위에 있어서 아래를 잘라야 뭔지 알아본다.
-                val scale = artW / picture.width
+                // 카드는 세로로 길고(810x1125) 액자 속은 가로로 넓다. 예전에는 가로를
+                // 채우고 **위쪽만** 보여줬는데, 그러면 강아지 아래가 잘렸다.
+                //
+                // 그래서 카드 전체가 아니라 **그림창만** 액자에 맞춘다. 그 자리는
+                // [ImmersiveScene.fit] 이 이미 알고 있는 값이다 — 이머시브가 누끼를
+                // 카드 안 제자리에 놓을 때 쓰는 사각형이라, 강아지가 그 안에 있다.
+                //
+                // 그림창이 **다 들어오게**(contain) 맞추고 가운데를 잡는다. 덮이게
+                // 키웠더니 액자 속이 그림창보다 넓지 않아서 아래가 또 잘렸다.
+                // 남는 자리는 카드의 홀로그램 테두리가 채우므로 빈 데가 안 생긴다.
+                val roiW = picture.width * PICTURE_ROI.w / 100f
+                val roiH = picture.height * PICTURE_ROI.h / 100f
+                // 살짝 물러나 액자 테두리에 딱 붙지 않게. 붙으면 잘린 것처럼 보인다.
+                val s = minOf(artW / roiW, artH / roiH) * PICTURE_FIT
+
+                val drawW = picture.width * s
+                val drawH = picture.height * s
+                // 그림창의 중심이 액자 속 중심에 오도록 그림 전체를 민다.
+                val roiCx = (PICTURE_ROI.x + PICTURE_ROI.w / 2f) / 100f * drawW
+                val roiCy = (PICTURE_ROI.y + PICTURE_ROI.h / 2f) / 100f * drawH
                 drawImage(
                     image = picture,
-                    dstOffset = IntOffset(artLeft.roundToInt(), artTop.roundToInt()),
-                    dstSize = IntSize(
-                        artW.roundToInt(),
-                        (picture.height * scale).roundToInt(),
+                    dstOffset = IntOffset(
+                        (artLeft + artW / 2f - roiCx).roundToInt(),
+                        (artTop + artH / 2f - roiCy).roundToInt(),
                     ),
+                    dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
                     filterQuality = FilterQuality.None,
                 )
             }

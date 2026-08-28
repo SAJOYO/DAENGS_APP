@@ -77,6 +77,22 @@ object RoomSpec {
     const val INSET = 0.94f
 
     /**
+     * 방 그림을 **가로로만** 더 늘리는 배율. 1 이면 원본 비율.
+     *
+     * 방 PNG 가 세로로 길어서(1122x1402) 가로가 넓은 상자에서는 세로가 먼저 걸리고,
+     * 좌우에 큰 여백이 남는다 — 1080 폭 화면에서 방이 691px 이라 양쪽에 195px 씩
+     * 놀았다. 그 여백을 방에 준다.
+     *
+     * **강아지와 소품은 안 늘어난다.** 그쪽은 [RoomGeometry.scale] 을 쓰고 이 값은
+     * [RoomGeometry.stage] 에만 걸리기 때문이다. 방이 넓어져도 개는 개 모양이다.
+     * 대신 격자가 같이 늘어나므로 여러 칸을 차지하는 소품(러그 5x5)은 자기 칸을
+     * 다 덮지 못한다 — 늘릴수록 그 어긋남이 커진다.
+     *
+     * 넘치게 잡아도 상자 폭에서 잘린다([RoomGeometry.of] 가 min 을 건다).
+     */
+    const val H_STRETCH = 1.18f
+
+    /**
      * 방 PNG 안의 **투명 여백** (원본 픽셀 기준).
      *
      * 그림은 1122x1402 지만 실제로 칠해진 영역은 알파 바운딩 박스
@@ -165,6 +181,15 @@ object FloorQuad {
 data class RoomGeometry(
     val stage: Rect,
     val scale: Float,
+    /**
+     * 소품의 **가로** 배율. 방을 가로로 늘렸으면([RoomSpec.H_STRETCH]) 그만큼 크다.
+     *
+     * **강아지는 이 값을 안 쓴다.** 방과 격자가 가로로 늘어나면 여러 칸짜리 소품
+     * (러그 5x5)이 자기 칸을 못 덮어서 소품은 같이 늘려야 하는데, 강아지까지 늘리면
+     * 개가 뚱뚱해진다. 소품은 방의 일부라 같이 늘어나는 게 자연스럽고, 강아지는
+     * 방 안을 돌아다니는 것이라 제 모양이어야 한다.
+     */
+    val scaleX: Float = scale,
 ) {
     /**
      * 칸 하나의 대략적인 가로 폭(px).
@@ -315,15 +340,17 @@ data class RoomGeometry(
         fun of(widthPx: Float, heightPx: Float): RoomGeometry {
             val contain = min(widthPx / RoomSpec.ROOM_PNG_W, heightPx / RoomSpec.ROOM_PNG_H)
             val s = contain * RoomSpec.INSET
-            val w = RoomSpec.ROOM_PNG_W * s
+            // 가로만 더 준다. 상자 폭을 넘지 않게 잘라서, 값을 크게 잡아도 잘리지 않는다.
+            val sx = min(s * RoomSpec.H_STRETCH, widthPx * RoomSpec.INSET / RoomSpec.ROOM_PNG_W)
+            val w = RoomSpec.ROOM_PNG_W * sx
             val h = RoomSpec.ROOM_PNG_H * s
             // 놓는 기준은 공칭 사각형이 아니라 **칠해진 부분**이다. 그림 위쪽 39px 이
             // 투명이라(RoomSpec.ART_PAD_TOP) 공칭으로 재면 눈에 보이는 여백이 어긋난다.
-            val artW = w - (RoomSpec.ART_PAD_LEFT + RoomSpec.ART_PAD_RIGHT) * s
+            val artW = w - (RoomSpec.ART_PAD_LEFT + RoomSpec.ART_PAD_RIGHT) * sx
             val artH = h - (RoomSpec.ART_PAD_TOP + RoomSpec.ART_PAD_BOTTOM) * s
-            val left = (widthPx - artW) / 2f - RoomSpec.ART_PAD_LEFT * s
+            val left = (widthPx - artW) / 2f - RoomSpec.ART_PAD_LEFT * sx
             val top = (heightPx - artH) * RoomSpec.V_BIAS - RoomSpec.ART_PAD_TOP * s
-            return RoomGeometry(Rect(left, top, left + w, top + h), s)
+            return RoomGeometry(Rect(left, top, left + w, top + h), s, sx)
         }
 
         /** 가로만 아는 경우 — 그림 비율대로 세로를 잡는다. */

@@ -147,9 +147,15 @@ class DogHerd(count: Int, seed: Int = 7) {
      * @param breed null 이면 원래대로 [DogBreed.ALL] 을 차례로 돌린다
      */
     fun setBreedOverride(breed: DogBreed?) {
-        val selected = breed?.takeIf { it in DogBreed.ROOM_BREEDS }
         dogs.forEachIndexed { i, d ->
-            d.breed = selected ?: DogBreed.ROOM_BREEDS[i % DogBreed.ROOM_BREEDS.size]
+            // **기본 구성과 다르게 [DogBreed.ALL] 을 다 받는다.**
+            //
+            // 방에 저절로 도는 견종은 [DogBreed.ROOM_BREEDS] 세 종이다(위 [newDog]).
+            // 그런데 이 함수는 **개발자 패널 전용**이라 성격이 다르다 — 사람이 칩을
+            // 눌러 고른 것이고, 새로 들어온 강아지 그림을 화면에서 확인하는 유일한
+            // 길이다. 여기서 걸러 버리면 칩 25개 중 22개가 눌러도 아무 일이 없고,
+            // 하필 "섞기"로 되돌아가서 고장 난 줄도 모른다.
+            d.breed = breed ?: DogBreed.ROOM_BREEDS[i % DogBreed.ROOM_BREEDS.size]
         }
     }
 

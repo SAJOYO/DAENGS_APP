@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,7 +70,22 @@ fun ChatScreen(
     val sentMessages = remember { mutableStateListOf<String>() }
     val scroll = rememberScrollState()
 
-    Column(modifier.fillMaxSize().background(CreamBg).imePadding()) {
+    // 아래를 **키보드와 내비게이션 바 중 큰 쪽**만큼 띄운다.
+    //
+    // imePadding() 만 쓰면 키보드가 내려갔을 때 입력줄이 안드로이드 내비바 밑으로
+    // 들어가 반쯤 가린다. 그렇다고 imePadding 과 navigationBarsPadding 을 둘 다
+    // 걸면 키보드가 올라왔을 때 이중으로 밀려서 키보드 위에 빈 띠가 생긴다 —
+    // 키보드 인셋에는 내비바 높이가 이미 들어 있기 때문이다.
+    //
+    // safeDrawing 은 둘의 **합집합**이라 각 변에서 큰 쪽을 준다. 키보드가 올라오면
+    // 키보드 높이, 내려가면 내비바 높이가 되어 한 줄로 둘 다 맞는다.
+    // 위쪽은 헤더가 statusBarsPadding 으로 따로 챙기므로 아래만 쓴다.
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(CreamBg)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+    ) {
         ChatHeader(onBack = onBack, avatar = avatar)
         Column(
             Modifier
