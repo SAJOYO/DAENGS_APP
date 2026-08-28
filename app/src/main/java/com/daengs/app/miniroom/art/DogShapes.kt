@@ -145,8 +145,19 @@ enum class DogBreed(
         visualWidth = 16.5f, refBodyRadius = 0.75f, refSpeed = 0.48f,
     ),
 
+    /**
+     * 걷기 시트를 `_puppy` 에서 무리 시트로 바꿨다.
+     *
+     * 퍼피 시트는 혼자 화풍이 달랐다 — 무리 25종은 머리가 크고 다리가 짧은
+     * 치비인데 그것만 날씬하고 사실적이라, 한 방에 서면 다른 그림에서 오려온
+     * 것처럼 보였다. 비율 문제라 필터로는 못 고치고 다시 그려야 한다.
+     *
+     * `dog_golden_retriever.webp` 는 원래 **래브라도 시트와 바이트까지 같았다**
+     * (md5 43eaa39b). 그대로 쓰면 두 마리가 같은 개가 되므로 황금빛을 진하게
+     * 밀어 갈라놓았다 — 시바·포메·푸들 변형을 만든 방법과 같다.
+     */
     GOLDEN_RETRIEVER(
-        "dog_golden_retriever", "골든리트리버", R.drawable.dog_golden_retriever_puppy,
+        "dog_golden_retriever", "골든리트리버", R.drawable.dog_golden_retriever,
         portraitRes = R.drawable.dog_golden_retriever_portrait_v2,
         visualWidth = 16.5f, refBodyRadius = 0.78f, refSpeed = 0.46f,
     ),
@@ -157,21 +168,35 @@ enum class DogBreed(
      * 이 세 숫자는 옮겨온 값이 아니라 여기서 정한 값이고, 고쳐도 저쪽과
      * 어긋나지 않는다.
      *
-     * 처음 넣을 때 14.5 / 0.62 였는데 미니룸 3종(스피츠·래브라도 16.5·골든 16.5)
-     * 중 혼자 두 치수 작아서, 옆에 서면 작은 개가 아니라 멀리 있는 개로 보였다.
+     * 폭이 14.5 -> 16.0 -> 14.0 으로 두 번 움직였다. **시트를 바꿨기 때문이다.**
+     * 옛 `_puppy` 시트는 개가 프레임에 작고 날씬하게 그려져 있어서 16.0 에서도
+     * 화면에는 57x51px 로 나왔다 — 11.5% 인 흰 포메(58x57)보다도 작았다. 16.0 은
+     * 그 시트를 보정하던 값이고, 프레임을 제대로 채우는 지금 시트에서는 과하다.
+     * 14.0 이면 70x69px 로, 진돗개(68x73)보다 살짝 작고 웰시코기(77x57)와 덩치가
+     * 비슷하며 흰 포메보다는 확실히 크다.
      *
-     * 반경은 폭에 비례해 올리지 않았다 — 스피츠는 털이 부푼 견종이라 실루엣만큼
-     * 몸이 크지 않다. 비례하면 0.72 다.
+     * 반경도 같이 내렸다(0.66 -> 0.60). 폭에 비례한 값보다 낮게 잡는다 — 스피츠는
+     * 털이 부푼 견종이라 실루엣만큼 몸이 크지 않다. 진돗개가 14.5 에 0.64 인데
+     * 그보다 작은 개가 더 큰 반경을 가질 이유가 없다.
      *
      * **0.66 이 위쪽 한계다.** [DogHerd.blockedAt] 이 몸의 네 모서리만 보기 때문에,
      * 우리 격자 반경이 0.5 를 넘으면 네 모서리가 1칸짜리 가구를 건너뛰어 그 위에
-     * 서 있는데도 안 막힌 것으로 나온다. 0.66 * (12/16) = 0.495 다. 0.68 로 올렸다가
-     * `DogBlockingTest.가구 밑에 깔려도 걸어 나온다` 가 깨졌다.
+     * 서 있는데도 안 막힌 것으로 나온다. 0.68 로 올렸다가
+     * `DogBlockingTest.가구 밑에 깔려도 걸어 나온다` 가 깨졌다. 0.60 은 0.45 다.
+     *
+     * 걷기 시트는 **흰 포메라니안 시트를 순백으로 리컬러한 것**이다. 원래 쓰던
+     * `_puppy` 시트가 골든과 같은 이유로 혼자 화풍이 달랐는데, 무리 안에 흰
+     * 스피츠형 개는 흰 포메 하나뿐이다 (말티즈·비숑은 귀가 처지고 털이 곱슬이라
+     * 실루엣이 안 맞는다). 일본 스피츠는 포메보다 크고 더 새하얗다 — 크기는
+     * visualWidth 16.0 대 11.5 가 갈라주고 색은 크림기를 뺐다.
+     *
+     * **진짜 스피츠 그림이 오면 이 파일만 갈아끼우면 된다.** 그러라고 포메를
+     * 직접 가리키지 않고 제 이름의 리소스를 따로 뒀다.
      */
     JAPANESE_SPITZ(
-        "dog_japanese_spitz", "스피츠", R.drawable.dog_japanese_spitz_puppy,
+        "dog_japanese_spitz", "스피츠", R.drawable.dog_japanese_spitz,
         portraitRes = R.drawable.dog_japanese_spitz_portrait,
-        visualWidth = 16.0f, refBodyRadius = 0.66f, refSpeed = 0.54f,
+        visualWidth = 14.0f, refBodyRadius = 0.60f, refSpeed = 0.54f,
     ),
 
     JINDO(
