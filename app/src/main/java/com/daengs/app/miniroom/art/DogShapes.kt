@@ -151,10 +151,27 @@ enum class DogBreed(
         visualWidth = 16.5f, refBodyRadius = 0.78f, refSpeed = 0.46f,
     ),
 
+    /**
+     * **저쪽 표에 없는 견종이다.** `dog-presets.js` 는 25종이고 스피츠와
+     * 골든리트리버는 거기 없다 — 둘은 이 저장소에서 나중에 추가됐다. 그래서
+     * 이 세 숫자는 옮겨온 값이 아니라 여기서 정한 값이고, 고쳐도 저쪽과
+     * 어긋나지 않는다.
+     *
+     * 처음 넣을 때 14.5 / 0.62 였는데 미니룸 3종(스피츠·래브라도 16.5·골든 16.5)
+     * 중 혼자 두 치수 작아서, 옆에 서면 작은 개가 아니라 멀리 있는 개로 보였다.
+     *
+     * 반경은 폭에 비례해 올리지 않았다 — 스피츠는 털이 부푼 견종이라 실루엣만큼
+     * 몸이 크지 않다. 비례하면 0.72 다.
+     *
+     * **0.66 이 위쪽 한계다.** [DogHerd.blockedAt] 이 몸의 네 모서리만 보기 때문에,
+     * 우리 격자 반경이 0.5 를 넘으면 네 모서리가 1칸짜리 가구를 건너뛰어 그 위에
+     * 서 있는데도 안 막힌 것으로 나온다. 0.66 * (12/16) = 0.495 다. 0.68 로 올렸다가
+     * `DogBlockingTest.가구 밑에 깔려도 걸어 나온다` 가 깨졌다.
+     */
     JAPANESE_SPITZ(
         "dog_japanese_spitz", "스피츠", R.drawable.dog_japanese_spitz_puppy,
         portraitRes = R.drawable.dog_japanese_spitz_portrait,
-        visualWidth = 14.5f, refBodyRadius = 0.62f, refSpeed = 0.54f,
+        visualWidth = 16.0f, refBodyRadius = 0.66f, refSpeed = 0.54f,
     ),
 
     JINDO(
