@@ -33,6 +33,7 @@ data class RoomTheme(
     @DrawableRes val cabinet: Int,
     @DrawableRes val basket: Int,
     @DrawableRes val bowls: Int,
+    @DrawableRes val turntable: Int,
     /**
      * 인벤토리 미리보기용 색 세 개. 방 그림을 축소해 보여주는 것보다 알아보기 쉽다.
      *
@@ -64,6 +65,7 @@ data class RoomTheme(
         ItemIds.CABINET -> cabinet
         ItemIds.BASKET -> basket
         ItemIds.BOWLS -> bowls
+        ItemIds.TURNTABLE -> turntable
         else -> 0
     }
 
@@ -86,6 +88,7 @@ data class RoomTheme(
             cabinet = R.drawable.theme_sage_cabinet,
             basket = R.drawable.theme_sage_basket,
             bowls = R.drawable.theme_sage_bowls,
+            turntable = R.drawable.theme_sage_turntable,
             swatchWall = Color(0xFFEDD09F),
             swatchFloor = Color(0xFFD9A867),
             swatchAccent = Color(0xFF7F793A),
@@ -103,6 +106,7 @@ data class RoomTheme(
             cabinet = R.drawable.theme_cherry_blossom_cabinet,
             basket = R.drawable.theme_cherry_blossom_basket,
             bowls = R.drawable.theme_cherry_blossom_bowls,
+            turntable = R.drawable.theme_cherry_blossom_turntable,
             swatchWall = Color(0xFFF4D7DF),
             swatchFloor = Color(0xFFDBACB5),
             swatchAccent = Color(0xFFA95E76),
@@ -120,6 +124,7 @@ data class RoomTheme(
             cabinet = R.drawable.theme_mint_cabinet,
             basket = R.drawable.theme_mint_basket,
             bowls = R.drawable.theme_mint_bowls,
+            turntable = R.drawable.theme_mint_turntable,
             swatchWall = Color(0xFFD8EFE5),
             swatchFloor = Color(0xFFB1D2C0),
             swatchAccent = Color(0xFF5F9D85),
@@ -137,6 +142,7 @@ data class RoomTheme(
             cabinet = R.drawable.theme_lavender_cabinet,
             basket = R.drawable.theme_lavender_basket,
             bowls = R.drawable.theme_lavender_bowls,
+            turntable = R.drawable.theme_lavender_turntable,
             swatchWall = Color(0xFFE7DCF2),
             swatchFloor = Color(0xFFBFB3D5),
             swatchAccent = Color(0xFF79629A),
@@ -154,6 +160,7 @@ data class RoomTheme(
             cabinet = R.drawable.theme_sky_blue_cabinet,
             basket = R.drawable.theme_sky_blue_basket,
             bowls = R.drawable.theme_sky_blue_bowls,
+            turntable = R.drawable.theme_sky_blue_turntable,
             swatchWall = Color(0xFFDCEEF7),
             swatchFloor = Color(0xFFAED1E8),
             swatchAccent = Color(0xFF4F83AA),
@@ -171,6 +178,7 @@ data class RoomTheme(
             cabinet = R.drawable.theme_butter_cabinet,
             basket = R.drawable.theme_butter_basket,
             bowls = R.drawable.theme_butter_bowls,
+            turntable = R.drawable.theme_butter_turntable,
             swatchWall = Color(0xFFFFF0BD),
             swatchFloor = Color(0xFFE0C57E),
             swatchAccent = Color(0xFFB68737),
@@ -201,7 +209,8 @@ object ItemIds {
     const val CABINET = "cabinet"
     const val BASKET = "basket"
     const val BOWLS = "bowls"
+    const val TURNTABLE = "turntable"
 
     /** 인벤토리에 보여줄 순서. */
-    val ALL = listOf(RUG, RUG_CREAM, DOGHOUSE, CABINET, BASKET, BOWLS, PLANT, BALL)
+    val ALL = listOf(RUG, RUG_CREAM, DOGHOUSE, CABINET, TURNTABLE, BASKET, BOWLS, PLANT, BALL)
 }

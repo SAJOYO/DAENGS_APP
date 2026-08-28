@@ -81,14 +81,22 @@ def main(drop: Path, out: Path) -> None:
     theme_root = drop / "themes"
     themes = sorted(p for p in theme_root.iterdir() if p.is_dir()) if theme_root.is_dir() else []
 
-    if themes:
-        reference = drop / "reference-room.png"
-        if not reference.exists():
-            raise SystemExit(
-                f"참조 방이 없다: {reference}\n"
-                "배경과 벽이 뚜렷이 다른 원본 방 PNG 가 필요하다."
-            )
-        silhouette = mask_of(str(reference))
+    # 참조 실루엣은 **방 그림을 구울 때만** 쓴다. 처음엔 themes/ 가 있으면 무조건
+    # 요구했는데, 그러면 소품 한 장만 새로 반입할 때도 참조 방을 내놓으라고 막아선다
+    # (턴테이블을 넣다 걸렸다). 쓸 일이 생기면 그때 한 번 읽는다.
+    silhouette: object | None = None
+
+    def room_silhouette():
+        nonlocal silhouette
+        if silhouette is None:
+            reference = drop / "reference-room.png"
+            if not reference.exists():
+                raise SystemExit(
+                    f"참조 방이 없다: {reference}\n"
+                    "배경과 벽이 뚜렷이 다른 원본 방 PNG 가 필요하다."
+                )
+            silhouette = mask_of(str(reference))
+        return silhouette
 
     for theme in themes:
         for png in sorted(theme.glob("*.png")):
@@ -96,7 +104,7 @@ def main(drop: Path, out: Path) -> None:
             if png.stem == "room":
                 # 방만 불투명하다. 참조 실루엣을 씌우고 테두리를 둘러 임시 파일로.
                 staged = png.with_name("room.cut.png")
-                apply_mask(str(png), str(staged), silhouette)
+                apply_mask(str(png), str(staged), room_silhouette())
             name = resource_name("theme", theme.name, png.stem)
             a, b = to_webp(staged, out / f"{name}.webp")
             before += png.stat().st_size
