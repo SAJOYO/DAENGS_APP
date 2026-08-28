@@ -9,6 +9,13 @@
          톡이 깔려 있어도 웹 로그인으로 넘어간다. -->
     <queries>
         <package android:name="com.kakao.talk" />
+
+        <!-- 사진 찍기. API 30 부터는 여기 없으면 카메라 앱이 있는지 물어봐도
+             항상 "없다"가 나온다. 인텐트를 띄우는 것 자체는 되지만, 그러면
+             카메라가 없는 기기에서 버튼이 눌리고 아무 일도 안 일어난다. -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -50,6 +57,19 @@
                 <data android:scheme="${kakaoScheme}" android:host="oauth" />
             </intent-filter>
         </activity>
+
+        <!-- 카메라 앱에 "여기다 찍어 주세요" 하고 넘길 자리.
+             API 24 부터 file:// 를 남의 앱에 넘기면 FileUriExposedException 이
+             난다. 캐시 안의 한 폴더만 열어 준다 (res/xml/file_paths.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

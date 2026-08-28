@@ -13,6 +13,8 @@ securityCrypto = "1.1.0-beta01"
 splashscreen = "1.0.1"
 
 [libraries]
+# 단위 테스트에서 org.json 을 진짜로 돌리려고. 아래 build.gradle.kts 주석 참고.
+org-json = { group = "org.json", name = "json", version = "20240303" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

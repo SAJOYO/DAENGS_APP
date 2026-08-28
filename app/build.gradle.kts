@@ -21,6 +21,11 @@ fun localSetting(key: String): String =
 val kakaoNativeAppKey = localSetting("daengs.kakaoNativeAppKey")
 val apiBaseUrl = localSetting("daengs.apiBaseUrl")
 
+// 피부 스크리닝 서버. 우리 서버(apiBaseUrl)와 **다른 주소**다 — 모델이 저쪽
+// 저장소(gayeoniee/deeplearning_test)에서 따로 돌고, 아직 띄워 두지도 않았다.
+// 비어 있으면 채팅의 진단 버튼이 스스로 그렇게 말한다.
+val screenUrl = localSetting("daengs.screenUrl")
+
 android {
     namespace = "com.daengs.app"
     compileSdk {
@@ -40,6 +45,7 @@ android {
         // 들어가진다 — 랜딩 화면이 설정이 없다고 알려 준다.
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
 
         // 카카오 리다이렉트 스킴. 매니페스트가 이 자리를 비워 두고 여기서 꽂는다.
         manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
@@ -88,6 +94,10 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
     testImplementation(libs.junit)
+    // 안드로이드의 org.json 은 **프레임워크 안에만** 있고, 단위 테스트가 도는 JVM
+    // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트
+    // 클래스패스에 얹어 그 껍데기를 가린다. 앱 APK 에는 안 들어간다.
+    testImplementation(libs.org.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
