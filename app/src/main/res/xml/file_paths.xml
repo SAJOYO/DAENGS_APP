@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 가 열어 주는 범위. **딱 한 폴더만** 연다.
+     루트를 열면 토큰 저장소까지 남의 앱이 볼 수 있는 자리가 된다. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

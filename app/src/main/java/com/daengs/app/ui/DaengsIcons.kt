@@ -28,7 +28,8 @@ import kotlin.math.sin
  * 모든 아이콘은 24x24 좌표계로 그리고 실제 크기에 맞춰 스케일된다.
  */
 enum class DaengsIcon {
-    Paw, Home, Book, Bell, Person, Chat, Camera, Clock, Pin, Paws, Send, ChevronRight, CaretDown, Sun, Heart
+    Paw, Home, Book, Bell, Person, Chat, Camera, Clock, Pin, Paws, Send, ChevronRight, CaretDown, Sun, Heart,
+    Mic, Gallery
 }
 
 @Composable
@@ -57,6 +58,8 @@ fun DaengsIconView(
                 DaengsIcon.CaretDown -> iconCaretDown(tint)
                 DaengsIcon.Sun -> iconSun(tint)
                 DaengsIcon.Heart -> iconHeart(tint)
+                DaengsIcon.Mic -> iconMic(tint)
+                DaengsIcon.Gallery -> iconGallery(tint)
             }
         }
     }
@@ -125,6 +128,29 @@ private fun DrawScope.iconCamera(tint: Color) {
     drawPath(bump, tint)
     drawCircle(tint, 3.9f, Offset(12f, 13.2f), style = Stroke(1.9f))
     drawCircle(tint, 1.1f, Offset(18f, 9.4f))
+}
+
+private fun DrawScope.iconMic(tint: Color) {
+    // 마이크 통
+    drawRoundRect(tint, Offset(8.6f, 2.6f), Size(6.8f, 11.4f), CornerRadius(3.4f, 3.4f))
+    // 받침 — 통을 감싸는 반원과 대
+    drawArc(
+        tint, startAngle = 0f, sweepAngle = 180f, useCenter = false,
+        topLeft = Offset(5.2f, 8.4f), size = Size(13.6f, 10.4f),
+        style = Stroke(1.9f, cap = StrokeCap.Round),
+    )
+    drawLine(tint, Offset(12f, 18.8f), Offset(12f, 21.4f), strokeWidth = 1.9f, cap = StrokeCap.Round)
+}
+
+private fun DrawScope.iconGallery(tint: Color) {
+    drawRoundRect(tint, Offset(3f, 4.4f), Size(18f, 15.2f), CornerRadius(3f, 3f), style = Stroke(1.9f))
+    // 액자 속 산과 해. 사진첩임을 알리는 최소한의 표시다
+    drawCircle(tint, 1.5f, Offset(8.4f, 9.4f))
+    val hill = Path().apply {
+        moveTo(4.4f, 17.4f); lineTo(10.2f, 11.4f); lineTo(14f, 15.2f)
+        lineTo(16.4f, 12.8f); lineTo(19.6f, 16f); lineTo(19.6f, 17.4f); close()
+    }
+    drawPath(hill, tint)
 }
 
 private fun DrawScope.iconClock(tint: Color) {
