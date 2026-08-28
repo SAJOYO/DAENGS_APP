@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.daengs.app.BuildConfig
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
 import com.daengs.app.miniroom.RoomDefaults
@@ -82,11 +83,11 @@ fun HomeScreen(
     dateLabel: String = HomeDemoData.todayLabel(),
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
+    onOpenChat: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
 ) {
-    var topTab by rememberSaveable { mutableStateOf(TopTab.Home) }
     var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -127,8 +128,6 @@ fun HomeScreen(
         topBar = {
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
-                    selected = topTab,
-                    onSelect = { topTab = it },
                     onBell = {},
                     onProfile = {},
                     avatar = profileBreed,
@@ -138,8 +137,11 @@ fun HomeScreen(
         bottomBar = {
             DaengsBottomBar(
                 selected = bottomTab,
-                onSelect = { bottomTab = it },
-                onCenter = {},
+                onSelect = {
+                    bottomTab = it
+                    if (it == BottomTab.Dex) onOpenDex?.invoke()
+                },
+                onCenter = { onOpenChat?.invoke() },
             )
         },
     ) { inner ->
@@ -183,7 +185,7 @@ fun HomeScreen(
                     modifier = slot,
                 )
             } else {
-                ChatbotCard(slot, avatar = profileBreed)
+                ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
             }
             Spacer(Modifier.height(10.dp))
             WalkSummaryCard(Modifier.padding(horizontal = 14.dp))
@@ -244,17 +246,19 @@ private fun RoomSection(
         TodayCard(
             dateLabel = dateLabel,
             note = HomeDemoData.TODAY_NOTE,
+            accent = theme.roomAccent,
+            accentSoft = theme.roomAccentSoft,
             modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
         )
         Column(
             Modifier.align(Alignment.TopEnd).padding(end = 14.dp, top = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            CameraButton(onClick = {})
-            Spacer(Modifier.height(9.dp))
             InventoryButton(open = inventoryOpen, onClick = onToggleInventory)
-            Spacer(Modifier.height(9.dp))
-            DeveloperToggle(on = developer, onToggle = { developer = !developer })
+            if (BuildConfig.DEBUG) {
+                Spacer(Modifier.height(9.dp))
+                DeveloperToggle(on = developer, onToggle = { developer = !developer })
+            }
         }
 
         if (developer) {

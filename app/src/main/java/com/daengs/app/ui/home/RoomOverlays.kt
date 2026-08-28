@@ -46,6 +46,8 @@ import com.daengs.app.ui.theme.TextMuted
 fun TodayCard(
     dateLabel: String,
     note: String,
+    accent: Color = DaengPink,
+    accentSoft: Color = PinkSoft,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
@@ -58,7 +60,7 @@ fun TodayCard(
                 Box(
                     Modifier
                         .size(7.dp)
-                        .background(PinkSoft, RoundedCornerShape(50)),
+                        .background(accentSoft, RoundedCornerShape(50)),
                 )
             }
         }
@@ -76,7 +78,7 @@ fun TodayCard(
                         fontSize = 15.sp,
                     )
                     Spacer(Modifier.width(20.dp))
-                    DaengsIconView(DaengsIcon.Sun, Modifier.size(17.dp), tint = DaengPink)
+                    DaengsIconView(DaengsIcon.Sun, Modifier.size(17.dp), tint = accent)
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(dateLabel, color = TextDark, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -128,7 +130,7 @@ fun NamePlate(label: String, modifier: Modifier = Modifier) {
 @Composable
 private fun TodayCardPreview() {
     DaengsTheme {
-        TodayCard(HomeDemoData.MOCK_DATE, HomeDemoData.TODAY_NOTE, Modifier.padding(12.dp))
+        TodayCard(HomeDemoData.MOCK_DATE, HomeDemoData.TODAY_NOTE, modifier = Modifier.padding(12.dp))
     }
 }
 

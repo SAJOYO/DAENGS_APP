@@ -2,16 +2,41 @@ package com.daengs.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+/**
+ * 앱 UI가 공유하는 고정 색 토큰이다. 방의 색은 여기로 들어오지 않고
+ * [com.daengs.app.miniroom.RoomTheme]에서만
+ * 관리한다. 그래서 방을 바꿔도 CTA, 채팅, 내비게이션의 의미가 달라지지 않는다.
+ */
+object DaengsColors {
+    // Brand
+    val BrandPrimary = Color(0xFFE88D91)
+    val BrandPrimarySoft = Color(0xFFFBE4E0)
+
+    // Neutral surfaces
+    val AppBackground = Color(0xFFFDF4F0)
+    val Surface = Color(0xFFFFFFFF)
+    val SurfaceMuted = Color(0xFFF7EEEA)
+    val TextPrimary = Color(0xFF4A3B36)
+    val TextSecondary = Color(0xFFA79089)
+    val BorderNeutral = Color(0xFFEEDCD5)
+    val ShadowNeutral = Color(0x1A5B4438)
+
+    // Semantic colors stay independent from a room theme.
+    val Success = Color(0xFF4E9B70)
+    val Warning = Color(0xFFC98B32)
+    val Error = Color(0xFFC45E5E)
+}
+
 // 시안(design/home-screen.png)에서 뽑은 파스텔 팔레트.
 // 앱 크롬(탭바·카드·칩)에서 쓰는 색.
-val CreamBg = Color(0xFFFDF1EC)
-val CardWhite = Color(0xFFFFFFFF)
-val DaengPink = Color(0xFFF0A0A0)
-val DaengPinkDeep = Color(0xFFE08585)
-val PinkSoft = Color(0xFFFBE4E0)
-val PinkFaint = Color(0xFFF7ECE8)
-val TextDark = Color(0xFF4A3B36)
-val TextMuted = Color(0xFFA79089)
+val CreamBg = DaengsColors.AppBackground
+val CardWhite = DaengsColors.Surface
+val DaengPink = DaengsColors.BrandPrimary
+val DaengPinkDeep = Color(0xFFD9787D)
+val PinkSoft = DaengsColors.BrandPrimarySoft
+val PinkFaint = DaengsColors.SurfaceMuted
+val TextDark = DaengsColors.TextPrimary
+val TextMuted = DaengsColors.TextSecondary
 
 /**
  * 미니룸 아트 전용 팔레트.

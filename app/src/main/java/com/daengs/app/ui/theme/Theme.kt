@@ -18,7 +18,7 @@ private val DaengsColorScheme = lightColorScheme(
     onSurface = TextDark,
     surfaceVariant = PinkFaint,
     onSurfaceVariant = TextMuted,
-    outline = PinkSoft,
+    outline = DaengsColors.BorderNeutral,
 )
 
 /**

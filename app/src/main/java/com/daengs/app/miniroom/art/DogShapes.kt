@@ -141,8 +141,20 @@ enum class DogBreed(
 
     LABRADOR_RETRIEVER(
         "dog_labrador_retriever", "래브라도 리트리버", R.drawable.dog_labrador_retriever,
-        portraitRes = R.drawable.dog_labrador_retriever_portrait,
+        portraitRes = R.drawable.dog_labrador_retriever_portrait_v2,
         visualWidth = 16.5f, refBodyRadius = 0.75f, refSpeed = 0.48f,
+    ),
+
+    GOLDEN_RETRIEVER(
+        "dog_golden_retriever", "골든리트리버", R.drawable.dog_golden_retriever_puppy,
+        portraitRes = R.drawable.dog_golden_retriever_portrait_v2,
+        visualWidth = 16.5f, refBodyRadius = 0.78f, refSpeed = 0.46f,
+    ),
+
+    JAPANESE_SPITZ(
+        "dog_japanese_spitz", "스피츠", R.drawable.dog_japanese_spitz_puppy,
+        portraitRes = R.drawable.dog_japanese_spitz_portrait,
+        visualWidth = 14.5f, refBodyRadius = 0.62f, refSpeed = 0.54f,
     ),
 
     JINDO(
@@ -267,6 +279,13 @@ enum class DogBreed(
         private val GRID_RATIO = RoomSpec.GRID / REF_GRID
 
         val ALL: List<DogBreed> = entries
+
+        /** 홈 미니룸에서 실제로 돌아다니는 MVP 품종. 프로필 목록과 분리한다. */
+        val ROOM_BREEDS: List<DogBreed> = listOf(
+            JAPANESE_SPITZ,
+            LABRADOR_RETRIEVER,
+            GOLDEN_RETRIEVER,
+        )
 
         private val index = entries.associateBy { it.id }
 

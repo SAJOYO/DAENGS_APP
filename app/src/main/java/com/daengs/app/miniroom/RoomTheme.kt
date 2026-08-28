@@ -44,6 +44,10 @@ data class RoomTheme(
     val swatchFloor: Color,
     val swatchAccent: Color,
 ) {
+    /** 방과 바로 맞닿는 작은 상태 장식에만 쓰는 가변 색이다. */
+    val roomAccent: Color get() = swatchAccent
+    val roomAccentSoft: Color get() = swatchWall.copy(alpha = 0.58f)
+
     /**
      * 아이템 id → 이 테마의 그림.
      *
