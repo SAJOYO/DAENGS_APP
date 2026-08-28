@@ -55,9 +55,35 @@ object ScreeningApi {
                 // "Failed to connect to /127.0.0.1:8000" 같은 영어 한 줄이라
                 // 말풍선에 그대로 띄우면 안 된다.
                 if (cause is IllegalStateException) throw cause
-                throw IllegalStateException("진단 서버에 닿지 못했어요. 주소와 네트워크를 확인해 주세요.", cause)
+                throw IllegalStateException(unreachable(), cause)
             }
         }
+
+    /**
+     * 못 닿았을 때 하는 말. **어디로 걸었는지 같이 말한다.**
+     *
+     * "닿지 못했어요"만 있으면 주소가 틀린 건지, 서버가 죽은 건지, 네트워크가
+     * 없는 건지 화면만 보고는 못 가른다. 실제로 `adb reverse` 가 풀린 것을
+     * 알아채는 데 한참 걸렸다.
+     *
+     * 되돌이 주소(127.0.0.1)는 **USB 로 이어 놨을 때만** 뜻이 있다. 폰의
+     * 127.0.0.1 은 폰 자신이라, `adb reverse` 가 그걸 PC 로 넘겨 줘야 닿는다.
+     * 그 주소가 보이면 그 이야기까지 해 준다 — 배포된 서버라면 나올 수 없는
+     * 주소라서, 이 안내가 사용자에게 새어 나갈 일은 없다.
+     */
+    private fun unreachable(): String {
+        val url = BuildConfig.SCREEN_BASE_URL
+        val loopback = url.contains("127.0.0.1") || url.contains("localhost")
+        return buildString {
+            appendLine("진단 서버에 닿지 못했어요.")
+            append(url)
+            if (loopback) {
+                appendLine()
+                appendLine()
+                append("USB 로 연결하고 adb reverse tcp:8000 tcp:8000 이 걸려 있어야 합니다.")
+            }
+        }
+    }
 
     // -- 아래는 배관 -------------------------------------------------------
 
