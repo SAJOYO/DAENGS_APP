@@ -247,10 +247,24 @@ enum class DogBreed(
         visualWidth = 11.5f, refBodyRadius = 0.46f, refSpeed = 0.57f,
     ),
 
+    /**
+     * **폭이 27종 중 가장 크지만 가장 큰 개는 아니다.** [visualWidth] 는 시트
+     * 프레임의 폭이지 개의 폭이 아니다. 프레임 안에 개가 얼마나 크게 그려졌는지는
+     * 견종마다 다른데, 보더콜리는 낮은 자세로 달리는 그림이라 프레임의 86x74%
+     * 만 쓴다. 진돗개는 꼬리를 말아올려 83x93% 를 쓴다.
+     *
+     * 그래서 저쪽 값 15.5 로는 14.5 인 진돗개보다 **작아 보였다** — 발끝을 맞춰
+     * 세우면 진돗개 73px, 보더콜리 64px 이었다. 래브라도(16.5, 75px)에 맞추려면
+     * 18.5 가 필요하다. 17.0 이면 69px 로 아직 진돗개보다 작다.
+     *
+     * 반경은 0.68 그대로 뒀다. 보이는 크기와 따로 노는 값이고, 이미 0.5 를 넘어
+     * [DogHerd.blockedAt] 의 네 모서리 검사가 성립하지 않는 견종이다 — 그걸
+     * 고치기 전에 더 올리면 나빠지기만 한다.
+     */
     BORDER_COLLIE(
         "dog_border_collie", "보더콜리", R.drawable.dog_border_collie,
         portraitRes = R.drawable.dog_border_collie_portrait,
-        visualWidth = 15.5f, refBodyRadius = 0.68f, refSpeed = 0.59f,
+        visualWidth = 18.5f, refBodyRadius = 0.68f, refSpeed = 0.59f,
     ),
 
     WELSH_CORGI(
