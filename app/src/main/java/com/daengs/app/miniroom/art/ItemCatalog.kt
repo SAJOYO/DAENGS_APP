@@ -60,6 +60,9 @@ private val ItemBoxes: Map<String, ArtBox> = mapOf(
     ItemIds.CABINET to box(246.8f, 242.4f, 0.50f, 0.77f, 4, 2),
     ItemIds.BASKET to box(101.0f, 87.0f, 0.50f, 0.78f, 2, 2),
     ItemIds.BOWLS to box(101.0f, 51.6f, 0.50f, 0.58f, 2, 1),
+    // 뚜껑을 연 콘솔이라 세로가 길다. 기준점이 0.87 로 낮은 것은 **바닥에 닿는 점이
+    // 다리 끝**이기 때문이다 — 몸통 밑면이 아니다.
+    ItemIds.TURNTABLE to box(200.0f, 316.7f, 0.50f, 0.87f, 2, 2),
 )
 
 /**
