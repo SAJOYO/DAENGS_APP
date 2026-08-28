@@ -54,10 +54,27 @@ class MainActivity : ComponentActivity() {
                 var busy by remember { mutableStateOf(false) }
                 var error by remember { mutableStateOf<String?>(null) }
 
-                // access 가 만료됐으면 조용히 재발급한다. 실패해도 화면은 안 바꾼다 —
-                // 서버가 잠깐 안 될 때마다 쫓아내면 안 된다.
+                // access 가 만료됐으면 조용히 재발급한다.
+                //
+                // **못 살린 이유를 구분해야 한다.** [restoreSession] 은 두 경우에 null 을
+                // 주는데 대응이 정반대다.
+                //
+                //  - 토큰이 죽었다 (refresh 7일이 지났다) → 저장소를 비웠다. 랜딩으로 보낸다
+                //  - 재발급 요청이 실패했다 (서버가 잠깐 안 된다) → 저장소는 그대로다.
+                //    **쫓아내면 안 된다.** 다음에 켤 때 다시 시도한다
+                //
+                // 구분은 저장소를 다시 읽어서 한다. 비었으면 앞의 경우다.
                 LaunchedEffect(Unit) {
-                    if (saved != null) session = restoreSession(store) ?: saved
+                    if (saved != null) {
+                        val restored = restoreSession(store)
+                        when {
+                            restored != null -> session = restored
+                            store.load() == null -> {
+                                session = null
+                                screen = Screen.Landing
+                            }
+                        }
+                    }
                 }
 
                 when (screen) {
