@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!--
+      테마·스플래시가 쓰는 색만 둔다. 화면 안의 색은 전부 ui/theme/Color.kt 에 있다.
+      이 값은 그 파일의 CreamBg 와 **같아야 한다** — 다르면 앱이 켜질 때 바탕이 바뀐다.
+    -->
+    <color name="cream_bg">#FDF1EC</color>
 </resources>

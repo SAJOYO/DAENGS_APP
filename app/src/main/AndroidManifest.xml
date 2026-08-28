@@ -2,7 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
+         여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,
+         톡이 깔려 있어도 웹 로그인으로 넘어간다. -->
+    <queries>
+        <package android:name="com.kakao.talk" />
+    </queries>
+
     <application
+        android:name=".DaengsApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -15,12 +25,29 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.Daengs"
+            android:theme="@style/Theme.Daengs.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 카카오 로그인이 끝나면 이리로 돌아온다. 스킴의 키는 build.gradle.kts 가
+             manifestPlaceholders 로 꽂는다 — 앱 키를 저장소에 안 넣으려는 것이다.
+             키가 없으면 스킴이 "kakao" 가 되는데, 그때는 로그인 버튼 자체가 막혀 있어서
+             이 액티비티로 올 일이 없다. -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="${kakaoScheme}" android:host="oauth" />
             </intent-filter>
         </activity>
     </application>
