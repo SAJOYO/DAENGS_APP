@@ -113,7 +113,9 @@ fun HomeScreen(
     // 저장된 배치가 있으면 그걸로 시작한다. 없거나 못 읽으면 기본 배치.
     // rememberSaveable 이 화면 회전을, 이쪽이 앱 재시작을 담당한다.
     val roomState = rememberMiniRoomState(
-        initial = remember { store.loadItems() ?: RoomDefaults.STARTER_ROOM },
+        // 저장본에는 붙박이가 없을 수 있다 (#15 이전에 깔린 폰).
+        // withFixtures 가 매번 얹으므로 여기 한 줄이면 마이그레이션이 끝난다.
+        initial = remember { RoomDefaults.withFixtures(store.loadItems() ?: RoomDefaults.STARTER_MOVABLES) },
     )
 
     // 배치가 바뀔 때마다 저장. 드래그는 놓을 때 한 번만 커밋되고 회전도 탭 한 번이라

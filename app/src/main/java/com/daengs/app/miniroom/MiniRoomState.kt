@@ -238,6 +238,7 @@ class MiniRoomState internal constructor(initial: List<PlacedItem>) {
         val i = items.indexOfFirst { it.instanceId == instanceId }
         if (i < 0) return false
         val item = items[i]
+        if (item.itemId in RoomDefaults.FIXTURE_IDS) return false
         val box = catalog[item.itemId]?.box ?: return false
         val next = (item.facing + 1) % PlacedItem.FACINGS
 
@@ -291,11 +292,22 @@ class MiniRoomState internal constructor(initial: List<PlacedItem>) {
         return true
     }
 
-    /** 방 → 인벤토리. */
+    /**
+     * 방 → 인벤토리. 붙박이는 안 빠진다.
+     *
+     * `movable = false` 라 [pickTopmost] 부터 안 잡히므로 화면에서는 여기까지
+     * 올 길이 없다. 그래도 막아 두는 건, 나중에 붙박이를 고를 수 있게 만들면
+     * (예: 개발자 패널) 여기가 조용히 뚫리기 때문이다.
+     */
     fun returnToInventory(instanceId: Long) {
+        if (isFixture(instanceId)) return
         items.removeAll { it.instanceId == instanceId }
         if (selectedId == instanceId) selectedId = null
     }
+
+    /** 붙박이인가. [RoomDefaults.FIXTURES] 가 유일한 출처다. */
+    fun isFixture(instanceId: Long): Boolean =
+        items.firstOrNull { it.instanceId == instanceId }?.itemId in RoomDefaults.FIXTURE_IDS
 
     // -- 편집 -----------------------------------------------------------------
 
@@ -306,6 +318,7 @@ class MiniRoomState internal constructor(initial: List<PlacedItem>) {
     }
 
     fun remove(instanceId: Long) {
+        if (isFixture(instanceId)) return
         items.removeAll { it.instanceId == instanceId }
     }
 
