@@ -14,11 +14,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,29 +32,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.art.rememberAssetImage
+import com.daengs.app.ui.DaengsIcon
+import com.daengs.app.ui.DaengsIconView
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.geometry.Rect
-import kotlin.math.hypot
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.ColorFilter
 
 // ---------------------------------------------------------------------------
 // 이머시브 무대 그리기
@@ -169,6 +176,14 @@ fun ImmersiveScreen(
         label = "t",
     )
 
+    // 배경음. **진입 연출에 볼륨을 그대로 맞춘다** — enter 가 0에서 1로 가는
+    // 시간이 곧 ENTER_MS 라, 카드가 무대로 벌어지는 동안 소리도 같이 차오른다.
+    //
+    // 나갈 때는 페이드를 안 한다. 이 화면은 즉시 사라지므로(CardDexScreen 이
+    // return 으로 빼낸다) 소리만 남기면 오히려 어색하다.
+    val muted = rememberMuted()
+    SceneMusic(scene.bgm, volume = if (muted.value) 0f else enter.coerceIn(0f, 1f))
+
     // 넘어온 자리는 창 좌표다. 이 화면이 창 어디에 있는지 빼야 캔버스 좌표가 된다.
     // 지금은 둘이 같은 자리지만, 나중에 인셋이 끼면 여기서 갈린다.
     var rootAt by remember { mutableStateOf(Offset.Zero) }
@@ -205,7 +220,31 @@ fun ImmersiveScreen(
             Spacer(Modifier.height(4.dp))
             Text(scene.place, color = scene.accent2.copy(alpha = 0.8f), fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
-            Text("아무 데나 누르면 나갑니다", color = Color(0x88FFFFFF), fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("아무 데나 누르면 나갑니다", color = Color(0x88FFFFFF), fontSize = 11.sp)
+                if (scene.bgm != null) {
+                    Spacer(Modifier.width(4.dp))
+                    // **탭이 겹친다.** 배경 전체가 "누르면 나갑니다"라, 자식이
+                    // 먼저 먹긴 하지만 빗나가면 화면이 닫힌다. 그림은 18dp 라도
+                    // 누르는 자리는 48dp 로 잡는다.
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(50))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                            ) { muted.value = !muted.value },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        DaengsIconView(
+                            if (muted.value) DaengsIcon.SoundOff else DaengsIcon.Sound,
+                            Modifier.size(18.dp),
+                            tint = Color(0x88FFFFFF),
+                        )
+                    }
+                }
+            }
         }
     }
 }

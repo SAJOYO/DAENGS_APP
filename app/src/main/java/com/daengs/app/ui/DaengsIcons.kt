@@ -29,7 +29,7 @@ import kotlin.math.sin
  */
 enum class DaengsIcon {
     Paw, Home, Book, Bell, Person, Chat, Camera, Clock, Pin, Paws, Send, ChevronRight, CaretDown, Sun, Heart,
-    Mic, Gallery
+    Mic, Gallery, Sound, SoundOff
 }
 
 @Composable
@@ -60,6 +60,8 @@ fun DaengsIconView(
                 DaengsIcon.Heart -> iconHeart(tint)
                 DaengsIcon.Mic -> iconMic(tint)
                 DaengsIcon.Gallery -> iconGallery(tint)
+                DaengsIcon.Sound -> iconSound(tint, on = true)
+                DaengsIcon.SoundOff -> iconSound(tint, on = false)
             }
         }
     }
@@ -151,6 +153,30 @@ private fun DrawScope.iconGallery(tint: Color) {
         lineTo(16.4f, 12.8f); lineTo(19.6f, 16f); lineTo(19.6f, 17.4f); close()
     }
     drawPath(hill, tint)
+}
+
+/** 스피커. [on] 이면 음파 두 줄, 아니면 가위표. 몸통은 같아서 토글이 튀지 않는다. */
+private fun DrawScope.iconSound(tint: Color, on: Boolean) {
+    val body = Path().apply {
+        moveTo(3.2f, 9.2f); lineTo(6.6f, 9.2f); lineTo(11.2f, 5f)
+        lineTo(11.2f, 19f); lineTo(6.6f, 14.8f); lineTo(3.2f, 14.8f); close()
+    }
+    drawPath(body, tint)
+    if (on) {
+        drawArc(
+            tint, startAngle = -52f, sweepAngle = 104f, useCenter = false,
+            topLeft = Offset(9.6f, 7.4f), size = Size(9.2f, 9.2f),
+            style = Stroke(1.9f, cap = StrokeCap.Round),
+        )
+        drawArc(
+            tint, startAngle = -52f, sweepAngle = 104f, useCenter = false,
+            topLeft = Offset(9.6f, 4.2f), size = Size(15.6f, 15.6f),
+            style = Stroke(1.9f, cap = StrokeCap.Round),
+        )
+    } else {
+        drawLine(tint, Offset(14.6f, 9.6f), Offset(20.4f, 14.4f), 1.9f, StrokeCap.Round)
+        drawLine(tint, Offset(20.4f, 9.6f), Offset(14.6f, 14.4f), 1.9f, StrokeCap.Round)
+    }
 }
 
 private fun DrawScope.iconClock(tint: Color) {

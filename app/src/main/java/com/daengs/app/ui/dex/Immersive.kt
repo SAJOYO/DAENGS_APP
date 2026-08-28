@@ -62,6 +62,16 @@ data class ImmersiveScene(
      */
     val frame: String? = "neo-hologram/art/cabbage-card-frame.webp",
     /**
+     * 배경음. `assets/` 아래 경로이고, null 이면 무음이다.
+     *
+     * **[DexCard] 가 아니라 여기 있다.** 음악이 필요한 곳이 이머시브뿐이라서다 —
+     * 그리드와 확대 뷰 12장까지 번지면 그때 카드로 올린다.
+     *
+     * OGG 인 이유는 `tools/convert_audio.py` 에 적어 뒀다. 요약하면 MP3 는 이어
+     * 붙이면 틈이 생겨서, 29초마다 한 번씩 "툭" 이 들린다.
+     */
+    val bgm: String? = "neo-hologram/audio/cabbage.ogg",
+    /**
      * 틀에서 **뒤가 비치는 자리 전부**를 감싸는 상자 (카드 크기 대비 %).
      *
      * [fit] 과 다르다. [fit] 은 누끼가 놓이는 자리이고, 이쪽은 **뒤를 받쳐 줄 범위**다.
