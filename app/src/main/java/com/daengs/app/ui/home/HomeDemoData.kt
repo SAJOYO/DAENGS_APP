@@ -12,7 +12,7 @@ import java.util.Locale
  */
 object HomeDemoData {
 
-    const val DOG_NAME = "노을"
+    const val DOG_NAME = "네옹"
 
     /**
      * 대표 견종. 프로필 얼굴이 이걸 따른다.
@@ -21,8 +21,8 @@ object HomeDemoData {
      * [DogBreed.ALL] 첫 항목이라 방에 먼저 들어오는 개와도 같다 —
      * 상단바 얼굴과 방 안 강아지가 따로 놓지 않는다.
      */
-    val DOG_BREED = DogBreed.BEAGLE
-    const val ROOM_LABEL = "노을이네"
+    val DOG_BREED = DogBreed.TOY_POODLE_LIGHT_BROWN
+    const val ROOM_LABEL = "네옹이네"
 
     const val TODAY_NOTE = "산책 가기 좋은 날!"
     const val CHAT_TITLE = "댕스 AI 챗봇"

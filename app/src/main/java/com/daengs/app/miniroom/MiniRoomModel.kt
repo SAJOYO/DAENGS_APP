@@ -99,6 +99,19 @@ object RoomDefaults {
         PlacedItem(5L, ItemIds.BASKET, 2, 10),
         PlacedItem(6L, ItemIds.BOWLS, 8, 10),
         PlacedItem(7L, ItemIds.BALL, 11, 9),
+        // 턴테이블 자리는 **[5,0] 을 비워 둔다.**
+        //
+        // 저쪽에서 그림을 그려 주기로 했고, 오면 여기 놓는다. 뒷벽 창문 아래
+        // (col 4~9 · row 0~1)가 유일하게 비어 있는 벽면이다 — 왼쪽은 서랍장[0,0],
+        // 오른쪽은 화분[11,0]과 개집[10,2]이 이미 잡고 있다.
+        //
+        // 저쪽에 부탁할 규격 (docs/asset-workflow.md 기준):
+        //   발자국 2x2 칸, 아트 상자 대략 200x180 (방 PNG 1122x1402 기준 픽셀)
+        //   기준점은 바닥 중심 (anchor 0.50, 0.78 — 개집·바구니와 같은 결)
+        //   테마 6종 리컬러, 알파 있는 PNG. 판이 도는 걸 보이려면 스프라이트 시트도 된다
+        //
+        // 놓을 때 필요한 것은 `ItemIds` 에 id 추가 · `RoomTheme` 에 테마별 그림 ·
+        // `ItemBoxes` 에 상자 · `OWNED` 에 개수 한 줄씩이다.
     )
 
     /**

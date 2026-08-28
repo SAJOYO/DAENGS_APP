@@ -19,9 +19,11 @@ import kotlin.math.floor
 fun RoomGeometry.toArtLocal(p: Offset, item: PlacedItem, catalog: ItemCatalog): Offset? {
     val box = catalog[item.itemId]?.box ?: return null
     val c = footprintCenter(item.col, item.row, box.footprintFacing(item.facing))
-    val left = c.x - box.anchor.x * scale
+    // 그리기와 같은 배율을 써야 한다. 그림은 가로로 늘어났는데 판정만 균일하면
+    // 손가락이 그림 위에 있는데도 안 잡힌다.
+    val left = c.x - box.anchor.x * scaleX
     val top = c.y - box.anchor.y * scale
-    val local = Offset((p.x - left) / scale, (p.y - top) / scale)
+    val local = Offset((p.x - left) / scaleX, (p.y - top) / scale)
     // 좌우 반전된 아이템은 터치 판정도 같이 뒤집어야 그림과 맞는다.
     return if (item.facing == 1) {
         Offset(2f * box.anchor.x - local.x, local.y)

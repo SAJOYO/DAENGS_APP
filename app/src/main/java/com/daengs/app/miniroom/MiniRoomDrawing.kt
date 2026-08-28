@@ -33,10 +33,11 @@ private inline fun DrawScope.inArtSpace(
     val c = g.footprintCenter(item.col, item.row, art.box.footprintFacing(item.facing))
     withTransform({
         translate(
-            c.x - art.box.anchor.x * g.scale + dragOffset.x,
+            c.x - art.box.anchor.x * g.scaleX + dragOffset.x,
             c.y - art.box.anchor.y * g.scale + dragOffset.y - lift,
         )
-        scale(g.scale, g.scale, pivot = Offset.Zero)
+        // 소품만 가로로 늘어난다. 강아지는 아래에서 g.scale 을 그대로 쓴다.
+        scale(g.scaleX, g.scale, pivot = Offset.Zero)
         // 방향 1 = 좌우 반전. 기준점을 축으로 뒤집어야 발밑이 안 움직인다.
         if (item.facing == 1) scale(-1f, 1f, pivot = Offset(art.box.anchor.x, 0f))
     }) {
