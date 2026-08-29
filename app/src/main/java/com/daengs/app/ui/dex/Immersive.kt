@@ -201,6 +201,37 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
 )
 
 /**
+ * No.12 상추. 황금 무대.
+ *
+ * **포일을 가진 채 이머시브인 첫 카드다.** 저쪽도 이 카드에서 `isImmersive` 를
+ * `rarity` 가 아니라 `scene` 의 유무로 바꿨다 — 포일은 카드 위에 얹히는 겹이고
+ * 이머시브는 별개의 화면이라 서로 포기할 이유가 없다. 우리는 [DexCard.foil] 과
+ * [IMMERSIVE_SCENES] 가 처음부터 따로라 그대로 맞는다. No.12 는 [Foil.Metal] 을 쓴다.
+ *
+ * [window] 가 배추(81.58)·고구마(81.61)보다 낮은 81 미만인 것은 **이 틀의 그림창이
+ * 짧아서**다. 틀마다 다르므로 카드가 늘 때마다 저쪽이 재서 준다.
+ */
+val LETTUCE_SCENE = ImmersiveScene(
+    title = "LETTUCE NEO",
+    place = "황금 무대 · 잎이 날리는 밤",
+    back = "neo-hologram/art/lettuce-back.webp",
+    subject = "neo-hologram/art/lettuce-subject.webp",
+    card = "neo-hologram/art/lettuce-card.webp",
+    frame = "neo-hologram/art/lettuce-card-frame.webp",
+    bgm = "neo-hologram/audio/lettuce.ogg",
+    window = ImmersiveScene.Win(5.17f, 11.55f, 90.46f, 76.39f),
+    fit = ImmersiveScene.Fit(11.22f, 15.47f, 80.33f, 62.13f),
+    shells = listOf(
+        ImmersiveScene.Shell(z = 16f, r0 = 14f, r1 = 44f, r2 = 54f, r3 = 86f, shadow = 0.22f, opacity = 1f),
+        ImmersiveScene.Shell(z = 32f, r0 = 44f, r1 = 62f, r2 = 62f, r3 = 72f, shadow = 0.32f, opacity = 1f),
+    ),
+    motes = 46,
+    dew = 9,
+    accent = Color(0xFFB2D121),
+    accent2 = Color(0xFFE3F493),
+)
+
+/**
  * 카드 번호 → 이머시브 장면. **여기 없으면 이머시브가 아니다.**
  *
  * 카드마다 필요한 것이 레이어 원화 넉 장 · 곡 하나 · 실측값 둘(창 · fit)이라,
@@ -209,6 +240,7 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
 val IMMERSIVE_SCENES: Map<Int, ImmersiveScene> = mapOf(
     1 to CABBAGE_SCENE,
     10 to SWEET_POTATO_SCENE,
+    12 to LETTUCE_SCENE,
 )
 
 /**
