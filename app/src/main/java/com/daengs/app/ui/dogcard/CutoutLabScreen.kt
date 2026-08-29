@@ -231,17 +231,23 @@ fun CutoutLabScreen(onBack: () -> Unit) {
             NeckPicker(done.bitmap, neck) { neck = it }
             Lab("가로선을 위아래로 끌면 그 아래가 사라진다.", 11.sp, Faint)
 
-            // **여기가 요점이다.** 채소는 그림 파일이 아니라 코드로 그린 것이고,
-            // 잎이 얼굴 앞뒤로 나뉘어 얼굴 가장자리를 덮는다.
-            Lab("채소에 넣으면 (배추 · 코드로 그린 것)", 12.sp, Dim)
+            // **여기가 요점이다.** 저쪽 완성 카드에서 네 자리(아바타 · 큰 얼굴 ·
+            // 이름 · 번호)를 비운 판 위에 우리 것을 채운다.
+            Lab("카드에 넣으면 (저쪽 원화에서 네 자리를 비운 판)", 12.sp, Dim)
             val face = baked?.asImageBitmap()
-            VeggieWithFace(
-                spec = CABBAGE,
-                face = face,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CARD_TEMPLATES.forEach { template ->
+                    PersonalCard(
+                        template = template,
+                        face = face,
+                        name = "몽이",
+                        code = "DG-0829",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
             Lab(
-                if (face == null) "얼굴 굽는 중…" else "잎 → 얼굴 → 잎 순서로 그린다",
+                if (face == null) "얼굴 굽는 중…" else "얼굴 → 비운 카드 → 글자 순서로 그린다",
                 11.sp,
                 if (face == null) Warn else Faint,
             )
