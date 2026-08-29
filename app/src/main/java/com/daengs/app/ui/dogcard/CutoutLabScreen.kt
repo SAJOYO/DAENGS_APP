@@ -53,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,7 +94,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
     var tookMs by remember { mutableStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
     // 목선이 정해진 뒤의 얼굴. 채소 구멍에 끼울 때 쓴다.
-    var baked by remember { mutableStateOf<Bitmap?>(null) }
+    var baked by remember { mutableStateOf<CardFace?>(null) }
 
     // 사진을 고르는 동안 모델을 미리 받아 둔다. 안 그러면 이 기기에서 처음 누를 때
     // 반드시 실패한다 — 실측했다.
@@ -102,14 +103,21 @@ fun CutoutLabScreen(onBack: () -> Unit) {
     // 목선이 멈추면 그때 한 번 굽는다. `LaunchedEffect` 가 키가 바뀔 때마다 앞의
     // 것을 취소하므로, 끄는 동안에는 [delay] 에서 계속 잘려 나가고 손을 멈춘
     // 뒤에만 실제로 돈다 — 900px 짜리를 프레임마다 다시 칠하지 않으려는 것이다.
-    val source = result?.bitmap
+    // **구멍에는 민판을 넣는다.** 테두리 두른 판을 넣으면 실루엣이 타원 안으로
+    // 파고드는 자리마다 흰 띠가 구멍 안에 드러나서 카드가 찢어져 보인다.
+    // 타원으로 물러선 경우는 모양이 이미 둥글어서 그대로 써도 된다.
+    val source = (result as? Cutout.Result.Cut)?.plain ?: result?.bitmap
     LaunchedEffect(source, neck) {
         if (source == null) {
             baked = null
             return@LaunchedEffect
         }
         delay(140)
-        baked = Cutout.fadedBelow(source, neck)
+        val face = Cutout.faceFor(source, neck)
+        baked = CardFace(
+            face.bitmap.asImageBitmap(),
+            IntRect(face.core.left, face.core.top, face.core.right, face.core.bottom),
+        )
     }
 
     fun run(box: FloatArray?) {
@@ -234,7 +242,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
             // **여기가 요점이다.** 저쪽 완성 카드에서 네 자리(아바타 · 큰 얼굴 ·
             // 이름 · 번호)를 비운 판 위에 우리 것을 채운다.
             Lab("카드에 넣으면 (저쪽 원화에서 네 자리를 비운 판)", 12.sp, Dim)
-            val face = baked?.asImageBitmap()
+            val face = baked
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CARD_TEMPLATES.forEach { template ->
                     PersonalCard(

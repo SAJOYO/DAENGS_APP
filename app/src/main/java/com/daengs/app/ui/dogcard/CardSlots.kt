@@ -26,6 +26,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -104,6 +105,19 @@ val SWEET_POTATO_CARD = CardTemplate(
 val CARD_TEMPLATES = listOf(CABBAGE_CARD, SWEET_POTATO_CARD)
 
 /**
+ * 구멍에 끼울 얼굴.
+ *
+ * **비트맵만으로는 부족하다.** 누끼는 목 아래가 서서히 흐려지며 끝나는데, 그
+ * 꼬리까지 포함한 사각형을 구멍에 맞추면 얼굴이 꼬리가 넓은 쪽으로 밀린다.
+ * [core] 는 또렷한 얼굴만의 자리다 — `Cutout.faceFor` 가 재어 준다.
+ *
+ * 구멍에는 **테두리를 안 두른 판**을 넣어야 한다. 흰 띠가 구멍 안으로 들어오면
+ * 카드가 찢어진 자국처럼 보인다.
+ */
+@Immutable
+data class CardFace(val image: ImageBitmap, val core: IntRect)
+
+/**
  * 카드 한 장. [face] 가 null 이면 구멍이 빈 채로 그려진다 — 판만 볼 때 쓴다.
  *
  * @param name 이름바에 쓸 글자. 저쪽 카드에서는 "CABBAGE NEO" 자리다
@@ -112,7 +126,7 @@ val CARD_TEMPLATES = listOf(CABBAGE_CARD, SWEET_POTATO_CARD)
 @Composable
 fun PersonalCard(
     template: CardTemplate,
-    face: ImageBitmap?,
+    face: CardFace?,
     name: String,
     code: String,
     modifier: Modifier = Modifier,
@@ -141,26 +155,55 @@ fun PersonalCard(
     }
 }
 
+/** 구멍보다 이만큼 넓게 그린다. 넘치는 만큼은 카드가 덮어서 테두리 틈을 막는다. */
+private const val CLIP_BLEED = 1.12f
+
 /**
- * 구멍에 얼굴을 끼운다. **구멍보다 조금 크게** 그린다 — 딱 맞추면 가장자리에 틈이
- * 보이는데, 넘치는 만큼은 어차피 카드가 덮는다.
+ * 또렷한 얼굴을 구멍보다 이만큼 크게 잡는다.
+ *
+ * **머리가 둥글지 않아서 필요하다.** 얼굴 자리를 구멍에 딱 맞추면 실루엣이 타원
+ * 안으로 파고드는 자리(귀 옆 · 이마 위)마다 구멍 속이 비친다. 실기기에서 배추 ·
+ * 고구마 양쪽에 같은 자리로 났다. 키우면 얼굴이 조금 더 잘리는 대신 구멍이 찬다.
  */
-private fun DrawScope.drawInHole(face: ImageBitmap, hole: Hole) {
+private const val CORE_OVERFILL = 1.15f
+
+/**
+ * 구멍에 얼굴을 끼운다.
+ *
+ * **비트맵 사각형이 아니라 [CardFace.core] 를 구멍에 맞춘다.** 사각형으로 맞추면
+ * 목 아래로 흐려지는 꼬리까지 셈에 들어가서, 꼬리가 한쪽으로 퍼진 사진에서는
+ * 머리가 반대쪽으로 밀리고 구멍 한쪽이 통째로 빈다.
+ */
+private fun DrawScope.drawInHole(face: CardFace, hole: Hole) {
+    val core = face.core
+    if (core.width <= 0 || core.height <= 0) return
+
     val cx = size.width * hole.cx / 100f
     val cy = size.height * hole.cy / 100f
-    val rx = size.width * hole.rx / 100f * 1.12f
-    val ry = size.height * hole.ry / 100f * 1.12f
+    val rx = size.width * hole.rx / 100f * CLIP_BLEED
+    val ry = size.height * hole.ry / 100f * CLIP_BLEED
+
+    // 또렷한 얼굴이 구멍을 덮을 만큼 키운다. 짧은 쪽이 아니라 **모자란 쪽**에
+    // 맞춰야 구멍이 찬다.
+    val scale = maxOf(rx * 2f / core.width, ry * 2f / core.height) * CORE_OVERFILL
 
     val clip = Path().apply { addOval(Rect(cx - rx, cy - ry, cx + rx, cy + ry)) }
     clipPath(clip) {
-        // 짧은 쪽을 구멍에 맞춘다. 긴 쪽이 넘치는 것은 카드가 가린다.
-        val ratio = face.width.toFloat() / face.height
-        val h = maxOf(ry * 2f, rx * 2f / ratio)
-        val w = h * ratio
+        // 가로는 비트맵 한가운데가 아니라 **또렷한 얼굴의 한가운데**에 맞춘다.
+        val left = cx - (core.left + core.width / 2f) * scale
+        // 세로는 한가운데가 아니라 **턱을 구멍 아래에 건다.**
+        //
+        // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
+        // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
+        // 잘리고 이마만 남았다 — 실기기에서 봤다.
+        val top = cy + size.height * hole.ry / 100f - core.bottom * scale
         drawImage(
-            image = face,
-            dstOffset = IntOffset((cx - w / 2f).roundToInt(), (cy - h / 2f).roundToInt()),
-            dstSize = IntSize(w.roundToInt(), h.roundToInt()),
+            image = face.image,
+            dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
+            dstSize = IntSize(
+                (face.image.width * scale).roundToInt(),
+                (face.image.height * scale).roundToInt(),
+            ),
             filterQuality = FilterQuality.High,
         )
     }

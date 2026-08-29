@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
 import android.graphics.RectF
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.MlKitException
@@ -68,6 +69,16 @@ object Cutout {
     /** 원형 마스크의 가장자리를 흐리는 폭(반지름 대비). 딱 자르면 톱니가 보인다. */
     private const val CIRCLE_FEATHER = 0.06f
 
+    /**
+     * "또렷한 얼굴"로 칠 알파 문턱.
+     *
+     * [fadedBelow] 가 목선 아래를 [FADE_SPAN] 에 걸쳐 흐리는데, 흐려지다 만 가슴팍도
+     * 알파가 0 은 아니라서 [ALPHA_FLOOR] 로 재면 얼굴 자리에 같이 들어간다. 그러면
+     * **카드 구멍이 얼굴이 아니라 얼굴+가슴 한가운데에 맞춰져서** 머리가 한쪽으로
+     * 밀린다. 기운 머리에서 구멍 한쪽이 통째로 빈 적이 있다.
+     */
+    private const val CORE_ALPHA = 160
+
     /** 목선을 못 찾았을 때 쓰는 자리(높이 대비). */
     private const val NECK_FALLBACK = 0.74f
 
@@ -83,7 +94,21 @@ object Cutout {
          * @param neck 목으로 보이는 자리(높이 대비 0~1). **자동으로 찍은 짐작일 뿐이다** —
          *   털이 많은 개는 목이 안 좁아져서 빗나간다. 사람이 끌어서 고치라고 주는 첫 값이다.
          */
-        data class Cut(override val bitmap: Bitmap, val neck: Float) : Result
+        data class Cut(
+            override val bitmap: Bitmap,
+            /**
+             * 테두리를 안 두른 판. **카드 구멍에 끼울 때는 이것을 쓴다.**
+             *
+             * 흰 띠는 누끼가 홀로 설 때 "오린 티"를 내려고 두르는 것이라, 구멍에
+             * 끼우면 실루엣이 타원 안으로 파고드는 자리마다 띠가 구멍 안에 드러나서
+             * **카드가 찢어진 자국처럼 보인다.** 실기기에서 배추·고구마 양쪽,
+             * 사진 두 장 모두에서 같은 자리에 났다.
+             *
+             * [bitmap] 과 크기가 같아서 좌표를 그대로 쓸 수 있다.
+             */
+            val plain: Bitmap,
+            val neck: Float,
+        ) : Result
 
         /**
          * 오려내지 못해 상자를 타원으로 잘랐다.
@@ -164,11 +189,13 @@ object Cutout {
                 if (scaled !== photo && scaled !== foreground) scaled.recycle()
                 val trimmed = foreground.trimToContent()
                 if (trimmed !== foreground) foreground.recycle()
-                val outlined = withOutline(trimmed)
+                // 테두리 두른 판과 민판을 **둘 다** 들고 간다. 홀로 설 때는 띠가
+                // 있어야 오린 티가 나고, 구멍에 끼울 때는 없어야 한다.
+                val outlined = withOutline(trimmed, recycle = false)
                 // **여기서는 자르지 않는다.** 실루엣을 그대로 주고, 어디서 자를지는
                 // 짐작만 얹는다 — 카드의 두 자리(큰 그림창 · 아바타)가 같은 누끼에서
                 // 서로 다른 모양으로 파생되기 때문이다.
-                Result.Cut(outlined, outlined.neckGuess())
+                Result.Cut(outlined, trimmed, outlined.neckGuess())
             }
         }
 
@@ -215,13 +242,19 @@ object Cutout {
     // -- 테두리 띠 -----------------------------------------------------------
 
     /**
-     * 알파를 부풀려 띠를 두르고 그 위에 원본을 얹는다. **[subject] 를 지운다.**
+     * 알파를 부풀려 띠를 두르고 그 위에 원본을 얹는다.
+     * [recycle] 이면 **[subject] 를 지운다.**
      *
      * 부풀리기는 **가로 한 번 · 세로 한 번**으로 나눠서 한다. 사각 이웃을 한 번에
      * 훑으면 반지름 r 에 대해 픽셀당 (2r+1)² 번을 보는데, 나누면 2(2r+1) 번이면 된다.
      * 900px 짜리에서 이 차이가 100ms 와 1초쯤이다.
      */
-    private fun withOutline(subject: Bitmap, band: Int = Color.WHITE): Bitmap {
+    private fun withOutline(
+        subject: Bitmap,
+        band: Int = Color.WHITE,
+        /** 민판을 따로 들고 갈 때는 false. 그때는 부르는 쪽이 [subject] 를 갖는다. */
+        recycle: Boolean = true,
+    ): Bitmap {
         val w = subject.width
         val h = subject.height
         val radius = (maxOf(w, h) * OUTLINE_RATIO).toInt().coerceAtLeast(1)
@@ -240,7 +273,7 @@ object Cutout {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         out.setPixels(bandOnly, 0, w, 0, 0, w, h)
         Canvas(out).drawBitmap(subject, 0f, 0f, null)
-        subject.recycle()
+        if (recycle) subject.recycle()
         return out
     }
 
@@ -296,6 +329,19 @@ object Cutout {
      * 정렬하는 것과 같은 이유다.
      */
     private fun Bitmap.trimToContent(): Bitmap {
+        val box = boundsAtLeast(ALPHA_FLOOR)
+        if (box.left == 0 && box.top == 0 && box.right == width && box.bottom == height) return this
+        return Bitmap.createBitmap(this, box.left, box.top, box.width(), box.height())
+    }
+
+    /**
+     * 알파가 [floor] 이상인 픽셀을 감싸는 자리. 그런 픽셀이 없으면 비트맵 전체.
+     *
+     * 문턱을 받는 이유는 **재는 목적마다 "칠해졌다"의 뜻이 다르기 때문**이다.
+     * 여백을 걷어낼 때는 흐릿한 가장자리도 남겨야 하지만([ALPHA_FLOOR]), 얼굴
+     * 자리를 잴 때는 흐려지다 만 가슴팍을 빼야 한다([CORE_ALPHA]).
+     */
+    private fun Bitmap.boundsAtLeast(floor: Int): Rect {
         val pixels = IntArray(width * height)
         getPixels(pixels, 0, width, 0, 0, width, height)
         var left = width
@@ -305,16 +351,15 @@ object Cutout {
         for (y in 0 until height) {
             val row = y * width
             for (x in 0 until width) {
-                if ((pixels[row + x] ushr 24) < ALPHA_FLOOR) continue
+                if ((pixels[row + x] ushr 24) < floor) continue
                 if (x < left) left = x
                 if (x > right) right = x
                 if (y < top) top = y
                 if (y > bottom) bottom = y
             }
         }
-        if (right < left || bottom < top) return this
-        if (left == 0 && top == 0 && right == width - 1 && bottom == height - 1) return this
-        return Bitmap.createBitmap(this, left, top, right - left + 1, bottom - top + 1)
+        if (right < left || bottom < top) return Rect(0, 0, width, height)
+        return Rect(left, top, right + 1, bottom + 1)
     }
 
     /**
@@ -386,6 +431,26 @@ object Cutout {
         // 골짜기가 얕으면 목이 아니라 그냥 완만한 변화다. 그때는 찍지 않는다.
         val deep = neckY >= 0 && neckW < headW * 0.85f
         return if (deep) (neckY.toFloat() / h).coerceIn(0.2f, 0.95f) else NECK_FALLBACK
+    }
+
+    /**
+     * 구멍에 끼울 준비가 된 얼굴.
+     *
+     * @param core [bitmap] 안에서 **또렷한 얼굴만** 차지하는 자리(픽셀). 목선 아래로
+     *   흐려지는 꼬리는 빠져 있다. 카드는 비트맵 사각형이 아니라 이걸 구멍에 맞춘다 —
+     *   사각형으로 맞추면 꼬리가 넓은 쪽으로 얼굴이 밀린다.
+     */
+    data class Face(val bitmap: Bitmap, val core: Rect)
+
+    /**
+     * 목선 아래를 흐리고, 그 결과에서 **또렷한 얼굴 자리를 함께 재어** 준다.
+     *
+     * 자리를 여기서 재는 이유는 픽셀을 한 번 훑어야 하는 일이라서다. 그릴 때마다
+     * 재면 900px 짜리를 프레임마다 훑게 된다.
+     */
+    fun faceFor(source: Bitmap, neck: Float): Face {
+        val baked = fadedBelow(source, neck)
+        return Face(baked, baked.boundsAtLeast(CORE_ALPHA))
     }
 
     /**
