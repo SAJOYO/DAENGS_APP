@@ -1,5 +1,14 @@
 package com.daengs.app.ui.dex
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -49,6 +58,7 @@ import com.daengs.app.ui.theme.TextMuted
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
 // 네오 채소 도감
@@ -267,6 +277,23 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
     // **손가락이 이긴다.** 두 입력이 같은 카드를 두고 매 프레임 싸우면 화면이 떤다.
     val input = if (rub.input.intensity > 0f) rub.input else (tiltTracker.input ?: rub.input)
 
+    // 누끼 팝아웃. **짚고 있는 동안** 주인공이 카드 밖으로 떠오른다.
+    //
+    // 저쪽은 마우스를 올려놓으면(hover) 나는데 **터치에는 hover 가 없다.** 저쪽도
+    // 그래서 "폰에서는 안 난다 — 아직 안 정했다" 고 남겨 뒀다. 짚고 있는 동안이
+    // 제일 가깝다: 문지르면 포일이 도는 동작과 같이 나서 보상처럼 읽히고, 손을 떼면
+    // 저절로 돌아간다. 누르는 동작을 새로 쓰지 않으므로 탭(닫기)·꾹(이머시브)과도
+    // 안 겹친다. 그리드에 걸지 않은 것은, 터치에서는 탭이 곧바로 확대 뷰를 열어
+    // 그리드의 팝아웃을 볼 겨를이 없기 때문이다.
+    // `let` 안에서는 @Composable 을 못 부른다. 조건은 if 로 갈라야 한다.
+    val popPath = card.pop?.subject
+    val hero = if (popPath != null) rememberAssetImage(popPath) else null
+    val popped by animateFloatAsState(
+        targetValue = if (rub.input.intensity > 0f) 1f else 0f,
+        animationSpec = tween(durationMillis = if (rub.input.intensity > 0f) 520 else 320),
+        label = "pop",
+    )
+
     Box(
         Modifier
             .fillMaxSize()
@@ -279,6 +306,7 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
             Modifier.systemBarsPadding().padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Box(Modifier.fillMaxWidth()) {
             HoloCard(
                 art = art,
                 foil = card.foil,
@@ -286,6 +314,12 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
                 tilt = true,
                 modifier = Modifier.fillMaxWidth().rubbable(rub),
             )
+            // 팝아웃은 카드 **위로 넘어가야** 하므로 카드와 같은 크기의 덧그림 판에서
+            // 음수 좌표로 그린다. Compose 는 기본으로 안 자르므로 그대로 보인다.
+            if (hero != null && card.pop != null) {
+                Canvas(Modifier.matchParentSize()) { drawPopOut(hero, card.pop.fit, popped) }
+            }
+            }
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 NavButton("‹") { index = (index - 1 + DEX_CARDS.size) % DEX_CARDS.size }
@@ -313,6 +347,54 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
+}
+
+/**
+ * 짚고 있는 동안 주인공이 카드 밖으로 떠오른다.
+ *
+ * 저쪽 값 그대로다 — 위로 **카드 높이의 16%(최대 90dp)** 만큼 넘고 **1.06배**로
+ * 커진다. 저쪽은 3D 라 원근(1150)이 한 번 더 키우므로 실제 배율은
+ * `1.06 x 1150/(1150-74) = 1.133` 이고, 우리는 평면이라 그 값을 그대로 쓴다.
+ *
+ * 커지는 만큼은 **전부 위로** 간다. 저쪽 `transform-origin: 50% 100%` 이라 아래가
+ * 제자리에 붙어 있어야 카드에서 자라 나온 것으로 보인다.
+ *
+ * 떠오른 동안 카드를 어둡게 죽인다. **안 죽이면 유령이 하나 더 보인다** — 카드
+ * 그림에도 같은 주인공이 인쇄돼 있기 때문이다.
+ */
+private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: Float) {
+    if (t <= 0.001f) return
+    val w = size.width * fit.w / 100f
+    val h = size.height * fit.h / 100f
+    val left = size.width * fit.x / 100f
+    val top = size.height * fit.y / 100f
+
+    drawRect(Color.Black.copy(alpha = 0.38f * t))
+
+    val grow = 1f + (1.133f - 1f) * t
+    val rise = minOf(size.height * 0.16f, 90.dp.toPx()) * t
+    val gw = w * grow
+    val gh = h * grow
+    val x = left - (gw - w) / 2f
+    val y = top - (gh - h) - rise
+
+    // 그림자. 저쪽 `drop-shadow(0 18px 26px)` 을 어두운 사본 한 장으로 흉내 낸다 —
+    // 진짜 블러는 API 31 부터라 minSdk 26 에서 못 쓴다.
+    drawImage(
+        image = hero,
+        dstOffset = IntOffset(x.roundToInt(), (y + 18.dp.toPx()).roundToInt()),
+        dstSize = IntSize(gw.roundToInt(), gh.roundToInt()),
+        alpha = 0.34f * t,
+        colorFilter = ColorFilter.tint(Color.Black),
+        filterQuality = FilterQuality.High,
+    )
+    drawImage(
+        image = hero,
+        dstOffset = IntOffset(x.roundToInt(), y.roundToInt()),
+        dstSize = IntSize(gw.roundToInt(), gh.roundToInt()),
+        alpha = t,
+        filterQuality = FilterQuality.High,
+    )
 }
 
 @Composable

@@ -13,6 +13,18 @@ import androidx.compose.ui.graphics.Color
 // 저쪽이 카드를 늘리면 여기에 줄만 더한다. `cards.mjs` 가 원본이다.
 // ---------------------------------------------------------------------------
 
+/**
+ * 누끼 팝아웃. 카드를 짚고 있는 동안 주인공이 카드 테두리 밖으로 떠오른다.
+ *
+ * **이머시브와 다른 것이다.** 이머시브는 배경 원화·틀·곡까지 한 벌이 필요하지만
+ * 팝아웃은 누끼 하나와 그 자리([fit])면 된다. 저쪽도 `scene` 이 아니라 `pop` 이라는
+ * 별도 필드로 갈라 뒀다 — `scene` 을 주면 원치 않게 이머시브 카드가 되기 때문이다.
+ *
+ * 이머시브 카드는 장면에서 쓰는 누끼를 그대로 재활용하므로 이 필드가 따로 없어도 된다.
+ */
+@Immutable
+data class CardPop(val subject: String, val fit: ImmersiveScene.Fit)
+
 @Immutable
 data class DexCard(
     val no: Int,
@@ -25,6 +37,8 @@ data class DexCard(
     val foil: Foil,
     /** 카드 뒤 글로우 색. 저쪽 `accent` */
     val accent: Color,
+    /** 있으면 확대 뷰에서 짚는 동안 주인공이 떠오른다. */
+    val pop: CardPop? = null,
 ) {
     /** `assets/` 안의 그림 경로 */
     val art: String get() = "neo-hologram/art/$id.webp"
@@ -56,6 +70,15 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(8, "cucumber", "Cucumber Neo", "MYCELIUM MASH", 810, Foil.Reverse, Color(0xFF4FAE52)),
     DexCard(9, "spinach", "Spinach Neo", "MYCELIUM MASH", 860, Foil.Aurora, Color(0xFF3F8F3F)),
     DexCard(10, "sweet-potato", "Sweet Potato Neo", "MYCELIUM MASH", 830, Foil.Cosmos, Color(0xFFA0656F)),
-    DexCard(11, "tomato", "Tomato Neo", "", 840, Foil.Mosaic, Color(0xFFCC351A)),
+    DexCard(
+        11, "tomato", "Tomato Neo", "", 840, Foil.Mosaic, Color(0xFFCC351A),
+        // 이머시브가 아니다. 누끼 하나로 팝아웃만 한다.
+        // fit 은 저쪽이 템플릿 매칭으로 찾은 값이다 — 받은 누끼가 카드 대비 세로로
+        // 3.2% 눌려 있어 이미지를 늘려 비율을 맞춘 뒤 다시 쟀다.
+        pop = CardPop(
+            subject = "neo-hologram/art/tomato-subject.webp",
+            fit = ImmersiveScene.Fit(2.21f, 15.64f, 97.18f, 66.93f),
+        ),
+    ),
     DexCard(12, "lettuce", "Lettuce Neo", "FRESH FLUTTER", 800, Foil.Metal, Color(0xFFB2D121)),
 )
