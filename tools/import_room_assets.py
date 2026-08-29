@@ -33,6 +33,7 @@ frankie516c/dog-training-rag 의 `ui-experiments/main-screen/assets` 아래에�
     <받은폴더>/themes/<테마>/{room,ball,basket,bowls,cabinet,doghouse,plant,rug,rug-cream}.png
     <받은폴더>/dogs/<견종>.png
     <받은폴더>/portraits/<견종>.png      (없어도 된다)
+    <받은폴더>/window/<시간>_<날씨>.png  (없어도 된다)
 
 출력폴더 기본값은 `app/src/main/res/drawable-nodpi` 다.
 """
@@ -139,8 +140,22 @@ def main(drop: Path, out: Path) -> None:
             after += b
             made += 1
 
+    # 창밖 풍경. 유리 모양으로 잘린 알파 PNG 라 컷아웃도 조각 털기도 필요 없다.
+    # 방 그림 위에 얹는 것이라 테마를 안 탄다 — 창틀·창살만 테마색이고 유리 안은
+    # 여섯 테마가 같은 그림이기 때문이다.
+    window = drop / "window"
+    if window.is_dir():
+        for png in sorted(window.glob("*.png")):
+            name = resource_name("window", png.stem)
+            _, b = to_webp(png, out / f"{name}.webp")
+            before += png.stat().st_size
+            after += b
+            made += 1
+
     if made == 0:
-        raise SystemExit(f"구울 게 없다: {drop} 아래에 themes/ · dogs/ · portraits/ 가 없다.")
+        raise SystemExit(
+            f"구울 게 없다: {drop} 아래에 themes/ · dogs/ · portraits/ · window/ 가 없다."
+        )
 
     print(f"{made}개  {before / 1e6:.1f}MB -> {after / 1e6:.1f}MB  ({after / before * 100:.0f}%)")
 
