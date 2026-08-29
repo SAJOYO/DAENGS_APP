@@ -12,6 +12,7 @@ import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntSize
 import com.daengs.app.R
 import com.daengs.app.miniroom.ItemIds
+import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.RoomSpec
 import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.sprite.SpriteSheet
@@ -50,8 +51,11 @@ class ItemCatalog(private val map: Map<String, ItemArt>) {
  *   size.height = size.width / aspectRatio
  *   anchor      = artAnchor% x size
  * footprint 는 저쪽 16 격자 기준이라 우리 12 에 맞춰 x0.75 했다.
+ *
+ * [RoomDefaults.withFixtures] 가 붙박이 칸을 재는 데도 쓴다 — 그래서 public 이다.
+ * 리소스 해석이 필요 없는 순수 데이터라 단위 테스트에서 그대로 읽을 수 있다.
  */
-private val ItemBoxes: Map<String, ArtBox> = mapOf(
+val ItemBoxes: Map<String, ArtBox> = mapOf(
     ItemIds.RUG to box(437.6f, 235.5f, 0.50f, 0.50f, 5, 5, flat = true),
     ItemIds.RUG_CREAM to box(437.6f, 234.9f, 0.50f, 0.50f, 5, 5, flat = true),
     ItemIds.PLANT to box(101.0f, 162.8f, 0.50f, 0.93f, 1, 2),
@@ -89,6 +93,9 @@ fun itemSpecs(theme: RoomTheme): Map<String, ItemArtSpec> =
     ItemBoxes.mapValues { (id, box) ->
         ItemArtSpec.Res(
             box = box,
+            // 붙박이는 강아지와 같은 길로 막는다 — pickTopmost 가 안 잡으면
+            // 드래그·선택·돌리기/치우기 버튼이 한꺼번에 없어진다.
+            movable = id !in RoomDefaults.FIXTURE_IDS,
             resId = theme.art(id),
             // 픽셀 아트라 보간을 끈다. 기본값(Medium)이면 확대할 때 뿌옇게 번진다.
             filterQuality = FilterQuality.None,
@@ -128,7 +135,13 @@ private fun dogSpec(breed: DogBreed): ItemArtSpec.Sheet {
 private const val DOG_FRAME_W = 582f
 private const val DOG_FRAME_H = 568f
 
-/** 사람이 읽는 이름. 인벤토리 목록에서 쓴다. */
+/**
+ * 사람이 읽는 이름. 인벤토리 목록과 개발자 패널이 쓴다.
+ *
+ * **[ItemIds.ALL] 에 id 를 더하면 여기도 한 줄 더한다.** 빠지면 조용히 id 가
+ * 그대로 화면에 뜬다 (`ItemLabels[id] ?: id`). #15 가 그래서 `turntable` 로 떴다.
+ * `ItemLabelsTest` 가 이제 그 자리를 잡는다.
+ */
 val ItemLabels: Map<String, String> = mapOf(
     ItemIds.RUG to "러그",
     ItemIds.RUG_CREAM to "크림 러그",
@@ -138,6 +151,7 @@ val ItemLabels: Map<String, String> = mapOf(
     ItemIds.CABINET to "수납장",
     ItemIds.BASKET to "장난감 바구니",
     ItemIds.BOWLS to "밥그릇 세트",
+    ItemIds.TURNTABLE to "턴테이블",
 ) + DogBreed.ALL.associate { it.id to it.label }
 
 /**
