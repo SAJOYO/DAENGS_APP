@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.screening.Photo
 import com.daengs.app.ui.chat.GuideFrameScreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
@@ -91,10 +92,25 @@ fun CutoutLabScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var tookMs by remember { mutableStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
+    // 목선이 정해진 뒤의 얼굴. 채소 구멍에 끼울 때 쓴다.
+    var baked by remember { mutableStateOf<Bitmap?>(null) }
 
     // 사진을 고르는 동안 모델을 미리 받아 둔다. 안 그러면 이 기기에서 처음 누를 때
     // 반드시 실패한다 — 실측했다.
     LaunchedEffect(Unit) { Cutout.warmUp() }
+
+    // 목선이 멈추면 그때 한 번 굽는다. `LaunchedEffect` 가 키가 바뀔 때마다 앞의
+    // 것을 취소하므로, 끄는 동안에는 [delay] 에서 계속 잘려 나가고 손을 멈춘
+    // 뒤에만 실제로 돈다 — 900px 짜리를 프레임마다 다시 칠하지 않으려는 것이다.
+    val source = result?.bitmap
+    LaunchedEffect(source, neck) {
+        if (source == null) {
+            baked = null
+            return@LaunchedEffect
+        }
+        delay(140)
+        baked = Cutout.fadedBelow(source, neck)
+    }
 
     fun run(box: FloatArray?) {
         val source = photo ?: return
@@ -214,6 +230,21 @@ fun CutoutLabScreen(onBack: () -> Unit) {
 
             NeckPicker(done.bitmap, neck) { neck = it }
             Lab("가로선을 위아래로 끌면 그 아래가 사라진다.", 11.sp, Faint)
+
+            // **여기가 요점이다.** 채소는 그림 파일이 아니라 코드로 그린 것이고,
+            // 잎이 얼굴 앞뒤로 나뉘어 얼굴 가장자리를 덮는다.
+            Lab("채소에 넣으면 (배추 · 코드로 그린 것)", 12.sp, Dim)
+            val face = baked?.asImageBitmap()
+            VeggieWithFace(
+                spec = CABBAGE,
+                face = face,
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+            )
+            Lab(
+                if (face == null) "얼굴 굽는 중…" else "잎 → 얼굴 → 잎 순서로 그린다",
+                11.sp,
+                if (face == null) Warn else Faint,
+            )
 
             // **작게 줄인 것들.** 카드가 도감 그리드에서 이만해진다.
             Lab("작게 줄이면 (도감 그리드 · 아바타 크기)", 12.sp, Dim)
@@ -368,3 +399,4 @@ private fun CutoutLabEmptyPreview() {
 private fun CheckeredPreview() {
     Checkered(Modifier.size(120.dp)) {}
 }
+
