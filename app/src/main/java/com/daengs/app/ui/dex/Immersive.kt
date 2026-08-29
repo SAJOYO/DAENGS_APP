@@ -52,15 +52,20 @@ const val IMMERSIVE_SLOP = 10f
  */
 @Immutable
 data class ImmersiveScene(
-    val place: String = "이슬 맺힌 텃밭 · 해 뜨기 직전",
-    val back: String = "neo-hologram/art/cabbage-back.webp",
-    val subject: String = "neo-hologram/art/cabbage-subject.webp",
-    val card: String = "neo-hologram/art/cabbage-card.webp",
+    /**
+     * 카드 이름. **화면에 박아 두면 안 된다** — 배추 하나뿐일 때는 상수였는데,
+     * 고구마를 넣으니 보랏빛 결계 위에 "CABBAGE NEO" 가 떴다.
+     */
+    val title: String,
+    val place: String,
+    val back: String,
+    val subject: String,
+    val card: String,
     /**
      * 그림 영역만 투명하게 지운 카드. [card] 아래에 같은 자리로 깔려 있다가, 카드가
      * 녹으면 드러나서 **창틀**이 된다. 없으면(`null`) 예전처럼 카드가 녹기만 한다.
      */
-    val frame: String? = "neo-hologram/art/cabbage-card-frame.webp",
+    val frame: String?,
     /**
      * 배경음. `assets/` 아래 경로이고, null 이면 무음이다.
      *
@@ -70,7 +75,7 @@ data class ImmersiveScene(
      * OGG 인 이유는 `tools/convert_audio.py` 에 적어 뒀다. 요약하면 MP3 는 이어
      * 붙이면 틈이 생겨서, 29초마다 한 번씩 "툭" 이 들린다.
      */
-    val bgm: String? = "neo-hologram/audio/cabbage.ogg",
+    val bgm: String?,
     /**
      * 틀에서 **뒤가 비치는 자리 전부**를 감싸는 상자 (카드 크기 대비 %).
      *
@@ -84,7 +89,7 @@ data class ImmersiveScene(
      * 모서리까지 삼키면 안 된다.** 받쳐 주면 둥근 귀퉁이로 텃밭이 새어 나와 카드가
      * 직사각형으로 보인다.
      */
-    val window: Win = Win(4.91f, 10.28f, 90.51f, 81.58f),
+    val window: Win,
     /**
      * 겉잎 겹. **같은 누끼**를 고리로 오려 앞에 세운다 (저쪽 `.dio-rind`).
      *
@@ -102,11 +107,11 @@ data class ImmersiveScene(
         Shell(z = 16f, r0 = 14f, r1 = 44f, r2 = 54f, r3 = 86f, shadow = 0.18f, opacity = 1f),
         Shell(z = 32f, r0 = 44f, r1 = 62f, r2 = 62f, r3 = 72f, shadow = 0.32f, opacity = 1f),
     ),
-    val fit: Fit = Fit(6.06f, 14.15f, 87.43f, 62.70f),
+    val fit: Fit,
     val motes: Int = 52,
     val dew: Int = 15,
-    val accent: Color = Color(0xFF8FD94A),
-    val accent2: Color = Color(0xFFD8F07A),
+    val accent: Color,
+    val accent2: Color,
 ) {
     @Immutable
     data class Fit(val x: Float, val y: Float, val w: Float, val h: Float)
@@ -150,8 +155,61 @@ data class ImmersiveScene(
     )
 }
 
-/** No.01 배추만 이머시브다. 저쪽도 지금은 한 장뿐이다. */
-val CABBAGE_SCENE = ImmersiveScene()
+/** No.01 배추. 이슬 맺힌 텃밭. */
+val CABBAGE_SCENE = ImmersiveScene(
+    title = "CABBAGE NEO",
+    place = "이슬 맺힌 텃밭 · 해 뜨기 직전",
+    back = "neo-hologram/art/cabbage-back.webp",
+    subject = "neo-hologram/art/cabbage-subject.webp",
+    card = "neo-hologram/art/cabbage-card.webp",
+    frame = "neo-hologram/art/cabbage-card-frame.webp",
+    bgm = "neo-hologram/audio/cabbage.ogg",
+    window = ImmersiveScene.Win(4.91f, 10.28f, 90.51f, 81.58f),
+    fit = ImmersiveScene.Fit(6.06f, 14.15f, 87.43f, 62.70f),
+    accent = Color(0xFF8FD94A),
+    accent2 = Color(0xFFD8F07A),
+)
+
+/**
+ * No.10 고구마. 보랏빛 결계.
+ *
+ * 값은 저쪽 `cards.mjs` 의 `scene` 을 옮긴 것이고, **눈으로 맞춘 게 아니라 잰 것**이다.
+ * [window] 는 틀의 알파를 훑어 잰 경계상자이고 — 배추와 달리 뚫린 데가 그림창
+ * 하나뿐이라 덩어리 하나가 그대로 창이 된다 — [fit] 은 누끼를 0.74~0.86 배율로 훑어
+ * 카드 그림과 맞춰 본 템플릿 매칭 결과다(배율 0.794 · 자리 94,168).
+ *
+ * [shells] 의 `z` 는 **저쪽 값(34 · 70)의 절반**이다. 배추에서 그대로 썼다가 잎 윤곽이
+ * 두 번 그려져 잔상으로 보인다는 지적을 받고 절반으로 줄인 그 값이다 ([Shell.z] 참고).
+ * 그림자만 저쪽 값(0.22)을 따른다.
+ */
+val SWEET_POTATO_SCENE = ImmersiveScene(
+    title = "SWEET POTATO NEO",
+    place = "보랏빛 결계 · 의식이 시작되기 직전",
+    back = "neo-hologram/art/sweet-potato-back.webp",
+    subject = "neo-hologram/art/sweet-potato-subject.webp",
+    card = "neo-hologram/art/sweet-potato-card.webp",
+    frame = "neo-hologram/art/sweet-potato-card-frame.webp",
+    bgm = "neo-hologram/audio/sweet-potato.ogg",
+    window = ImmersiveScene.Win(6.28f, 10.85f, 88.57f, 81.61f),
+    fit = ImmersiveScene.Fit(11.52f, 14.93f, 80.02f, 62.84f),
+    shells = listOf(
+        ImmersiveScene.Shell(z = 16f, r0 = 14f, r1 = 44f, r2 = 54f, r3 = 86f, shadow = 0.22f, opacity = 1f),
+        ImmersiveScene.Shell(z = 32f, r0 = 44f, r1 = 62f, r2 = 62f, r3 = 72f, shadow = 0.32f, opacity = 1f),
+    ),
+    accent = Color(0xFFA0656F),
+    accent2 = Color(0xFFD8A89E),
+)
+
+/**
+ * 카드 번호 → 이머시브 장면. **여기 없으면 이머시브가 아니다.**
+ *
+ * 카드마다 필요한 것이 레이어 원화 넉 장 · 곡 하나 · 실측값 둘(창 · fit)이라,
+ * 저쪽에서 그 한 벌이 오기 전에는 늘릴 수가 없다. 오면 여기 줄 하나를 더한다.
+ */
+val IMMERSIVE_SCENES: Map<Int, ImmersiveScene> = mapOf(
+    1 to CABBAGE_SCENE,
+    10 to SWEET_POTATO_SCENE,
+)
 
 /**
  * 평면 하나가 시선에 따라 얼마나 밀리는가.

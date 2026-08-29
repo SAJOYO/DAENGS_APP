@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -216,7 +217,15 @@ fun ImmersiveScreen(
                 .graphicsLayer { alpha = ((enter - OPEN_FROM) / (1f - OPEN_FROM)).coerceIn(0f, 1f) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("CABBAGE NEO", color = Color(0xFFEFFBE2), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            // 글자색도 장면을 따른다. 배추의 연둣빛(#EFFBE2)을 그대로 두면 보랏빛
+            // 결계 위에서 겉돈다. accent2 를 흰쪽으로 당긴 값이라 배추에서는 전과
+            // 거의 같은 색이 나온다.
+            Text(
+                scene.title,
+                color = lerp(scene.accent2, Color.White, 0.62f),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Spacer(Modifier.height(4.dp))
             Text(scene.place, color = scene.accent2.copy(alpha = 0.8f), fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))

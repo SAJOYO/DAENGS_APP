@@ -54,7 +54,8 @@ import androidx.compose.ui.geometry.Rect
 // 네오 채소 도감
 //
 // 카드 12장을 모아 두고, 눌러서 크게 보고, 문지르거나 폰을 기울여 홀로그램 포일을
-// 구경한다. No.01 배추만 꾹 누르면 카드 "안으로" 들어간다 ([ImmersiveScreen]).
+// 구경한다. 이머시브인 카드는 꾹 누르면 카드 "안으로" 들어간다 ([ImmersiveScreen]).
+// 지금은 No.01 배추와 No.10 고구마 둘이다 ([IMMERSIVE_SCENES]).
 //
 // ## 어디서 왔나
 //
@@ -81,20 +82,22 @@ private const val SLOT_RATIO = 1.25f
 @Composable
 fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var opened by remember { mutableStateOf<Int?>(null) }
-    var immersive by remember { mutableStateOf(false) }
+    // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
+    // 카드가 둘이 되면서 "켜졌다"만으로는 무엇을 그릴지 모른다.
+    var scene by remember { mutableStateOf<ImmersiveScene?>(null) }
     // 이머시브가 출발할 자리. 그리드가 사라진 뒤에도 써야 하므로 여기 둔다.
     var from by remember { mutableStateOf(Rect.Zero) }
 
     BackHandler {
         when {
-            immersive -> immersive = false
+            scene != null -> scene = null
             opened != null -> opened = null
             else -> onClose()
         }
     }
 
-    if (immersive) {
-        ImmersiveScreen(from = from, onClose = { immersive = false })
+    scene?.let { showing ->
+        ImmersiveScreen(scene = showing, from = from, onClose = { scene = null })
         return
     }
 
@@ -102,9 +105,9 @@ fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         DexGrid(
             onOpen = { opened = it },
             onClose = onClose,
-            onImmersive = { at ->
+            onImmersive = { at, picked ->
                 from = at
-                immersive = true
+                scene = picked
             },
         )
 
@@ -122,7 +125,11 @@ fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 // -- 그리드 -----------------------------------------------------------------
 
 @Composable
-private fun DexGrid(onOpen: (Int) -> Unit, onClose: () -> Unit, onImmersive: (Rect) -> Unit) {
+private fun DexGrid(
+    onOpen: (Int) -> Unit,
+    onClose: () -> Unit,
+    onImmersive: (Rect, ImmersiveScene) -> Unit,
+) {
     LazyVerticalGrid(
         // 두 칸. 웹판에서 한 칸이면 카드가 화면을 꽉 채워 무거웠다.
         columns = GridCells.Fixed(2),
@@ -138,8 +145,11 @@ private fun DexGrid(onOpen: (Int) -> Unit, onClose: () -> Unit, onImmersive: (Re
             GridCard(
                 card = card,
                 onOpen = { onOpen(DEX_CARDS.indexOf(card)) },
-                // No.01 배추만 이머시브다. 저쪽도 지금은 한 장뿐이다.
-                onImmersive = if (card.no == 1) onImmersive else null,
+                // 이머시브인 카드는 [IMMERSIVE_SCENES] 가 정한다. 없으면 null 이 가고,
+                // 그러면 꾹 누르기도 캡션 아래 배지도 안 붙는다.
+                onImmersive = IMMERSIVE_SCENES[card.no]?.let { picked ->
+                    { at: Rect -> onImmersive(at, picked) }
+                },
             )
         }
     }
