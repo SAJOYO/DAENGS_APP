@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +78,10 @@ fun CutoutLabScreen(onBack: () -> Unit) {
     var tookMs by remember { mutableStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // 사진을 고르는 동안 모델을 미리 받아 둔다. 안 그러면 이 기기에서 처음 누를 때
+    // 반드시 실패한다 — 실측했다.
+    LaunchedEffect(Unit) { Cutout.warmUp() }
+
     fun run(box: FloatArray?) {
         val source = photo ?: return
         busy = true
@@ -123,6 +128,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
             photo = shot,
             onCancel = { step = Step.Pick },
             onConfirm = { box -> run(box) },
+            title = "강아지 얼굴을 네모 안에 넣어 주세요",
             confirmLabel = "이 얼굴로 누끼",
             guidance = "강아지 얼굴에 네모를 맞춥니다. 모서리를 끌면 크기가 바뀝니다.",
         )
@@ -186,7 +192,8 @@ fun CutoutLabScreen(onBack: () -> Unit) {
             )
             if (done is Cutout.Result.Ellipse) {
                 // 모델을 내려받는 중인 것과 이 기기에서 영영 안 되는 것은 다른 일이다.
-                Text("왜: ${done.why}", 11.sp, Color(0xFF9AA3AE))
+                // 앞은 다시 눌러 볼 만하고, 뒤는 눌러도 소용이 없다.
+                Text(done.why, 11.sp, if (done.pending) Color(0xFFFFD98A) else Color(0xFF9AA3AE))
             }
 
             // 큰 것 한 장.

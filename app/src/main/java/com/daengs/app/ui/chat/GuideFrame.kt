@@ -62,7 +62,9 @@ fun GuideFrameScreen(
     photo: Bitmap,
     onCancel: () -> Unit,
     onConfirm: (FloatArray) -> Unit,
-    /** 확인 버튼 글자. 이 네모를 쓰는 곳이 진단만은 아니다. */
+    /** 맨 위 제목. 이 네모를 쓰는 곳이 진단만은 아니다. */
+    title: String = "병변이 네모 안에 오도록 맞춰 주세요",
+    /** 확인 버튼 글자. */
     confirmLabel: String = "이 자리로 진단",
     /**
      * 네모 아래 안내. null 이면 [Band] 의 병변 밴드 안내를 쓴다.
@@ -98,7 +100,7 @@ fun GuideFrameScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "병변이 네모 안에 오도록 맞춰 주세요",
+                title,
                 color = CardWhite,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,

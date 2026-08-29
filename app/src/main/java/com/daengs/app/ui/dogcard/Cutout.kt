@@ -9,11 +9,13 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import com.google.android.gms.tasks.Task
+import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmentation
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -51,6 +53,18 @@ object Cutout {
     /** 테두리 띠의 두께(결과 긴 변 대비). 900px 이면 9px 쯤 된다. */
     private const val OUTLINE_RATIO = 0.010f
 
+    /**
+     * 모델이 준비되기를 기다리는 한도(ms).
+     *
+     * **기다리지 않으면 그 기기의 첫 호출은 반드시 실패한다.** 실측했다 —
+     * 처음 누르면 `Waiting for the subject segmentation optional module to be
+     * downloaded` 가 나오고 조용히 타원으로 물러섰다. 사용자의 첫 카드가 가장
+     * 나쁜 결과를 받는 셈이라 그냥 둘 수 없다.
+     *
+     * 한도를 두는 이유는 Play 서비스가 없는 기기에서 영영 안 끝나기 때문이다.
+     */
+    private const val MODEL_WAIT_MS = 20_000L
+
     sealed interface Result {
         val bitmap: Bitmap
 
@@ -64,7 +78,47 @@ object Cutout {
          * 모델을 내려받는 중인 것과 이 기기에서 영영 안 되는 것은 다른 일인데,
          * 둘 다 조용히 타원이 되면 구분할 방법이 없다.
          */
-        data class Ellipse(override val bitmap: Bitmap, val why: String) : Result
+        data class Ellipse(
+            override val bitmap: Bitmap,
+            val why: String,
+            /**
+             * 모델이 아직 준비되지 않았을 뿐인가.
+             *
+             * true 면 **다시 눌러 볼 만하다.** 이 기기에서 영영 안 되는 것과
+             * 구분해야 하는 이유가 그것이다 — 안내 문장이 정반대가 된다.
+             */
+            val pending: Boolean = false,
+        ) : Result
+    }
+
+    /**
+     * 모델을 미리 내려받아 둔다. 실패해도 아무 일도 일어나지 않는다.
+     *
+     * 사진을 고르고 얼굴 상자를 맞추는 동안 이게 돌아가면, 정작 누를 때는 이미
+     * 준비돼 있다. [of] 안에서도 기다리지만 그때 기다리면 사용자가 기다린다.
+     */
+    suspend fun warmUp() {
+        withContext(Dispatchers.Default) {
+            runCatching {
+                val segmenter = SubjectSegmentation.getClient(
+                    SubjectSegmenterOptions.Builder().enableForegroundBitmap().build(),
+                )
+                try {
+                    withTimeoutOrNull(MODEL_WAIT_MS) { segmenter.initTask.await() }
+                } finally {
+                    segmenter.close()
+                }
+            }
+        }
+    }
+
+    private val Throwable?.isPending: Boolean
+        get() = this is MlKitException && errorCode == MlKitException.UNAVAILABLE
+
+    private fun reasonOf(cause: Throwable?): String = when {
+        cause.isPending -> "모델을 아직 내려받는 중입니다. 잠시 후 다시 해 보세요."
+        cause == null -> "피사체를 찾지 못했습니다."
+        else -> cause.message ?: "피사체를 찾지 못했습니다."
     }
 
     /**
@@ -90,8 +144,8 @@ object Cutout {
                 // 물러설 때는 **자른 것을** 타원으로 만든다. 원본 전체가 아니다.
                 val masked = scaled.ellipseMasked()
                 if (scaled !== photo) scaled.recycle()
-                val why = attempt.exceptionOrNull()?.message ?: "피사체를 찾지 못했습니다."
-                Result.Ellipse(withOutline(masked), why)
+                val cause = attempt.exceptionOrNull()
+                Result.Ellipse(withOutline(masked), reasonOf(cause), pending = cause.isPending)
             } else {
                 if (scaled !== photo && scaled !== foreground) scaled.recycle()
                 val trimmed = foreground.trimToContent()
@@ -114,6 +168,9 @@ object Cutout {
             .build()
         val segmenter = SubjectSegmentation.getClient(options)
         return try {
+            // **모델이 준비될 때까지 먼저 기다린다.** 이 줄이 없으면 그 기기의 첫
+            // 호출이 반드시 실패한다 ([MODEL_WAIT_MS] 주석 참고).
+            withTimeoutOrNull(MODEL_WAIT_MS) { segmenter.initTask.await() }
             val result = segmenter.process(InputImage.fromBitmap(source, 0)).await()
             result.foregroundBitmap ?: error("피사체를 찾지 못했습니다.")
         } finally {
