@@ -2,6 +2,7 @@ package com.daengs.app
 
 import android.app.Application
 import com.kakao.sdk.common.KakaoSdk
+import com.naver.maps.map.NaverMapSdk
 
 /**
  * 카카오 SDK 를 켠다.
@@ -20,6 +21,11 @@ class DaengsApp : Application() {
         super.onCreate()
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank()) {
             KakaoSdk.init(this, BuildConfig.KAKAO_NATIVE_APP_KEY)
+        }
+        // 지도도 같은 철학이다 — 키가 없으면 초기화를 건너뛰고, 지도 화면만 빈 타일이 된다.
+        if (BuildConfig.NAVER_MAP_NCP_KEY_ID.isNotBlank()) {
+            NaverMapSdk.getInstance(this).client =
+                NaverMapSdk.NcpKeyClient(BuildConfig.NAVER_MAP_NCP_KEY_ID)
         }
     }
 }

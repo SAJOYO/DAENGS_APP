@@ -140,6 +140,8 @@
 
 ## 참고
 
-- 병원·약국 찾기 지도는 **다른 팀원 담당**이다. 이 저장소에서 건드리지 않는다
+- 장소(병원·약국·카페 등) 지도는 **이 저장소로 들어왔다** (HISTORY.md 17절).
+  검색 백엔드의 원본은 `SAJOYO/DAENGS_dev` 의 `place-search/`, 지도 UI 의 원본은
+  이제 여기다 — geo 저장소의 사본은 동결이다
 - 기획·결정 사항은 [`CONTEXT.md`](CONTEXT.md), 만들어온 과정은
   [`HISTORY.md`](HISTORY.md) 에 있다

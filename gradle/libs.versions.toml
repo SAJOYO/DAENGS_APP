@@ -11,6 +11,9 @@ composeBom = "2026.02.01"
 kakaoSdk = "2.24.0"
 securityCrypto = "1.1.0-beta01"
 splashscreen = "1.0.1"
+# 지도 기반 (원본 geo 저장소와 같은 버전 — 기존 라이브러리는 안 올린다)
+naverMap = "3.23.3"
+playServicesLocation = "21.4.0"
 
 [libraries]
 # 단위 테스트에서 org.json 을 진짜로 돌리려고. 아래 build.gradle.kts 주석 참고.
@@ -32,6 +35,8 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakaoSdk" }
+naver-map-sdk = { group = "com.naver.maps", name = "map-sdk", version.ref = "naverMap" }
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 장소 지도의 현재 위치. 산책 추적용 FOREGROUND_SERVICE 권한은 geo 에 남고
+         여기로 안 온다 - 지도 화면이 떠 있는 동안만 위치를 쓴다. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!--
       창밖 날씨를 그 자리 기준으로 받으려고 쓴다 (Open-Meteo).

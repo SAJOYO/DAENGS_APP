@@ -28,6 +28,10 @@ dependencyResolutionManagement {
         maven("https://devrepo.kakao.com/nexus/content/groups/public") {
             content { includeGroup("com.kakao.sdk") }
         }
+        // 네이버 지도 SDK 도 센트럴에 없다. 카카오와 같은 이유로 그룹을 잠근다.
+        maven("https://repository.map.naver.com/archive/maven") {
+            content { includeGroup("com.naver.maps") }
+        }
     }
 }
 
