@@ -40,6 +40,10 @@ data class DexCard(
  * 눌러야 들어가는 별개 뷰이고(`IMMERSIVE_SCENES`), 그 전까지 그리드와 확대 뷰에서는
  * 여느 카드처럼 그려져야 하는데 [Foil] 에는 `immersive` 항목이 없기 때문이다.
  * No.01 배추는 [Foil.Prism], No.10 고구마는 원래 값이던 [Foil.Cosmos] 를 그대로 둔다.
+ *
+ * **포일과 이머시브는 서로 독립이다.** No.12 상추가 [Foil.Metal] 을 유지한 채
+ * 이머시브를 갖는다 — 포일은 카드 위에 얹히는 겹이고 이머시브는 별개의 화면이라
+ * 하나를 위해 다른 하나를 포기할 이유가 없다. 저쪽도 같은 판단을 했다.
  */
 val DEX_CARDS: List<DexCard> = listOf(
     DexCard(1, "cabbage", "Cabbage Neo", "CRUNCH", 820, Foil.Prism, Color(0xFF8FD94A)),
