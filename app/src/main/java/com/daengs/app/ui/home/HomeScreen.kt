@@ -223,6 +223,9 @@ private fun RoomSection(
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
     var developer by remember { mutableStateOf(false) }
+    // 턴테이블 판. 방을 덮지 않고 아래에서 올라온다 — 이 방의 전축을 튼 것이라
+    // 방과 턴테이블이 계속 보여야 그 맥락이 산다.
+    var turntableOpen by remember { mutableStateOf(false) }
     var breedOverride by remember { mutableStateOf<DogBreed?>(null) }
     // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
     // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
@@ -258,6 +261,8 @@ private fun RoomSection(
             // 벽의 액자 -> 네오 채소 도감. 편집 중에는 안 받는다 — 가구를 옮기다가
             // 화면이 넘어가면 하던 일을 잃는다.
             onFrameTap = if (inventoryOpen) null else onOpenDex,
+            // 뒷벽의 턴테이블 -> 내 카드의 음악. 액자와 같은 이유로 편집 중에는 안 받는다.
+            onTurntableTap = if (inventoryOpen) null else { { turntableOpen = true } },
         )
         TodayCard(
             dateLabel = dateLabel,
@@ -304,6 +309,13 @@ private fun RoomSection(
         //
         // 정렬 자체는 BottomEnd 로 두고 offset 으로만 끌어온다 — 그래야
         // 이름표 크기를 재지 않아도 되고, 글꼴 크기가 커져도 안 흔들린다.
+        if (turntableOpen) {
+            TurntablePanel(
+                onClose = { turntableOpen = false },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
         NamePlate(
             label = HomeDemoData.ROOM_LABEL,
             modifier = Modifier

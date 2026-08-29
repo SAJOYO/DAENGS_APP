@@ -50,6 +50,28 @@ fun List<PlacedItem>.pickTopmost(
     art.box.touchArea.contains(local)
 }
 
+/**
+ * 붙박이를 눌렀는지 본다.
+ *
+ * **[pickTopmost] 로는 못 잡는다.** 붙박이는 `movable = false` 라 거기서 걸러지는데,
+ * 그게 드래그·선택·치우기를 한꺼번에 막아 주는 장치라 풀 수도 없다. 그래서 "만질 수
+ * 있는가" 와 "누를 수 있는가" 를 갈라, 누르는 쪽만 따로 본다.
+ *
+ * 판정 자체는 [pickTopmost] 와 같은 것을 쓴다 — 발밑 타일이 아니라 **그림의 터치
+ * 영역**이다. 턴테이블은 뚜껑을 연 세로 316 짜리라 제 타일보다 한참 위로 삐져나온다.
+ */
+fun List<PlacedItem>.pickFixture(
+    p: Offset,
+    g: RoomGeometry,
+    catalog: ItemCatalog,
+    itemId: String,
+): PlacedItem? = asReversed().firstOrNull { item ->
+    if (item.itemId != itemId) return@firstOrNull false
+    val art = catalog[item.itemId] ?: return@firstOrNull false
+    val local = g.toArtLocal(p, item, catalog) ?: return@firstOrNull false
+    art.box.touchArea.contains(local)
+}
+
 @Stable
 
 class MiniRoomState internal constructor(initial: List<PlacedItem>) {
