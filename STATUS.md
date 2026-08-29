@@ -140,8 +140,12 @@
 
 ## 참고
 
-- 장소(병원·약국·카페 등) 지도는 **이 저장소로 들어왔다** (HISTORY.md 17절).
-  검색 백엔드의 원본은 `SAJOYO/DAENGS_dev` 의 `place-search/`, 지도 UI 의 원본은
-  이제 여기다 — geo 저장소의 사본은 동결이다
+- 장소(병원·약국·카페 등) 지도와 검색 패널·결과 카드·길찾기/전화 동작은
+  **이 저장소로 들어왔다** (HISTORY.md 17~18절). 원본은
+  `rkbuhtig/DAENGS_geo` `main@c5f0d5f` 로 고정했고 geo 사본은 동결이다.
+  사용자 강아지 등록·선택은 이 이주에 넣지 않았다
+- 장소 클라이언트는 원본 계약대로 `/v2/places/search` 와 `/journey` 를 호출하지만,
+  `SAJOYO/DAENGS_dev` 의 `place-search/` 를 앱의 `daengs.apiBaseUrl` 에서 실제로 받을
+  공개 경로는 아직 확정되지 않았다. 이 연결은 게이트웨이 결정 뒤 별도 작업이다
 - 기획·결정 사항은 [`CONTEXT.md`](CONTEXT.md), 만들어온 과정은
   [`HISTORY.md`](HISTORY.md) 에 있다

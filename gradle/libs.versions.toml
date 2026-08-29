@@ -14,6 +14,8 @@ splashscreen = "1.0.1"
 # 지도 기반 (원본 geo 저장소와 같은 버전 — 기존 라이브러리는 안 올린다)
 naverMap = "3.23.3"
 playServicesLocation = "21.4.0"
+kotlinxSerializationJson = "1.11.0"
+kotlinxCoroutinesTest = "1.9.0"
 
 [libraries]
 # 단위 테스트에서 org.json 을 진짜로 돌리려고. 아래 build.gradle.kts 주석 참고.
@@ -37,6 +39,8 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakaoSdk" }
 naver-map-sdk = { group = "com.naver.maps", name = "map-sdk", version.ref = "naverMap" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesTest" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

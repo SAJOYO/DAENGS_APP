@@ -100,7 +100,9 @@ dependencies {
     implementation(libs.kakao.user)
     implementation(libs.naver.map.sdk)
     implementation(libs.play.services.location)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     // 안드로이드의 org.json 은 **프레임워크 안에만** 있고, 단위 테스트가 도는 JVM
     // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트
     // 클래스패스에 얹어 그 껍데기를 가린다. 앱 APK 에는 안 들어간다.
