@@ -35,6 +35,7 @@ import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
 import com.daengs.app.miniroom.OutsideView
+import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.miniroom.art.ItemCatalog
@@ -221,9 +222,11 @@ private fun RoomSection(
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
     var developer by remember { mutableStateOf(false) }
     var breedOverride by remember { mutableStateOf<DogBreed?>(null) }
-    // 창밖·문밖. 실제 시각·날씨가 붙기 전까지는 개발자 패널에서만 바뀐다.
-    // **여섯 벌을 기기에서 보려면 이게 있어야 한다** — 없으면 밤에 눈이 오길 기다려야 한다.
-    var outside by remember { mutableStateOf(OutsideView.DEFAULT) }
+    // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
+    // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
+    val liveOutside by rememberOutsideView()
+    var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
+    val outside = outsideOverride ?: liveOutside
     // @Preview 안에서는 무한 애니메이션이 돌지 않아 프레임 0 에 얼어붙는다.
     // 미리보기에서는 중간 프레임을 찍어 강아지 자세가 보이게 한다.
     val previewFrame = if (LocalInspectionMode.current) 400L else null
@@ -284,7 +287,7 @@ private fun RoomSection(
                 profileBreed = profileBreed,
                 onPickProfile = onPickProfile,
                 outside = outside,
-                onPickOutside = { outside = it },
+                onPickOutside = { outsideOverride = it },
                 signedIn = signedIn,
                 onSignOut = onSignOut,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
