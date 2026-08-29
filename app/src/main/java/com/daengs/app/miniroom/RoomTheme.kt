@@ -211,6 +211,9 @@ object ItemIds {
     const val BOWLS = "bowls"
     const val TURNTABLE = "turntable"
 
-    /** 인벤토리에 보여줄 순서. */
-    val ALL = listOf(RUG, RUG_CREAM, DOGHOUSE, CABINET, TURNTABLE, BASKET, BOWLS, PLANT, BALL)
+    /**
+     * 인벤토리에 보여줄 순서. **붙박이는 여기 없다** —
+     * [com.daengs.app.miniroom.RoomDefaults.FIXTURES] 가 방에 직접 놓는다.
+     */
+    val ALL = listOf(RUG, RUG_CREAM, DOGHOUSE, CABINET, BASKET, BOWLS, PLANT, BALL)
 }

@@ -26,6 +26,10 @@ val apiBaseUrl = localSetting("daengs.apiBaseUrl")
 // 비어 있으면 채팅의 진단 버튼이 스스로 그렇게 말한다.
 val screenUrl = localSetting("daengs.screenUrl")
 
+// 네이버 지도 NCP 키. 없어도 앱은 켜진다 — 지도 타일만 인증 실패로 비고,
+// 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
+val naverMapClientId = localSetting("daengs.naverMapClientId")
+
 android {
     namespace = "com.daengs.app"
     compileSdk {
@@ -46,6 +50,7 @@ android {
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
+        buildConfigField("String", "NAVER_MAP_NCP_KEY_ID", "\"$naverMapClientId\"")
 
         // 카카오 리다이렉트 스킴. 매니페스트가 이 자리를 비워 두고 여기서 꽂는다.
         manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
@@ -94,6 +99,8 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
     implementation(libs.mlkit.subject.segmentation)
+    implementation(libs.naver.map.sdk)
+    implementation(libs.play.services.location)
     testImplementation(libs.junit)
     // 안드로이드의 org.json 은 **프레임워크 안에만** 있고, 단위 테스트가 도는 JVM
     // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트

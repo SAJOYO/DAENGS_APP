@@ -24,6 +24,7 @@ import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
+import com.daengs.app.ui.places.PlacesScreen
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
@@ -32,7 +33,7 @@ import kotlinx.coroutines.launch
  *
  * [CutoutLab] 은 **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다.
  */
-private enum class Screen { Landing, Home, Chat, Dex, CutoutLab }
+private enum class Screen { Landing, Home, Chat, Dex, Places, CutoutLab }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,6 +112,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Home -> HomeScreen(
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
+                        onOpenPlaces = { screen = Screen.Places },
                         signedIn = session != null,
                         onSignOut = {
                             val old = session
@@ -130,6 +132,8 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.Chat -> ChatScreen(onBack = { screen = Screen.Home })
+
+                    Screen.Places -> PlacesScreen(onBack = { screen = Screen.Home })
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
 

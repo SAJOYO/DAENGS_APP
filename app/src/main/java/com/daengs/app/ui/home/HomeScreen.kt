@@ -92,6 +92,9 @@ fun HomeScreen(
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
     onOpenChat: (() -> Unit)? = null,
+    /** 산책기록 탭을 눌렀을 때. 장소 지도로 들어간다 — 지도 진입점을 어디에 둘지
+     *  제품 결정이 나기 전까지의 임시 배선이다 (이 탭은 그동안 아무것도 안 했다). */
+    onOpenPlaces: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -117,7 +120,9 @@ fun HomeScreen(
     // 저장된 배치가 있으면 그걸로 시작한다. 없거나 못 읽으면 기본 배치.
     // rememberSaveable 이 화면 회전을, 이쪽이 앱 재시작을 담당한다.
     val roomState = rememberMiniRoomState(
-        initial = remember { store.loadItems() ?: RoomDefaults.STARTER_ROOM },
+        // 저장본에는 붙박이가 없을 수 있다 (#15 이전에 깔린 폰).
+        // withFixtures 가 매번 얹으므로 여기 한 줄이면 마이그레이션이 끝난다.
+        initial = remember { RoomDefaults.withFixtures(store.loadItems() ?: RoomDefaults.STARTER_MOVABLES) },
     )
 
     // 배치가 바뀔 때마다 저장. 드래그는 놓을 때 한 번만 커밋되고 회전도 탭 한 번이라
@@ -150,6 +155,7 @@ fun HomeScreen(
                 onSelect = {
                     bottomTab = it
                     if (it == BottomTab.Dex) onOpenDex?.invoke()
+                    if (it == BottomTab.Walks) onOpenPlaces?.invoke()
                 },
                 onCenter = { onOpenChat?.invoke() },
             )
@@ -225,6 +231,9 @@ private fun RoomSection(
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
     var developer by remember { mutableStateOf(false) }
+    // 턴테이블 판. 방을 덮지 않고 아래에서 올라온다 — 이 방의 전축을 튼 것이라
+    // 방과 턴테이블이 계속 보여야 그 맥락이 산다.
+    var turntableOpen by remember { mutableStateOf(false) }
     var breedOverride by remember { mutableStateOf<DogBreed?>(null) }
     // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
     // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
@@ -260,6 +269,8 @@ private fun RoomSection(
             // 벽의 액자 -> 네오 채소 도감. 편집 중에는 안 받는다 — 가구를 옮기다가
             // 화면이 넘어가면 하던 일을 잃는다.
             onFrameTap = if (inventoryOpen) null else onOpenDex,
+            // 뒷벽의 턴테이블 -> 내 카드의 음악. 액자와 같은 이유로 편집 중에는 안 받는다.
+            onTurntableTap = if (inventoryOpen) null else { { turntableOpen = true } },
         )
         TodayCard(
             dateLabel = dateLabel,
@@ -307,6 +318,13 @@ private fun RoomSection(
         //
         // 정렬 자체는 BottomEnd 로 두고 offset 으로만 끌어온다 — 그래야
         // 이름표 크기를 재지 않아도 되고, 글꼴 크기가 커져도 안 흔들린다.
+        if (turntableOpen) {
+            TurntablePanel(
+                onClose = { turntableOpen = false },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+
         NamePlate(
             label = HomeDemoData.ROOM_LABEL,
             modifier = Modifier
