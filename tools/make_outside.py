@@ -2,13 +2,16 @@
 # requires-python = ">=3.11"
 # dependencies = ["pillow"]
 # ///
-"""창밖 풍경 여섯 벌을 굽는다 — 낮·밤 x 해·비·눈.
+"""**창밖과 문밖** 풍경을 여섯 벌씩 굽는다 — 낮·밤 x 해·비·눈.
 
-    uv run tools/make_window.py <드롭폴더>
+    uv run tools/make_outside.py <드롭폴더>
     uv run tools/import_room_assets.py <드롭폴더>
 
-앞엣것이 `<드롭폴더>/window/<시간>_<날씨>.png` 를 만들고, 뒤엣것이 구워서
-`window_<시간>_<날씨>.webp` 로 넣는다.
+앞엣것이 `<드롭폴더>/window/` 와 `<드롭폴더>/door/` 에 여섯 장씩 만들고,
+뒤엣것이 구워서 `window_<시간>_<날씨>.webp` · `door_<시간>_<날씨>.webp` 로 넣는다.
+
+**둘을 한 파일에서 만드는 이유**는 같은 세상으로 보여야 하기 때문이다. 문밖의
+하늘·나무 색은 창밖에서 그대로 뽑아 쓴다 — 따로 만들면 반드시 어긋난다.
 
 ## 왜 이렇게 만드나
 
@@ -413,9 +416,59 @@ VARIANTS = [
     ("day", "snow"), ("night", "snow"),
 ]
 
+# 문밖이 쓸 팔레트를 창밖에서 뽑아 둔다. **따로 정하면 반드시 어긋난다.**
+SKY_RAMP = {}      # 변종 -> 하늘 세로 그라데이션 (위에서 아래로)
+TREE_TONE = {}     # 변종 -> (밝은 잎, 어두운 잎)
+TREE_PATCH = {}    # 변종 -> 잎 픽셀 조각 (화풍을 그대로 옮기려고)
+
 for when, weather in VARIANTS:
     im = graded(GRADE[(when, weather)]).convert("RGB")
     night = when == "night"
+
+    # 나무를 지우기 **전에** 뽑는다 — 눈 버전은 지운 뒤라 잎 색이 사라진다
+    q = im.load()
+    sky_rows = []
+    for y in range(SH):
+        v = [q[x, y] for x in range(SW) if LAYER[y][x] == "sky"]
+        if v:
+            v.sort(key=sum)
+            sky_rows.append((y, v[len(v) // 2]))
+    SKY_RAMP[(when, weather)] = sky_rows
+    leaves = sorted((q[x, y] for x, y in tree_cells), key=sum)
+    TREE_TONE[(when, weather)] = (leaves[int(len(leaves) * 0.78)],
+                                  leaves[int(len(leaves) * 0.22)])
+
+    # **잎 조각을 통째로 떠 둔다.** 색만 뽑아 매끈한 타원으로 그렸더니 문밖만
+    # 벡터 그림이 됐다. 창밖의 픽셀을 그대로 옮겨야 같은 세상으로 보인다.
+    #
+    # 뜨는 자리는 **나무가 제일 빽빽한 칸**이다. 처음에 나무 경계상자의 왼쪽 위를
+    # 떴다가 거기가 하늘·구름이라 크림색 리본이 나왔다 — 경계상자의 모서리는
+    # 나무가 아니다.
+    P = 96
+    dens = None
+    for oy in range(0, SH - P, 8):
+        for ox in range(0, SW - P, 8):
+            n = sum(1 for xx in range(ox, ox + P, 4) for yy in range(oy, oy + P, 4)
+                    if LAYER[yy][xx] == "tree")
+            if dens is None or n > dens[0]:
+                dens = (n, ox, oy)
+    _, ox, oy = dens
+    patch = im.crop((ox, oy, ox + P, oy + P)).copy()
+
+    # 제일 빽빽한 칸에도 하늘 틈과 줄기가 섞여 있다. 그대로 이어 붙이면 그 틈이
+    # **세로 막대로 반복**된다. 잎이 아닌 화소를 잎으로 바꿔 순수하게 만든다.
+    pp = patch.load()
+    pool = [(xx, yy) for yy in range(P) for xx in range(P)
+            if LAYER[oy + yy][ox + xx] == "tree"]
+    if pool:
+        rr = random.Random(41)
+        for yy in range(P):
+            for xx in range(P):
+                if LAYER[oy + yy][ox + xx] != "tree":
+                    sx, sy = rr.choice(pool)
+                    pp[xx, yy] = pp[sx, sy]
+    TREE_PATCH[(when, weather)] = patch
+
     if weather == "snow":
         im = bare_trees(im, night)
     if night:
@@ -441,3 +494,200 @@ for i, (when, weather) in enumerate(VARIANTS):
     sheet.paste(flat, ((i // 2) * (SW + 12), (i % 2) * (SH + 12)))
 sheet.save(OUT / "_sheet.png")
 print(f"\n-> {OUT}/_sheet.png  (왼쪽부터 해·비·눈, 위 낮 / 아래 밤)")
+
+
+# ===========================================================================
+# 문밖
+#
+# 문을 열면 보이는 바깥이다. 예전에는 **창유리 한 칸을 문 비율로 늘려** 썼는데
+# (`DoorSpec.outside`), 창은 236x498 이고 문은 137x382 라 늘리면 그림이 뭉개진다.
+# 게다가 아래쪽이 나뭇잎이라 "바닥까지 내려온 창"으로 보여서, 잔디·흙길 띠를
+# 코드로 덮어 가리고 있었다 (HISTORY 9절). 그 띠 색도 낮·맑음으로 박혀 있다.
+#
+# 그래서 문 비율로 따로 그린다. **하늘과 잎 색은 창밖에서 뽑아 쓴다** — 같은
+# 세상이어야 하고, 따로 정하면 반드시 어긋난다.
+#
+#   문짝   137 x 382 (방 PNG 픽셀), 비율 0.359
+#   지평선 높이의 0.62   (`RoomShellShapes.HORIZON`)
+#   기울기 밑변이 오른쪽으로 갈수록 높이의 12.83% 만큼 올라간다 (`DoorSpec.SHEAR`)
+#
+# 아치와 기울어진 밑변은 **굽지 않는다.** 그리는 쪽이 이미 `doorPath` 로 오려내므로
+# 여기서는 네모로 그리고 지평선만 기울인다.
+# ===========================================================================
+
+DOOR_W, DOOR_H = 274, 764        # 문짝 137x382 의 2배
+HORIZON = 0.62                   # RoomShellShapes.HORIZON
+SHEAR = 0.8717 - 1.0000          # DoorSpec.SHEAR — 오른쪽이 올라간다
+
+
+def door_scene(when, weather):
+    night = when == "night"
+    W, H = DOOR_W, DOOR_H
+    im = Image.new("RGB", (W, H), (0, 0, 0))
+    d = ImageDraw.Draw(im)
+    # 씨앗을 **문자열로** 준다. `hash()` 는 파이썬 실행마다 값이 달라져서
+    # (문자열 해시 랜덤화) 돌릴 때마다 다른 그림이 나왔다 — 재현이 안 된다.
+    # `Random(str)` 은 sha512 를 쓰므로 실행과 무관하게 같다.
+    rnd = random.Random(f"door-{when}-{weather}")
+
+    # --- 하늘. 창밖에서 뽑은 세로 그라데이션을 문 높이에 펴 바른다
+    ramp = SKY_RAMP[(when, weather)]
+    sky_h = H * HORIZON
+    for y in range(round(sky_h) + 2):
+        t = y / max(1.0, sky_h)
+        c = ramp[min(len(ramp) - 1, round(t * (len(ramp) - 1)))][1]
+        d.line([(0, y), (W, y)], fill=c)
+
+    lift = SHEAR * H                       # 오른쪽 끝이 올라가는 양(음수)
+
+    def band(v0, v1, color, grain=6):
+        """지평선과 나란한 띠. 밑변이 기울어 있으므로 같이 기운다.
+
+        평평하게 칠하면 벡터 그림이 된다. 방이 픽셀 아트라 결을 조금 얹는다.
+        """
+        y0, y1 = H * v0, H * v1
+        d.polygon([(0, y0), (W, y0 + lift), (W, y1 + lift), (0, y1)], fill=color)
+        if grain:
+            for _ in range(round((y1 - y0) * W / 60)):
+                gx = rnd.randrange(0, W)
+                gy = rnd.uniform(y0 + lift * gx / W, y1 + lift * gx / W)
+                n = rnd.randint(-grain, grain)
+                d.point((gx, round(gy)), fill=tuple(max(0, min(255, v + n)) for v in color))
+
+    # --- 먼 산. 창밖의 산과 같은 자리에 오도록 지평선 바로 위에
+    hill = tuple(round(a * 0.90 + b * 0.10) for a, b in
+                 zip(ramp[-1][1], (90, 110, 130)))
+    for i in range(5):
+        hx = rnd.randrange(-30, W + 30)
+        hw = rnd.randint(70, 150)
+        hh = rnd.randint(16, 34)
+        d.polygon([(hx - hw, sky_h + 2), (hx, sky_h - hh), (hx + hw, sky_h + 2)], fill=hill)
+
+    # --- 땅. 잔디 두 겹과 흙길. 색은 날씨를 탄다
+    if weather == "snow":
+        far, near = (232, 238, 246), (244, 248, 252)
+        path, edge = (250, 252, 255), (222, 230, 240)
+    elif weather == "rain":
+        far, near = (86, 104, 74), (98, 116, 82)
+        path, edge = (122, 108, 86), (96, 84, 66)
+    else:
+        far, near = (126, 154, 92), (147, 175, 102)      # GrassFar · GrassNear
+        path, edge = (220, 198, 154), (184, 161, 118)    # PathSun · PathEdge
+    if night:
+        k = 0.34 if weather != "snow" else 0.52
+        far, near, path, edge = (tuple(round(v * k) for v in c)
+                                 for c in (far, near, path, edge))
+
+    band(HORIZON, HORIZON + 0.10, far)
+    band(HORIZON + 0.10, HORIZON + 0.19, near)
+    band(HORIZON + 0.19, 1.04, path)
+    band(HORIZON + 0.19, HORIZON + 0.215, edge)
+
+    # --- 나무. 문 양옆에서 안쪽으로 기울어 문간을 감싼다
+    leaf_hi, leaf_lo = TREE_TONE[(when, weather)]
+    bark = (56, 42, 36) if not night else (22, 20, 26)
+
+    patch = TREE_PATCH[(when, weather)]
+
+    def foliage(cx, cy, r):
+        """수관 모양 마스크를 만들고 **창밖 잎 픽셀로 채운다.**
+
+        타원을 색으로 칠하면 매끈한 벡터가 되어 창밖과 화풍이 갈린다. 모양만
+        여기서 만들고 내용은 창밖에서 가져온다.
+        """
+        box = (round(cx - r), round(cy - r * 0.86), round(cx + r), round(cy + r * 0.86))
+        bw, bh = max(1, box[2] - box[0]), max(1, box[3] - box[1])
+        m = Image.new("L", (bw, bh), 0)
+        md = ImageDraw.Draw(m)
+        for i in range(14):
+            a = rnd.uniform(0, math.tau)
+            rr = r * rnd.uniform(0.30, 0.62)
+            ox = bw / 2 + math.cos(a) * r * rnd.uniform(0, 0.7)
+            oy = bh / 2 + math.sin(a) * r * rnd.uniform(0, 0.6)
+            md.ellipse([ox - rr, oy - rr * 0.86, ox + rr, oy + rr * 0.86], fill=255)
+        fill = Image.new("RGB", (bw, bh))
+        for yy in range(0, bh, patch.height):        # 조각을 이어 붙여 채운다
+            for xx in range(0, bw, patch.width):
+                fill.paste(patch, (xx, yy))
+        im.paste(fill, (box[0], box[1]), m)
+
+    def winter_tree(x0, y0, h, lean):
+        def br(x, y, ang, ln, w, depth):
+            if depth == 0 or ln < 2:
+                return
+            x2 = x + math.cos(ang) * ln
+            y2 = y - math.sin(ang) * ln
+            d.line([(x, y), (x2, y2)], fill=bark, width=max(1, round(w)))
+            if depth <= 2 and rnd.random() < 0.5:
+                d.line([(x, y - 1), (x2, y2 - 1)], fill=(238, 244, 250) if not night
+                       else (150, 165, 190), width=1)
+            for i in range(2 if depth > 3 else 3):
+                off = rnd.uniform(0.22, 0.55) * (1 if i % 2 else -1)
+                br(x2, y2, ang + off, ln * rnd.uniform(0.64, 0.80), w * 0.68, depth - 1)
+        d.line([(x0, y0), (x0 + lean * h * 0.12, y0 - h * 0.34)], fill=bark,
+               width=max(2, round(h * 0.045)))
+        br(x0 + lean * h * 0.12, y0 - h * 0.34, math.pi / 2 - lean * 0.22,
+           h * 0.30, max(2, h * 0.038), 6)
+
+    gy = H * (HORIZON + 0.06)
+    for side in (-1, 1):
+        x0 = W * (0.10 if side < 0 else 0.90)
+        if weather == "snow":
+            winter_tree(x0, gy, H * 0.46, -side)
+        else:
+            foliage(x0, gy - H * 0.22, W * 0.30)
+            foliage(x0 + side * W * 0.06, gy - H * 0.36, W * 0.22)
+            d.line([(x0, gy), (x0, gy - H * 0.20)], fill=bark, width=max(2, round(W * 0.022)))
+
+    # --- 날씨 겹. 창밖과 같은 규칙이다
+    if night:
+        rgba = im.convert("RGBA")
+        dd = ImageDraw.Draw(rgba, "RGBA")
+        for _ in range(90):                       # 별
+            sx, sy = rnd.randrange(0, W), rnd.randrange(0, round(sky_h * 0.85))
+            b = rnd.randint(150, 255)
+            dd.point((sx, sy), fill=(b, b, min(255, b + 12), rnd.randint(120, 255)))
+        mx, my = round(W * 0.72), round(sky_h * 0.22)   # 달
+        for r, a in ((22, 26), (17, 40), (13, 70)):
+            dd.ellipse([mx - r, my - r, mx + r, my + r], fill=(226, 236, 255, a))
+        dd.ellipse([mx - 11, my - 11, mx + 11, my + 11], fill=(250, 249, 236, 250))
+        im = rgba.convert("RGB")
+
+    if weather == "rain":
+        rgba = im.convert("RGBA")
+        dd = ImageDraw.Draw(rgba, "RGBA")
+        base_a = 150 if not night else 118
+        COLS, ROWS = 20, 10
+        cw, ch = W / COLS, (H + 90) / ROWS
+        for r in range(ROWS):
+            for c in range(COLS):
+                x = round((c + rnd.random()) * cw)
+                y = round((r + rnd.random()) * ch) - 90
+                ln = rnd.randint(34, 72)          # 문이 세로로 기니 창보다 길게
+                a = round(base_a * rnd.choice((1.0, 0.72, 0.48)))
+                dd.line([(x, y), (x, y + ln)], fill=(234, 244, 254, a), width=1)
+        im = rgba.convert("RGB")
+    elif weather == "snow":
+        rgba = im.convert("RGBA")
+        dd = ImageDraw.Draw(rgba, "RGBA")
+        a = 225 if not night else 190
+        for _ in range(200):
+            sx, sy = rnd.randrange(0, W), rnd.randrange(0, H)
+            r = rnd.choice([0, 0, 1, 1, 2])
+            dd.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(255, 255, 255, a))
+        im = rgba.convert("RGB")
+    return im
+
+
+door_dir = OUT / "door"
+door_dir.mkdir(parents=True, exist_ok=True)
+for when, weather in VARIANTS:
+    door_scene(when, weather).save(door_dir / f"{when}_{weather}.png")
+    print(f"  door/{when}_{weather}.png")
+
+dsheet = Image.new("RGB", (DOOR_W * 3 + 24, DOOR_H * 2 + 12), (16, 22, 30))
+for i, (when, weather) in enumerate(VARIANTS):
+    dsheet.paste(Image.open(door_dir / f"{when}_{weather}.png"),
+                 ((i // 2) * (DOOR_W + 12), (i % 2) * (DOOR_H + 12)))
+dsheet.save(OUT / "_door_sheet.png")
+print(f"-> {OUT}/_door_sheet.png")
