@@ -65,6 +65,34 @@ object Cutout {
      */
     private const val MODEL_WAIT_MS = 20_000L
 
+    /** 원형 마스크의 가장자리를 흐리는 폭(반지름 대비). 딱 자르면 톱니가 보인다. */
+    private const val CIRCLE_FEATHER = 0.06f
+
+    /** [Mask.SoftBottom] 이 아래에서부터 녹이는 높이(결과 높이 대비). */
+    private const val FADE_HEIGHT = 0.22f
+
+    /**
+     * 오려낸 것을 어떤 모양으로 남길 것인가.
+     *
+     * 세그멘테이션은 **상자 안에서 배경만** 지운다. 상자에 목과 가슴이 들어와 있으면
+     * 그것도 피사체라 같이 남는다 — 얼굴만 쓰고 싶을 때 이게 문제가 된다.
+     */
+    enum class Mask {
+        /** 누끼 알파 그대로. 귀 실루엣이 살지만 **목이 남는다.** */
+        Silhouette,
+
+        /** 원으로 잘라낸다. 목이 깔끔히 빠지지만 **처진 귀가 잘린다.** */
+        Circle,
+
+        /**
+         * 누끼를 두되 아래쪽만 서서히 지운다.
+         *
+         * 귀는 살고 목은 녹아 없어진다. 초상화에서 흔한 방식이고, 자른 자리가
+         * 직선으로 남지 않아 "오려 붙인 사진" 으로 안 보인다.
+         */
+        SoftBottom,
+    }
+
     sealed interface Result {
         val bitmap: Bitmap
 
@@ -131,7 +159,7 @@ object Cutout {
      *   둘이거나 사람이 같이 찍혀 있으면 "피사체"가 우리가 원하는 것이 아닐 수 있고,
      *   얼굴만 쓸 것이라면 어차피 잘라야 한다.
      */
-    suspend fun of(photo: Bitmap, box: FloatArray? = null): Result =
+    suspend fun of(photo: Bitmap, box: FloatArray? = null, mask: Mask = Mask.Silhouette): Result =
         withContext(Dispatchers.Default) {
             val cropped = box?.let { photo.crop(it) } ?: photo
             val scaled = cropped.scaledToFit(MAX_EDGE)
@@ -145,12 +173,19 @@ object Cutout {
                 val masked = scaled.ellipseMasked()
                 if (scaled !== photo) scaled.recycle()
                 val cause = attempt.exceptionOrNull()
+                // 폴백은 이미 타원이라 [Mask] 를 또 씌우지 않는다.
                 Result.Ellipse(withOutline(masked), reasonOf(cause), pending = cause.isPending)
             } else {
                 if (scaled !== photo && scaled !== foreground) scaled.recycle()
-                val trimmed = foreground.trimToContent()
-                if (trimmed !== foreground) foreground.recycle()
-                Result.Cut(withOutline(trimmed))
+                // **원형은 테두리를 두르기 전에** 씌운다. 그래야 띠가 원을 따라 돌아
+                // 아바타처럼 보인다. 아래 페이드는 반대로 **두른 뒤**다 — 먼저 하면
+                // 옅어진 알파를 따라 띠가 호를 그린다.
+                val shaped = if (mask == Mask.Circle) foreground.circleMasked() else foreground
+                if (shaped !== foreground) foreground.recycle()
+                val trimmed = shaped.trimToContent()
+                if (trimmed !== shaped) shaped.recycle()
+                val outlined = withOutline(trimmed)
+                Result.Cut(if (mask == Mask.SoftBottom) outlined.fadedBottom() else outlined)
             }
         }
 
@@ -312,6 +347,61 @@ object Cutout {
         canvas.drawOval(RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
         canvas.drawBitmap(this, 0f, 0f, paint)
+        return out
+    }
+
+    /**
+     * 안쪽에 딱 맞는 원 밖을 지운다. 가장자리는 [CIRCLE_FEATHER] 만큼 흐린다 —
+     * 딱 자르면 톱니가 보이고, 그러면 오려 붙인 티가 난다.
+     */
+    private fun Bitmap.circleMasked(): Bitmap {
+        val w = width
+        val h = height
+        val pixels = IntArray(w * h)
+        getPixels(pixels, 0, w, 0, 0, w, h)
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = minOf(w, h) / 2f
+        val inner = 1f - CIRCLE_FEATHER
+        for (y in 0 until h) {
+            val row = y * w
+            for (x in 0 until w) {
+                val d = kotlin.math.hypot(x + 0.5f - cx, y + 0.5f - cy) / r
+                val k = when {
+                    d <= inner -> 1f
+                    d >= 1f -> 0f
+                    else -> 1f - (d - inner) / CIRCLE_FEATHER
+                }
+                if (k >= 1f) continue
+                val p = pixels[row + x]
+                val a = ((p ushr 24) * k).toInt().coerceIn(0, 255)
+                pixels[row + x] = (a shl 24) or (p and 0x00FFFFFF)
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    /** 아래 [FADE_HEIGHT] 만큼을 서서히 지운다. **[this] 를 지운다.** */
+    private fun Bitmap.fadedBottom(): Bitmap {
+        val w = width
+        val h = height
+        val pixels = IntArray(w * h)
+        getPixels(pixels, 0, w, 0, 0, w, h)
+        val start = (h * (1f - FADE_HEIGHT))
+        for (y in start.toInt().coerceAtLeast(0) until h) {
+            val k = (1f - (y - start) / (h - start)).coerceIn(0f, 1f)
+            val row = y * w
+            for (x in 0 until w) {
+                val p = pixels[row + x]
+                val a = ((p ushr 24) * k).toInt().coerceIn(0, 255)
+                pixels[row + x] = (a shl 24) or (p and 0x00FFFFFF)
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        recycle()
         return out
     }
 
