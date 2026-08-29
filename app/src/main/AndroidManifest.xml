@@ -4,6 +4,13 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+      창밖 날씨를 그 자리 기준으로 받으려고 쓴다 (Open-Meteo).
+      **정밀 위치는 안 받는다** — 시·군 단위면 충분하고, 장식 하나에 정밀 위치를
+      묻는 건 과하다. 거부해도 앱은 그대로 돌아간다 (맑은 낮으로 떨어진다).
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
          여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,
          톡이 깔려 있어도 웹 로그인으로 넘어간다. -->

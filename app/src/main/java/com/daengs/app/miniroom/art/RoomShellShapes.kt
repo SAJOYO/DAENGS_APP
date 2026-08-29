@@ -52,6 +52,44 @@ fun DrawScope.drawRoomBackground(g: RoomGeometry, room: ImageBitmap) {
 }
 
 /**
+ * 창유리가 방 그림에서 차지하는 자리.
+ *
+ * **마스크는 여기 없다.** 창밖 그림이 이미 유리 모양으로 잘려 있어서(알파), 코드가
+ * 아는 것은 얹을 사각형 하나뿐이다. 창살을 좌표로 잡아 오려내는 일이 없다.
+ *
+ * 값은 손으로 잰 게 아니라 **테마 여섯 장을 겹쳐 뽑았다.** 창틀·창살·벽은 테마마다
+ * 색이 달라지고 유리 안 풍경은 안 변하므로, 전부 일치하는 화소가 곧 유리다
+ * (`tools/make_outside.py`). 저쪽이 방 아트를 다시 그리면 그 스크립트를 다시 돌린다.
+ */
+object WindowSpec {
+    val glass = Rect(left = 30.66f, top = 15.55f, right = 51.69f, bottom = 51.07f)
+
+    /** 백분율 → 화면 px */
+    fun rectOf(g: RoomGeometry): Rect = Rect(
+        g.stage.left + glass.left / 100f * g.stage.width,
+        g.stage.top + glass.top / 100f * g.stage.height,
+        g.stage.left + glass.right / 100f * g.stage.width,
+        g.stage.top + glass.bottom / 100f * g.stage.height,
+    )
+}
+
+/**
+ * 창밖. 방 그림 **위에** 유리 자리로 얹는다.
+ *
+ * 방 그림을 깔고 곧바로 부른다 — 소품·강아지보다 뒤이고, 창틀·창살은 방 그림에
+ * 구워져 있으므로 이 그림이 그 위를 덮지 않는다(유리 모양으로 잘려 있다).
+ */
+fun DrawScope.drawWindowOutside(g: RoomGeometry, outside: ImageBitmap) {
+    val dst = WindowSpec.rectOf(g)
+    drawImage(
+        image = outside,
+        dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
+        dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
+        filterQuality = FilterQuality.None,
+    )
+}
+
+/**
  * 문 규격 — **방 그림에 자로 재서 뽑은 값**이다.
  *
  * 예전엔 벽 평면 좌표계(u, h)로 문을 정의했다. 벽을 코드로 그리던 시절엔 그게 맞았지만
@@ -103,15 +141,6 @@ object DoorSpec {
      */
     val SHEAR: Float get() = BOTTOM.last() - BOTTOM.first()
 
-    /**
-     * 문 너머로 보여줄 바깥. **창유리에서 오려 쓴다.**
-     *
-     * 문간을 어둡게 칠했더니 나가는 문이 아니라 검은 구멍으로 읽혔다. 밖이 보여야
-     * 나가는 문이다. 새로 그리면 화풍이 깨지므로 같은 그림의 창유리를 쓴다 —
-     * 창살이 안 걸리는 오른쪽 아래 한 칸이다.
-     */
-    val outside = Rect(left = 42.87f, top = 30.53f, right = 48.84f, bottom = 43.37f)
-
     /** 경첩은 오른쪽. 그림에서 손잡이가 왼쪽에 있다. 열릴 때 이쪽으로 눌린다. */
     const val HINGE_RIGHT = true
 
@@ -144,52 +173,39 @@ object DoorSpec {
  * 방 그림을 깔아둔 **뒤에**, 소품과 강아지보다 **앞서** 부른다. 문으로 든 볕이
  * 소품 밑으로 깔려야 하기 때문이다.
  *
- *  1. 문 너머 바깥 — 창유리를 오려 늘린다
+ *  1. 문 너머 바깥 — **문 비율로 그린 [outside]** 를 깐다 (하늘·땅·길이 다 들어 있다)
  *  2. 문지방 볕과 인방 그늘 — 평평한 스티커로 안 보이게
- *  3. 눌린 문짝 — 같은 그림에서 오려 경첩 쪽으로 누른다
+ *  3. 눌린 문짝 — 방 그림에서 오려 경첩 쪽으로 누른다
  *  4. 바닥에 번지는 볕 — 이게 "나간다"를 만든다
  */
-fun DrawScope.drawDoorOpening(g: RoomGeometry, room: ImageBitmap, open: Float) {
+fun DrawScope.drawDoorOpening(
+    g: RoomGeometry,
+    room: ImageBitmap,
+    outside: ImageBitmap,
+    open: Float,
+) {
     if (open <= 0.001f) return
 
     val dst = DoorSpec.rectOf(g, DoorSpec.leaf)
+    // 밑변이 기운 만큼. 문지방 볕을 놓는 데 쓴다 (4번)
     val lift = DoorSpec.SHEAR * dst.height
 
     clipPath(doorPath(dst)) {
-        // 1) 바깥. 창유리 한 칸을 문 비율로 늘린다
-        val view = DoorSpec.sourcePx(room, DoorSpec.outside)
+        // 1) 바깥. **문 비율로 따로 그린 그림**을 그대로 깐다.
+        //
+        // 예전에는 창유리 한 칸을 늘려 썼는데(`DoorSpec.outside`), 창은 236x498 이고
+        // 문은 137x382 라 늘리면 뭉갰다. 게다가 창유리 아래쪽이 나뭇잎이라 문이
+        // 아니라 "바닥까지 내려온 창" 으로 읽혀서, 잔디·흙길 띠를 코드로 덮어
+        // 가리고 있었다. 그 띠 색이 낮·맑음으로 박혀 있어 밤이어도 문만 대낮이었다.
+        //
+        // 이제 하늘·땅·길이 그림 안에 다 있다. 지평선 기울기도 구워져 있어서
+        // 여기서 기울일 것이 없다.
         drawImage(
-            image = room,
-            srcOffset = IntOffset(view.left, view.top),
-            srcSize = IntSize(view.width, view.height),
+            image = outside,
             dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
             dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
             filterQuality = FilterQuality.None,
         )
-
-        // 2) 나갈 땅. **이게 없으면 창문으로 보인다.**
-        //
-        // 창유리를 그대로 쓰면 아래쪽이 나뭇잎이라 문이 아니라 바닥까지 내려온
-        // 창처럼 읽힌다. 아래를 잔디와 흙길로 덮어야 나갈 데가 생긴다.
-        // 밑변이 기울어 있으므로 지평선도 같이 기운다.
-        fun band(v0: Float, v1: Float, color: Color) {
-            val y0 = dst.top + dst.height * v0
-            val y1 = dst.top + dst.height * v1
-            drawPath(
-                Path().apply {
-                    moveTo(dst.left, y0)
-                    lineTo(dst.right, y0 + lift)
-                    lineTo(dst.right, y1 + lift)
-                    lineTo(dst.left, y1)
-                    close()
-                },
-                color,
-            )
-        }
-        band(HORIZON, HORIZON + 0.10f, GrassFar)
-        band(HORIZON + 0.10f, HORIZON + 0.19f, GrassNear)
-        band(HORIZON + 0.19f, 1.04f, PathSun)
-        band(HORIZON + 0.19f, HORIZON + 0.215f, PathEdge)
     }
 
     // 3) 눌린 문짝. 잘라내기도 이미지와 **똑같이** 눌러야 한다. 눌린 사각형에
@@ -277,19 +293,9 @@ fun DrawScope.drawDoorHint(g: RoomGeometry, pulse: Float) {
     drawPath(doorPath(DoorSpec.rectOf(g, DoorSpec.leaf)), Color.White.copy(alpha = 0.10f * pulse))
 }
 
-/**
- * 문 너머 지평선 위치. 문짝 높이 대비.
- *
- * 이 아래는 창유리 대신 땅을 깐다. 창유리만 쓰면 아래쪽이 나뭇잎이라
- * 바닥까지 내려온 창처럼 보인다.
- */
-private const val HORIZON = 0.62f
-
-/** 바깥 땅. 먼 잔디 → 가까운 잔디 → 볕 든 흙길 순으로 깔린다. */
-private val GrassFar = Color(0xFF7E9A5C)
-private val GrassNear = Color(0xFF93AF66)
-private val PathEdge = Color(0xFFB8A176)
-private val PathSun = Color(0xFFDCC69A)
+// 문 너머 지평선(0.62)과 잔디·흙길 색은 여기 있었다. 이제 문밖 그림 안에 들어
+// 있으므로 코드에서 걷어냈다. **값은 `tools/make_outside.py` 로 옮겨 갔다** —
+// 그림을 다시 그릴 때 지평선 높이가 필요하면 거기를 본다.
 
 /** 문으로 들어온 볕. 바닥에 번진다. */
 private val Sunbeam = Color(0xFFFFE9B8)
