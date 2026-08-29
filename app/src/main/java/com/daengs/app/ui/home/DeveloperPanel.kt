@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.DogHerd
 import com.daengs.app.miniroom.MiniRoomState
+import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.RoomSpec
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.DogAvatar
@@ -77,6 +78,8 @@ fun DeveloperPanel(
     onPickBreed: (DogBreed?) -> Unit,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    outside: OutsideView,
+    onPickOutside: (OutsideView) -> Unit,
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
     /**
@@ -147,6 +150,18 @@ fun DeveloperPanel(
         // 글자 칩을 한 줄 더 붙이지 않고 얼굴을 늘어놓는다. 25개를 글자로 훑으면
         // 원하는 걸 찾기까지 한참 밀어야 하는데, 얼굴은 한눈에 보인다. 어차피
         // 여기서 고르는 것이 그 얼굴이라 미리보기를 겸한다.
+        // 창밖·문밖. **실제 시각·날씨가 붙어도 이 줄은 남긴다** — 밤·눈을 보려고
+        // 밤에 눈이 오길 기다릴 수는 없다. 여섯 벌을 여기서 강제로 넘긴다.
+        Text("창밖  ${outside.label}", color = PanelDim, fontSize = 9.sp)
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            OutsideView.entries.forEach { v ->
+                BreedChip(v.label, outside == v) { onPickOutside(v) }
+            }
+        }
+
         Text("프로필  ${profileBreed.label}", color = PanelDim, fontSize = 9.sp)
         Row(
             Modifier.horizontalScroll(rememberScrollState()),

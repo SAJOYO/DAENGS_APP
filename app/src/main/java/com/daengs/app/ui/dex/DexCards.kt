@@ -36,9 +36,10 @@ data class DexCard(
 /**
  * 카드 순서 = 도감 순서다. No.01 부터.
  *
- * No.01 배추만 저쪽에서 `immersive`(꾹 누르면 카드 안으로 들어가는 별개 뷰)인데,
- * 그건 CSS 723줄 + JS 524줄짜리 다른 물건이라 여기서는 [Foil.Prism] 으로 대신 둔다.
- * 옮길지 말지는 나머지가 자리를 잡은 뒤에 정한다.
+ * **저쪽에서 `immersive` 인 카드는 여기서도 포일을 하나 골라 둔다.** 이머시브는 꾹
+ * 눌러야 들어가는 별개 뷰이고(`IMMERSIVE_SCENES`), 그 전까지 그리드와 확대 뷰에서는
+ * 여느 카드처럼 그려져야 하는데 [Foil] 에는 `immersive` 항목이 없기 때문이다.
+ * No.01 배추는 [Foil.Prism], No.10 고구마는 원래 값이던 [Foil.Cosmos] 를 그대로 둔다.
  */
 val DEX_CARDS: List<DexCard> = listOf(
     DexCard(1, "cabbage", "Cabbage Neo", "CRUNCH", 820, Foil.Prism, Color(0xFF8FD94A)),

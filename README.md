@@ -150,7 +150,7 @@ app/          안드로이드 앱 (Kotlin + Jetpack Compose)
     miniroom/   미니룸 — 좌표계·배치·강아지·그리기
     ui/         홈 화면, 인벤토리, 개발자 패널
   src/main/res/drawable-nodpi/   픽셀 아트 (WebP)
-  src/test/     단위 테스트 57개
+  src/test/     단위 테스트 84개
 tools/        파이썬 도구 (에셋 반입·가공)
 docs/         에셋 제작 워크플로, 아이소메트릭 템플릿
 design/       화면 시안
@@ -190,7 +190,10 @@ uv run tools/<이름>.py
 | `import_room_assets.py` | 에셋 드롭 폴더 → `drawable-nodpi` 반입. 배경 뚫기·조각 털기·WebP 변환·리소스 이름 짓기를 한 번에 |
 | `room_cutout.py` | 방 PNG 의 바깥 배경을 투명하게. 강아지 시트에서 몸과 떨어진 조각도 털어낸다 (위 스크립트가 부른다) |
 | `trace_door.py` | 방 그림에서 문 윤곽을 떠서 `DoorSpec` 값을 뽑는다. 확인용 이미지도 같이 낸다 |
+| `make_outside.py` | 창밖·문밖 풍경 12장(낮·밤 x 해·비·눈). 방 그림에서 유리를 오려 다시 칠한다. **씨앗이 고정이라 돌릴 때마다 같은 그림이 나온다** |
+| `make_turntable.py` | 턴테이블 소품을 테마 6종으로 찍는다 |
 | `isoasset.py` | 아이소메트릭 템플릿 생성, 스프라이트 각도 검사 |
+| `convert_audio.py` | 배경음 변환 |
 
 ---
 
@@ -219,6 +222,15 @@ gh api "repos/frankie516c/dog-training-rag/contents/<경로>?ref=<브랜치>" \
 받은 것을 `reference-room.png` + `themes/<테마>/*.png` + `dogs/<견종>.png` 구조로
 모아 `uv run tools/import_room_assets.py <드롭폴더>` 를 돌린다.
 
+**우리가 직접 그린 것도 같은 문으로 들어간다.** 드롭 폴더에 `window/` · `door/` 가
+있으면 창밖·문밖으로 반입한다. 방 그림(`reference-room.png`)이 없어도 되므로 소품만
+넣을 때도 이걸 쓴다.
+
+```
+<드롭폴더>/window/day_clear.png   ->  R.drawable.window_day_clear
+<드롭폴더>/door/night_snow.png    ->  R.drawable.door_night_snow
+```
+
 새 그림이 오면 **실기기에 올려 화면 크기에서** 확인한다. 강아지는 원본 프레임 582px 가
 화면에서 77~134px 로 그려진다 — 원본 크기로만 보면 문제가 안 보인다.
 
@@ -230,5 +242,5 @@ gh api "repos/frankie516c/dog-training-rag/contents/<경로>?ref=<브랜치>" \
 ./gradlew :app:testDebugUnitTest
 ```
 
-단위 테스트 57개가 좌표 변환·배치·앞뒤 정렬·문 터치·견종 규격을 잡는다.
+단위 테스트 84개가 좌표 변환·배치·앞뒤 정렬·문 터치·견종 규격·창밖 매핑을 잡는다.
 **그림이 예쁜지는 테스트가 못 잡는다** — 그건 실기기에서 본다.
