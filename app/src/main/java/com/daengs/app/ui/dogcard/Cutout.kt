@@ -68,36 +68,22 @@ object Cutout {
     /** 원형 마스크의 가장자리를 흐리는 폭(반지름 대비). 딱 자르면 톱니가 보인다. */
     private const val CIRCLE_FEATHER = 0.06f
 
-    /** [Mask.SoftBottom] 이 아래에서부터 녹이는 높이(결과 높이 대비). */
-    private const val FADE_HEIGHT = 0.22f
+    /** 목선을 못 찾았을 때 쓰는 자리(높이 대비). */
+    private const val NECK_FALLBACK = 0.74f
 
-    /**
-     * 오려낸 것을 어떤 모양으로 남길 것인가.
-     *
-     * 세그멘테이션은 **상자 안에서 배경만** 지운다. 상자에 목과 가슴이 들어와 있으면
-     * 그것도 피사체라 같이 남는다 — 얼굴만 쓰고 싶을 때 이게 문제가 된다.
-     */
-    enum class Mask {
-        /** 누끼 알파 그대로. 귀 실루엣이 살지만 **목이 남는다.** */
-        Silhouette,
-
-        /** 원으로 잘라낸다. 목이 깔끔히 빠지지만 **처진 귀가 잘린다.** */
-        Circle,
-
-        /**
-         * 누끼를 두되 아래쪽만 서서히 지운다.
-         *
-         * 귀는 살고 목은 녹아 없어진다. 초상화에서 흔한 방식이고, 자른 자리가
-         * 직선으로 남지 않아 "오려 붙인 사진" 으로 안 보인다.
-         */
-        SoftBottom,
-    }
+    /** 목선 아래로 이만큼(높이 대비) 걸쳐 사라진다. */
+    private const val FADE_SPAN = 0.16f
 
     sealed interface Result {
         val bitmap: Bitmap
 
-        /** 세그멘테이션이 실제로 오려냈다. */
-        data class Cut(override val bitmap: Bitmap) : Result
+        /**
+         * 세그멘테이션이 실제로 오려냈다.
+         *
+         * @param neck 목으로 보이는 자리(높이 대비 0~1). **자동으로 찍은 짐작일 뿐이다** —
+         *   털이 많은 개는 목이 안 좁아져서 빗나간다. 사람이 끌어서 고치라고 주는 첫 값이다.
+         */
+        data class Cut(override val bitmap: Bitmap, val neck: Float) : Result
 
         /**
          * 오려내지 못해 상자를 타원으로 잘랐다.
@@ -159,7 +145,7 @@ object Cutout {
      *   둘이거나 사람이 같이 찍혀 있으면 "피사체"가 우리가 원하는 것이 아닐 수 있고,
      *   얼굴만 쓸 것이라면 어차피 잘라야 한다.
      */
-    suspend fun of(photo: Bitmap, box: FloatArray? = null, mask: Mask = Mask.Silhouette): Result =
+    suspend fun of(photo: Bitmap, box: FloatArray? = null): Result =
         withContext(Dispatchers.Default) {
             val cropped = box?.let { photo.crop(it) } ?: photo
             val scaled = cropped.scaledToFit(MAX_EDGE)
@@ -173,19 +159,16 @@ object Cutout {
                 val masked = scaled.ellipseMasked()
                 if (scaled !== photo) scaled.recycle()
                 val cause = attempt.exceptionOrNull()
-                // 폴백은 이미 타원이라 [Mask] 를 또 씌우지 않는다.
                 Result.Ellipse(withOutline(masked), reasonOf(cause), pending = cause.isPending)
             } else {
                 if (scaled !== photo && scaled !== foreground) scaled.recycle()
-                // **원형은 테두리를 두르기 전에** 씌운다. 그래야 띠가 원을 따라 돌아
-                // 아바타처럼 보인다. 아래 페이드는 반대로 **두른 뒤**다 — 먼저 하면
-                // 옅어진 알파를 따라 띠가 호를 그린다.
-                val shaped = if (mask == Mask.Circle) foreground.circleMasked() else foreground
-                if (shaped !== foreground) foreground.recycle()
-                val trimmed = shaped.trimToContent()
-                if (trimmed !== shaped) shaped.recycle()
+                val trimmed = foreground.trimToContent()
+                if (trimmed !== foreground) foreground.recycle()
                 val outlined = withOutline(trimmed)
-                Result.Cut(if (mask == Mask.SoftBottom) outlined.fadedBottom() else outlined)
+                // **여기서는 자르지 않는다.** 실루엣을 그대로 주고, 어디서 자를지는
+                // 짐작만 얹는다 — 카드의 두 자리(큰 그림창 · 아바타)가 같은 누끼에서
+                // 서로 다른 모양으로 파생되기 때문이다.
+                Result.Cut(outlined, outlined.neckGuess())
             }
         }
 
@@ -351,6 +334,98 @@ object Cutout {
     }
 
     /**
+     * 목으로 보이는 자리를 찾는다. 결과는 높이 대비 0~1.
+     *
+     * 실루엣의 **가로 폭이 위에서 아래로 어떻게 변하는지**만 본다. 정면 사진이면
+     * 귀에서 가장 넓어지고, 목에서 좁아지고, 어깨에서 다시 넓어진다. 그 가운데
+     * 골짜기가 목이다.
+     *
+     * **자주 빗나간다.** 포메라니안이나 골든리트리버처럼 목에 털이 많은 개는 아예
+     * 안 좁아지고, 고개를 돌린 사진도 안 맞는다. 그래서 이 값은 결정이 아니라
+     * **사람이 끌어서 고칠 첫 자리**다. 못 찾으면 [NECK_FALLBACK] 을 준다.
+     */
+    private fun Bitmap.neckGuess(): Float {
+        val w = width
+        val h = height
+        if (h < 8) return NECK_FALLBACK
+        val pixels = IntArray(w * h)
+        getPixels(pixels, 0, w, 0, 0, w, h)
+        val widths = IntArray(h)
+        for (y in 0 until h) {
+            val row = y * w
+            var n = 0
+            for (x in 0 until w) if ((pixels[row + x] ushr 24) >= ALPHA_FLOOR) n++
+            widths[y] = n
+        }
+
+        // 머리가 가장 넓어지는 자리. 위 절반에서만 찾는다 — 아래에는 어깨가 있고
+        // 그쪽이 대개 더 넓어서, 전체에서 찾으면 어깨를 머리로 잡는다.
+        var headY = 0
+        var headW = 0
+        for (y in 0 until h / 2) {
+            if (widths[y] > headW) {
+                headW = widths[y]
+                headY = y
+            }
+        }
+        if (headW == 0) return NECK_FALLBACK
+
+        // 거기서 내려가며 골짜기를 찾는다. 다시 뚜렷하게 넓어지면 어깨에 닿은 것이라 멈춘다.
+        var neckY = -1
+        var neckW = Int.MAX_VALUE
+        for (y in headY until h) {
+            val v = widths[y]
+            if (v < neckW) {
+                neckW = v
+                neckY = y
+            } else if (neckY >= 0 && v > neckW * 1.15f) {
+                break
+            }
+        }
+
+        // 골짜기가 얕으면 목이 아니라 그냥 완만한 변화다. 그때는 찍지 않는다.
+        val deep = neckY >= 0 && neckW < headW * 0.85f
+        return if (deep) (neckY.toFloat() / h).coerceIn(0.2f, 0.95f) else NECK_FALLBACK
+    }
+
+    /**
+     * [from](높이 대비) 아래를 서서히 지운 사본. **[source] 는 그대로 둔다.**
+     *
+     * 화면에서 선을 끄는 동안에는 이걸 부르지 않는다 — 900px 짜리를 프레임마다
+     * 다시 칠하면 손가락을 못 따라온다. 끄는 동안에는 그리기로만 흉내 내고,
+     * 정해진 뒤에 여기서 한 번 굽는다.
+     */
+    fun fadedBelow(source: Bitmap, from: Float): Bitmap {
+        val w = source.width
+        val h = source.height
+        val pixels = IntArray(w * h)
+        source.getPixels(pixels, 0, w, 0, 0, w, h)
+        val start = h * from.coerceIn(0f, 1f)
+        val span = (h * FADE_SPAN).coerceAtLeast(1f)
+        for (y in start.toInt().coerceIn(0, h) until h) {
+            val k = (1f - (y - start) / span).coerceIn(0f, 1f)
+            val row = y * w
+            for (x in 0 until w) {
+                val p = pixels[row + x]
+                val a = ((p ushr 24) * k).toInt().coerceIn(0, 255)
+                pixels[row + x] = (a shl 24) or (p and 0x00FFFFFF)
+            }
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        return out.trimToContent().also { if (it !== out) out.recycle() }
+    }
+
+    /**
+     * 아바타 자리에 쓸 원형 사본. **[source] 는 그대로 둔다.**
+     *
+     * 카드에는 강아지가 들어갈 자리가 둘이다. 큰 그림창은 배경 앞에 서야 하므로
+     * 실루엣 그대로 쓰고, 왼쪽 위 작은 아바타는 원이라야 한다. 같은 누끼에서
+     * 두 모양을 뽑는다.
+     */
+    fun circled(source: Bitmap): Bitmap = source.circleMasked()
+
+    /**
      * 안쪽에 딱 맞는 원 밖을 지운다. 가장자리는 [CIRCLE_FEATHER] 만큼 흐린다 —
      * 딱 자르면 톱니가 보이고, 그러면 오려 붙인 티가 난다.
      */
@@ -380,28 +455,6 @@ object Cutout {
         }
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         out.setPixels(pixels, 0, w, 0, 0, w, h)
-        return out
-    }
-
-    /** 아래 [FADE_HEIGHT] 만큼을 서서히 지운다. **[this] 를 지운다.** */
-    private fun Bitmap.fadedBottom(): Bitmap {
-        val w = width
-        val h = height
-        val pixels = IntArray(w * h)
-        getPixels(pixels, 0, w, 0, 0, w, h)
-        val start = (h * (1f - FADE_HEIGHT))
-        for (y in start.toInt().coerceAtLeast(0) until h) {
-            val k = (1f - (y - start) / (h - start)).coerceIn(0f, 1f)
-            val row = y * w
-            for (x in 0 until w) {
-                val p = pixels[row + x]
-                val a = ((p ushr 24) * k).toInt().coerceIn(0, 255)
-                pixels[row + x] = (a shl 24) or (p and 0x00FFFFFF)
-            }
-        }
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        out.setPixels(pixels, 0, w, 0, 0, w, h)
-        recycle()
         return out
     }
 

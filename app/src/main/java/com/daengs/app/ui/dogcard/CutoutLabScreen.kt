@@ -7,8 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,15 +33,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,28 +63,21 @@ import kotlinx.coroutines.launch
 // ---------------------------------------------------------------------------
 // 누끼 실험실 — **개발자 패널에서만 열린다**
 //
-// 카드를 만들기 전에 답이 나와야 하는 질문만 본다.
+// 카드를 만들기 전에 답이 나와야 하는 것만 본다.
 //
 //   1. 세그멘테이션이 됐나, 타원으로 물러섰나 (물러섰으면 왜)
-//   2. **어떤 마스크가 맞나.** 세그멘테이션은 상자 안에서 배경만 지운다. 상자에
-//      목과 가슴이 들어와 있으면 그것도 피사체라 같이 남는다. 얼굴만 쓰려면 셋 중
-//      골라야 하는데 (실루엣 · 원형 · 아래 페이드) **답이 강아지마다 다르다** —
-//      귀가 처진 개는 원형에서 귀가 잘리고, 선 개는 안 잘린다. 그래서 하나를
-//      고르지 않고 셋을 나란히 그려 놓고 보게 한다
+//   2. **목을 어디서 자를 것인가.** 세그멘테이션은 상자 안에서 배경만 지운다.
+//      상자에 목과 가슴이 들어와 있으면 그것도 피사체라 같이 남는다. 자동으로
+//      목을 찾아보긴 하지만 털 많은 개에서는 빗나가서, **사람이 선을 끌어 고친다**
 //   3. **작게 줄여도 얼굴이 읽히나** — 도감 그리드에서 카드가 작아진다.
-//      보더콜리 눈이 무너진 것과 같은 자리다 (HISTORY 11절). 실사 사진은 도트보다
-//      더 잘 뭉개져서, 원본 크기로만 보면 이 문제가 안 보인다
+//      보더콜리 눈이 무너진 것과 같은 자리다 (HISTORY 11절)
+//
+// 선을 끄는 동안에는 비트맵을 다시 만들지 않는다. 900px 짜리를 프레임마다 다시
+// 칠하면 손가락을 못 따라온다 — **그리기로만 흉내 내고**, 굽는 것은 정해진 뒤
+// [Cutout.fadedBelow] 가 한 번 한다.
 // ---------------------------------------------------------------------------
 
 private enum class Step { Pick, Box, Done }
-
-private val MASKS = listOf(
-    Cutout.Mask.Silhouette to "실루엣",
-    Cutout.Mask.Circle to "원형",
-    Cutout.Mask.SoftBottom to "아래 페이드",
-)
-
-private fun labelOf(mask: Cutout.Mask): String = MASKS.first { it.first == mask }.second
 
 @Composable
 fun CutoutLabScreen(onBack: () -> Unit) {
@@ -86,8 +86,8 @@ fun CutoutLabScreen(onBack: () -> Unit) {
 
     var step by remember { mutableStateOf(Step.Pick) }
     var photo by remember { mutableStateOf<Bitmap?>(null) }
-    var results by remember { mutableStateOf<List<Pair<Cutout.Mask, Cutout.Result>>>(emptyList()) }
-    var picked by remember { mutableStateOf(Cutout.Mask.SoftBottom) }
+    var result by remember { mutableStateOf<Cutout.Result?>(null) }
+    var neck by remember { mutableStateOf(1f) }
     var busy by remember { mutableStateOf(false) }
     var tookMs by remember { mutableStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -102,16 +102,14 @@ fun CutoutLabScreen(onBack: () -> Unit) {
         error = null
         scope.launch {
             val started = System.currentTimeMillis()
-            // **셋을 다 만든다.** 하나씩 눌러 가며 보면 앞의 것이 기억에 남지 않아
-            // 비교가 안 된다. 세 번 도는 값은 나란히 놓고 고를 수 있는 것으로 갚는다.
-            val outcome = runCatching {
-                MASKS.map { (mask, _) -> mask to Cutout.of(source, box, mask) }
-            }
+            val outcome = runCatching { Cutout.of(source, box) }
             tookMs = System.currentTimeMillis() - started
             busy = false
             outcome
                 .onSuccess {
-                    results = it
+                    result = it
+                    // 자동으로 찍은 자리에서 시작한다. 맞으면 그대로 두고, 아니면 끈다.
+                    neck = (it as? Cutout.Result.Cut)?.neck ?: 1f
                     step = Step.Done
                 }
                 .onFailure { error = it.message ?: "누끼를 뜨지 못했습니다." }
@@ -128,7 +126,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
                 .onSuccess {
                     photo?.recycle()
                     photo = it
-                    results = emptyList()
+                    result = null
                     step = Step.Box
                     busy = false
                 }
@@ -171,7 +169,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
             LabButton("닫기", onBack)
         }
 
-        Lab("셋을 나란히 놓고 고른다 — 귀가 사는가, 목이 빠지는가.", 12.sp, Dim)
+        Lab("목선을 끌어서 얼굴만 남긴다.", 12.sp, Dim)
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LabButton(if (photo == null) "사진 고르기" else "다른 사진") {
@@ -188,63 +186,43 @@ fun CutoutLabScreen(onBack: () -> Unit) {
         if (busy) Lab("도는 중…", 13.sp, Warn)
         error?.let { Lab(it, 13.sp, Color(0xFFFF9A9A)) }
 
-        if (results.isNotEmpty()) {
-            val first = results.first().second
-            val cut = first is Cutout.Result.Cut
+        val done = result
+        if (done != null) {
+            val cut = done as? Cutout.Result.Cut
             Lab(
-                if (cut) "오려냈다 · 셋 합쳐 ${tookMs}ms" else "타원으로 물러섬 · ${tookMs}ms",
+                if (cut != null) {
+                    "오려냈다 · ${done.bitmap.width}x${done.bitmap.height} · ${tookMs}ms"
+                } else {
+                    "타원으로 물러섬 · ${tookMs}ms"
+                },
                 13.sp,
-                if (cut) Good else Color(0xFFFFB43F),
+                if (cut != null) Good else Color(0xFFFFB43F),
                 FontWeight.Bold,
             )
-            (first as? Cutout.Result.Ellipse)?.let {
+            (done as? Cutout.Result.Ellipse)?.let {
                 // 모델을 내려받는 중인 것과 이 기기에서 영영 안 되는 것은 다른 일이다.
                 Lab(it.why, 11.sp, if (it.pending) Warn else Dim)
             }
-
-            // 셋 나란히. 누르면 아래 큰 그림이 바뀐다.
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                results.forEach { (mask, result) ->
-                    Column(
-                        Modifier.weight(1f).clickable { picked = mask },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Checkered(
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .then(
-                                    if (mask == picked) {
-                                        Modifier.border(2.dp, Good, RoundedCornerShape(8.dp))
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                        ) {
-                            Shown(result.bitmap, labelOf(mask), Modifier.padding(3.dp))
-                        }
-                        Spacer(Modifier.height(3.dp))
-                        Lab(labelOf(mask), 10.sp, if (mask == picked) Good else Faint)
-                    }
-                }
+            if (cut != null) {
+                Lab(
+                    "자동으로 찍은 목선 ${"%.0f".format(cut.neck * 100)}%" +
+                        " · 지금 ${"%.0f".format(neck * 100)}%",
+                    11.sp,
+                    Dim,
+                )
             }
 
-            val chosen = results.first { it.first == picked }.second
-            Lab(
-                "${labelOf(picked)} · ${chosen.bitmap.width}x${chosen.bitmap.height}",
-                12.sp,
-                Dim,
-            )
-            Checkered(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                Shown(chosen.bitmap, "고른 마스크")
-            }
+            NeckPicker(done.bitmap, neck) { neck = it }
+            Lab("가로선을 위아래로 끌면 그 아래가 사라진다.", 11.sp, Faint)
 
             // **작게 줄인 것들.** 카드가 도감 그리드에서 이만해진다.
             Lab("작게 줄이면 (도감 그리드 · 아바타 크기)", 12.sp, Dim)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(120, 72, 40).forEach { edge ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Checkered(Modifier.size(edge.dp)) { Shown(chosen.bitmap, null) }
+                        Checkered(Modifier.size(edge.dp)) {
+                            FadedImage(done.bitmap, neck, null)
+                        }
                         Spacer(Modifier.height(3.dp))
                         Lab("${edge}dp", 10.sp, Faint)
                     }
@@ -254,23 +232,77 @@ fun CutoutLabScreen(onBack: () -> Unit) {
     }
 }
 
+/**
+ * 누끼 위에 목선을 얹고 끌게 한다.
+ *
+ * 선 아래는 **그리기로만** 지운다 — 비트맵을 다시 만들면 손가락을 못 따라온다.
+ * 실제로 굽는 것은 [Cutout.fadedBelow] 이고, 자리가 정해진 뒤 한 번만 부른다.
+ */
+@Composable
+private fun NeckPicker(bitmap: Bitmap, neck: Float, onChange: (Float) -> Unit) {
+    // **`pointerInput(Unit)` 안에서 `neck` 을 그냥 읽으면 안 된다.** 그 블록은 처음
+    // 한 번만 만들어지므로 첫 조합 때의 값이 박제되고, 한 번 끈 다음부터는 늘 처음
+    // 자리를 기준으로 계산해서 선이 튄다. 갱신되는 참조를 따로 들고 읽는다.
+    val latest by rememberUpdatedState(neck)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { change, drag ->
+                    change.consume()
+                    onChange((latest + drag / size.height).coerceIn(0.05f, 1f))
+                }
+            },
+    ) {
+        Checkered(Modifier.fillMaxSize()) { FadedImage(bitmap, neck, "누끼 결과") }
+        // 선은 그림 위에 그린다. 사라지는 자리와 눈금이 어긋나면 못 맞춘다.
+        Canvas(Modifier.fillMaxSize()) {
+            val y = size.height * neck
+            drawLine(
+                Good,
+                Offset(0f, y),
+                Offset(size.width, y),
+                strokeWidth = 2.dp.toPx(),
+            )
+            drawCircle(Good, 9.dp.toPx(), Offset(size.width - 18.dp.toPx(), y))
+        }
+    }
+}
+
+/** [neck] 아래가 서서히 사라지게 그린다. 비트맵은 안 건드린다. */
+@Composable
+private fun FadedImage(bitmap: Bitmap, neck: Float, label: String?) {
+    Image(
+        bitmap = bitmap.asImageBitmap(),
+        contentDescription = label,
+        contentScale = ContentScale.Fit,
+        filterQuality = FilterQuality.High,
+        modifier = Modifier
+            .fillMaxSize()
+            // 지우개가 그림하고만 섞여야 한다. 레이어를 안 뜨면 뒤 체커보드까지 지운다.
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                if (neck >= 1f) return@drawWithContent
+                val top = size.height * neck
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        1f to Color.Black,
+                        startY = top,
+                        endY = (top + size.height * 0.16f).coerceAtMost(size.height),
+                    ),
+                    blendMode = BlendMode.DstOut,
+                )
+            },
+    )
+}
+
 private val Dim = Color(0xFF9AA3AE)
 private val Faint = Color(0xFF6C7480)
 private val Good = Color(0xFF8FD94A)
 private val Warn = Color(0xFFFFD98A)
-
-@Composable
-private fun Shown(bitmap: Bitmap, label: String?, modifier: Modifier = Modifier) {
-    Image(
-        bitmap = bitmap.asImageBitmap(),
-        contentDescription = label,
-        // **Fit 이어야 한다.** 마스크마다 결과 비율이 달라서(원형은 정사각에 가깝고
-        // 실루엣은 세로로 길다), Crop 이면 셋을 나란히 놓고 비교할 수가 없다.
-        contentScale = ContentScale.Fit,
-        modifier = modifier.fillMaxSize(),
-        filterQuality = FilterQuality.High,
-    )
-}
 
 /** 알파를 눈으로 보려면 뒤에 무늬가 있어야 한다. 단색이면 흰 털과 구분이 안 된다. */
 @Composable
