@@ -42,40 +42,7 @@ object Photo {
     suspend fun prepare(context: Context, uri: Uri): Result<PreparedPhoto> =
         withContext(Dispatchers.IO) {
             runCatching {
-                // 1) 먼저 크기만 읽는다. 픽셀은 아직 안 올린다.
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri).use {
-                    BitmapFactory.decodeStream(it, null, bounds)
-                }
-                val longest = maxOf(bounds.outWidth, bounds.outHeight)
-                check(longest > 0) { "사진을 읽을 수 없습니다." }
-
-                // 2) 2의 거듭제곱으로 미리 줄여서 올린다. 원본을 통째로 올린 뒤
-                //    줄이면 그 순간 메모리를 다 쓴다.
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = generateSequence(1) { it * 2 }
-                        .first { longest / it <= MAX_EDGE * 2 }
-                }
-                val decoded = context.contentResolver.openInputStream(uri).use {
-                    BitmapFactory.decodeStream(it, null, options)
-                } ?: error("사진을 읽을 수 없습니다.")
-
-                // 3) EXIF 회전을 실제로 돌려 놓는다.
-                //    카메라는 센서를 그대로 저장하고 "돌려서 보라"는 표시만 남긴다.
-                //    화면은 그 표시를 보지만 **서버는 못 본다** — 안 돌리면 모델이
-                //    옆으로 누운 사진을 받는다.
-                val upright = context.contentResolver.openInputStream(uri).use { stream ->
-                    val orientation = runCatching {
-                        ExifInterface(stream!!).getAttributeInt(
-                            ExifInterface.TAG_ORIENTATION,
-                            ExifInterface.ORIENTATION_NORMAL,
-                        )
-                    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-                    decoded.rotated(orientation)
-                }
-
-                val scaled = upright.scaledToFit(MAX_EDGE)
-                if (scaled !== upright) upright.recycle()
+                val scaled = decodeUpright(context, uri, MAX_EDGE)
                 val jpeg = ByteArrayOutputStream().also {
                     scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)
                 }.toByteArray()
@@ -84,6 +51,52 @@ object Photo {
                 if (thumbnail !== scaled) scaled.recycle()
                 PreparedPhoto(thumbnail, jpeg)
             }
+        }
+
+    /**
+     * 사진을 **똑바로 세워서** [edge] 크기로 읽는다. 부르는 쪽이 지운다(recycle).
+     *
+     * [prepare] 안에 있던 것을 꺼냈다. 누끼(카드)는 서버로 보낼 JPEG 이 필요 없고
+     * **썸네일(512)로는 너무 작다** — 얼굴만 잘라 쓰면 그 안에서 또 줄어들기 때문이다.
+     * 두 쓰임이 필요한 건 같은 "세워서 줄인 비트맵" 하나라 여기 한 군데에 둔다.
+     */
+    suspend fun decodeUpright(context: Context, uri: Uri, edge: Int): Bitmap =
+        withContext(Dispatchers.IO) {
+            // 1) 먼저 크기만 읽는다. 픽셀은 아직 안 올린다.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri).use {
+                BitmapFactory.decodeStream(it, null, bounds)
+            }
+            val longest = maxOf(bounds.outWidth, bounds.outHeight)
+            check(longest > 0) { "사진을 읽을 수 없습니다." }
+
+            // 2) 2의 거듭제곱으로 미리 줄여서 올린다. 원본을 통째로 올린 뒤
+            //    줄이면 그 순간 메모리를 다 쓴다.
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = generateSequence(1) { it * 2 }
+                    .first { longest / it <= edge * 2 }
+            }
+            val decoded = context.contentResolver.openInputStream(uri).use {
+                BitmapFactory.decodeStream(it, null, options)
+            } ?: error("사진을 읽을 수 없습니다.")
+
+            // 3) EXIF 회전을 실제로 돌려 놓는다.
+            //    카메라는 센서를 그대로 저장하고 "돌려서 보라"는 표시만 남긴다.
+            //    화면은 그 표시를 보지만 **서버도 세그멘테이션 모델도 못 본다** —
+            //    안 돌리면 옆으로 누운 사진을 받는다.
+            val upright = context.contentResolver.openInputStream(uri).use { stream ->
+                val orientation = runCatching {
+                    ExifInterface(stream!!).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL,
+                    )
+                }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+                decoded.rotated(orientation)
+            }
+
+            val scaled = upright.scaledToFit(edge)
+            if (scaled !== upright) upright.recycle()
+            scaled
         }
 
     /**

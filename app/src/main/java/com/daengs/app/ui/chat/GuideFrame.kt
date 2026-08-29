@@ -62,6 +62,16 @@ fun GuideFrameScreen(
     photo: Bitmap,
     onCancel: () -> Unit,
     onConfirm: (FloatArray) -> Unit,
+    /** 확인 버튼 글자. 이 네모를 쓰는 곳이 진단만은 아니다. */
+    confirmLabel: String = "이 자리로 진단",
+    /**
+     * 네모 아래 안내. null 이면 [Band] 의 병변 밴드 안내를 쓴다.
+     *
+     * **밴드는 진단 전용이다** — 저쪽이 STEP 10 에서 실측한 값이라 "너무 작아요"
+     * 같은 문장이 병변 크기를 기준으로 나온다. 강아지 얼굴을 고르는 자리에서
+     * 그 문장이 뜨면 사용자는 무엇이 잘못됐는지 알 수가 없다.
+     */
+    guidance: String? = null,
 ) {
     // 정규화 [x, y, w, h]. 저쪽 데모의 시작값과 같다.
     //
@@ -158,12 +168,12 @@ fun GuideFrameScreen(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )
-                GuideOverlay(box, w, h, bad = hint.bad)
+                GuideOverlay(box, w, h, bad = guidance == null && hint.bad)
             }
 
             Text(
-                hint.text,
-                color = if (hint.bad) Color(0xFFFFD9D9) else CardWhite,
+                guidance ?: hint.text,
+                color = if (guidance == null && hint.bad) Color(0xFFFFD9D9) else CardWhite,
                 fontSize = 13.sp,
             )
 
@@ -171,7 +181,7 @@ fun GuideFrameScreen(
                 GuideButton("다시 고르기", CardWhite.copy(alpha = 0.14f), CardWhite, onCancel)
                 // **밴드 밖이어도 보낼 수 있다.** 막아 버리면 저쪽이 왜 다시 찍어야
                 // 하는지 문장으로 돌려주는 길이 막힌다 — 판단은 서버가 한다.
-                GuideButton("이 자리로 진단", DaengPink, TextDark) {
+                GuideButton(confirmLabel, DaengPink, TextDark) {
                     onConfirm(floatArrayOf(box.x, box.y, w, h))
                 }
             }

@@ -21,13 +21,18 @@ import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
+import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
-/** 화면 넷. 갈래가 없는 일직선이라 [Screen] 하나로 충분하다 — 아래 주석 참고. */
-private enum class Screen { Landing, Home, Chat, Dex }
+/**
+ * 화면들. 갈래가 없는 일직선이라 [Screen] 하나로 충분하다 — 아래 주석 참고.
+ *
+ * [CutoutLab] 은 **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다.
+ */
+private enum class Screen { Landing, Home, Chat, Dex, CutoutLab }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,11 +122,18 @@ class MainActivity : ComponentActivity() {
                                 scope.launch { AuthApi.logout(old.refreshToken) }
                             }
                         },
+                        onOpenCutoutLab = if (BuildConfig.DEBUG) {
+                            { screen = Screen.CutoutLab }
+                        } else {
+                            null
+                        },
                     )
 
                     Screen.Chat -> ChatScreen(onBack = { screen = Screen.Home })
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
+
+                    Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
                 }
             }
         }

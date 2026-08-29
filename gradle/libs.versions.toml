@@ -11,6 +11,10 @@ composeBom = "2026.02.01"
 kakaoSdk = "2.24.0"
 securityCrypto = "1.1.0-beta01"
 splashscreen = "1.0.1"
+# 누끼(피사체 오려내기). **모델은 APK 에 없다** — Play 서비스가 기기 첫 사용 때
+# 내려받는다. 그래서 이 줄을 올려도 APK 는 거의 안 커진다.
+# 2026-08-29 기준 이 아티팩트에 존재하는 판은 이 beta1 하나뿐이다.
+mlkitSubjectSegmentation = "16.0.0-beta1"
 
 [libraries]
 # 단위 테스트에서 org.json 을 진짜로 돌리려고. 아래 build.gradle.kts 주석 참고.
@@ -32,6 +36,10 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakaoSdk" }
+# 그룹이 com.google.mlkit 이 아니라 **com.google.android.gms** 다. 이 기능은
+# 번들 판이 없고 Play 서비스로만 배달된다. InputImage 는 vision-common 이
+# 전이로 딸려온다.
+mlkit-subject-segmentation = { group = "com.google.android.gms", name = "play-services-mlkit-subject-segmentation", version.ref = "mlkitSubjectSegmentation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

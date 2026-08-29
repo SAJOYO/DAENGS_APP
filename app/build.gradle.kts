@@ -93,6 +93,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
+    implementation(libs.mlkit.subject.segmentation)
     testImplementation(libs.junit)
     // 안드로이드의 org.json 은 **프레임워크 안에만** 있고, 단위 테스트가 도는 JVM
     // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트

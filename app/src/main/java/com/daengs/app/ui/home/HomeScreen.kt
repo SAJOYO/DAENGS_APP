@@ -93,6 +93,8 @@ fun HomeScreen(
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
+    /** 누끼 실험실. 개발자 패널에서만 열린다. */
+    onOpenCutoutLab: (() -> Unit)? = null,
 ) {
     var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
@@ -173,6 +175,7 @@ fun HomeScreen(
                 onSignOut = onSignOut,
                 profileBreed = profileBreed,
                 onPickProfile = { profileBreed = it },
+                onOpenCutoutLab = onOpenCutoutLab,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -215,6 +218,7 @@ private fun RoomSection(
     onSignOut: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    onOpenCutoutLab: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -280,6 +284,7 @@ private fun RoomSection(
                 onPickProfile = onPickProfile,
                 signedIn = signedIn,
                 onSignOut = onSignOut,
+                onOpenCutoutLab = onOpenCutoutLab,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }

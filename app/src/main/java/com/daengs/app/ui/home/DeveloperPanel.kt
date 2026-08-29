@@ -79,6 +79,11 @@ fun DeveloperPanel(
     onPickProfile: (DogBreed) -> Unit,
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
+    /**
+     * 누끼 실험실. 카드 기능을 만드는 동안만 쓰는 입구다 —
+     * 세그멘테이션이 쓸 만한지 보려면 실기기에서 사진을 넣어 봐야 한다.
+     */
+    onOpenCutoutLab: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -107,6 +112,18 @@ fun DeveloperPanel(
                         .clip(RoundedCornerShape(5.dp))
                         .background(PanelPick)
                         .clickable(onClick = onSignOut)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
+            if (onOpenCutoutLab != null) {
+                Text(
+                    "누끼",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(PanelPick)
+                        .clickable(onClick = onOpenCutoutLab)
                         .padding(horizontal = 6.dp, vertical = 1.dp),
                 )
             }
