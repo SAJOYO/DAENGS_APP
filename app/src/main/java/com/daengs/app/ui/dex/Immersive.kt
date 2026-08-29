@@ -110,6 +110,14 @@ data class ImmersiveScene(
     val fit: Fit,
     val motes: Int = 52,
     val dew: Int = 15,
+    /**
+     * 앞에서 날리는 잎. 0이면 안 날린다.
+     *
+     * **주인공보다 앞에 그려진다.** 그래서 자리는 가운데를 피해야 하고(안 그러면
+     * 얼굴을 덮는다), 크기와 번짐은 px 이 아니라 **누끼 높이 대비 %** 여야 한다 —
+     * px 로 두면 화면이 작아질 때 잎만 안 줄어 캐릭터를 덮는다.
+     */
+    val leaves: Int = 0,
     val accent: Color,
     val accent2: Color,
 ) {
@@ -166,6 +174,7 @@ val CABBAGE_SCENE = ImmersiveScene(
     bgm = "neo-hologram/audio/cabbage.ogg",
     window = ImmersiveScene.Win(4.91f, 10.28f, 90.51f, 81.58f),
     fit = ImmersiveScene.Fit(6.06f, 14.15f, 87.43f, 62.70f),
+    leaves = 7,
     accent = Color(0xFF8FD94A),
     accent2 = Color(0xFFD8F07A),
 )
@@ -227,6 +236,7 @@ val LETTUCE_SCENE = ImmersiveScene(
     ),
     motes = 46,
     dew = 9,
+    leaves = 14,
     accent = Color(0xFFB2D121),
     accent2 = Color(0xFFE3F493),
 )
@@ -261,6 +271,9 @@ object Par {
     const val SUBJECT = 52f
     const val HUD = 30f
 
+    /** 앞잎. 제일 앞이라 제일 많이 움직인다. */
+    const val FORE = 100f
+
     /** 이슬만 0 이다 — 카메라 유리에 맺힌 것이라 화면을 따라 움직이면 안 된다. */
     const val DEW = 0f
 }
@@ -293,6 +306,26 @@ data class Mote(val at: Offset, val r: Float, val alpha: Float, val phase: Float
 data class Dew(val at: Offset, val r: Float, val alpha: Float, val runs: Boolean)
 
 /**
+ * 앞에서 날리는 잎 한 장.
+ *
+ * [size] 와 [blur] 는 **누끼 높이 대비 %** 다. 저쪽 `.leaf` 가 `--hh` 를 곱하는 것과
+ * 같다 — px 로 두면 폰에서 화면만 작아지고 잎은 그대로라 캐릭터를 덮는다.
+ */
+@Immutable
+data class Leaf(
+    val at: Offset,
+    val size: Float,
+    val alpha: Float,
+    val blur: Float,
+    /** 기울기(도). 흔들리면 여기서 13도가 더해진다. */
+    val rot: Float,
+    /** 흔들리며 밀리는 거리. 이것도 누끼 높이 대비 %. */
+    val sway: Offset,
+    val period: Float,
+    val delay: Float,
+)
+
+/**
  * 장면을 만든다. 같은 [seed] 면 언제나 같은 배치가 나온다.
  *
  * 이슬은 **화면 한가운데를 피한다** — 주인공 얼굴에 앉으면 캐릭터가 안 읽힌다
@@ -318,11 +351,36 @@ fun buildScene(scene: ImmersiveScene, seed: Int): SceneParts {
         }
         Dew(at = p, r = rng.range(2.5f, 7f), alpha = rng.range(0.18f, 0.5f), runs = it < 3)
     }
-    return SceneParts(motes, dew)
+    // 잎도 가운데를 피한다. **이슬보다 더 중요하다** — 잎은 주인공보다 앞에
+    // 그려지므로 얼굴에 앉으면 캐릭터가 아예 안 읽힌다. 저쪽도 같은 `offCenter` 를
+    // 쓰는데, 예전에 우리가 화면 전체에 균등하게 뿌렸다가 밭을 가렸다.
+    val leaves = List(scene.leaves) {
+        var p = Offset(rng.next(), rng.next())
+        var guard = 0
+        while (kotlin.math.hypot(p.x - 0.5f, p.y - 0.45f) < 0.26f && guard++ < 8) {
+            p = Offset(rng.next(), rng.next())
+        }
+        Leaf(
+            at = p,
+            size = rng.range(11f, 33f),
+            alpha = rng.range(0.16f, 0.42f),
+            blur = rng.range(1.25f, 3.45f),
+            rot = rng.range(0f, 360f),
+            sway = Offset(rng.range(-16f, 16f), rng.range(-10f, 16f)),
+            period = rng.range(9f, 17f),
+            delay = rng.range(0f, 16f),
+        )
+    }
+
+    return SceneParts(motes, dew, leaves)
 }
 
 @Immutable
-data class SceneParts(val motes: List<Mote>, val dew: List<Dew>)
+data class SceneParts(
+    val motes: List<Mote>,
+    val dew: List<Dew>,
+    val leaves: List<Leaf> = emptyList(),
+)
 
 /** 먼지가 떠다니는 위치. 시간에 따라 아주 느리게 흔들린다. */
 fun Mote.drift(timeMs: Long, size: Size): Offset {

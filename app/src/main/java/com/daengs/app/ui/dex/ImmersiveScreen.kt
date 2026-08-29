@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
@@ -57,6 +59,7 @@ import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import kotlin.math.hypot
+import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -560,10 +563,12 @@ private fun DrawScope.drawScene(
 
     // 5. 주인공 — 카드 안 제자리에서 시작해 무대 크기로 자란다.
     //    **여기가 진입 연출의 핵심이다.** 카드가 녹는 동안 캐릭터가 안 움직여야 한다.
+    var heroH = 0f
     if (subject != null) {
         val r = subjectRect(scene, subject, size, grow, cardPos, cardSize)
         val pos = r.first
         val sz = r.second
+        heroH = sz.height
 
         // 속. 시차 하나로 통째로 움직인다.
         val d = parallax(aim, Par.SUBJECT)
@@ -587,9 +592,21 @@ private fun DrawScope.drawScene(
     // 카드는 여기서 안 그린다. 창 연출에서는 무대가 창 안으로 잘리는데, 카드와 틀은
     // 그 바깥에도 보여야 하기 때문이다 — [drawStage] 가 자르기 밖에서 그린다.
 
-    // 앞잎사귀 층은 뺐다. 저쪽 웹판에는 있지만 여기서는 **흙을 뭉갤 뿐**이었다.
-    // 잎 모양이 아니라 큰 타원이라 초점이 나간 잎으로 안 읽히고, 화면 아래쪽에
-    // 어두운 덩어리로 남아 밭을 가렸다. 그림으로 그린 잎이 오면 그때 다시 본다.
+    // 6. 앞잎 — 주인공보다 앞. 시차가 제일 크다(100).
+    //
+    // **한 번 뺐다가 다시 넣은 층이다.** 예전에는 큰 타원을 화면 전체에 균등하게
+    // 뿌려서, 초점이 나간 잎으로 안 읽히고 아래쪽에 어두운 덩어리로 남아 밭을
+    // 가렸다. 저쪽 CSS 를 보고 그때 빠졌던 셋을 채웠다.
+    //
+    //   1. **모양**  타원이 아니라 잎이다 (저쪽 `border-radius: 0 100% 0 100%`)
+    //   2. **자리**  가운데를 피한다. 이 층은 주인공보다 앞이라 얼굴에 앉으면 끝이다
+    //   3. **단위**  크기와 번짐이 px 이 아니라 **누끼 높이 대비 %** 다
+    if (parts.leaves.isNotEmpty() && heroH > 0f) {
+        val d = parallax(aim, Par.FORE)
+        translate(d.x, d.y) {
+            parts.leaves.forEach { drawLeaf(it, heroH, scene.accent, timeMs) }
+        }
+    }
 
     // 8. 이슬 — 카메라 유리에 맺힌 방울. **이 층만 시차가 0 이다.**
     parts.dew.forEach { dw ->
@@ -607,6 +624,51 @@ private fun DrawScope.drawScene(
  * 카드 안 제자리는 [ImmersiveScene.fit] 이 준다 — 원본 카드 그림에서 누끼가
  * 차지하던 사각형이다. 여기서 출발해야 틀이 녹는 동안 캐릭터가 안 움직인다.
  */
+/**
+ * 잎 한 장.
+ *
+ * **번짐은 흉내다.** 저쪽은 `filter: blur()` 인데 `RenderEffect` 가 API 31 부터라
+ * minSdk 26 에서 못 쓴다 (`drawShell` 이 이미 같은 벽에 부딪혔다). 같은 잎을 조금씩
+ * 키우며 옅게 여러 번 그려서 가장자리를 무르게 만든다.
+ */
+private fun DrawScope.drawLeaf(leaf: Leaf, heroH: Float, accent: Color, timeMs: Long) {
+    val w = leaf.size * heroH * 0.01f
+    val h = leaf.size * heroH * 0.0145f
+    if (w < 1f || h < 1f) return
+
+    // 흔들림. 저쪽 `leaf-sway` 는 alternate 라 0↔1 을 오간다.
+    val phase = (timeMs / 1000f + leaf.delay) / leaf.period
+    val k = (sin(phase * PI.toFloat()) * 0.5f + 0.5f)
+    val cx = leaf.at.x * size.width + leaf.sway.x * heroH * 0.01f * k
+    val cy = leaf.at.y * size.height + leaf.sway.y * heroH * 0.01f * k
+
+    val dark = Color(accent.red * 0.25f, accent.green * 0.25f, accent.blue * 0.25f, accent.alpha)
+    val brush = Brush.linearGradient(
+        colors = listOf(accent, dark),
+        start = Offset(cx - w / 2f, cy - h / 2f),
+        end = Offset(cx + w / 2f, cy + h / 2f),
+    )
+
+    val taps = 4
+    val spread = 1f + (leaf.blur * heroH * 0.01f) / maxOf(w, h)
+    rotate(leaf.rot + 13f * k, Offset(cx, cy)) {
+        repeat(taps) { i ->
+            val grow = 1f + (spread - 1f) * (i / (taps - 1f))
+            val hw = w / 2f * grow
+            val hh = h / 2f * grow
+            // 저쪽 `border-radius: 0 100% 0 100%` — 왼쪽 위와 오른쪽 아래가 뾰족하고
+            // 나머지 두 귀퉁이가 둥근 잎 모양이다. **타원이 아니다.**
+            val path = Path().apply {
+                moveTo(cx - hw, cy - hh)
+                quadraticBezierTo(cx + hw, cy - hh, cx + hw, cy + hh)
+                quadraticBezierTo(cx - hw, cy + hh, cx - hw, cy - hh)
+                close()
+            }
+            drawPath(path, brush, alpha = leaf.alpha / taps)
+        }
+    }
+}
+
 private fun subjectRect(
     scene: ImmersiveScene,
     subject: ImageBitmap,
