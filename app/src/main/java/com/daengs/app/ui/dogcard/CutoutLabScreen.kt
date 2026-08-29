@@ -241,7 +241,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
                         template = template,
                         face = face,
                         name = "몽이",
-                        code = "DG-0829",
+                        code = birthCode(4, 12),
                         modifier = Modifier.weight(1f),
                     )
                 }

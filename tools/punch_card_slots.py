@@ -67,6 +67,9 @@ VALUE_MIN = 0.50
 # 덩어리가 이 화소 수보다 작으면 무시한다. 하이라이트 반점을 거른다.
 MIN_BLOB = 2000
 
+# 줄 폭을 고를 백분위. 1.0(최댓값)이면 혹 하나에 끌려간다.
+SPAN_PERCENTILE = 0.86
+
 # 얼굴 덩어리의 생김새 제한. 카드 폭 대비 반지름과 가로/세로 비다.
 # **이게 없으면 배경 덩어리가 큰 얼굴로 뽑힌다** — 넓이만 보면 그쪽이 늘 크다.
 FACE_R_MIN, FACE_R_MAX = 0.06, 0.28
@@ -142,6 +145,55 @@ def blobs(img: Image.Image) -> list[tuple[int, int, int, int, int]]:
     return out
 
 
+def center_of(
+    img: Image.Image, blob: tuple[int, int, int, int, int]
+) -> tuple[float, float, float, float]:
+    """덩어리의 중심과 반지름. **경계상자를 쓰지 않는다.**
+
+    경계상자는 가늘게 붙은 혹 하나에 통째로 끌려간다 — 배추에서 얼굴 반지름이
+    실제(13%)의 1.5배(20.5%)로 나오고 중심도 오른쪽으로 밀렸다.
+
+    대신 **제일 긴 가로줄과 세로줄**을 쓴다. 얼굴은 둥글어서 그 줄이 지름이고,
+    혹은 가늘어서 긴 줄을 못 만든다. 가로줄의 가운데가 x, 세로줄의 가운데가 y다.
+    """
+    _, left, top, right, bottom = blob
+    rgb = img.convert("RGB")
+    px = rgb.load()
+    alpha = img.getchannel("A").load()
+
+    def ok(x: int, y: int) -> bool:
+        if alpha[x, y] < 8:
+            return False
+        r, g, b = px[x, y]
+        hue, sat, val = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        return (
+            SATURATION_MIN <= sat <= SATURATION_MAX
+            and val >= VALUE_MIN
+            and HUE_MIN <= hue * 360 <= HUE_MAX
+        )
+
+    # 줄마다 **좌우 끝 사이의 폭**을 잰다. 길이가 아니라 폭이다 — 눈·코가 어두워
+    # 판정에서 빠지므로 "안 끊긴 길이" 로 재면 아바타 반지름이 절반으로 나온다.
+    spans = []
+    for y in range(top, bottom + 1):
+        xs = [x for x in range(left, right + 1) if ok(x, y)]
+        if xs:
+            spans.append((xs[-1] - xs[0] + 1, (xs[0] + xs[-1]) / 2))
+    if not spans:
+        return (left + right) / 2, (top + bottom) / 2, (right - left) / 2, (bottom - top) / 2
+
+    # **최댓값이 아니라 상위 백분위를 쓴다.** 가늘게 붙은 혹은 몇 줄만 부풀리는데,
+    # 최댓값을 쓰면 그 몇 줄이 지름이 된다 — 배추에서 반지름이 1.5배로 나왔다.
+    spans.sort()
+    pick = spans[int(len(spans) * SPAN_PERCENTILE)]
+    wide = [m for w_, m in spans if w_ >= pick[0] * 0.9]
+    mid_x = sorted(wide)[len(wide) // 2]
+
+    # 세로 중심은 경계상자에서 가져온다. 위아래 가림은 대체로 대칭이다.
+    # 반지름은 하나만 쓴다 — **구멍이 둘 다 원**이라 가로 폭이면 충분하다.
+    return mid_x, (top + bottom) / 2, pick[0] / 2, pick[0] / 2
+
+
 def erase_text(img: Image.Image, box: tuple[float, float, float, float]) -> None:
     """글자 자리를 좌우 이웃 색으로 메운다. 바가 가로 그라디언트라 줄마다 잇는다."""
     w, h = img.size
@@ -196,9 +248,9 @@ def punch(veggie: str) -> dict | None:
     hole = Image.new("L", (w, h), 0)
     draw = ImageDraw.Draw(hole)
     for name, blob in (("face", face), ("avatar", avatar)):
-        _, l, t, r, b = blob
-        cx, cy = (l + r) / 2, (t + b) / 2
-        rx, ry = (r - l) / 2 * SHRINK, (b - t) / 2 * SHRINK
+        cx, cy, radius, _ = center_of(img, blob)
+        radius *= SHRINK
+        rx = ry = radius
         draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
         slots[name] = {
             "cx": round(cx / w * 100, 2),

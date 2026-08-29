@@ -84,8 +84,8 @@ val CABBAGE_CARD = CardTemplate(
     label = "배추",
     art = "neo-hologram/art/cabbage-card-slots.webp",
     ratio = 810f / 1125f,
-    face = Hole(53.77f, 44.71f, 20.54f, 14.08f),
-    avatar = Hole(13.15f, 9.20f, 8.26f, 4.42f),
+    face = Hole(52.84f, 44.71f, 19.81f, 14.27f),
+    avatar = Hole(13.09f, 9.20f, 8.06f, 5.80f),
     name = Slot(24.0f, 4.0f, 70.0f, 9.8f),
     code = Slot(75.0f, 4.8f, 94.0f, 9.4f),
 )
@@ -95,8 +95,8 @@ val SWEET_POTATO_CARD = CardTemplate(
     label = "고구마",
     art = "neo-hologram/art/sweet-potato-card-slots.webp",
     ratio = 816f / 1125f,
-    face = Hole(48.59f, 40.76f, 12.78f, 9.37f),
-    avatar = Hole(13.36f, 9.16f, 8.26f, 4.57f),
+    face = Hole(48.84f, 40.76f, 12.13f, 8.80f),
+    avatar = Hole(13.36f, 9.16f, 8.13f, 5.90f),
     name = Slot(24.0f, 4.0f, 70.0f, 9.8f),
     code = Slot(75.0f, 4.8f, 94.0f, 9.4f),
 )
@@ -135,8 +135,8 @@ fun PersonalCard(
             }
             // 글자는 카드 **위에** 그린다. 비운 바가 이미 카드 안에 있으므로,
             // 아래에 두면 카드가 덮어 버린다.
-            drawSlotText(measurer, name, template.name, weight = FontWeight.Bold)
-            drawSlotText(measurer, code, template.code, weight = FontWeight.Bold)
+            drawSlotText(measurer, name, template.name, TITLE)
+            drawSlotText(measurer, code, template.code, CODE)
         }
     }
 }
@@ -172,11 +172,32 @@ private fun DrawScope.drawInHole(face: ImageBitmap, hole: Hole) {
  * 글자 크기는 **바 높이에서 구한다.** dp 로 박아 두면 카드가 그리드에서 작아질 때
  * 바 밖으로 넘친다 — 카드는 확대 뷰와 그리드에서 크기가 다르다.
  */
+/**
+ * 글자 결을 원화에 맞춘다.
+ *
+ * 저쪽 카드는 제목이 **세리프 스몰캡스**("Cabbage Neo")고 번호는 **굵은 산세리프**
+ * ("NEO-0824")다. 둘을 세리프 하나로 뭉뚱그렸더니 번호판이 카드와 따로 놀았다.
+ *
+ * 자간도 다르다 — 제목은 넓게 벌어져 있고 번호는 붙어 있다.
+ */
+private data class SlotFace(
+    val family: FontFamily,
+    val weight: FontWeight,
+    val letterSpacing: Float,
+    val fill: Float,
+)
+
+private val TITLE = SlotFace(FontFamily.Serif, FontWeight.Bold, 0.06f, 0.60f)
+private val CODE = SlotFace(FontFamily.SansSerif, FontWeight.Black, 0.01f, 0.58f)
+
+/** 생일을 번호판 글자로. 저쪽 `NEO-0824` 가 월일이라 그 자리에 그대로 들어간다. */
+fun birthCode(month: Int, day: Int): String = "NEO-%02d%02d".format(month, day)
+
 private fun DrawScope.drawSlotText(
     measurer: TextMeasurer,
     text: String,
     slot: Slot,
-    weight: FontWeight,
+    face: SlotFace,
 ) {
     if (text.isBlank()) return
     val left = size.width * slot.x0 / 100f
@@ -187,18 +208,27 @@ private fun DrawScope.drawSlotText(
     val boxH = bottom - top
     if (boxW <= 0f || boxH <= 0f) return
 
+    val base = boxH * face.fill
     val style = TextStyle(
         color = Color.White,
-        fontSize = (boxH * 0.62f).toSp(),
-        fontWeight = weight,
-        fontFamily = FontFamily.Serif,
+        fontSize = base.toSp(),
+        fontWeight = face.weight,
+        fontFamily = face.family,
+        letterSpacing = (base * face.letterSpacing).toSp(),
         textAlign = TextAlign.Center,
     )
     val laid = measurer.measure(text, style, maxLines = 1)
     // 넘치면 줄인다. 이름이 긴 개도 있다.
     val scale = minOf(1f, boxW / laid.size.width.toFloat())
     val fitted = if (scale < 1f) {
-        measurer.measure(text, style.copy(fontSize = (boxH * 0.62f * scale).toSp()), maxLines = 1)
+        measurer.measure(
+            text,
+            style.copy(
+                fontSize = (base * scale).toSp(),
+                letterSpacing = (base * scale * face.letterSpacing).toSp(),
+            ),
+            maxLines = 1,
+        )
     } else {
         laid
     }
@@ -220,11 +250,11 @@ private fun Float.toSp() = (this / 2.6f).sp
 @Preview(name = "배추 판", widthDp = 220, heightDp = 310)
 @Composable
 private fun CabbageTemplatePreview() {
-    PersonalCard(CABBAGE_CARD, face = null, name = "몽이", code = "DG-0829", modifier = Modifier.size(200.dp))
+    PersonalCard(CABBAGE_CARD, face = null, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(200.dp))
 }
 
 @Preview(name = "고구마 판 · 작게", widthDp = 130, heightDp = 190)
 @Composable
 private fun SweetPotatoSmallPreview() {
-    PersonalCard(SWEET_POTATO_CARD, face = null, name = "몽이", code = "DG-0829", modifier = Modifier.size(110.dp))
+    PersonalCard(SWEET_POTATO_CARD, face = null, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(110.dp))
 }
