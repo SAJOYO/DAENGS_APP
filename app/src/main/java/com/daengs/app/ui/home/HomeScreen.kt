@@ -90,6 +90,9 @@ fun HomeScreen(
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
     onOpenChat: (() -> Unit)? = null,
+    /** 산책기록 탭을 눌렀을 때. 장소 지도로 들어간다 — 지도 진입점을 어디에 둘지
+     *  제품 결정이 나기 전까지의 임시 배선이다 (이 탭은 그동안 아무것도 안 했다). */
+    onOpenPlaces: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -146,6 +149,7 @@ fun HomeScreen(
                 onSelect = {
                     bottomTab = it
                     if (it == BottomTab.Dex) onOpenDex?.invoke()
+                    if (it == BottomTab.Walks) onOpenPlaces?.invoke()
                 },
                 onCenter = { onOpenChat?.invoke() },
             )

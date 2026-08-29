@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 장소 지도의 현재 위치. 산책 추적용 FOREGROUND_SERVICE 권한은 geo 에 남고
+         여기로 안 온다 - 지도 화면이 떠 있는 동안만 위치를 쓴다. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
          여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,

@@ -23,11 +23,12 @@ import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
+import com.daengs.app.ui.places.PlacesScreen
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
-/** 화면 넷. 갈래가 없는 일직선이라 [Screen] 하나로 충분하다 — 아래 주석 참고. */
-private enum class Screen { Landing, Home, Chat, Dex }
+/** 화면 다섯. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
+private enum class Screen { Landing, Home, Chat, Dex, Places }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -106,6 +107,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Home -> HomeScreen(
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
+                        onOpenPlaces = { screen = Screen.Places },
                         signedIn = session != null,
                         onSignOut = {
                             val old = session
@@ -120,6 +122,8 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.Chat -> ChatScreen(onBack = { screen = Screen.Home })
+
+                    Screen.Places -> PlacesScreen(onBack = { screen = Screen.Home })
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
                 }
