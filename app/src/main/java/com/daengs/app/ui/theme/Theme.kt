@@ -19,6 +19,16 @@ private val DaengsColorScheme = lightColorScheme(
     surfaceVariant = PinkFaint,
     onSurfaceVariant = TextMuted,
     outline = DaengsColors.BorderNeutral,
+    // 오류 색도 **반드시 채운다.**
+    //
+    // lightColorScheme 는 안 준 자리를 M3 기본값으로 메운다. 나머지는 다 덮어써서
+    // 안 보였는데 error 계열만 빠져 있어서, 지도 화면이
+    // `MaterialTheme.colorScheme.errorContainer` 를 쓰는 순간 크림·핑크 사이에
+    // M3 기본 빨강·보라가 튀어나왔다. 팔레트에 Error 가 이미 있으므로 그걸 쓴다.
+    error = DaengsColors.Error,
+    onError = CardWhite,
+    errorContainer = DaengsColors.ErrorSoft,
+    onErrorContainer = DaengsColors.Error,
 )
 
 /**
