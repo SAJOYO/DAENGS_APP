@@ -80,8 +80,6 @@ fun DeveloperPanel(
     onPickProfile: (DogBreed) -> Unit,
     outside: OutsideView,
     onPickOutside: (OutsideView) -> Unit,
-    signedIn: Boolean = false,
-    onSignOut: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -99,20 +97,6 @@ fun DeveloperPanel(
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
             )
-            // 로그아웃 자리가 여기인 이유: `마이` 탭이 아직 껍데기다. 진짜 화면이
-            // 생기면 그리로 옮긴다.
-            if (signedIn && onSignOut != null) {
-                Text(
-                    "로그아웃",
-                    color = Color.Black,
-                    fontSize = 9.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(PanelPick)
-                        .clickable(onClick = onSignOut)
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                )
-            }
         }
 
         // 소품 목록은 여기 안 넣는다. 좌표는 이미 방 위에 라벨로 그려지고 있어서

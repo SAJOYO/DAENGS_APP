@@ -113,7 +113,11 @@ fun HomeScreen(
     BackHandler(enabled = bottomTab != BottomTab.Home) { bottomTab = BottomTab.Home }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
-    // 프로필 얼굴의 견종. 개발자 패널에서 바꿀 수 있다.
+    // 프로필 얼굴의 견종. **개발자 패널에서만** 바꿀 수 있다 — 즉 릴리스에서는
+    // 기본값에 고정된다. 사용자용 고르기는 온보딩(강아지 등록)이 붙을 때
+    // "내 강아지 중 대표 고르기"로 만든다. 등록이 없는 지금 견종 27종을
+    // 늘어놓으면 곧 버려질 화면이 되고, 내 개와 무관한 목록에서 하나 고르라는
+    // 말이 된다.
     //
     // 상단바와 챗봇 카드 둘 다 이걸 쓴다. 그 둘은 방 밖에 있어서 상태를
     // 방 안에 두면 닿지 않는다 — 그래서 견종 고르기(방 안)와 달리 여기 있다.
@@ -208,8 +212,6 @@ fun HomeScreen(
                 theme = roomTheme,
                 herd = herd,
                 onOpenDex = onOpenDex,
-                signedIn = signedIn,
-                onSignOut = onSignOut,
                 profileBreed = profileBreed,
                 onPickProfile = { profileBreed = it },
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -250,8 +252,6 @@ private fun RoomSection(
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
-    signedIn: Boolean,
-    onSignOut: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
     modifier: Modifier = Modifier,
@@ -330,8 +330,6 @@ private fun RoomSection(
                 onPickProfile = onPickProfile,
                 outside = outside,
                 onPickOutside = { outsideOverride = it },
-                signedIn = signedIn,
-                onSignOut = onSignOut,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }
