@@ -20,12 +20,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -35,6 +32,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.daengs.app.ui.common.DaengsChip
+import com.daengs.app.ui.common.DaengsTextAction
+import com.daengs.app.ui.common.DaengsWideButton
+import com.daengs.app.ui.theme.CardWhite
+import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.DaengsColors
+import com.daengs.app.ui.theme.TextDark
+import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.map.layers.places.PlaceMarkerState
 import com.daengs.app.journey.JourneyItem
 import com.daengs.app.journey.JourneyLeg
@@ -138,6 +144,7 @@ fun PlaceDiscoveryPanel(
     Surface(
         modifier = modifier.fillMaxWidth().heightIn(min = 210.dp, max = 430.dp),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = CardWhite,
         shadowElevation = 12.dp,
     ) {
         LazyColumn(
@@ -148,15 +155,20 @@ fun PlaceDiscoveryPanel(
                 Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp)) {
                     Box(
                         Modifier.width(42.dp).height(4.dp)
-                            .background(Color(0xFFCBD3CD), RoundedCornerShape(4.dp))
+                            .background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp))
                             .align(Alignment.CenterHorizontally),
                     )
                     Spacer(Modifier.height(10.dp))
-                    Text(placePanelTitle(selectedKind), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        placePanelTitle(selectedKind),
+                        color = TextDark,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Text(
                         "${originLabel(state.originMode)} · 카테고리 하나씩 사실 그대로 검색합니다.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = TextMuted,
                     )
                 }
             }
@@ -168,11 +180,11 @@ fun PlaceDiscoveryPanel(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(PLACE_CATEGORIES, key = { it.kind.wire }) { category ->
-                        FilterChip(
+                        DaengsChip(
+                            label = category.label,
                             selected = category.kind == selectedKind,
                             enabled = !state.loading,
                             onClick = { onSearch(category.kind, state.preferParking) },
-                            label = { Text(category.label) },
                         )
                     }
                 }
@@ -185,17 +197,17 @@ fun PlaceDiscoveryPanel(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (selectedKind.supportsParkingPreference()) {
-                        FilterChip(
+                        DaengsChip(
+                            label = "주차 가능 우선",
                             selected = state.preferParking,
                             enabled = !state.loading,
                             onClick = { onSearch(selectedKind, !state.preferParking) },
-                            label = { Text("주차 가능 우선") },
                         )
                     }
                     Text(
                         group?.let(::sortLabel) ?: "가까운 순",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = TextMuted,
                     )
                 }
             }
@@ -206,7 +218,7 @@ fun PlaceDiscoveryPanel(
                         "일반 쇼핑은 원천 데이터에 주차·입장 조건 같은 상세 사실이 대부분 없습니다.",
                         modifier = Modifier.padding(horizontal = 16.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF8A5A00),
+                        color = DaengsColors.Warning,
                     )
                 }
             }
@@ -222,7 +234,7 @@ fun PlaceDiscoveryPanel(
                             "미상 ${coverage.unknown}",
                         modifier = Modifier.padding(horizontal = 16.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = TextMuted,
                     )
                 }
             }
@@ -231,15 +243,21 @@ fun PlaceDiscoveryPanel(
                 item {
                     Surface(
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
+                        color = DaengsColors.ErrorSoft,
                         shape = RoundedCornerShape(12.dp),
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(error, modifier = Modifier.weight(1f), maxLines = 2)
-                            TextButton(onClick = onRetry) { Text("다시 시도") }
+                            Text(
+                                error,
+                                modifier = Modifier.weight(1f),
+                                color = DaengsColors.Error,
+                                fontSize = 12.sp,
+                                maxLines = 2,
+                            )
+                            DaengsTextAction("다시 시도", onRetry, tint = DaengsColors.Error)
                         }
                     }
                 }
@@ -252,9 +270,13 @@ fun PlaceDiscoveryPanel(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.width(22.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier.width(22.dp),
+                            color = DaengPink,
+                            strokeWidth = 2.dp,
+                        )
                         Spacer(Modifier.width(10.dp))
-                        Text("${categoryLabel(selectedKind)} 찾는 중")
+                        Text("${categoryLabel(selectedKind)} 찾는 중", color = TextMuted, fontSize = 13.sp)
                     }
                 }
             } else if (group == null && state.requestedKinds.isEmpty()) {
@@ -317,7 +339,7 @@ private fun ParkingCoverage(coverage: BooleanFactCoverage) {
             "미상 ${coverage.unknown}",
         modifier = Modifier.padding(horizontal = 16.dp),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.secondary,
+        color = TextMuted,
     )
 }
 
@@ -333,26 +355,33 @@ private fun PlaceCard(
     onCall: (String) -> Unit,
 ) {
     val place = hit.place
-    val border = if (selected) MaterialTheme.colorScheme.primary else Color(0xFFDDE3DF)
+    val border = if (selected) DaengPink else DaengsColors.BorderNeutral
     Surface(
         modifier = Modifier.width(292.dp).border(1.dp, border, RoundedCornerShape(16.dp))
             .clickable(onClick = onSelect),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
+        color = CardWhite,
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(place.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                place.name,
+                color = TextDark,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 "${categoryLabel(place.match.kind)} · ${formatPlaceMeters(place.distanceMeters)}",
-                color = MaterialTheme.colorScheme.secondary,
+                color = TextMuted,
+                fontSize = 13.sp,
             )
             if (place.match.kind.supportsParkingPreference()) {
                 Text(
                     parkingLabel(place.facts.parking),
                     color = if (place.facts.parking == null) {
-                        Color(0xFF8A5A00)
+                        DaengsColors.Warning
                     } else {
-                        MaterialTheme.colorScheme.secondary
+                        TextMuted
                     },
                 )
             }
@@ -372,9 +401,9 @@ private fun PlaceCard(
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (medical?.openNow == null || place.facts.phone.isNullOrBlank()) {
-                        Color(0xFF8A5A00)
+                        DaengsColors.Warning
                     } else {
-                        MaterialTheme.colorScheme.secondary
+                        TextMuted
                     },
                 )
                 todayHoursLabel(medical)?.let { today ->
@@ -384,7 +413,7 @@ private fun PlaceCard(
                     Text(
                         sourceDate,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = TextMuted,
                     )
                 }
             } else {
@@ -405,13 +434,7 @@ private fun PlaceCard(
                 onOpenHandoff = onOpenHandoff,
             )
             place.facts.phone?.let { phone ->
-                OutlinedButton(onClick = { onCall(phone) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        callActionLabel(place.match.kind, phone),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                DaengsWideButton(callActionLabel(place.match.kind, phone), { onCall(phone) })
             }
         }
     }
@@ -431,47 +454,40 @@ private fun JourneyAction(
 ) {
     when {
         journey == null -> {
-            OutlinedButton(onClick = onJourney, modifier = Modifier.fillMaxWidth()) {
-                Text("길찾기")
-            }
+            DaengsWideButton("길찾기", onJourney, accent = true)
         }
         journey.loading -> {
-            OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                CircularProgressIndicator(modifier = Modifier.width(16.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(8.dp))
-                Text("가는 길 확인 중")
-            }
+            DaengsWideButton("가는 길 확인 중", {}, busy = true)
         }
         journey.error != null -> {
             Text(
                 journey.error,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = DaengsColors.Error,
                 maxLines = 2,
             )
-            TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                Text("길찾기 다시 시도")
-            }
+            DaengsWideButton("길찾기 다시 시도", onRetry)
         }
         else -> {
             val primary = journey.item?.let(::primaryJourney)
             if (primary == null) {
-                Text("사용할 수 있는 이동 경로가 없습니다.", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onJourney, modifier = Modifier.fillMaxWidth()) {
-                    Text("다시 계산")
-                }
+                Text(
+                    "사용할 수 있는 이동 경로가 없습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+                DaengsWideButton("다시 계산", onJourney)
             } else {
                 Text(
                     journeySummary(primary),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = TextMuted,
                 )
-                OutlinedButton(
-                    onClick = { onOpenHandoff(primary.leg.handoff!!.naver) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("네이버 지도에서 ${journeyModeLabel(primary.mode)} 길찾기")
-                }
+                DaengsWideButton(
+                    "네이버 지도에서 ${journeyModeLabel(primary.mode)} 길찾기",
+                    { onOpenHandoff(primary.leg.handoff!!.naver) },
+                    accent = true,
+                )
             }
         }
     }
@@ -558,9 +574,9 @@ fun dogAccessCoverage(group: PlaceSearchGroup): DogAccessCoverage? {
 }
 
 private fun dogAccessColor(state: DogAccessState): Color = when (state) {
-    DogAccessState.COMPATIBLE -> Color(0xFF226C4A)
-    DogAccessState.INCOMPATIBLE -> Color(0xFF8A3333)
-    DogAccessState.UNKNOWN -> Color(0xFF8A5A00)
+    DogAccessState.COMPATIBLE -> DaengsColors.Success
+    DogAccessState.INCOMPATIBLE -> DaengsColors.Error
+    DogAccessState.UNKNOWN -> DaengsColors.Warning
 }
 
 fun hospitalOperationLabel(medical: MedicalFacts?, hasPhone: Boolean): String {

@@ -16,8 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,7 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
+import com.daengs.app.ui.common.DaengsFloatingButton
+import com.daengs.app.ui.theme.DaengsColors
+import com.daengs.app.ui.theme.PinkFaint
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.daengs.app.BuildConfig
@@ -204,7 +207,7 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
     Box(modifier.fillMaxSize()) {
         if (inspectionMode) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
+            Box(Modifier.fillMaxSize().background(PinkFaint))
         } else {
             MapHost(
                 scene = MapScene(
@@ -220,13 +223,14 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             )
         }
 
-        FilledTonalButton(
+        DaengsFloatingButton(
+            label = "← 홈",
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
                 .padding(12.dp),
-        ) { Text("← 홈") }
+        )
 
         Column(
             modifier = Modifier
@@ -238,7 +242,8 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (movedFromOrigin) {
-                    FilledTonalButton(
+                    DaengsFloatingButton(
+                        label = "이 지역 검색",
                         enabled = !discovery.loading && !locating,
                         onClick = {
                             val origin = cameraCandidate
@@ -254,16 +259,22 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                                 )
                             }
                         },
-                    ) { Text("이 지역 검색") }
+                    )
                 }
-                FilledTonalButton(
+                DaengsFloatingButton(
+                    label = if (locating) "찾는 중" else "내 위치",
                     enabled = granted && !discovery.loading && !locating,
                     onClick = { locateAndSearch(selectedKind, discovery.preferParking) },
-                ) { Text(if (locating) "찾는 중" else "내 위치") }
+                )
             }
             locationError?.let { error ->
-                Surface(color = MaterialTheme.colorScheme.errorContainer) {
-                    Text(error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                Surface(color = DaengsColors.ErrorSoft, shape = RoundedCornerShape(12.dp)) {
+                    Text(
+                        error,
+                        color = DaengsColors.Error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             }
         }
