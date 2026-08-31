@@ -46,6 +46,8 @@ fun NaverMapSurface(
     bottomPaddingPx: Int = 0,
     /** 여기로 지도를 옮긴다. **사용자가 카드나 마커를 누른 순간에만** 값이 온다. */
     centerOn: GeoPoint? = null,
+    /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
+    centerZoom: Double? = null,
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
@@ -167,7 +169,7 @@ fun NaverMapSurface(
         val point = centerOn ?: return@LaunchedEffect
         // 너무 멀리서 보고 있었으면 당겨 준다. 이미 가까우면 배율은 안 건드린다 —
         // 사용자가 맞춰 놓은 화면을 마음대로 바꾸지 않는다.
-        val zoom = maxOf(map.cameraPosition.zoom, SELECTED_PLACE_MIN_ZOOM)
+        val zoom = centerZoom ?: maxOf(map.cameraPosition.zoom, SELECTED_PLACE_MIN_ZOOM)
         map.moveCamera(
             CameraUpdate.scrollAndZoomTo(point.toLatLng(), zoom).animate(CameraAnimation.Easing),
         )
