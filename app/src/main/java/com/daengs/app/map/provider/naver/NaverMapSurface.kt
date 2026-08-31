@@ -44,8 +44,8 @@ fun NaverMapSurface(
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
-    // Idle fires for our own moveCamera calls too. Without the reason, following the device
-    // would look exactly like the user panning the map.
+    // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
+    // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
 
     DisposableEffect(mapView, lifecycle) {
@@ -74,8 +74,8 @@ fun NaverMapSurface(
                     naverMap = map
                     map.uiSettings.isLocationButtonEnabled = false
                     map.uiSettings.isZoomControlEnabled = false
-                    // Nothing in this app is answered by a view wider than a city: search caps at
-                    // a 10km radius and a walk is a few km. The floor also keeps marker count sane.
+                    // 이 앱에는 도시보다 넓게 봐서 답이 나오는 화면이 없다 — 검색은
+                    // 반경 10km 가 상한이고 산책은 몇 km 다. 하한을 두면 마커 수도 안 터진다.
                     map.minZoom = MIN_ZOOM
                     map.extent = KOREA_EXTENT
                     map.addOnCameraChangeListener { reason, _ ->
@@ -133,8 +133,8 @@ fun NaverMapSurface(
                 captionMinZoom = 13.0
                 width = if (place.selected) 84 else 64
                 height = if (place.selected) 105 else 80
-                // Selection is size and stacking order. Keeping the group icon means the
-                // selected pin still says what kind of place it is.
+                // 선택은 크기와 앞뒤 순서로만 표현한다. 묶음 아이콘을 그대로 두어야
+                // 고른 핀도 여전히 "어떤 곳인지"를 말해 준다.
                 icon = OverlayImage.fromResource(place.iconGroup.marker)
                 zIndex = if (place.selected) SELECTED_MARKER_Z else 0
                 isHideCollidedMarkers = true
@@ -156,11 +156,11 @@ private fun Int.isUserDriven(): Boolean =
 
 private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 
-/** Selected place pins draw above their neighbours so the choice stays visible when markers collide. */
+/** 고른 핀은 이웃 위에 그린다. 마커가 겹칠 때 고른 것이 가려지면 안 된다. */
 private const val SELECTED_MARKER_Z = 100
 
-/** Zoom floor. Below this the search radius cap (10km) is already off-screen and marker count spikes. */
+/** 줌 하한. 이보다 멀어지면 검색 반경 상한(10km)이 이미 화면 밖이고 마커 수가 치솟는다. */
 private const val MIN_ZOOM = 11.0
 
-/** The camera cannot leave the country the data covers — every source is domestic. */
+/** 카메라가 데이터가 덮는 나라를 벗어나지 못하게 한다 — 출처가 전부 국내다. */
 private val KOREA_EXTENT = LatLngBounds(LatLng(32.9, 124.0), LatLng(38.7, 132.0))

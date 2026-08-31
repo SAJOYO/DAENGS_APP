@@ -74,7 +74,7 @@ data class JourneyResponse(
     val items: List<JourneyItem>,
 )
 
-/** One canonical Place is one journey destination. Internal DB ids never cross this boundary. */
+/** 장소 하나가 목적지 하나다. **내부 DB id 는 이 경계를 넘지 않는다** (PlaceKey 로만 가리킨다). */
 data class PlaceJourneyRequest(
     val origin: GeoPoint,
     val destinationKey: PlaceKey,
@@ -104,7 +104,7 @@ data class PlaceJourneyRequest(
         })
         put("companion", "dog")
         dogId?.trim()?.takeIf(String::isNotEmpty)?.let { put("dog_id", it) }
-        // The first Android cut hands navigation to a provider app; it does not render a route line.
+        // 안드로이드 첫 판은 길 안내를 지도 앱에 넘긴다 — 경로선을 직접 그리지 않는다.
         put("measured", true)
         put("with_polyline", false)
     }

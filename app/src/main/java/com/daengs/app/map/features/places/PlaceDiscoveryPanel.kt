@@ -64,7 +64,7 @@ data class DogAccessCoverage(
     val unknown: Int,
 )
 
-/** Exact canonical kinds, not inferred leisure/errand axes. One chip means one server group. */
+/** 서버가 정한 종류 그대로다. 여가/볼일 같은 축을 임의로 만들지 않는다 — **칩 하나가 서버 그룹 하나**다. */
 val PLACE_CATEGORIES = listOf(
     PlaceCategory(PlaceKind.CAFE, "카페"),
     PlaceCategory(PlaceKind.RESTAURANT, "음식점"),
@@ -108,7 +108,12 @@ fun canonicalPlaceKeysByMarker(state: PlaceDiscoveryState): Map<String, PlaceKey
     state.response?.groups.orEmpty().flatMap(PlaceSearchGroup::results)
         .associate { hit -> placeMarkerId(hit.place.key) to hit.place.key }
 
-/** Length-prefix keeps `(source, ref)` opaque and collision-free without parsing source contents. */
+/**
+ * 앞에 길이를 붙여 `(source, ref)` 를 한 문자열로 만든다.
+ *
+ * 길이를 알면 어디서 끊을지 알 수 있어서, source 안에 무슨 글자가 들어 있든
+ * 파싱할 필요가 없고 서로 다른 짝이 같은 id 가 될 일도 없다.
+ */
 fun placeMarkerId(key: PlaceKey): String = "place:${key.source.length}:${key.source}${key.ref}"
 
 @Composable

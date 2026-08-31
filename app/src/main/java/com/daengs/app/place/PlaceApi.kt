@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 
-/** Canonical place client shared by all future Android place surfaces. */
+/** 장소 API 의 표준 클라이언트. 앞으로 생길 장소 화면들이 다 이걸 쓴다. */
 class PlaceApi(
     private val baseUrl: () -> String,
     private val json: Json = Json,

@@ -52,10 +52,11 @@ class FusedLocationSource(context: Context) : LocationSource {
                 result.locations.forEach { trySend(it.toSample()) }
             }
         }
-        // Not null: the callback needs a Looper to be delivered on, and GMS rejects a null one
-        // with "invalid null looper" unless the *calling thread* has its own. This flow is
-        // collected from the walk service's Dispatchers.Default scope, which has none — so the
-        // subscription failed instantly and every walk paused itself with zero fixes.
+        // **null 을 넘기면 안 된다.** 콜백은 전달받을 Looper 가 필요한데, GMS 는 null 을
+        // 주면 "invalid null looper" 로 거절한다 — *부르는 스레드* 가 자기 Looper 를
+        // 갖고 있을 때만 봐준다. 이 flow 는 산책 서비스의 Dispatchers.Default 에서
+        // 모으는데 거기엔 Looper 가 없다. 그래서 구독이 즉시 실패하고, 산책마다
+        // 위치를 한 번도 못 받은 채 스스로 멈췄다.
         client.requestLocationUpdates(request, callback, Looper.getMainLooper())
             .addOnFailureListener { close(it) }
         awaitClose { client.removeLocationUpdates(callback) }
