@@ -44,6 +44,7 @@ import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
+import com.daengs.app.pet.Pet
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
@@ -102,6 +103,12 @@ fun HomeScreen(
     onSignOut: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
+    /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
+    pets: List<Pet>? = null,
+    canAddMore: Boolean = false,
+    onAddPet: (() -> Unit)? = null,
+    onEditPet: ((Pet) -> Unit)? = null,
+    onPickPrimary: ((Pet) -> Unit)? = null,
     /** 회원 탈퇴. 상태는 [MainActivity] 가 들고 있다 (랜딩의 busy·error 와 같은 결). */
     onWithdraw: (() -> Unit)? = null,
     withdrawBusy: Boolean = false,
@@ -182,6 +189,11 @@ fun HomeScreen(
         if (bottomTab == BottomTab.My) {
             MyScreen(
                 breed = profileBreed,
+                pets = pets,
+                canAddMore = canAddMore,
+                onAddPet = { onAddPet?.invoke() },
+                onEditPet = { onEditPet?.invoke(it) },
+                onPickPrimary = { onPickPrimary?.invoke(it) },
                 signedIn = signedIn,
                 onSignIn = { onSignIn?.invoke() },
                 onSignOut = { onSignOut?.invoke() },
