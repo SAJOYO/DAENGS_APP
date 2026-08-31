@@ -7,13 +7,13 @@
       위치. **쓰는 곳이 둘이라 한 군데 모아 둔다.**
 
         COARSE   창밖 날씨(Open-Meteo) · 장소 지도
-        FINE     장소 지도만. 지도 화면이 떠 있는 동안만 쓴다
+        FINE     장소 지도와 사용자가 시작한 산책 기록
+        FGS      산책 중 화면이 꺼져도 위치 기록을 이어 간다
+        알림     산책 기록 상태와 일시정지·종료 액션을 표시한다
 
       창밖 날씨는 **정밀 위치가 필요 없다** — 시·군 단위면 충분하고, 장식 하나에
       정밀 위치를 묻는 건 과하다. 거부해도 앱은 그대로 돌아간다(맑은 낮으로 떨어진다).
       지도가 FINE 을 받는 것은 별개이고, 날씨 때문에 받는 게 아니다.
-
-      산책 추적용 FOREGROUND_SERVICE 는 geo 에 남고 여기로 안 온다.
 
       ⚠️ 예전에는 날씨와 지도가 **각각 선언해서 COARSE 가 두 번** 적혀 있었다.
       병합기가 합쳐 주므로 동작은 같았지만, 주석 둘이 서로 다른 이유를 대고 있어
@@ -23,6 +23,9 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
          여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,
@@ -90,6 +93,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <service
+            android:name=".walk.WalkTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>
