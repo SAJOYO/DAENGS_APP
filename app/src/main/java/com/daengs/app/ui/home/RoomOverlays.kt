@@ -16,6 +16,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.daengs.app.ui.theme.PinkFaint
+import com.daengs.app.ui.theme.DaengsColors
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -106,14 +120,27 @@ fun CameraButton(
     }
 }
 
-/** 방 앞쪽에 걸린 "○○이네" 이름표. */
+/**
+ * 방 앞쪽에 걸린 "○○이네" 이름표.
+ *
+ * **누르면 고친다.** [onClick] 이 null 이면 못 누른다 — 로그인 전에는 고쳐도 저장할
+ * 곳이 없어서, 눌리는데 아무 일도 안 일어나는 것보다 안 눌리는 편이 낫다.
+ */
 @Composable
-fun NamePlate(label: String, modifier: Modifier = Modifier) {
+fun NamePlate(label: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     Surface(
         shape = RoundedCornerShape(11.dp),
         color = CardWhite,
         border = androidx.compose.foundation.BorderStroke(2.dp, PinkSoft),
-        modifier = modifier.shadow(4.dp, RoundedCornerShape(11.dp), clip = false),
+        modifier = modifier
+            .shadow(4.dp, RoundedCornerShape(11.dp), clip = false)
+            .then(
+                if (onClick == null) {
+                    Modifier
+                } else {
+                    Modifier.clip(RoundedCornerShape(11.dp)).clickable(onClick = onClick)
+                },
+            ),
     ) {
         Row(
             Modifier.padding(horizontal = 13.dp, vertical = 5.dp),
@@ -123,6 +150,117 @@ fun NamePlate(label: String, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(6.dp))
             DaengsIconView(DaengsIcon.Heart, Modifier.size(13.dp), tint = DaengPink)
         }
+    }
+}
+
+/**
+ * 이름표 고치기.
+ *
+ * **비우면 되돌아간다** — 대표 강아지 이름으로 지은 이름이 다시 걸린다. 그래서 지우는
+ * 버튼을 따로 두지 않는다. 지금 걸린 이름이 지어진 것이면 칸이 비어 있고, 그 자리에
+ * 지어진 이름을 흐리게 보여 준다(placeholder) — 무엇으로 돌아가는지 알 수 있다.
+ */
+@Composable
+fun RoomNameDialog(
+    current: String?,
+    /** 비웠을 때 걸릴 이름. 사용자가 정하지 않았을 때의 값이다. */
+    fallback: String,
+    busy: Boolean,
+    error: String?,
+    onConfirm: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by rememberSaveable(current) { mutableStateOf(current.orEmpty()) }
+
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(22.dp)) {
+                Text("이름표 바꾸기", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(10.dp))
+                Surface(color = PinkFaint, shape = RoundedCornerShape(12.dp)) {
+                    Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        if (text.isEmpty()) {
+                            Text(fallback, color = TextMuted, fontSize = 15.sp)
+                        }
+                        BasicTextField(
+                            value = text,
+                            // 서버가 20자까지 받는다. 넘겨 보내 놓고 422 를 받는 것보다
+                            // 아예 안 들어가는 편이 낫다.
+                            onValueChange = { if (it.length <= MAX_ROOM_NAME) text = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = TextDark, fontSize = 15.sp),
+                            cursorBrush = SolidColor(DaengPink),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "비우면 대표 강아지 이름으로 돌아가요.",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = DaengsColors.Error, fontSize = 13.sp, lineHeight = 19.sp)
+                }
+                Spacer(Modifier.height(18.dp))
+                if (busy) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        CircularProgressIndicator(
+                            Modifier.size(20.dp),
+                            color = DaengPink,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        DialogText("취소", TextMuted, FontWeight.Normal, onDismiss)
+                        Spacer(Modifier.width(6.dp))
+                        DialogText("저장", DaengPink, FontWeight.Bold) {
+                            onConfirm(text.trim().takeIf(String::isNotEmpty))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 이름표 글자 수. 서버 `app_users.room_name` 이 VARCHAR(20) 이다. */
+const val MAX_ROOM_NAME = 20
+
+@Composable
+private fun DialogText(
+    label: String,
+    tint: Color,
+    weight: FontWeight,
+    onClick: () -> Unit,
+) {
+    Text(
+        label,
+        color = tint,
+        fontSize = 14.sp,
+        fontWeight = weight,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF3D8D2)
+@Composable
+private fun RoomNameDialogPreview() {
+    DaengsTheme {
+        RoomNameDialog(
+            current = null,
+            fallback = "네옹이네",
+            busy = false,
+            error = null,
+            onConfirm = {},
+            onDismiss = {},
+        )
     }
 }
 

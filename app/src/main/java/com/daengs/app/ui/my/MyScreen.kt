@@ -73,6 +73,8 @@ import com.daengs.app.ui.theme.TextMuted
 @Composable
 fun MyScreen(
     breed: DogBreed,
+    /** 방 앞 이름표와 **같은 이름**. 두 곳이 다르면 어느 쪽이 내 방인지 헷갈린다. */
+    roomLabel: String,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
     pets: List<Pet>?,
     canAddMore: Boolean,
@@ -115,7 +117,7 @@ fun MyScreen(
             .padding(horizontal = 14.dp),
     ) {
         Spacer(Modifier.height(18.dp))
-        ProfileHead(breed)
+        ProfileHead(breed, roomLabel)
         Spacer(Modifier.height(20.dp))
 
         if (signedIn) {
@@ -323,7 +325,7 @@ private fun RowDivider() {
 }
 
 @Composable
-private fun ProfileHead(breed: DogBreed) {
+private fun ProfileHead(breed: DogBreed, roomLabel: String) {
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -332,7 +334,7 @@ private fun ProfileHead(breed: DogBreed) {
         Spacer(Modifier.height(10.dp))
         Text(HomeDemoData.DOG_NAME, color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(3.dp))
-        Text(HomeDemoData.ROOM_LABEL, color = TextMuted, fontSize = 13.sp)
+        Text(roomLabel, color = TextMuted, fontSize = 13.sp)
     }
 }
 
@@ -495,7 +497,7 @@ private fun MyRow(
 private fun MyScreenSignedInPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, pets = emptyList(), canAddMore = true,
+            HomeDemoData.DOG_BREED, roomLabel = "네옹이네", pets = emptyList(), canAddMore = true,
             onAddPet = {}, onEditPet = {}, onPickPrimary = {},
             onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
             signedIn = true, onSignIn = {}, onSignOut = {},
@@ -509,7 +511,7 @@ private fun MyScreenSignedInPreview() {
 private fun MyScreenBrowsingPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, pets = null, canAddMore = false,
+            HomeDemoData.DOG_BREED, roomLabel = "우리집", pets = null, canAddMore = false,
             onAddPet = {}, onEditPet = {}, onPickPrimary = {},
             onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
             signedIn = false, onSignIn = {}, onSignOut = {},
