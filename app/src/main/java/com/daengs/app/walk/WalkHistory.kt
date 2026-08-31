@@ -1,5 +1,7 @@
 package com.daengs.app.walk
 
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,6 +25,38 @@ class WalkHistory(private val log: WalkFixLog) {
      */
     suspend fun finished(): List<WalkSummary> = withContext(Dispatchers.IO) {
         log.finishedSessions().map { session -> summarize(session, log.fixes(session.id)) }
+    }
+
+    /**
+     * 오늘 걸은 것. 홈 카드가 쓴다.
+     *
+     * 하루의 경계는 **기기 시간대**다 (`ZoneId.systemDefault()`) — 걷는 사람의 하루가
+     * 기준이지 UTC 의 하루가 아니다.
+     */
+    suspend fun todayTotals(today: LocalDate = LocalDate.now()): WalkDayTotals =
+        withContext(Dispatchers.IO) {
+            val zone = ZoneId.systemDefault()
+            finished().totalsFor(
+                dayStartMillis = today.atStartOfDay(zone).toInstant().toEpochMilli(),
+                dayEndMillis = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+            )
+        }
+
+    /**
+     * 산책으로 칠 만한지 보고, 아니면 **지운다.**
+     *
+     * 문을 눌렀다 닫은 것이 0m 짜리 기록으로 쌓이면 목록이 지저분해지고 오늘 요약의
+     * 횟수가 거짓이 된다. 지우면 서버에도 안 올라간다 — 올리기는 "끝났고 안 올라간
+     * 것" 을 훑는데 그 세션이 이미 없다.
+     *
+     * @return 산책으로 쳤으면 true. false 면 **부르는 쪽이 사용자에게 알려야 한다** —
+     *   말없이 사라지면 기록이 유실된 것으로 읽힌다.
+     */
+    suspend fun keepIfWalk(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        val summary = detail(sessionId) ?: return@withContext false
+        if (summary.countsAsWalk) return@withContext true
+        log.deleteSession(sessionId)
+        false
     }
 
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {

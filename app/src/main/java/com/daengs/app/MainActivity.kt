@@ -31,6 +31,7 @@ import com.daengs.app.ui.places.PlacesScreen
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkScreen
+import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
@@ -93,6 +94,19 @@ class MainActivity : ComponentActivity() {
                 var editing by remember { mutableStateOf<Pet?>(null) }
                 /** 목록에서 고른 산책. 상세 화면은 id 만 받아 스스로 읽어 온다. */
                 var openedWalkId by remember { mutableStateOf<String?>(null) }
+
+                /** 홈 카드의 오늘치. null 은 **아직 못 읽은 것**이라 카드가 `-` 로 둔다. */
+                var todayWalks by remember { mutableStateOf<WalkDayTotals?>(null) }
+
+                /**
+                 * 홈이 다시 보일 때마다 오늘치를 다시 읽는다.
+                 *
+                 * 산책을 끝내거나 목록에서 돌아오면 숫자가 바뀌어 있어야 한다 —
+                 * `screen` 을 키로 두면 그 두 경우가 다 잡힌다.
+                 */
+                LaunchedEffect(screen) {
+                    if (screen == Screen.Home) todayWalks = walkRuntime.history.todayTotals()
+                }
 
                 var withdrawBusy by remember { mutableStateOf(false) }
                 var withdrawError by remember { mutableStateOf<String?>(null) }
@@ -194,6 +208,7 @@ class MainActivity : ComponentActivity() {
                         onOpenPlaces = { screen = Screen.Places },
                         onOpenWalk = { screen = Screen.Walk },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
+                        todayWalks = todayWalks,
                         signedIn = session != null,
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.

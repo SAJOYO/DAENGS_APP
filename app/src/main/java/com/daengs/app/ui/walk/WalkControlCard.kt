@@ -154,7 +154,7 @@ internal fun formatWalkDuration(millis: Long): String {
     }
 }
 
-internal fun formatWalkDistance(meters: Double): String = if (meters >= 1_000.0) {
+fun formatWalkDistance(meters: Double): String = if (meters >= 1_000.0) {
     String.format(Locale.ROOT, "%.1fkm", meters / 1_000.0)
 } else {
     "${meters.coerceAtLeast(0.0).roundToInt()}m"

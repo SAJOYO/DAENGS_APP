@@ -39,13 +39,8 @@ object HomeDemoData {
         "간식 추천해줘!",
     )
 
+    /** 카드의 한 칸. 값은 [com.daengs.app.walk.WalkDayTotals] 에서 오지 여기 박혀 있지 않다. */
     data class WalkStat(val icon: DaengsIcon, val value: String, val label: String)
-
-    val WALK_STATS = listOf(
-        WalkStat(DaengsIcon.Paws, "1회", "횟수"),
-        WalkStat(DaengsIcon.Clock, "32분", "시간"),
-        WalkStat(DaengsIcon.Pin, "2.3km", "거리"),
-    )
 
     /** 시안에 박힌 날짜. @Preview 를 결정적으로 만들 때 쓴다. */
     const val MOCK_DATE = "05.20 (화)"

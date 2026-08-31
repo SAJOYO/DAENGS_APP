@@ -1,6 +1,7 @@
 package com.daengs.app.walk
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -108,5 +109,98 @@ class WalkSummaryTest {
     @Test
     fun `좌표가 아예 없으면 자리도 없다`() {
         assertEquals(null, summarize(session, emptyList()).anchor)
+    }
+
+    // -- 산책으로 칠 만한가 ------------------------------------------------
+
+    /** 문을 눌렀다 닫은 것이 "1회" 로 잡히면 홈의 오늘 요약이 거짓이 된다. */
+    @Test
+    fun `너무 짧으면 산책이 아니다`() {
+        assertFalse(walk(distanceMeters = 12.0, activeMillis = 40_000L).countsAsWalk)
+    }
+
+    /** **둘 다** 넘어야 한다. 50m 를 걸었어도 10초 만에 끝났으면 걸은 것이 아니다. */
+    @Test
+    fun `거리만 넘고 시간이 모자라면 아니다`() {
+        assertFalse(walk(distanceMeters = 500.0, activeMillis = 20_000L).countsAsWalk)
+    }
+
+    /** 1분을 서 있었어도 제자리면 산책이 아니다. */
+    @Test
+    fun `시간만 넘고 거리가 모자라면 아니다`() {
+        assertFalse(walk(distanceMeters = 8.0, activeMillis = 600_000L).countsAsWalk)
+    }
+
+    /** 경계는 **인정한다** — 딱 50m 걷고 "왜 기록이 없지" 가 되면 안 된다. */
+    @Test
+    fun `딱 기준만큼이면 산책이다`() {
+        assertTrue(walk(distanceMeters = 50.0, activeMillis = 60_000L).countsAsWalk)
+    }
+
+    // -- 오늘 합산 ---------------------------------------------------------
+
+    @Test
+    fun `오늘 걸은 것만 합산한다`() {
+        val totals = listOf(
+            walk(startedAt = TODAY_MORNING, distanceMeters = 1_200.0, activeMillis = 900_000L),
+            walk(startedAt = TODAY_EVENING, distanceMeters = 800.0, activeMillis = 600_000L),
+            // 어제 것은 안 센다.
+            walk(startedAt = DAY_START - 1L, distanceMeters = 5_000.0, activeMillis = 3_600_000L),
+        ).totalsFor(DAY_START, DAY_END)
+
+        assertEquals(2, totals.count)
+        assertEquals(1_500_000L, totals.activeDurationMillis)
+        assertEquals(2_000.0, totals.distanceMeters, 0.001)
+    }
+
+    /** 자정을 넘겨 걸은 산책은 **나선 날**의 것이다. */
+    @Test
+    fun `시작한 날로 센다`() {
+        val overnight = walk(
+            startedAt = DAY_END - 60_000L,
+            distanceMeters = 900.0,
+            activeMillis = 1_800_000L,
+        )
+        assertEquals(1, listOf(overnight).totalsFor(DAY_START, DAY_END).count)
+    }
+
+    /** 너무 짧은 것은 횟수에도 안 들어간다. */
+    @Test
+    fun `짧은 산책은 오늘 합산에서 빠진다`() {
+        val totals = listOf(
+            walk(startedAt = TODAY_MORNING, distanceMeters = 10.0, activeMillis = 5_000L),
+        ).totalsFor(DAY_START, DAY_END)
+
+        assertEquals(0, totals.count)
+        assertEquals(0.0, totals.distanceMeters, 0.001)
+    }
+
+    @Test
+    fun `기록이 없으면 0 이다`() {
+        val totals = emptyList<WalkSummary>().totalsFor(DAY_START, DAY_END)
+        assertEquals(WalkDayTotals.EMPTY, totals)
+    }
+
+    private fun walk(
+        startedAt: Long = TODAY_MORNING,
+        distanceMeters: Double,
+        activeMillis: Long,
+    ) = WalkSummary(
+        sessionId = "s",
+        dogId = null,
+        startedAtMillis = startedAt,
+        endedAtMillis = startedAt + activeMillis,
+        weather = null,
+        distanceMeters = distanceMeters,
+        activeDurationMillis = activeMillis,
+        segments = emptyList(),
+        anchor = null,
+    )
+
+    private companion object {
+        const val DAY_START = 1_756_566_000_000L
+        const val DAY_END = DAY_START + 86_400_000L
+        const val TODAY_MORNING = DAY_START + 32_400_000L
+        const val TODAY_EVENING = DAY_START + 68_400_000L
     }
 }
