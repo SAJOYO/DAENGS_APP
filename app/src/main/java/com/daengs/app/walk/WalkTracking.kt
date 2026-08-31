@@ -1,5 +1,6 @@
 package com.daengs.app.walk
 
+import com.daengs.app.walk.sync.WalkSync
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,4 +65,6 @@ class WalkRuntime internal constructor(
     internal val log: WalkFixLog,
     /** 지난 산책을 읽는 자리. 쓰기와 같은 DB 를 보되 성질이 달라 갈라 뒀다. */
     val history: WalkHistory,
+    /** 기기와 서버를 맞추는 자리. 로그인했을 때만 일한다. */
+    val sync: WalkSync,
 )

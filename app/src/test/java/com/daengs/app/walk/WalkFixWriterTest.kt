@@ -149,6 +149,12 @@ class WalkFixWriterTest {
 
         override suspend fun finishedSessions(): List<RecordedSession> = emptyList()
 
+        override suspend fun unsyncedSessions(): List<RecordedSession> = emptyList()
+
+        override suspend fun markSynced(sessionId: String, syncedAtMillis: Long) {
+            calls += "synced:$sessionId"
+        }
+
         override suspend fun session(sessionId: String): RecordedSession? = null
 
         override suspend fun fixes(sessionId: String): List<RecordedFix> = emptyList()

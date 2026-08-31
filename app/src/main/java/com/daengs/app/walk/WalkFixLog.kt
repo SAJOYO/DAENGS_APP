@@ -30,6 +30,17 @@ interface WalkFixLog {
     /** 끝난 산책만, 최근 것부터. 목록 화면이 쓴다. */
     suspend fun finishedSessions(): List<RecordedSession>
 
+    /**
+     * 끝났는데 아직 서버에 안 올라간 것.
+     *
+     * **미종료 세션은 안 준다.** 강제 종료로 열린 채 남은 세션은 기록이 아니라
+     * 사고의 흔적이라 올릴 것이 아니다.
+     */
+    suspend fun unsyncedSessions(): List<RecordedSession>
+
+    /** 올라갔다고 표시한다. 다시 올리지 않으려는 표시다. */
+    suspend fun markSynced(sessionId: String, syncedAtMillis: Long)
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>
@@ -43,6 +54,14 @@ data class RecordedSession(
     val endedAtMillis: Long? = null,
     /** 나갈 때의 날씨. 못 받았으면 null 이고 **"맑음"으로 채우지 않는다.** */
     val weather: RecordedWeather? = null,
+    /**
+     * 서버에 올라간 시각. null 이면 아직 이 기기에만 있다.
+     *
+     * **없앨 수 없는 상태다.** 산책은 밖에서 하고 그때 네트워크가 제일 불안하다 —
+     * 지하철에 들어가면 업로드가 실패한다. 좌표를 기기에 먼저 쓰는 것은 선택이 아니라
+     * 안전장치이고, 그 결과로 "아직 안 올라간" 창이 생긴다. 보통 몇 초다.
+     */
+    val syncedAtMillis: Long? = null,
 )
 
 /**

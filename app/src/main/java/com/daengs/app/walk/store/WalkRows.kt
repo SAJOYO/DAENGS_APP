@@ -19,6 +19,8 @@ data class WalkSessionRow(
     val weatherCode: Int? = null,
     val isDay: Boolean? = null,
     val temperatureC: Float? = null,
+    /** 서버에 올라간 시각. null 이면 아직 이 기기에만 있다. */
+    val syncedAtMillis: Long? = null,
 )
 
 /**

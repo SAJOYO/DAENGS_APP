@@ -23,7 +23,7 @@ import java.time.LocalTime
  *
  * 흐름은 셋이다.
  *
- *   1. 위치 권한을 묻는다 (coarse). 거부하면 2로 안 간다
+ *   1. 위치 권한을 묻는다. 거부하면 2로 안 간다
  *   2. 마지막으로 알려진 위치를 읽는다 — 새로 측정하지 않는다
  *   3. 그 좌표로 [OutsideApi] 를 한 번 부른다
  *
@@ -41,9 +41,9 @@ fun rememberOutsideView(): State<OutsideView> {
     var asked by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        if (result.values.any { it }) {
             // 권한을 막 받았다. 아래 LaunchedEffect 가 다시 돌도록 표시만 바꾼다.
             asked = false
         }
@@ -53,7 +53,22 @@ fun rememberOutsideView(): State<OutsideView> {
         if (asked) return@LaunchedEffect
         asked = true
         if (!hasLocationPermission(context)) {
-            launcher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+            // **정확한 위치까지 같이 묻는다.**
+            //
+            // 창밖 그림만 보면 대략적인 위치로 충분하다. 그런데 여기가 앱을 켜고
+            // **처음이자 유일하게** 위치를 묻는 자리라, 여기서 coarse 만 물으면
+            // 사용자는 "대략적인 위치" 를 고른 채로 굳는다 — 그 뒤 산책 화면에서 정밀
+            // 위치가 필요해도 **권한 창이 다시 안 뜬다**(안드로이드가 한 번만 보여 준다).
+            // 실기기에서 실제로 그렇게 굳어서 산책 지도가 엉뚱한 자리를 가리켰다.
+            //
+            // 둘을 같이 요청하면 시스템 창에 "정확한 위치 / 대략적인 위치" 선택이
+            // 같이 뜬다. 고르는 것은 사용자 몫이고, 대략적인 위치를 골라도 창밖은 돈다.
+            launcher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
             return@LaunchedEffect
         }
         val where = lastKnownLocation(context) ?: return@LaunchedEffect
