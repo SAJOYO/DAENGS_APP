@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
                         onSignIn = { screen = Screen.Landing },
-                        pets = pets.pets,
+                        pets = pets.pets.orEmpty(),
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
@@ -283,6 +283,7 @@ class MainActivity : ComponentActivity() {
                         // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
                         onSync = { scope.launch { walkRuntime.sync.syncOnce(freshToken()) } },
                         onBack = { screen = Screen.Home },
+                        pets = pets.pets.orEmpty(),
                         onOpen = { id ->
                             openedWalkId = id
                             screen = Screen.WalkDetail
@@ -294,6 +295,7 @@ class MainActivity : ComponentActivity() {
                             sessionId = id,
                             history = walkRuntime.history,
                             onBack = { screen = Screen.WalkHistory },
+                            pets = pets.pets.orEmpty(),
                         )
                     }
 
@@ -301,7 +303,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
                         avatarBreed = pets.primary?.breedArt,
-                        dogIds = listOfNotNull(pets.primary?.id),
+                        pets = pets.pets.orEmpty(),
                         onFinished = {
                             scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
                         },

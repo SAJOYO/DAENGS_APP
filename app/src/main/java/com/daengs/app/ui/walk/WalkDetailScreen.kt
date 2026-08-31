@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,8 +32,10 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.map.layers.trail.TrailLayerState
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
+import com.daengs.app.pet.Pet
 import com.daengs.app.ui.common.DaengsFloatingButton
 import com.daengs.app.ui.theme.CardWhite
+import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
@@ -54,6 +57,8 @@ fun WalkDetailScreen(
     history: WalkHistory,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 이름을 붙이는 데 쓴다. 기록에는 id 만 있다. */
+    pets: List<Pet> = emptyList(),
 ) {
     val inspectionMode = LocalInspectionMode.current
     var walk by remember(sessionId) { mutableStateOf<WalkSummary?>(null) }
@@ -92,13 +97,19 @@ fun WalkDetailScreen(
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
         )
 
-        walk?.let { WalkFacts(it, Modifier.align(Alignment.BottomCenter)) }
+        walk?.let {
+            WalkFacts(it, dogNames(it.dogIds, pets), Modifier.align(Alignment.BottomCenter))
+        }
     }
 }
 
 /** 그날의 사실. **아는 것만 적는다** — 날씨를 못 받았으면 그 칸이 통째로 빠진다. */
 @Composable
-private fun WalkFacts(walk: WalkSummary, modifier: Modifier = Modifier) {
+private fun WalkFacts(
+    walk: WalkSummary,
+    dogNames: List<String> = emptyList(),
+    modifier: Modifier = Modifier,
+) {
     Surface(
         modifier = modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp),
         shape = RoundedCornerShape(16.dp),
@@ -106,12 +117,25 @@ private fun WalkFacts(walk: WalkSummary, modifier: Modifier = Modifier) {
         shadowElevation = 8.dp,
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text(
-                formatWalkDay(walk.startedAtMillis),
-                color = TextDark,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    formatWalkDay(walk.startedAtMillis),
+                    color = TextDark,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                // 누구와 갔는지. **모르는 아이는 안 적는다** — 지운 강아지의 산책은
+                // 이 자리가 통째로 빈다.
+                if (dogNames.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        dogNames.joinToString(" · "),
+                        color = DaengPinkDeep,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 Fact("시작", formatWalkClock(walk.startedAtMillis))

@@ -37,10 +37,12 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.common.DaengsTextAction
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import androidx.compose.ui.tooling.preview.Preview
+import com.daengs.app.pet.Pet
 import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.WalkSummary
@@ -67,8 +69,11 @@ fun WalkHistoryScreen(
      * 들어오면 아래 `LaunchedEffect` 가 한 번 더 읽어 채운다.
      */
     onSync: (() -> Unit)? = null,
+    /** 이름을 붙이고 거르는 데 쓴다. 기록에는 id 만 있다. */
+    pets: List<Pet> = emptyList(),
 ) {
     var walks by remember { mutableStateOf<List<WalkSummary>?>(null) }
+    var filterDogId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(history) {
         walks = history.finished()
@@ -77,6 +82,12 @@ fun WalkHistoryScreen(
         // 이 두 번째 읽기에 지난 산책이 들어온다.
         kotlinx.coroutines.delay(SYNC_SETTLE_MS)
         walks = history.finished()
+    }
+
+    // 아이가 지워지면 그 아이로 건 필터도 풀어야 한다. 안 그러면 아무것도 없는 목록
+    // 앞에서 왜 비었는지 알 길이 없다.
+    LaunchedEffect(pets) {
+        if (filterDogId != null && pets.none { it.id == filterDogId }) filterDogId = null
     }
 
     BackHandler(onBack = onBack)
@@ -96,7 +107,18 @@ fun WalkHistoryScreen(
             Text("지난 산책", color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
-        val list = walks
+        if (pets.size >= 2) {
+            DogFilterRow(
+                pets = pets,
+                selectedId = filterDogId,
+                onSelect = { filterDogId = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, top = 10.dp, end = 18.dp),
+            )
+        }
+
+        val list = walks?.walkedWith(filterDogId)
         when {
             // null 은 **아직 못 읽은 것**이다. 빈 목록과 같은 말을 하면 안 된다 —
             // 기록이 있는데도 "없어요" 가 잠깐 스친다.
@@ -107,7 +129,12 @@ fun WalkHistoryScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "아직 산책 기록이 없어요.\n방문을 열고 산책을 시작해 보세요.",
+                    // 거르고 나서 빈 것과 아예 없는 것은 다른 이야기다.
+                    if (filterDogId != null) {
+                        "이 아이와 나간 산책이 아직 없어요."
+                    } else {
+                        "아직 산책 기록이 없어요.\n방문을 열고 산책을 시작해 보세요."
+                    },
                     color = TextMuted,
                     fontSize = 14.sp,
                     lineHeight = 20.sp,
@@ -119,7 +146,7 @@ fun WalkHistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(list, key = { it.sessionId }) { walk ->
-                    WalkRow(walk) { onOpen(walk.sessionId) }
+                    WalkRow(walk, dogNames(walk.dogIds, pets)) { onOpen(walk.sessionId) }
                 }
             }
         }
@@ -127,19 +154,36 @@ fun WalkHistoryScreen(
 }
 
 @Composable
-private fun WalkRow(walk: WalkSummary, onClick: () -> Unit) {
+private fun WalkRow(
+    walk: WalkSummary,
+    dogNames: List<String> = emptyList(),
+    onClick: () -> Unit,
+) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = CardWhite,
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text(
-                formatWalkDay(walk.startedAtMillis),
-                color = TextDark,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    formatWalkDay(walk.startedAtMillis),
+                    color = TextDark,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                // 누구와 갔는지. **모르는 아이는 안 적는다** — 지운 강아지의 산책은
+                // 이 자리가 통째로 빈다.
+                if (dogNames.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        dogNames.joinToString(" · "),
+                        color = DaengPinkDeep,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 walkRowSubtitle(walk),
@@ -171,7 +215,7 @@ private fun WalkHistoryRowPreview() {
             WalkRow(
                 WalkSummary(
                     sessionId = "s1",
-                    dogIds = listOf("dog-1"),
+                    dogIds = listOf("dog-1", "dog-2"),
                     startedAtMillis = 1_756_600_000_000L,
                     endedAtMillis = 1_756_602_000_000L,
                     weather = RecordedWeather(weatherCode = 61, isDay = true, temperatureC = 18.5f),
@@ -180,9 +224,10 @@ private fun WalkHistoryRowPreview() {
                     segments = emptyList(),
                     anchor = null,
                 ),
+                dogNames = listOf("네옹", "댕댕"),
             ) {}
             Spacer(Modifier.height(10.dp))
-            // 날씨를 못 받은 산책. 줄에서 날씨만 빠진다.
+            // 날씨를 못 받고 아이도 안 붙은 산책. 줄에서 그 조각이 통째로 빠진다.
             WalkRow(
                 WalkSummary(
                     sessionId = "s2",
