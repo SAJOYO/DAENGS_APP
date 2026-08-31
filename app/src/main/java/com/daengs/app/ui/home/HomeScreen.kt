@@ -1,5 +1,6 @@
 package com.daengs.app.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
+import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 
@@ -98,8 +100,12 @@ fun HomeScreen(
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
+    /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
+    onSignIn: (() -> Unit)? = null,
 ) {
     var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
+    // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
+    BackHandler(enabled = bottomTab != BottomTab.Home) { bottomTab = BottomTab.Home }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
     // 프로필 얼굴의 견종. 개발자 패널에서 바꿀 수 있다.
@@ -150,15 +156,31 @@ fun HomeScreen(
         bottomBar = {
             DaengsBottomBar(
                 selected = bottomTab,
-                onSelect = {
-                    bottomTab = it
-                    if (it == BottomTab.Dex) onOpenDex?.invoke()
-                    if (it == BottomTab.Walks) onOpenPlaces?.invoke()
+                // **밀어서 여는 탭은 선택 상태를 안 남긴다.** 남기면 도감에서
+                // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
+                // 화면이 되기 전에는 눈에 안 띄던 것이다.
+                onSelect = { tab ->
+                    when (tab) {
+                        BottomTab.Dex -> onOpenDex?.invoke()
+                        BottomTab.Walks -> onOpenPlaces?.invoke()
+                        else -> bottomTab = tab
+                    }
                 },
                 onCenter = { onOpenChat?.invoke() },
             )
         },
     ) { inner ->
+        if (bottomTab == BottomTab.My) {
+            MyScreen(
+                breed = profileBreed,
+                signedIn = signedIn,
+                onSignIn = { onSignIn?.invoke() },
+                onSignOut = { onSignOut?.invoke() },
+                modifier = Modifier.padding(inner),
+            )
+            return@Scaffold
+        }
+
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
         // 방은 RoomGeometry.of(width, height) 로 받은 상자에 맞춰 스스로 줄어든다.

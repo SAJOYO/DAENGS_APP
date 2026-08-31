@@ -109,6 +109,9 @@ class MainActivity : ComponentActivity() {
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
                         signedIn = session != null,
+                        // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
+                        // 되돌리면 기존 카카오 경로를 그대로 쓴다.
+                        onSignIn = { screen = Screen.Landing },
                         onSignOut = {
                             val old = session
                             session = null
