@@ -1,6 +1,7 @@
 package com.daengs.app.map.provider.naver
 
 import android.graphics.Color
+import android.graphics.PointF
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -137,8 +138,14 @@ fun NaverMapSurface(
                 position = place.point.toLatLng()
                 captionText = place.label
                 captionMinZoom = 13.0
-                width = if (place.selected) 84 else 64
-                height = if (place.selected) 105 else 80
+                // **정사각이어야 한다.** 그림(`ic_facility_*.xml`)의 뷰포트가 24x24 인데
+                // 예전엔 64x80 으로 그려서 세로로 1.25배 늘어났다 — 핀이 홀쭉해 보이고
+                // 동그란 머리가 타원이 됐다.
+                width = if (place.selected) MARKER_PX_SELECTED else MARKER_PX
+                height = if (place.selected) MARKER_PX_SELECTED else MARKER_PX
+                // 핀 끝이 그림의 맨 아래가 아니라 93% 지점이라, 기본 기준점(1.0)으로 두면
+                // 핀이 장소보다 조금 위에 뜬다.
+                anchor = MARKER_ANCHOR
                 // Selection is size and stacking order. Keeping the group icon means the
                 // selected pin still says what kind of place it is.
                 icon = OverlayImage.fromResource(place.iconGroup.marker)
@@ -252,6 +259,14 @@ private const val TAG = "DaengsMap"
  * 자리였다. 실기기에서 세 값을 세워 보고 정했다.
  */
 private const val LIGHTNESS_PLAIN = 0.15f
+
+/** 마커 한 변(px). 그림 비율이 1:1 이라 가로세로가 같아야 안 늘어난다. */
+private const val MARKER_PX = 72
+
+private const val MARKER_PX_SELECTED = 92
+
+/** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
+private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
 
 private const val MIN_ZOOM = 11.0
 

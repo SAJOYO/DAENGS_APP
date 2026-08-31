@@ -6,15 +6,17 @@
      구분할 수 없다. 그래서 앱 화풍에 맞추면서도 채도·명도만 낮췄고, 색상 간격은
      그대로 뒀다 (FacilityColorTest 가 그 간격을 지킨다).
 
-     넷은 앱 팔레트에 이미 있는 값이다 — 병원=Error, 야외=Success, 돌봄=Warning,
-     기타=TextSecondary. 같은 뜻이면 앱 어디서나 같은 색이어야 한다. -->
+     **따뜻한 쪽으로 쏠려 있는 것이 의도다.** 앱이 크림·분홍이라 원색 여덟이 얹히면
+     지도만 남의 화면처럼 보인다. 제일 흔한 셋(병원 로즈 · 음식 테라코타 · 용품 골드)을
+     따뜻하게 두고 나머지를 색상환 반대편으로 흩었다. 기타는 무채색이라 색상이 아니라
+     "색이 없다"는 사실로 구분된다 (앱의 TextSecondary 와 같은 값). -->
 <resources>
-    <color name="facility_medical">#C45E5E</color>
-    <color name="facility_supply">#C87F55</color>
-    <color name="facility_food">#8D7AA8</color>
-    <color name="facility_stay">#5B87A8</color>
-    <color name="facility_culture">#C2739E</color>
-    <color name="facility_outdoor">#4E9B70</color>
-    <color name="facility_care">#BC9D3E</color>
+    <color name="facility_medical">#C4536B</color>
+    <color name="facility_supply">#BFA045</color>
+    <color name="facility_food">#D08A5A</color>
+    <color name="facility_stay">#6C86A8</color>
+    <color name="facility_culture">#9B7BA6</color>
+    <color name="facility_outdoor">#7FA06A</color>
+    <color name="facility_care">#5E9E92</color>
     <color name="facility_etc">#A79089</color>
 </resources>

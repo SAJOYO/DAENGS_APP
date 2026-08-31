@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -168,11 +169,13 @@ fun WalkScreen(
             )
         }
 
+        // 제어 카드는 **아래**다. 위에 두면 "방으로" 버튼과 겹치고, 걸으면서 한 손으로
+        // 누르는 것이라 엄지가 닿는 자리여야 한다.
         Column(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 12.dp, start = 12.dp, end = 12.dp),
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
