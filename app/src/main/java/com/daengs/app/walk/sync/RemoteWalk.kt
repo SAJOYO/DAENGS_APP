@@ -3,6 +3,7 @@ package com.daengs.app.walk.sync
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordedWeather
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -14,7 +15,7 @@ import org.json.JSONObject
 data class RemoteWalk(
     val id: String,
     val clientSessionId: String,
-    val dogId: String?,
+    val dogIds: List<String>,
     val startedAtMillis: Long,
     val endedAtMillis: Long,
     val weather: RecordedWeather?,
@@ -22,7 +23,7 @@ data class RemoteWalk(
     /** 로컬 DB 에 넣을 모양으로. **되찾은 것은 이미 서버에 있으므로 올린 것으로 표시한다.** */
     fun toSession(syncedAtMillis: Long): RecordedSession = RecordedSession(
         id = clientSessionId,
-        dogId = dogId,
+        dogIds = dogIds,
         startedAtMillis = startedAtMillis,
         endedAtMillis = endedAtMillis,
         weather = weather,
@@ -33,7 +34,7 @@ data class RemoteWalk(
         fun parse(json: JSONObject): RemoteWalk = RemoteWalk(
             id = json.getString("id"),
             clientSessionId = json.getString("client_session_id"),
-            dogId = json.optStringOrNull("pet_id"),
+            dogIds = json.optStringList("pet_ids"),
             startedAtMillis = json.getString("started_at").isoToMillis(),
             endedAtMillis = json.getString("ended_at").isoToMillis(),
             // 셋 중 코드가 없으면 날씨를 못 받은 산책이다. 억지로 만들지 않는다.
@@ -49,6 +50,17 @@ data class RemoteWalk(
                 )
             },
         )
+
+        /**
+         * `pet_ids` 배열. **없으면 빈 목록이다.**
+         *
+         * 서버가 이 필드를 내려 주기 전에 올라간 산책이 있을 수 있다 — 그건 "아무도
+         * 안 나갔다" 가 아니라 "모른다" 지만, 화면에서는 둘 다 아이를 안 그린다.
+         */
+        internal fun JSONObject.optStringList(key: String): List<String> {
+            val array = optJSONArray(key) ?: return emptyList()
+            return (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+        }
 
         /** `optString` 은 JSON null 에도 빈 문자열을 준다. 0 과 "없음"을 구분해야 한다. */
         internal fun JSONObject.optStringOrNull(key: String): String? =

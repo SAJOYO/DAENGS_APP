@@ -100,7 +100,7 @@ class WalkFixWriterTest {
         }
     }
 
-    private fun session(id: String) = RecordedSession(id = id, dogId = null, startedAtMillis = 0L)
+    private fun session(id: String) = RecordedSession(id = id, dogIds = emptyList(), startedAtMillis = 0L)
 
     private fun fix(seq: Int) = RecordedFix(
         clientSeq = seq,

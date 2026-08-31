@@ -72,7 +72,8 @@ class WalkTrackingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startRecording(intent.getStringExtra(EXTRA_DOG_ID))
+            ACTION_START ->
+                startRecording(intent.getStringArrayListExtra(EXTRA_DOG_IDS).orEmpty())
             ACTION_PAUSE -> pauseRecording(startId)
             ACTION_RESUME -> resumeRecording(startId)
             ACTION_STOP -> stopRecording(startId)
@@ -100,7 +101,7 @@ class WalkTrackingService : Service() {
         super.onDestroy()
     }
 
-    private fun startRecording(dogId: String?) {
+    private fun startRecording(dogIds: List<String>) {
         if (recorder.snapshot().state != TrackingState.OFF) {
             promote(recorder.snapshot(), store.state.value.errorMessage)
             return
@@ -109,7 +110,7 @@ class WalkTrackingService : Service() {
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         val trail = recorder.start()
-        openSession(dogId)
+        openSession(dogIds)
         store.publish(trackingState(trail = trail, lastSample = null))
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
@@ -198,7 +199,7 @@ class WalkTrackingService : Service() {
         store.publish(trackingState(trail = recorder.add(sample), lastSample = sample))
     }
 
-    private fun openSession(dogId: String?) {
+    private fun openSession(dogIds: List<String>) {
         val id = UUID.randomUUID().toString()
         synchronized(sessionLock) {
             sessionId = id
@@ -207,7 +208,7 @@ class WalkTrackingService : Service() {
             writer.openSession(
                 RecordedSession(
                     id = id,
-                    dogId = dogId,
+                    dogIds = dogIds,
                     startedAtMillis = System.currentTimeMillis(),
                 ),
             )
@@ -404,7 +405,7 @@ class WalkTrackingService : Service() {
         private const val REQUEST_RESUME = 4103
         private const val REQUEST_STOP = 4104
 
-        const val EXTRA_DOG_ID = "dogId"
+        const val EXTRA_DOG_IDS = "dogIds"
 
         fun commandIntent(context: Context, action: String): Intent =
             Intent(context, WalkTrackingService::class.java).setAction(action)

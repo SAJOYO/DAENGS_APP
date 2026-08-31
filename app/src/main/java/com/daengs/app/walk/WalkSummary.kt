@@ -13,7 +13,13 @@ import com.daengs.app.location.LocationSample
  */
 data class WalkSummary(
     val sessionId: String,
-    val dogId: String?,
+    /**
+     * 그날 데리고 나간 아이들. **이름이 아니라 id 다.**
+     *
+     * 이름은 바뀌는 값이라 기록에 박아 두면 개명한 뒤에도 옛 이름이 뜬다. 화면은
+     * 지금의 강아지 목록에서 이 id 로 찾아 이름을 붙인다.
+     */
+    val dogIds: List<String>,
     val startedAtMillis: Long,
     val endedAtMillis: Long?,
     val weather: RecordedWeather?,
@@ -131,7 +137,7 @@ fun summarize(session: RecordedSession, fixes: List<RecordedFix>): WalkSummary {
         ?: fixes.minByOrNull { it.clientSeq }?.let { GeoPoint(it.lat, it.lng) }
     return WalkSummary(
         sessionId = session.id,
-        dogId = session.dogId,
+        dogIds = session.dogIds,
         startedAtMillis = session.startedAtMillis,
         endedAtMillis = session.endedAtMillis,
         weather = session.weather,

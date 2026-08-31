@@ -301,7 +301,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
                         avatarBreed = pets.primary?.breedArt,
-                        dogId = pets.primary?.id,
+                        dogIds = listOfNotNull(pets.primary?.id),
                         onFinished = {
                             scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
                         },

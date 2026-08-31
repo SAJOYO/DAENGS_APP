@@ -79,7 +79,7 @@ object WalkApi {
             // 기기의 세션 id 를 그대로 쓴다. 되찾을 때 같은 id 로 맞춰 보므로
             // 여기서 새 id 를 만들면 같은 산책이 두 벌이 된다.
             put("client_session_id", session.id)
-            put("pet_id", session.dogId ?: JSONObject.NULL)
+            put("pet_ids", JSONArray(session.dogIds))
             put("started_at", session.startedAtMillis.toIso())
             put("ended_at", (session.endedAtMillis ?: session.startedAtMillis).toIso())
             putWeather(session.weather)

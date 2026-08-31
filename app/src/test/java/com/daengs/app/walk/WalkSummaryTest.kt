@@ -14,7 +14,7 @@ import org.junit.Test
  */
 class WalkSummaryTest {
 
-    private val session = RecordedSession(id = "s1", dogId = "dog-1", startedAtMillis = 1_000L)
+    private val session = RecordedSession(id = "s1", dogIds = listOf("dog-1"), startedAtMillis = 1_000L)
 
     private fun fix(seq: Int, chain: Int, at: Long, lat: Double, lng: Double) = RecordedFix(
         clientSeq = seq,
@@ -187,7 +187,7 @@ class WalkSummaryTest {
         activeMillis: Long,
     ) = WalkSummary(
         sessionId = "s",
-        dogId = null,
+        dogIds = emptyList(),
         startedAtMillis = startedAt,
         endedAtMillis = startedAt + activeMillis,
         weather = null,

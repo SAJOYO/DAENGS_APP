@@ -7,9 +7,30 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
-    /** IGNORE: 같은 세션 시작을 재전송해도 최초 시작 시각을 덮어쓰지 않는다. */
+    /**
+     * IGNORE: 같은 세션 시작을 재전송해도 최초 시작 시각을 덮어쓰지 않는다.
+     *
+     * @return 새로 넣었으면 rowId, 이미 있어서 넘겼으면 -1. **아이를 붙일지 말지가
+     *   이 값에 달렸다** — 이미 있는 세션에 나중 목록을 덧붙이면 처음에 데리고 나간
+     *   아이가 아닌 아이가 그 산책에 섞인다.
+     */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertSession(row: WalkSessionRow)
+    suspend fun insertSession(row: WalkSessionRow): Long
+
+    /** IGNORE: 같은 아이를 두 번 붙여도 한 줄이다. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSessionDog(row: WalkSessionDogRow)
+
+    @Query("SELECT * FROM walk_session_dog WHERE sessionId = :sessionId ORDER BY dogId")
+    suspend fun sessionDogs(sessionId: String): List<WalkSessionDogRow>
+
+    /**
+     * 여러 산책의 아이들을 **한 번에** 읽는다.
+     *
+     * 목록을 그릴 때 산책마다 한 번씩 물으면 스무 건이면 스무 번 왕복한다.
+     */
+    @Query("SELECT * FROM walk_session_dog WHERE sessionId IN (:sessionIds) ORDER BY dogId")
+    suspend fun sessionDogs(sessionIds: List<String>): List<WalkSessionDogRow>
 
     /** 같은 clientSeq를 다시 받으면 이미 저장한 원본을 유지한다. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)

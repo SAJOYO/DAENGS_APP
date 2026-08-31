@@ -48,8 +48,13 @@ interface WalkFixLog {
 
 data class RecordedSession(
     val id: String,
-    /** 대표 강아지. 로그인 전이거나 등록한 강아지가 없으면 null 이다. */
-    val dogId: String?,
+    /**
+     * 데리고 나간 아이들. **여러 마리다.**
+     *
+     * 비어 있을 수 있다 — 로그인 전이거나 등록한 강아지가 없거나, 고르지 않고 나선
+     * 경우다. **그래도 산책은 기록이다.** 사람이 걸은 것은 걸은 것이다.
+     */
+    val dogIds: List<String> = emptyList(),
     val startedAtMillis: Long,
     val endedAtMillis: Long? = null,
     /** 나갈 때의 날씨. 못 받았으면 null 이고 **"맑음"으로 채우지 않는다.** */

@@ -171,7 +171,7 @@ private fun WalkHistoryRowPreview() {
             WalkRow(
                 WalkSummary(
                     sessionId = "s1",
-                    dogId = "dog-1",
+                    dogIds = listOf("dog-1"),
                     startedAtMillis = 1_756_600_000_000L,
                     endedAtMillis = 1_756_602_000_000L,
                     weather = RecordedWeather(weatherCode = 61, isDay = true, temperatureC = 18.5f),
@@ -186,7 +186,7 @@ private fun WalkHistoryRowPreview() {
             WalkRow(
                 WalkSummary(
                     sessionId = "s2",
-                    dogId = null,
+                    dogIds = emptyList(),
                     startedAtMillis = 1_756_500_000_000L,
                     endedAtMillis = 1_756_500_600_000L,
                     weather = null,

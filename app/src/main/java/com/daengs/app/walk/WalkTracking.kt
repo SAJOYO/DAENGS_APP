@@ -29,11 +29,15 @@ interface WalkTrackingController {
     val state: StateFlow<WalkTrackingState>
 
     /**
-     * @param dogId 이 산책을 누구와 했는가. 대표 강아지의 id 다.
-     *   **모르면 null 이고 그대로 저장된다** — 로그인 전이거나 등록한 강아지가 없는
-     *   상태에서도 산책은 되어야 하고, 그때 아무 강아지나 갖다 붙이면 남의 기록이 된다.
+     * @param dogIds 이 산책에 데리고 나가는 아이들. **여러 마리다** — 두 마리를
+     *   데리고 나갔는데 한 아이만 남으면 나머지 아이의 운동량이 통째로 빈다.
+     *   **비어 있어도 된다** — 로그인 전이거나 등록한 강아지가 없는 상태에서도
+     *   산책은 되어야 하고, 그때 아무 강아지나 갖다 붙이면 남의 기록이 된다.
+     *
+     * 산책 중에는 못 바꾼다. 중간에 바꾸면 "언제부터 누가"를 따져야 하는데 그 값을
+     * 좌표마다 두지 않기로 했다.
      */
-    fun start(dogId: String? = null)
+    fun start(dogIds: List<String> = emptyList())
 
     fun pause()
 
