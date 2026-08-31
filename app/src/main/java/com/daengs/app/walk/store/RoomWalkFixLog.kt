@@ -52,6 +52,13 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
 
     override suspend fun deleteSession(sessionId: String) = dao.deleteSession(sessionId)
 
+    override suspend fun forgetDog(dogId: String) {
+        // **순서가 중요하다.** 연결을 먼저 떼면 "그 아이와만 나간 산책" 을 찾을 근거가
+        // 사라져서, 아무도 안 붙은 산책이 되어 그대로 남는다.
+        dao.deleteSessionsOnlyWith(dogId)
+        dao.unlinkDog(dogId)
+    }
+
     override suspend fun unfinishedSessions(): List<RecordedSession> =
         dao.unfinishedSessions().withDogs()
 

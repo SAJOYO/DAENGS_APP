@@ -145,6 +145,10 @@ class WalkFixWriterTest {
             calls += "delete:$sessionId"
         }
 
+        override suspend fun forgetDog(dogId: String) {
+            calls += "forget:$dogId"
+        }
+
         override suspend fun unfinishedSessions(): List<RecordedSession> = emptyList()
 
         override suspend fun finishedSessions(): List<RecordedSession> = emptyList()

@@ -19,9 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
@@ -77,6 +79,14 @@ fun MyScreen(
     onAddPet: () -> Unit,
     onEditPet: (Pet) -> Unit,
     onPickPrimary: (Pet) -> Unit,
+    /**
+     * 지우기. **그 아이와만 나간 산책 기록도 같이 지워진다** — 그 말을 확인 창에서
+     * 하고 나서 부른다.
+     */
+    onDeletePet: (Pet) -> Unit,
+    deleteBusy: Boolean,
+    deleteError: String?,
+    onDismissDelete: () -> Unit,
     signedIn: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
@@ -87,6 +97,16 @@ fun MyScreen(
     modifier: Modifier = Modifier,
 ) {
     var confirming by rememberSaveable { mutableStateOf(false) }
+    // 어느 아이를 지우려는지. **카드가 아니라 화면이 들고 있다** — 목록이 새로
+    // 오면서 카드가 다시 만들어져도 창이 안 닫힌다.
+    var deleting by remember { mutableStateOf<Pet?>(null) }
+
+    // 지워지고 나면 창을 닫는다. 목록에서 사라진 것이 곧 성공이다 — 따로 신호를
+    // 받지 않아서, 이걸 안 하면 지운 뒤에도 창이 그대로 떠 있다.
+    LaunchedEffect(pets) {
+        val target = deleting ?: return@LaunchedEffect
+        if (pets?.none { it.id == target.id } == true) deleting = null
+    }
     Column(
         modifier
             .fillMaxSize()
@@ -105,6 +125,7 @@ fun MyScreen(
                 onAdd = onAddPet,
                 onEdit = onEditPet,
                 onPickPrimary = onPickPrimary,
+                onDelete = { deleting = it },
             )
             Spacer(Modifier.height(14.dp))
         }
@@ -142,6 +163,19 @@ fun MyScreen(
         Spacer(Modifier.height(18.dp))
     }
 
+    deleting?.let { pet ->
+        DeletePetDialog(
+            pet = pet,
+            busy = deleteBusy,
+            error = deleteError,
+            onConfirm = { onDeletePet(pet) },
+            onDismiss = {
+                deleting = null
+                onDismissDelete()
+            },
+        )
+    }
+
     if (confirming) {
         WithdrawDialog(
             busy = withdrawBusy,
@@ -152,6 +186,64 @@ fun MyScreen(
                 onDismissWithdraw()
             },
         )
+    }
+}
+
+/**
+ * 강아지 삭제 확인.
+ *
+ * **무엇이 같이 지워지는지 말한다.** 그 아이와만 나간 산책은 함께 지워지고, 다른
+ * 아이와 같이 나간 산책은 남는다 — 지우고 나서 알게 되면 늦다.
+ *
+ * 탈퇴 창과 같은 배치다. 되돌릴 수 없는 쪽(삭제)이 왼쪽이고 취소가 오른쪽이다.
+ */
+@Composable
+private fun DeletePetDialog(
+    pet: Pet,
+    busy: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(22.dp)) {
+                Text(
+                    "${pet.name}(을)를 지울까요?",
+                    color = TextDark,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "${pet.name}(와)과만 나간 산책 기록도 함께 지워지고 되돌릴 수 없어요. " +
+                        "다른 아이와 같이 나간 산책은 남아요.",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(error, color = DaengsColors.Error, fontSize = 13.sp, lineHeight = 19.sp)
+                }
+                Spacer(Modifier.height(18.dp))
+                if (busy) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        CircularProgressIndicator(
+                            Modifier.size(20.dp),
+                            color = DaengPink,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        DialogAction("삭제", DaengsColors.Error, FontWeight.Normal, onConfirm)
+                        Spacer(Modifier.width(6.dp))
+                        DialogAction("취소", DaengPink, FontWeight.Bold, onDismiss)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -260,6 +352,7 @@ private fun PetSection(
     onAdd: () -> Unit,
     onEdit: (Pet) -> Unit,
     onPickPrimary: (Pet) -> Unit,
+    onDelete: (Pet) -> Unit,
 ) {
     Text("내 강아지", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
 
@@ -275,7 +368,14 @@ private fun PetSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        pets.forEach { pet -> PetCard(pet, onEdit = { onEdit(pet) }, onPickPrimary = { onPickPrimary(pet) }) }
+        pets.forEach { pet ->
+            PetCard(
+                pet,
+                onEdit = { onEdit(pet) },
+                onPickPrimary = { onPickPrimary(pet) },
+                onDelete = { onDelete(pet) },
+            )
+        }
         if (canAddMore) {
             Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                 Box(
@@ -288,7 +388,12 @@ private fun PetSection(
 }
 
 @Composable
-private fun PetCard(pet: Pet, onEdit: () -> Unit, onPickPrimary: () -> Unit) {
+private fun PetCard(
+    pet: Pet,
+    onEdit: () -> Unit,
+    onPickPrimary: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.clickable(onClick = onEdit).padding(14.dp),
@@ -315,6 +420,17 @@ private fun PetCard(pet: Pet, onEdit: () -> Unit, onPickPrimary: () -> Unit) {
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
+            // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
+            // 고치기이고, 지우기는 한 번 더 묻는다.
+            Text(
+                "삭제",
+                color = TextMuted,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onDelete)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
         }
     }
 }
@@ -380,7 +496,9 @@ private fun MyScreenSignedInPreview() {
     DaengsTheme {
         MyScreen(
             HomeDemoData.DOG_BREED, pets = emptyList(), canAddMore = true,
-            onAddPet = {}, onEditPet = {}, onPickPrimary = {}, signedIn = true, onSignIn = {}, onSignOut = {},
+            onAddPet = {}, onEditPet = {}, onPickPrimary = {},
+            onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
+            signedIn = true, onSignIn = {}, onSignOut = {},
             onWithdraw = {}, withdrawBusy = false, withdrawError = null, onDismissWithdraw = {},
         )
     }
@@ -392,7 +510,9 @@ private fun MyScreenBrowsingPreview() {
     DaengsTheme {
         MyScreen(
             HomeDemoData.DOG_BREED, pets = null, canAddMore = false,
-            onAddPet = {}, onEditPet = {}, onPickPrimary = {}, signedIn = false, onSignIn = {}, onSignOut = {},
+            onAddPet = {}, onEditPet = {}, onPickPrimary = {},
+            onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
+            signedIn = false, onSignIn = {}, onSignOut = {},
             onWithdraw = {}, withdrawBusy = false, withdrawError = null, onDismissWithdraw = {},
         )
     }

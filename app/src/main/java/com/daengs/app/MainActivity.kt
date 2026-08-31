@@ -225,6 +225,20 @@ class MainActivity : ComponentActivity() {
                                 pets.choosePrimary(token, pet.id)
                             }
                         },
+                        deletePetBusy = pets.busy,
+                        deletePetError = pets.error,
+                        onDismissDeletePet = { pets.clearError() },
+                        onDeletePet = { pet ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그
+                                // 아이의 산책이 다음 동기화 때 되돌아온다.
+                                if (pets.remove(token, pet.id)) {
+                                    walkRuntime.history.forgetDog(pet.id)
+                                    todayWalks = walkRuntime.history.todayTotals()
+                                }
+                            }
+                        },
                         withdrawBusy = withdrawBusy,
                         withdrawError = withdrawError,
                         onDismissWithdraw = { withdrawError = null },

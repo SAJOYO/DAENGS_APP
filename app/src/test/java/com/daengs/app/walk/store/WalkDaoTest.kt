@@ -180,6 +180,61 @@ class WalkDaoTest {
         assertTrue(log.fixes("s1").isEmpty())
     }
 
+
+    // -- 강아지를 지웠을 때 ------------------------------------------------
+
+    /**
+     * 그 아이와만 나간 산책은 **통째로 지운다.**
+     *
+     * 남겨 두면 목록에 "누구와 갔는지 모르는 기록" 이 쌓인다.
+     */
+    @Test
+    fun `그 아이와만 나간 산책은 같이 지운다`() = runBlocking {
+        log.openSession(RecordedSession("solo", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
+        log.append("solo", fix(0))
+
+        log.forgetDog("dog-1")
+
+        assertNull(log.session("solo"))
+        assertTrue(log.fixes("solo").isEmpty())
+    }
+
+    /**
+     * 다른 아이와 같이 나간 산책은 **남긴다.**
+     *
+     * 그건 남은 아이의 기록이기도 해서, 지우면 그 아이의 운동량이 통째로 빈다.
+     */
+    @Test
+    fun `같이 나간 산책은 남기고 그 아이만 뗀다`() = runBlocking {
+        log.openSession(
+            RecordedSession("together", dogIds = listOf("dog-1", "dog-2"), startedAtMillis = 1_000L),
+        )
+
+        log.forgetDog("dog-1")
+
+        assertEquals(listOf("dog-2"), log.session("together")?.dogIds)
+    }
+
+    /** 강아지를 등록하기 전에 걸은 산책. **사람이 걸은 것은 걸은 것이다.** */
+    @Test
+    fun `아무도 안 붙은 산책은 안 건드린다`() = runBlocking {
+        log.openSession(RecordedSession("alone", dogIds = emptyList(), startedAtMillis = 1_000L))
+
+        log.forgetDog("dog-1")
+
+        assertEquals("alone", log.session("alone")?.id)
+    }
+
+    /** 남의 아이를 지워도 내 산책은 그대로다. */
+    @Test
+    fun `다른 아이를 지우면 아무 일도 없다`() = runBlocking {
+        log.openSession(RecordedSession("s1", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
+
+        log.forgetDog("dog-9")
+
+        assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
+    }
+
     private fun session(id: String, startedAtMillis: Long = 0L) =
         RecordedSession(id, dogIds = emptyList(), startedAtMillis = startedAtMillis)
 

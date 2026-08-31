@@ -41,6 +41,14 @@ interface WalkFixLog {
     /** 올라갔다고 표시한다. 다시 올리지 않으려는 표시다. */
     suspend fun markSynced(sessionId: String, syncedAtMillis: Long)
 
+    /**
+     * 그 아이를 기록에서 지운다. **강아지를 지울 때 부른다.**
+     *
+     * 그 아이와만 나간 산책은 통째로 지우고, 다른 아이와 같이 나간 산책은 그 아이만
+     * 뗀다 — 그 산책은 남은 아이의 기록이기도 하다. 서버도 같은 규칙이다.
+     */
+    suspend fun forgetDog(dogId: String)
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>

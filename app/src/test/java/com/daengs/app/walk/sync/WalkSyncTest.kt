@@ -180,6 +180,8 @@ class WalkSyncTest {
 
         override suspend fun deleteSession(sessionId: String) = Unit
 
+        override suspend fun forgetDog(dogId: String) = Unit
+
         override suspend fun unfinishedSessions(): List<RecordedSession> =
             sessions.filter { it.endedAtMillis == null }
 

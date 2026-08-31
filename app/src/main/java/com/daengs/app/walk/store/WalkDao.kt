@@ -46,6 +46,27 @@ interface WalkDao {
     @Query("DELETE FROM walk_session WHERE id = :sessionId")
     suspend fun deleteSession(sessionId: String)
 
+    /**
+     * **그 아이와만** 나간 산책을 지운다. 강아지를 지울 때 부른다.
+     *
+     * 다른 아이와 같이 나간 산책은 안 지운다 — 그건 남은 아이의 기록이기도 해서,
+     * 지우면 그 아이의 운동량이 통째로 빈다. 아무도 안 붙은 산책은 연결 줄이 없어
+     * 여기 안 걸린다.
+     *
+     * 좌표는 외래키가 지운다.
+     */
+    @Query(
+        "DELETE FROM walk_session WHERE id IN (" +
+            "SELECT sessionId FROM walk_session_dog WHERE dogId = :dogId " +
+            "AND sessionId NOT IN (" +
+            "SELECT sessionId FROM walk_session_dog WHERE dogId <> :dogId))",
+    )
+    suspend fun deleteSessionsOnlyWith(dogId: String)
+
+    /** 남은 산책에서 그 아이만 뗀다. 산책 자체는 남는다. */
+    @Query("DELETE FROM walk_session_dog WHERE dogId = :dogId")
+    suspend fun unlinkDog(dogId: String)
+
     @Query("SELECT * FROM walk_session WHERE id = :sessionId")
     suspend fun session(sessionId: String): WalkSessionRow?
 
