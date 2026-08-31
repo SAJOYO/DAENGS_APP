@@ -16,6 +16,10 @@ naverMap = "3.23.3"
 playServicesLocation = "21.4.0"
 kotlinxSerializationJson = "1.11.0"
 kotlinxCoroutinesTest = "1.9.0"
+ksp = "2.3.11"
+room = "2.8.4"
+robolectric = "4.16.1"
+androidxTestCore = "1.7.0"
 
 [libraries]
 # 단위 테스트에서 org.json 을 진짜로 돌리려고. 아래 build.gradle.kts 주석 참고.
@@ -41,8 +45,14 @@ naver-map-sdk = { group = "com.naver.maps", name = "map-sdk", version.ref = "nav
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesTest" }
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 
