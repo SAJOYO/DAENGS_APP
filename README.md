@@ -134,7 +134,8 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 - **키가 없으면 격자만 뜬다.** 마커·검색·카드는 정상이라 앱이 고장 난 것처럼 보이는데,
   로그에 `NaverMap: Authorization failed: [800] Client is unspecified` 가 찍힌다.
 - **스타일 ID 는 있으면 좋은 것이다.** 콘솔 → Maps → Style Editor 에서 지도를 앱
-  팔레트로 칠하고 [Publish] 하면 My Style ID 가 나온다. **없으면 기본 네이버 지도**로
+  팔레트로 칠하고 [Publish] 하면 My Style ID 가 나온다. 넣은 색과 편집기 제약은
+  [`docs/map-style.md`](docs/map-style.md) 에 있다. **없으면 기본 네이버 지도**로
   뜨고 앱은 그대로 돈다. ID 가 틀리면 조용히 기본 지도가 되므로, 로그에
   `DaengsMap` 태그로 실패를 남겨 둔다.
 - **내 주변 탭의 장소 검색은 이 키와 별개다** — 그쪽은 `daengs.apiBaseUrl` 의
