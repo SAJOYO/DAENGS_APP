@@ -41,6 +41,7 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationTracker
 import com.daengs.app.map.layers.trail.toTrailLayerState
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.common.DaengsFloatingButton
@@ -71,6 +72,8 @@ fun WalkScreen(
     onBack: () -> Unit,
     walkController: WalkTrackingController,
     modifier: Modifier = Modifier,
+    /** 산책하는 아이. 내 위치에 그 얼굴이 선다 — 걷는 건 사람이 아니라 강아지다. */
+    avatarBreed: DogBreed? = null,
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
@@ -162,6 +165,7 @@ fun WalkScreen(
                 ),
                 searchOrigin = null,
                 followDevice = followDevice,
+                avatarRes = avatarBreed?.portraitRes,
                 onCameraIdle = {},
                 onCameraGesture = { followDevice = false },
                 onSelectPlace = {},

@@ -24,12 +24,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
@@ -57,10 +59,13 @@ import com.daengs.app.map.features.places.PlaceOriginMode
 import com.daengs.app.map.features.places.canonicalPlaceKeysByMarker
 import com.daengs.app.map.features.places.canonicalPlaceMarkers
 import com.daengs.app.map.features.places.selectedPlaceKind
+import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.PlaceApi
 import com.daengs.app.place.PlaceKind
+import com.daengs.app.place.PlaceKey
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlin.math.abs
@@ -76,6 +81,8 @@ import kotlinx.coroutines.launch
 fun PlacesScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 내 위치에 세울 얼굴. 대표 강아지가 없으면 null 이고 기본 파란 점이 나온다. */
+    avatarBreed: DogBreed? = null,
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
@@ -107,6 +114,17 @@ fun PlacesScreen(
     var locating by remember { mutableStateOf(false) }
     var locationError by remember { mutableStateOf<String?>(null) }
     var initialPlaceSearchStarted by remember { mutableStateOf(false) }
+    // 패널이 지도를 얼마나 덮는지. 재서 넘긴다 — 패널 높이가 결과 수에 따라 변한다.
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    // 사용자가 방금 고른 장소. 지도를 그리로 옮기고 나면 다시 비운다.
+    var centerOn by remember { mutableStateOf<GeoPoint?>(null) }
+
+    fun focusOn(key: PlaceKey) {
+        followDevice = false
+        centerOn = canonicalPlaceMarkers(discovery)
+            .firstOrNull { it.id == placeMarkerId(key) }?.point
+        placeDiscovery.select(key)
+    }
 
     fun acceptLocation(sample: LocationSample) {
         currentPosition = sample.point
@@ -126,6 +144,9 @@ fun PlacesScreen(
 
     fun locateAndSearch(kind: PlaceKind, preferParking: Boolean) {
         if (!granted) return
+        // 내 위치로 갈 때는 골라 둔 장소를 놓는다. 안 그러면 결과가 오는 순간
+        // 지도가 그 장소로 도로 끌려간다.
+        centerOn = null
         scope.launch {
             locating = true
             locationError = null
@@ -219,9 +240,12 @@ fun PlacesScreen(
                 ),
                 searchOrigin = discovery.origin,
                 followDevice = followDevice,
+                avatarRes = avatarBreed?.portraitRes,
+                bottomPaddingPx = panelHeightPx,
+                centerOn = centerOn,
                 onCameraIdle = { cameraCandidate = it },
                 onCameraGesture = { followDevice = false },
-                onSelectPlace = { id -> markerKeys[id]?.let(placeDiscovery::select) },
+                onSelectPlace = { id -> markerKeys[id]?.let(::focusOn) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -287,7 +311,7 @@ fun PlacesScreen(
             journey = journey,
             onSearch = ::searchAtCurrentOrigin,
             onRetry = placeDiscovery::retry,
-            onSelect = placeDiscovery::select,
+            onSelect = ::focusOn,
             onJourney = { place ->
                 val origin = devicePosition
                 if (origin == null) {
@@ -304,7 +328,8 @@ fun PlacesScreen(
             onCall = { phone -> dial(context, phone) },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .onSizeChanged { panelHeightPx = it.height },
         )
     }
 }

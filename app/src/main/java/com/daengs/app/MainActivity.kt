@@ -245,11 +245,15 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Chat -> ChatScreen(onBack = { screen = Screen.Home })
 
-                    Screen.Places -> PlacesScreen(onBack = { screen = Screen.Home })
+                    Screen.Places -> PlacesScreen(
+                        onBack = { screen = Screen.Home },
+                        avatarBreed = pets.primary?.breedArt,
+                    )
 
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
+                        avatarBreed = pets.primary?.breedArt,
                     )
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })

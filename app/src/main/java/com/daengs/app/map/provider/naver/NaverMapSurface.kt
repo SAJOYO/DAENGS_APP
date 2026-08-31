@@ -2,6 +2,7 @@ package com.daengs.app.map.provider.naver
 
 import android.graphics.Color
 import android.graphics.PointF
+import androidx.annotation.DrawableRes
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,6 +24,7 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.DaengPink
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.geometry.LatLngBounds
 import com.naver.maps.map.CameraAnimation
@@ -39,6 +41,11 @@ fun NaverMapSurface(
     scene: MapScene,
     searchOrigin: GeoPoint?,
     followDevice: Boolean,
+    @DrawableRes avatarRes: Int? = null,
+    /** 아래쪽에서 패널이 가리는 높이(px). 지도의 "가운데"가 그만큼 위로 올라간다. */
+    bottomPaddingPx: Int = 0,
+    /** 여기로 지도를 옮긴다. **사용자가 카드나 마커를 누른 순간에만** 값이 온다. */
+    centerOn: GeoPoint? = null,
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
@@ -129,6 +136,41 @@ fun NaverMapSurface(
             overlay.position = point.toLatLng()
             overlay.isVisible = true
         }
+    }
+
+    // 화면 아래를 패널이 덮고 있다. 그걸 알려주지 않으면 지도가 **패널 뒤를 가운데로**
+    // 삼아서, 고른 장소로 움직여도 그 장소가 패널에 가려 안 보인다.
+    LaunchedEffect(naverMap, bottomPaddingPx) {
+        naverMap?.setContentPadding(0, 0, 0, bottomPaddingPx)
+    }
+
+    // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
+    LaunchedEffect(naverMap, avatarRes) {
+        val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
+        overlay.circleColor = LOCATION_CIRCLE
+        val res = avatarRes ?: return@LaunchedEffect
+        val bitmap = circularAvatarBitmap(context, res, AVATAR_PX, AVATAR_RING_PX)
+            ?: return@LaunchedEffect
+        overlay.icon = OverlayImage.fromBitmap(bitmap)
+        overlay.iconWidth = AVATAR_PX
+        overlay.iconHeight = AVATAR_PX
+    }
+
+    // 카드를 누르면 **그 장소가 지도 한가운데** 오게 한다. 목록에서 고른 곳이 화면
+    // 밖에 있으면 무엇을 고른 것인지 알 수 없다.
+    //
+    // **선택 상태가 아니라 "누른 순간"을 본다.** 검색이 끝나면 첫 결과가 저절로
+    // 선택되는데, 선택을 보고 움직이면 "내 위치" 를 눌러도 지도가 곧바로 그 첫
+    // 결과로 도로 끌려간다.
+    LaunchedEffect(naverMap, centerOn) {
+        val map = naverMap ?: return@LaunchedEffect
+        val point = centerOn ?: return@LaunchedEffect
+        // 너무 멀리서 보고 있었으면 당겨 준다. 이미 가까우면 배율은 안 건드린다 —
+        // 사용자가 맞춰 놓은 화면을 마음대로 바꾸지 않는다.
+        val zoom = maxOf(map.cameraPosition.zoom, SELECTED_PLACE_MIN_ZOOM)
+        map.moveCamera(
+            CameraUpdate.scrollAndZoomTo(point.toLatLng(), zoom).animate(CameraAnimation.Easing),
+        )
     }
 
     DisposableEffect(naverMap, scene.places) {
@@ -267,6 +309,17 @@ private const val MARKER_PX_SELECTED = 92
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
+
+/** 내 위치 얼굴의 한 변(px)과 흰 테두리 두께. */
+private const val AVATAR_PX = 96
+
+private const val AVATAR_RING_PX = 5f
+
+/** 위치 정확도 원. 기본 파랑 대신 앱 분홍을 옅게 깐다. */
+private val LOCATION_CIRCLE = DaengPink.copy(alpha = 0.18f).toArgb()
+
+/** 고른 장소로 갈 때 최소한 이만큼은 당겨서 본다. */
+private const val SELECTED_PLACE_MIN_ZOOM = 16.0
 
 private const val MIN_ZOOM = 11.0
 
