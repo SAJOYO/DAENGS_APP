@@ -11,7 +11,7 @@ import androidx.sqlite.execSQL
 /** 산책 원본 위치만 소유하는 로컬 DB. 네트워크 동기화 여부는 이 저장소의 책임이 아니다. */
 @Database(
     entities = [WalkSessionRow::class, WalkFixRow::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -38,9 +38,21 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 서버에 올라간 시각을 더한다.
+         *
+         * nullable 이라 기존 행은 그대로 두면 된다 — **예전 산책은 정말로 아직 안
+         * 올라간 것**이고, 다음 동기화 때 올라간다.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN syncedAtMillis INTEGER")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

@@ -5,6 +5,7 @@ import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.walk.ForegroundWalkTrackingController
 import com.daengs.app.walk.WalkFixWriter
 import com.daengs.app.walk.WalkHistory
+import com.daengs.app.walk.sync.WalkSync
 import com.daengs.app.walk.WalkRuntime
 import com.daengs.app.walk.WalkTrackingStore
 import com.daengs.app.walk.store.RoomWalkFixLog
@@ -55,6 +56,7 @@ class DaengsApp : Application() {
             controller = ForegroundWalkTrackingController(this, store),
             writer = writer,
             history = WalkHistory(log),
+            sync = WalkSync(log),
         )
     }
 }
