@@ -130,7 +130,9 @@ daengs.naverMapClientId=<네이버 클라우드 플랫폼의 Maps 클라이언�
 
 - 지도 SDK 도 메이븐 센트럴에 없다. `settings.gradle.kts` 가 네이버 저장소를 따로
   열어 두었다 (카카오와 같은 이유).
-- **산책기록 탭의 장소 검색은 이 키와 별개다** — 그쪽은 `daengs.apiBaseUrl` 의
+- **키가 없으면 격자만 뜬다.** 마커·검색·카드는 정상이라 앱이 고장 난 것처럼 보이는데,
+  로그에 `NaverMap: Authorization failed: [800] Client is unspecified` 가 찍힌다.
+- **내 주변 탭의 장소 검색은 이 키와 별개다** — 그쪽은 `daengs.apiBaseUrl` 의
   서버를 부른다.
 
 ### 빌드 · 테스트 · 설치
