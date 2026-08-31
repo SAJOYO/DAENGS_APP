@@ -28,6 +28,18 @@ class WalkTrackingTest {
     }
 
     @Test
+    fun `elapsed time adds only the active monotonic interval`() {
+        val state = WalkTrackingState(
+            activeDurationMillis = 3_000L,
+            activeSinceRealtimeMillis = 10_000L,
+        )
+
+        assertEquals(5_500L, state.elapsedMillisAt(12_500L))
+        assertEquals(3_000L, state.elapsedMillisAt(9_000L))
+        assertEquals(3_000L, state.copy(activeSinceRealtimeMillis = null).elapsedMillisAt(99_000L))
+    }
+
+    @Test
     fun `controller maps controls to explicit service actions`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = context.applicationContext as Application

@@ -133,6 +133,18 @@ daengs.naverMapClientId=<네이버 클라우드 플랫폼의 Maps 클라이언�
 - **산책기록 탭의 장소 검색은 이 키와 별개다** — 그쪽은 `daengs.apiBaseUrl` 의
   서버를 부른다.
 
+### 산책을 기록하려면
+
+하단 **산책기록** 탭에서 위치 권한을 허용하고 `산책 시작`을 누른다. Android 13 이상은
+알림 권한도 묻는다. 알림을 거부해도 기록은 가능하지만 알림창의 일시정지·종료 버튼은
+보이지 않을 수 있다.
+
+- 화면을 나가거나 꺼도 위치 Foreground Service가 기록을 이어 간다.
+- 지도에는 흔들림과 정확도 낮은 점을 걸러낸 경로가 보인다.
+- 기기가 보고한 원본 위치는 `daengs_walk.db`에 먼저 저장한다.
+- 현재는 **로컬 기록만 한다.** 백엔드 업로드·점수·영토·기록 목록은 연결하지 않았다.
+- 강제 종료로 닫히지 않은 세션은 DB에 남지만, 이어 기록/폐기 화면은 아직 없다.
+
 ### 빌드 · 테스트 · 설치
 
 ```bash
@@ -164,8 +176,10 @@ PC 마다 다른 `~/.android/debug.keystore` 로 서명되면, 같은 테스트 
 ```
 app/          안드로이드 앱 (Kotlin + Jetpack Compose)
   src/main/java/com/daengs/app/
+    map/        네이버 지도 표면과 장소·산책 동선 레이어
     miniroom/   미니룸 — 좌표계·배치·강아지·그리기
     ui/         홈 화면, 인벤토리, 개발자 패널
+    walk/       산책 기록 코어·Foreground Service·Room 저장 계약
   src/main/res/drawable-nodpi/   픽셀 아트 (WebP)
   src/test/     단위 테스트 84개
 tools/        파이썬 도구 (에셋 반입·가공)

@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val walkController = (application as DaengsApp).walkRuntime.controller
         setContent {
             DaengsTheme {
                 // 화면이 넷이 됐지만 **네비게이션 라이브러리는 아직 안 넣는다.**
@@ -163,7 +164,10 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Chat -> ChatScreen(onBack = { screen = Screen.Home })
 
-                    Screen.Places -> PlacesScreen(onBack = { screen = Screen.Home })
+                    Screen.Places -> PlacesScreen(
+                        onBack = { screen = Screen.Home },
+                        walkController = walkController,
+                    )
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
                 }
