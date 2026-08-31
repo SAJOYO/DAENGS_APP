@@ -34,9 +34,17 @@ import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 
+/**
+ * 하단 탭.
+ *
+ * **[Nearby] 는 예전에 "산책기록" 이었다.** 그런데 여는 화면은 처음부터 장소 지도라
+ * 이름과 내용이 달랐다 — 탭을 누르면 산책 기록이 나올 줄 알고 누른다. 산책 기록은
+ * 홈의 "오늘의 산책 요약" 카드에서 펼치는 것으로 자리가 정해져서, 이 탭은 장소
+ * 찾기 전용이 됐다.
+ */
 enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Home("홈", DaengsIcon.Home),
-    Walks("산책기록", DaengsIcon.Paws),
+    Nearby("내 주변", DaengsIcon.Pin),
     Dex("도감", DaengsIcon.Book),
     My("마이", DaengsIcon.Person),
 }
@@ -79,7 +87,7 @@ fun DaengsBottomBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 BottomItem(BottomTab.Home, selected, onSelect, Modifier.weight(1f))
-                BottomItem(BottomTab.Walks, selected, onSelect, Modifier.weight(1f))
+                BottomItem(BottomTab.Nearby, selected, onSelect, Modifier.weight(1f))
                 // 가운데 버튼 자리
                 Spacer(Modifier.weight(1f))
                 BottomItem(BottomTab.Dex, selected, onSelect, Modifier.weight(1f))
