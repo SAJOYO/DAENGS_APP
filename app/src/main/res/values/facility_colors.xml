@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 시설 아이콘 그룹 색. drawable 의 fillColor 가 이 이름을 참조한다 —
-     색을 바꿀 때 벡터 8개가 아니라 여기 한 곳만 고친다. -->
+     색을 바꿀 때 벡터 8개가 아니라 여기 한 곳만 고친다.
+
+     **색상(hue)이 곧 카테고리다.** 여덟을 한 색으로 통일하면 지도에서 병원과 카페를
+     구분할 수 없다. 그래서 앱 화풍에 맞추면서도 채도·명도만 낮췄고, 색상 간격은
+     그대로 뒀다 (FacilityColorTest 가 그 간격을 지킨다).
+
+     넷은 앱 팔레트에 이미 있는 값이다 — 병원=Error, 야외=Success, 돌봄=Warning,
+     기타=TextSecondary. 같은 뜻이면 앱 어디서나 같은 색이어야 한다. -->
 <resources>
-    <color name="facility_medical">#E5484D</color>
-    <color name="facility_supply">#F76B15</color>
-    <color name="facility_food">#7C5CFA</color>
-    <color name="facility_stay">#0A84D8</color>
-    <color name="facility_culture">#D6409F</color>
-    <color name="facility_outdoor">#12A150</color>
-    <color name="facility_care">#C2820A</color>
-    <color name="facility_etc">#6B7280</color>
+    <color name="facility_medical">#C45E5E</color>
+    <color name="facility_supply">#C87F55</color>
+    <color name="facility_food">#8D7AA8</color>
+    <color name="facility_stay">#5B87A8</color>
+    <color name="facility_culture">#C2739E</color>
+    <color name="facility_outdoor">#4E9B70</color>
+    <color name="facility_care">#BC9D3E</color>
+    <color name="facility_etc">#A79089</color>
 </resources>
