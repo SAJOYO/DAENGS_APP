@@ -40,6 +40,7 @@ import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.home.HomeDemoData
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
@@ -327,14 +328,7 @@ private fun PetCard(pet: Pet, onEdit: () -> Unit, onPickPrimary: () -> Unit) {
 @Composable
 private fun PetFace(pet: Pet, size: androidx.compose.ui.unit.Dp) {
     val art = pet.breedArt
-    if (art != null) {
-        DogAvatar(art, Modifier.size(size))
-    } else {
-        Box(
-            Modifier.size(size).clip(RoundedCornerShape(50)).background(PinkFaint),
-            contentAlignment = Alignment.Center,
-        ) { DaengsIconView(DaengsIcon.Paw, Modifier.size(size * 0.5f), tint = DaengPink) }
-    }
+    if (art != null) DogAvatar(art, Modifier.size(size)) else PawAvatar(size = size)
 }
 
 /** 아는 것만 적는다. 모르는 항목은 줄에서 빠진다 — 빈 자리를 "-" 로 채우지 않는다. */
