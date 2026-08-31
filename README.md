@@ -116,6 +116,23 @@ uv run --extra train --extra serve python serve.py --release <release폴더> --h
   adb reverse --list              # 걸려 있는지 확인
   ```
 
+### 지도를 켜려면 (선택)
+
+**안 채워도 앱은 켜진다.** 지도 타일만 인증 실패로 비고 나머지 화면은 그대로 돈다
+(카카오 키와 같은 철학).
+
+```properties
+daengs.naverMapClientId=<네이버 클라우드 플랫폼의 Maps 클라이언트 ID>
+```
+
+네이버 클라우드 플랫폼 콘솔 → Maps → 인증 정보. 앱 패키지명 `com.daengs.app` 을
+등록해야 그 키로 타일이 나온다.
+
+- 지도 SDK 도 메이븐 센트럴에 없다. `settings.gradle.kts` 가 네이버 저장소를 따로
+  열어 두었다 (카카오와 같은 이유).
+- **산책기록 탭의 장소 검색은 이 키와 별개다** — 그쪽은 `daengs.apiBaseUrl` 의
+  서버를 부른다.
+
 ### 빌드 · 테스트 · 설치
 
 ```bash
