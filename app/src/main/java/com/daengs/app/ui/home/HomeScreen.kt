@@ -1,5 +1,6 @@
 package com.daengs.app.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
+import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 
@@ -98,11 +100,24 @@ fun HomeScreen(
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
+    /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
+    onSignIn: (() -> Unit)? = null,
+    /** 회원 탈퇴. 상태는 [MainActivity] 가 들고 있다 (랜딩의 busy·error 와 같은 결). */
+    onWithdraw: (() -> Unit)? = null,
+    withdrawBusy: Boolean = false,
+    withdrawError: String? = null,
+    onDismissWithdraw: (() -> Unit)? = null,
 ) {
     var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
+    // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
+    BackHandler(enabled = bottomTab != BottomTab.Home) { bottomTab = BottomTab.Home }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
-    // 프로필 얼굴의 견종. 개발자 패널에서 바꿀 수 있다.
+    // 프로필 얼굴의 견종. **개발자 패널에서만** 바꿀 수 있다 — 즉 릴리스에서는
+    // 기본값에 고정된다. 사용자용 고르기는 온보딩(강아지 등록)이 붙을 때
+    // "내 강아지 중 대표 고르기"로 만든다. 등록이 없는 지금 견종 27종을
+    // 늘어놓으면 곧 버려질 화면이 되고, 내 개와 무관한 목록에서 하나 고르라는
+    // 말이 된다.
     //
     // 상단바와 챗봇 카드 둘 다 이걸 쓴다. 그 둘은 방 밖에 있어서 상태를
     // 방 안에 두면 닿지 않는다 — 그래서 견종 고르기(방 안)와 달리 여기 있다.
@@ -150,15 +165,35 @@ fun HomeScreen(
         bottomBar = {
             DaengsBottomBar(
                 selected = bottomTab,
-                onSelect = {
-                    bottomTab = it
-                    if (it == BottomTab.Dex) onOpenDex?.invoke()
-                    if (it == BottomTab.Walks) onOpenPlaces?.invoke()
+                // **밀어서 여는 탭은 선택 상태를 안 남긴다.** 남기면 도감에서
+                // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
+                // 화면이 되기 전에는 눈에 안 띄던 것이다.
+                onSelect = { tab ->
+                    when (tab) {
+                        BottomTab.Dex -> onOpenDex?.invoke()
+                        BottomTab.Walks -> onOpenPlaces?.invoke()
+                        else -> bottomTab = tab
+                    }
                 },
                 onCenter = { onOpenChat?.invoke() },
             )
         },
     ) { inner ->
+        if (bottomTab == BottomTab.My) {
+            MyScreen(
+                breed = profileBreed,
+                signedIn = signedIn,
+                onSignIn = { onSignIn?.invoke() },
+                onSignOut = { onSignOut?.invoke() },
+                onWithdraw = { onWithdraw?.invoke() },
+                withdrawBusy = withdrawBusy,
+                withdrawError = withdrawError,
+                onDismissWithdraw = { onDismissWithdraw?.invoke() },
+                modifier = Modifier.padding(inner),
+            )
+            return@Scaffold
+        }
+
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
         // 방은 RoomGeometry.of(width, height) 로 받은 상자에 맞춰 스스로 줄어든다.
@@ -177,8 +212,6 @@ fun HomeScreen(
                 theme = roomTheme,
                 herd = herd,
                 onOpenDex = onOpenDex,
-                signedIn = signedIn,
-                onSignOut = onSignOut,
                 profileBreed = profileBreed,
                 onPickProfile = { profileBreed = it },
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -219,8 +252,6 @@ private fun RoomSection(
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
-    signedIn: Boolean,
-    onSignOut: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
     modifier: Modifier = Modifier,
@@ -280,10 +311,12 @@ private fun RoomSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             InventoryButton(open = inventoryOpen, onClick = onToggleInventory)
-            if (BuildConfig.DEBUG) {
-                Spacer(Modifier.height(9.dp))
-                DeveloperToggle(on = developer, onToggle = { developer = !developer })
-            }
+            // `BuildConfig.DEBUG` 로 감싸지 않는다 — **소스셋이 곧 가드다.**
+            // 릴리스에는 아무것도 안 그리는 껍데기가 들어간다
+            // (`app/src/release/.../DeveloperPanel.kt`). 여기에 검사를 하나 더
+            // 두면 어느 쪽이 진짜인지 헷갈리고, 예전에 토글만 감싸고 패널은
+            // 안 감쌌던 것도 그래서 생긴 일이다.
+            DeveloperToggle(on = developer, onToggle = { developer = !developer })
         }
 
         if (developer) {
@@ -299,8 +332,6 @@ private fun RoomSection(
                 onPickProfile = onPickProfile,
                 outside = outside,
                 onPickOutside = { outsideOverride = it },
-                signedIn = signedIn,
-                onSignOut = onSignOut,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }

@@ -34,6 +34,17 @@ class RoomStore(context: Context) {
         prefs.edit().putString(KEY_THEME, id).apply()
     }
 
+    /**
+     * 방을 통째로 잊는다. **회원 탈퇴에서만 쓴다.**
+     *
+     * 방 배치는 서버에 사본이 없어서 이 기기에만 있다. 안 지우면 다음에 이 폰으로
+     * 로그인한 사람이 남이 꾸며 둔 방을 물려받는다. 로그아웃은 "잠깐 나감" 이라
+     * 그대로 두는 게 맞고, 탈퇴는 "흔적을 지움" 이라 다르다.
+     */
+    fun clear() {
+        prefs.edit().clear().apply()
+    }
+
     private companion object {
         const val KEY_ITEMS = "items"
         const val KEY_THEME = "theme"
