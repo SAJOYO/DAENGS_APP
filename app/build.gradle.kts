@@ -31,6 +31,10 @@ val screenUrl = localSetting("daengs.screenUrl")
 // 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
 val naverMapClientId = localSetting("daengs.naverMapClientId")
 
+// 콘솔 Style Editor 에서 만든 지도 스타일(My Style ID). 지도를 앱 팔레트로 칠한다.
+// **없으면 기본 네이버 지도로 뜬다** — 앱은 정상 동작하고, 스타일만 안 입는다.
+val naverMapStyleId = localSetting("daengs.naverMapStyleId")
+
 android {
     namespace = "com.daengs.app"
     compileSdk {
@@ -52,6 +56,7 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
         buildConfigField("String", "NAVER_MAP_NCP_KEY_ID", "\"$naverMapClientId\"")
+        buildConfigField("String", "NAVER_MAP_STYLE_ID", "\"$naverMapStyleId\"")
 
         // 카카오 리다이렉트 스킴. 매니페스트가 이 자리를 비워 두고 여기서 꽂는다.
         manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"

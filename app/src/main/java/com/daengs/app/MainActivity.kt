@@ -28,6 +28,7 @@ import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesScreen
+import com.daengs.app.ui.walk.WalkScreen
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
@@ -36,7 +37,11 @@ private enum class Screen {
     Landing,
     /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
     Onboarding,
-    Home, Chat, Dex, Places,
+    Home, Chat, Dex,
+    /** 내 주변 장소. 하단 탭에서 들어온다. */
+    Places,
+    /** 산책. **미니룸의 문으로 들어온다** — 탭이 아니다. */
+    Walk,
 }
 
 class MainActivity : ComponentActivity() {
@@ -178,6 +183,7 @@ class MainActivity : ComponentActivity() {
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
+                        onOpenWalk = { screen = Screen.Walk },
                         signedIn = session != null,
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
@@ -241,7 +247,13 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Places -> PlacesScreen(
                         onBack = { screen = Screen.Home },
+                        avatarBreed = pets.primary?.breedArt,
+                    )
+
+                    Screen.Walk -> WalkScreen(
+                        onBack = { screen = Screen.Home },
                         walkController = walkController,
+                        avatarBreed = pets.primary?.breedArt,
                     )
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })

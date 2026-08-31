@@ -95,9 +95,10 @@ fun HomeScreen(
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
     onOpenChat: (() -> Unit)? = null,
-    /** 산책기록 탭을 눌렀을 때. 장소 지도로 들어간다 — 지도 진입점을 어디에 둘지
-     *  제품 결정이 나기 전까지의 임시 배선이다 (이 탭은 그동안 아무것도 안 했다). */
+    /** 내 주변 탭을 눌렀을 때. 병원·카페·펫샵을 지도에서 찾는다. */
     onOpenPlaces: (() -> Unit)? = null,
+    /** 방문을 열었을 때. 산책 화면으로 나간다 — **탭이 아니라 문이 산책의 입구다.** */
+    onOpenWalk: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -182,7 +183,7 @@ fun HomeScreen(
                 onSelect = { tab ->
                     when (tab) {
                         BottomTab.Dex -> onOpenDex?.invoke()
-                        BottomTab.Walks -> onOpenPlaces?.invoke()
+                        BottomTab.Nearby -> onOpenPlaces?.invoke()
                         else -> bottomTab = tab
                     }
                 },
@@ -228,6 +229,7 @@ fun HomeScreen(
                 theme = roomTheme,
                 herd = herd,
                 onOpenDex = onOpenDex,
+                onOpenWalk = onOpenWalk,
                 profileBreed = profileBreed,
                 onPickProfile = { devBreed = it },
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -268,6 +270,7 @@ private fun RoomSection(
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
+    onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
     modifier: Modifier = Modifier,
@@ -306,9 +309,10 @@ private fun RoomSection(
             // 편집 모드에서 탭 = 선택. 돌리기/치우기는 버튼으로 뺐다.
             onItemTap = { item -> state.select(item.instanceId) },
             onEmptyTap = { state.select(null) },
-            // 문이 활짝 열린 순간. 산책 게임 화면이 생기면 여기서 넘기면 된다.
-            // (CONTEXT.md 4번: 미니룸(홈) -> [방문 클릭] -> 산책 게임)
-            onDoorOpened = {},
+            // 문이 활짝 열린 순간 산책으로 나간다
+            // (CONTEXT.md 4번: 미니룸(홈) -> [방문 클릭] -> 산책).
+            // 편집 중에는 안 받는다 — 가구를 옮기다 화면이 넘어가면 하던 일을 잃는다.
+            onDoorOpened = if (inventoryOpen) null else onOpenWalk,
             // 벽의 액자 -> 네오 채소 도감. 편집 중에는 안 받는다 — 가구를 옮기다가
             // 화면이 넘어가면 하던 일을 잃는다.
             onFrameTap = if (inventoryOpen) null else onOpenDex,

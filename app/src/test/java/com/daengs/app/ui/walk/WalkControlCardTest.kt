@@ -1,4 +1,4 @@
-package com.daengs.app.ui.places
+package com.daengs.app.ui.walk
 
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample

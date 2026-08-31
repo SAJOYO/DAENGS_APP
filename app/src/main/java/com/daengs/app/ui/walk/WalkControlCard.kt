@@ -1,4 +1,4 @@
-package com.daengs.app.ui.places
+package com.daengs.app.ui.walk
 
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
@@ -6,10 +6,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.sp
+import com.daengs.app.ui.common.DaengsWideButton
+import com.daengs.app.ui.theme.CardWhite
+import com.daengs.app.ui.theme.DaengPinkDeep
+import com.daengs.app.ui.theme.DaengsColors
+import com.daengs.app.ui.theme.TextDark
+import com.daengs.app.ui.theme.TextMuted
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,8 +57,8 @@ fun WalkControlCard(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        shape = RoundedCornerShape(16.dp),
+        color = CardWhite.copy(alpha = 0.96f),
         shadowElevation = 8.dp,
     ) {
         Column(
@@ -63,53 +69,47 @@ fun WalkControlCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("산책 기록", fontWeight = FontWeight.Bold)
+                Text("산책 기록", color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text(
                     walkStateLabel(state),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelLarge,
+                    color = DaengPinkDeep,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
             Text(
                 "${formatWalkDuration(state.elapsedMillisAt(realtimeMillis))} · " +
                     "${formatWalkDistance(state.trail.distanceMeters)} · " +
                     "${state.trail.sampleCount}개 점",
-                color = MaterialTheme.colorScheme.secondary,
-                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted,
+                fontSize = 13.sp,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when (state.trail.state) {
-                    TrackingState.OFF -> Button(
+                    TrackingState.OFF -> DaengsWideButton(
+                        label = if (state.trail.sampleCount == 0) "산책 시작" else "새 산책 시작",
                         onClick = onStart,
                         enabled = locationGranted,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (state.trail.sampleCount == 0) "산책 시작" else "새 산책 시작") }
+                        accent = true,
+                    )
                     TrackingState.RECORDING -> {
-                        Button(onClick = onPause, modifier = Modifier.weight(1f)) {
-                            Text("일시정지")
-                        }
-                        OutlinedButton(onClick = onStop, modifier = Modifier.weight(1f)) {
-                            Text("종료")
-                        }
+                        DaengsWideButton("일시정지", onPause, Modifier.weight(1f), accent = true)
+                        DaengsWideButton("종료", onStop, Modifier.weight(1f))
                     }
                     TrackingState.PAUSED -> {
-                        Button(onClick = onResume, modifier = Modifier.weight(1f)) {
-                            Text("계속 기록")
-                        }
-                        OutlinedButton(onClick = onStop, modifier = Modifier.weight(1f)) {
-                            Text("종료")
-                        }
+                        DaengsWideButton("계속 기록", onResume, Modifier.weight(1f), accent = true)
+                        DaengsWideButton("종료", onStop, Modifier.weight(1f))
                     }
                 }
             }
             if (!locationGranted) {
                 Text(
                     "위치 권한을 허용하면 산책을 기록할 수 있어요.",
-                    color = Color(0xFF8A5A00),
-                    style = MaterialTheme.typography.bodySmall,
+                    color = DaengsColors.Warning,
+                    fontSize = 12.sp,
                 )
             }
             if (
@@ -118,16 +118,17 @@ fun WalkControlCard(
             ) {
                 Text(
                     "위치 정확도가 낮아 동선 기록을 잠시 건너뛰고 있어요.",
-                    color = Color(0xFF8A5A00),
-                    style = MaterialTheme.typography.bodySmall,
+                    color = DaengsColors.Warning,
+                    fontSize = 12.sp,
                 )
             }
             state.errorMessage?.let { message ->
-                Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                Surface(color = DaengsColors.ErrorSoft, shape = RoundedCornerShape(12.dp)) {
                     Text(
                         message,
                         modifier = Modifier.fillMaxWidth().padding(8.dp),
-                        style = MaterialTheme.typography.bodySmall,
+                        color = DaengsColors.Error,
+                        fontSize = 12.sp,
                     )
                 }
             }
