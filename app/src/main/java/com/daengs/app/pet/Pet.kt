@@ -35,6 +35,15 @@ data class Pet(
     /** 이 견종의 얼굴 그림. 모르는 견종(믹스 등)이면 null 이고, 화면이 대체 얼굴을 쓴다. */
     val breedArt: DogBreed? get() = DogBreed.byId(breed)
 
+    /**
+     * 미니룸에서 이 아이가 설 모습.
+     *
+     * 얼굴([breedArt])과 달리 **null 이 없다.** 방 강아지는 걷고 앉는 전신 시트라
+     * 대체할 중립 그림이 없어서, 모르는 견종은 [DogBreed.roomStandIn] 이 대역을 준다 —
+     * 안 세우면 자기 강아지가 방에서 사라진다.
+     */
+    val roomBreed: DogBreed get() = breedArt ?: DogBreed.roomStandIn(id)
+
     enum class Sex { MALE, FEMALE }
 
     /**
