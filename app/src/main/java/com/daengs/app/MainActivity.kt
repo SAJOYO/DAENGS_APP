@@ -254,6 +254,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
                         avatarBreed = pets.primary?.breedArt,
+                        dogId = pets.primary?.id,
                     )
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })

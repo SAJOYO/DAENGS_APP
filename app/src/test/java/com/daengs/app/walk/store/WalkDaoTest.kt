@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.RecordedWeather
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -34,6 +35,48 @@ class WalkDaoTest {
 
     @After
     fun tearDown() = db.close()
+
+    /**
+     * 목록에 **끝난 산책만** 온다.
+     *
+     * 강제 종료로 열린 채 남은 세션이 섞이면 "0m 짜리 산책"이 쌓인다 — 그건 기록이
+     * 아니라 사고의 흔적이다. 이어 기록할지 버릴지는 아직 정하지 않은 별개 문제다.
+     */
+    @Test
+    fun `끝난 산책만 최근 순으로 온다`() = runBlocking {
+        log.openSession(RecordedSession("done-old", dogId = null, startedAtMillis = 1_000L))
+        log.openSession(RecordedSession("done-new", dogId = null, startedAtMillis = 5_000L))
+        log.openSession(RecordedSession("open", dogId = null, startedAtMillis = 9_000L))
+        log.closeSession("done-old", 2_000L)
+        log.closeSession("done-new", 6_000L)
+
+        assertEquals(listOf("done-new", "done-old"), log.finishedSessions().map { it.id })
+    }
+
+    /** 날씨는 세션을 연 뒤 따로 온다. 못 받으면 null 로 남고 "맑음"으로 채우지 않는다. */
+    @Test
+    fun `날씨는 나중에 찍히고 한 번만 쓴다`() = runBlocking {
+        log.openSession(RecordedSession("s1", dogId = null, startedAtMillis = 1_000L))
+        assertNull(log.session("s1")?.weather)
+
+        log.stampWeather("s1", RecordedWeather(weatherCode = 61, isDay = true, temperatureC = 18.5f))
+        val stamped = log.session("s1")?.weather
+        assertEquals(61, stamped?.weatherCode)
+        assertEquals(18.5f, stamped?.temperatureC)
+
+        // 두 번째 호출은 무시된다 — 나갈 때의 날씨가 산책 도중에 덮이면 안 된다.
+        log.stampWeather("s1", RecordedWeather(weatherCode = 0, isDay = false, temperatureC = 3f))
+        assertEquals(61, log.session("s1")?.weather?.weatherCode)
+    }
+
+    /** 대표 강아지가 세션에 남는다. 없으면 null 그대로 — 아무나 갖다 붙이지 않는다. */
+    @Test
+    fun `강아지가 세션에 남는다`() = runBlocking {
+        log.openSession(RecordedSession("s1", dogId = "dog-1", startedAtMillis = 1_000L))
+        log.openSession(RecordedSession("s2", dogId = null, startedAtMillis = 2_000L))
+        assertEquals("dog-1", log.session("s1")?.dogId)
+        assertNull(log.session("s2")?.dogId)
+    }
 
     @Test
     fun `fixes survive as written and come back in client order`() = runBlocking {

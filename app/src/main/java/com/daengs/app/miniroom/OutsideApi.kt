@@ -34,12 +34,22 @@ object OutsideApi {
      * 돌려주면 "못 받았다" 와 "맑은 낮이다" 가 구별되지 않는다.
      */
     suspend fun fetch(latitude: Double, longitude: Double): OutsideView? =
+        fetchNow(latitude, longitude)?.let { OutsideView.of(it.time, weatherOf(it.weatherCode)) }
+
+    /**
+     * 받은 그대로.
+     *
+     * 창밖 그림은 [fetch] 가 이걸 세 갈래로 접어서 쓰지만, **산책 기록에는 원본을
+     * 남긴다** — 접은 값만 저장하면 나중에 "소나기였는지 뇌우였는지"를 되살릴 수 없다.
+     * 기온도 같이 받는다 (URL 에 한 단어를 더한 것뿐이다).
+     */
+    suspend fun fetchNow(latitude: Double, longitude: Double): OutsideNow? =
         withContext(Dispatchers.IO) {
             runCatching {
                 val url = URL(
                     "https://api.open-meteo.com/v1/forecast" +
                         "?latitude=$latitude&longitude=$longitude" +
-                        "&current=weather_code,is_day&timezone=auto"
+                        "&current=weather_code,is_day,temperature_2m&timezone=auto"
                 )
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
@@ -51,10 +61,16 @@ object OutsideApi {
                     if (conn.responseCode !in 200..299) return@runCatching null
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     val current = JSONObject(body).getJSONObject("current")
-                    OutsideView.of(
+                    OutsideNow(
+                        weatherCode = current.getInt("weather_code"),
                         time = if (current.getInt("is_day") == 1) OutsideTime.DAY
                         else OutsideTime.NIGHT,
-                        weather = weatherOf(current.getInt("weather_code")),
+                        // 기온만 빠져도 날씨 전체를 버리지 않는다.
+                        temperatureC = if (current.has("temperature_2m")) {
+                            current.getDouble("temperature_2m").toFloat()
+                        } else {
+                            null
+                        },
                     )
                 } finally {
                     conn.disconnect()
@@ -84,3 +100,17 @@ object OutsideApi {
         else -> OutsideWeather.CLEAR               // 맑음 · 흐림 · 안개
     }
 }
+
+/**
+ * 지금 바깥 날씨. **접기 전의 값**이다.
+ *
+ * 창밖 그림은 [OutsideApi.weatherOf] 로 세 갈래로 접어 쓰고, 산책 기록은 이걸 그대로
+ * 저장한다 — 같은 한 번의 호출에서 둘 다 나온다.
+ */
+data class OutsideNow(
+    /** WMO 코드. 표: https://open-meteo.com/en/docs */
+    val weatherCode: Int,
+    val time: OutsideTime,
+    /** 섭씨. 못 받으면 null 이고 기록에서 기온 줄만 빠진다. */
+    val temperatureC: Float?,
+)

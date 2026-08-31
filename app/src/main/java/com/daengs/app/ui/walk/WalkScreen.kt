@@ -77,8 +77,10 @@ fun WalkScreen(
     onBack: () -> Unit,
     walkController: WalkTrackingController,
     modifier: Modifier = Modifier,
-    /** 산책하는 아이. 내 위치에 그 얼굴이 선다 — 걷는 건 사람이 아니라 강아지다. */
+    /** 산책하는 아이. 내 위치에 그 얼굴이 서고, 기록에도 이 아이가 남는다. */
     avatarBreed: DogBreed? = null,
+    /** 기록에 남길 대표 강아지. 없으면 null 로 저장된다 — 아무나 갖다 붙이지 않는다. */
+    dogId: String? = null,
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
@@ -143,7 +145,7 @@ fun WalkScreen(
         ActivityResultContracts.RequestPermission(),
     ) {
         // 알림을 거부해도 안드로이드는 작업 관리자에 FGS 를 띄우고 기록 자체는 된다.
-        walkController.start()
+        walkController.start(dogId)
     }
 
     fun startWalk() {
@@ -155,7 +157,7 @@ fun WalkScreen(
         ) {
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            walkController.start()
+            walkController.start(dogId)
         }
     }
 
@@ -340,7 +342,7 @@ private class PreviewWalkTrackingController : WalkTrackingController {
         ),
     )
 
-    override fun start() = Unit
+    override fun start(dogId: String?) = Unit
 
     override fun pause() = Unit
 

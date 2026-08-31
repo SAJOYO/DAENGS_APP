@@ -46,6 +46,9 @@ class WalkFixWriter(
     fun closeSession(sessionId: String, endedAtMillis: Long) =
         enqueue { log.closeSession(sessionId, endedAtMillis) }
 
+    fun stampWeather(sessionId: String, weather: RecordedWeather) =
+        enqueue { log.stampWeather(sessionId, weather) }
+
     fun deleteSession(sessionId: String) = enqueue { log.deleteSession(sessionId) }
 
     /** 이 호출보다 먼저 제출한 명령이 성공 또는 실패로 끝날 때까지 기다린다. */

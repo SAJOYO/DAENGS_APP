@@ -2,6 +2,7 @@ package com.daengs.app.walk.store
 
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
 
 class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
@@ -11,6 +12,9 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
             dogId = session.dogId,
             startedAtMillis = session.startedAtMillis,
             endedAtMillis = session.endedAtMillis,
+            weatherCode = session.weather?.weatherCode,
+            isDay = session.weather?.isDay,
+            temperatureC = session.weather?.temperatureC,
         ),
     )
 
@@ -30,10 +34,21 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
     override suspend fun closeSession(sessionId: String, endedAtMillis: Long) =
         dao.closeSession(sessionId, endedAtMillis)
 
+    override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) =
+        dao.stampWeather(
+            sessionId = sessionId,
+            weatherCode = weather.weatherCode,
+            isDay = weather.isDay,
+            temperatureC = weather.temperatureC,
+        )
+
     override suspend fun deleteSession(sessionId: String) = dao.deleteSession(sessionId)
 
     override suspend fun unfinishedSessions(): List<RecordedSession> =
         dao.unfinishedSessions().map(WalkSessionRow::toModel)
+
+    override suspend fun finishedSessions(): List<RecordedSession> =
+        dao.finishedSessions().map(WalkSessionRow::toModel)
 
     override suspend fun session(sessionId: String): RecordedSession? =
         dao.session(sessionId)?.toModel()
@@ -42,11 +57,15 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         dao.fixes(sessionId).map(WalkFixRow::toModel)
 }
 
-private fun WalkSessionRow.toModel(): RecordedSession = RecordedSession(
+fun WalkSessionRow.toModel(): RecordedSession = RecordedSession(
     id = id,
     dogId = dogId,
     startedAtMillis = startedAtMillis,
     endedAtMillis = endedAtMillis,
+    // 셋 중 하나라도 없으면 날씨를 못 받은 것으로 본다 — 코드가 곧 있고 없고다.
+    weather = weatherCode?.let {
+        RecordedWeather(weatherCode = it, isDay = isDay ?: true, temperatureC = temperatureC)
+    },
 )
 
 private fun WalkFixRow.toModel(): RecordedFix = RecordedFix(

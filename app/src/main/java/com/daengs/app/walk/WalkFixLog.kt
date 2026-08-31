@@ -15,11 +15,20 @@ interface WalkFixLog {
 
     suspend fun closeSession(sessionId: String, endedAtMillis: Long)
 
+    /**
+     * 나갈 때의 날씨. 세션을 연 **뒤에** 따로 온다 — 날씨는 네트워크 왕복이라
+     * 기다렸다가 세션을 열면 그동안의 좌표를 놓친다.
+     */
+    suspend fun stampWeather(sessionId: String, weather: RecordedWeather)
+
     /** 세션과 그 세션이 소유한 모든 fix를 함께 지운다. */
     suspend fun deleteSession(sessionId: String)
 
     /** 프로세스 종료나 강제 종료로 명시적인 close를 받지 못한 세션. */
     suspend fun unfinishedSessions(): List<RecordedSession>
+
+    /** 끝난 산책만, 최근 것부터. 목록 화면이 쓴다. */
+    suspend fun finishedSessions(): List<RecordedSession>
 
     suspend fun session(sessionId: String): RecordedSession?
 
@@ -28,10 +37,23 @@ interface WalkFixLog {
 
 data class RecordedSession(
     val id: String,
-    /** 실제 반려견 선택이 연결되기 전에는 null이다. */
+    /** 대표 강아지. 로그인 전이거나 등록한 강아지가 없으면 null 이다. */
     val dogId: String?,
     val startedAtMillis: Long,
     val endedAtMillis: Long? = null,
+    /** 나갈 때의 날씨. 못 받았으면 null 이고 **"맑음"으로 채우지 않는다.** */
+    val weather: RecordedWeather? = null,
+)
+
+/**
+ * 산책을 시작할 때의 바깥.
+ *
+ * 접기 전의 WMO 코드를 남긴다 — "비"로만 저장하면 소나기였는지 뇌우였는지 못 되살린다.
+ */
+data class RecordedWeather(
+    val weatherCode: Int,
+    val isDay: Boolean,
+    val temperatureC: Float?,
 )
 
 data class RecordedFix(

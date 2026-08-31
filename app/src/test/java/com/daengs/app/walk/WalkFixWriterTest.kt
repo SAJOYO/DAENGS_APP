@@ -137,11 +137,17 @@ class WalkFixWriterTest {
             calls += "close:$sessionId"
         }
 
+        override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) {
+            calls += "weather:$sessionId"
+        }
+
         override suspend fun deleteSession(sessionId: String) {
             calls += "delete:$sessionId"
         }
 
         override suspend fun unfinishedSessions(): List<RecordedSession> = emptyList()
+
+        override suspend fun finishedSessions(): List<RecordedSession> = emptyList()
 
         override suspend fun session(sessionId: String): RecordedSession? = null
 
