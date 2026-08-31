@@ -99,6 +99,8 @@ fun HomeScreen(
     onOpenPlaces: (() -> Unit)? = null,
     /** 방문을 열었을 때. 산책 화면으로 나간다 — **탭이 아니라 문이 산책의 입구다.** */
     onOpenWalk: (() -> Unit)? = null,
+    /** 산책 요약 카드의 "지난 산책". 기록 목록으로 나간다. */
+    onOpenWalkHistory: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -253,7 +255,7 @@ fun HomeScreen(
                 ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
             }
             Spacer(Modifier.height(10.dp))
-            WalkSummaryCard(Modifier.padding(horizontal = 14.dp))
+            WalkSummaryCard(Modifier.padding(horizontal = 14.dp), onOpenWalkHistory)
             Spacer(Modifier.height(10.dp))
         }
     }

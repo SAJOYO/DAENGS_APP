@@ -49,6 +49,8 @@ fun NaverMapSurface(
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
     centerZoom: Double? = null,
+    /** 이 점들이 **다 보이게** 화면을 맞춘다. 지난 산책의 경로처럼 범위가 정해진 것에 쓴다. */
+    fitBounds: List<GeoPoint>? = null,
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
@@ -157,6 +159,22 @@ fun NaverMapSurface(
         overlay.icon = OverlayImage.fromBitmap(bitmap)
         overlay.iconWidth = AVATAR_PX
         overlay.iconHeight = AVATAR_PX
+    }
+
+    // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
+    // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
+    LaunchedEffect(naverMap, fitBounds) {
+        val map = naverMap ?: return@LaunchedEffect
+        val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+        val bounds = LatLngBounds.Builder().apply {
+            points.forEach { include(it.toLatLng()) }
+        }.build()
+        // 한 점뿐이면 경계가 넓이 0 이라 SDK 가 거부한다. 그때는 그 점으로 간다.
+        if (bounds.southWest == bounds.northEast) {
+            map.moveCamera(CameraUpdate.scrollAndZoomTo(bounds.southWest, SELECTED_PLACE_MIN_ZOOM))
+        } else {
+            map.moveCamera(CameraUpdate.fitBounds(bounds, FIT_PADDING_PX))
+        }
     }
 
     // 카드를 누르면 **그 장소가 지도 한가운데** 오게 한다. 목록에서 고른 곳이 화면
@@ -341,6 +359,9 @@ private const val AVATAR_RING_PX = 5f
 
 /** 위치 정확도 원. 기본 파랑 대신 앱 분홍을 옅게 깐다. */
 private val LOCATION_CIRCLE = DaengPink.copy(alpha = 0.18f).toArgb()
+
+/** 경로를 다 담을 때 가장자리에 남기는 여백(px). 선이 화면 끝에 붙으면 잘려 보인다. */
+private const val FIT_PADDING_PX = 80
 
 /** 고른 장소로 갈 때 최소한 이만큼은 당겨서 본다. */
 private const val SELECTED_PLACE_MIN_ZOOM = 16.0

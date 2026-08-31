@@ -91,4 +91,22 @@ class WalkSummaryTest {
         )
         assertEquals(61, summarize(withWeather, emptyList()).weather?.weatherCode)
     }
+
+    /**
+     * 그릴 선이 없어도 **어디였는지는 안다.**
+     *
+     * 필터가 다 버렸거나 좌표가 한 점뿐이면 세그먼트가 비는데, 그때 지도를 보낼 자리가
+     * 없으면 네이버 기본 카메라(서울시청)가 나온다 — 강남에서 한 산책이 시청이 된다.
+     */
+    @Test
+    fun `경로가 없어도 자리는 남는다`() {
+        val summary = summarize(session, listOf(fix(0, 0, 1_000L, 37.4979, 127.0276)))
+        assertTrue("선은 못 그린다", !summary.hasRoute)
+        assertEquals(37.4979, summary.anchor?.latitude ?: 0.0, 1e-6)
+    }
+
+    @Test
+    fun `좌표가 아예 없으면 자리도 없다`() {
+        assertEquals(null, summarize(session, emptyList()).anchor)
+    }
 }

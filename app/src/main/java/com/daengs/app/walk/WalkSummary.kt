@@ -1,5 +1,6 @@
 package com.daengs.app.walk
 
+import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 
 /**
@@ -21,6 +22,14 @@ data class WalkSummary(
     val activeDurationMillis: Long,
     /** 지도에 그릴 경로. 세그먼트마다 따로다 — 이어 붙이면 안 걸은 길이 생긴다. */
     val segments: List<List<LocationSample>>,
+    /**
+     * 이 산책이 있었던 자리.
+     *
+     * 경로를 그릴 수 없을 때(좌표가 한 점뿐이거나 정확도가 나빠 다 버려졌을 때)
+     * **지도를 어디로 보낼지**가 이 값이다. 없으면 지도가 네이버 기본 카메라
+     * (서울시청)에 앉아서, 강남에서 한 산책이 시청에서 한 것처럼 보인다.
+     */
+    val anchor: GeoPoint?,
 ) {
     val hasRoute: Boolean get() = segments.any { it.size >= 2 }
 }
@@ -58,6 +67,9 @@ fun summarize(session: RecordedSession, fixes: List<RecordedFix>): WalkSummary {
     }
 
     val snapshot = recorder.snapshot()
+    // 필터가 다 버렸어도 **원본에는 남아 있다.** 그 첫 점이 산책이 있었던 자리다.
+    val anchor = snapshot.segments.firstOrNull()?.firstOrNull()?.point
+        ?: fixes.minByOrNull { it.clientSeq }?.let { GeoPoint(it.lat, it.lng) }
     return WalkSummary(
         sessionId = session.id,
         dogId = session.dogId,
@@ -67,11 +79,12 @@ fun summarize(session: RecordedSession, fixes: List<RecordedFix>): WalkSummary {
         distanceMeters = snapshot.distanceMeters,
         activeDurationMillis = activeMillis,
         segments = snapshot.segments,
+        anchor = anchor,
     )
 }
 
 private fun RecordedFix.toSample(): LocationSample = LocationSample(
-    point = com.daengs.app.location.GeoPoint(latitude = lat, longitude = lng),
+    point = GeoPoint(latitude = lat, longitude = lng),
     capturedAtMillis = atMillis,
     accuracyMeters = accuracyM,
     isMock = isMock,

@@ -28,6 +28,8 @@ import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesScreen
+import com.daengs.app.ui.walk.WalkDetailScreen
+import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkScreen
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
@@ -42,6 +44,10 @@ private enum class Screen {
     Places,
     /** 산책. **미니룸의 문으로 들어온다** — 탭이 아니다. */
     Walk,
+    /** 지난 산책 목록. 홈의 산책 요약 카드에서 들어온다. */
+    WalkHistory,
+    /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
+    WalkDetail,
 }
 
 class MainActivity : ComponentActivity() {
@@ -50,7 +56,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val walkController = (application as DaengsApp).walkRuntime.controller
+        val walkRuntime = (application as DaengsApp).walkRuntime
+        val walkController = walkRuntime.controller
         setContent {
             DaengsTheme {
                 // 화면이 넷이 됐지만 **네비게이션 라이브러리는 아직 안 넣는다.**
@@ -84,6 +91,8 @@ class MainActivity : ComponentActivity() {
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
+                /** 목록에서 고른 산책. 상세 화면은 id 만 받아 스스로 읽어 온다. */
+                var openedWalkId by remember { mutableStateOf<String?>(null) }
 
                 var withdrawBusy by remember { mutableStateOf(false) }
                 var withdrawError by remember { mutableStateOf<String?>(null) }
@@ -184,6 +193,7 @@ class MainActivity : ComponentActivity() {
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
                         onOpenWalk = { screen = Screen.Walk },
+                        onOpenWalkHistory = { screen = Screen.WalkHistory },
                         signedIn = session != null,
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
@@ -249,6 +259,23 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.Home },
                         avatarBreed = pets.primary?.breedArt,
                     )
+
+                    Screen.WalkHistory -> WalkHistoryScreen(
+                        history = walkRuntime.history,
+                        onBack = { screen = Screen.Home },
+                        onOpen = { id ->
+                            openedWalkId = id
+                            screen = Screen.WalkDetail
+                        },
+                    )
+
+                    Screen.WalkDetail -> openedWalkId?.let { id ->
+                        WalkDetailScreen(
+                            sessionId = id,
+                            history = walkRuntime.history,
+                            onBack = { screen = Screen.WalkHistory },
+                        )
+                    }
 
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
