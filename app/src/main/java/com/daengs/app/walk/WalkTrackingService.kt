@@ -64,9 +64,10 @@ class WalkTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> startRecording()
-            ACTION_PAUSE -> pauseRecording()
-            ACTION_RESUME -> resumeRecording()
+            ACTION_PAUSE -> pauseRecording(startId)
+            ACTION_RESUME -> resumeRecording(startId)
             ACTION_STOP -> stopRecording(startId)
+            else -> stopIfInactive(startId)
         }
         // 복구 정책 없이 프로세스가 살아난 것만으로 산책을 재개하지 않는다.
         return START_NOT_STICKY
@@ -103,16 +104,22 @@ class WalkTrackingService : Service() {
         tracker.start(locationSource)
     }
 
-    private fun pauseRecording() {
-        if (recorder.snapshot().state != TrackingState.RECORDING) return
+    private fun pauseRecording(startId: Int) {
+        if (recorder.snapshot().state != TrackingState.RECORDING) {
+            stopIfInactive(startId)
+            return
+        }
         tracker.stop()
         val trail = recorder.pause()
         store.publish(WalkTrackingState(trail, store.state.value.lastSample))
         promote(trail, errorMessage = null)
     }
 
-    private fun resumeRecording() {
-        if (recorder.snapshot().state != TrackingState.PAUSED) return
+    private fun resumeRecording(startId: Int) {
+        if (recorder.snapshot().state != TrackingState.PAUSED) {
+            stopIfInactive(startId)
+            return
+        }
         val trail = recorder.resume()
         synchronized(sessionLock) { chainIndex += 1 }
         store.publish(WalkTrackingState(trail, store.state.value.lastSample))
@@ -121,7 +128,10 @@ class WalkTrackingService : Service() {
     }
 
     private fun stopRecording(stopStartId: Int) {
-        if (recorder.snapshot().state == TrackingState.OFF) return
+        if (recorder.snapshot().state == TrackingState.OFF) {
+            stopIfInactive(stopStartId)
+            return
+        }
         tracker.stop()
         closeSession()
         val trail = recorder.stop()
@@ -141,6 +151,11 @@ class WalkTrackingService : Service() {
                 }
             }
         }
+    }
+
+    /** 잘못 전달된 제어 명령이 비활성 서비스를 시작된 상태로 남기지 않게 한다. */
+    private fun stopIfInactive(startId: Int) {
+        if (recorder.snapshot().state == TrackingState.OFF) stopSelf(startId)
     }
 
     private fun acceptLocation(sample: LocationSample) {
