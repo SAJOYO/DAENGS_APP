@@ -120,16 +120,19 @@ fun HomeScreen(
     BackHandler(enabled = bottomTab != BottomTab.Home) { bottomTab = BottomTab.Home }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
-    // 프로필 얼굴의 견종. **개발자 패널에서만** 바꿀 수 있다 — 즉 릴리스에서는
-    // 기본값에 고정된다. 사용자용 고르기는 온보딩(강아지 등록)이 붙을 때
-    // "내 강아지 중 대표 고르기"로 만든다. 등록이 없는 지금 견종 27종을
-    // 늘어놓으면 곧 버려질 화면이 되고, 내 개와 무관한 목록에서 하나 고르라는
-    // 말이 된다.
+    // 프로필 얼굴의 견종.
     //
-    // 상단바와 챗봇 카드 둘 다 이걸 쓴다. 그 둘은 방 밖에 있어서 상태를
-    // 방 안에 두면 닿지 않는다 — 그래서 견종 고르기(방 안)와 달리 여기 있다.
-    // rememberSaveable 이 아니다 — 개발자 도구로 바꿔 본 것은 앱을 다시 켜면 지워진다.
-    var profileBreed by remember { mutableStateOf(HomeDemoData.DOG_BREED) }
+    // **대표 강아지를 따라간다.** 상단바와 챗봇 카드가 이걸 쓰고, 대표는 마이 탭에서
+    // 고른다 — 그게 "대표 강아지"라는 말의 뜻이다.
+    //
+    // 대표의 견종이 우리 그림에 없으면(믹스 등) 기본 얼굴로 떨어진다. 아무 얼굴이나
+    // 골라 보여 주면 사용자는 자기 개가 아닌 얼굴을 상단바에서 보게 된다.
+    //
+    // 개발자 패널이 바꾼 값은 그 위에 잠깐 덮어쓴다 — 세션 한정이고 저장하지 않는다.
+    var devBreed by remember { mutableStateOf<DogBreed?>(null) }
+    val profileBreed = devBreed
+        ?: pets?.firstOrNull { it.isPrimary }?.breedArt
+        ?: HomeDemoData.DOG_BREED
 
     val herd = rememberDogHerd(RoomDefaults.DOG_COUNT)
     val store = rememberRoomStore()
@@ -225,7 +228,7 @@ fun HomeScreen(
                 herd = herd,
                 onOpenDex = onOpenDex,
                 profileBreed = profileBreed,
-                onPickProfile = { profileBreed = it },
+                onPickProfile = { devBreed = it },
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.

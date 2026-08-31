@@ -65,6 +65,17 @@ class MainActivity : ComponentActivity() {
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
+
+                // **부르기 전에 토큰을 새로 받는다.**
+                //
+                // access 는 5분이다. 앱을 켜 두고 몇 분 뒤에 강아지를 등록하면
+                // 서버가 "인증이 만료되었습니다"로 막는다 — 실제로 그렇게 걸렸다.
+                // 재발급이 되면 세션도 같이 갈아 끼워야 다음 호출이 또 만료를 안 만난다.
+                val freshToken: suspend () -> String? = {
+                    val restored = restoreSession(store)
+                    if (restored != null) session = restored
+                    (restored ?: session)?.accessToken
+                }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
 
@@ -86,11 +97,11 @@ class MainActivity : ComponentActivity() {
                 // 온보딩으로 보낸다** — 출시 앱은 로그인이 필수이고, 로그인했는데
                 // 강아지가 없는 상태로 홈에 두면 방에 세울 아이가 없다.
                 LaunchedEffect(session) {
-                    val token = session?.accessToken
-                    if (token == null) {
+                    if (session == null) {
                         pets.forget()
                         return@LaunchedEffect
                     }
+                    val token = freshToken() ?: return@LaunchedEffect
                     pets.refresh(token)
                     if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
                 }
@@ -146,8 +157,8 @@ class MainActivity : ComponentActivity() {
                             { pets.clearError(); editing = null; screen = Screen.Home }
                         },
                         onSubmit = { draft ->
-                            val token = session?.accessToken ?: return@PetFormScreen
                             scope.launch {
+                                val token = freshToken() ?: return@launch
                                 val target = editing
                                 val ok = if (target == null) {
                                     pets.add(token, draft)
@@ -175,8 +186,10 @@ class MainActivity : ComponentActivity() {
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
                         onPickPrimary = { pet ->
-                            val token = session?.accessToken ?: return@HomeScreen
-                            scope.launch { pets.choosePrimary(token, pet.id) }
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                pets.choosePrimary(token, pet.id)
+                            }
                         },
                         withdrawBusy = withdrawBusy,
                         withdrawError = withdrawError,
@@ -186,10 +199,8 @@ class MainActivity : ComponentActivity() {
                             withdrawBusy = true
                             withdrawError = null
                             scope.launch {
-                                // access 는 5분이라 앱을 켜 두고 한참 뒤 누르면 거의
-                                // 만료다. 부르기 전에 재발급 사다리를 한 번 탄다.
-                                val fresh = restoreSession(store) ?: old
-                                val result = AuthApi.withdraw(fresh.accessToken)
+                                val token = freshToken() ?: old.accessToken
+                                val result = AuthApi.withdraw(token)
                                 withdrawBusy = false
                                 result
                                     .onSuccess {

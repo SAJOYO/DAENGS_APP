@@ -98,6 +98,17 @@ fun MyScreen(
         Spacer(Modifier.height(20.dp))
 
         if (signedIn) {
+            PetSection(
+                pets = pets,
+                canAddMore = canAddMore,
+                onAdd = onAddPet,
+                onEdit = onEditPet,
+                onPickPrimary = onPickPrimary,
+            )
+            Spacer(Modifier.height(14.dp))
+        }
+
+        if (signedIn) {
             Section {
                 MyRow("로그아웃", onClick = onSignOut)
                 RowDivider()
