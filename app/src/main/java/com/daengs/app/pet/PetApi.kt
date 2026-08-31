@@ -25,14 +25,7 @@ object PetApi {
 
     /** 내 강아지와 **서버가 정한 마릿수 상한**. 상한을 앱에 박아 두면 서버와 갈라진다. */
     suspend fun list(accessToken: String): Result<PetList> =
-        call(accessToken, "", "GET") { body ->
-            val json = JSONObject(body)
-            val arr = json.getJSONArray("pets")
-            PetList(
-                pets = (0 until arr.length()).map { Pet.parse(arr.getJSONObject(it)) },
-                maxPets = json.getInt("max_pets"),
-            )
-        }
+        call(accessToken, "", "GET") { PetList.parse(JSONObject(it)) }
 
     /** 등록. **첫 아이는 서버가 알아서 대표로 만든다** — 응답의 `is_primary` 로 온다. */
     suspend fun create(accessToken: String, draft: PetDraft): Result<Pet> =
@@ -106,5 +99,21 @@ object PetApi {
     private const val TIMEOUT_MS = 10_000
 }
 
-/** 목록 응답. 상한이 같이 온다 — 앱이 `+` 버튼을 언제 감출지 정하는 데 쓴다. */
-data class PetList(val pets: List<Pet>, val maxPets: Int)
+/**
+ * 목록 응답. 상한이 같이 온다 — 앱이 `+` 버튼을 언제 감출지 정하는 데 쓴다.
+ *
+ * **상한이 안 오면 null 이다.** 그 자리에 숫자를 지어 넣으면 서버와 갈라지고,
+ * 상한 하나 때문에 파싱이 통째로 실패하면 **강아지 목록이 아예 안 뜬다.**
+ * 모르면 `+` 를 감추지 않고, 넘치는 건 서버가 막는다 — 그쪽이 문장까지 준다.
+ */
+data class PetList(val pets: List<Pet>, val maxPets: Int?) {
+    companion object {
+        fun parse(json: JSONObject): PetList {
+            val arr = json.getJSONArray("pets")
+            return PetList(
+                pets = (0 until arr.length()).map { Pet.parse(arr.getJSONObject(it)) },
+                maxPets = if (json.isNull("max_pets")) null else json.optInt("max_pets"),
+            )
+        }
+    }
+}

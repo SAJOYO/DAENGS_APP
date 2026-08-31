@@ -138,4 +138,26 @@ class PetTest {
     fun `보낼 때 이름 앞뒤 공백을 턴다`() {
         assertEquals("네옹", PetDraft(name = "  네옹 ", breed = "beagle").toJson().getString("name"))
     }
+
+    /** 상한은 **서버가 정한다.** 앱에 숫자를 박으면 저쪽이 바꿔도 앱은 옛 숫자를 쓴다. */
+    @Test
+    fun `목록에서 마릿수 상한을 읽는다`() {
+        val list = PetList.parse(JSONObject("""{"pets": [], "max_pets": 5}"""))
+        assertEquals(5, list.maxPets)
+        assertTrue(list.pets.isEmpty())
+    }
+
+    /**
+     * 상한이 안 와도 **목록은 떠야 한다.**
+     *
+     * 예전엔 `getInt` 라 상한 한 필드 때문에 파싱이 통째로 실패했다. 그러면 사용자는
+     * `+` 버튼이 아니라 **자기 강아지를 통째로 못 본다.** 모르면 모르는 채로 둔다.
+     */
+    @Test
+    fun `상한이 안 와도 강아지는 읽는다`() {
+        val body = """{"pets": [{"id": "p1", "name": "네옹", "breed": "beagle", "is_primary": true}]}"""
+        val list = PetList.parse(JSONObject(body))
+        assertNull(list.maxPets)
+        assertEquals("네옹", list.pets.single().name)
+    }
 }
