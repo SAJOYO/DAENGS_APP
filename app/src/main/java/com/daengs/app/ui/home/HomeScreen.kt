@@ -102,6 +102,11 @@ fun HomeScreen(
     onSignOut: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
+    /** 회원 탈퇴. 상태는 [MainActivity] 가 들고 있다 (랜딩의 busy·error 와 같은 결). */
+    onWithdraw: (() -> Unit)? = null,
+    withdrawBusy: Boolean = false,
+    withdrawError: String? = null,
+    onDismissWithdraw: (() -> Unit)? = null,
 ) {
     var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
     // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
@@ -176,6 +181,10 @@ fun HomeScreen(
                 signedIn = signedIn,
                 onSignIn = { onSignIn?.invoke() },
                 onSignOut = { onSignOut?.invoke() },
+                onWithdraw = { onWithdraw?.invoke() },
+                withdrawBusy = withdrawBusy,
+                withdrawError = withdrawError,
+                onDismissWithdraw = { onDismissWithdraw?.invoke() },
                 modifier = Modifier.padding(inner),
             )
             return@Scaffold

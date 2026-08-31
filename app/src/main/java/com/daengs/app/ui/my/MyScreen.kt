@@ -19,6 +19,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,8 +71,13 @@ fun MyScreen(
     signedIn: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
+    onWithdraw: () -> Unit,
+    withdrawBusy: Boolean,
+    withdrawError: String?,
+    onDismissWithdraw: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var confirming by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier
             .fillMaxSize()
@@ -81,6 +92,8 @@ fun MyScreen(
         if (signedIn) {
             Section {
                 MyRow("로그아웃", onClick = onSignOut)
+                RowDivider()
+                MyRow("회원 탈퇴", onClick = { confirming = true }, tint = DaengsColors.Error)
             }
         } else {
             // 눌러도 아무 일 없는 버튼을 두지 않는다 — 로그인 안 한 사람에게
@@ -108,6 +121,93 @@ fun MyScreen(
         )
         Spacer(Modifier.height(18.dp))
     }
+
+    if (confirming) {
+        WithdrawDialog(
+            busy = withdrawBusy,
+            error = withdrawError,
+            onConfirm = onWithdraw,
+            onDismiss = {
+                confirming = false
+                onDismissWithdraw()
+            },
+        )
+    }
+}
+
+/**
+ * 탈퇴 확인.
+ *
+ * **취소가 오른쪽이고 기본이다.** 되돌릴 수 없는 쪽이 엄지가 반사적으로 닿는
+ * 자리에 있으면 안 된다.
+ *
+ * 진행 중에는 밖을 눌러 닫지 못하게 한다 — 요청이 날아가는 중에 창이 사라지면
+ * 사용자는 무슨 일이 벌어졌는지 알 수 없다.
+ */
+@Composable
+private fun WithdrawDialog(
+    busy: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(22.dp)) {
+                Text("정말 탈퇴할까요?", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "계정과 서버에 저장된 기록이 지워지고 되돌릴 수 없어요. " +
+                        "이 기기에 꾸며둔 방과 소품 배치도 함께 지워집니다.",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(error, color = DaengsColors.Error, fontSize = 13.sp, lineHeight = 19.sp)
+                }
+                Spacer(Modifier.height(18.dp))
+                if (busy) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        CircularProgressIndicator(Modifier.size(20.dp), color = DaengPink, strokeWidth = 2.dp)
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        DialogAction("탈퇴", DaengsColors.Error, FontWeight.Normal, onConfirm)
+                        Spacer(Modifier.width(6.dp))
+                        DialogAction("취소", DaengPink, FontWeight.Bold, onDismiss)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogAction(label: String, tint: Color, weight: FontWeight, onClick: () -> Unit) {
+    Text(
+        label,
+        color = tint,
+        fontSize = 14.sp,
+        fontWeight = weight,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}
+
+/** 줄 사이 가는 선. */
+@Composable
+private fun RowDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp)
+            .height(1.dp)
+            .background(DaengsColors.BorderNeutral),
+    )
 }
 
 @Composable
@@ -160,11 +260,21 @@ private fun MyRow(
 @Preview(widthDp = 411, heightDp = 700, showBackground = true)
 @Composable
 private fun MyScreenSignedInPreview() {
-    DaengsTheme { MyScreen(HomeDemoData.DOG_BREED, signedIn = true, onSignIn = {}, onSignOut = {}) }
+    DaengsTheme {
+        MyScreen(
+            HomeDemoData.DOG_BREED, signedIn = true, onSignIn = {}, onSignOut = {},
+            onWithdraw = {}, withdrawBusy = false, withdrawError = null, onDismissWithdraw = {},
+        )
+    }
 }
 
 @Preview(widthDp = 411, heightDp = 700, showBackground = true)
 @Composable
 private fun MyScreenBrowsingPreview() {
-    DaengsTheme { MyScreen(HomeDemoData.DOG_BREED, signedIn = false, onSignIn = {}, onSignOut = {}) }
+    DaengsTheme {
+        MyScreen(
+            HomeDemoData.DOG_BREED, signedIn = false, onSignIn = {}, onSignOut = {},
+            onWithdraw = {}, withdrawBusy = false, withdrawError = null, onDismissWithdraw = {},
+        )
+    }
 }

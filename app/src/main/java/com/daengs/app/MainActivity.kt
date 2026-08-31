@@ -19,6 +19,7 @@ import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
+import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.home.HomeScreen
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
                 // 흐름이 갈래 없이 일직선(랜딩 → 홈 ⇄ 도감)이고, 딥링크도 백스택
                 // 복원도 필요 없다. 산책 게임이 붙어 옆길이 생기면 그때가 맞다.
                 val store = rememberTokenStore()
+                // 탈퇴할 때 방까지 지워야 해서 여기서도 잡는다 (홈이 쓰는 것과 같은 저장소).
+                val roomStore = rememberRoomStore()
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
 
@@ -53,6 +56,8 @@ class MainActivity : ComponentActivity() {
                 }
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
+                var withdrawBusy by remember { mutableStateOf(false) }
+                var withdrawError by remember { mutableStateOf<String?>(null) }
                 var error by remember { mutableStateOf<String?>(null) }
 
                 // access 가 만료됐으면 조용히 재발급한다.
@@ -112,6 +117,38 @@ class MainActivity : ComponentActivity() {
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
                         onSignIn = { screen = Screen.Landing },
+                        withdrawBusy = withdrawBusy,
+                        withdrawError = withdrawError,
+                        onDismissWithdraw = { withdrawError = null },
+                        onWithdraw = {
+                            val old = session ?: return@HomeScreen
+                            withdrawBusy = true
+                            withdrawError = null
+                            scope.launch {
+                                // access 는 5분이라 앱을 켜 두고 한참 뒤 누르면 거의
+                                // 만료다. 부르기 전에 재발급 사다리를 한 번 탄다.
+                                val fresh = restoreSession(store) ?: old
+                                val result = AuthApi.withdraw(fresh.accessToken)
+                                withdrawBusy = false
+                                result
+                                    .onSuccess {
+                                        // 방은 서버에 사본이 없어 이 기기에만 있다.
+                                        // 안 지우면 다음에 로그인한 사람이 남의 방을
+                                        // 물려받는다.
+                                        store.clear()
+                                        roomStore.clear()
+                                        session = null
+                                        screen = Screen.Landing
+                                    }
+                                    .onFailure { e ->
+                                        // **아무것도 안 지운다.** 로그아웃과 정반대다 —
+                                        // 로그아웃은 실패해도 기기에서 지우는 게 맞지만,
+                                        // 탈퇴는 서버에 계정이 살아 있는데 앱만 잊으면
+                                        // 사용자는 지워진 줄 알고 다시 시도할 길도 잃는다.
+                                        withdrawError = e.message ?: "탈퇴하지 못했어요."
+                                    }
+                            }
+                        },
                         onSignOut = {
                             val old = session
                             session = null
