@@ -178,9 +178,10 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 /** Selected place pins draw above their neighbours so the choice stays visible when markers collide. */
 private const val SELECTED_MARKER_Z = 100
 
-private const val TRAIL_WIDTH = 12
+private const val TRAIL_WIDTH = 14
 
-private val TRAIL_COLOR = Color.rgb(34, 108, 74)
+/** 지도 원래의 초록 지하철·공원 선과 겹쳐도 산책 경로임을 알아볼 수 있는 색. */
+private val TRAIL_COLOR = Color.rgb(125, 84, 180)
 
 /** Zoom floor. Below this the search radius cap (10km) is already off-screen and marker count spikes. */
 private const val MIN_ZOOM = 11.0

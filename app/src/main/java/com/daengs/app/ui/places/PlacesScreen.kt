@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,13 +55,19 @@ import com.daengs.app.map.features.places.PlaceOriginMode
 import com.daengs.app.map.features.places.canonicalPlaceKeysByMarker
 import com.daengs.app.map.features.places.canonicalPlaceMarkers
 import com.daengs.app.map.features.places.selectedPlaceKind
+import com.daengs.app.map.layers.trail.toTrailLayerState
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.PlaceApi
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.walk.TrackingState
+import com.daengs.app.walk.TrailSnapshot
+import com.daengs.app.walk.WalkTrackingController
+import com.daengs.app.walk.WalkTrackingState
 import kotlin.math.abs
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -70,7 +77,11 @@ import kotlinx.coroutines.launch
  * APP에는 사용자 강아지 선택이 없으므로 원본 계약이 지원하는 조건 없는 검색을 보낸다.
  */
 @Composable
-fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun PlacesScreen(
+    onBack: () -> Unit,
+    walkController: WalkTrackingController,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val scope = rememberCoroutineScope()
@@ -92,6 +103,8 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     }
     val discovery by placeDiscovery.state.collectAsState()
     val journey by placeJourney.state.collectAsState()
+    val tracking by walkController.state.collectAsState()
+    val trackingActive = tracking.trail.state != TrackingState.OFF
 
     var granted by remember { mutableStateOf(inspectionMode || hasLocationPermission(context)) }
     var currentPosition by remember { mutableStateOf<GeoPoint?>(null) }
@@ -152,10 +165,30 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        granted = result.values.any { it }
+        granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted && !initialPlaceSearchStarted) {
             initialPlaceSearchStarted = true
             locateAndSearch(DEFAULT_PLACE_KIND, false)
+        }
+    }
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        // 알림을 거부해도 Android는 작업 관리자에 FGS를 표시하며 기록 자체는 가능하다.
+        walkController.start()
+    }
+
+    fun startWalk() {
+        followDevice = true
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            walkController.start()
         }
     }
 
@@ -180,9 +213,17 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
     }
-    LaunchedEffect(granted, inspectionMode) {
+    LaunchedEffect(tracking.lastSample, trackingActive) {
+        val sample = tracking.lastSample ?: return@LaunchedEffect
+        acceptLocation(sample)
+        if (trackingActive && !initialPlaceSearchStarted && !sample.isMock) {
+            initialPlaceSearchStarted = true
+            beginSearch(sample.point, DEFAULT_PLACE_KIND, false)
+        }
+    }
+    LaunchedEffect(granted, inspectionMode, trackingActive) {
         if (inspectionMode) return@LaunchedEffect
-        if (granted) {
+        if (granted && !trackingActive) {
             locationTracker.start(source)
             if (!initialPlaceSearchStarted) {
                 initialPlaceSearchStarted = true
@@ -210,6 +251,7 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 scene = MapScene(
                     currentPosition = currentPosition,
                     places = canonicalPlaceMarkers(discovery),
+                    trail = tracking.trail.toTrailLayerState(),
                 ),
                 searchOrigin = discovery.origin,
                 followDevice = followDevice,
@@ -232,7 +274,7 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(top = 12.dp),
+                .padding(start = 12.dp, top = 68.dp, end = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -266,6 +308,17 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     Text(error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                 }
             }
+            WalkControlCard(
+                state = tracking,
+                locationGranted = granted,
+                onStart = ::startWalk,
+                onPause = walkController::pause,
+                onResume = {
+                    followDevice = true
+                    walkController.resume()
+                },
+                onStop = walkController::stop,
+            )
         }
 
         PlaceDiscoveryPanel(
@@ -316,5 +369,27 @@ private fun dial(context: Context, phone: String) {
 @Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun PlacesScreenPreview() {
-    DaengsTheme { PlacesScreen(onBack = {}) }
+    DaengsTheme {
+        PlacesScreen(
+            onBack = {},
+            walkController = PreviewWalkTrackingController(),
+        )
+    }
+}
+
+private class PreviewWalkTrackingController : WalkTrackingController {
+    override val state = MutableStateFlow(
+        WalkTrackingState(
+            trail = TrailSnapshot(state = TrackingState.PAUSED, distanceMeters = 842.4),
+            activeDurationMillis = 754_000L,
+        ),
+    )
+
+    override fun start() = Unit
+
+    override fun pause() = Unit
+
+    override fun resume() = Unit
+
+    override fun stop() = Unit
 }

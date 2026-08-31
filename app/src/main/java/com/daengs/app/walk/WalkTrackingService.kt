@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.daengs.app.DaengsApp
@@ -46,6 +47,8 @@ class WalkTrackingService : Service() {
     private var sessionId: String? = null
     private var nextClientSeq = 0
     private var chainIndex = 0
+    private var activeDurationMillis = 0L
+    private var activeSinceRealtimeMillis: Long? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -78,8 +81,9 @@ class WalkTrackingService : Service() {
     override fun onDestroy() {
         tracker.stop()
         if (recorder.snapshot().state != TrackingState.OFF) {
+            pauseTiming()
             store.publish(
-                WalkTrackingState(
+                trackingState(
                     trail = recorder.pause(),
                     lastSample = store.state.value.lastSample,
                     errorMessage = "산책 기록 서비스가 종료되었습니다.",
@@ -96,9 +100,11 @@ class WalkTrackingService : Service() {
             return
         }
         writer.clearFailure()
+        activeDurationMillis = 0L
+        activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         val trail = recorder.start()
         openSession()
-        store.publish(WalkTrackingState(trail = trail))
+        store.publish(trackingState(trail = trail, lastSample = null))
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
         tracker.start(locationSource)
@@ -110,8 +116,9 @@ class WalkTrackingService : Service() {
             return
         }
         tracker.stop()
+        pauseTiming()
         val trail = recorder.pause()
-        store.publish(WalkTrackingState(trail, store.state.value.lastSample))
+        store.publish(trackingState(trail))
         promote(trail, errorMessage = null)
     }
 
@@ -121,8 +128,9 @@ class WalkTrackingService : Service() {
             return
         }
         val trail = recorder.resume()
+        activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         synchronized(sessionLock) { chainIndex += 1 }
-        store.publish(WalkTrackingState(trail, store.state.value.lastSample))
+        store.publish(trackingState(trail))
         promote(trail, errorMessage = null)
         tracker.start(locationSource)
     }
@@ -133,9 +141,10 @@ class WalkTrackingService : Service() {
             return
         }
         tracker.stop()
+        pauseTiming()
         closeSession()
         val trail = recorder.stop()
-        store.publish(WalkTrackingState(trail, store.state.value.lastSample))
+        store.publish(trackingState(trail))
         serviceScope.launch {
             try {
                 writer.flush()
@@ -175,7 +184,7 @@ class WalkTrackingService : Service() {
                 )
             }
         }
-        store.publish(WalkTrackingState(trail = recorder.add(sample), lastSample = sample))
+        store.publish(trackingState(trail = recorder.add(sample), lastSample = sample))
     }
 
     private fun openSession() {
@@ -212,18 +221,39 @@ class WalkTrackingService : Service() {
     }
 
     private fun pauseAfterFeedProblem(message: String) {
+        // stop 직후 늦게 배달된 feed 실패가 종료된 기록을 다시 foreground로 올리면 안 된다.
+        if (recorder.snapshot().state != TrackingState.RECORDING) return
         tracker.stop()
+        pauseTiming()
         val trail = recorder.pause()
-        store.publish(WalkTrackingState(trail, store.state.value.lastSample, message))
+        store.publish(trackingState(trail, errorMessage = message))
         promote(trail, message)
     }
 
     private fun acceptStorageFailure(message: String) {
         val trail = recorder.snapshot()
         if (trail.state == TrackingState.OFF) return
-        store.publish(WalkTrackingState(trail, store.state.value.lastSample, message))
+        store.publish(trackingState(trail, errorMessage = message))
         promote(trail, message)
     }
+
+    private fun pauseTiming() {
+        val startedAt = activeSinceRealtimeMillis ?: return
+        activeDurationMillis += (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+        activeSinceRealtimeMillis = null
+    }
+
+    private fun trackingState(
+        trail: TrailSnapshot,
+        lastSample: LocationSample? = store.state.value.lastSample,
+        errorMessage: String? = null,
+    ): WalkTrackingState = WalkTrackingState(
+        trail = trail,
+        lastSample = lastSample,
+        errorMessage = errorMessage,
+        activeDurationMillis = activeDurationMillis,
+        activeSinceRealtimeMillis = activeSinceRealtimeMillis,
+    )
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {
         ServiceCompat.startForeground(
