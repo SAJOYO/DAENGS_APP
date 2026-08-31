@@ -284,6 +284,8 @@ fun PlaceDiscoveryPanel(
                     Text(
                         "현재 위치를 확인하면 주변 ${categoryLabel(selectedKind)}를 보여드릴게요.",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        color = TextMuted,
+                        fontSize = 13.sp,
                     )
                 }
             } else if (group == null || group.results.isEmpty()) {
@@ -291,6 +293,8 @@ fun PlaceDiscoveryPanel(
                     Text(
                         "이 반경에서 ${categoryLabel(selectedKind)} 결과를 찾지 못했습니다.",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        color = TextMuted,
+                        fontSize = 13.sp,
                     )
                 }
             } else {
@@ -298,7 +302,9 @@ fun PlaceDiscoveryPanel(
                     Text(
                         "${group.results.size}곳${if (group.truncated) " · 서버 한도에서 잘림" else ""}",
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.labelMedium,
+                        color = TextDark,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
                 item {
@@ -366,6 +372,7 @@ private fun PlaceCard(
             Text(
                 place.name,
                 color = TextDark,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -378,11 +385,16 @@ private fun PlaceCard(
             if (place.match.kind.supportsParkingPreference()) {
                 Text(
                     parkingLabel(place.facts.parking),
-                    color = if (place.facts.parking == null) {
-                        DaengsColors.Warning
-                    } else {
-                        TextMuted
+                    // **셋을 한 색으로 칠하면 안 된다.** 가능·불가·모름은 다른 사실이고,
+                    // 이 카드에서 사용자가 제일 먼저 찾는 정보다. 예전엔 가능과 불가가
+                    // 똑같은 회색이라 거리("429m")와 구별이 안 됐다.
+                    color = when (place.facts.parking) {
+                        true -> DaengsColors.Success
+                        false -> TextMuted
+                        null -> DaengsColors.Warning
                     },
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
                 )
             }
             hit.evaluations.dogAccess?.let { evaluation ->
@@ -418,14 +430,31 @@ private fun PlaceCard(
                 }
             } else {
                 place.facts.medical?.let { medical ->
-                    Text(openNowLabel(medical.openNow), style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        openNowLabel(medical.openNow),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextDark,
+                    )
                 }
             }
             place.facts.hoursText?.let { hours ->
-                Text("영업시간 $hours", style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                Text(
+                    "영업시간 $hours",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                    maxLines = 2,
+                )
             }
+            // 주소는 **가게 이름보다 작아야 한다.** 기본 글자(16sp)로 두면 이름과 같은
+            // 크기라 카드에서 무엇이 제목인지 안 보인다.
             place.facts.address?.let { address ->
-                Text(address, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    address,
+                    color = TextDark,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             JourneyAction(
                 journey = journey,
