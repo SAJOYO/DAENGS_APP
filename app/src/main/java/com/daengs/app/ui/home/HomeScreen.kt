@@ -311,10 +311,12 @@ private fun RoomSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             InventoryButton(open = inventoryOpen, onClick = onToggleInventory)
-            if (BuildConfig.DEBUG) {
-                Spacer(Modifier.height(9.dp))
-                DeveloperToggle(on = developer, onToggle = { developer = !developer })
-            }
+            // `BuildConfig.DEBUG` 로 감싸지 않는다 — **소스셋이 곧 가드다.**
+            // 릴리스에는 아무것도 안 그리는 껍데기가 들어간다
+            // (`app/src/release/.../DeveloperPanel.kt`). 여기에 검사를 하나 더
+            // 두면 어느 쪽이 진짜인지 헷갈리고, 예전에 토글만 감싸고 패널은
+            // 안 감쌌던 것도 그래서 생긴 일이다.
+            DeveloperToggle(on = developer, onToggle = { developer = !developer })
         }
 
         if (developer) {
