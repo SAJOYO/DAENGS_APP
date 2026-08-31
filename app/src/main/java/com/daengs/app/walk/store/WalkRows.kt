@@ -12,6 +12,13 @@ data class WalkSessionRow(
     val startedAtMillis: Long,
     /** null이면 아직 진행 중이거나 명시적인 종료 전에 프로세스가 끝난 세션이다. */
     val endedAtMillis: Long?,
+    /**
+     * 나갈 때의 날씨. 셋 다 nullable 이다 — 네트워크가 안 되면 못 받고,
+     * **못 받은 것을 "맑음"으로 채우면 기록이 거짓말을 한다.**
+     */
+    val weatherCode: Int? = null,
+    val isDay: Boolean? = null,
+    val temperatureC: Float? = null,
 )
 
 /**

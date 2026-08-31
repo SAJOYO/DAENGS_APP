@@ -31,6 +31,30 @@ interface WalkDao {
     @Query("SELECT * FROM walk_session WHERE endedAtMillis IS NULL ORDER BY startedAtMillis")
     suspend fun unfinishedSessions(): List<WalkSessionRow>
 
+    /**
+     * 끝난 산책만, 최근 것부터.
+     *
+     * **미종료 세션을 섞지 않는다.** 강제 종료로 열린 채 남은 세션이 목록에 끼면
+     * "0m 짜리 산책"이 쌓인다 — 그건 기록이 아니라 사고의 흔적이다.
+     */
+    @Query(
+        "SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL " +
+            "ORDER BY startedAtMillis DESC",
+    )
+    suspend fun finishedSessions(): List<WalkSessionRow>
+
+    /** 날씨는 세션을 연 뒤 따로 온다. 열린 세션이든 끝난 세션이든 한 번만 쓴다. */
+    @Query(
+        "UPDATE walk_session SET weatherCode = :weatherCode, isDay = :isDay, " +
+            "temperatureC = :temperatureC WHERE id = :sessionId AND weatherCode IS NULL",
+    )
+    suspend fun stampWeather(
+        sessionId: String,
+        weatherCode: Int,
+        isDay: Boolean,
+        temperatureC: Float?,
+    )
+
     @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId ORDER BY clientSeq")
     suspend fun fixes(sessionId: String): List<WalkFixRow>
 }

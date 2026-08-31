@@ -25,6 +25,7 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.DaengPinkDeep
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.geometry.LatLngBounds
 import com.naver.maps.map.CameraAnimation
@@ -34,7 +35,7 @@ import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
-import com.naver.maps.map.overlay.PolylineOverlay
+import com.naver.maps.map.overlay.PathOverlay
 
 @Composable
 fun NaverMapSurface(
@@ -48,6 +49,8 @@ fun NaverMapSurface(
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
     centerZoom: Double? = null,
+    /** 이 점들이 **다 보이게** 화면을 맞춘다. 지난 산책의 경로처럼 범위가 정해진 것에 쓴다. */
+    fitBounds: List<GeoPoint>? = null,
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
@@ -158,6 +161,22 @@ fun NaverMapSurface(
         overlay.iconHeight = AVATAR_PX
     }
 
+    // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
+    // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
+    LaunchedEffect(naverMap, fitBounds) {
+        val map = naverMap ?: return@LaunchedEffect
+        val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+        val bounds = LatLngBounds.Builder().apply {
+            points.forEach { include(it.toLatLng()) }
+        }.build()
+        // 한 점뿐이면 경계가 넓이 0 이라 SDK 가 거부한다. 그때는 그 점으로 간다.
+        if (bounds.southWest == bounds.northEast) {
+            map.moveCamera(CameraUpdate.scrollAndZoomTo(bounds.southWest, SELECTED_PLACE_MIN_ZOOM))
+        } else {
+            map.moveCamera(CameraUpdate.fitBounds(bounds, FIT_PADDING_PX))
+        }
+    }
+
     // 카드를 누르면 **그 장소가 지도 한가운데** 오게 한다. 목록에서 고른 곳이 화면
     // 밖에 있으면 무엇을 고른 것인지 알 수 없다.
     //
@@ -213,10 +232,14 @@ fun NaverMapSurface(
             scene.trail.paths
                 .filter { it.size >= 2 }
                 .map { path ->
-                    PolylineOverlay().apply {
+                    // 선 하나가 세그먼트 하나다. **이어 붙이지 않는다** — 일시정지나
+                    // GPS 점프 앞뒤를 한 선으로 합치면 걷지 않은 길을 걸은 것으로 그린다.
+                    PathOverlay().apply {
                         coords = path.map(GeoPoint::toLatLng)
                         width = TRAIL_WIDTH
                         color = TRAIL_COLOR
+                        outlineWidth = TRAIL_OUTLINE_WIDTH
+                        outlineColor = TRAIL_OUTLINE_COLOR
                         this.map = map
                     }
                 }
@@ -236,8 +259,25 @@ private const val SELECTED_MARKER_Z = 100
 
 private const val TRAIL_WIDTH = 14
 
-/** 지도 원래의 초록 지하철·공원 선과 겹쳐도 산책 경로임을 알아볼 수 있는 색. */
-private val TRAIL_COLOR = Color.rgb(125, 84, 180)
+/**
+ * 산책 경로.
+ *
+ * 예전엔 보라(`rgb(125, 84, 180)`)였다. 지도 자체가 원색이던 시절에는 그래야 눈에
+ * 띄었는데, 지도를 크림으로 빼고 마커를 앱 팔레트로 맞춘 뒤로는 **경로선만 남의 색**이
+ * 됐다. 상세 화면의 주인공이 이 선이라 제일 눈에 띈다.
+ */
+private val TRAIL_COLOR = DaengPinkDeep.toArgb()
+
+/**
+ * 흰 테두리.
+ *
+ * 장식이 아니다. 연한 지도 위에서는 분홍 선이 바탕에 녹아 어디를 지나갔는지 흐려진다 —
+ * 마커 핀에 흰 테두리를 두른 것과 같은 이유다. 지하철 노선처럼 색이 있는 선과 겹칠
+ * 때도 테두리가 둘을 갈라 준다.
+ */
+private const val TRAIL_OUTLINE_WIDTH = 4
+
+private val TRAIL_OUTLINE_COLOR = Color.WHITE
 
 /** Zoom floor. Below this the search radius cap (10km) is already off-screen and marker count spikes. */
 /**
@@ -319,6 +359,9 @@ private const val AVATAR_RING_PX = 5f
 
 /** 위치 정확도 원. 기본 파랑 대신 앱 분홍을 옅게 깐다. */
 private val LOCATION_CIRCLE = DaengPink.copy(alpha = 0.18f).toArgb()
+
+/** 경로를 다 담을 때 가장자리에 남기는 여백(px). 선이 화면 끝에 붙으면 잘려 보인다. */
+private const val FIT_PADDING_PX = 80
 
 /** 고른 장소로 갈 때 최소한 이만큼은 당겨서 본다. */
 private const val SELECTED_PLACE_MIN_ZOOM = 16.0

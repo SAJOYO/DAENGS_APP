@@ -19,6 +19,8 @@ import com.daengs.app.location.FeedStatus
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationTracker
+import com.daengs.app.miniroom.OutsideApi
+import com.daengs.app.miniroom.OutsideTime
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,7 +68,7 @@ class WalkTrackingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startRecording()
+            ACTION_START -> startRecording(intent.getStringExtra(EXTRA_DOG_ID))
             ACTION_PAUSE -> pauseRecording(startId)
             ACTION_RESUME -> resumeRecording(startId)
             ACTION_STOP -> stopRecording(startId)
@@ -94,7 +96,7 @@ class WalkTrackingService : Service() {
         super.onDestroy()
     }
 
-    private fun startRecording() {
+    private fun startRecording(dogId: String?) {
         if (recorder.snapshot().state != TrackingState.OFF) {
             promote(recorder.snapshot(), store.state.value.errorMessage)
             return
@@ -103,7 +105,7 @@ class WalkTrackingService : Service() {
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         val trail = recorder.start()
-        openSession()
+        openSession(dogId)
         store.publish(trackingState(trail = trail, lastSample = null))
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
@@ -187,7 +189,7 @@ class WalkTrackingService : Service() {
         store.publish(trackingState(trail = recorder.add(sample), lastSample = sample))
     }
 
-    private fun openSession() {
+    private fun openSession(dogId: String?) {
         val id = UUID.randomUUID().toString()
         synchronized(sessionLock) {
             sessionId = id
@@ -196,8 +198,34 @@ class WalkTrackingService : Service() {
             writer.openSession(
                 RecordedSession(
                     id = id,
-                    dogId = null,
+                    dogId = dogId,
                     startedAtMillis = System.currentTimeMillis(),
+                ),
+            )
+        }
+        stampWeather(id)
+    }
+
+    /**
+     * 그날 나갈 때의 날씨를 세션에 박는다.
+     *
+     * **시작할 때 한 번만 찍는다.** 두 시간 걸으면 날씨가 바뀌는데, 기록에 남길 값은
+     * "나갈 때 어땠나"다. 끝날 때 찍으면 비 맞고 걸은 산책이 "맑음"으로 남는다.
+     *
+     * 못 받으면 아무것도 안 쓴다 — **모르는 것을 "맑음"으로 채우지 않는다.**
+     * 좌표가 아직 없을 수도 있어서(첫 fix 전) 마지막으로 알던 위치를 쓴다.
+     */
+    private fun stampWeather(sessionId: String) {
+        serviceScope.launch {
+            val point = runCatching { locationSource.currentLocation().point }.getOrNull()
+                ?: return@launch
+            val now = OutsideApi.fetchNow(point.latitude, point.longitude) ?: return@launch
+            writer.stampWeather(
+                sessionId,
+                RecordedWeather(
+                    weatherCode = now.weatherCode,
+                    isDay = now.time == OutsideTime.DAY,
+                    temperatureC = now.temperatureC,
                 ),
             )
         }
@@ -342,6 +370,8 @@ class WalkTrackingService : Service() {
         private const val REQUEST_PAUSE = 4102
         private const val REQUEST_RESUME = 4103
         private const val REQUEST_STOP = 4104
+
+        const val EXTRA_DOG_ID = "dogId"
 
         fun commandIntent(context: Context, action: String): Intent =
             Intent(context, WalkTrackingService::class.java).setAction(action)

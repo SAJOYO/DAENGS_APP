@@ -27,7 +27,12 @@ private fun Long?.orZero(): Long = this ?: 0L
 interface WalkTrackingController {
     val state: StateFlow<WalkTrackingState>
 
-    fun start()
+    /**
+     * @param dogId 이 산책을 누구와 했는가. 대표 강아지의 id 다.
+     *   **모르면 null 이고 그대로 저장된다** — 로그인 전이거나 등록한 강아지가 없는
+     *   상태에서도 산책은 되어야 하고, 그때 아무 강아지나 갖다 붙이면 남의 기록이 된다.
+     */
+    fun start(dogId: String? = null)
 
     fun pause()
 
@@ -52,4 +57,6 @@ class WalkRuntime internal constructor(
     internal val store: WalkTrackingStore,
     val controller: WalkTrackingController,
     internal val writer: WalkFixWriter,
+    /** 지난 산책을 읽는 자리. 쓰기와 같은 DB 를 보되 성질이 달라 갈라 뒀다. */
+    val history: WalkHistory,
 )

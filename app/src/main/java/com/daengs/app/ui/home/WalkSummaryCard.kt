@@ -37,6 +37,8 @@ import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.PinkSoft
 import com.daengs.app.ui.theme.TextDark
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import com.daengs.app.ui.theme.TextMuted
 
 private val StatAccent = listOf(
@@ -46,7 +48,7 @@ private val StatAccent = listOf(
 )
 
 @Composable
-fun WalkSummaryCard(modifier: Modifier = Modifier) {
+fun WalkSummaryCard(modifier: Modifier = Modifier, onOpenHistory: (() -> Unit)? = null) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = CardWhite,
@@ -63,6 +65,25 @@ fun WalkSummaryCard(modifier: Modifier = Modifier) {
                 )
                 Spacer(Modifier.width(6.dp))
                 DaengsIconView(DaengsIcon.Paw, Modifier.size(15.dp), tint = DaengPink)
+                Spacer(Modifier.weight(1f))
+                // 이 카드의 숫자는 아직 데모다. 지난 산책은 진짜 기록이라 여기로 들어간다.
+                onOpenHistory?.let { open ->
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = open)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("지난 산책", color = DaengPinkDeep, fontSize = 13.sp)
+                        Spacer(Modifier.width(2.dp))
+                        DaengsIconView(
+                            DaengsIcon.ChevronRight,
+                            Modifier.size(13.dp),
+                            tint = DaengPinkDeep,
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(10.dp))

@@ -4,6 +4,7 @@ import android.app.Application
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.walk.ForegroundWalkTrackingController
 import com.daengs.app.walk.WalkFixWriter
+import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.WalkRuntime
 import com.daengs.app.walk.WalkTrackingStore
 import com.daengs.app.walk.store.RoomWalkFixLog
@@ -42,8 +43,9 @@ class DaengsApp : Application() {
         }
 
         val store = WalkTrackingStore()
+        val log = RoomWalkFixLog(WalkDatabase.open(this).walkDao())
         val writer = WalkFixWriter(
-            log = RoomWalkFixLog(WalkDatabase.open(this).walkDao()),
+            log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
         )
@@ -52,6 +54,7 @@ class DaengsApp : Application() {
             store = store,
             controller = ForegroundWalkTrackingController(this, store),
             writer = writer,
+            history = WalkHistory(log),
         )
     }
 }
