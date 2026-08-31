@@ -27,6 +27,7 @@ import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
+import com.naver.maps.map.overlay.PolylineOverlay
 
 @Composable
 fun NaverMapSurface(
@@ -148,6 +149,24 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
+    DisposableEffect(naverMap, scene.trail) {
+        val map = naverMap
+        val lines = if (map == null) {
+            emptyList()
+        } else {
+            scene.trail.paths
+                .filter { it.size >= 2 }
+                .map { path ->
+                    PolylineOverlay().apply {
+                        coords = path.map(GeoPoint::toLatLng)
+                        width = TRAIL_WIDTH
+                        color = TRAIL_COLOR
+                        this.map = map
+                    }
+                }
+        }
+        onDispose { lines.forEach { it.map = null } }
+    }
 }
 
 
@@ -158,6 +177,10 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 
 /** Selected place pins draw above their neighbours so the choice stays visible when markers collide. */
 private const val SELECTED_MARKER_Z = 100
+
+private const val TRAIL_WIDTH = 12
+
+private val TRAIL_COLOR = Color.rgb(34, 108, 74)
 
 /** Zoom floor. Below this the search radius cap (10km) is already off-screen and marker count spikes. */
 private const val MIN_ZOOM = 11.0
