@@ -45,6 +45,28 @@ data class WalkSummary(
  * 를 넣어 **저장할 때 끊겼던 자리를 그대로 재현한다.** 안 그러면 일시정지 전후가 한 선으로
  * 이어져 걷지 않은 거리가 더해진다.
  */
+/**
+ * 산책으로 치는 최소 거리(m).
+ *
+ * 문을 눌렀다가 그냥 닫은 것, 시작을 실수로 누른 것을 거른다. GPS 흔들림은 이미
+ * [TrailRecorder] 가 걸러 내므로 이 50m 는 **실제로 걸은 거리**다.
+ */
+const val MIN_WALK_METERS = 50.0
+
+/** 산책으로 치는 최소 활동 시간(ms). 거리와 **둘 다** 넘어야 한다. */
+const val MIN_WALK_MILLIS = 60_000L
+
+/**
+ * 산책으로 칠 만한가.
+ *
+ * **둘 다 넘어야 한다.** 50m 를 걸었어도 10초 만에 끝났으면 걸은 것이 아니고,
+ * 1분을 서 있었어도 제자리면 산책이 아니다.
+ *
+ * 경계값은 **인정한다** — 딱 50m 를 걷고 "왜 기록이 없지" 가 되면 안 된다.
+ */
+val WalkSummary.countsAsWalk: Boolean
+    get() = distanceMeters >= MIN_WALK_METERS && activeDurationMillis >= MIN_WALK_MILLIS
+
 fun summarize(session: RecordedSession, fixes: List<RecordedFix>): WalkSummary {
     val recorder = TrailRecorder()
     recorder.start()
