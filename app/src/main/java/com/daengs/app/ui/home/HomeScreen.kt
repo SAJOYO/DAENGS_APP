@@ -44,6 +44,7 @@ import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
+import com.daengs.app.pet.Pet
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
@@ -96,11 +97,19 @@ fun HomeScreen(
     onOpenChat: (() -> Unit)? = null,
     /** 내 주변 탭을 눌렀을 때. 병원·카페·펫샵을 지도에서 찾는다. */
     onOpenPlaces: (() -> Unit)? = null,
+    /** 방문을 열었을 때. 산책 화면으로 나간다 — **탭이 아니라 문이 산책의 입구다.** */
+    onOpenWalk: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
+    /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
+    pets: List<Pet>? = null,
+    canAddMore: Boolean = false,
+    onAddPet: (() -> Unit)? = null,
+    onEditPet: ((Pet) -> Unit)? = null,
+    onPickPrimary: ((Pet) -> Unit)? = null,
     /** 회원 탈퇴. 상태는 [MainActivity] 가 들고 있다 (랜딩의 busy·error 와 같은 결). */
     onWithdraw: (() -> Unit)? = null,
     withdrawBusy: Boolean = false,
@@ -112,18 +121,22 @@ fun HomeScreen(
     BackHandler(enabled = bottomTab != BottomTab.Home) { bottomTab = BottomTab.Home }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
-    // 프로필 얼굴의 견종. **개발자 패널에서만** 바꿀 수 있다 — 즉 릴리스에서는
-    // 기본값에 고정된다. 사용자용 고르기는 온보딩(강아지 등록)이 붙을 때
-    // "내 강아지 중 대표 고르기"로 만든다. 등록이 없는 지금 견종 27종을
-    // 늘어놓으면 곧 버려질 화면이 되고, 내 개와 무관한 목록에서 하나 고르라는
-    // 말이 된다.
+    // 프로필 얼굴의 견종.
     //
-    // 상단바와 챗봇 카드 둘 다 이걸 쓴다. 그 둘은 방 밖에 있어서 상태를
-    // 방 안에 두면 닿지 않는다 — 그래서 견종 고르기(방 안)와 달리 여기 있다.
-    // rememberSaveable 이 아니다 — 개발자 도구로 바꿔 본 것은 앱을 다시 켜면 지워진다.
-    var profileBreed by remember { mutableStateOf(HomeDemoData.DOG_BREED) }
+    // **대표 강아지를 따라간다.** 상단바와 챗봇 카드가 이걸 쓰고, 대표는 마이 탭에서
+    // 고른다 — 그게 "대표 강아지"라는 말의 뜻이다.
+    //
+    // 대표의 견종이 우리 그림에 없으면(믹스 등) 기본 얼굴로 떨어진다. 아무 얼굴이나
+    // 골라 보여 주면 사용자는 자기 개가 아닌 얼굴을 상단바에서 보게 된다.
+    //
+    // 개발자 패널이 바꾼 값은 그 위에 잠깐 덮어쓴다 — 세션 한정이고 저장하지 않는다.
+    var devBreed by remember { mutableStateOf<DogBreed?>(null) }
+    val profileBreed = devBreed
+        ?: pets?.firstOrNull { it.isPrimary }?.breedArt
+        ?: HomeDemoData.DOG_BREED
 
-    val herd = rememberDogHerd(RoomDefaults.DOG_COUNT)
+    // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
+    val herd = rememberDogHerd(roomRoster(pets))
     val store = rememberRoomStore()
     // 테마는 id 만 저장한다 — 원시값이라 화면 회전에도 그대로 남는다
     var themeId by rememberSaveable { mutableStateOf(store.loadThemeId() ?: RoomTheme.DEFAULT.id) }
@@ -181,6 +194,11 @@ fun HomeScreen(
         if (bottomTab == BottomTab.My) {
             MyScreen(
                 breed = profileBreed,
+                pets = pets,
+                canAddMore = canAddMore,
+                onAddPet = { onAddPet?.invoke() },
+                onEditPet = { onEditPet?.invoke(it) },
+                onPickPrimary = { onPickPrimary?.invoke(it) },
                 signedIn = signedIn,
                 onSignIn = { onSignIn?.invoke() },
                 onSignOut = { onSignOut?.invoke() },
@@ -211,8 +229,9 @@ fun HomeScreen(
                 theme = roomTheme,
                 herd = herd,
                 onOpenDex = onOpenDex,
+                onOpenWalk = onOpenWalk,
                 profileBreed = profileBreed,
-                onPickProfile = { profileBreed = it },
+                onPickProfile = { devBreed = it },
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -251,6 +270,7 @@ private fun RoomSection(
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
+    onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
     modifier: Modifier = Modifier,
@@ -289,9 +309,10 @@ private fun RoomSection(
             // 편집 모드에서 탭 = 선택. 돌리기/치우기는 버튼으로 뺐다.
             onItemTap = { item -> state.select(item.instanceId) },
             onEmptyTap = { state.select(null) },
-            // 문이 활짝 열린 순간. 산책 게임 화면이 생기면 여기서 넘기면 된다.
-            // (CONTEXT.md 4번: 미니룸(홈) -> [방문 클릭] -> 산책 게임)
-            onDoorOpened = {},
+            // 문이 활짝 열린 순간 산책으로 나간다
+            // (CONTEXT.md 4번: 미니룸(홈) -> [방문 클릭] -> 산책).
+            // 편집 중에는 안 받는다 — 가구를 옮기다 화면이 넘어가면 하던 일을 잃는다.
+            onDoorOpened = if (inventoryOpen) null else onOpenWalk,
             // 벽의 액자 -> 네오 채소 도감. 편집 중에는 안 받는다 — 가구를 옮기다가
             // 화면이 넘어가면 하던 일을 잃는다.
             onFrameTap = if (inventoryOpen) null else onOpenDex,

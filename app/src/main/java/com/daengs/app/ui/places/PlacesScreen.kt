@@ -73,7 +73,10 @@ import kotlinx.coroutines.launch
  * APP에는 사용자 강아지 선택이 없으므로 원본 계약이 지원하는 조건 없는 검색을 보낸다.
  */
 @Composable
-fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun PlacesScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val scope = rememberCoroutineScope()
@@ -155,13 +158,13 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        granted = result.values.any { it }
+        granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted && !initialPlaceSearchStarted) {
             initialPlaceSearchStarted = true
             locateAndSearch(DEFAULT_PLACE_KIND, false)
         }
     }
-
     LaunchedEffect(Unit) {
         if (!inspectionMode && !granted) {
             permissionLauncher.launch(
@@ -236,7 +239,7 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(top = 12.dp),
+                .padding(start = 12.dp, top = 68.dp, end = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -327,5 +330,7 @@ private fun dial(context: Context, phone: String) {
 @Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun PlacesScreenPreview() {
-    DaengsTheme { PlacesScreen(onBack = {}) }
+    DaengsTheme {
+        PlacesScreen(onBack = {})
+    }
 }

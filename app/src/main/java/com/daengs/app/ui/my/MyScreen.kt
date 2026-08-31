@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
 import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.pet.Pet
+import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
@@ -68,6 +70,12 @@ import com.daengs.app.ui.theme.TextMuted
 @Composable
 fun MyScreen(
     breed: DogBreed,
+    /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
+    pets: List<Pet>?,
+    canAddMore: Boolean,
+    onAddPet: () -> Unit,
+    onEditPet: (Pet) -> Unit,
+    onPickPrimary: (Pet) -> Unit,
     signedIn: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
@@ -88,6 +96,17 @@ fun MyScreen(
         Spacer(Modifier.height(18.dp))
         ProfileHead(breed)
         Spacer(Modifier.height(20.dp))
+
+        if (signedIn) {
+            PetSection(
+                pets = pets,
+                canAddMore = canAddMore,
+                onAdd = onAddPet,
+                onEdit = onEditPet,
+                onPickPrimary = onPickPrimary,
+            )
+            Spacer(Modifier.height(14.dp))
+        }
 
         if (signedIn) {
             Section {
@@ -224,6 +243,110 @@ private fun ProfileHead(breed: DogBreed) {
     }
 }
 
+/**
+ * 내 강아지 카드 목록.
+ *
+ * **대표를 여기서 고른다.** 상단바·챗봇 얼굴이 대표를 따르는데, 어차피 내가
+ * 키우는 아이 중에서 고르는 것이라 견종 목록을 늘어놓는 것보다 이쪽이 맞다.
+ *
+ * 카드를 누르면 고치기, 대표 자리를 누르면 대표가 바뀐다. 대표는 이미 대표인
+ * 카드에서는 눌러도 아무 일이 없어야 해서 표시만 한다.
+ */
+@Composable
+private fun PetSection(
+    pets: List<Pet>?,
+    canAddMore: Boolean,
+    onAdd: () -> Unit,
+    onEdit: (Pet) -> Unit,
+    onPickPrimary: (Pet) -> Unit,
+) {
+    Text("내 강아지", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+
+    // null 은 "아직 못 받아 왔다" 다. 빈 목록과 다르게 다뤄야, 잠깐 뜨는 사이에
+    // "등록된 강아지가 없어요" 가 번쩍이지 않는다.
+    if (pets == null) {
+        Section {
+            Box(Modifier.fillMaxWidth().padding(vertical = 22.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(20.dp), color = DaengPink, strokeWidth = 2.dp)
+            }
+        }
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        pets.forEach { pet -> PetCard(pet, onEdit = { onEdit(pet) }, onPickPrimary = { onPickPrimary(pet) }) }
+        if (canAddMore) {
+            Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    Modifier.fillMaxWidth().clickable(onClick = onAdd).padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("+ 강아지 추가", color = DaengPink, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PetCard(pet: Pet, onEdit: () -> Unit, onPickPrimary: () -> Unit) {
+    Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.clickable(onClick = onEdit).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PetFace(pet, 46.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                Text(petSubtitle(pet), color = TextMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            if (pet.isPrimary) {
+                Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Text(
+                    "대표로",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onPickPrimary)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 강아지 얼굴. **모르는 견종(믹스 등)이면 발자국으로 대신한다.**
+ *
+ * 서버가 견종 어휘를 검사하지 않아서, 우리 그림에 없는 값이 올 수 있다.
+ * 아무 얼굴이나 골라 보여 주면 사용자는 자기 개가 아닌 얼굴을 보게 된다.
+ */
+@Composable
+private fun PetFace(pet: Pet, size: androidx.compose.ui.unit.Dp) {
+    val art = pet.breedArt
+    if (art != null) {
+        DogAvatar(art, Modifier.size(size))
+    } else {
+        Box(
+            Modifier.size(size).clip(RoundedCornerShape(50)).background(PinkFaint),
+            contentAlignment = Alignment.Center,
+        ) { DaengsIconView(DaengsIcon.Paw, Modifier.size(size * 0.5f), tint = DaengPink) }
+    }
+}
+
+/** 아는 것만 적는다. 모르는 항목은 줄에서 빠진다 — 빈 자리를 "-" 로 채우지 않는다. */
+private fun petSubtitle(pet: Pet): String {
+    val parts = buildList {
+        pet.breedArt?.label?.let { add(it) } ?: add("믹스")
+        pet.sex?.let { add(if (it == Pet.Sex.MALE) "남아" else "여아") }
+        pet.weightKg?.let { add("${it}kg") }
+    }
+    return parts.joinToString(" · ")
+}
+
 /** 카드 한 장. 안의 줄들이 같은 흰 바탕을 나눠 쓴다. */
 @Composable
 private fun Section(content: @Composable () -> Unit) {
@@ -262,7 +385,8 @@ private fun MyRow(
 private fun MyScreenSignedInPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, signedIn = true, onSignIn = {}, onSignOut = {},
+            HomeDemoData.DOG_BREED, pets = emptyList(), canAddMore = true,
+            onAddPet = {}, onEditPet = {}, onPickPrimary = {}, signedIn = true, onSignIn = {}, onSignOut = {},
             onWithdraw = {}, withdrawBusy = false, withdrawError = null, onDismissWithdraw = {},
         )
     }
@@ -273,7 +397,8 @@ private fun MyScreenSignedInPreview() {
 private fun MyScreenBrowsingPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, signedIn = false, onSignIn = {}, onSignOut = {},
+            HomeDemoData.DOG_BREED, pets = null, canAddMore = false,
+            onAddPet = {}, onEditPet = {}, onPickPrimary = {}, signedIn = false, onSignIn = {}, onSignOut = {},
             onWithdraw = {}, withdrawBusy = false, withdrawError = null, onDismissWithdraw = {},
         )
     }

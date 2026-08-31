@@ -20,16 +20,29 @@ import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
+import com.daengs.app.pet.Pet
+import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesScreen
+import com.daengs.app.ui.walk.WalkScreen
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
 /** 화면 다섯. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
-private enum class Screen { Landing, Home, Chat, Dex, Places }
+private enum class Screen {
+    Landing,
+    /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
+    Onboarding,
+    Home, Chat, Dex,
+    /** 내 주변 장소. 하단 탭에서 들어온다. */
+    Places,
+    /** 산책. **미니룸의 문으로 들어온다** — 탭이 아니다. */
+    Walk,
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,6 +50,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val walkController = (application as DaengsApp).walkRuntime.controller
         setContent {
             DaengsTheme {
                 // 화면이 넷이 됐지만 **네비게이션 라이브러리는 아직 안 넣는다.**
@@ -56,6 +70,21 @@ class MainActivity : ComponentActivity() {
                 }
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
+                val pets = rememberPetHolder()
+
+                // **부르기 전에 토큰을 새로 받는다.**
+                //
+                // access 는 5분이다. 앱을 켜 두고 몇 분 뒤에 강아지를 등록하면
+                // 서버가 "인증이 만료되었습니다"로 막는다 — 실제로 그렇게 걸렸다.
+                // 재발급이 되면 세션도 같이 갈아 끼워야 다음 호출이 또 만료를 안 만난다.
+                val freshToken: suspend () -> String? = {
+                    val restored = restoreSession(store)
+                    if (restored != null) session = restored
+                    (restored ?: session)?.accessToken
+                }
+                // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
+                var editing by remember { mutableStateOf<Pet?>(null) }
+
                 var withdrawBusy by remember { mutableStateOf(false) }
                 var withdrawError by remember { mutableStateOf<String?>(null) }
                 var error by remember { mutableStateOf<String?>(null) }
@@ -70,6 +99,19 @@ class MainActivity : ComponentActivity() {
                 //    **쫓아내면 안 된다.** 다음에 켤 때 다시 시도한다
                 //
                 // 구분은 저장소를 다시 읽어서 한다. 비었으면 앞의 경우다.
+                // 세션이 생기거나 바뀌면 강아지를 받아 온다. **강아지가 없으면
+                // 온보딩으로 보낸다** — 출시 앱은 로그인이 필수이고, 로그인했는데
+                // 강아지가 없는 상태로 홈에 두면 방에 세울 아이가 없다.
+                LaunchedEffect(session) {
+                    if (session == null) {
+                        pets.forget()
+                        return@LaunchedEffect
+                    }
+                    val token = freshToken() ?: return@LaunchedEffect
+                    pets.refresh(token)
+                    if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
+                }
+
                 LaunchedEffect(Unit) {
                     if (saved != null) {
                         val restored = restoreSession(store)
@@ -109,14 +151,53 @@ class MainActivity : ComponentActivity() {
                         onSkip = { screen = Screen.Home },
                     )
 
+                    Screen.Onboarding -> PetFormScreen(
+                        initial = editing,
+                        busy = pets.busy,
+                        error = pets.error,
+                        // 첫 등록에는 취소가 없다 — 강아지 없이 갈 곳이 없다.
+                        // 나중에 마이에서 들어온 것(추가·고치기)만 되돌아간다.
+                        onCancel = if (pets.isEmpty == true && editing == null) {
+                            null
+                        } else {
+                            { pets.clearError(); editing = null; screen = Screen.Home }
+                        },
+                        onSubmit = { draft ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                val target = editing
+                                val ok = if (target == null) {
+                                    pets.add(token, draft)
+                                } else {
+                                    pets.edit(token, target.id, draft)
+                                }
+                                if (ok) {
+                                    editing = null
+                                    screen = Screen.Home
+                                }
+                            }
+                        },
+                    )
+
                     Screen.Home -> HomeScreen(
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
+                        onOpenWalk = { screen = Screen.Walk },
                         signedIn = session != null,
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
                         onSignIn = { screen = Screen.Landing },
+                        pets = pets.pets,
+                        canAddMore = pets.canAddMore,
+                        onAddPet = { editing = null; screen = Screen.Onboarding },
+                        onEditPet = { editing = it; screen = Screen.Onboarding },
+                        onPickPrimary = { pet ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                pets.choosePrimary(token, pet.id)
+                            }
+                        },
                         withdrawBusy = withdrawBusy,
                         withdrawError = withdrawError,
                         onDismissWithdraw = { withdrawError = null },
@@ -125,10 +206,8 @@ class MainActivity : ComponentActivity() {
                             withdrawBusy = true
                             withdrawError = null
                             scope.launch {
-                                // access 는 5분이라 앱을 켜 두고 한참 뒤 누르면 거의
-                                // 만료다. 부르기 전에 재발급 사다리를 한 번 탄다.
-                                val fresh = restoreSession(store) ?: old
-                                val result = AuthApi.withdraw(fresh.accessToken)
+                                val token = freshToken() ?: old.accessToken
+                                val result = AuthApi.withdraw(token)
                                 withdrawBusy = false
                                 result
                                     .onSuccess {
@@ -137,6 +216,7 @@ class MainActivity : ComponentActivity() {
                                         // 물려받는다.
                                         store.clear()
                                         roomStore.clear()
+                                        pets.forget()
                                         session = null
                                         screen = Screen.Landing
                                     }
@@ -152,6 +232,8 @@ class MainActivity : ComponentActivity() {
                         onSignOut = {
                             val old = session
                             session = null
+                            // 다음 사람이 남의 강아지를 보면 안 된다.
+                            pets.forget()
                             store.clear()
                             screen = Screen.Landing
                             // 서버 쪽 세션도 지운다. 실패해도 기기에서는 이미 지웠다.
@@ -164,6 +246,11 @@ class MainActivity : ComponentActivity() {
                     Screen.Chat -> ChatScreen(onBack = { screen = Screen.Home })
 
                     Screen.Places -> PlacesScreen(onBack = { screen = Screen.Home })
+
+                    Screen.Walk -> WalkScreen(
+                        onBack = { screen = Screen.Home },
+                        walkController = walkController,
+                    )
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
                 }

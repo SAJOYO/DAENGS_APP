@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 // local.properties 에서 설정값을 읽는다. **커밋되는 파일이 아니다** — sdk.dir 이
@@ -84,6 +85,15 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+}
+
+// Room 스키마는 코드와 함께 리뷰한다. 테이블 변경이 JSON diff로 남아야 다음 버전에서
+// 알려진 이전 구조를 대상으로 마이그레이션을 작성할 수 있다.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -101,8 +111,13 @@ dependencies {
     implementation(libs.naver.map.sdk)
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
     // 안드로이드의 org.json 은 **프레임워크 안에만** 있고, 단위 테스트가 도는 JVM
     // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트
     // 클래스패스에 얹어 그 껍데기를 가린다. 앱 APK 에는 안 들어간다.

@@ -336,12 +336,35 @@ enum class DogBreed(
 
         val ALL: List<DogBreed> = entries
 
-        /** 홈 미니룸에서 실제로 돌아다니는 MVP 품종. 프로필 목록과 분리한다. */
+        /**
+         * 등록한 강아지가 없을 때 방을 채우는 품종.
+         *
+         * 이제 방에는 **사용자가 등록한 견종**이 선다 (27종 다 걷기 시트가 있다).
+         * 이 셋은 아직 목록을 못 받아 온 자리와, 그림이 없는 견종의 대역으로 쓴다.
+         */
         val ROOM_BREEDS: List<DogBreed> = listOf(
             JAPANESE_SPITZ,
             LABRADOR_RETRIEVER,
             GOLDEN_RETRIEVER,
         )
+
+        /** 명부를 아직 못 받아 온 자리를 채우는 데모 명부. */
+        fun demoRoster(count: Int): List<DogBreed> =
+            List(count) { ROOM_BREEDS[it % ROOM_BREEDS.size] }
+
+        /**
+         * 그림이 없는 견종(믹스 등)이 방에서 대신 설 종.
+         *
+         * **얼굴처럼 발자국으로 떨어뜨릴 수 없다.** 방 강아지는 걷고 앉는 전신 시트라
+         * 대체할 중립 그림이 없고, 안 세우면 자기 강아지가 방에서 사라진다.
+         *
+         * [key] 로 정한다 — 강아지 id 를 넣으면 **같은 아이는 언제나 같은 대역**이라
+         * 앱을 켤 때마다 종이 바뀌지 않는다.
+         *
+         * 믹스 시트가 오면 **이 함수만** 바꾸면 된다.
+         */
+        fun roomStandIn(key: String): DogBreed =
+            ROOM_BREEDS[((key.hashCode() % ROOM_BREEDS.size) + ROOM_BREEDS.size) % ROOM_BREEDS.size]
 
         private val index = entries.associateBy { it.id }
 
