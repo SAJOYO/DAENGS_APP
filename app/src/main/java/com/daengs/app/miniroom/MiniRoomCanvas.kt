@@ -292,8 +292,8 @@ fun MiniRoomCanvas(
                 drawRoomBackground(g, roomImage)
                 // 창밖은 방 그림 **바로 뒤에.** 유리 모양으로 잘려 있어 창틀·창살을
                 // 덮지 않는다.
-                drawWindowOutside(g, windowOutside)
-                drawDoorOpening(g, roomImage, doorOutside, open)
+                drawWindowOutside(g, windowOutside, outside.veil)
+                drawDoorOpening(g, roomImage, doorOutside, open, outside.veil)
                 drawDoorHint(g, pulse)
                 drawWallFrame(g, framePicture, pulse)
 

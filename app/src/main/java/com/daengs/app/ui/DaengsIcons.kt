@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import com.daengs.app.miniroom.art.drawPawStamp
@@ -34,7 +35,7 @@ enum class DaengsIcon {
     Mic, Gallery, Sound, SoundOff,
 
     // 날씨. 해만 있으면 비 오는 날에도 해가 뜬다.
-    Moon, CloudRain, CloudSnow,
+    Moon, Cloud, CloudRain, CloudSnow,
 
     // 보행 영상.
     Video, VideoLibrary, Play, Chart, Compare, Check, Close, Trash, Bulb, Joint,
@@ -66,6 +67,7 @@ fun DaengsIconView(
                 DaengsIcon.CaretDown -> iconCaretDown(tint)
                 DaengsIcon.Sun -> iconSun(tint)
                 DaengsIcon.Moon -> iconMoon(tint)
+                DaengsIcon.Cloud -> iconCloud(tint)
                 DaengsIcon.CloudRain -> iconCloudRain(tint)
                 DaengsIcon.CloudSnow -> iconCloudSnow(tint)
                 DaengsIcon.Heart -> iconHeart(tint)
@@ -413,6 +415,16 @@ private fun DrawScope.cloudBody(tint: Color) {
     drawCircle(tint, 4.6f, Offset(14.2f, 9.6f))
     drawCircle(tint, 3.2f, Offset(17.6f, 12.2f))
     drawRoundRect(tint, Offset(5.6f, 10.2f), Size(15.2f, 4.6f), CornerRadius(2.3f, 2.3f))
+}
+
+/**
+ * 흐림. 구름만 둔다.
+ *
+ * 비·눈과 달리 아래가 비어서 그림이 위로 쏠려 보이므로 **조금 내려 그린다.**
+ * 강수 자리(16~21)의 절반쯤을 먹는 위치다.
+ */
+private fun DrawScope.iconCloud(tint: Color) {
+    translate(top = 3f) { cloudBody(tint) }
 }
 
 /** 비. 빗줄기 셋을 사선으로, 가운데를 길게 — 그래야 흩뿌리는 느낌이 난다. */

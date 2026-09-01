@@ -99,6 +99,10 @@ fun homeWeatherWords(
                 HomeWeatherWords("비가 오고 있어요", listOf("밖이 축축하니", "오늘은 집에서 놀자댕!"))
         }
 
+        // 흐림. **비가 아니라는 것부터 말한다** — 하늘만 보고 나갈지 말지 정하는
+        // 사람에게 "흐림" 과 "비" 는 다른 소식이다.
+        OutsideWeather.CLOUDY -> if (night) cloudyNight(band) else cloudyDay(band)
+
         OutsideWeather.CLEAR -> if (night) clearNight(band) else clearDay(band)
     }
 }
@@ -132,6 +136,36 @@ private fun clearDay(band: TempBand): HomeWeatherWords = when (band) {
         HomeWeatherWords("산책 가기 좋은 날!", listOf("바람이 좋아서", "산책하기 딱 좋은 날이댕!"))
 }
 
+/**
+ * 흐린 낮.
+ *
+ * **"좋은 날" 이라고 하지 않는다.** 해가 안 보이는데 좋은 날이라고 하면 창밖과
+ * 카드가 또 어긋난다. 대신 흐린 것이 산책에 나쁘지 않다는 쪽으로 민다 —
+ * 더운 날에는 오히려 반가운 하늘이다.
+ */
+private fun cloudyDay(band: TempBand): HomeWeatherWords = when (band) {
+    TempBand.HOT ->
+        HomeWeatherWords("구름이 해를 가렸어요", listOf("볕이 가려졌으니", "지금 나가자댕!"))
+    TempBand.COLD ->
+        HomeWeatherWords("흐리고 쌀쌀해요", listOf("바람이 차니", "따뜻하게 입자댕"))
+    TempBand.UNKNOWN ->
+        HomeWeatherWords("하늘이 흐려요", listOf("하늘은 흐리지만", "나가 볼까댕?"))
+    TempBand.MILD ->
+        HomeWeatherWords("흐리지만 선선해요", listOf("눈부시지 않으니", "걷기 좋은 날이댕!"))
+}
+
+/** 흐린 밤. 별이 안 보이는 밤이다 — 맑은 밤의 "고요함" 과 갈라 준다. */
+private fun cloudyNight(band: TempBand): HomeWeatherWords = when (band) {
+    TempBand.HOT ->
+        HomeWeatherWords("흐리고 후덥지근해요", listOf("공기가 무거우니", "짧게 걷자댕"))
+    TempBand.COLD ->
+        HomeWeatherWords("흐리고 밤이 차요", listOf("밤바람이 차니", "따뜻하게 있자댕"))
+    TempBand.UNKNOWN ->
+        HomeWeatherWords("구름 낀 밤이에요", listOf("별은 안 보여도", "한 바퀴 어떨까댕?"))
+    TempBand.MILD ->
+        HomeWeatherWords("흐린 밤, 선선해요", listOf("밤공기가 선선하니", "가볍게 걷자댕!"))
+}
+
 private fun clearNight(band: TempBand): HomeWeatherWords = when (band) {
     TempBand.HOT ->
         HomeWeatherWords("밤에도 후덥지근해요", listOf("더위가 안 가셨으니", "천천히 걷자댕"))
@@ -154,6 +188,9 @@ private fun clearNight(band: TempBand): HomeWeatherWords = when (band) {
 fun weatherIcon(view: OutsideView): DaengsIcon = when (view.weather) {
     OutsideWeather.RAIN -> DaengsIcon.CloudRain
     OutsideWeather.SNOW -> DaengsIcon.CloudSnow
+    // 흐림도 낮밤을 안 가른다. 비·눈과 같은 이유다 — 17dp 에서 구름에 달까지 얹으면
+    // 형체가 뭉개지고, 낮밤은 문구가 말한다.
+    OutsideWeather.CLOUDY -> DaengsIcon.Cloud
     OutsideWeather.CLEAR ->
         if (view.time == OutsideTime.DAY) DaengsIcon.Sun else DaengsIcon.Moon
 }

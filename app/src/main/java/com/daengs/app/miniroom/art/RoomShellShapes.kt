@@ -4,8 +4,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -79,15 +81,39 @@ object WindowSpec {
  * 방 그림을 깔고 곧바로 부른다 — 소품·강아지보다 뒤이고, 창틀·창살은 방 그림에
  * 구워져 있으므로 이 그림이 그 위를 덮지 않는다(유리 모양으로 잘려 있다).
  */
-fun DrawScope.drawWindowOutside(g: RoomGeometry, outside: ImageBitmap) {
+fun DrawScope.drawWindowOutside(g: RoomGeometry, outside: ImageBitmap, veil: Boolean = false) {
     val dst = WindowSpec.rectOf(g)
+    val offset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt())
+    val size = IntSize(dst.width.roundToInt(), dst.height.roundToInt())
     drawImage(
         image = outside,
-        dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
-        dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
+        dstOffset = offset,
+        dstSize = size,
         filterQuality = FilterQuality.None,
     )
+    // 흐림. **그림을 한 벌 더 굽지 않고 같은 그림에 회색 막을 씌운다.**
+    //
+    // 창밖 PNG 는 유리 모양으로 잘린 알파라, 같은 그림을 회색으로 물들여 겹치면
+    // 유리 안쪽만 정확히 흐려진다 — 창틀은 안 건드린다. 진짜 흐림 그림이 구워지면
+    // ([OutsideView] 주석) 이 막을 지우고 PNG 만 갈아끼우면 된다.
+    if (veil) {
+        drawImage(
+            image = outside,
+            dstOffset = offset,
+            dstSize = size,
+            filterQuality = FilterQuality.None,
+            colorFilter = ColorFilter.tint(CloudVeil, BlendMode.SrcAtop),
+        )
+    }
 }
+
+/**
+ * 흐린 날 유리에 씌우는 막.
+ *
+ * 파랑기를 살짝 뺀 회색이다. 완전한 회색이면 하늘이 죽은 것처럼 보이고, 너무 옅으면
+ * 맑음과 구분이 안 된다. **실기기에서 보고 정한다** — 화면에서 유리는 작다.
+ */
+private val CloudVeil = Color(0x8C9AA6B0)
 
 /**
  * 문 규격 — **방 그림에 자로 재서 뽑은 값**이다.
@@ -183,6 +209,7 @@ fun DrawScope.drawDoorOpening(
     room: ImageBitmap,
     outside: ImageBitmap,
     open: Float,
+    veil: Boolean = false,
 ) {
     if (open <= 0.001f) return
 
@@ -206,6 +233,16 @@ fun DrawScope.drawDoorOpening(
             dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
             filterQuality = FilterQuality.None,
         )
+        // 흐림. 창과 같은 막이다 ([drawWindowOutside] 주석).
+        if (veil) {
+            drawImage(
+                image = outside,
+                dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
+                dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
+                filterQuality = FilterQuality.None,
+                colorFilter = ColorFilter.tint(CloudVeil, BlendMode.SrcAtop),
+            )
+        }
     }
 
     // 3) 눌린 문짝. 잘라내기도 이미지와 **똑같이** 눌러야 한다. 눌린 사각형에

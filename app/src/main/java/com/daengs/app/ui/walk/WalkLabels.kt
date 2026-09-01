@@ -37,6 +37,8 @@ fun weatherLabel(weather: RecordedWeather): String {
     val sky = when (OutsideApi.weatherOf(weather.weatherCode)) {
         OutsideWeather.RAIN -> "비"
         OutsideWeather.SNOW -> "눈"
+        // 흐림은 낮밤을 안 가른다. 흐린 밤을 "밤" 으로만 적으면 맑은 밤과 같아진다.
+        OutsideWeather.CLOUDY -> "흐림"
         OutsideWeather.CLEAR -> if (weather.isDay) "맑음" else "밤"
     }
     val temperature = weather.temperatureC?.let { " ${it.toInt()}°" } ?: ""
