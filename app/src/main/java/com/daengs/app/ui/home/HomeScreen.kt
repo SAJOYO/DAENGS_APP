@@ -35,6 +35,7 @@ import com.daengs.app.miniroom.MiniRoomState
 import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
+import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.miniroom.RoomTheme
@@ -179,6 +180,23 @@ fun HomeScreen(
     // 테마마다 소품 그림이 다르므로 카탈로그가 테마를 알아야 한다.
     val catalog = rememberItemCatalog(roomTheme)
 
+    // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
+    // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
+    //
+    // **방이 아니라 여기서 들고 있는다.** 오늘의 한 마디 카드가 방 바깥에 있어서,
+    // 방 안에 두면 그 카드까지 못 간다. 그러면 창밖과 카드가 또 다른 말을 하게 된다.
+    val liveOutside by rememberOutsideView()
+    // @Preview 는 결정적이어야 한다. 폴백이 기기 시각을 보므로(OutsideSource.fallback)
+    // 밤에 미리보기를 열면 카드가 밤 문구로 바뀐다 — 방 애니메이션을 400ms 에 세워
+    // 두는 것과 같은 이유로 여기서도 한 벌로 고정한다.
+    val live = if (LocalInspectionMode.current) PREVIEW_OUTSIDE else liveOutside
+    var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
+    val outside = outsideOverride ?: live.view
+    // 오버라이드 중에는 기온을 **모르는 것으로 친다.** 33도인데 "밤 눈" 을 강제하면
+    // 눈+더위라는 없는 칸이 생긴다. null 은 어차피 반드시 지원해야 하는 경로다.
+    val temperatureC = if (outsideOverride == null) live.temperatureC else null
+    val words = remember(outside, temperatureC) { homeWeatherWords(outside, temperatureC) }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = CreamBg,
@@ -263,6 +281,9 @@ fun HomeScreen(
                 renameBusy = renameBusy,
                 renameError = renameError,
                 onDismissRename = onDismissRename,
+                outside = outside,
+                onPickOutside = { outsideOverride = it },
+                todayNote = words.today,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -284,7 +305,12 @@ fun HomeScreen(
                 ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
             }
             Spacer(Modifier.height(10.dp))
-            WalkSummaryCard(Modifier.padding(horizontal = 14.dp), todayWalks, onOpenWalkHistory)
+            WalkSummaryCard(
+                Modifier.padding(horizontal = 14.dp),
+                todayWalks,
+                words.daily,
+                onOpenWalkHistory,
+            )
             Spacer(Modifier.height(10.dp))
         }
     }
@@ -312,6 +338,11 @@ private fun RoomSection(
     renameBusy: Boolean,
     renameError: String?,
     onDismissRename: (() -> Unit)?,
+    /** 창밖에 얹을 것. **개발자 패널이 이기는 것까지 정해서** 넘어온다. */
+    outside: OutsideView,
+    onPickOutside: (OutsideView) -> Unit,
+    /** TODAY 카드 한 줄. 같은 날씨에서 지은 말이라 창밖과 안 어긋난다. */
+    todayNote: String,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -330,11 +361,6 @@ private fun RoomSection(
         if (renameError == null) renaming = false
     }
     var breedOverride by remember { mutableStateOf<DogBreed?>(null) }
-    // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
-    // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
-    val liveOutside by rememberOutsideView()
-    var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
-    val outside = outsideOverride ?: liveOutside
     // @Preview 안에서는 무한 애니메이션이 돌지 않아 프레임 0 에 얼어붙는다.
     // 미리보기에서는 중간 프레임을 찍어 강아지 자세가 보이게 한다.
     val previewFrame = if (LocalInspectionMode.current) 400L else null
@@ -370,7 +396,8 @@ private fun RoomSection(
         )
         TodayCard(
             dateLabel = dateLabel,
-            note = HomeDemoData.TODAY_NOTE,
+            note = todayNote,
+            icon = weatherIcon(outside),
             accent = theme.roomAccent,
             accentSoft = theme.roomAccentSoft,
             modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
@@ -400,7 +427,7 @@ private fun RoomSection(
                 profileBreed = profileBreed,
                 onPickProfile = onPickProfile,
                 outside = outside,
-                onPickOutside = { outsideOverride = it },
+                onPickOutside = onPickOutside,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }
@@ -499,3 +526,6 @@ private fun HomeScreenSmallPreview() {
         HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
     }
 }
+
+/** @Preview 전용. 맑고 포근한 낮 — 시안이 그린 상태다. */
+private val PREVIEW_OUTSIDE = OutsideSnapshot(OutsideView.DAY_CLEAR, temperatureC = 21f)

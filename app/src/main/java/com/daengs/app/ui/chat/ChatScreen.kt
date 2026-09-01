@@ -72,6 +72,7 @@ import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
@@ -142,7 +143,8 @@ private sealed interface ChatEntry {
 @Composable
 fun ChatScreen(
     onBack: () -> Unit,
-    avatar: DogBreed = HomeDemoData.DOG_BREED,
+    /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
+    avatar: DogBreed? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -545,7 +547,7 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed) {
+private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -554,7 +556,7 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed) {
             Modifier.size(44.dp).clip(RoundedCornerShape(50)).clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) { Text("‹", color = TextDark, fontSize = 34.sp, lineHeight = 30.sp) }
-        DogAvatar(avatar, Modifier.size(38.dp))
+        ChatFace(avatar, 38.dp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text("댕스 AI", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -565,9 +567,9 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed) {
 }
 
 @Composable
-private fun AssistantBubble(text: String, avatar: DogBreed) {
+private fun AssistantBubble(text: String, avatar: DogBreed?) {
     Row(verticalAlignment = Alignment.Top) {
-        DogAvatar(avatar, Modifier.size(32.dp))
+        ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
             Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(14.dp))
@@ -611,14 +613,14 @@ private fun PhotoBubble(image: Bitmap) {
  * 한계와 화면이 하는 말이 갈라진다.
  */
 @Composable
-private fun ReportBubble(report: ScreeningReport, avatar: DogBreed) {
+private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
     val accent = when (report.verdict) {
         ScreeningReport.Verdict.ABNORMAL -> DaengPinkDeep
         ScreeningReport.Verdict.NORMAL -> TextDark
         ScreeningReport.Verdict.RETAKE -> TextMuted
     }
     Row(verticalAlignment = Alignment.Top) {
-        DogAvatar(avatar, Modifier.size(32.dp))
+        ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -958,4 +960,15 @@ private fun InputAction(
 @Composable
 private fun ChatScreenPreview() {
     DaengsTheme { ChatScreen({}) }
+}
+
+/**
+ * 말하는 쪽 얼굴.
+ *
+ * **모르는 견종(믹스)이면 발자국이다.** 아무 얼굴이나 골라 쓰면 사용자는 자기 개가
+ * 아닌 얼굴과 대화하게 된다 (마이 탭 `PetFace` 와 같은 규칙).
+ */
+@Composable
+private fun ChatFace(avatar: DogBreed?, size: Dp) {
+    if (avatar != null) DogAvatar(avatar, Modifier.size(size)) else PawAvatar(size = size)
 }

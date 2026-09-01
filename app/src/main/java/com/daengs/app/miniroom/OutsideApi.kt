@@ -24,22 +24,9 @@ object OutsideApi {
     private const val TIMEOUT_MS = 6_000
 
     /**
-     * 한 번 불러 **날씨와 낮·밤을 같이** 받는다.
-     *
-     * `is_day` 를 쓰는 이유: 시각으로 가르면 계절에 따라 틀린다. 한국은 겨울 일몰이
-     * 17:15, 여름이 19:57 이라 두 시간 반이 차이 난다. 고정 시각으로 자르면 반년은
-     * 틀린 그림을 보여주게 된다.
-     *
-     * 실패하면 `null` 이다. 부르는 쪽이 폴백을 정한다 — 여기서 기본값을 만들어
-     * 돌려주면 "못 받았다" 와 "맑은 낮이다" 가 구별되지 않는다.
-     */
-    suspend fun fetch(latitude: Double, longitude: Double): OutsideView? =
-        fetchNow(latitude, longitude)?.let { OutsideView.of(it.time, weatherOf(it.weatherCode)) }
-
-    /**
      * 받은 그대로.
      *
-     * 창밖 그림은 [fetch] 가 이걸 세 갈래로 접어서 쓰지만, **산책 기록에는 원본을
+     * 창밖 그림은 [OutsideSnapshot] 이 이걸 세 갈래로 접어서 쓰지만, **산책 기록에는 원본을
      * 남긴다** — 접은 값만 저장하면 나중에 "소나기였는지 뇌우였는지"를 되살릴 수 없다.
      * 기온도 같이 받는다 (URL 에 한 단어를 더한 것뿐이다).
      */

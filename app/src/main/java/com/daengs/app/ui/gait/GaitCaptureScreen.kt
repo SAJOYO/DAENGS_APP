@@ -54,7 +54,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
-import com.daengs.app.ui.home.HomeDemoData
+import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -88,7 +88,8 @@ fun GaitCaptureScreen(
     onRecord: () -> Unit,
     onPick: () -> Unit,
     modifier: Modifier = Modifier,
-    avatar: DogBreed = HomeDemoData.DOG_BREED,
+    /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
+    avatar: DogBreed? = null,
     preview: @Composable BoxScope.() -> Unit = { GaitPreviewPlaceholder() },
 ) {
     BackHandler(onBack = onBack)
@@ -153,7 +154,7 @@ fun GaitCaptureScreen(
 }
 
 @Composable
-private fun CaptureHeader(onBack: () -> Unit, avatar: DogBreed) {
+private fun CaptureHeader(onBack: () -> Unit, avatar: DogBreed?) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -162,7 +163,8 @@ private fun CaptureHeader(onBack: () -> Unit, avatar: DogBreed) {
             Modifier.size(44.dp).clip(RoundedCornerShape(50)).clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) { Text("‹", color = TextDark, fontSize = 34.sp, lineHeight = 30.sp) }
-        DogAvatar(avatar, Modifier.size(38.dp))
+        // 대화 헤더의 ChatFace 와 같은 물러섬이다 — 견종을 모르면 발바닥을 세운다.
+        if (avatar != null) DogAvatar(avatar, Modifier.size(38.dp)) else PawAvatar(size = 38.dp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text("보행 영상 촬영", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)

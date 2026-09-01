@@ -5,10 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -29,8 +31,13 @@ import kotlin.math.sin
  */
 enum class DaengsIcon {
     Paw, Home, Book, Bell, Person, Chat, Camera, Clock, Pin, Paws, Send, ChevronRight, CaretDown, Sun, Heart,
-    Mic, Gallery, Sound, SoundOff, Video, VideoLibrary,
-    Play, Chart, Compare, Check, Close, Trash, Bulb, Joint
+    Mic, Gallery, Sound, SoundOff,
+
+    // 날씨. 해만 있으면 비 오는 날에도 해가 뜬다.
+    Moon, CloudRain, CloudSnow,
+
+    // 보행 영상.
+    Video, VideoLibrary, Play, Chart, Compare, Check, Close, Trash, Bulb, Joint,
 }
 
 @Composable
@@ -58,6 +65,9 @@ fun DaengsIconView(
                 DaengsIcon.ChevronRight -> iconChevronRight(tint)
                 DaengsIcon.CaretDown -> iconCaretDown(tint)
                 DaengsIcon.Sun -> iconSun(tint)
+                DaengsIcon.Moon -> iconMoon(tint)
+                DaengsIcon.CloudRain -> iconCloudRain(tint)
+                DaengsIcon.CloudSnow -> iconCloudSnow(tint)
                 DaengsIcon.Heart -> iconHeart(tint)
                 DaengsIcon.Mic -> iconMic(tint)
                 DaengsIcon.Gallery -> iconGallery(tint)
@@ -377,3 +387,50 @@ private fun DrawScope.iconHeart(tint: Color) {
 
 /** 시안의 "오늘의 한 마디" 노트 점선 테두리에 쓰는 효과. */
 fun dashEffect(): PathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 7f), 0f)
+
+/**
+ * 초승달. **밤·맑음의 아이콘이다.**
+ *
+ * 원에서 원을 뺀다 — 손으로 맞춘 큐빅보다 정확하고 짧다. 파낼 원을 오른쪽 위로
+ * 밀면 왼쪽 아래가 부푼 초승달이 남는다.
+ *
+ * 별은 안 찍는다. 이 아이콘이 서는 자리가 17dp 라 점 하나는 먼지로 보인다.
+ */
+private fun DrawScope.iconMoon(tint: Color) {
+    val outer = Path().apply { addOval(Rect(3.6f, 3.6f, 20.4f, 20.4f)) }
+    val inner = Path().apply { addOval(Rect(8.2f, -1.0f, 25.0f, 15.8f)) }
+    // op 는 **받는 쪽**을 결과로 채운다. 빈 Path 에 넣어야 outer 가 안 망가진다.
+    drawPath(Path().apply { op(outer, inner, PathOperation.Difference) }, tint)
+}
+
+/**
+ * 비·눈이 함께 쓰는 구름.
+ *
+ * 아래 끝이 y=14.8 이라 강수 자리로 16~21 이 남는다. 좌우는 5.6~20.8 로 24 안에 든다.
+ */
+private fun DrawScope.cloudBody(tint: Color) {
+    drawCircle(tint, 3.6f, Offset(9.2f, 10.4f))
+    drawCircle(tint, 4.6f, Offset(14.2f, 9.6f))
+    drawCircle(tint, 3.2f, Offset(17.6f, 12.2f))
+    drawRoundRect(tint, Offset(5.6f, 10.2f), Size(15.2f, 4.6f), CornerRadius(2.3f, 2.3f))
+}
+
+/** 비. 빗줄기 셋을 사선으로, 가운데를 길게 — 그래야 흩뿌리는 느낌이 난다. */
+private fun DrawScope.iconCloudRain(tint: Color) {
+    cloudBody(tint)
+    drawLine(tint, Offset(8.8f, 16.6f), Offset(7.4f, 20.2f), 1.9f, StrokeCap.Round)
+    drawLine(tint, Offset(12.6f, 16.6f), Offset(11.2f, 21.4f), 1.9f, StrokeCap.Round)
+    drawLine(tint, Offset(16.4f, 16.6f), Offset(15.0f, 20.2f), 1.9f, StrokeCap.Round)
+}
+
+/**
+ * 눈. 점 셋을 지그재그로 둔다.
+ *
+ * 6갈래 눈꽃은 17dp 에서 얼룩이 된다. 점이면 빗줄기와 실루엣이 확실히 갈린다.
+ */
+private fun DrawScope.iconCloudSnow(tint: Color) {
+    cloudBody(tint)
+    drawCircle(tint, 1.15f, Offset(8.8f, 17.8f))
+    drawCircle(tint, 1.15f, Offset(12.4f, 20.4f))
+    drawCircle(tint, 1.15f, Offset(16.0f, 17.8f))
+}

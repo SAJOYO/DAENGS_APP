@@ -78,3 +78,31 @@ enum class OutsideView(
             index.getValue(time to weather)
     }
 }
+
+/**
+ * 지금 바깥 한 장 — **그림 한 벌과 기온**.
+ *
+ * [view] 는 창밖·문밖에 얹을 여섯 벌 중 하나다. [temperatureC] 는 문구가 "더운지
+ * 추운지" 를 가를 때만 쓴다.
+ *
+ * **[OutsideNow] 와 역할이 다르다.** 저쪽은 WMO 원본이라 산책 기록에 그대로 남기는
+ * 값이고, 이쪽은 화면에 뿌리려고 접은 값이다. 하나로 합치면 폴백에서 없는 WMO 코드를
+ * 지어내야 한다 — 그건 "못 받았다" 와 "진짜 맑음" 을 같은 값으로 만든다.
+ *
+ * **기온은 못 받을 수 있다.** 그때 `null` 이고 문구는 그래도 나온다. `0f` 은 영하
+ * 0도라는 **아는 값**이라 `null` 과 다르다.
+ */
+data class OutsideSnapshot(
+    val view: OutsideView,
+    val temperatureC: Float?,
+) {
+    companion object {
+        /** 날씨를 못 읽었을 때. **기온도 모르는 것**이다 — 지어내지 않는다. */
+        val DEFAULT = OutsideSnapshot(OutsideView.DEFAULT, null)
+
+        fun of(now: OutsideNow): OutsideSnapshot = OutsideSnapshot(
+            view = OutsideView.of(now.time, OutsideApi.weatherOf(now.weatherCode)),
+            temperatureC = now.temperatureC,
+        )
+    }
+}
