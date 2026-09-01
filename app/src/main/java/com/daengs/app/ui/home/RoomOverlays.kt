@@ -277,8 +277,12 @@ private fun RoomNameDialogPreview() {
 private fun TodayCardPreview() {
     DaengsTheme {
         Column(Modifier.padding(12.dp)) {
-            // 세 벌을 나란히 둔다 — 새 아이콘을 눈으로 보는 자리다.
+            // 나란히 둔다 — 새 아이콘을 눈으로 보는 자리다.
             TodayCard(HomeDemoData.MOCK_DATE, "산책 가기 좋은 날!", DaengsIcon.Sun)
+            Spacer(Modifier.height(10.dp))
+            TodayCard(HomeDemoData.MOCK_DATE, "흐리지만 선선해요", DaengsIcon.Cloud)
+            Spacer(Modifier.height(10.dp))
+            TodayCard(HomeDemoData.MOCK_DATE, "날씨를 보고 있어요", DaengsIcon.Sun)
             Spacer(Modifier.height(10.dp))
             TodayCard(HomeDemoData.MOCK_DATE, "비가 오고 있어요", DaengsIcon.CloudRain)
             Spacer(Modifier.height(10.dp))

@@ -72,8 +72,9 @@ object OutsideApi {
      * **얼어붙는 쪽을 눈으로** 본다 — 어는 비(66·67)와 어는 이슬비(56·57)는 바닥이
      * 하얘지므로 창밖 그림으로는 눈이 맞다.
      *
-     * 안개(45·48)와 흐림(1·2·3)은 맑음으로 간다. 따로 그림이 없고, 억지로 비나 눈에
-     * 넣으면 안 오는 비가 내린다.
+     * 흐림은 그림이 따로 없지만 **맑음 그림에 회색 막을 씌워** 만든다
+     * ([OutsideWeather.CLOUDY]). 예전에는 흐림도 안개도 전부 맑음이라, 하늘이
+     * 잿빛인 날에 창밖에 해가 떠 있었다.
      *
      * 표: https://open-meteo.com/en/docs (WMO Weather interpretation codes)
      */
@@ -84,7 +85,11 @@ object OutsideApi {
         in 61..65 -> OutsideWeather.RAIN           // 비
         in 80..82 -> OutsideWeather.RAIN           // 소나기
         in 95..99 -> OutsideWeather.RAIN           // 뇌우
-        else -> OutsideWeather.CLEAR               // 맑음 · 흐림 · 안개
+        // **구름 많음(2)부터 흐림이다.** 구름 조금(1)은 해가 보이는 날이라 맑음에 둔다.
+        // 안개(45·48)도 여기다 — 회색 하늘이라는 점에서 흐림에 가깝고, 맑음에 두면
+        // 안개 낀 아침에 해가 뜬다.
+        2, 3, 45, 48 -> OutsideWeather.CLOUDY      // 구름 많음 · 흐림 · 안개
+        else -> OutsideWeather.CLEAR               // 맑음(0) · 구름 조금(1)
     }
 }
 

@@ -16,11 +16,24 @@ import com.daengs.app.pet.Pet
  *
  * @param pets null 이면 **아직 못 받아 온 것**이다 (빈 목록과 다르다)
  */
-fun roomRoster(pets: List<Pet>?): List<DogBreed> =
-    pets?.map { it.roomBreed }?.takeIf { it.isNotEmpty() }
-    // 못 받아 왔거나(null) 한 마리도 없으면 데모로 채운다.
+fun roomRoster(pets: List<Pet>?): List<DogBreed> = when {
+    // ① 아직 못 받아 왔다 → **아무도 안 세운다.**
     //
-    // **빈 방을 보여 주지 않는다.** 홈은 목록보다 먼저 그려지므로, 비웠다가 채우면
-    // 앱을 열 때마다 방이 한 번 깜빡인다. 출시 앱은 로그인이 필수고 강아지가 없으면
-    // 온보딩으로 가므로, 빈 목록으로 홈에 오래 머무는 길은 사실상 없다.
-        ?: DogBreed.demoRoster(RoomDefaults.DOG_COUNT)
+    // 예전에는 여기서도 데모 네 마리를 세웠다. "빈 방을 깜빡이지 않으려고" 였는데,
+    // 실기기에서 보니 **앱을 열 때마다 남의 강아지 네 마리가 있다가 목록이 도착하면
+    // 사라지고 내 아이만 남았다.** 빈 방보다 나쁘다 — 없는 개를 보여 준 뒤 뺏는
+    // 셈이라 그 순간 화면이 거짓말을 한다.
+    //
+    // 비워 두고 [HomeScreen] 이 불러오는 중이라고 말한다. 모르는 것은 모른다고 하는
+    // 편이 낫다 (날씨 카드가 폴백을 단정하지 않는 것과 같은 이유).
+    pets == null -> emptyList()
+
+    // ② 받아 왔는데 한 마리도 없다 → 견본을 세운다.
+    //
+    // null 과 **다른 경우**다. 둘러보기 중이거나 온보딩으로 넘어가기 직전이고,
+    // 그 짧은 사이에 방이 비면 앱이 고장 난 것처럼 보인다. 이건 로딩을 감추는
+    // 거짓이 아니라 빈 상태의 견본이다.
+    pets.isEmpty() -> DogBreed.demoRoster(RoomDefaults.DOG_COUNT)
+
+    else -> pets.map { it.roomBreed }
+}

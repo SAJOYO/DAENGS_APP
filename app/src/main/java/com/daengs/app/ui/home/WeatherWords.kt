@@ -60,7 +60,23 @@ fun tempBand(temperatureC: Float?): TempBand = when {
  * 여기서 한눈에 보인다 — 한 화면에 나란히 있어서 같은 문장이 두 번 뜨면 하나가 고장 난
  * 것처럼 보인다.
  */
-fun homeWeatherWords(view: OutsideView, temperatureC: Float?): HomeWeatherWords {
+fun homeWeatherWords(
+    view: OutsideView,
+    temperatureC: Float?,
+    /**
+     * 진짜 날씨를 받아 왔나 ([OutsideSnapshot.known]).
+     *
+     * `false` 면 [view] 의 날씨는 폴백이라 **하늘을 두고 아무 말도 하지 않는다.**
+     * 기본값이 `true` 인 것은 부르는 쪽 대부분이 이미 받아 온 값을 넘기기 때문이고,
+     * 모르는 상태를 넘길 자리는 홈 하나다.
+     */
+    known: Boolean = true,
+): HomeWeatherWords {
+    // **아직 모르면 모른다고 한다.** 폴백은 낮·밤만 시계로 어림잡은 값이라 날씨는
+    // 언제나 맑음이다. 그대로 문구를 지으면 비 오는 날 창밖을 보고 있는 사람에게
+    // "산책 가기 좋은 날!" 이라고 말하게 된다 — 실기기에서 그렇게 걸렸다.
+    if (!known) return LOADING_WORDS
+
     val night = view.time == OutsideTime.NIGHT
     val band = tempBand(temperatureC)
     return when (view.weather) {
@@ -83,6 +99,10 @@ fun homeWeatherWords(view: OutsideView, temperatureC: Float?): HomeWeatherWords 
                 HomeWeatherWords("비가 오고 있어요", listOf("밖이 축축하니", "오늘은 집에서 놀자댕!"))
         }
 
+        // 흐림. **비가 아니라는 것부터 말한다** — 하늘만 보고 나갈지 말지 정하는
+        // 사람에게 "흐림" 과 "비" 는 다른 소식이다.
+        OutsideWeather.CLOUDY -> if (night) cloudyNight(band) else cloudyDay(band)
+
         OutsideWeather.CLEAR -> if (night) clearNight(band) else clearDay(band)
     }
 }
@@ -94,6 +114,15 @@ fun homeWeatherWords(view: OutsideView, temperatureC: Float?): HomeWeatherWords 
  * **여기 그대로 앉는다.** 화면이 지금까지 늘 이 말을 하고 있었으니, 이 칸에서만 같은
  * 말이 나오는 것이 이번 변경이 맞게 들어갔다는 확인이 된다.
  */
+/**
+ * 아직 날씨를 못 받았을 때.
+ *
+ * **하늘을 두고 단정하지 않는다.** 낮·밤은 시계로 아는 값이라 아이콘(해·달)은 그대로
+ * 두고, 문구만 모른다고 말한다. 잠깐 스치는 상태라 길게 쓰지 않는다.
+ */
+private val LOADING_WORDS =
+    HomeWeatherWords("날씨를 보고 있어요", listOf("창밖을 보고", "금방 올게댕!"))
+
 private fun clearDay(band: TempBand): HomeWeatherWords = when (band) {
     TempBand.HOT ->
         HomeWeatherWords("한낮은 너무 더워요", listOf("볕이 뜨거우니", "해 지고 나가자댕!"))
@@ -105,6 +134,36 @@ private fun clearDay(band: TempBand): HomeWeatherWords = when (band) {
         HomeWeatherWords("오늘 하늘은 맑아요", listOf("하늘이 맑으니", "잠깐 나가 볼까댕?"))
     TempBand.MILD ->
         HomeWeatherWords("산책 가기 좋은 날!", listOf("바람이 좋아서", "산책하기 딱 좋은 날이댕!"))
+}
+
+/**
+ * 흐린 낮.
+ *
+ * **"좋은 날" 이라고 하지 않는다.** 해가 안 보이는데 좋은 날이라고 하면 창밖과
+ * 카드가 또 어긋난다. 대신 흐린 것이 산책에 나쁘지 않다는 쪽으로 민다 —
+ * 더운 날에는 오히려 반가운 하늘이다.
+ */
+private fun cloudyDay(band: TempBand): HomeWeatherWords = when (band) {
+    TempBand.HOT ->
+        HomeWeatherWords("구름이 해를 가렸어요", listOf("볕이 가려졌으니", "지금 나가자댕!"))
+    TempBand.COLD ->
+        HomeWeatherWords("흐리고 쌀쌀해요", listOf("바람이 차니", "따뜻하게 입자댕"))
+    TempBand.UNKNOWN ->
+        HomeWeatherWords("하늘이 흐려요", listOf("하늘은 흐리지만", "나가 볼까댕?"))
+    TempBand.MILD ->
+        HomeWeatherWords("흐리지만 선선해요", listOf("눈부시지 않으니", "걷기 좋은 날이댕!"))
+}
+
+/** 흐린 밤. 별이 안 보이는 밤이다 — 맑은 밤의 "고요함" 과 갈라 준다. */
+private fun cloudyNight(band: TempBand): HomeWeatherWords = when (band) {
+    TempBand.HOT ->
+        HomeWeatherWords("흐리고 후덥지근해요", listOf("공기가 무거우니", "짧게 걷자댕"))
+    TempBand.COLD ->
+        HomeWeatherWords("흐리고 밤이 차요", listOf("밤바람이 차니", "따뜻하게 있자댕"))
+    TempBand.UNKNOWN ->
+        HomeWeatherWords("구름 낀 밤이에요", listOf("별은 안 보여도", "한 바퀴 어떨까댕?"))
+    TempBand.MILD ->
+        HomeWeatherWords("흐린 밤, 선선해요", listOf("밤공기가 선선하니", "가볍게 걷자댕!"))
 }
 
 private fun clearNight(band: TempBand): HomeWeatherWords = when (band) {
@@ -129,6 +188,9 @@ private fun clearNight(band: TempBand): HomeWeatherWords = when (band) {
 fun weatherIcon(view: OutsideView): DaengsIcon = when (view.weather) {
     OutsideWeather.RAIN -> DaengsIcon.CloudRain
     OutsideWeather.SNOW -> DaengsIcon.CloudSnow
+    // 흐림도 낮밤을 안 가른다. 비·눈과 같은 이유다 — 17dp 에서 구름에 달까지 얹으면
+    // 형체가 뭉개지고, 낮밤은 문구가 말한다.
+    OutsideWeather.CLOUDY -> DaengsIcon.Cloud
     OutsideWeather.CLEAR ->
         if (view.time == OutsideTime.DAY) DaengsIcon.Sun else DaengsIcon.Moon
 }
