@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import java.time.LocalTime
 
 /**
@@ -38,21 +39,32 @@ import java.time.LocalTime
 fun rememberOutsideView(): State<OutsideView> {
     val context = LocalContext.current
     val state = remember { mutableStateOf(fallback()) }
-    var asked by remember { mutableStateOf(false) }
+
+    // **권한 상태가 열쇠다.** 없으면 물어보고, 받으면 그때 부른다.
+    var granted by remember { mutableStateOf(hasLocationPermission(context)) }
+
+    // 권한 창은 한 번만 띄운다. **이 값은 아래 효과의 열쇠가 아니다** — 열쇠로 쓰면
+    // 효과 안에서 바꾸는 순간 자기 자신이 취소된다 (아래 주석).
+    val requested = remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        if (result.values.any { it }) {
-            // 권한을 막 받았다. 아래 LaunchedEffect 가 다시 돌도록 표시만 바꾼다.
-            asked = false
-        }
+        granted = result.values.any { it }
     }
 
-    LaunchedEffect(asked) {
-        if (asked) return@LaunchedEffect
-        asked = true
-        if (!hasLocationPermission(context)) {
+    // ⚠️ **효과 안에서 열쇠를 바꾸면 안 된다.**
+    //
+    // 예전에는 `asked` 하나를 열쇠로 쓰면서 효과 안에서 `asked = true` 로 바꿨다.
+    // 그러면 다음 조합에서 LaunchedEffect 가 새 열쇠로 다시 시작하면서 **돌고 있던
+    // 코루틴을 취소한다.** 날씨 요청은 네트워크라 그 전에 못 끝나서, 창밖은 언제나
+    // 폴백(맑은 낮)이었다 — 비가 와도 해가 떠 있었다.
+    //
+    // 열쇠는 권한 상태뿐이다. 효과는 이 값을 **읽기만** 한다.
+    LaunchedEffect(granted) {
+        if (!granted) {
+            if (requested.value) return@LaunchedEffect
+            requested.value = true
             // **정확한 위치까지 같이 묻는다.**
             //
             // 창밖 그림만 보면 대략적인 위치로 충분하다. 그런데 여기가 앱을 켜고
@@ -71,12 +83,26 @@ fun rememberOutsideView(): State<OutsideView> {
             )
             return@LaunchedEffect
         }
-        val where = lastKnownLocation(context) ?: return@LaunchedEffect
-        OutsideApi.fetch(where.latitude, where.longitude)?.let { state.value = it }
+        // **한 번 받고 끝내지 않는다.** 방을 열어 둔 채로 비가 그치기도 하고, 켤 때
+        // 마지막 위치가 없어 빈손이었다가 나중에 생기기도 한다.
+        while (true) {
+            lastKnownLocation(context)?.let { where ->
+                OutsideApi.fetch(where.latitude, where.longitude)?.let { state.value = it }
+            }
+            delay(REFRESH_MS)
+        }
     }
 
     return state
 }
+
+/**
+ * 창밖을 다시 보는 간격.
+ *
+ * 날씨는 분 단위로 안 바뀌고, 이건 장식이라 자주 부를 이유가 없다. Open-Meteo 도
+ * 15분마다 갱신한다.
+ */
+private const val REFRESH_MS = 15 * 60 * 1000L
 
 private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
