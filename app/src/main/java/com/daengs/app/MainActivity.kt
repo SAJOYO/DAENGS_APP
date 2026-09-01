@@ -335,6 +335,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Chat -> ChatScreen(
                         onBack = { screen = Screen.Home },
                         avatar = pets.primary?.breedArt,
+                        dogId = pets.primary?.id,
                         accessTokenProvider = freshToken,
                     )
 

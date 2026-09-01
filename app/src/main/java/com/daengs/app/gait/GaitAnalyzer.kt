@@ -59,6 +59,7 @@ class MockGaitAnalyzer(
             video = video.uri,
             thumbnail = video.thumbnail,
             comparable = video.seconds >= GaitRecord.RECOMMENDED_SECONDS,
+            aspect = video.aspect,
         )
     }
 }

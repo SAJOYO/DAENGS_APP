@@ -3,6 +3,7 @@ package com.daengs.app.gait
 import android.app.Application
 import android.net.Uri
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -61,7 +62,7 @@ class GaitModelsTest {
 
     // ── 비교 판정 ────────────────────────────────────────────────────────────
 
-    private fun record(id: String, comparable: Boolean = true, seconds: Int = 12) =
+    private fun record(id: String, comparable: Boolean = true, seconds: Int? = 12) =
         GaitRecord(id, LocalDate.of(2026, 8, 31), seconds = seconds, comparable = comparable)
 
     @Test
@@ -157,14 +158,14 @@ class GaitModelsTest {
         val before = holder.records.size
         val seen = mutableListOf<Int>()
 
-        val made = holder.analyze(PreparedVideo(Uri.EMPTY, seconds = 14, thumbnail = null)) {
+        val made = holder.analyze(PreparedVideo(Uri.EMPTY, seconds = 24, thumbnail = null)) {
             seen += it.done
         }
 
         requireNotNull(made)
         assertEquals(before + 1, holder.records.size)
         assertEquals(made.id, holder.records.first().id)
-        assertEquals(14, made.seconds)
+        assertEquals(24, made.seconds)
         assertTrue(made.comparable)
         // 0(시작)부터 4(완료)까지 빠짐없이 올라온다.
         assertEquals(listOf(0, 1, 2, 3, 4), seen)
@@ -187,10 +188,184 @@ class GaitModelsTest {
     }
 
     @Test
-    fun `지우면 목록에서 빠지고 다시 찾아지지 않는다`() {
+    fun `지우면 목록에서 빠지고 다시 찾아지지 않는다`() = runTest {
         val holder = GaitHolder(initial = listOf(record("a"), record("b")))
         holder.remove("a")
         assertEquals(null, holder.find("a"))
         assertEquals(1, holder.records.size)
+    }
+
+    @Test
+    fun `서버 목록 한 줄은 길이를 모른 채로 옮겨진다`() {
+        val summary = GaitSummary.parse(
+            JSONObject(
+                """
+                {"record_id":"5389c92e7f4b41d8a3c6e0192b7d4f8a","date":"2026-08-31",
+                 "comparable":true,"has_overlay":true,"gait_filter_version":"v5-x"}
+                """.trimIndent(),
+            ),
+        )
+        val record = summary.toRecord()
+
+        assertEquals("5389c92e7f4b41d8a3c6e0192b7d4f8a", record.id)
+        assertEquals(LocalDate.of(2026, 8, 31), record.date)
+        assertTrue(record.comparable)
+        // 저쪽 목록에 길이가 없다. 0 초라고 단언하지 않는다.
+        assertEquals(null, record.seconds)
+        assertEquals("길이 미상", record.lengthLabel)
+        assertEquals(null, record.clockLabel)
+    }
+
+    @Test
+    fun `분석 응답의 quality 가 비교 가능 여부를 정한다`() {
+        val ok = GaitAnalyzed.parse(
+            JSONObject("""{"record_id":"a1","date":"2026-08-31","quality":{"status":"ok","quality_tier":"low"}}"""),
+        )
+        val bad = GaitAnalyzed.parse(
+            JSONObject("""{"record_id":"a2","quality":{"status":"unavailable","reason":"프레임을 읽지 못했습니다"}}"""),
+        )
+
+        assertTrue(ok.qualityOk)
+        assertEquals("low", ok.qualityTier)
+        assertFalse(bad.qualityOk)
+        assertEquals("프레임을 읽지 못했습니다", bad.reason)
+        assertEquals(null, bad.date)
+    }
+
+    @Test
+    fun `비교 응답의 관절 문구만 옮기고 모르는 값은 측정 부족이다`() {
+        val compared = GaitCompared.parse(
+            JSONObject(
+                """
+                {"message_for_ui":"일부 관절에서 차이가 관찰됩니다",
+                 "joint_movement_range_comparison":{"Iliac crest":"차이 관찰됨","Hock":"비슷함","Knee":"???"},
+                 "version_warning":"두 기록의 필터 버전이 다릅니다"}
+                """.trimIndent(),
+            ),
+        )
+        val metrics = compared.toMetrics().associate { it.name to it.delta }
+
+        assertEquals(GaitDelta.Slight, metrics["Iliac crest"])
+        assertEquals(GaitDelta.Similar, metrics["Hock"])
+        // 모르는 문자열을 "유사" 로 떨어뜨리면 없는 안심을 준다.
+        assertEquals(GaitDelta.Unknown, metrics["Knee"])
+        assertEquals("두 기록의 필터 버전이 다릅니다", compared.versionWarning)
+    }
+
+    @Test
+    fun `서버 문장이 있으면 앱 문장을 이긴다`() {
+        val recent = record("a")
+        val past = record("b")
+        val server = GaitComparison.of(
+            recent, past,
+            listOf(GaitMetric("Hock", GaitDelta.Similar)),
+            serverMessage = "뚜렷한 차이는 관찰되지 않았습니다 (서버)",
+        )
+        val local = GaitComparison.of(recent, past, listOf(GaitMetric("Hock", GaitDelta.Similar)))
+
+        assertEquals("뚜렷한 차이는 관찰되지 않았습니다 (서버)", server.sentence)
+        assertEquals(GaitVerdict.NoClearDifference.sentence, local.sentence)
+    }
+    // -- 상세 요약 문장 -------------------------------------------------------
+    //
+    // 여기가 한 번 뚫린 자리다. comparable 의 뜻이 "10초 넘나" 에서 서버의
+    // quality.status 로 바뀌었는데 문장만 옛 뜻에 남아, **1분짜리 영상에도
+    // "10초보다 짧게 찍혀서" 가 떴다.** 빌드도 테스트도 그대로 통과했다.
+
+    @Test
+    fun `길이가 넉넉한데 비교 불가면 짧다는 말을 하지 않는다`() {
+        val lines = record("a", comparable = false, seconds = 62)
+            .copy(qualityReason = "걷는 구간이 충분히 잡히지 않았어요.")
+            .summaryLines()
+
+        assertTrue("서버 사유가 그대로 나와야 한다", lines.any { it.contains("걷는 구간") })
+        assertFalse("1분짜리에 짧다고 말하면 안 된다: $lines", lines.any { it.contains("짧") })
+    }
+
+    @Test
+    fun `서버가 준 사유와 권고를 그대로 옮긴다`() {
+        val lines = record("a", comparable = false)
+            .copy(
+                qualityReason = "걷는 구간이 충분히 잡히지 않았어요.",
+                qualityAdvice = "쉬지 않고 걷는 장면으로 다시 찍어 주세요.",
+            )
+            .summaryLines()
+
+        assertTrue(lines.contains("걷는 구간이 충분히 잡히지 않았어요."))
+        assertTrue(lines.contains("쉬지 않고 걷는 장면으로 다시 찍어 주세요."))
+    }
+
+    @Test
+    fun `사유가 없으면 원인을 짚지 않고 사실만 말한다`() {
+        val lines = record("a", comparable = false, seconds = 62).summaryLines()
+
+        assertTrue(lines.any { it.contains("관절 지표를 뽑지 못했어요") })
+        assertFalse("원인을 지어내면 안 된다: $lines", lines.any { it.contains("짧") })
+    }
+
+    @Test
+    fun `앱이 직접 잰 길이가 권장보다 짧을 때만 길이 이야기를 한다`() {
+        val short = GaitRecord.RECOMMENDED_SECONDS - 1
+        val long = GaitRecord.RECOMMENDED_SECONDS + 1
+        assertTrue(record("a", seconds = short).summaryLines().any { it.contains("걷는 모습이") })
+        assertFalse(record("b", seconds = long).summaryLines().any { it.contains("걷는 모습이") })
+        // 서버 목록에서 온 기록은 길이를 모른다 — 모르면 아무 말도 안 한다.
+        assertFalse(record("c", seconds = null).summaryLines().any { it.contains("걷는 모습이") })
+    }
+
+    @Test
+    fun `길이를 모르면 0초라고 단언하지 않는다`() {
+        val r = record("a", seconds = null)
+        assertEquals("길이 미상", r.lengthLabel)
+        assertEquals(null, r.clockLabel)
+    }
+    // -- 영상 자리 비율 -------------------------------------------------------
+    //
+    // 촬영 가이드는 세로 프레임인데 결과·상세 화면 상자가 가로(16:10) 로 박혀
+    // 있었다. 세로 영상이 좌우로 텅 빈 채 눕고, Crop 이 위아래를 잘라 **머리가
+    // 날아갔다.** 서버가 자른 줄 알았지만 자른 것은 앱이었다.
+
+    @Test
+    fun `비율을 모르면 세로로 친다`() {
+        assertEquals(GaitRecord.PORTRAIT_ASPECT, record("a").displayAspect, 0.001f)
+    }
+
+    @Test
+    fun `아는 비율은 그대로 쓴다`() {
+        val r = record("a").copy(aspect = 3f / 4f)
+        assertEquals(0.75f, r.displayAspect, 0.001f)
+    }
+
+    @Test
+    fun `너무 길쭉하거나 납작한 것은 잘라 담는다`() {
+        assertEquals(GaitRecord.MIN_ASPECT, record("a").copy(aspect = 0.2f).displayAspect, 0.001f)
+        assertEquals(GaitRecord.MAX_ASPECT, record("b").copy(aspect = 5f).displayAspect, 0.001f)
+    }
+
+    @Test
+    fun `세로 영상이 가로로 눕지 않는다`() {
+        // 9:16 로 찍힌 것이 1 보다 커지면(가로가 되면) 화면이 눕힌 것이다.
+        assertTrue(record("a").copy(aspect = 9f / 16f).displayAspect < 1f)
+        assertTrue(record("b").displayAspect < 1f)
+    }
+    // -- 권장 길이의 근거 -----------------------------------------------------
+    //
+    // 예전 값 10 은 근거 없이 정한 숫자였고, 저쪽 기준(§21 유효 80프레임 = 5fps
+    // 기준 16초치)보다도 짧아서 **안내를 지켜도 떨어지는 영상**이 나왔다.
+
+    @Test
+    fun `걷는 모습 기준은 유효 프레임에서 끌어낸다`() {
+        assertEquals(80, GaitRecord.MIN_VALID_FRAMES)
+        assertEquals(5, GaitRecord.ANALYSIS_FPS)
+        assertEquals(16, GaitRecord.MIN_WALKING_SECONDS)
+    }
+
+    @Test
+    fun `권장 촬영 길이는 걷는 모습 기준보다 넉넉해야 한다`() {
+        // 걷다 서는 구간이 늘 섞이므로, 기준과 같으면 지켜도 모자란다.
+        assertTrue(
+            "권장(${GaitRecord.RECOMMENDED_SECONDS})이 기준(${GaitRecord.MIN_WALKING_SECONDS})보다 커야 한다",
+            GaitRecord.RECOMMENDED_SECONDS > GaitRecord.MIN_WALKING_SECONDS,
+        )
     }
 }

@@ -65,6 +65,7 @@ import androidx.compose.ui.window.Dialog
 import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
+import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.miniroom.art.DogBreed
@@ -159,6 +160,11 @@ fun ChatScreen(
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
     /**
+     * 대표 강아지의 id. **보행 기록을 묶는 열쇠다** — 없으면 올려도 목록으로 다시
+     * 못 찾아서, 서버에 보내기 전에 화면이 막는다 ([GaitApi] 주석).
+     */
+    dogId: String? = null,
+    /**
      * 만료됐으면 재발급까지 하고 돌려주는 access token. **[MainActivity] 의
      * `freshToken` 을 그대로 받는다** — 여기서 `TokenStore` 를 직접 읽거나
      * 세션을 갱신하지 않는다. null 이면 로그인이 안 된 것이다.
@@ -222,7 +228,7 @@ fun ChatScreen(
     // 보행 화면들은 **대화 위에 얹는다.** `MainActivity` 의 [Screen] 으로 빼면 촬영
     // 화면을 열었다 되돌아올 때 대화가 통째로 새로 만들어져, 방금 올린 카드가
     // 사라진다 — 가이드 프레임([GuideFrameScreen])을 대화 위에 덮은 것과 같은 이유다.
-    val gait = rememberGaitHolder()
+    val gait = rememberGaitHolder(dogId)
 
     /** 촬영 가이드 화면이 떠 있나. */
     var gaitCapture by remember { mutableStateOf(false) }
@@ -571,7 +577,9 @@ fun ChatScreen(
                 onBack = { gaitDetail = null },
                 onCompare = { gaitPicking = record.id },
                 onDelete = {
-                    gait.remove(record.id)
+                    // 서버에서도 지운다. 화면은 기다리지 않는다 — 홀더가 먼저 빼고
+                    // 실패하면 되돌린다.
+                    scope.launch { gait.remove(record.id) }
                     gaitDetail = null
                     // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
                     // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
@@ -611,7 +619,8 @@ fun ChatScreen(
             onConfirm = { past ->
                 gaitPicking = null
                 gaitDetail = null
-                gaitComparing = gait.compare(recentId, past.id)
+                // 비교는 서버가 한다. 문장도 저쪽 message_for_ui 가 온다.
+                scope.launch { gaitComparing = gait.compare(recentId, past.id) }
             },
         )
     }
@@ -910,8 +919,12 @@ private fun AiActionDialog(
                                 RowSeparator()
                                 // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
                                 // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
+                                //
+                                // 숫자를 여기 박지 않는다. 저쪽 기준(§21)에서 끌어낸
+                                // 상수라, 박아 두면 기준이 바뀌어도 이 줄만 안 따라온다 —
+                                // 실제로 "10초 이상" 이 그렇게 남아 있었다.
                                 Text(
-                                    "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
                                     color = TextMuted,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -999,7 +1012,7 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
                         RowSeparator()
                         Text(
-                            "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),

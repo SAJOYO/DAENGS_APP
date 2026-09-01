@@ -226,7 +226,9 @@ private fun ComparePillar(
             // 칸이 좁아 컨트롤을 끈다. 재생은 위의 단추가 둘을 같이 몬다.
             GaitVideoPlayer(
                 record,
-                Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                // 여기만 **고정 비율을 쓴다.** 두 기둥이 서로 다른 높이면
+                // 나란히 놓은 뜻이 흐려진다 — 비교는 같은 크기로 봐야 한다.
+                Modifier.fillMaxWidth().aspectRatio(GaitRecord.PORTRAIT_ASPECT),
                 playing = playing,
                 controls = false,
             )

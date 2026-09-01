@@ -40,6 +40,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitRecord
+import com.daengs.app.gait.summaryLines
 import com.daengs.app.gait.GaitStage
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -100,7 +101,7 @@ fun GaitDetailScreen(
             // 상세는 **영상을 보러 오는 화면**이라 표지가 아니라 재생기를 놓는다.
             // 컨트롤을 켜서 되감기·일시정지를 손으로 할 수 있게 한다 — 걸음 한
             // 주기를 다시 보려면 되감기가 있어야 한다.
-            GaitVideoPlayer(record, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
+            GaitVideoPlayer(record, Modifier.fillMaxWidth().aspectRatio(record.displayAspect))
 
             DetailSection("분석 상태") {
                 // 네 단계 다 끝난 뒤에만 열리는 화면이라 전부 완료로 그린다.
@@ -152,27 +153,21 @@ fun GaitDetailScreen(
 /**
  * 요약. **관찰 문장이 아니라 영상의 사실이다.**
  *
- * 짧게 찍힌 영상은 그 사실을 말해 준다 — 비교에서 왜 지표가 안 나오는지가 여기서
+ * 못 쓰는 영상이면 그 사실을 말해 준다 — 비교에서 왜 지표가 안 나오는지가 여기서
  * 미리 설명돼야, 비교 화면의 "지표가 부족합니다" 가 갑작스럽지 않다.
+ *
+ * **이유는 서버 문장을 그대로 쓴다** ([GaitRecord.qualityReason]). 예전에는 여기서
+ * "10초보다 짧게 찍혀서" 라고 단정했는데, `comparable` 의 뜻이 길이에서 서버의
+ * `quality.status` 로 바뀐 뒤에도 이 문장만 옛 뜻에 남아 **1분짜리 영상에도
+ * "짧게 찍혀서" 가 떴다.** 이유를 아는 쪽은 저쪽이고, 앱은 옮기기만 한다.
+ *
+ * 길이를 말하는 것은 **앱이 실제로 재서 아는 경우뿐이다** — 기기에서 읽은 초가
+ * 권장보다 짧을 때. 서버 목록에서 온 기록은 길이를 모르므로 아무 말도 안 한다.
  */
 @Composable
 private fun GaitAnalysisSummary(record: GaitRecord) {
-    val lines = buildList {
-        add("${record.dateLabel} · ${record.lengthLabel} 영상")
-        if (record.comparable) {
-            add("지난 기록과 나란히 볼 수 있어요.")
-        } else {
-            add(
-                "${GaitRecord.RECOMMENDED_SECONDS}초보다 짧게 찍혀서, " +
-                    "나란히 볼 지표를 뽑기에는 걸음이 모자라요.",
-            )
-        }
-        if (record.video == null) {
-            // 표본 기록임을 숨기지 않는다. 재생을 눌렀는데 아무 일도 안 나면
-            // 앱이 고장 난 것으로 읽힌다.
-            add("이 기록은 화면 확인용 표본이라 재생할 영상 파일이 없어요.")
-        }
-    }
+    val lines = record.summaryLines()
+
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         lines.forEach { line ->
             Row(verticalAlignment = Alignment.Top) {
@@ -289,13 +284,38 @@ private fun GaitDetailScreenPreview() {
     }
 }
 
-/** 짧게 찍힌 표본 기록. 요약 문장이 왜 다른지를 나란히 본다. */
+/**
+ * 못 쓰는 영상. **1분짜리인데 비교 불가**인 경우를 일부러 띄운다 — 여기가
+ * "10초보다 짧게 찍혀서" 가 잘못 뜨던 자리라, 서버 사유가 그대로 나오는지 본다.
+ */
 @Preview(widthDp = 411, heightDp = 891, showBackground = true)
 @Composable
-private fun GaitDetailShortPreview() {
+private fun GaitDetailUnusablePreview() {
     DaengsTheme {
         GaitDetailScreen(
-            record = GaitRecord("q", LocalDate.of(2026, 7, 15), seconds = 9, comparable = false),
+            record = GaitRecord(
+                "q",
+                LocalDate.of(2026, 9, 1),
+                seconds = 62,
+                comparable = false,
+                qualityReason = "걷는 구간이 충분히 잡히지 않았어요.",
+                qualityAdvice = "강아지가 쉬지 않고 걷는 장면으로 다시 찍어 주세요.",
+            ),
+            canCompare = false,
+            onBack = {},
+            onCompare = {},
+            onDelete = {},
+        )
+    }
+}
+
+/** 사유 없이 비교 불가일 때. 앱이 원인을 짚지 않고 사실만 말해야 한다. */
+@Preview(widthDp = 411, heightDp = 891, showBackground = true)
+@Composable
+private fun GaitDetailNoReasonPreview() {
+    DaengsTheme {
+        GaitDetailScreen(
+            record = GaitRecord("r", LocalDate.of(2026, 7, 15), seconds = 6, comparable = false),
             canCompare = false,
             onBack = {},
             onCompare = {},

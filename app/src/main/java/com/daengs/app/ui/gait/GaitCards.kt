@@ -108,7 +108,8 @@ fun GaitIntroCard(
         }
         Text(
             "뒤에서 걷는 모습이 잘 보이는 영상을 준비해주세요.\n" +
-                "${GaitRecord.RECOMMENDED_SECONDS}초 이상 권장해요.",
+                "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담기게, " +
+                    "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 찍어 주세요.",
             color = TextDark,
             fontSize = 13.sp,
             lineHeight = 20.sp,
@@ -117,7 +118,7 @@ fun GaitIntroCard(
             GaitActionButton(DaengsIcon.Video, "영상 촬영", onCapture, Modifier.weight(1f))
             GaitActionButton(DaengsIcon.VideoLibrary, "불러오기", onPick, Modifier.weight(1f))
         }
-        GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 이상 권장")
+        GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장")
     }
 }
 
@@ -246,7 +247,13 @@ fun GaitResultCard(
             Spacer(Modifier.weight(1f))
             GaitBadge(record)
         }
-        GaitThumbnail(record, Modifier.fillMaxWidth().aspectRatio(16f / 10f), onPlay = onOpen)
+        // **영상 비율을 따른다.** 가로로 박아 두면 세로 영상이 좌우로 텅 빈 채
+        // 눕는다 — 촬영 가이드가 세로라 이 기능의 영상은 대부분 세로다.
+        GaitThumbnail(
+            record,
+            Modifier.fillMaxWidth().aspectRatio(record.displayAspect),
+            onPlay = onOpen,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GaitActionButton(DaengsIcon.Chart, "결과 보기", onOpen, Modifier.weight(1f))
             if (canCompare) {
@@ -306,10 +313,17 @@ fun GaitThumbnail(
     ) {
         val frame = record.thumbnail
         if (frame != null) {
+            // **Crop 이 아니라 Fit 이다.** Crop 은 상자를 꽉 채우려고 넘치는 쪽을
+            // 잘라내는데, 세로 프레임에서 잘려나가는 위쪽이 곧 **머리**다.
+            // 실제로 결과 카드에 엉덩이와 뒷다리만 남아 "서버가 잘랐나" 를
+            // 의심하게 만들었다 — 자른 것은 이 줄이었다.
+            //
+            // 보행에서 봐야 할 것은 네 다리와 몸 전체라, 남는 여백을 감수하더라도
+            // 한 조각도 안 자르는 편이 맞다.
             Image(
                 bitmap = frame.asImageBitmap(),
                 contentDescription = "${record.dateLabel} 보행 영상",
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -322,14 +336,17 @@ fun GaitThumbnail(
             contentAlignment = Alignment.Center,
         ) { DaengsIconView(DaengsIcon.Play, Modifier.size(19.dp), tint = DaengPink) }
 
-        if (showLength) {
+        // 길이를 모르는 기록(서버 목록에서 온 것)이면 배지를 아예 안 그린다.
+        // 빈 배지가 남으면 "0초" 로 읽힌다.
+        val clock = record.clockLabel
+        if (showLength && clock != null) {
             Surface(
                 color = TextDark.copy(alpha = 0.55f),
                 shape = RoundedCornerShape(7.dp),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
             ) {
                 Text(
-                    record.clockLabel,
+                    clock,
                     color = CardWhite,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
