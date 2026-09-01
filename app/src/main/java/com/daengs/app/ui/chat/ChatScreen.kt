@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -46,7 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -57,6 +60,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.daengs.app.gait.GaitComparison
+import com.daengs.app.gait.GaitProgress
+import com.daengs.app.gait.GaitVideo
+import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
@@ -65,9 +72,17 @@ import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.gait.GaitCaptureScreen
+import com.daengs.app.ui.gait.GaitCompareScreen
+import com.daengs.app.ui.gait.GaitDetailScreen
+import com.daengs.app.ui.gait.GaitIntroCard
+import com.daengs.app.ui.gait.GaitPickSheet
+import com.daengs.app.ui.gait.GaitProgressCard
+import com.daengs.app.ui.gait.GaitResultCard
 import com.daengs.app.ui.home.HomeDemoData
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
@@ -97,6 +112,24 @@ private sealed interface ChatEntry {
     data class Report(val report: ScreeningReport) : ChatEntry
 
     data class Failed(val message: String) : ChatEntry
+
+    /** 보행 흐름의 첫 카드. 영상을 어디서 가져올지 고르는 자리다. */
+    data object GaitIntro : ChatEntry
+
+    /** 분석 중. 단계가 넘어갈 때마다 이 자리가 새 [GaitProgress] 로 갈린다. */
+    data class GaitRunning(val progress: GaitProgress) : ChatEntry
+
+    /**
+     * 끝난 기록.
+     *
+     * **기록 자체가 아니라 id 를 든다.** 기록은 홀더가 진짜를 들고 있어서, 상세에서
+     * 지우면 여기 남은 사본만 살아 있는 상태가 생긴다 (`WalkDetailScreen` 이 세션
+     * id 만 받는 것과 같은 이유).
+     */
+    data class GaitDone(val recordId: String) : ChatEntry
+
+    /** 비교 화면에서 "대화에 남기기" 로 내려온 결과. */
+    data class GaitCompared(val comparison: GaitComparison) : ChatEntry
 }
 
 /**
@@ -149,6 +182,81 @@ fun ChatScreen(
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) open(uri)
+    }
+
+    // ── 보행 ────────────────────────────────────────────────────────────────
+    //
+    // 보행 화면들은 **대화 위에 얹는다.** `MainActivity` 의 [Screen] 으로 빼면 촬영
+    // 화면을 열었다 되돌아올 때 대화가 통째로 새로 만들어져, 방금 올린 카드가
+    // 사라진다 — 가이드 프레임([GuideFrameScreen])을 대화 위에 덮은 것과 같은 이유다.
+    val gait = rememberGaitHolder()
+
+    /** 촬영 가이드 화면이 떠 있나. */
+    var gaitCapture by remember { mutableStateOf(false) }
+
+    /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
+    var gaitPicking by remember { mutableStateOf<String?>(null) }
+
+    /** 나란히 보는 중. */
+    var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
+
+    /** 상세를 보는 중인 기록 id. */
+    var gaitDetail by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 영상 한 편을 대화에 태운다.
+     *
+     * 자리 잡는 방식은 사진 진단([send])과 같다 — 진행 카드를 먼저 올려 두고 그 자리를
+     * 갈아 끼운다. 다만 끝났을 때 **진행 카드를 결과 카드로 바꾸지 않고, 완료 말풍선으로
+     * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
+     * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
+     */
+    val runGait: (Uri) -> Unit = { uri ->
+        scope.launch {
+            GaitVideo.prepare(context, uri)
+                .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
+                .onSuccess { video ->
+                    entries += ChatEntry.Theirs("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
+                    val slot = entries.size
+                    entries += ChatEntry.GaitRunning(GaitProgress.START)
+                    val record = gait.analyze(video) { entries[slot] = ChatEntry.GaitRunning(it) }
+                    if (record == null) {
+                        entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
+                        gait.clearError()
+                    } else {
+                        entries[slot] = ChatEntry.Theirs("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                        entries += ChatEntry.GaitDone(record.id)
+                    }
+                }
+        }
+    }
+
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            gaitCapture = false
+            runGait(uri)
+        }
+    }
+    // 사진과 같은 이유로 **먼저 만들어 둔다** — 콜백이 성공 여부만 준다.
+    val gaitTarget = remember { runCatching { GaitVideo.cameraTarget(context) }.getOrNull() }
+    val recordVideo = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { taken ->
+        if (taken && gaitTarget != null) {
+            gaitCapture = false
+            runGait(gaitTarget)
+        }
+    }
+
+    /** 촬영 단추. 카메라가 없는 기기에서는 조용히 실패하지 않고 말한다. */
+    val startGaitRecording: () -> Unit = {
+        if (gaitTarget == null) {
+            notice = "카메라를 열 수 없어요."
+        } else {
+            recordVideo.launch(gaitTarget)
+        }
+    }
+
+    val startGaitPicking: () -> Unit = {
+        pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
     // 카메라가 찍어 넣을 자리. **먼저 만들어 두고** 찍기 버튼에서 그대로 쓴다 —
     // 결과 콜백이 성공 여부(Boolean)만 주고 어디에 찍었는지는 안 알려 준다.
@@ -210,6 +318,36 @@ fun ChatScreen(
                         ChatEntry.Screening -> AssistantBubble("사진을 살펴보는 중이에요…", avatar)
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
                         is ChatEntry.Report -> ReportBubble(entry.report, avatar)
+
+                        // 보행 카드는 **말풍선 안에 안 넣는다.** 카드가 이미 흰
+                        // 바탕에 테두리를 가져서, 말풍선을 한 겹 더 두르면 흰 상자
+                        // 안의 흰 상자가 된다. 대신 아바타 자리만큼 왼쪽을 비워
+                        // 두어 "AI 가 준 것" 이라는 줄맞춤은 지킨다.
+                        ChatEntry.GaitIntro -> BesideAvatar {
+                            GaitIntroCard(
+                                onCapture = { gaitCapture = true },
+                                onPick = startGaitPicking,
+                            )
+                        }
+
+                        is ChatEntry.GaitRunning -> BesideAvatar { GaitProgressCard(entry.progress) }
+
+                        is ChatEntry.GaitDone -> gait.find(entry.recordId)?.let { record ->
+                            BesideAvatar {
+                                GaitResultCard(
+                                    record = record,
+                                    canCompare = gait.hasComparable(record.id),
+                                    onOpen = { gaitDetail = record.id },
+                                    onCompare = { gaitPicking = record.id },
+                                )
+                            }
+                        }
+
+                        is ChatEntry.GaitCompared -> BesideAvatar {
+                            GaitComparedBubble(entry.comparison) {
+                                gaitComparing = entry.comparison
+                            }
+                        }
                     }
                 }
             }
@@ -221,7 +359,17 @@ fun ChatScreen(
                 val text = draft.trim()
                 if (text.isNotEmpty()) {
                     entries += ChatEntry.Mine(text)
-                    entries += ChatEntry.Theirs("AI 답변 연결을 준비 중이에요.")
+                    // 보행을 물었으면 **말로 답하지 않고 카드를 편다.** 지금 답변
+                    // 연결이 없어서 "준비 중이에요" 만 나가는데, 보행은 실제로
+                    // 되는 기능이라 그 문장이 거짓이 된다.
+                    if (GAIT_ASK.containsMatchIn(text)) {
+                        entries += ChatEntry.Theirs(
+                            "좋아요! 보행 영상을 통해 우리 아이의 걸을 때 모습을 함께 살펴볼게요.",
+                        )
+                        entries += ChatEntry.GaitIntro
+                    } else {
+                        entries += ChatEntry.Theirs("AI 답변 연결을 준비 중이에요.")
+                    }
                     draft = ""
                 }
             },
@@ -229,28 +377,43 @@ fun ChatScreen(
             // 인식이 붙을 때 여기만 갈아 끼운다. 눌러도 아무 일이 없으면 고장으로
             // 보이므로 준비 중이라고 말은 한다.
             onVoice = { notice = "음성 입력은 준비 중이에요." },
-            onDiagnose = {
-                if (ScreeningApi.configured) {
-                    chooser = true
-                } else {
-                    // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
-                    // 로그인 버튼과 같다.
-                    notice = "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
-                }
-            },
+            // **시트는 항상 연다.** 기능이 둘이 되면서 진단 서버 유무로 시트 전체를
+            // 막으면 보행 쪽까지 같이 닫힌다. 못 하는 이유는 그 줄을 눌렀을 때 말한다.
+            onDiagnose = { chooser = true },
         )
     }
 
     if (chooser) {
-        PhotoSourceDialog(
+        AiActionDialog(
             onDismiss = { chooser = false },
             onCamera = {
                 chooser = false
-                if (target == null) notice = "카메라를 열 수 없어요." else capture.launch(target)
+                when {
+                    // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
+                    // 로그인 버튼과 같다.
+                    !ScreeningApi.configured -> notice = SCREEN_NOT_SET
+                    target == null -> notice = "카메라를 열 수 없어요."
+                    else -> capture.launch(target)
+                }
             },
             onAttach = {
                 chooser = false
-                pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                if (!ScreeningApi.configured) {
+                    notice = SCREEN_NOT_SET
+                } else {
+                    pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+            },
+            // 보행은 **진단 서버와 무관하다.** 피부 두 줄은 [ScreeningApi.configured]
+            // 를 보지만 여기서는 안 본다 — 서로 다른 서버이고, 보행 쪽은 아직
+            // 기기 안에서 도는 흐름이라 주소가 없어도 화면이 다 열린다.
+            onGaitCapture = {
+                chooser = false
+                gaitCapture = true
+            },
+            onGaitPick = {
+                chooser = false
+                startGaitPicking()
             },
         )
     }
@@ -268,7 +431,117 @@ fun ChatScreen(
         )
     }
 
+    // 보행 화면들. **덮는 순서가 곧 되돌아가는 순서다** — 촬영이 제일 위고,
+    // 상세와 비교는 그 아래, 시트는 대화 바로 위다.
+    if (gaitCapture) {
+        GaitCaptureScreen(
+            onBack = { gaitCapture = false },
+            onRecord = startGaitRecording,
+            onPick = startGaitPicking,
+            avatar = avatar,
+        )
+    }
+
+    gaitDetail?.let { id ->
+        gait.find(id)?.let { record ->
+            GaitDetailScreen(
+                record = record,
+                canCompare = gait.hasComparable(record.id),
+                onBack = { gaitDetail = null },
+                onCompare = { gaitPicking = record.id },
+                onDelete = {
+                    gait.remove(record.id)
+                    gaitDetail = null
+                    // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
+                    // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
+                    // 있었는지 알 수 없다.
+                    val slot = entries.indexOfFirst {
+                        it is ChatEntry.GaitDone && it.recordId == record.id
+                    }
+                    if (slot >= 0) {
+                        entries[slot] = ChatEntry.Theirs("${record.dateLabel} 보행 기록을 지웠어요.")
+                    }
+                },
+            )
+        } ?: run { gaitDetail = null }
+    }
+
+    gaitComparing?.let { comparison ->
+        GaitCompareScreen(
+            comparison = comparison,
+            onBack = { gaitComparing = null },
+            onOpenDetail = {
+                gaitComparing = null
+                gaitDetail = comparison.recent.id
+            },
+            onSaveToChat = {
+                gaitComparing = null
+                entries += ChatEntry.GaitCompared(comparison)
+            },
+        )
+    }
+
+    gaitPicking?.let { recentId ->
+        GaitPickSheet(
+            // 기준이 되는 기록은 목록에서 뺀다. 자기 자신과 비교하는 줄이 있으면
+            // 눌러 보게 되고, 눌러 보면 늘 "차이 없음" 이 나온다.
+            records = gait.records.filterNot { it.id == recentId },
+            onDismiss = { gaitPicking = null },
+            onConfirm = { past ->
+                gaitPicking = null
+                gaitDetail = null
+                gaitComparing = gait.compare(recentId, past.id)
+            },
+        )
+    }
+
     notice?.let { message -> NoticeDialog(message) { notice = null } }
+}
+
+/**
+ * 아바타 자리를 비우고 카드를 놓는다.
+ *
+ * 아바타를 **매 카드마다 다시 그리지 않는다.** 보행 흐름은 카드가 연달아 서너 개
+ * 쌓이는데, 그때마다 같은 얼굴이 붙으면 한 사람이 네 번 말한 것처럼 보인다.
+ * 자리만 비워 두면 줄맞춤은 말풍선과 같으면서 화면이 조용하다.
+ */
+@Composable
+private fun BesideAvatar(content: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.width(40.dp))
+        Box(Modifier.weight(1f)) { content() }
+    }
+}
+
+/**
+ * 비교 결과를 대화에 남긴 줄.
+ *
+ * 비교 화면을 통째로 옮겨 오지 않는다 — 대화는 흘러가는 곳이라 표 세 줄이 매번
+ * 다시 펼쳐지면 위에 있던 이야기가 밀려난다. 여기에는 **어느 두 날을 봤는지와
+ * 그때 나온 문장**만 남기고, 표는 눌러서 다시 연다.
+ */
+@Composable
+private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, PinkSoft),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onOpen),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "${comparison.recent.dateLabel} · ${comparison.past.dateLabel} 비교",
+                color = TextDark,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(comparison.verdict.sentence, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("다시 보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(13.dp), tint = DaengPinkDeep)
+            }
+        }
+    }
 }
 
 @Composable
@@ -440,35 +713,154 @@ private fun MeterBar(fraction: Float, color: Color, modifier: Modifier = Modifie
 /** 소수 첫째 자리. 서버가 이미 반올림해 주지만 Float 를 그냥 찍으면 12.300001 이 된다. */
 private fun Float.percentText(): String = String.format("%.1f%%", this)
 
-/** 사진찍기 / 첨부하기. */
+private const val SCREEN_NOT_SET =
+    "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+
+/**
+ * 말로 보행 분석을 부르는 표현들.
+ *
+ * **넓게 잡지 않는다.** "산책" 이나 "다리" 까지 넣으면 산책 이야기를 하다가 카드가
+ * 튀어나온다. 걸음 자체를 가리키는 말만 둔다.
+ */
+private val GAIT_ASK = Regex("보행|걸음걸이|걷는\\s*(모습|자세)|절뚝")
+
+/**
+ * 카메라 버튼이 여는 시트. **기능이 둘이라 묶음으로 나눈다.**
+ *
+ * 피부는 사진, 보행은 영상이라 고르는 소재가 다르다. 한 줄로 넷을 늘어놓으면
+ * "사진찍기"와 "영상 촬영"이 같은 층으로 보여서 무엇을 하는 화면인지가 흐려진다.
+ * 묶음 제목을 먼저 읽고 그 안에서 고르는 순서가 되도록 카드를 갈랐다.
+ */
 @Composable
-private fun PhotoSourceDialog(onDismiss: () -> Unit, onCamera: () -> Unit, onAttach: () -> Unit) {
+private fun AiActionDialog(
+    onDismiss: () -> Unit,
+    onCamera: () -> Unit,
+    onAttach: () -> Unit,
+    onGaitCapture: () -> Unit,
+    onGaitPick: () -> Unit,
+) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
-            Column(Modifier.padding(vertical = 10.dp)) {
+        Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 20.dp)) {
                 Text(
-                    "피부 사진으로 살펴보기",
+                    "AI 기능 선택",
                     color = TextDark,
-                    fontSize = 15.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(start = 4.dp, bottom = 16.dp),
                 )
-                SourceRow(DaengsIcon.Camera, "사진찍기", onCamera)
-                SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
+                Surface(color = PinkFaint, shape = RoundedCornerShape(18.dp)) {
+                    Column(Modifier.padding(12.dp)) {
+                        SourceGroup("피부 사진으로 살펴보기") {
+                            SourceRow(DaengsIcon.Camera, "사진찍기", onCamera)
+                            RowSeparator()
+                            SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
+                        }
+                        DashedSeparator()
+                        SourceGroup("보행 영상 분석하기") {
+                            SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
+                            RowSeparator()
+                            SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                            RowSeparator()
+                            // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
+                            // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
+                            Text(
+                                "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/** 묶음 제목 + 흰 카드 하나. 제목은 카드 밖에 둬서 카드가 목록임이 드러난다. */
+@Composable
+private fun SourceGroup(title: String, content: @Composable () -> Unit) {
+    Text(
+        title,
+        color = TextDark,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 8.dp),
+    )
+    Surface(color = CardWhite, shape = RoundedCornerShape(14.dp)) {
+        Column { content() }
+    }
+}
+
+@Composable
+private fun RowSeparator() {
+    Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp).height(1.dp).background(DaengsColors.BorderNeutral))
+}
+
+/** 묶음 사이. 실선으로 그으면 카드 테두리와 같은 층으로 읽혀서 점선으로 둔다. */
+@Composable
+private fun DashedSeparator() {
+    Canvas(Modifier.fillMaxWidth().height(21.dp)) {
+        val y = size.height / 2f
+        drawLine(
+            color = DaengsColors.BorderNeutral,
+            start = Offset(6.dp.toPx(), y),
+            end = Offset(size.width - 6.dp.toPx(), y),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())),
+        )
     }
 }
 
 @Composable
 private fun SourceRow(icon: DaengsIcon, label: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DaengsIconView(icon, Modifier.size(21.dp), tint = DaengPink)
         Spacer(Modifier.width(14.dp))
         Text(label, color = TextDark, fontSize = 15.sp)
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun AiActionDialogPreview() {
+    // Dialog 는 @Preview 에 안 그려져서 속만 그대로 띄운다.
+    Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 20.dp)) {
+            Text(
+                "AI 기능 선택",
+                color = TextDark,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 4.dp, bottom = 16.dp),
+            )
+            Surface(color = PinkFaint, shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    SourceGroup("피부 사진으로 살펴보기") {
+                        SourceRow(DaengsIcon.Camera, "사진찍기") {}
+                        RowSeparator()
+                        SourceRow(DaengsIcon.Gallery, "첨부하기") {}
+                    }
+                    DashedSeparator()
+                    SourceGroup("보행 영상 분석하기") {
+                        SourceRow(DaengsIcon.Video, "영상 촬영") {}
+                        RowSeparator()
+                        SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
+                        RowSeparator()
+                        Text(
+                            "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

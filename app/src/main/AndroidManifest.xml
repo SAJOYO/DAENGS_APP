@@ -39,6 +39,13 @@
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
+
+        <!-- 보행 영상 찍기. 사진과 같은 이유로 여기 적어 둔다 — 없으면 영상
+             카메라가 있는 기기에서도 "없다"가 나온다. 인텐트는 별개다(IMAGE_CAPTURE
+             를 적어 뒀다고 VIDEO_CAPTURE 까지 보이지는 않는다). -->
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
     </queries>
 
     <application
