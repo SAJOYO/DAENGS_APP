@@ -43,6 +43,21 @@ interface WalkDao {
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
 
+    /**
+     * 끝났는데 아직 안 올라간 것. **올릴 대상**이다.
+     *
+     * 오래된 것부터 준다 — 밀린 것이 여럿이면 걸었던 순서대로 올라가는 편이
+     * 중간에 실패했을 때 어디까지 됐는지 읽기 쉽다.
+     */
+    @Query(
+        "SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL " +
+            "AND syncedAtMillis IS NULL ORDER BY startedAtMillis",
+    )
+    suspend fun unsyncedSessions(): List<WalkSessionRow>
+
+    @Query("UPDATE walk_session SET syncedAtMillis = :syncedAtMillis WHERE id = :sessionId")
+    suspend fun markSynced(sessionId: String, syncedAtMillis: Long)
+
     /** 날씨는 세션을 연 뒤 따로 온다. 열린 세션이든 끝난 세션이든 한 번만 쓴다. */
     @Query(
         "UPDATE walk_session SET weatherCode = :weatherCode, isDay = :isDay, " +

@@ -119,6 +119,8 @@ class MainActivity : ComponentActivity() {
                     val token = freshToken() ?: return@LaunchedEffect
                     pets.refresh(token)
                     if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
+                    // 로그인 직후. **새 폰이면 여기서 지난 산책이 되돌아온다.**
+                    walkRuntime.sync.syncOnce(token)
                 }
 
                 LaunchedEffect(Unit) {
@@ -262,6 +264,9 @@ class MainActivity : ComponentActivity() {
 
                     Screen.WalkHistory -> WalkHistoryScreen(
                         history = walkRuntime.history,
+                        // 목록을 열 때 한 번 더. 걷고 나서 지하철에 들어갔던 기록이
+                        // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
+                        onSync = { scope.launch { walkRuntime.sync.syncOnce(freshToken()) } },
                         onBack = { screen = Screen.Home },
                         onOpen = { id ->
                             openedWalkId = id
@@ -282,6 +287,9 @@ class MainActivity : ComponentActivity() {
                         walkController = walkController,
                         avatarBreed = pets.primary?.breedArt,
                         dogId = pets.primary?.id,
+                        onFinished = {
+                            scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
+                        },
                     )
 
                     Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })

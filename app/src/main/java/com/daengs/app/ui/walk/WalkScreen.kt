@@ -81,6 +81,13 @@ fun WalkScreen(
     avatarBreed: DogBreed? = null,
     /** 기록에 남길 대표 강아지. 없으면 null 로 저장된다 — 아무나 갖다 붙이지 않는다. */
     dogId: String? = null,
+    /**
+     * 산책을 끝냈을 때. **서버로 올리라는 신호**다.
+     *
+     * 화면이 직접 올리지 않는 이유는 토큰이 여기 없어서다 — 재발급 사다리를
+     * [com.daengs.app.MainActivity] 가 들고 있다.
+     */
+    onFinished: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
@@ -269,7 +276,11 @@ fun WalkScreen(
                     followDevice = true
                     walkController.resume()
                 },
-                onStop = walkController::stop,
+                onStop = {
+                    walkController.stop()
+                    // 끝나자마자 올린다. 실패해도 조용하다 — 다음 기회에 다시 올린다.
+                    onFinished?.invoke()
+                },
             )
         }
 
