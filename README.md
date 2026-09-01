@@ -40,6 +40,26 @@ sdk.dir=C:/Users/<이름>/AppData/Local/Android/Sdk
 **슬래시(`/`)로 쓰는 게 편하다.** 역슬래시를 쓰면 `C\:\\Users\\...` 처럼 두 번 겹쳐
 써야 하고, 하나라도 틀리면 `java.io.IOException: Invalid file path` 가 난다.
 
+### 출시 빌드는 다른 서버를 본다
+
+**개발은 지금 개발 서버 그대로 쓰고, 릴리즈만 GCP 의 https 서버를 본다.** 개발
+서버가 `http://` 인데 평문 HTTP 허용이 디버그 소스셋에만 있어서, 릴리즈 빌드는 개발
+서버로 요청이 소켓 단계에서 죽는다. 그렇다고 개발 서버를 https 로 옮기면 매번 주소를
+바꿔 끼워야 한다. 그래서 **빌드 종류로 갈랐다.**
+
+```properties
+daengs.apiBaseUrlRelease=https://daengapi.weareithero.cloud
+daengs.screenUrlRelease=https://daengapi.weareithero.cloud/screen
+daengs.gaitUrlRelease=https://daengapi.weareithero.cloud/gait
+```
+
+- **`daengapi` 한 호스트가 전부를 받는다** — 백엔드(`/`) · 진단(`/screen/`) ·
+  보행(`/gait/`) · 장소(`/v2/places/`). `daengapp` 은 웹 프론트용이라 앱은 안 쓴다
+- **안 넣어도 빌드는 된다.** 릴리즈가 개발 주소로 떨어지고 **빌드 로그에 경고**가
+  뜬다. 조용히 떨어지면 "켜지는데 통신만 죽는" 릴리즈가 나와서 한참 헤맨다
+- 그래서 `app/src/debug/AndroidManifest.xml` 은 **지우지 않는다.** 개발 서버가
+  `http://` 인 한 디버그에는 계속 필요하다
+
 ### 카카오 로그인을 켜려면 (선택)
 
 **안 채워도 앱은 돌아간다.** 랜딩 화면에서 `둘러보기` 를 누르면 방까지 들어가진다.
