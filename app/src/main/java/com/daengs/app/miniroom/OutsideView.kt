@@ -6,8 +6,15 @@ import com.daengs.app.R
 /** 창밖·문밖의 시간. */
 enum class OutsideTime { DAY, NIGHT }
 
-/** 창밖·문밖의 날씨. */
-enum class OutsideWeather { CLEAR, RAIN, SNOW }
+/**
+ * 창밖·문밖의 날씨.
+ *
+ * **[CLOUDY] 는 그림이 따로 없다.** 맑음 그림에 회색 막을 씌워 만든다
+ * (`drawWindowOutside`). 그림을 굽는 대신 코드로 만든 이유는, 흐린 날에 해가 떠
+ * 있는 것이 제일 큰 거짓말인데 그걸 고치려고 그림 파이프라인을 돌리기에는
+ * 시간이 걸리기 때문이다. 진짜 흐림 그림이 나오면 여기 PNG 만 갈아끼우면 된다.
+ */
+enum class OutsideWeather { CLEAR, CLOUDY, RAIN, SNOW }
 
 /**
  * 창과 문 너머로 보이는 **바깥** — 시간 x 날씨 여섯 벌.
@@ -29,10 +36,22 @@ enum class OutsideView(
     @DrawableRes val window: Int,
     /** 문 너머에 깔 그림. 네모다 — 아치는 그리는 쪽이 오려낸다. */
     @DrawableRes val door: Int,
+    /**
+     * 그림 위에 회색 막을 씌우나.
+     *
+     * 흐림만 `true` 다. 맑음 그림을 그대로 쓰고 코드로 흐리게 만든다 —
+     * [OutsideWeather.CLOUDY] 주석 참고.
+     */
+    val veil: Boolean = false,
 ) {
     DAY_CLEAR(
         OutsideTime.DAY, OutsideWeather.CLEAR,
         R.drawable.window_day_clear, R.drawable.door_day_clear,
+    ),
+    DAY_CLOUDY(
+        OutsideTime.DAY, OutsideWeather.CLOUDY,
+        R.drawable.window_day_clear, R.drawable.door_day_clear,
+        veil = true,
     ),
     DAY_RAIN(
         OutsideTime.DAY, OutsideWeather.RAIN,
@@ -45,6 +64,11 @@ enum class OutsideView(
     NIGHT_CLEAR(
         OutsideTime.NIGHT, OutsideWeather.CLEAR,
         R.drawable.window_night_clear, R.drawable.door_night_clear,
+    ),
+    NIGHT_CLOUDY(
+        OutsideTime.NIGHT, OutsideWeather.CLOUDY,
+        R.drawable.window_night_clear, R.drawable.door_night_clear,
+        veil = true,
     ),
     NIGHT_RAIN(
         OutsideTime.NIGHT, OutsideWeather.RAIN,
@@ -59,6 +83,7 @@ enum class OutsideView(
     val label: String
         get() = (if (time == OutsideTime.DAY) "낮" else "밤") + " " + when (weather) {
             OutsideWeather.CLEAR -> "해"
+            OutsideWeather.CLOUDY -> "흐림"
             OutsideWeather.RAIN -> "비"
             OutsideWeather.SNOW -> "눈"
         }
@@ -95,14 +120,27 @@ enum class OutsideView(
 data class OutsideSnapshot(
     val view: OutsideView,
     val temperatureC: Float?,
+    /**
+     * 진짜 날씨를 받아 왔나.
+     *
+     * `false` 면 [view] 는 **기기 시계로 어림잡은 폴백**이라 낮·밤만 맞고 날씨는
+     * 모르는 것이다. 그때 "오늘 하늘은 맑아요" 라고 쓰면 비 오는 날 창밖을 보고 있는
+     * 사람에게 앱이 거짓말을 한다 — 실기기에서 그렇게 걸렸다.
+     *
+     * 이 칸이 없으면 "못 받았다" 와 "진짜 맑음" 이 같은 값이 된다. 이 클래스 주석이
+     * [OutsideNow] 와 굳이 갈라 둔 이유가 그것이었는데, 정작 접은 쪽에는 그 구분이
+     * 없었다.
+     */
+    val known: Boolean = false,
 ) {
     companion object {
         /** 날씨를 못 읽었을 때. **기온도 모르는 것**이다 — 지어내지 않는다. */
-        val DEFAULT = OutsideSnapshot(OutsideView.DEFAULT, null)
+        val DEFAULT = OutsideSnapshot(OutsideView.DEFAULT, null, known = false)
 
         fun of(now: OutsideNow): OutsideSnapshot = OutsideSnapshot(
             view = OutsideView.of(now.time, OutsideApi.weatherOf(now.weatherCode)),
             temperatureC = now.temperatureC,
+            known = true,
         )
     }
 }

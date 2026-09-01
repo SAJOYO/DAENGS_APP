@@ -42,13 +42,21 @@ class OutsideApiTest {
     }
 
     /**
-     * 흐림·안개에는 그림이 없다. **맑음으로 떨어뜨린다** — 억지로 비에 넣으면
-     * 안 오는 비가 내린다.
+     * **구름 많음(2)부터 흐림이다.** 예전에는 흐림도 안개도 전부 맑음이라, 잿빛
+     * 하늘에 창밖으로 해가 떠 있었다 — 실기기에서 그렇게 걸렸다.
      */
     @Test
-    fun `그림 없는 날씨는 맑음이다`() {
-        listOf(0, 1, 2, 3, 45, 48).forEach {
-            assertEquals("$it 은 맑음으로 떨어진다", OutsideWeather.CLEAR, OutsideApi.weatherOf(it))
+    fun `구름 많음부터 흐림이다`() {
+        listOf(2, 3, 45, 48).forEach {
+            assertEquals("$it 은 흐림이다", OutsideWeather.CLOUDY, OutsideApi.weatherOf(it))
+        }
+    }
+
+    /** 구름 조금(1)은 해가 보이는 날이라 맑음에 둔다. */
+    @Test
+    fun `맑음과 구름 조금은 맑음이다`() {
+        listOf(0, 1).forEach {
+            assertEquals("$it 은 맑음이다", OutsideWeather.CLEAR, OutsideApi.weatherOf(it))
         }
     }
 

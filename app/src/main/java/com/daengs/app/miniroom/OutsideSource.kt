@@ -3,8 +3,6 @@ package com.daengs.app.miniroom
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.location.Location
-import android.location.LocationManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -16,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.daengs.app.location.FusedLocationSource
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 
@@ -34,6 +33,17 @@ import java.time.LocalTime
  *
  * **위치를 새로 측정하지 않는 이유**: 창밖 그림은 시·군 단위면 충분한데 측위를
  * 걸면 배터리와 시간을 쓴다. 마지막 위치가 없으면 그냥 폴백이다.
+ *
+ * ⚠️ **화면이 아니라 [MainActivity] 에서 부른다.**
+ *
+ * 상태를 `remember` 로 들고 있어서, 이걸 부르는 컴포저블이 컴포지션에서 빠지면
+ * 받아 둔 날씨가 같이 사라진다. 예전에는 `HomeScreen` 안에서 불렀는데, 홈은
+ * `when (screen)` 이 갈아끼우는 자리라 도감·산책·챗봇을 갔다 오면 **매번 폴백(맑은
+ * 낮, 기온 없음)부터 다시 시작했다.** 사용자 눈에는 날씨 카드와 오늘의 한 마디가
+ * 눈앞에서 한 번 바뀌는 것으로 보였고, 느린 망에서는 그 상태가 6초까지 갔다.
+ *
+ * 15분 갱신도 그때는 죽은 설계였다 — 홈에 머무는 동안만 살아 있고, 홈에 올 때마다
+ * 새로 받았다. 뿌리에서 부르면 앱이 사는 동안 한 벌만 돌고, 위치 권한도 한 번만 묻는다.
  */
 @Composable
 fun rememberOutsideView(): State<OutsideSnapshot> {
@@ -42,6 +52,10 @@ fun rememberOutsideView(): State<OutsideSnapshot> {
 
     // **권한 상태가 열쇠다.** 없으면 물어보고, 받으면 그때 부른다.
     var granted by remember { mutableStateOf(hasLocationPermission(context)) }
+
+    // 산책이 쓰는 것과 같은 위치원. 새로 만들지 않는다 — 실내에서 마지막 위치로
+    // 떨어지는 처리가 이미 여기 들어 있다.
+    val fused = remember(context) { FusedLocationSource(context) }
 
     // 권한 창은 한 번만 띄운다. **이 값은 아래 효과의 열쇠가 아니다** — 열쇠로 쓰면
     // 효과 안에서 바꾸는 순간 자기 자신이 취소된다 (아래 주석).
@@ -84,14 +98,26 @@ fun rememberOutsideView(): State<OutsideSnapshot> {
             return@LaunchedEffect
         }
         // **한 번 받고 끝내지 않는다.** 방을 열어 둔 채로 비가 그치기도 하고, 켤 때
-        // 마지막 위치가 없어 빈손이었다가 나중에 생기기도 한다.
+        // 위치가 없어 빈손이었다가 나중에 생기기도 한다.
+        //
+        // ⚠️ **첫 값을 받기 전에는 자주 다시 시도한다.** 예전에는 되든 안 되든 15분을
+        // 기다렸는데, 첫 시도는 빈손이기 쉽다 — 아래 [FusedLocationSource] 로 바꾸기
+        // 전에는 `getLastKnownLocation` 을 썼고, 그건 최근에 누가 위치를 요청한 적이
+        // 없으면 그냥 null 이다. 그래서 앱을 켜면 창밖이 폴백(맑음)에 머물다가
+        // **지도나 산책 화면을 열어 위치 캐시가 채워진 뒤에야** 돌았다. 실기기에서
+        // "지도를 켰다 와야 날씨가 바뀐다" 로 걸렸다.
+        var known = false
         while (true) {
-            lastKnownLocation(context)?.let { where ->
-                OutsideApi.fetchNow(where.latitude, where.longitude)?.let {
+            // 마지막으로 알던 곳을 줍는 대신 **직접 한 번 물어본다.** 산책이 쓰는 것과
+            // 같은 함수라 실내·대략적 권한에서 마지막 위치로 떨어지는 처리까지 들어 있다.
+            val where = runCatching { fused.currentLocation() }.getOrNull()
+            if (where != null) {
+                OutsideApi.fetchNow(where.point.latitude, where.point.longitude)?.let {
                     state.value = OutsideSnapshot.of(it)
+                    known = true
                 }
             }
-            delay(REFRESH_MS)
+            delay(if (known) REFRESH_MS else RETRY_MS)
         }
     }
 
@@ -106,23 +132,17 @@ fun rememberOutsideView(): State<OutsideSnapshot> {
  */
 private const val REFRESH_MS = 15 * 60 * 1000L
 
+/**
+ * **첫 값을 받기 전**에 다시 시도하는 간격.
+ *
+ * 위치가 잡히기까지 몇 초 걸리고 그동안은 빈손이다. 여기서 15분을 기다리면 앱을 켠
+ * 사람은 그 시간 내내 폴백(맑음)을 본다. 첫 성공 뒤에는 [REFRESH_MS] 로 넘어간다.
+ */
+private const val RETRY_MS = 8 * 1000L
+
 private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
-
-/**
- * 마지막으로 알려진 위치. 공급자를 훑어 **가장 최근 것**을 고른다.
- *
- * 하나만 물으면(예: `NETWORK_PROVIDER`) 그 공급자가 꺼져 있을 때 빈손이 된다.
- */
-private fun lastKnownLocation(context: Context): Location? {
-    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
-    return runCatching {
-        lm.getProviders(true)
-            .mapNotNull { lm.getLastKnownLocation(it) }
-            .maxByOrNull { it.time }
-    }.getOrNull()
-}
 
 /**
  * 날씨를 못 읽었을 때.

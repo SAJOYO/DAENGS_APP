@@ -1,6 +1,7 @@
 package com.daengs.app.ui.chat
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -71,6 +72,10 @@ fun GuideFrameScreen(
      */
     guided: Boolean = false,
 ) {
+    // 뒤로가기는 **이 화면만 닫는다.** 없으면 [ChatScreen] 의 핸들러까지 흘러가
+    // 대화가 통째로 닫히고, 방금 찍은 사진이 말없이 버려진다.
+    BackHandler(onBack = onCancel)
+
     // 정규화 [x, y, w, h]. 저쪽 데모의 시작값과 같다.
     //
     // ⚠️ w 와 h 는 **각 축 기준**이라 w = h 로 두면 16:9 사진에서 납작해진다.

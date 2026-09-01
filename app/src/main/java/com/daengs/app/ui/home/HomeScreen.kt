@@ -28,7 +28,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
@@ -37,7 +39,6 @@ import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
-import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.miniroom.art.ItemCatalog
@@ -47,8 +48,10 @@ import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
 import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkDayTotals
+import kotlinx.coroutines.delay
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
 
 /**
@@ -60,6 +63,15 @@ import com.daengs.app.ui.theme.DaengsTheme
  * 다른 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
  */
 internal val CardSlotHeight = 146.dp
+
+/**
+ * 강아지 목록이 늦을 때 "불러오는 중" 을 띄우기까지 기다리는 시간.
+ *
+ * **바로 띄우지 않는다.** 빠른 망에서는 목록이 눈 깜짝할 사이에 오는데, 그때 표시가
+ * 떴다 사라지면 그것 자체가 깜빡임이다 — 데모 강아지 네 마리가 사라지던 것을 고쳐
+ * 놓고 같은 종류의 깜빡임을 새로 만드는 셈이 된다.
+ */
+private const val DOGS_LOADING_DELAY_MS = 600L
 
 /**
  * 이름표가 앉는 자리 — **방 그림 기준 백분율**이다.
@@ -114,6 +126,15 @@ fun HomeScreen(
     onOpenWalkHistory: (() -> Unit)? = null,
     /** 오늘 걸은 것. null 이면 아직 못 읽은 것이라 카드가 `-` 로 둔다. */
     todayWalks: WalkDayTotals? = null,
+    /**
+     * 창밖·문밖의 지금.
+     *
+     * **[MainActivity] 가 들고 내려보낸다.** 여기서 [rememberOutsideView] 를 부르면
+     * 홈이 컴포지션에서 빠질 때 같이 죽어서, 도감이나 산책을 갔다 오면 폴백(맑은 낮,
+     * 기온 없음)부터 다시 시작한다 — 카드가 눈앞에서 한 번 바뀐다. `homeTab` 을
+     * 위로 올린 것과 같은 이유다.
+     */
+    outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -191,19 +212,19 @@ fun HomeScreen(
     // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
     // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
     //
-    // **방이 아니라 여기서 들고 있는다.** 오늘의 한 마디 카드가 방 바깥에 있어서,
-    // 방 안에 두면 그 카드까지 못 간다. 그러면 창밖과 카드가 또 다른 말을 하게 된다.
-    val liveOutside by rememberOutsideView()
-    // @Preview 는 결정적이어야 한다. 폴백이 기기 시각을 보므로(OutsideSource.fallback)
-    // 밤에 미리보기를 열면 카드가 밤 문구로 바뀐다 — 방 애니메이션을 400ms 에 세워
-    // 두는 것과 같은 이유로 여기서도 한 벌로 고정한다.
-    val live = if (LocalInspectionMode.current) PREVIEW_OUTSIDE else liveOutside
+    // 값은 [outside] 파라미터로 온다. 여기서 만들지 않는 이유는 그 주석에 있다.
+    // @Preview 는 결정적이어야 한다 — 기본값이 기기 시각을 안 보게 한 벌로 고정한다.
+    val live = if (LocalInspectionMode.current) PREVIEW_OUTSIDE else outside
     var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
     val outside = outsideOverride ?: live.view
     // 오버라이드 중에는 기온을 **모르는 것으로 친다.** 33도인데 "밤 눈" 을 강제하면
     // 눈+더위라는 없는 칸이 생긴다. null 은 어차피 반드시 지원해야 하는 경로다.
     val temperatureC = if (outsideOverride == null) live.temperatureC else null
-    val words = remember(outside, temperatureC) { homeWeatherWords(outside, temperatureC) }
+    // 개발자 패널이 덮었으면 그건 **고른 값**이라 아는 것으로 친다.
+    val known = outsideOverride != null || live.known
+    val words = remember(outside, temperatureC, known) {
+        homeWeatherWords(outside, temperatureC, known)
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -293,6 +314,7 @@ fun HomeScreen(
                 outside = outside,
                 onPickOutside = { outsideOverride = it },
                 todayNote = words.today,
+                dogsLoading = pets == null,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -352,6 +374,14 @@ private fun RoomSection(
     onPickOutside: (OutsideView) -> Unit,
     /** TODAY 카드 한 줄. 같은 날씨에서 지은 말이라 창밖과 안 어긋난다. */
     todayNote: String,
+    /**
+     * 강아지 목록을 아직 못 받았나.
+     *
+     * 그동안 방은 비어 있다 ([roomRoster] 가 아무도 안 세운다). 오래 걸리면 빈 방이
+     * 고장처럼 보이므로 그때만 한 줄 띄운다 — **금방 끝나면 안 띄운다.** 뜨자마자
+     * 사라지는 표시는 데모 강아지가 사라지던 것과 똑같이 깜빡임이다.
+     */
+    dogsLoading: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -403,6 +433,23 @@ private fun RoomSection(
             // 뒷벽의 턴테이블 -> 내 카드의 음악. 액자와 같은 이유로 편집 중에는 안 받는다.
             onTurntableTap = if (inventoryOpen) null else { { turntableOpen = true } },
         )
+        // 목록이 늦을 때만 뜬다. 600ms 를 기다렸다 띄우므로 빠른 망에서는 안 보인다.
+        var showDogsLoading by remember { mutableStateOf(false) }
+        LaunchedEffect(dogsLoading) {
+            showDogsLoading = false
+            if (dogsLoading) {
+                delay(DOGS_LOADING_DELAY_MS)
+                showDogsLoading = true
+            }
+        }
+        if (showDogsLoading) {
+            Text(
+                "강아지를 불러오는 중이에요",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
         TodayCard(
             dateLabel = dateLabel,
             note = todayNote,
