@@ -56,6 +56,21 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // 특정 CPU 용 라이브러리만 담아 APK 를 줄인다. **기본은 꺼짐이라 평소 빌드는
+        // 지금과 똑같다** — `-PslimAbi=arm64-v8a` 를 준 빌드만 걸러진다.
+        //
+        // 왜 필요한가: 네이버 지도의 `libnavermap.so` 가 CPU 4종류만큼 들어 있어
+        // `lib/` 만 91MB 다(arm64 23.7 · x86_64 25.0 · x86 24.3 · armeabi-v7a 18.0).
+        // 링크로 받아 폰에 까는 데모용으로는 arm64 하나면 되고, 그러면 130MB 가
+        // 63MB 가 된다. 2015년 이후 안드로이드 폰은 전부 arm64 다.
+        //
+        // ⚠️ **인텔 PC 에뮬레이터에서는 안 돈다.** 평소 개발 빌드에 이걸 걸면 안 되는
+        // 이유고, 그래서 기본을 꺼 뒀다. 쉼표로 여럿도 된다 (`arm64-v8a,x86_64`).
+        val slimAbi = providers.gradleProperty("slimAbi").orNull
+        if (!slimAbi.isNullOrBlank()) {
+            ndk { abiFilters += slimAbi.split(",").map { it.trim() }.filter { it.isNotEmpty() } }
+        }
+
         // 값이 없으면 빈 문자열이다. 그 상태로도 앱은 켜지고 "둘러보기" 로 방까지
         // 들어가진다 — 랜딩 화면이 설정이 없다고 알려 준다.
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
