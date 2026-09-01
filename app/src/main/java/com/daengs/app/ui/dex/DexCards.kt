@@ -6,9 +6,12 @@ import androidx.compose.ui.graphics.Color
 // ---------------------------------------------------------------------------
 // 카드 12장 — `assets/neo-hologram/cards.mjs` 를 옮긴 것
 //
-// **여기 필드가 적은 이유**: 카드 그림(webp)에 프레임·제목·기술명·수치가 전부 구워져
-// 있다. 웹판도 그림 위에 포일만 얹지 글자를 그리지 않는다. 그래서 우리가 들고 있어야
-// 할 건 그리드 아래 설명과, 어떤 포일을 쓸지뿐이다.
+// 카드 그림(webp)에 프레임·제목·기술명·수치가 전부 구워져 있다. 그래서 **그리는 데**
+// 필요한 건 포일과 색뿐이다. 한동안 필드가 그것뿐이었는데, 그러면서 **설명 시트가 같이
+// 빠졌다** — 웹판에는 카드를 두 번 누르면 뜨는 상세가 있었다 (HISTORY 12절).
+//
+// 그림에 안 구워진 것은 **글**이다. 한글 이름·부제·코드·플레이버·에디션은 그림 어디에도
+// 없어서 여기 없으면 화면에 못 띄운다. 그래서 저쪽 필드를 그대로 들고 있는다.
 //
 // 저쪽이 카드를 늘리면 여기에 줄만 더한다. `cards.mjs` 가 원본이다.
 // ---------------------------------------------------------------------------
@@ -31,9 +34,21 @@ data class DexCard(
     val id: String,
     /** 그리드 설명에 쓰는 이름 */
     val name: String,
+    /** 한글 이름. **그림에는 없다** — 설명 시트에서만 쓴다. */
+    val ko: String,
+    /** 한 줄 부제. 설명 시트 맨 위. */
+    val tagline: String,
+    val code: String,
+    val type: String,
+    val move: String,
+    /** 기술 부연. **없는 카드가 있다** — 저쪽에서 빈 문자열이면 여기서도 비운다. */
+    val moveNote: String = "",
     /** 예: `CRUNCH 820` 의 앞부분 */
     val statLabel: String,
     val stat: Int,
+    /** 영문 플레이버. 그림에 인쇄된 문장을 저쪽이 옮겨 적은 것이다. */
+    val flavor: String,
+    val edition: String,
     val foil: Foil,
     /** 카드 뒤 글로우 색. 저쪽 `accent` */
     val accent: Color,
@@ -48,6 +63,32 @@ data class DexCard(
 }
 
 /**
+ * 설명 시트의 한 줄. [note] 는 작은 글씨로 아래 붙는다 (저쪽 `<small>`).
+ */
+@Immutable
+data class DetailRow(val label: String, val value: String, val note: String = "")
+
+/**
+ * 설명 시트의 표.
+ *
+ * 저쪽 `main.js` 의 `detailMarkup` 과 **같은 순서**다 — No. · Code · Type · Move ·
+ * 스탯. 순서를 바꾸면 웹과 앱이 다른 카드처럼 보인다.
+ *
+ * **스탯 라벨이 빈 카드(No.11 토마토)는 `Stat` 으로 떨어진다.** 그 카드만 스탯 바에
+ * 라벨이 안 찍혀 있어서 저쪽이 비워 뒀고, 웹도 같은 자리에 `Stat` 을 쓴다.
+ */
+fun DexCard.detailRows(total: Int = DEX_CARDS.size): List<DetailRow> = listOf(
+    DetailRow("No.", "${pad2(no)} / ${pad2(total)}"),
+    DetailRow("Code", code),
+    DetailRow("Type", type),
+    DetailRow("Move", move, moveNote),
+    DetailRow(statLabel.ifBlank { "Stat" }, stat.toString()),
+)
+
+/** 도감 번호는 두 자리다. 저쪽 `pad2` 와 같다. */
+private fun pad2(value: Int): String = value.toString().padStart(2, '0')
+
+/**
  * 카드 순서 = 도감 순서다. No.01 부터.
  *
  * **저쪽에서 `immersive` 인 카드는 여기서도 포일을 하나 골라 둔다.** 이머시브는 꾹
@@ -60,18 +101,121 @@ data class DexCard(
  * 하나를 위해 다른 하나를 포기할 이유가 없다. 저쪽도 같은 판단을 했다.
  */
 val DEX_CARDS: List<DexCard> = listOf(
-    DexCard(1, "cabbage", "Cabbage Neo", "CRUNCH", 820, Foil.Prism, Color(0xFF8FD94A)),
-    DexCard(2, "pepper", "Pepper Neo", "CRISP", 860, Foil.Prism, Color(0xFFFFD838)),
-    DexCard(3, "eggplant", "Eggplant Neo", "GLOSS", 900, Foil.Crystal, Color(0xFFA86BFF)),
-    DexCard(4, "carrot", "Carrot Neo", "SNAP", 830, Foil.Gold, Color(0xFFFF8A2B)),
-    DexCard(5, "danhobak", "Danhobak Neo", "CRUNCH", 840, Foil.Oilslick, Color(0xFF7D9B46)),
-    DexCard(6, "mushroom", "Mushroom Neo", "MYCELIUM MASH", 820, Foil.Sunburst, Color(0xFFCBB08A)),
-    DexCard(7, "broccoli", "Broccoli Neo", "MYCELIUM MASH", 850, Foil.Holo, Color(0xFF7BBF3A)),
-    DexCard(8, "cucumber", "Cucumber Neo", "MYCELIUM MASH", 810, Foil.Reverse, Color(0xFF4FAE52)),
-    DexCard(9, "spinach", "Spinach Neo", "MYCELIUM MASH", 860, Foil.Aurora, Color(0xFF3F8F3F)),
-    DexCard(10, "sweet-potato", "Sweet Potato Neo", "MYCELIUM MASH", 830, Foil.Cosmos, Color(0xFFA0656F)),
     DexCard(
-        11, "tomato", "Tomato Neo", "", 840, Foil.Mosaic, Color(0xFFCC351A),
+        no = 1, id = "cabbage", name = "Cabbage Neo", ko = "캐비지 네오",
+        tagline = "강아지인지 채소인지 끝내 모를",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "LEAFY LOOK",
+        moveNote = "Opponent stunned by awkward cuteness.",
+        statLabel = "CRUNCH", stat = 820,
+        flavor = "Part pup. Part produce. All confusion. Handle with salad.",
+        edition = "Leafy Look Edition",
+        foil = Foil.Prism, accent = Color(0xFF8FD94A),
+    ),
+    DexCard(
+        no = 2, id = "pepper", name = "Pepper Neo", ko = "페퍼 네오",
+        tagline = "노랗고 수상하게 강한",
+        code = "NEO-Y0824", type = "VEGGIE DOG",
+        move = "YELLOW SHOCK",
+        statLabel = "CRISP", stat = 860,
+        flavor = "Sweet face. Zero warning. Maximum pepper.",
+        edition = "Prismatic Pepper Edition",
+        foil = Foil.Prism, accent = Color(0xFFFFD838),
+    ),
+    DexCard(
+        no = 3, id = "eggplant", name = "Eggplant Neo", ko = "에그플랜트 네오",
+        tagline = "보라색으로 반들거리며 아무 생각 없는",
+        code = "NEO-E0824", type = "VEGGIE DOG",
+        move = "NIGHT SHADE",
+        statLabel = "GLOSS", stat = 900,
+        flavor = "Deep purple. Empty thoughts. Unfairly glossy.",
+        edition = "Night Shade Edition",
+        foil = Foil.Crystal, accent = Color(0xFFA86BFF),
+    ),
+    DexCard(
+        no = 4, id = "carrot", name = "Carrot Neo", ko = "캐럿 네오",
+        tagline = "흙에서 막 나왔는데 과하게 차려입은",
+        code = "NEO-C0824", type = "VEGGIE DOG",
+        move = "ROOT RUSH",
+        statLabel = "SNAP", stat = 830,
+        flavor = "Straight from the dirt. Still overdressed.",
+        edition = "Root Rush Edition",
+        foil = Foil.Gold, accent = Color(0xFFFF8A2B),
+    ),
+    DexCard(
+        no = 5, id = "danhobak", name = "Danhobak Neo", ko = "단호박 네오",
+        tagline = "껍질만 단단하고 속은 물렁한",
+        code = "NEO-D0824", type = "VEGGIE DOG",
+        move = "SWEET IMPACT",
+        statLabel = "CRUNCH", stat = 840,
+        flavor = "Hard shell. Soft Neo.",
+        edition = "Hard Shell Edition",
+        foil = Foil.Oilslick, accent = Color(0xFF7D9B46),
+    ),
+    DexCard(
+        no = 6, id = "mushroom", name = "Mushroom Neo", ko = "머쉬룸 네오",
+        tagline = "나비넥타이까지 맨 포자 살포자",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "FUNGAL FACE",
+        moveNote = "Mushroom master of confusing cuteness.",
+        statLabel = "MYCELIUM MASH", stat = 820,
+        flavor = "Part pup. Part fungi. Totally bizarre. Watch for spores.",
+        edition = "Spore Bloom Edition",
+        foil = Foil.Sunburst, accent = Color(0xFFCBB08A),
+    ),
+    DexCard(
+        no = 7, id = "broccoli", name = "Broccoli Neo", ko = "브로콜리 네오",
+        tagline = "왕관은 큰데 판단력은 작은",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "FLORET FORCE",
+        moveNote = "Big crown. Tiny judgment.",
+        statLabel = "MYCELIUM MASH", stat = 850,
+        flavor = "Big crown. Tiny judgment.",
+        edition = "Floret Force Edition",
+        foil = Foil.Holo, accent = Color(0xFF7BBF3A),
+    ),
+    DexCard(
+        no = 8, id = "cucumber", name = "Cucumber Neo", ko = "큐컴버 네오",
+        tagline = "거의 물인데 태도만은 확실한",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "COOL CRUNCH",
+        moveNote = "Mostly water. Entirely attitude.",
+        statLabel = "MYCELIUM MASH", stat = 810,
+        flavor = "Mostly water. Entirely attitude.",
+        edition = "Cool Crunch Edition",
+        foil = Foil.Reverse, accent = Color(0xFF4FAE52),
+    ),
+    DexCard(
+        no = 9, id = "spinach", name = "Spinach Neo", ko = "스피니치 네오",
+        tagline = "잎은 부드러운데 힘이 말이 안 되는",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "IRON LEAF",
+        moveNote = "Soft leaf. Unreasonable power.",
+        statLabel = "MYCELIUM MASH", stat = 860,
+        flavor = "Part pup. Part fungi. Totally bizarre. Watch for spores.",
+        edition = "Iron Leaf Edition",
+        foil = Foil.Aurora, accent = Color(0xFF3F8F3F),
+    ),
+    DexCard(
+        no = 10, id = "sweet-potato", name = "Sweet Potato Neo", ko = "스위트포테이토 네오",
+        tagline = "깊이 묻혀 있다가 더 깊이 차려입고 나온",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "ROOT RUMBLE",
+        moveNote = "Buried deep. Dressed deeper.",
+        statLabel = "MYCELIUM MASH", stat = 830,
+        flavor = "Buried deep. Dressed deeper.",
+        edition = "Root Rumble Edition",
+        foil = Foil.Cosmos, accent = Color(0xFFA0656F),
+    ),
+    DexCard(
+        no = 11, id = "tomato", name = "Tomato Neo", ko = "토마토 네오",
+        tagline = "잘 익고 둥글고 준비까지 끝난",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "JUICY BLAST",
+        statLabel = "", stat = 840,
+        flavor = "Ripe, round, and ready.",
+        edition = "Juicy Blast Edition",
+        foil = Foil.Mosaic, accent = Color(0xFFCC351A),
         // 이머시브가 아니다. 누끼 하나로 팝아웃만 한다.
         // fit 은 저쪽이 템플릿 매칭으로 찾은 값이다 — 받은 누끼가 카드 대비 세로로
         // 3.2% 눌려 있어 이미지를 늘려 비율을 맞춘 뒤 다시 쟀다.
@@ -80,5 +224,15 @@ val DEX_CARDS: List<DexCard> = listOf(
             fit = ImmersiveScene.Fit(2.21f, 15.64f, 97.18f, 66.93f),
         ),
     ),
-    DexCard(12, "lettuce", "Lettuce Neo", "FRESH FLUTTER", 800, Foil.Metal, Color(0xFFB2D121)),
+    DexCard(
+        no = 12, id = "lettuce", name = "Lettuce Neo", ko = "레터스 네오",
+        tagline = "잎은 제멋대로인데 웃음만 큰",
+        code = "NEO-0824", type = "VEGGIE DOG",
+        move = "LEAF PARADE",
+        moveNote = "Loose leaves strut in a fresh breeze.",
+        statLabel = "FRESH FLUTTER", stat = 800,
+        flavor = "Loose leaves. Loud smile.",
+        edition = "Leaf Parade Edition",
+        foil = Foil.Metal, accent = Color(0xFFB2D121),
+    ),
 )
