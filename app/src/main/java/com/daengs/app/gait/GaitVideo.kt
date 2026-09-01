@@ -9,8 +9,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** 고른 영상에서 화면에 필요한 것만 뽑아 놓은 것. 원본은 [uri] 로만 들고 있다. */
-class PreparedVideo(val uri: Uri, val seconds: Int, val thumbnail: Bitmap?)
+/**
+ * 고른 영상에서 화면에 필요한 것만 뽑아 놓은 것. 원본은 [uri] 로만 들고 있다.
+ *
+ * @param aspect 가로/세로 비. **회전을 반영한 값이다** — 폰으로 세로로 찍은 영상은
+ *   보통 1920x1080 으로 저장되고 "90도 돌려서 보라"는 표시만 붙는다. 그 표시를
+ *   안 보면 세로 영상을 가로로 알게 된다. 못 읽으면 null 이다.
+ */
+class PreparedVideo(
+    val uri: Uri,
+    val seconds: Int,
+    val thumbnail: Bitmap?,
+    val aspect: Float? = null,
+)
 
 /**
  * 갤러리·카메라에서 온 영상을 읽는다. [Photo][com.daengs.app.screening.Photo] 의 영상판이다.
@@ -52,7 +63,22 @@ object GaitVideo {
                         retriever.getFrameAtTime(at, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                     }.getOrNull()
 
-                    PreparedVideo(uri, seconds, frame?.scaledToFit(THUMB_EDGE))
+                    // 화면이 영상 비율대로 자리를 잡으려면 가로세로가 필요하다.
+                    // **회전을 반영한다** — 위 주석 참고.
+                    fun meta(key: Int) = retriever.extractMetadata(key)?.toIntOrNull()
+                    val rotation = meta(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION) ?: 0
+                    val rawW = meta(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                    val rawH = meta(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    val aspect = if (rawW != null && rawH != null && rawW > 0 && rawH > 0) {
+                        val turned = rotation == 90 || rotation == 270
+                        val w = if (turned) rawH else rawW
+                        val h = if (turned) rawW else rawH
+                        w.toFloat() / h.toFloat()
+                    } else {
+                        null
+                    }
+
+                    PreparedVideo(uri, seconds, frame?.scaledToFit(THUMB_EDGE), aspect)
                 } finally {
                     // **반드시 놓아 준다.** 안 놓으면 코덱 핸들이 남아서, 영상을
                     // 몇 편 고르고 나면 다음 setDataSource 가 조용히 실패한다.

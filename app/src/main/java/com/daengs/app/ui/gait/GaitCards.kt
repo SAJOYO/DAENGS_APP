@@ -246,7 +246,13 @@ fun GaitResultCard(
             Spacer(Modifier.weight(1f))
             GaitBadge(record)
         }
-        GaitThumbnail(record, Modifier.fillMaxWidth().aspectRatio(16f / 10f), onPlay = onOpen)
+        // **영상 비율을 따른다.** 가로로 박아 두면 세로 영상이 좌우로 텅 빈 채
+        // 눕는다 — 촬영 가이드가 세로라 이 기능의 영상은 대부분 세로다.
+        GaitThumbnail(
+            record,
+            Modifier.fillMaxWidth().aspectRatio(record.displayAspect),
+            onPlay = onOpen,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GaitActionButton(DaengsIcon.Chart, "결과 보기", onOpen, Modifier.weight(1f))
             if (canCompare) {
@@ -306,10 +312,17 @@ fun GaitThumbnail(
     ) {
         val frame = record.thumbnail
         if (frame != null) {
+            // **Crop 이 아니라 Fit 이다.** Crop 은 상자를 꽉 채우려고 넘치는 쪽을
+            // 잘라내는데, 세로 프레임에서 잘려나가는 위쪽이 곧 **머리**다.
+            // 실제로 결과 카드에 엉덩이와 뒷다리만 남아 "서버가 잘랐나" 를
+            // 의심하게 만들었다 — 자른 것은 이 줄이었다.
+            //
+            // 보행에서 봐야 할 것은 네 다리와 몸 전체라, 남는 여백을 감수하더라도
+            // 한 조각도 안 자르는 편이 맞다.
             Image(
                 bitmap = frame.asImageBitmap(),
                 contentDescription = "${record.dateLabel} 보행 영상",
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
