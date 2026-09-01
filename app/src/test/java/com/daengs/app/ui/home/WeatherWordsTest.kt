@@ -135,6 +135,40 @@ class WeatherWordsTest {
         assertEquals(listOf("바람이 좋아서", "산책하기 딱 좋은 날이댕!"), words.daily)
     }
 
+    /**
+     * **아직 못 받았으면 하늘을 두고 아무 말도 하지 않는다.**
+     *
+     * 폴백은 날씨가 언제나 맑음이라, 이 갈래가 없으면 비 오는 날 앱을 켠 사람이
+     * "산책 가기 좋은 날!" 을 본다. 실기기에서 그렇게 걸렸다.
+     */
+    @Test
+    fun `날씨를 아직 못 받았으면 맑다고 말하지 않는다`() {
+        for (view in OutsideView.entries) {
+            for (temp in temps) {
+                val words = homeWeatherWords(view, temp, known = false)
+                assertEquals("날씨를 보고 있어요", words.today)
+                assertEquals(listOf("창밖을 보고", "금방 올게댕!"), words.daily)
+            }
+        }
+    }
+
+    /** 받아 온 뒤에는 예전과 똑같이 동작한다 — 기본값이 `known = true` 다. */
+    @Test
+    fun `받아 왔으면 지금까지와 같다`() {
+        assertEquals(
+            homeWeatherWords(OutsideView.DAY_CLEAR, 21f),
+            homeWeatherWords(OutsideView.DAY_CLEAR, 21f, known = true),
+        )
+    }
+
+    /** 로딩 문구도 카드 칸을 넘지 않는다 (위의 길이 규칙과 같은 자리). */
+    @Test
+    fun `로딩 문구도 칸을 안 넘는다`() {
+        val words = homeWeatherWords(OutsideView.DAY_CLEAR, null, known = false)
+        assertTrue(words.today.length <= 12)
+        words.daily.forEach { assertTrue(it, it.length <= 14) }
+    }
+
     private fun forEveryCell(check: (OutsideView, Float?, HomeWeatherWords) -> Unit) {
         for (view in OutsideView.entries) {
             for (temp in temps) check(view, temp, homeWeatherWords(view, temp))

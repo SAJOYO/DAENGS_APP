@@ -21,16 +21,28 @@ class RoomRosterTest {
         assertEquals(listOf(DogBreed.BEAGLE, DogBreed.WELSH_CORGI), roomRoster(pets))
     }
 
-    /** null 은 **아직 못 받아 온 것**이다. 빈 방을 깜빡이지 않는다. */
+    /**
+     * null 은 **아직 못 받아 온 것**이다. 그때는 아무도 안 세운다.
+     *
+     * 예전에는 데모 네 마리로 채웠는데, 목록이 도착하면 그 넷이 사라지고 내 아이만
+     * 남았다 — 실기기에서 "강아지 4마리 있다가 샥 사라진다" 로 걸렸다. **모르는
+     * 동안 남의 개를 세우는 것보다 비워 두고 불러오는 중이라고 말하는 편이 낫다.**
+     */
     @Test
-    fun `목록을 못 받았으면 데모로 채운다`() {
-        assertEquals(RoomDefaults.DOG_COUNT, roomRoster(null).size)
-        assertTrue(roomRoster(null).all { it in DogBreed.ROOM_BREEDS })
+    fun `목록을 못 받았으면 아무도 안 세운다`() {
+        assertTrue(roomRoster(null).isEmpty())
     }
 
+    /**
+     * 빈 목록은 **받아 왔는데 없는 것**이라 null 과 다르다.
+     *
+     * 둘러보기 중이거나 온보딩으로 넘어가기 직전이다. 그 짧은 사이에 방이 비면
+     * 앱이 고장 난 것처럼 보여서 데모를 세운다 — 이건 거짓이 아니라 견본이다.
+     */
     @Test
-    fun `한 마리도 없어도 방은 안 비운다`() {
+    fun `받아 왔는데 한 마리도 없으면 견본을 세운다`() {
         assertEquals(RoomDefaults.DOG_COUNT, roomRoster(emptyList()).size)
+        assertTrue(roomRoster(emptyList()).all { it in DogBreed.ROOM_BREEDS })
     }
 
     /** 믹스는 얼굴이 없지만 **방에서는 대역이 선다** — 안 세우면 내 개가 사라진다. */

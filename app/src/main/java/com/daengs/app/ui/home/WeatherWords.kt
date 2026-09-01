@@ -60,7 +60,23 @@ fun tempBand(temperatureC: Float?): TempBand = when {
  * 여기서 한눈에 보인다 — 한 화면에 나란히 있어서 같은 문장이 두 번 뜨면 하나가 고장 난
  * 것처럼 보인다.
  */
-fun homeWeatherWords(view: OutsideView, temperatureC: Float?): HomeWeatherWords {
+fun homeWeatherWords(
+    view: OutsideView,
+    temperatureC: Float?,
+    /**
+     * 진짜 날씨를 받아 왔나 ([OutsideSnapshot.known]).
+     *
+     * `false` 면 [view] 의 날씨는 폴백이라 **하늘을 두고 아무 말도 하지 않는다.**
+     * 기본값이 `true` 인 것은 부르는 쪽 대부분이 이미 받아 온 값을 넘기기 때문이고,
+     * 모르는 상태를 넘길 자리는 홈 하나다.
+     */
+    known: Boolean = true,
+): HomeWeatherWords {
+    // **아직 모르면 모른다고 한다.** 폴백은 낮·밤만 시계로 어림잡은 값이라 날씨는
+    // 언제나 맑음이다. 그대로 문구를 지으면 비 오는 날 창밖을 보고 있는 사람에게
+    // "산책 가기 좋은 날!" 이라고 말하게 된다 — 실기기에서 그렇게 걸렸다.
+    if (!known) return LOADING_WORDS
+
     val night = view.time == OutsideTime.NIGHT
     val band = tempBand(temperatureC)
     return when (view.weather) {
@@ -94,6 +110,15 @@ fun homeWeatherWords(view: OutsideView, temperatureC: Float?): HomeWeatherWords 
  * **여기 그대로 앉는다.** 화면이 지금까지 늘 이 말을 하고 있었으니, 이 칸에서만 같은
  * 말이 나오는 것이 이번 변경이 맞게 들어갔다는 확인이 된다.
  */
+/**
+ * 아직 날씨를 못 받았을 때.
+ *
+ * **하늘을 두고 단정하지 않는다.** 낮·밤은 시계로 아는 값이라 아이콘(해·달)은 그대로
+ * 두고, 문구만 모른다고 말한다. 잠깐 스치는 상태라 길게 쓰지 않는다.
+ */
+private val LOADING_WORDS =
+    HomeWeatherWords("날씨를 보고 있어요", listOf("창밖을 보고", "금방 올게댕!"))
+
 private fun clearDay(band: TempBand): HomeWeatherWords = when (band) {
     TempBand.HOT ->
         HomeWeatherWords("한낮은 너무 더워요", listOf("볕이 뜨거우니", "해 지고 나가자댕!"))

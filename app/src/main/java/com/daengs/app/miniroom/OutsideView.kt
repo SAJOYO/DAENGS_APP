@@ -95,14 +95,27 @@ enum class OutsideView(
 data class OutsideSnapshot(
     val view: OutsideView,
     val temperatureC: Float?,
+    /**
+     * 진짜 날씨를 받아 왔나.
+     *
+     * `false` 면 [view] 는 **기기 시계로 어림잡은 폴백**이라 낮·밤만 맞고 날씨는
+     * 모르는 것이다. 그때 "오늘 하늘은 맑아요" 라고 쓰면 비 오는 날 창밖을 보고 있는
+     * 사람에게 앱이 거짓말을 한다 — 실기기에서 그렇게 걸렸다.
+     *
+     * 이 칸이 없으면 "못 받았다" 와 "진짜 맑음" 이 같은 값이 된다. 이 클래스 주석이
+     * [OutsideNow] 와 굳이 갈라 둔 이유가 그것이었는데, 정작 접은 쪽에는 그 구분이
+     * 없었다.
+     */
+    val known: Boolean = false,
 ) {
     companion object {
         /** 날씨를 못 읽었을 때. **기온도 모르는 것**이다 — 지어내지 않는다. */
-        val DEFAULT = OutsideSnapshot(OutsideView.DEFAULT, null)
+        val DEFAULT = OutsideSnapshot(OutsideView.DEFAULT, null, known = false)
 
         fun of(now: OutsideNow): OutsideSnapshot = OutsideSnapshot(
             view = OutsideView.of(now.time, OutsideApi.weatherOf(now.weatherCode)),
             temperatureC = now.temperatureC,
+            known = true,
         )
     }
 }
