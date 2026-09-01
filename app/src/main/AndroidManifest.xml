@@ -68,12 +68,24 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Daengs">
+        <!-- 세로로 고정한다. 가로 화면은 만든 적이 없어서 눕히면 방도 카드도 무너진다.
+             configChanges 는 일부러 안 넣는다 — 방향이 고정되면 회전으로 인한 재생성
+             자체가 없고, 넣으면 다른 설정 변경까지 우리가 떠안는다. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Daengs.Splash"
             android:windowSoftInputMode="adjustResize">
+            <!-- ⚠️ targetSdk 가 37 이라 위의 screenOrientation 만으로는 부족하다.
+                 안드로이드 16(API 36)부터 **큰 화면에서는 앱의 방향 요청을 무시하는
+                 것이 기본**이다. 폰(sw < 600dp)에서는 속성만으로 되지만, 태블릿·폴더블
+                 펼침·데스크톱 모드에서는 이 property 가 있어야 세로가 지켜진다. -->
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE"
+                android:value="false" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
