@@ -23,6 +23,7 @@ import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.pet.Pet
+import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
@@ -81,6 +82,12 @@ class MainActivity : ComponentActivity() {
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
+
+                // 창밖 날씨. **여기서 들고 있는다** — 화면이 바뀌어도 안 죽는다.
+                // 홈 안에서 부르면 도감·산책을 갔다 올 때마다 폴백(맑은 낮)부터 다시
+                // 시작해서 카드가 눈앞에서 바뀐다 (`OutsideSource` 주석). `homeTab`
+                // 을 여기로 올린 것과 같은 이유다.
+                val outside by rememberOutsideView()
 
                 // **부르기 전에 토큰을 새로 받는다.**
                 //
@@ -231,6 +238,7 @@ class MainActivity : ComponentActivity() {
                         onSignIn = { screen = Screen.Landing },
                         tab = homeTab,
                         onSelectTab = { homeTab = it },
+                        outside = outside,
                         pets = pets.pets.orEmpty(),
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },

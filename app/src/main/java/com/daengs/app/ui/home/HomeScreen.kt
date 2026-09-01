@@ -37,7 +37,6 @@ import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
-import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.miniroom.art.ItemCatalog
@@ -114,6 +113,15 @@ fun HomeScreen(
     onOpenWalkHistory: (() -> Unit)? = null,
     /** 오늘 걸은 것. null 이면 아직 못 읽은 것이라 카드가 `-` 로 둔다. */
     todayWalks: WalkDayTotals? = null,
+    /**
+     * 창밖·문밖의 지금.
+     *
+     * **[MainActivity] 가 들고 내려보낸다.** 여기서 [rememberOutsideView] 를 부르면
+     * 홈이 컴포지션에서 빠질 때 같이 죽어서, 도감이나 산책을 갔다 오면 폴백(맑은 낮,
+     * 기온 없음)부터 다시 시작한다 — 카드가 눈앞에서 한 번 바뀐다. `homeTab` 을
+     * 위로 올린 것과 같은 이유다.
+     */
+    outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -191,13 +199,9 @@ fun HomeScreen(
     // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
     // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
     //
-    // **방이 아니라 여기서 들고 있는다.** 오늘의 한 마디 카드가 방 바깥에 있어서,
-    // 방 안에 두면 그 카드까지 못 간다. 그러면 창밖과 카드가 또 다른 말을 하게 된다.
-    val liveOutside by rememberOutsideView()
-    // @Preview 는 결정적이어야 한다. 폴백이 기기 시각을 보므로(OutsideSource.fallback)
-    // 밤에 미리보기를 열면 카드가 밤 문구로 바뀐다 — 방 애니메이션을 400ms 에 세워
-    // 두는 것과 같은 이유로 여기서도 한 벌로 고정한다.
-    val live = if (LocalInspectionMode.current) PREVIEW_OUTSIDE else liveOutside
+    // 값은 [outside] 파라미터로 온다. 여기서 만들지 않는 이유는 그 주석에 있다.
+    // @Preview 는 결정적이어야 한다 — 기본값이 기기 시각을 안 보게 한 벌로 고정한다.
+    val live = if (LocalInspectionMode.current) PREVIEW_OUTSIDE else outside
     var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
     val outside = outsideOverride ?: live.view
     // 오버라이드 중에는 기온을 **모르는 것으로 친다.** 33도인데 "밤 눈" 을 강제하면
