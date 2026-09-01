@@ -33,6 +33,40 @@ val screenUrl = localSetting("daengs.screenUrl")
 // 비어 있으면 보행 줄이 스스로 그렇게 말한다.
 val gaitUrl = localSetting("daengs.gaitUrl")
 
+/**
+ * 출시 빌드가 볼 주소.
+ *
+ * **개발 서버는 그대로 두고 릴리즈만 가른다.** 개발 서버는 `http://` 인데 평문 HTTP
+ * 허용이 디버그 소스셋에만 있어서, 릴리즈 빌드는 개발 서버로 요청이 소켓 단계에서
+ * 죽는다. 그렇다고 개발 서버를 https 로 옮기면 매번 주소를 바꿔 끼워야 한다.
+ *
+ * GCP 의 `daengapi` 한 호스트가 백엔드·진단(`/screen`)·보행(`/gait`)·장소를 전부
+ * 받으므로, 셋 다 같은 호스트를 가리키게 된다.
+ *
+ * **비어 있으면 개발 값으로 떨어진다** — 새 키를 안 넣은 사람의 빌드가 지금과 똑같이
+ * 동작해야 한다. 다만 그때는 아래에서 경고를 낸다.
+ */
+val apiBaseUrlRelease = localSetting("daengs.apiBaseUrlRelease")
+val screenUrlRelease = localSetting("daengs.screenUrlRelease")
+val gaitUrlRelease = localSetting("daengs.gaitUrlRelease")
+
+/**
+ * 릴리즈 값이 없으면 개발 값으로 떨어지되 **조용히 넘어가지 않는다.**
+ *
+ * 조용히 떨어지면 개발 서버(`http`)를 보는 릴리즈 빌드가 나오는데, 그건 켜지기는
+ * 하고 통신만 죽어서 "왜 로그인이 안 되지" 로 한참 헤맨다.
+ */
+fun releaseUrl(name: String, release: String, fallback: String): String =
+    if (release.isNotBlank()) {
+        release
+    } else {
+        logger.warn(
+            "⚠ daengs.${name}Release 가 비어 있어 릴리즈 빌드가 개발 주소를 씁니다. " +
+                "개발 서버는 http 라 릴리즈에서는 통신이 막힙니다.",
+        )
+        fallback
+    }
+
 // 네이버 지도 NCP 키. 없어도 앱은 켜진다 — 지도 타일만 인증 실패로 비고,
 // 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
 val naverMapClientId = localSetting("daengs.naverMapClientId")
@@ -74,11 +108,10 @@ android {
         // 값이 없으면 빈 문자열이다. 그 상태로도 앱은 켜지고 "둘러보기" 로 방까지
         // 들어가진다 — 랜딩 화면이 설정이 없다고 알려 준다.
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
-        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-        buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
-        buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
         buildConfigField("String", "NAVER_MAP_NCP_KEY_ID", "\"$naverMapClientId\"")
         buildConfigField("String", "NAVER_MAP_STYLE_ID", "\"$naverMapStyleId\"")
+        // 서버 주소 셋은 여기가 아니라 **buildTypes 에서** 꽂는다. 개발과 출시가
+        // 다른 서버를 보기 때문이다 (위 apiBaseUrlRelease 주석).
 
         // 카카오 리다이렉트 스킴. 매니페스트가 이 자리를 비워 두고 여기서 꽂는다.
         manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
@@ -98,10 +131,33 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 개발 서버. `http://` 라서 디버그 소스셋의 usesCleartextTraffic 이 필요하다
+            // (`app/src/debug/AndroidManifest.xml`).
+            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
+            buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
+        }
         release {
             optimization {
                 enable = false
             }
+            // 출시 서버. https 라 평문 예외가 필요 없다.
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"${releaseUrl("apiBaseUrl", apiBaseUrlRelease, apiBaseUrl)}\"",
+            )
+            buildConfigField(
+                "String",
+                "SCREEN_BASE_URL",
+                "\"${releaseUrl("screenUrl", screenUrlRelease, screenUrl)}\"",
+            )
+            buildConfigField(
+                "String",
+                "GAIT_BASE_URL",
+                "\"${releaseUrl("gaitUrl", gaitUrlRelease, gaitUrl)}\"",
+            )
         }
     }
     compileOptions {
