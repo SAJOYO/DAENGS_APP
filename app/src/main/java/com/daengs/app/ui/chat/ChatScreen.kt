@@ -1,5 +1,6 @@
 package com.daengs.app.ui.chat
 
+import android.Manifest
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -73,13 +74,12 @@ import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
-import com.daengs.app.ui.gait.GaitCaptureScreen
-import com.daengs.app.ui.camera.rememberVideoRecorder
-import com.daengs.app.ui.camera.rememberCameraController
-import com.daengs.app.ui.camera.hasCameraPermission
 import com.daengs.app.ui.camera.CameraPreview
+import com.daengs.app.ui.camera.hasCameraPermission
+import com.daengs.app.ui.camera.rememberCameraController
+import com.daengs.app.ui.camera.rememberVideoRecorder
 import com.daengs.app.ui.camera.takePicture
-import android.Manifest
+import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
@@ -207,11 +207,34 @@ fun ChatScreen(
     var guidedShot by remember { mutableStateOf(false) }
 
     // 카메라 권한. **찍는 동안 가이드를 보여 주려고** 든다 (시스템 카메라로 던질
-    // 때는 필요 없었다). 거부해도 촬영은 막지 않는다 — 시스템 카메라로 떨어진다.
+    // 때는 필요 없었다). 이걸 선언한 순간 권한 없이는 찍는 길이 아예 없어진다 — [CAMERA_DENIED].
     var cameraGranted by remember { mutableStateOf(hasCameraPermission(context)) }
+    // 권한을 받고 나서 이어서 할 일. "사진찍기" 와 "영상 촬영" 이 같은 창을 쓴다.
+    var afterCamera by remember { mutableStateOf<(() -> Unit)?>(null) }
     val askCamera = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> cameraGranted = granted }
+    ) { granted ->
+        cameraGranted = granted
+        if (granted) afterCamera?.invoke() else notice = CAMERA_DENIED
+        afterCamera = null
+    }
+
+    /**
+     * 권한이 있으면 바로, 없으면 묻고 나서 [action].
+     *
+     * ⚠️ **거부했을 때 시스템 카메라로 떨어질 수 없다.** 매니페스트에 `CAMERA` 를
+     * 선언한 앱은 그 권한이 없으면 `ACTION_IMAGE_CAPTURE` 조차 못 띄운다 —
+     * 안드로이드가 `SecurityException` 으로 막는다(실기기에서 앱이 죽었다).
+     * 그래서 여기서 시스템 카메라를 부르지 않고, 갤러리로 안내한다.
+     */
+    val withCamera: (() -> Unit) -> Unit = { action ->
+        if (cameraGranted) {
+            action()
+        } else {
+            afterCamera = action
+            askCamera.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
@@ -256,39 +279,12 @@ fun ChatScreen(
             runGait(uri)
         }
     }
-    // 사진과 같은 이유로 **먼저 만들어 둔다** — 콜백이 성공 여부만 준다.
-    val gaitTarget = remember { runCatching { GaitVideo.cameraTarget(context) }.getOrNull() }
-    val recordVideo = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { taken ->
-        if (taken && gaitTarget != null) {
-            gaitCapture = false
-            runGait(gaitTarget)
-        }
-    }
-
-    /** 촬영 단추. 카메라가 없는 기기에서는 조용히 실패하지 않고 말한다. */
-    val startGaitRecording: () -> Unit = {
-        if (gaitTarget == null) {
-            notice = "카메라를 열 수 없어요."
-        } else {
-            recordVideo.launch(gaitTarget)
-        }
-    }
-
-    // 촬영 화면을 열 때 한 번 묻는다. 열기 전에 물으면 무엇에 쓰는 권한인지 모르는
-    // 채로 창을 보게 된다.
-    LaunchedEffect(gaitCapture) {
-        if (gaitCapture && !cameraGranted) askCamera.launch(Manifest.permission.CAMERA)
-    }
-
     val startGaitPicking: () -> Unit = {
         pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
-    // 카메라가 찍어 넣을 자리. **먼저 만들어 두고** 찍기 버튼에서 그대로 쓴다 —
-    // 결과 콜백이 성공 여부(Boolean)만 주고 어디에 찍었는지는 안 알려 준다.
+    // 앱 안 카메라가 찍어 넣을 자리. 콜백이 어디에 찍었는지 안 알려 주므로 **먼저
+    // 만들어 두고** 그대로 읽는다.
     val target = remember { runCatching { Photo.cameraTarget(context) }.getOrNull() }
-    val capture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken ->
-        if (taken && target != null) open(target)
-    }
 
     // 새 말풍선이 생기면 아래로 따라간다. 안 하면 결과가 화면 밖에서 조용히 쌓인다.
     LaunchedEffect(entries.size) { scroll.animateScrollTo(scroll.maxValue) }
@@ -418,14 +414,8 @@ fun ChatScreen(
                     // 로그인 버튼과 같다.
                     !ScreeningApi.configured -> notice = SCREEN_NOT_SET
                     target == null -> notice = "카메라를 열 수 없어요."
-                    // 권한이 있으면 **앱 안에서** 찍는다 — 그래야 병변에 맞출 네모를
-                    // 찍는 동안 보여 줄 수 있다. 없으면 지금까지처럼 시스템 카메라다.
-                    cameraGranted -> skinCapture = true
-                    else -> {
-                        // 시스템 카메라에는 가이드가 없다. 확인 화면도 기본값에서 시작한다.
-                        guidedShot = false
-                        capture.launch(target)
-                    }
+                    // 앱 안에서 찍는다. 그래야 병변에 맞출 네모를 찍는 동안 보여 준다.
+                    else -> withCamera { skinCapture = true }
                 }
             },
             onAttach = {
@@ -442,7 +432,7 @@ fun ChatScreen(
             // 기기 안에서 도는 흐름이라 주소가 없어도 화면이 다 열린다.
             onGaitCapture = {
                 chooser = false
-                gaitCapture = true
+                withCamera { gaitCapture = true }
             },
             onGaitPick = {
                 chooser = false
@@ -502,10 +492,8 @@ fun ChatScreen(
     // 보행 화면들. **덮는 순서가 곧 되돌아가는 순서다** — 촬영이 제일 위고,
     // 상세와 비교는 그 아래, 시트는 대화 바로 위다.
     if (gaitCapture) {
-        // 카메라 권한이 있으면 **앱 안에서** 찍는다. 그래야 가이드를 찍는 동안
-        // 보여 줄 수 있다. 없으면 지금까지처럼 시스템 카메라로 떨어진다 —
-        // **되던 일이 안 되게 만들지 않는다.**
-        if (cameraGranted) {
+        // 여기까지 왔으면 권한이 있다 ([withCamera] 가 받고 나서 연다).
+        run {
             val controller = rememberCameraController(videoEnabled = true)
             val recorder = rememberVideoRecorder(
                 controller = controller,
@@ -523,13 +511,6 @@ fun ChatScreen(
                 avatar = avatar,
                 recording = recorder.recording,
                 preview = { CameraPreview(controller, Modifier.fillMaxSize()) },
-            )
-        } else {
-            GaitCaptureScreen(
-                onBack = { gaitCapture = false },
-                onRecord = startGaitRecording,
-                onPick = startGaitPicking,
-                avatar = avatar,
             )
         }
     }
@@ -807,6 +788,16 @@ private fun Float.percentText(): String = String.format("%.1f%%", this)
 
 private const val SCREEN_NOT_SET =
     "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+
+/**
+ * 카메라 권한을 거부했을 때.
+ *
+ * **시스템 카메라로 떨어질 수 없다.** 매니페스트에 `CAMERA` 를 선언한 앱은 그 권한이
+ * 없으면 `ACTION_IMAGE_CAPTURE` 조차 못 띄운다 — 안드로이드가 막는다. 그래서 대신
+ * 갤러리를 가리킨다. 그쪽은 권한 없이 된다.
+ */
+private const val CAMERA_DENIED =
+    "카메라 권한이 꺼져 있어요. 설정에서 켜거나, 갤러리에서 골라 주세요."
 
 /**
  * 말로 보행 분석을 부르는 표현들.
