@@ -62,14 +62,33 @@ fun GuideFrameScreen(
     photo: Bitmap,
     onCancel: () -> Unit,
     onConfirm: (FloatArray) -> Unit,
+    /**
+     * 앱 안 카메라의 가이드에 맞춰 찍었으면 **그 네모에서 시작한다.**
+     *
+     * 맞춰 찍었는데 확인 화면이 자기 기본값에서 시작하면 다시 맞춰야 한다 — 두 번
+     * 일하는 셈이고, 무엇보다 "가이드가 소용없었다" 로 읽힌다. 갤러리에서 고른
+     * 사진은 맞춰 찍은 적이 없으므로 null 이고, 그때만 기본값에서 시작한다.
+     */
+    guided: Boolean = false,
 ) {
     // 정규화 [x, y, w, h]. 저쪽 데모의 시작값과 같다.
     //
     // ⚠️ w 와 h 는 **각 축 기준**이라 w = h 로 두면 16:9 사진에서 납작해진다.
     //    원본 픽셀 기준 정사각이 되려면 세로에 가로/세로 비를 곱해야 한다.
     val aspect = photo.width.toFloat() / photo.height.toFloat()
-    var w by remember { mutableStateOf(minOf(0.44f, 0.95f / aspect)) }
-    var box by remember { mutableStateOf(Offset(0.28f, 0.28f)) }
+    var w by remember {
+        mutableStateOf(
+            if (guided) Band.CAPTURE_WIDTH else minOf(0.44f, 0.95f / aspect),
+        )
+    }
+    var box by remember {
+        val width = if (guided) Band.CAPTURE_WIDTH else minOf(0.44f, 0.95f / aspect)
+        val height = (width * aspect).coerceAtMost(1f)
+        // 찍을 때의 네모는 화면 한가운데였다. 같은 자리에서 시작한다.
+        mutableStateOf(
+            if (guided) Offset((1f - width) / 2f, (1f - height) / 2f) else Offset(0.28f, 0.28f),
+        )
+    }
     val h = (w * aspect).coerceAtMost(1f)
 
     val centerOff = maxOf(abs(box.x + w / 2f - 0.5f), abs(box.y + h / 2f - 0.5f))
@@ -220,10 +239,18 @@ private fun GuideButton(label: String, fill: Color, ink: Color, onClick: () -> U
  * 여기 숫자는 그 판단을 화면에서 미리 보여 주려고 옮겨 온 사본이라,
  * 저쪽이 바꾸면 같이 바꿔야 한다.
  */
-private object Band {
+internal object Band {
     private val RECOMMEND = 0.34f..0.56f
     private val ALLOW = 0.28f..0.68f
     private const val CENTER_MAX = 0.10f
+
+    /**
+     * 찍을 때 보여 줄 네모의 가로 비율. 권장 밴드의 한가운데다.
+     *
+     * **여기서 따로 정하지 않는다.** 찍을 때의 안내와 찍고 나서의 판정이 다른 숫자를
+     * 쓰면, 가이드에 맞춰 찍었는데 "너무 작아요" 가 뜬다.
+     */
+    val CAPTURE_WIDTH = (RECOMMEND.start + RECOMMEND.endInclusive) / 2f
 
     data class Hint(val text: String, val bad: Boolean)
 
