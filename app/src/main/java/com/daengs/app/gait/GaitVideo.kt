@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -62,17 +61,15 @@ object GaitVideo {
         }
 
     /**
-     * 카메라 앱에 넘길 자리. `content://` 여야 한다 — 사진과 같은 이유다
-     * ([Photo.cameraTarget][com.daengs.app.screening.Photo.cameraTarget] 주석).
+     * 앱 안 카메라(CameraX)가 찍어 넣을 자리. `content://` 가 아니라 파일이다.
      *
      * 사진이 쓰는 `camera/` 폴더를 **그대로 쓴다.** 파일 이름만 다르다 —
      * `res/xml/file_paths.xml` 이 그 한 폴더만 열어 두고 있어서, 다른 폴더를
      * 쓰려면 FileProvider 범위를 넓혀야 한다. 넓힐 이유가 없다.
      */
-    fun cameraTarget(context: Context): Uri {
+    fun cameraFile(context: Context): File {
         val dir = File(context.cacheDir, "camera").apply { mkdirs() }
-        val file = File(dir, "gait.mp4")
-        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        return File(dir, "gait.mp4")
     }
 
     private fun Bitmap.scaledToFit(edge: Int): Bitmap {
