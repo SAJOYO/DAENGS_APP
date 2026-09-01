@@ -29,6 +29,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,6 +86,11 @@ fun GaitCompareScreen(
 ) {
     BackHandler(onBack = onBack)
 
+    // **두 편을 한 단추로 같이 돌린다.** 따로 돌리게 두면 한쪽을 보는 동안 다른
+    // 쪽이 멈춰 있어서, 나란히 놓은 뜻이 없어진다 — 이 화면이 하려는 일이
+    // "같은 순간의 두 시점" 이라 둘이 같이 움직여야 눈이 비교를 한다.
+    var playing by remember { mutableStateOf(false) }
+
     Column(
         modifier
             .fillMaxSize()
@@ -101,7 +110,13 @@ fun GaitCompareScreen(
             // 두 기둥과 그 사이의 VS. 폭을 반씩 나눠서 크기로 순서를 안 준다 —
             // 한쪽을 크게 그리면 그쪽이 기준처럼 보인다.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ComparePillar(comparison.recent, "최근 기록", accent = true, modifier = Modifier.weight(1f))
+                ComparePillar(
+                    comparison.recent,
+                    "최근 기록",
+                    accent = true,
+                    playing = playing,
+                    modifier = Modifier.weight(1f),
+                )
                 Box(
                     Modifier.width(46.dp).padding(horizontal = 5.dp),
                     contentAlignment = Alignment.Center,
@@ -116,7 +131,25 @@ fun GaitCompareScreen(
                         )
                     }
                 }
-                ComparePillar(comparison.past, "비교 기록", accent = false, modifier = Modifier.weight(1f))
+                ComparePillar(
+                    comparison.past,
+                    "비교 기록",
+                    accent = false,
+                    playing = playing,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            // 둘 다 재생. 한쪽이라도 파일이 있어야 의미가 있다 — 표본끼리
+            // 비교하면 돌릴 것이 없으므로 단추를 감춘다.
+            if (comparison.recent.video != null || comparison.past.video != null) {
+                GaitActionButton(
+                    if (playing) DaengsIcon.Close else DaengsIcon.Play,
+                    if (playing) "둘 다 멈춤" else "둘 다 재생",
+                    { playing = !playing },
+                    Modifier.fillMaxWidth(),
+                    accent = playing,
+                )
             }
 
             VerdictBanner(comparison.verdict)
@@ -169,6 +202,7 @@ private fun ComparePillar(
     record: GaitRecord,
     label: String,
     accent: Boolean,
+    playing: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -189,7 +223,13 @@ private fun ComparePillar(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(record.dateLabel, color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            GaitThumbnail(record, Modifier.fillMaxWidth().aspectRatio(3f / 4f), showLength = false)
+            // 칸이 좁아 컨트롤을 끈다. 재생은 위의 단추가 둘을 같이 몬다.
+            GaitVideoPlayer(
+                record,
+                Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                playing = playing,
+                controls = false,
+            )
             Text(record.lengthLabel, color = TextMuted, fontSize = 12.sp)
         }
     }

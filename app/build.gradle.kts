@@ -116,6 +116,11 @@ dependencies {
     implementation(libs.naver.map.sdk)
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.serialization.json)
+    // 보행 영상 재생. **시스템 플레이어로 던지지 않는다** — 이 기능의 요점이
+    // "같은 아이의 두 시점을 나란히 본다" 라, 앱 밖으로 나가면 한 번에 한 편씩만
+    // 보게 되어 비교가 안 된다.
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)

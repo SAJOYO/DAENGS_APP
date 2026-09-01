@@ -97,7 +97,10 @@ fun GaitDetailScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            GaitThumbnail(record, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
+            // 상세는 **영상을 보러 오는 화면**이라 표지가 아니라 재생기를 놓는다.
+            // 컨트롤을 켜서 되감기·일시정지를 손으로 할 수 있게 한다 — 걸음 한
+            // 주기를 다시 보려면 되감기가 있어야 한다.
+            GaitVideoPlayer(record, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
 
             DetailSection("분석 상태") {
                 // 네 단계 다 끝난 뒤에만 열리는 화면이라 전부 완료로 그린다.
