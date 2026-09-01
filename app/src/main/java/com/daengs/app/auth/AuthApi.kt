@@ -65,13 +65,36 @@ object AuthApi {
             }
         }
 
-    /** 지금 로그인한 회원. 토큰이 실제로 먹히는지 확인하는 데 쓴다. */
-    suspend fun me(accessToken: String): Result<String> =
+    /** 지금 로그인한 회원. 토큰이 실제로 먹히는지 확인하는 데도 쓴다. */
+    suspend fun me(accessToken: String): Result<AppMe> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val conn = open("/auth/app/me", "GET")
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
-                conn.use { it.readJson() }.getString("app_user_id")
+                conn.use { it.readJson() }.toAppMe()
+            }
+        }
+
+    /**
+     * 미니룸 이름표를 정한다.
+     *
+     * **null 을 보내면 되돌린다** — 다시 대표 강아지 이름을 따라간다. 서버도 빈
+     * 문자열을 안 받는다: "아직 안 정했다" 와 "정해서 지웠다" 가 같은 값이 되면
+     * 무엇을 그릴지 못 정한다.
+     */
+    suspend fun setRoomName(accessToken: String, name: String?): Result<AppMe> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject().apply {
+                    put("room_name", name?.trim()?.takeIf(String::isNotEmpty) ?: JSONObject.NULL)
+                }.toString()
+                val conn = open("/auth/app/me", "PATCH")
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                conn.use { it.send(body); it.readJson() }.toAppMe()
+            }.recoverCatching { cause ->
+                // 서버가 준 문장은 그대로 통과시킨다 (failIfNotOk 가 IllegalStateException).
+                if (cause is IllegalStateException) throw cause
+                throw IllegalStateException("서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
             }
         }
 
@@ -104,6 +127,12 @@ object AuthApi {
                 throw IllegalStateException("서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
             }
         }
+
+    private fun JSONObject.toAppMe(): AppMe = AppMe(
+        appUserId = getString("app_user_id"),
+        // 없으면 아직 안 정한 것이다. 서버가 대신 지어 주지 않는다.
+        roomName = if (isNull("room_name")) null else optString("room_name").takeIf { it.isNotBlank() },
+    )
 
     // -- 아래는 배관 -------------------------------------------------------
 

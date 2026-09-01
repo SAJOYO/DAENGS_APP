@@ -22,6 +22,7 @@ object HomeDemoData {
      * 상단바 얼굴과 방 안 강아지가 따로 놓지 않는다.
      */
     val DOG_BREED = DogBreed.TOY_POODLE_LIGHT_BROWN
+    /** @Preview 전용. 진짜 이름표는 계정에 저장되고 [roomLabel] 이 정한다. */
     const val ROOM_LABEL = "네옹이네"
 
     const val TODAY_NOTE = "산책 가기 좋은 날!"

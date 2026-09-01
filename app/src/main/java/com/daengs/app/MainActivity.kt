@@ -97,6 +97,11 @@ class MainActivity : ComponentActivity() {
 
                 /** 홈 카드의 오늘치. null 은 **아직 못 읽은 것**이라 카드가 `-` 로 둔다. */
                 var todayWalks by remember { mutableStateOf<WalkDayTotals?>(null) }
+                // 방 이름표. **null 은 아직 안 정했거나 못 받아온 것**이고, 그때
+                // 화면이 대표 강아지 이름으로 짓는다.
+                var roomName by remember { mutableStateOf<String?>(null) }
+                var renameBusy by remember { mutableStateOf(false) }
+                var renameError by remember { mutableStateOf<String?>(null) }
 
                 /**
                  * 홈이 다시 보일 때마다 오늘치를 다시 읽는다.
@@ -128,10 +133,14 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(session) {
                     if (session == null) {
                         pets.forget()
+                        // 남의 방 이름표가 남으면 안 된다. 로그아웃하면 지어진 이름으로.
+                        roomName = null
                         return@LaunchedEffect
                     }
                     val token = freshToken() ?: return@LaunchedEffect
                     pets.refresh(token)
+                    // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
+                    AuthApi.me(token).onSuccess { roomName = it.roomName }
                     if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
                     // 로그인 직후. **새 폰이면 여기서 지난 산책이 되돌아온다.**
                     walkRuntime.sync.syncOnce(token)
@@ -223,6 +232,30 @@ class MainActivity : ComponentActivity() {
                             scope.launch {
                                 val token = freshToken() ?: return@launch
                                 pets.choosePrimary(token, pet.id)
+                            }
+                        },
+                        roomName = roomName,
+                        renameBusy = renameBusy,
+                        renameError = renameError,
+                        onDismissRename = { renameError = null },
+                        onRenameRoom = if (session == null) {
+                            null
+                        } else {
+                            { name ->
+                                renameBusy = true
+                                renameError = null
+                                scope.launch {
+                                    val token = freshToken()
+                                    if (token == null) {
+                                        renameBusy = false
+                                        renameError = "다시 로그인해 주세요."
+                                        return@launch
+                                    }
+                                    AuthApi.setRoomName(token, name)
+                                        .onSuccess { roomName = it.roomName }
+                                        .onFailure { renameError = it.message }
+                                    renameBusy = false
+                                }
                             }
                         },
                         deletePetBusy = pets.busy,

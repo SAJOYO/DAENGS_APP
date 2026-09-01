@@ -115,6 +115,16 @@ fun HomeScreen(
     onAddPet: (() -> Unit)? = null,
     onEditPet: ((Pet) -> Unit)? = null,
     onPickPrimary: ((Pet) -> Unit)? = null,
+    /**
+     * 방 앞 이름표. **null 이면 아직 안 정한 것**이고, 그때 대표 강아지 이름으로
+     * 짓는다 ([defaultRoomLabel]).
+     */
+    roomName: String? = null,
+    /** 이름표를 정한다. null 을 주면 되돌린다. 로그인 전이면 null 이라 안 눌린다. */
+    onRenameRoom: ((String?) -> Unit)? = null,
+    renameBusy: Boolean = false,
+    renameError: String? = null,
+    onDismissRename: (() -> Unit)? = null,
     /** 지우기. **그 아이와만 나간 산책 기록도 같이 지워진다.** */
     onDeletePet: ((Pet) -> Unit)? = null,
     deletePetBusy: Boolean = false,
@@ -204,6 +214,7 @@ fun HomeScreen(
         if (bottomTab == BottomTab.My) {
             MyScreen(
                 breed = profileBreed,
+                roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
                 pets = pets,
                 canAddMore = canAddMore,
                 onAddPet = { onAddPet?.invoke() },
@@ -246,6 +257,12 @@ fun HomeScreen(
                 onOpenWalk = onOpenWalk,
                 profileBreed = profileBreed,
                 onPickProfile = { devBreed = it },
+                roomName = roomName,
+                defaultLabel = defaultRoomLabel(pets?.firstOrNull { it.isPrimary }?.name),
+                onRenameRoom = onRenameRoom,
+                renameBusy = renameBusy,
+                renameError = renameError,
+                onDismissRename = onDismissRename,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -287,6 +304,14 @@ private fun RoomSection(
     onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
+    roomName: String?,
+    /** 사용자가 안 정했을 때 걸리는 이름. 대표 강아지에서 지은 값이다. */
+    defaultLabel: String,
+    onRenameRoom: ((String?) -> Unit)?,
+    renameBusy: Boolean,
+    renameError: String?,
+    onDismissRename: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -294,6 +319,16 @@ private fun RoomSection(
     // 턴테이블 판. 방을 덮지 않고 아래에서 올라온다 — 이 방의 전축을 튼 것이라
     // 방과 턴테이블이 계속 보여야 그 맥락이 산다.
     var turntableOpen by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    // 저장을 눌렀는지. **성공했을 때만 창을 닫으려고** 둔다 — 실패했는데 닫히면
+    // 사용자는 저장된 줄 알고 나간다.
+    var renameSubmitted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(renameBusy) {
+        if (!renameSubmitted || renameBusy) return@LaunchedEffect
+        renameSubmitted = false
+        if (renameError == null) renaming = false
+    }
     var breedOverride by remember { mutableStateOf<DogBreed?>(null) }
     // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
     // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
@@ -386,7 +421,9 @@ private fun RoomSection(
         }
 
         NamePlate(
-            label = HomeDemoData.ROOM_LABEL,
+            label = roomName?.trim()?.takeIf(String::isNotEmpty) ?: defaultLabel,
+            // 로그인 전에는 못 누른다 — 고쳐도 저장할 곳이 없다.
+            onClick = onRenameRoom?.let { { renaming = true } },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset {
@@ -404,6 +441,23 @@ private fun RoomSection(
                     )
                 },
         )
+
+        if (renaming && onRenameRoom != null) {
+            RoomNameDialog(
+                current = roomName,
+                fallback = defaultLabel,
+                busy = renameBusy,
+                error = renameError,
+                onConfirm = {
+                    renameSubmitted = true
+                    onRenameRoom(it)
+                },
+                onDismiss = {
+                    renaming = false
+                    onDismissRename?.invoke()
+                },
+            )
+        }
 
         // 선택된 가구 위에 뜨는 버튼. 캔버스가 아니라 오버레이라 터치·그림자가 공짜다.
         val selected = state.items.firstOrNull { it.instanceId == state.selectedId }
