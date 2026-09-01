@@ -482,11 +482,16 @@ private fun CardDetailSheet(
         color = Color(0xDE1C1614),
         modifier = modifier,
     ) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-        ) {
+        // 카드 한가운데에 앉힌다. 위에 붙여 두면 아래가 휑하게 남는다.
+        //
+        // 스크롤을 감싸는 상자가 카드 크기를 잡아 주므로, 글이 길어지면 그 안에서
+        // 스크롤되고 짧으면 가운데로 모인다.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+            ) {
             Text(card.tagline, color = card.accent, fontSize = 13.sp, lineHeight = 19.sp)
             Spacer(Modifier.height(4.dp))
             Text(
@@ -546,11 +551,12 @@ private fun CardDetailSheet(
             // **넘기기를 여기 둔다.** 설명이 열리면 카드 옆 ‹ › 는 가려지므로, 설명을
             // 보면서 다음 카드로 가려면 이 줄이 있어야 한다 (웹판도 같다).
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SheetAction("‹ 이전", onPrev)
-                Spacer(Modifier.size(10.dp))
-                SheetAction("다음 ›", onNext)
-                Spacer(Modifier.weight(1f))
-                SheetAction("닫기", onClose)
+                    SheetAction("‹ 이전", onPrev)
+                    Spacer(Modifier.size(10.dp))
+                    SheetAction("다음 ›", onNext)
+                    Spacer(Modifier.weight(1f))
+                    SheetAction("닫기", onClose)
+                }
             }
         }
     }
