@@ -24,7 +24,16 @@ class WalkHistory(private val log: WalkFixLog) {
      * 아직 정하지 않은 별개 문제다.
      */
     suspend fun finished(): List<WalkSummary> = withContext(Dispatchers.IO) {
-        log.finishedSessions().map { session -> summarize(session, log.fixes(session.id)) }
+        log.finishedSessions()
+            .map { session -> summarize(session, log.fixes(session.id)) }
+            // **옛 기록도 지금 기준으로 다시 본다.** 이 규칙([countsAsWalk])이 생기기
+            // 전에 쌓인 0m 짜리가 목록에 남아 있으면, "너무 짧아서 기록하지 않았어요"
+            // 라고 말해 놓고 목록에는 0m 이 보이는 앞뒤 안 맞는 화면이 된다.
+            //
+            // 요약을 저장하지 않는 것과 같은 원칙이다 — 규칙이 바뀌면 지난 기록도
+            // 같이 바뀌는 것이 맞다. **지우지는 않는다.** 원본은 그대로 있어서
+            // 문턱값을 낮추면 다시 보인다.
+            .filter { it.countsAsWalk }
     }
 
     /**

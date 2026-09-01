@@ -103,6 +103,23 @@ class WalkHistoryTest {
     }
 
     /**
+     * 산책으로 안 치는 옛 기록은 목록에도 안 나온다.
+     *
+     * 규칙([countsAsWalk])이 생기기 전에 쌓인 0m 짜리가 목록에 남아 있으면,
+     * "너무 짧아서 기록하지 않았어요" 라고 말해 놓고 목록에는 0m 이 보이는 앞뒤 안
+     * 맞는 화면이 된다. **지우지는 않는다** — 원본은 그대로 있다.
+     */
+    @Test
+    fun `산책으로 안 치는 옛 기록은 목록에서 빠진다`() = runBlocking {
+        walked("real", startedAt = 1_000L, meters = 400.0, seconds = 600)
+        walked("stub", startedAt = 5_000L, meters = 2.0, seconds = 5)
+
+        assertEquals(listOf("real"), history.finished().map { it.sessionId })
+        // 지운 것이 아니다. 원본은 남아 있다.
+        assertNotNull(log.session("stub"))
+    }
+
+    /**
      * 좌표 둘을 [meters] 만큼 떼어 [seconds] 초에 걸쳐 남긴 산책 하나.
      *
      * 위도 0.001° 가 약 111m 다. [TrailRecorder] 의 문턱값(최소 3m · 최대 점프 200m)
