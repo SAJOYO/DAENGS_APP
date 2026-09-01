@@ -603,13 +603,23 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
     }
 }
 
+/**
+ * AI 쪽 말풍선. **여기서만** [assistantMarkdown] 을 부른다 — 이 화면의 다른 텍스트
+ * (내 말풍선, 구조화 카드)는 서버 자유 텍스트가 아니라 마크다운을 볼 이유가 없다.
+ */
 @Composable
 private fun AssistantBubble(text: String, avatar: DogBreed?) {
     Row(verticalAlignment = Alignment.Top) {
         ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
-            Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(14.dp))
+            Text(
+                assistantMarkdown(text),
+                color = TextDark,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(14.dp),
+            )
         }
     }
 }
