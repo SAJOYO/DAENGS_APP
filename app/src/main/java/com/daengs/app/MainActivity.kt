@@ -306,6 +306,13 @@ class MainActivity : ComponentActivity() {
                                         store.clear()
                                         roomStore.clear()
                                         pets.forget()
+                                        // **산책 좌표도 지운다.** 서버는 탈퇴에서
+                                        // 산책까지 지우는데 폰의 Room 에는 원본이
+                                        // 남아 있었다 — 경로는 집과 생활권을 그대로
+                                        // 드러내는 값이라, 그걸 두고 "계정을 지우면
+                                        // 데이터도 지운다" 고 할 수 없다.
+                                        walkRuntime.history.forgetEverything()
+                                        todayWalks = walkRuntime.history.todayTotals()
                                         session = null
                                         screen = Screen.Landing
                                     }

@@ -67,6 +67,18 @@ interface WalkDao {
     @Query("DELETE FROM walk_session_dog WHERE dogId = :dogId")
     suspend fun unlinkDog(dogId: String)
 
+    /**
+     * 이 기기의 산책을 **전부** 지운다. 탈퇴할 때 부른다.
+     *
+     * 서버는 탈퇴에서 개인정보를 파기하고 산책도 `ON DELETE CASCADE` 로 지우는데,
+     * 폰의 Room 에는 원본 좌표가 그대로 남아 있었다. **산책 경로는 집과 생활권을
+     * 그대로 드러낸다** — 그걸 두고 "계정을 지우면 데이터도 지운다" 고 할 수는 없다.
+     *
+     * 좌표와 강아지 연결은 외래키가 같이 지운다.
+     */
+    @Query("DELETE FROM walk_session")
+    suspend fun deleteAllSessions()
+
     @Query("SELECT * FROM walk_session WHERE id = :sessionId")
     suspend fun session(sessionId: String): WalkSessionRow?
 
