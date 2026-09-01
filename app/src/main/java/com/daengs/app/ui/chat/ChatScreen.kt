@@ -330,17 +330,6 @@ fun ChatScreen(
                     "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.\n답변 데이터 연결은 준비 중이에요.",
                     avatar,
                 )
-                Text("추천 질문", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                HomeDemoData.SUGGESTIONS.take(2).forEach { question ->
-                    Surface(
-                        color = CardWhite,
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, PinkSoft),
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { draft = question },
-                    ) {
-                        Text(question, color = TextDark, fontSize = 14.sp, modifier = Modifier.padding(14.dp))
-                    }
-                }
             } else {
                 entries.forEach { entry ->
                     when (entry) {
