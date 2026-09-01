@@ -1,6 +1,7 @@
 package com.daengs.app.assistant
 
 import com.daengs.app.BuildConfig
+import com.daengs.app.location.GeoPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -23,14 +24,22 @@ object AssistantApi {
     val configured: Boolean
         get() = BuildConfig.API_BASE_URL.isNotBlank()
 
-    suspend fun query(accessToken: String, text: String): Result<AssistantResponse> =
+    /**
+     * @param where 지금 있는 곳. **없어도 된다** — 위치가 필요 없는 질문이 대부분이고,
+     *   좌표를 못 구했다고 질문까지 막으면 안 된다.
+     */
+    suspend fun query(
+        accessToken: String,
+        text: String,
+        where: GeoPoint? = null,
+    ): Result<AssistantResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
                 check(configured) { "서버 주소가 없습니다. local.properties 의 daengs.apiBaseUrl 을 채우세요." }
                 val conn = open()
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
                 conn.use {
-                    it.send(requestBody(text))
+                    it.send(requestBody(text, where))
                     AssistantResponse.parse(it.readJson())
                 }
             }.recoverCatching { cause ->
@@ -41,9 +50,32 @@ object AssistantApi {
             }
         }
 
-    /** 지금 보내는 건 질문 한 줄뿐이다. `requested_capability` 등은 넣지 않는다 —
-     * 이 카드의 목적이 서버 의미 라우터에게 자연어 해석을 그대로 맡기는 것이다. */
-    internal fun requestBody(text: String): String = JSONObject().put("query", text).toString()
+    /**
+     * 보내는 것은 **질문과 (있으면) 좌표뿐**이다.
+     *
+     * `requested_capability` 는 넣지 않는다 — 자연어 해석은 서버 의미 라우터에게
+     * 그대로 맡긴다. `active_dog_id` 도 안 넣는다. 서버가 받아 주기는 하지만 아직
+     * 아무 기능도 그 값을 쓰지 않아서, 보내면 쓰이는 줄 알고 나중에 헷갈린다.
+     *
+     * ⚠️ **서버 스키마가 `extra="forbid"` 다.** 모르는 칸이 하나라도 있으면 422 로
+     * 질문이 통째로 죽는다. 그래서 좌표가 없을 때 `location: null` 을 넣지 않고
+     * **칸 자체를 뺀다.**
+     */
+    internal fun requestBody(text: String, where: GeoPoint?): String =
+        JSONObject().put("query", text).apply {
+            where?.takeIf { it.inKorea() }?.let {
+                put("location", JSONObject().put("lat", it.latitude).put("lon", it.longitude))
+            }
+        }.toString()
+
+    /**
+     * 서버가 받아 주는 범위인가 (`lat` 33~39, `lon` 124~132).
+     *
+     * 밖이면 422 다. 위치는 곁들이는 정보고 질문이 본체이므로, 범위 밖이면
+     * **좌표만 빼고 질문은 보낸다.** 비행기 안이나 해외에서도 훈련 질문은 돼야 한다.
+     */
+    private fun GeoPoint.inKorea(): Boolean =
+        latitude in 33.0..39.0 && longitude in 124.0..132.0
 
     private fun open(): HttpURLConnection {
         val conn = URL(BuildConfig.API_BASE_URL.trimEnd('/') + "/assistant/query")
@@ -65,13 +97,32 @@ object AssistantApi {
 
     private fun HttpURLConnection.readJson(): JSONObject {
         if (responseCode !in 200..299) {
+            // ⚠️ **오류 본문이 JSON 이 아닐 수 있다.** nginx 가 `proxy_read_timeout`
+            //    (60초)에 걸리면 **HTML 504 페이지**를 준다. 그걸 JSONObject 에
+            //    넣으면 파싱이 터지고, 사용자는 "AI 서버에 닿지 못했어요" 라는
+            //    엉뚱한 말을 본다 — 실제로는 닿았고 서버가 오래 걸린 것이다.
             val detail = runCatching {
                 JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
             }.getOrNull()
-            error(if (detail.isNullOrBlank()) "AI 서버 오류 ($responseCode)" else detail)
+            error(
+                when {
+                    !detail.isNullOrBlank() -> detail
+                    responseCode in 502..504 -> SLOW
+                    else -> "AI 서버 오류 ($responseCode)"
+                },
+            )
         }
         return JSONObject(inputStream.bufferedReader().use { it.readText() })
     }
+
+    /**
+     * 서버가 제 시간에 못 끝냈을 때.
+     *
+     * 게이트웨이(nginx)가 60초에 끊으면 502~504 가 온다. **닿지 못한 것이 아니라
+     * 오래 걸린 것**이라 문구를 갈라 준다 — 사용자가 통신 문제로 오해하면 와이파이를
+     * 만지러 간다.
+     */
+    private const val SLOW = "답을 만드는 데 오래 걸리고 있어요. 조금 뒤에 다시 물어봐 주세요."
 
     private inline fun <T> HttpURLConnection.use(body: (HttpURLConnection) -> T): T =
         try {
@@ -81,5 +132,15 @@ object AssistantApi {
         }
 
     private const val CONNECT_TIMEOUT_MS = 10_000
-    private const val READ_TIMEOUT_MS = 60_000
+    /**
+     * 읽기 제한.
+     *
+     * 서버 최악은 의미 라우터(최대 30초) + 스키마 실패 시 **재시도 1회** + 능력
+     * 실행(임베딩·pgvector·생성)이라 60초를 넘길 수 있다. 60초로 두면 그때
+     * 우리가 먼저 끊어서, 서버는 답을 만들었는데 앱만 실패로 보게 된다.
+     *
+     * 게이트웨이(nginx)가 60초에 끊으므로 대개는 저쪽이 먼저 502~504 를 준다.
+     * 그 응답을 받아서 [SLOW] 로 말해 주려면 우리가 그보다 늦게 끊어야 한다.
+     */
+    private const val READ_TIMEOUT_MS = 90_000
 }

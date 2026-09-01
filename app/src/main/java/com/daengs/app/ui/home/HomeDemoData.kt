@@ -37,12 +37,6 @@ object HomeDemoData {
     /** 제목만 고정이다. 내용은 날씨를 따른다 ([homeWeatherWords]). */
     const val DAILY_WORD_TITLE = "오늘의 한 마디"
 
-    val SUGGESTIONS = listOf(
-        "오늘 산책 언제가 좋을까?",
-        "강아지 더위 주의사항 알려줘!",
-        "간식 추천해줘!",
-    )
-
     /** 카드의 한 칸. 값은 [com.daengs.app.walk.WalkDayTotals] 에서 오지 여기 박혀 있지 않다. */
     data class WalkStat(val icon: DaengsIcon, val value: String, val label: String)
 
