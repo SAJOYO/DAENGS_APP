@@ -158,14 +158,14 @@ class GaitModelsTest {
         val before = holder.records.size
         val seen = mutableListOf<Int>()
 
-        val made = holder.analyze(PreparedVideo(Uri.EMPTY, seconds = 14, thumbnail = null)) {
+        val made = holder.analyze(PreparedVideo(Uri.EMPTY, seconds = 24, thumbnail = null)) {
             seen += it.done
         }
 
         requireNotNull(made)
         assertEquals(before + 1, holder.records.size)
         assertEquals(made.id, holder.records.first().id)
-        assertEquals(14, made.seconds)
+        assertEquals(24, made.seconds)
         assertTrue(made.comparable)
         // 0(시작)부터 4(완료)까지 빠짐없이 올라온다.
         assertEquals(listOf(0, 1, 2, 3, 4), seen)
@@ -305,10 +305,12 @@ class GaitModelsTest {
 
     @Test
     fun `앱이 직접 잰 길이가 권장보다 짧을 때만 길이 이야기를 한다`() {
-        assertTrue(record("a", seconds = 6).summaryLines().any { it.contains("10초 이상 찍으면") })
-        assertFalse(record("b", seconds = 62).summaryLines().any { it.contains("10초 이상 찍으면") })
+        val short = GaitRecord.RECOMMENDED_SECONDS - 1
+        val long = GaitRecord.RECOMMENDED_SECONDS + 1
+        assertTrue(record("a", seconds = short).summaryLines().any { it.contains("걷는 모습이") })
+        assertFalse(record("b", seconds = long).summaryLines().any { it.contains("걷는 모습이") })
         // 서버 목록에서 온 기록은 길이를 모른다 — 모르면 아무 말도 안 한다.
-        assertFalse(record("c", seconds = null).summaryLines().any { it.contains("10초 이상 찍으면") })
+        assertFalse(record("c", seconds = null).summaryLines().any { it.contains("걷는 모습이") })
     }
 
     @Test
@@ -345,5 +347,25 @@ class GaitModelsTest {
         // 9:16 로 찍힌 것이 1 보다 커지면(가로가 되면) 화면이 눕힌 것이다.
         assertTrue(record("a").copy(aspect = 9f / 16f).displayAspect < 1f)
         assertTrue(record("b").displayAspect < 1f)
+    }
+    // -- 권장 길이의 근거 -----------------------------------------------------
+    //
+    // 예전 값 10 은 근거 없이 정한 숫자였고, 저쪽 기준(§21 유효 80프레임 = 5fps
+    // 기준 16초치)보다도 짧아서 **안내를 지켜도 떨어지는 영상**이 나왔다.
+
+    @Test
+    fun `걷는 모습 기준은 유효 프레임에서 끌어낸다`() {
+        assertEquals(80, GaitRecord.MIN_VALID_FRAMES)
+        assertEquals(5, GaitRecord.ANALYSIS_FPS)
+        assertEquals(16, GaitRecord.MIN_WALKING_SECONDS)
+    }
+
+    @Test
+    fun `권장 촬영 길이는 걷는 모습 기준보다 넉넉해야 한다`() {
+        // 걷다 서는 구간이 늘 섞이므로, 기준과 같으면 지켜도 모자란다.
+        assertTrue(
+            "권장(${GaitRecord.RECOMMENDED_SECONDS})이 기준(${GaitRecord.MIN_WALKING_SECONDS})보다 커야 한다",
+            GaitRecord.RECOMMENDED_SECONDS > GaitRecord.MIN_WALKING_SECONDS,
+        )
     }
 }

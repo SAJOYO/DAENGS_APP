@@ -84,8 +84,31 @@ data class GaitRecord(
         get() = (aspect ?: PORTRAIT_ASPECT).coerceIn(MIN_ASPECT, MAX_ASPECT)
 
     companion object {
-        /** 권장 길이. 이보다 짧아도 막지 않는다 — 찍은 것을 버리게 하지 않는다. */
-        const val RECOMMENDED_SECONDS = 10
+        /**
+         * 저쪽이 요구하는 최소 **유효 프레임** (API.md §21).
+         *
+         * 영상 길이가 아니다. 강아지가 검출되고 "걷는 중" 으로도 판정된 프레임만
+         * 센다 — 59초(298프레임) 영상에서 검출 95, 유효 5 가 나온 적이 있다.
+         */
+        const val MIN_VALID_FRAMES = 80
+
+        /** 분석 fps. 저쪽이 영상을 이 간격으로 훑는다(overlay 도 같은 5fps). */
+        const val ANALYSIS_FPS = 5
+
+        /** 유효 프레임 80개는 **걷는 모습 16초치**다. 영상 길이와 다르다. */
+        const val MIN_WALKING_SECONDS = MIN_VALID_FRAMES / ANALYSIS_FPS
+
+        /**
+         * 사용자에게 권하는 촬영 길이.
+         *
+         * [MIN_WALKING_SECONDS] 보다 넉넉히 잡는다 — 걷다 서고 냄새 맡는 구간이
+         * 늘 섞여서, 찍은 길이가 그대로 유효 프레임이 되지 않는다. 얼마나 새는지는
+         * 그날 강아지에 달렸으므로 앱이 계산할 수 없고, 여유를 두는 수밖에 없다.
+         *
+         * **예전에는 10이었다.** 근거 없이 정한 숫자였고, 저쪽 기준의 16초치보다도
+         * 짧아서 안내를 지켜도 떨어지는 영상이 나왔다.
+         */
+        const val RECOMMENDED_SECONDS = 20
 
         /** 모를 때의 기본. 촬영 가이드가 세로라 세로로 친다 (3:4). */
         const val PORTRAIT_ASPECT = 3f / 4f
@@ -218,7 +241,10 @@ fun GaitRecord.summaryLines(): List<String> = buildList {
     // 안 담겨 와서 모른다. 그리고 이건 사유가 아니라 다음에 더 잘 찍는 요령이다.
     seconds?.let { secs ->
         if (secs < GaitRecord.RECOMMENDED_SECONDS) {
-            add("${GaitRecord.RECOMMENDED_SECONDS}초 이상 찍으면 걸음이 더 담겨요.")
+            add(
+                "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담겨야 해요. " +
+                    "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 찍으면 넉넉해요.",
+            )
         }
     }
 

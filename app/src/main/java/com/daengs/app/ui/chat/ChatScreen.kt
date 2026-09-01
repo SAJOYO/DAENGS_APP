@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
+import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.miniroom.art.DogBreed
@@ -775,7 +776,7 @@ private fun AiActionDialog(
                             // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
                             // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
                             Text(
-                                "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                                "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
                                 color = TextMuted,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -862,7 +863,7 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
                         RowSeparator()
                         Text(
-                            "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),

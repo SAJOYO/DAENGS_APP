@@ -108,7 +108,8 @@ fun GaitIntroCard(
         }
         Text(
             "뒤에서 걷는 모습이 잘 보이는 영상을 준비해주세요.\n" +
-                "${GaitRecord.RECOMMENDED_SECONDS}초 이상 권장해요.",
+                "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담기게, " +
+                    "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 찍어 주세요.",
             color = TextDark,
             fontSize = 13.sp,
             lineHeight = 20.sp,
@@ -117,7 +118,7 @@ fun GaitIntroCard(
             GaitActionButton(DaengsIcon.Video, "영상 촬영", onCapture, Modifier.weight(1f))
             GaitActionButton(DaengsIcon.VideoLibrary, "불러오기", onPick, Modifier.weight(1f))
         }
-        GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 이상 권장")
+        GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장")
     }
 }
 
