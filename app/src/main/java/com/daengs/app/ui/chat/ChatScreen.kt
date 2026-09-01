@@ -72,6 +72,7 @@ import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitVideo
+import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
@@ -174,6 +175,10 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 산책·날씨가 쓰는 것과 같은 위치원. 챗봇도 여기서 좌표를 얻는다 —
+    // 새 권한도 새 측위도 안 든다.
+    val fused = remember(context) { FusedLocationSource(context) }
 
     // 폰의 뒤로가기. **여기가 없으면 앱이 꺼진다** — 챗봇으로 오는 순간 [HomeScreen]
     // 이 컴포지션에서 빠지면서 그쪽 BackHandler 도 같이 사라지고, 뒤로가기가 아무도
@@ -311,17 +316,28 @@ fun ChatScreen(
      * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
      * 대화 기록도 안 보낸다 — v1 오케스트레이션은 상태가 없다.
      */
+    // 물어보는 중인가. **연타를 막는다** — 한 번이 의미 라우터 + 생성이라 값이 비싸고,
+    // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
+    var asking by remember { mutableStateOf(false) }
+
     val sendQuery: (String) -> Unit = { text ->
         entries += ChatEntry.Mine(text)
         val slot = entries.size
         entries += ChatEntry.Thinking
+        asking = true
         scope.launch {
             val token = accessTokenProvider()
             if (token == null) {
                 entries[slot] = ChatEntry.Failed("로그인이 필요해요. 다시 로그인해 주세요.")
+                asking = false
                 return@launch
             }
-            AssistantApi.query(token, text)
+            // 지금 있는 곳. **못 구해도 질문은 그냥 보낸다** — 위치가 필요한 질문은
+            // 일부고, 좌표 때문에 훈련 질문까지 막으면 안 된다. 서버는 위치가
+            // 필요한데 없으면 CLARIFY 로 되묻는데, 이어서 묻는 토큰이 없어서
+            // (무상태) 그 되묻기는 사용자에게 막다른 길이다. 그래서 미리 싣는다.
+            val where = runCatching { fused.currentLocation().point }.getOrNull()
+            AssistantApi.query(token, text, where)
                 .onSuccess { response ->
                     entries[slot] = ChatEntry.Theirs(response.bubbleMessage())
                     when (response.knownHandoff()) {
@@ -333,6 +349,7 @@ fun ChatScreen(
                     }
                 }
                 .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.") }
+            asking = false
         }
     }
 
@@ -429,9 +446,11 @@ fun ChatScreen(
         ChatInput(
             value = draft,
             onValueChange = { draft = it },
+            busy = asking,
             onSend = {
                 val text = draft.trim()
-                if (text.isNotEmpty()) {
+                // 물어보는 중에는 안 받는다 — 위 [asking] 주석.
+                if (text.isNotEmpty() && !asking) {
                     draft = ""
                     sendQuery(text)
                 }
@@ -1072,6 +1091,8 @@ private fun ChatInput(
     onSend: () -> Unit,
     onVoice: () -> Unit,
     onDiagnose: () -> Unit,
+    /** 물어보는 중인가. 보내기 단추를 눌러도 안 되는 상태를 **눈에도 보이게** 한다. */
+    busy: Boolean = false,
 ) {
     Surface(color = CardWhite, shadowElevation = 4.dp) {
         Row(
@@ -1103,9 +1124,12 @@ private fun ChatInput(
                 }
             }
             Spacer(Modifier.width(6.dp))
+            // 눌러도 아무 일이 없으면 고장으로 읽힌다. 잠긴 동안은 흐리게 둔다.
+            val sendable = value.isNotBlank() && !busy
             Box(
-                Modifier.size(48.dp).clip(RoundedCornerShape(50)).background(DaengPink)
-                    .clickable(enabled = value.isNotBlank(), onClick = onSend),
+                Modifier.size(48.dp).clip(RoundedCornerShape(50))
+                    .background(if (sendable) DaengPink else PinkSoft)
+                    .clickable(enabled = sendable, onClick = onSend),
                 contentAlignment = Alignment.Center,
             ) { DaengsIconView(DaengsIcon.Send, Modifier.size(22.dp), tint = CardWhite) }
         }
