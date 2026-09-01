@@ -43,6 +43,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.width
@@ -322,7 +325,25 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
             Modifier.systemBarsPadding().padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // 설명이 열리면 **카드를 죽인다.** 글씨가 포일 위에 얹히면 둘 다 안 읽힌다.
+            //
+            // 검은 사각형을 덮지 않고 투명도를 내린다 — 카드 그림은 모서리가 둥글게
+            // 뚫린 알파 이미지라, 사각형을 얹으면 그 뚫린 자리가 네모로 도드라진다.
+            // 바탕이 이미 어두워서 투명도만 내려도 어두워진다.
+            val cardAlpha by animateFloatAsState(
+                targetValue = if (showDetail) 0.5f else 1f,
+                animationSpec = tween(durationMillis = 180),
+                label = "cardDim",
+            )
+            // 바깥 상자가 **카드의 자리**다. 설명 시트가 이 상자를 꽉 채워서 카드와
+            // 정확히 같은 크기가 된다.
             Box(Modifier.fillMaxWidth()) {
+            // 죽는 것은 카드와 팝아웃뿐이다. 시트는 이 겹 밖에 있어서 안 죽는다.
+            //
+            // ⚠️ 투명도를 `rubbable` 과 **같은 사슬에 걸면 안 된다.** 그러면 탭이
+            // 안 먹혀서 카드를 눌렀을 때 뒤의 "밖을 눌러 닫기" 가 대신 발동한다 —
+            // 실기기에서 그렇게 나왔다. 겹을 따로 둔다.
+            Box(Modifier.fillMaxWidth().graphicsLayer { alpha = cardAlpha }) {
             HoloCard(
                 art = art,
                 foil = card.foil,
@@ -334,6 +355,18 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
             // 음수 좌표로 그린다. Compose 는 기본으로 안 자르므로 그대로 보인다.
             if (hero != null && card.pop != null) {
                 Canvas(Modifier.matchParentSize()) { drawPopOut(hero, card.pop.fit, popped) }
+            }
+            }
+
+            if (showDetail) {
+                CardDetailSheet(
+                    card = card,
+                    onPrev = { index = (index - 1 + DEX_CARDS.size) % DEX_CARDS.size },
+                    onNext = { index = (index + 1) % DEX_CARDS.size },
+                    onClose = { showDetail = false },
+                    // **카드와 같은 크기.** 카드 자리를 그대로 덮는다.
+                    modifier = Modifier.matchParentSize(),
+                )
             }
             }
             Spacer(Modifier.height(14.dp))
@@ -353,20 +386,6 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
                 // 안 알려 주면 아무도 두 번 안 누른다. 웹판에도 있던 힌트다.
                 Text("탭하여 상세보기", color = Color(0xFF9E8B84), fontSize = 12.sp)
             }
-        }
-
-        if (showDetail) {
-            CardDetailSheet(
-                card = card,
-                onPrev = { index = (index - 1 + DEX_CARDS.size) % DEX_CARDS.size },
-                onNext = { index = (index + 1) % DEX_CARDS.size },
-                onClose = { showDetail = false },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .systemBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 14.dp)
-                    .fillMaxWidth(),
-            )
         }
 
         Text(
@@ -458,7 +477,9 @@ private fun CardDetailSheet(
 ) {
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = Color(0xF21C1614),
+        // **살짝 비친다.** 뒤의 카드가 어렴풋이 보여야 "그 카드의 설명" 으로 읽힌다.
+        // 더 투명하게 하면 포일 위에서 글씨가 안 읽힌다 — 여기가 그 경계다.
+        color = Color(0xDE1C1614),
         modifier = modifier,
     ) {
         Column(
