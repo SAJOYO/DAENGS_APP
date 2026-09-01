@@ -35,6 +35,9 @@ enum class DaengsIcon {
 
     // 날씨. 해만 있으면 비 오는 날에도 해가 뜬다.
     Moon, CloudRain, CloudSnow,
+
+    // 보행 영상.
+    Video, VideoLibrary, Play, Chart, Compare, Check, Close, Trash, Bulb, Joint,
 }
 
 @Composable
@@ -70,6 +73,16 @@ fun DaengsIconView(
                 DaengsIcon.Gallery -> iconGallery(tint)
                 DaengsIcon.Sound -> iconSound(tint, on = true)
                 DaengsIcon.SoundOff -> iconSound(tint, on = false)
+                DaengsIcon.Video -> iconVideo(tint)
+                DaengsIcon.VideoLibrary -> iconVideoLibrary(tint)
+                DaengsIcon.Play -> iconPlay(tint)
+                DaengsIcon.Chart -> iconChart(tint)
+                DaengsIcon.Compare -> iconCompare(tint)
+                DaengsIcon.Check -> iconCheck(tint)
+                DaengsIcon.Close -> iconClose(tint)
+                DaengsIcon.Trash -> iconTrash(tint)
+                DaengsIcon.Bulb -> iconBulb(tint)
+                DaengsIcon.Joint -> iconJoint(tint)
             }
         }
     }
@@ -161,6 +174,117 @@ private fun DrawScope.iconGallery(tint: Color) {
         lineTo(16.4f, 12.8f); lineTo(19.6f, 16f); lineTo(19.6f, 17.4f); close()
     }
     drawPath(hill, tint)
+}
+
+/** 영상 촬영. 몸통에 재생 삼각형 하나. */
+private fun DrawScope.iconVideo(tint: Color) {
+    drawRoundRect(tint, Offset(2.6f, 5.4f), Size(18.8f, 13.2f), CornerRadius(3.4f, 3.4f), style = Stroke(1.9f))
+    val play = Path().apply {
+        moveTo(9.8f, 8.6f); lineTo(15.6f, 12f); lineTo(9.8f, 15.4f); close()
+    }
+    drawPath(play, tint)
+}
+
+/**
+ * 영상 불러오기. 뒤에 한 장이 더 겹쳐 있어 **여럿 중 하나 고르기**로 읽힌다.
+ *
+ * 촬영 아이콘과 몸통이 같아서, 겹친 장이 없으면 21dp 에서 둘이 구분되지 않는다.
+ * 앞 장은 흰색으로 한 번 채워 뒤 장을 가린다 ([iconHome] 의 문과 같은 방법).
+ */
+private fun DrawScope.iconVideoLibrary(tint: Color) {
+    drawRoundRect(tint, Offset(6.4f, 2.8f), Size(15f, 10.8f), CornerRadius(3f, 3f), style = Stroke(1.9f))
+    drawRoundRect(Color.White, Offset(2.6f, 7.6f), Size(15f, 13f), CornerRadius(3f, 3f))
+    drawRoundRect(tint, Offset(2.6f, 7.6f), Size(15f, 13f), CornerRadius(3f, 3f), style = Stroke(1.9f))
+    val play = Path().apply {
+        moveTo(8.2f, 10.6f); lineTo(13.2f, 14.1f); lineTo(8.2f, 17.6f); close()
+    }
+    drawPath(play, tint)
+}
+
+/**
+ * 재생. 썸네일 한가운데 얹는 삼각형이라 **테두리 원을 안 그린다** — 원은 화면이
+ * 흰 동그라미로 따로 깔고, 여기서 또 그리면 두 겹이 된다.
+ */
+private fun DrawScope.iconPlay(tint: Color) {
+    val p = Path().apply {
+        moveTo(8.4f, 5.4f); lineTo(18.6f, 12f); lineTo(8.4f, 18.6f); close()
+    }
+    drawPath(p, tint)
+}
+
+/** 결과 보기. 막대 셋. 높이가 다 달라야 "재 놓은 것" 으로 읽힌다. */
+private fun DrawScope.iconChart(tint: Color) {
+    listOf(4.4f to 14.4f, 10.2f to 7.4f, 16f to 11.2f).forEach { (x, top) ->
+        drawRoundRect(tint, Offset(x, top), Size(3.6f, 19.6f - top), CornerRadius(1.5f, 1.5f))
+    }
+}
+
+/** 비교. 위아래로 엇갈린 화살표 둘 — 두 기록을 맞바꿔 본다는 뜻이다. */
+private fun DrawScope.iconCompare(tint: Color) {
+    drawLine(tint, Offset(3.6f, 8.6f), Offset(19f, 8.6f), 1.9f, StrokeCap.Round)
+    drawPath(
+        Path().apply { moveTo(15.6f, 5.2f); lineTo(19.8f, 8.6f); lineTo(15.6f, 12f) },
+        tint,
+        style = Stroke(1.9f, cap = StrokeCap.Round),
+    )
+    drawLine(tint, Offset(20.4f, 15.4f), Offset(5f, 15.4f), 1.9f, StrokeCap.Round)
+    drawPath(
+        Path().apply { moveTo(8.4f, 12f); lineTo(4.2f, 15.4f); lineTo(8.4f, 18.8f) },
+        tint,
+        style = Stroke(1.9f, cap = StrokeCap.Round),
+    )
+}
+
+/** 완료 표시. 진행 카드의 끝난 줄에 쓴다. */
+private fun DrawScope.iconCheck(tint: Color) {
+    drawPath(
+        Path().apply { moveTo(5.4f, 12.6f); lineTo(10f, 17f); lineTo(18.6f, 7.4f) },
+        tint,
+        style = Stroke(2.4f, cap = StrokeCap.Round),
+    )
+}
+
+private fun DrawScope.iconClose(tint: Color) {
+    drawLine(tint, Offset(6.4f, 6.4f), Offset(17.6f, 17.6f), 2.1f, StrokeCap.Round)
+    drawLine(tint, Offset(17.6f, 6.4f), Offset(6.4f, 17.6f), 2.1f, StrokeCap.Round)
+}
+
+/** 삭제. 뚜껑·손잡이·통. */
+private fun DrawScope.iconTrash(tint: Color) {
+    drawLine(tint, Offset(3.8f, 6.4f), Offset(20.2f, 6.4f), 1.9f, StrokeCap.Round)
+    drawPath(
+        Path().apply { moveTo(9.2f, 6.2f); lineTo(9.2f, 3.8f); lineTo(14.8f, 3.8f); lineTo(14.8f, 6.2f) },
+        tint,
+        style = Stroke(1.9f, cap = StrokeCap.Round),
+    )
+    drawPath(
+        Path().apply {
+            moveTo(5.8f, 6.8f); lineTo(6.8f, 20.2f); lineTo(17.2f, 20.2f); lineTo(18.2f, 6.8f)
+        },
+        tint,
+        style = Stroke(1.9f, cap = StrokeCap.Round),
+    )
+}
+
+/** 안내 전구. 시안의 💡 자리 — 이모지는 기기마다 그림이 달라서 직접 그린다. */
+private fun DrawScope.iconBulb(tint: Color) {
+    drawCircle(tint, 5.6f, Offset(12f, 9.6f), style = Stroke(1.9f))
+    drawLine(tint, Offset(9.4f, 16.6f), Offset(14.6f, 16.6f), 1.9f, StrokeCap.Round)
+    drawLine(tint, Offset(10.2f, 19.6f), Offset(13.8f, 19.6f), 1.9f, StrokeCap.Round)
+}
+
+/**
+ * 관절 지표 한 줄 앞에 붙는 표시. 뼈 두 마디가 한 점에서 꺾인 모양이다.
+ *
+ * 발바닥([iconPaws])을 쓰지 않는 이유: 발바닥은 이 앱에서 **산책**을 뜻하는 자리라
+ * 비교표에 두면 걸은 기록과 잰 지표가 섞여 보인다.
+ */
+private fun DrawScope.iconJoint(tint: Color) {
+    drawLine(tint, Offset(5.4f, 5.4f), Offset(12f, 12f), 2.1f, StrokeCap.Round)
+    drawLine(tint, Offset(12f, 12f), Offset(7.6f, 19f), 2.1f, StrokeCap.Round)
+    drawCircle(Color.White, 3.4f, Offset(12f, 12f))
+    drawCircle(tint, 3.4f, Offset(12f, 12f), style = Stroke(1.9f))
+    drawLine(tint, Offset(15f, 12f), Offset(19.4f, 12f), 2.1f, StrokeCap.Round)
 }
 
 /** 스피커. [on] 이면 음파 두 줄, 아니면 가위표. 몸통은 같아서 토글이 튀지 않는다. */
