@@ -3,15 +3,19 @@ package com.daengs.app.ui.chat
 import android.Manifest
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,7 +59,9 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -678,14 +684,49 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
  * AI 쪽 말풍선. **여기서만** [assistantMarkdown] 을 부른다 — 이 화면의 다른 텍스트
  * (내 말풍선, 구조화 카드)는 서버 자유 텍스트가 아니라 마크다운을 볼 이유가 없다.
  */
+/**
+ * 챗봇이 한 말. **길게 누르면 복사된다.**
+ *
+ * 메신저와 같은 손버릇이라 따로 안내하지 않아도 찾는다. 말풍선마다 복사 아이콘을
+ * 달면 대화가 길어질수록 화면이 아이콘으로 덮인다.
+ *
+ * 진행("생각하는 중이에요…")이나 실패 문구도 같이 복사된다. 해로울 것이 없고,
+ * 무엇이 진짜 답인지 갈라내려면 분기가 하나 더 는다.
+ */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun AssistantBubble(text: String, avatar: DogBreed?) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val shown = assistantMarkdown(text)
     Row(verticalAlignment = Alignment.Top) {
         ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
-        Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
+        Surface(
+            color = CardWhite,
+            shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp))
+                .combinedClickable(
+                    // 짧게 누르는 것은 아무 일도 안 한다. 말풍선은 누르는 것이 아니다.
+                    onClick = {},
+                    onLongClick = {
+                        // ⚠️ **원문이 아니라 화면에 보이는 글자를 담는다.**
+                        //    서버 답변은 마크다운이라 원문을 그대로 복사하면 붙여넣은
+                        //    곳에 `**굵게**` 의 별표가 같이 간다. [assistantMarkdown] 이
+                        //    이미 표시를 걷어낸 문자열을 들고 있으므로 그것을 쓴다.
+                        clipboard.setText(AnnotatedString(shown.text))
+                        // ⚠️ **안드로이드 13(API 33)부터는 시스템이 알아서 알린다.**
+                        //    거기서 우리 것까지 띄우면 "복사됨" 이 두 번 뜬다.
+                        //    minSdk 가 26이라 그 아래 기기에서는 우리가 알려야 한다.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                            Toast.makeText(context, "복사했어요", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                ),
+        ) {
             Text(
-                assistantMarkdown(text),
+                shown,
                 color = TextDark,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
