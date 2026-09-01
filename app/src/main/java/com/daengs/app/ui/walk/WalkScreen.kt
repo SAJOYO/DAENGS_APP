@@ -51,6 +51,7 @@ import com.daengs.app.map.shell.MapScene
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.common.DaengsFloatingButton
 import com.daengs.app.ui.common.DaengsTextAction
+import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
@@ -284,19 +285,28 @@ fun WalkScreen(
             }
             // **산책 중에는 안 보인다.** 중간에 바꾸면 "언제부터 누가"를 따져야 하는데
             // 그 값을 좌표마다 두지 않기로 했다.
-            if (!trackingActive) {
-                DogPickRow(
-                    pets = pets,
-                    selected = selectedDogIds,
-                    onToggle = { id ->
-                        selectedDogIds = if (id in selectedDogIds) {
-                            selectedDogIds - id
-                        } else {
-                            selectedDogIds + id
-                        }
-                    },
+            // 지도 위라 **바탕이 있어야 읽힌다.** 없으면 글씨가 지하철 노선과 겹쳐
+            // 무슨 말인지 안 보인다.
+            if (!trackingActive && pets.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = CardWhite,
+                    shadowElevation = 6.dp,
                     modifier = Modifier.fillMaxWidth(),
-                )
+                ) {
+                    DogPickRow(
+                        pets = pets,
+                        selected = selectedDogIds,
+                        onToggle = { id ->
+                            selectedDogIds = if (id in selectedDogIds) {
+                                selectedDogIds - id
+                            } else {
+                                selectedDogIds + id
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    )
+                }
             }
             WalkControlCard(
                 state = tracking,
