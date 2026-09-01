@@ -3,6 +3,7 @@ package com.daengs.app.ui.chat
 import android.Manifest
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -155,6 +156,16 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 폰의 뒤로가기. **여기가 없으면 앱이 꺼진다** — 챗봇으로 오는 순간 [HomeScreen]
+    // 이 컴포지션에서 빠지면서 그쪽 BackHandler 도 같이 사라지고, 뒤로가기가 아무도
+    // 받지 않은 채 시스템까지 흘러가 액티비티가 끝난다.
+    //
+    // ⚠️ **아래 오버레이들보다 먼저 등록한다.** 컴포즈는 나중에 등록된 핸들러가
+    // 이기므로, 촬영·네모조정·상세·비교·시트가 열려 있으면 그쪽이 먼저 받는다.
+    // 여기를 아래로 내리면 오버레이를 열어 둔 채 뒤로 눌렀을 때 대화가 통째로 닫힌다.
+    BackHandler(onBack = onBack)
+
     var draft by rememberSaveable { mutableStateOf("") }
     val entries = remember { mutableStateListOf<ChatEntry>() }
     val scroll = rememberScrollState()
