@@ -40,6 +40,7 @@ import com.daengs.app.ui.theme.TextDark
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import com.daengs.app.ui.theme.TextMuted
+import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.ui.walk.formatWalkDistance
 import com.daengs.app.walk.WalkDayTotals
 
@@ -62,6 +63,11 @@ private val StatAccent = listOf(
 fun WalkSummaryCard(
     modifier: Modifier = Modifier,
     totals: WalkDayTotals? = null,
+    /**
+     * 오늘의 한 마디 두 줄. **기본값을 안 준다** — 잊으면 컴파일러가 짚어 준다.
+     * 기본값을 두면 비 오는 날에도 "산책하기 딱 좋은 날" 이 조용히 남는다.
+     */
+    dailyWord: List<String>,
     onOpenHistory: (() -> Unit)? = null,
 ) {
     Surface(
@@ -116,7 +122,7 @@ fun WalkSummaryCard(
                     }
                 }
                 Spacer(Modifier.width(11.dp))
-                DailyWordNote(Modifier.weight(1f))
+                DailyWordNote(dailyWord, Modifier.weight(1f))
             }
         }
     }
@@ -166,7 +172,7 @@ private fun StatItem(stat: HomeDemoData.WalkStat, accent: Color) {
 
 /** 시안의 압정으로 꽂은 메모지. */
 @Composable
-private fun DailyWordNote(modifier: Modifier = Modifier) {
+private fun DailyWordNote(lines: List<String>, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -196,7 +202,7 @@ private fun DailyWordNote(modifier: Modifier = Modifier) {
                     fontWeight = FontWeight.Medium,
                 )
                 Spacer(Modifier.height(6.dp))
-                HomeDemoData.DAILY_WORD_LINES.forEach {
+                lines.forEach {
                     Text(it, color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -220,6 +226,7 @@ private fun WalkSummaryCardPreview() {
                 activeDurationMillis = 1_920_000L,
                 distanceMeters = 2_310.0,
             ),
+            dailyWord = homeWeatherWords(OutsideView.DAY_CLEAR, 21f).daily,
             onOpenHistory = {},
         )
     }
@@ -230,7 +237,13 @@ private fun WalkSummaryCardPreview() {
 @Composable
 private fun WalkSummaryCardUnreadPreview() {
     DaengsTheme {
-        WalkSummaryCard(Modifier.padding(14.dp), totals = null, onOpenHistory = {})
+        WalkSummaryCard(
+            Modifier.padding(14.dp),
+            totals = null,
+            // 비 오는 날의 한 마디. 창밖이 비면 이 카드도 같이 바뀐다.
+            dailyWord = homeWeatherWords(OutsideView.DAY_RAIN, 18f).daily,
+            onOpenHistory = {},
+        )
     }
 }
 
@@ -239,6 +252,11 @@ private fun WalkSummaryCardUnreadPreview() {
 @Composable
 private fun WalkSummaryCardEmptyPreview() {
     DaengsTheme {
-        WalkSummaryCard(Modifier.padding(14.dp), totals = WalkDayTotals.EMPTY, onOpenHistory = {})
+        WalkSummaryCard(
+            Modifier.padding(14.dp),
+            totals = WalkDayTotals.EMPTY,
+            dailyWord = homeWeatherWords(OutsideView.NIGHT_CLEAR, 8f).daily,
+            onOpenHistory = {},
+        )
     }
 }

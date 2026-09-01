@@ -117,7 +117,7 @@ fun MyScreen(
             .padding(horizontal = 14.dp),
     ) {
         Spacer(Modifier.height(18.dp))
-        ProfileHead(breed, roomLabel)
+        ProfileHead(breed, pets?.firstOrNull { it.isPrimary }?.name, roomLabel)
         Spacer(Modifier.height(20.dp))
 
         if (signedIn) {
@@ -325,15 +325,19 @@ private fun RowDivider() {
 }
 
 @Composable
-private fun ProfileHead(breed: DogBreed, roomLabel: String) {
+private fun ProfileHead(breed: DogBreed, dogName: String?, roomLabel: String) {
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         DogAvatar(breed, Modifier.size(88.dp))
         Spacer(Modifier.height(10.dp))
-        Text(HomeDemoData.DOG_NAME, color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(3.dp))
+        // **모르면 비운다.** 여기 남의 강아지 이름이 박혀 있었다 — 로그인 전이거나
+        // 등록한 아이가 없으면 이름 줄이 통째로 빠진다.
+        if (dogName != null) {
+            Text(dogName, color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(3.dp))
+        }
         Text(roomLabel, color = TextMuted, fontSize = 13.sp)
     }
 }
