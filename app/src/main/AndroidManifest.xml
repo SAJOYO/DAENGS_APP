@@ -27,6 +27,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      앱 안 카메라. 시스템 카메라로 던질 때는 필요 없던 권한이다 — 그쪽은 카메라 앱이
+      제 권한으로 찍어 결과만 넘겨 줬다. 찍는 동안 가이드를 얹으려면 우리가 직접
+      열어야 해서 이 권한이 든다.
+
+      **거부해도 촬영이 막히지 않는다.** 가이드 없이 시스템 카메라로 떨어진다.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
          여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,
          톡이 깔려 있어도 웹 로그인으로 넘어간다. -->

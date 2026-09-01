@@ -128,6 +128,13 @@ dependencies {
     // 보게 되어 비교가 안 된다.
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    // 앱 안 카메라. **가이드를 찍는 동안 보여 주려고** 넣는다 — 시스템 카메라로
+    // 던지면 그 위에 아무것도 못 얹는다. 피부 사진은 병변에 네모를 맞춰야 하고
+    // 보행 영상은 뒤에서 전신이 들어와야 하는데, 둘 다 찍고 나서 알면 늦다.
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.video)
+    implementation(libs.androidx.camera.view)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)

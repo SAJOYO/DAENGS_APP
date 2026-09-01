@@ -20,3 +20,6 @@ __pycache__/
 
 # Android Studio 프로젝트 설정 — 사람마다 달라서 공유하지 않는다
 .idea/
+
+# Kotlin 빌드 도구가 남기는 세션 기록 — 빌드하면 생긴다
+.kotlin/

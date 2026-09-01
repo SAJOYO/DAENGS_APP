@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,6 +92,11 @@ fun GaitCaptureScreen(
     modifier: Modifier = Modifier,
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
+    /**
+     * 지금 찍는 중인가. 앱 안 카메라로 찍을 때만 뜻이 있다 — 시스템 카메라로 던지면
+     * 그쪽 화면이 덮으므로 이 화면은 늘 false 다.
+     */
+    recording: Boolean = false,
     preview: @Composable BoxScope.() -> Unit = { GaitPreviewPlaceholder() },
 ) {
     BackHandler(onBack = onBack)
@@ -126,14 +133,21 @@ fun GaitCaptureScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                "뒤에서 걷는 모습이 보이게 맞춰주세요",
+                if (recording) "찍는 중이에요" else "뒤에서 걷는 모습이 보이게 맞춰주세요",
                 color = TextDark,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
             Text(
-                "걷는 모습 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 · ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 촬영 권장",
+                // 찍는 중에는 **멈추는 법**이 먼저다. 권장 길이는 찍기 전에
+                // 정하는 것이라, 이미 찍고 있는 사람에게는 소용이 없다.
+                if (recording) {
+                    "다 찍었으면 가운데 단추를 한 번 더 누르세요"
+                } else {
+                    "걷는 모습 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 · " +
+                        "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 촬영 권장"
+                },
                 color = TextMuted,
                 fontSize = 13.sp,
             )
@@ -147,7 +161,7 @@ fun GaitCaptureScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SideButton(DaengsIcon.Gallery, "갤러리에서 고르기", onClick = onPick)
-            ShutterButton(onRecord)
+            ShutterButton(recording, onRecord)
             SideButton(DaengsIcon.Bulb, "촬영 요령", on = tips) { tips = !tips }
         }
     }
@@ -300,7 +314,7 @@ private fun DrawScope.dogFromBehind(left: Float, top: Float, width: Float, heigh
  * 장식처럼 보이지만, 눌리는 자리를 원보다 크게 잡아 두는 실용적인 몫도 한다.
  */
 @Composable
-private fun ShutterButton(onClick: () -> Unit) {
+private fun ShutterButton(recording: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .size(78.dp)
@@ -310,7 +324,19 @@ private fun ShutterButton(onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(58.dp).clip(RoundedCornerShape(50)).background(DaengPinkDeep))
+        // 찍는 중이면 **네모**다. 같은 자리에서 시작하고 멈추는 단추라, 모양이 안
+        // 바뀌면 눌러도 되는지 아닌지를 알 수 없다 (녹화 단추의 오랜 약속이다).
+        val inner by animateDpAsState(
+            targetValue = if (recording) 30.dp else 58.dp,
+            animationSpec = tween(durationMillis = 160),
+            label = "shutter",
+        )
+        val corner by animateDpAsState(
+            targetValue = if (recording) 8.dp else 29.dp,
+            animationSpec = tween(durationMillis = 160),
+            label = "shutterCorner",
+        )
+        Box(Modifier.size(inner).clip(RoundedCornerShape(corner)).background(DaengPinkDeep))
     }
 }
 
@@ -382,6 +408,15 @@ private fun GaitTipsPanel(onClose: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun GaitCaptureScreenPreview() {
     DaengsTheme { GaitCaptureScreen(onBack = {}, onRecord = {}, onPick = {}) }
+}
+
+/** 찍는 중. 셔터가 네모가 되고 아래 두 줄이 바뀐다. */
+@Preview(widthDp = 411, heightDp = 891, showBackground = true)
+@Composable
+private fun GaitCaptureRecordingPreview() {
+    DaengsTheme {
+        GaitCaptureScreen(onBack = {}, onRecord = {}, onPick = {}, recording = true)
+    }
 }
 
 /** 오버레이만 크게 본다. 실루엣 곡선을 고칠 때 이걸 본다. */

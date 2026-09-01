@@ -9,6 +9,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.daengs.app.ui.home.BottomTab
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -99,6 +101,9 @@ class MainActivity : ComponentActivity() {
                 var todayWalks by remember { mutableStateOf<WalkDayTotals?>(null) }
                 // 방 이름표. **null 은 아직 안 정했거나 못 받아온 것**이고, 그때
                 // 화면이 대표 강아지 이름으로 짓는다.
+                // 홈의 하단 탭. **여기서 들고 있는다** — 화면이 바뀌어도 안 지워진다.
+                // 마이 탭에서 강아지를 추가하러 나갔다 오면 마이로 돌아와야 한다.
+                var homeTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
                 var roomName by remember { mutableStateOf<String?>(null) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
@@ -224,6 +229,8 @@ class MainActivity : ComponentActivity() {
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
                         onSignIn = { screen = Screen.Landing },
+                        tab = homeTab,
+                        onSelectTab = { homeTab = it },
                         pets = pets.pets.orEmpty(),
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
@@ -321,6 +328,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.Home },
                         avatar = pets.primary?.breedArt,
                         dogId = pets.primary?.id,
+                        accessTokenProvider = freshToken,
                     )
 
                     Screen.Places -> PlacesScreen(

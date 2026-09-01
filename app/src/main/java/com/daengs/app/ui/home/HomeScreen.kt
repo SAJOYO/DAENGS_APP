@@ -93,6 +93,15 @@ private object NamePlateSpec {
 fun HomeScreen(
     modifier: Modifier = Modifier,
     frameTimeMs: Long? = null,
+    /**
+     * 지금 켜져 있는 하단 탭. **밖에서 들고 있는다.**
+     *
+     * 안에서 `remember` 로 들고 있으면 강아지를 추가하러 나갔다 오는 순간 사라진다 —
+     * `when (screen)` 이 이 화면을 컴포지션에서 들어내기 때문이다. 그래서 마이 탭에서
+     * 시작한 일이 끝나면 늘 홈으로 튕겼다.
+     */
+    tab: BottomTab = BottomTab.Home,
+    onSelectTab: (BottomTab) -> Unit = {},
     dateLabel: String = HomeDemoData.todayLabel(),
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
@@ -137,9 +146,8 @@ fun HomeScreen(
     withdrawError: String? = null,
     onDismissWithdraw: (() -> Unit)? = null,
 ) {
-    var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
     // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
-    BackHandler(enabled = bottomTab != BottomTab.Home) { bottomTab = BottomTab.Home }
+    BackHandler(enabled = tab != BottomTab.Home) { onSelectTab(BottomTab.Home) }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
     // 프로필 얼굴의 견종.
@@ -206,15 +214,16 @@ fun HomeScreen(
         topBar = {
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
+                    // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
                     onBell = {},
-                    onProfile = {},
+                    onProfile = { onSelectTab(BottomTab.My) },
                     avatar = profileBreed,
                 )
             }
         },
         bottomBar = {
             DaengsBottomBar(
-                selected = bottomTab,
+                selected = tab,
                 // **밀어서 여는 탭은 선택 상태를 안 남긴다.** 남기면 도감에서
                 // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
                 // 화면이 되기 전에는 눈에 안 띄던 것이다.
@@ -222,14 +231,14 @@ fun HomeScreen(
                     when (tab) {
                         BottomTab.Dex -> onOpenDex?.invoke()
                         BottomTab.Nearby -> onOpenPlaces?.invoke()
-                        else -> bottomTab = tab
+                        else -> onSelectTab(tab)
                     }
                 },
                 onCenter = { onOpenChat?.invoke() },
             )
         },
     ) { inner ->
-        if (bottomTab == BottomTab.My) {
+        if (tab == BottomTab.My) {
             MyScreen(
                 breed = profileBreed,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),

@@ -1,5 +1,6 @@
 package com.daengs.app.ui.chat
 
+import android.Manifest
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
@@ -74,6 +76,11 @@ import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
+import com.daengs.app.ui.camera.CameraPreview
+import com.daengs.app.ui.camera.hasCameraPermission
+import com.daengs.app.ui.camera.rememberCameraController
+import com.daengs.app.ui.camera.rememberVideoRecorder
+import com.daengs.app.ui.camera.takePicture
 import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
@@ -105,6 +112,9 @@ private sealed interface ChatEntry {
 
     data class Theirs(val text: String) : ChatEntry
 
+    /** 오케스트레이션에 물어보는 중. 답이 오면 이 자리가 [Theirs] 나 [Failed] 로 바뀐다. */
+    data object Thinking : ChatEntry
+
     /** 내가 올린 사진. 원본이 아니라 줄여 놓은 썸네일이다 ([Photo.THUMB_EDGE]). */
     data class MyPhoto(val image: Bitmap) : ChatEntry
 
@@ -135,8 +145,10 @@ private sealed interface ChatEntry {
 }
 
 /**
- * 대화 UI 전용 화면. 실제 RAG 호출은 아직 연결하지 않아, 전송된 질문만 기기 안에서
- * 보여 준다. 네트워크 계약이 붙을 때 이 화면의 [ChatEntry.Theirs] 자리에만 연결하면 된다.
+ * 대화 UI 전용 화면. 자유 텍스트는 `POST /assistant/query` 오케스트레이션으로 간다 —
+ * 자연어 해석·능력 실행·집계는 전부 저쪽이 하고, 앱은 상태(`status`)와
+ * `handoffs` 만 보고 화면을 고른다. **여기서 텍스트를 보고 갈래를 나누지 않는다**
+ * (예전 `GAIT_ASK` 키워드 라우팅은 그래서 지웠다).
  *
  * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningApi]) 실제로 부른다. 다만 서버
  * 주소가 아직 없어, 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
@@ -151,6 +163,12 @@ fun ChatScreen(
      * 못 찾아서, 서버에 보내기 전에 화면이 막는다 ([GaitApi] 주석).
      */
     dogId: String? = null,
+    /**
+     * 만료됐으면 재발급까지 하고 돌려주는 access token. **[MainActivity] 의
+     * `freshToken` 을 그대로 받는다** — 여기서 `TokenStore` 를 직접 읽거나
+     * 세션을 갱신하지 않는다. null 이면 로그인이 안 된 것이다.
+     */
+    accessTokenProvider: suspend () -> String? = { null },
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -158,7 +176,9 @@ fun ChatScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     val entries = remember { mutableStateListOf<ChatEntry>() }
     val scroll = rememberScrollState()
-    var chooser by remember { mutableStateOf(false) }
+    // null 이면 닫힘. [ChooserMode.SkinOnly] 는 서버 skin HANDOFF 가 연 것이라
+    // 보행 묶음을 감춘다 — 사용자가 그 질문에서 보행을 고를 이유가 없다.
+    var chooserMode by remember { mutableStateOf<ChooserMode?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
 
     // 사진을 고르면 **바로 안 보낸다.** 가이드 프레임에서 병변 자리를 받아야
@@ -201,6 +221,40 @@ fun ChatScreen(
 
     /** 촬영 가이드 화면이 떠 있나. */
     var gaitCapture by remember { mutableStateOf(false) }
+    // 앱 안 카메라로 피부 사진을 찍는 중.
+    var skinCapture by remember { mutableStateOf(false) }
+    // 앱 안 카메라의 가이드에 맞춰 찍은 사진인가. 확인 화면이 그 네모에서 시작한다.
+    var guidedShot by remember { mutableStateOf(false) }
+
+    // 카메라 권한. **찍는 동안 가이드를 보여 주려고** 든다 (시스템 카메라로 던질
+    // 때는 필요 없었다). 이걸 선언한 순간 권한 없이는 찍는 길이 아예 없어진다 — [CAMERA_DENIED].
+    var cameraGranted by remember { mutableStateOf(hasCameraPermission(context)) }
+    // 권한을 받고 나서 이어서 할 일. "사진찍기" 와 "영상 촬영" 이 같은 창을 쓴다.
+    var afterCamera by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val askCamera = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        cameraGranted = granted
+        if (granted) afterCamera?.invoke() else notice = CAMERA_DENIED
+        afterCamera = null
+    }
+
+    /**
+     * 권한이 있으면 바로, 없으면 묻고 나서 [action].
+     *
+     * ⚠️ **거부했을 때 시스템 카메라로 떨어질 수 없다.** 매니페스트에 `CAMERA` 를
+     * 선언한 앱은 그 권한이 없으면 `ACTION_IMAGE_CAPTURE` 조차 못 띄운다 —
+     * 안드로이드가 `SecurityException` 으로 막는다(실기기에서 앱이 죽었다).
+     * 그래서 여기서 시스템 카메라를 부르지 않고, 갤러리로 안내한다.
+     */
+    val withCamera: (() -> Unit) -> Unit = { action ->
+        if (cameraGranted) {
+            action()
+        } else {
+            afterCamera = action
+            askCamera.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
@@ -239,39 +293,50 @@ fun ChatScreen(
         }
     }
 
+    /**
+     * 자유 텍스트 한 줄을 오케스트레이션에 보낸다.
+     *
+     * **여기서 답을 지어내지 않는다.** 로그인이 안 됐을 때만 로컬 문구를 쓰고,
+     * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
+     * 대화 기록도 안 보낸다 — v1 오케스트레이션은 상태가 없다.
+     */
+    val sendQuery: (String) -> Unit = { text ->
+        entries += ChatEntry.Mine(text)
+        val slot = entries.size
+        entries += ChatEntry.Thinking
+        scope.launch {
+            val token = accessTokenProvider()
+            if (token == null) {
+                entries[slot] = ChatEntry.Failed("로그인이 필요해요. 다시 로그인해 주세요.")
+                return@launch
+            }
+            AssistantApi.query(token, text)
+                .onSuccess { response ->
+                    entries[slot] = ChatEntry.Theirs(response.bubbleMessage())
+                    when (response.knownHandoff()) {
+                        // 실행하지 않는다 — 기존 흐름을 그대로 연다. 보행은 카드를
+                        // 하나 더 얹고, 피부는 이미 있는 선택 시트를 스킨 전용으로 연다.
+                        KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
+                        KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
+                        null -> Unit
+                    }
+                }
+                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.") }
+        }
+    }
+
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             gaitCapture = false
             runGait(uri)
         }
     }
-    // 사진과 같은 이유로 **먼저 만들어 둔다** — 콜백이 성공 여부만 준다.
-    val gaitTarget = remember { runCatching { GaitVideo.cameraTarget(context) }.getOrNull() }
-    val recordVideo = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { taken ->
-        if (taken && gaitTarget != null) {
-            gaitCapture = false
-            runGait(gaitTarget)
-        }
-    }
-
-    /** 촬영 단추. 카메라가 없는 기기에서는 조용히 실패하지 않고 말한다. */
-    val startGaitRecording: () -> Unit = {
-        if (gaitTarget == null) {
-            notice = "카메라를 열 수 없어요."
-        } else {
-            recordVideo.launch(gaitTarget)
-        }
-    }
-
     val startGaitPicking: () -> Unit = {
         pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
-    // 카메라가 찍어 넣을 자리. **먼저 만들어 두고** 찍기 버튼에서 그대로 쓴다 —
-    // 결과 콜백이 성공 여부(Boolean)만 주고 어디에 찍었는지는 안 알려 준다.
+    // 앱 안 카메라가 찍어 넣을 자리. 콜백이 어디에 찍었는지 안 알려 주므로 **먼저
+    // 만들어 두고** 그대로 읽는다.
     val target = remember { runCatching { Photo.cameraTarget(context) }.getOrNull() }
-    val capture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken ->
-        if (taken && target != null) open(target)
-    }
 
     // 새 말풍선이 생기면 아래로 따라간다. 안 하면 결과가 화면 밖에서 조용히 쌓인다.
     LaunchedEffect(entries.size) { scroll.animateScrollTo(scroll.maxValue) }
@@ -303,7 +368,7 @@ fun ChatScreen(
         ) {
             if (entries.isEmpty()) {
                 AssistantBubble(
-                    "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.\n답변 데이터 연결은 준비 중이에요.",
+                    "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.",
                     avatar,
                 )
                 Text("추천 질문", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
@@ -322,6 +387,7 @@ fun ChatScreen(
                     when (entry) {
                         is ChatEntry.Mine -> UserBubble(entry.text)
                         is ChatEntry.Theirs -> AssistantBubble(entry.text, avatar)
+                        ChatEntry.Thinking -> AssistantBubble("생각하는 중이에요…", avatar)
                         is ChatEntry.MyPhoto -> PhotoBubble(entry.image)
                         ChatEntry.Screening -> AssistantBubble("사진을 살펴보는 중이에요…", avatar)
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
@@ -366,19 +432,8 @@ fun ChatScreen(
             onSend = {
                 val text = draft.trim()
                 if (text.isNotEmpty()) {
-                    entries += ChatEntry.Mine(text)
-                    // 보행을 물었으면 **말로 답하지 않고 카드를 편다.** 지금 답변
-                    // 연결이 없어서 "준비 중이에요" 만 나가는데, 보행은 실제로
-                    // 되는 기능이라 그 문장이 거짓이 된다.
-                    if (GAIT_ASK.containsMatchIn(text)) {
-                        entries += ChatEntry.Theirs(
-                            "좋아요! 보행 영상을 통해 우리 아이의 걸을 때 모습을 함께 살펴볼게요.",
-                        )
-                        entries += ChatEntry.GaitIntro
-                    } else {
-                        entries += ChatEntry.Theirs("AI 답변 연결을 준비 중이에요.")
-                    }
                     draft = ""
+                    sendQuery(text)
                 }
             },
             // 음성은 **아직 껍데기다.** 버튼 자리와 크기를 먼저 잡아 두고, 녹음과
@@ -387,25 +442,28 @@ fun ChatScreen(
             onVoice = { notice = "음성 입력은 준비 중이에요." },
             // **시트는 항상 연다.** 기능이 둘이 되면서 진단 서버 유무로 시트 전체를
             // 막으면 보행 쪽까지 같이 닫힌다. 못 하는 이유는 그 줄을 눌렀을 때 말한다.
-            onDiagnose = { chooser = true },
+            onDiagnose = { chooserMode = ChooserMode.Full },
         )
     }
 
-    if (chooser) {
+    chooserMode?.let { mode ->
         AiActionDialog(
-            onDismiss = { chooser = false },
+            skinOnly = mode == ChooserMode.SkinOnly,
+            onDismiss = { chooserMode = null },
             onCamera = {
-                chooser = false
+                chooserMode = null
                 when {
                     // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
                     // 로그인 버튼과 같다.
                     !ScreeningApi.configured -> notice = SCREEN_NOT_SET
                     target == null -> notice = "카메라를 열 수 없어요."
-                    else -> capture.launch(target)
+                    // 앱 안에서 찍는다. 그래야 병변에 맞출 네모를 찍는 동안 보여 준다.
+                    else -> withCamera { skinCapture = true }
                 }
             },
             onAttach = {
-                chooser = false
+                chooserMode = null
+                guidedShot = false
                 if (!ScreeningApi.configured) {
                     notice = SCREEN_NOT_SET
                 } else {
@@ -416,11 +474,11 @@ fun ChatScreen(
             // 를 보지만 여기서는 안 본다 — 서로 다른 서버이고, 보행 쪽은 아직
             // 기기 안에서 도는 흐름이라 주소가 없어도 화면이 다 열린다.
             onGaitCapture = {
-                chooser = false
-                gaitCapture = true
+                chooserMode = null
+                withCamera { gaitCapture = true }
             },
             onGaitPick = {
-                chooser = false
+                chooserMode = null
                 startGaitPicking()
             },
         )
@@ -431,6 +489,7 @@ fun ChatScreen(
     pending?.let { photo ->
         GuideFrameScreen(
             photo = photo.thumbnail,
+            guided = guidedShot,
             onCancel = { pending = null },
             onConfirm = { box ->
                 pending = null
@@ -439,15 +498,64 @@ fun ChatScreen(
         )
     }
 
+    if (skinCapture) {
+        val controller = rememberCameraController(videoEnabled = false)
+        var shooting by remember { mutableStateOf(false) }
+        SkinCaptureScreen(
+            controller = controller,
+            onBack = { skinCapture = false },
+            onPick = {
+                skinCapture = false
+                pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            busy = shooting,
+            onShutter = {
+                if (!shooting && target != null) {
+                    shooting = true
+                    takePicture(
+                        context = context,
+                        controller = controller,
+                        file = Photo.cameraFile(context),
+                        onSaved = {
+                            shooting = false
+                            skinCapture = false
+                            guidedShot = true
+                            open(target)
+                        },
+                        onError = {
+                            shooting = false
+                            notice = "사진을 저장하지 못했어요."
+                        },
+                    )
+                }
+            },
+        )
+    }
+
     // 보행 화면들. **덮는 순서가 곧 되돌아가는 순서다** — 촬영이 제일 위고,
     // 상세와 비교는 그 아래, 시트는 대화 바로 위다.
     if (gaitCapture) {
-        GaitCaptureScreen(
-            onBack = { gaitCapture = false },
-            onRecord = startGaitRecording,
-            onPick = startGaitPicking,
-            avatar = avatar,
-        )
+        // 여기까지 왔으면 권한이 있다 ([withCamera] 가 받고 나서 연다).
+        run {
+            val controller = rememberCameraController(videoEnabled = true)
+            val recorder = rememberVideoRecorder(
+                controller = controller,
+                file = remember { GaitVideo.cameraFile(context) },
+                onDone = { uri ->
+                    gaitCapture = false
+                    runGait(uri)
+                },
+                onError = { notice = it },
+            )
+            GaitCaptureScreen(
+                onBack = { gaitCapture = false },
+                onRecord = recorder::toggle,
+                onPick = startGaitPicking,
+                avatar = avatar,
+                recording = recorder.recording,
+                preview = { CameraPreview(controller, Modifier.fillMaxSize()) },
+            )
+        }
     }
 
     gaitDetail?.let { id ->
@@ -575,13 +683,23 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
     }
 }
 
+/**
+ * AI 쪽 말풍선. **여기서만** [assistantMarkdown] 을 부른다 — 이 화면의 다른 텍스트
+ * (내 말풍선, 구조화 카드)는 서버 자유 텍스트가 아니라 마크다운을 볼 이유가 없다.
+ */
 @Composable
 private fun AssistantBubble(text: String, avatar: DogBreed?) {
     Row(verticalAlignment = Alignment.Top) {
         ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
-            Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(14.dp))
+            Text(
+                assistantMarkdown(text),
+                color = TextDark,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(14.dp),
+            )
         }
     }
 }
@@ -728,12 +846,22 @@ private const val SCREEN_NOT_SET =
     "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
 
 /**
- * 말로 보행 분석을 부르는 표현들.
+ * 카메라 권한을 거부했을 때.
  *
- * **넓게 잡지 않는다.** "산책" 이나 "다리" 까지 넣으면 산책 이야기를 하다가 카드가
- * 튀어나온다. 걸음 자체를 가리키는 말만 둔다.
+ * **시스템 카메라로 떨어질 수 없다.** 매니페스트에 `CAMERA` 를 선언한 앱은 그 권한이
+ * 없으면 `ACTION_IMAGE_CAPTURE` 조차 못 띄운다 — 안드로이드가 막는다. 그래서 대신
+ * 갤러리를 가리킨다. 그쪽은 권한 없이 된다.
  */
-private val GAIT_ASK = Regex("보행|걸음걸이|걷는\\s*(모습|자세)|절뚝")
+private const val CAMERA_DENIED =
+    "카메라 권한이 꺼져 있어요. 설정에서 켜거나, 갤러리에서 골라 주세요."
+
+/**
+ * [AiActionDialog] 를 여는 두 자리.
+ *
+ * '+' 버튼은 늘 [Full] 이다. [SkinOnly] 는 서버 skin HANDOFF 가 열 때만 쓴다 —
+ * 그 문답은 이미 피부 얘기였으니 보행 묶음을 보여줄 이유가 없다.
+ */
+private enum class ChooserMode { Full, SkinOnly }
 
 /**
  * 카메라 버튼이 여는 시트. **기능이 둘이라 묶음으로 나눈다.**
@@ -741,6 +869,9 @@ private val GAIT_ASK = Regex("보행|걸음걸이|걷는\\s*(모습|자세)|절�
  * 피부는 사진, 보행은 영상이라 고르는 소재가 다르다. 한 줄로 넷을 늘어놓으면
  * "사진찍기"와 "영상 촬영"이 같은 층으로 보여서 무엇을 하는 화면인지가 흐려진다.
  * 묶음 제목을 먼저 읽고 그 안에서 고르는 순서가 되도록 카드를 갈랐다.
+ *
+ * @param skinOnly true 면 보행 묶음을 감춘다 ([ChooserMode.SkinOnly] 참고). '+'
+ *   버튼에서 열 때는 항상 false 라 기존 동작은 그대로다.
  */
 @Composable
 private fun AiActionDialog(
@@ -749,6 +880,7 @@ private fun AiActionDialog(
     onAttach: () -> Unit,
     onGaitCapture: () -> Unit,
     onGaitPick: () -> Unit,
+    skinOnly: Boolean = false,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -767,20 +899,26 @@ private fun AiActionDialog(
                             RowSeparator()
                             SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
                         }
-                        DashedSeparator()
-                        SourceGroup("보행 영상 분석하기") {
-                            SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
-                            RowSeparator()
-                            SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
-                            RowSeparator()
-                            // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
-                            // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
-                            Text(
-                                "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
-                                color = TextMuted,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            )
+                        if (!skinOnly) {
+                            DashedSeparator()
+                            SourceGroup("보행 영상 분석하기") {
+                                SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
+                                RowSeparator()
+                                SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                                RowSeparator()
+                                // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
+                                // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
+                                //
+                                // 숫자를 여기 박지 않는다. 저쪽 기준(§21)에서 끌어낸
+                                // 상수라, 박아 두면 기준이 바뀌어도 이 줄만 안 따라온다 —
+                                // 실제로 "10초 이상" 이 그렇게 남아 있었다.
+                                Text(
+                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                                    color = TextMuted,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                )
+                            }
                         }
                     }
                 }
