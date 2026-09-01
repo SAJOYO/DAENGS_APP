@@ -57,6 +57,13 @@ class HttpGaitAnalyzer(
                     // **앱이 정하지 않는다.** 저쪽 quality.status 가 그대로 온다 —
                     // Mock 은 길이로 정했지만 그건 서버가 없을 때의 임시였다.
                     comparable = analyzed.qualityOk,
+                    // 사유도 같이 나른다. 여기서 버리면 화면에는 불리언만 남아,
+                    // 왜 못 쓰는지를 앱이 지어내게 된다.
+                    qualityReason = analyzed.reason,
+                    qualityAdvice = analyzed.recommendation,
+                    // 화면이 영상 비율대로 자리를 잡는다. 저쪽 응답에 크기가
+                    // 없어서 기기에서 읽은 값이 유일한 근거다.
+                    aspect = video.aspect,
                 )
             }
             .recoverCatching { cause ->

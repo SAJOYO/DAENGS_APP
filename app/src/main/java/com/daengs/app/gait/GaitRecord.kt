@@ -21,7 +21,7 @@ data class GaitRecord(
     /** 찍은 날. 카드와 목록의 제목이 된다. */
     val date: LocalDate,
     /**
-     * 영상 길이(초). 10초 미만이면 카드가 짧다고 말해 준다.
+     * 영상 길이(초).
      *
      * **서버 목록에는 없다.** 방금 분석한 것은 기기에서 읽어 알지만(`PreparedVideo`),
      * `GET /gait/records` 응답에 길이가 담기지 않아 지난 기록은 모른다. 모르는 것을
@@ -37,6 +37,25 @@ data class GaitRecord(
     val thumbnail: Bitmap? = null,
     /** 다른 기록과 나란히 볼 수 있나. 관절이 안 잡힌 영상은 false 다. */
     val comparable: Boolean = true,
+    /**
+     * [comparable] 이 false 인 **이유**. 저쪽 `quality.reason` 이 그대로 온다.
+     *
+     * **앱이 이유를 넘겨짚지 않는다.** 예전에는 이 자리가 없어서 상세 화면이
+     * "10초보다 짧게 찍혀서" 라고 단정했는데, `comparable` 의 뜻이 길이에서
+     * 서버의 `quality.status` 로 바뀐 뒤에도 문장만 옛 뜻에 남아 있었다 —
+     * 1분짜리 영상에도 "짧게 찍혀서" 가 떴다. 이유를 아는 쪽은 서버뿐이다.
+     */
+    val qualityReason: String? = null,
+    /** 그래서 뭘 하면 되나. 저쪽 `quality.recommendation`. */
+    val qualityAdvice: String? = null,
+    /**
+     * 영상의 가로/세로 비. 회전을 반영한 값이다 ([PreparedVideo.aspect]).
+     *
+     * **모르면 세로로 친다.** 촬영 가이드가 세로 프레임이라 이 기능으로 찍힌
+     * 영상은 세로다. 서버 목록 응답에는 크기가 안 담겨서 지난 기록은 모르는데,
+     * 그때 가로로 가정하면 세로 영상이 좌우로 텅 빈 채 눕는다 — 실제로 그랬다.
+     */
+    val aspect: Float? = null,
 ) {
     /** `08.31`. 카드 제목과 비교 화면의 두 기둥에 같은 모양으로 쓴다. */
     val dateLabel: String get() = date.format(DAY)
@@ -55,9 +74,27 @@ data class GaitRecord(
      */
     val badgeLabel: String get() = if (comparable) "비교 가능한 기록" else "비교 지표 부족"
 
+    /**
+     * 영상 자리를 잡을 때 쓸 비율.
+     *
+     * 실제 비를 그대로 쓰되 **너무 길쭉한 것은 자른다.** 9:16 을 대화 카드에
+     * 폭 맞춰 넣으면 카드 하나가 화면을 다 먹어서 위의 말풍선이 밀려난다.
+     */
+    val displayAspect: Float
+        get() = (aspect ?: PORTRAIT_ASPECT).coerceIn(MIN_ASPECT, MAX_ASPECT)
+
     companion object {
         /** 권장 길이. 이보다 짧아도 막지 않는다 — 찍은 것을 버리게 하지 않는다. */
         const val RECOMMENDED_SECONDS = 10
+
+        /** 모를 때의 기본. 촬영 가이드가 세로라 세로로 친다 (3:4). */
+        const val PORTRAIT_ASPECT = 3f / 4f
+
+        /** 제일 길쭉하게 허용하는 비 (9:16). 이보다 길면 잘라 담는다. */
+        const val MIN_ASPECT = 9f / 16f
+
+        /** 제일 납작하게 허용하는 비 (16:9). */
+        const val MAX_ASPECT = 16f / 9f
 
         private val DAY = DateTimeFormatter.ofPattern("MM.dd")
     }
@@ -149,5 +186,45 @@ data class GaitComparison(
                     versionWarning,
                 )
             }
+    }
+}
+
+/**
+ * 상세 화면 요약에 올릴 줄들. **화면이 아니라 여기서 만든다.**
+ *
+ * Composable 안에 두면 테스트가 못 들어와서, "1분짜리에 짧다고 하지 않는다" 같은
+ * 규칙을 사람이 눈으로만 지켜야 한다. 실제로 그렇게 뚫렸다 — `comparable` 의 뜻이
+ * 길이에서 서버 판정으로 바뀌었는데 문장은 옛 뜻에 남아 있었고, 빌드도 테스트도
+ * 통과했다. 순수 함수로 내려두면 그 규칙이 빨간 줄로 잡힌다.
+ */
+fun GaitRecord.summaryLines(): List<String> = buildList {
+    add("$dateLabel · $lengthLabel 영상")
+
+    if (comparable) {
+        add("지난 기록과 나란히 볼 수 있어요.")
+    } else {
+        // 저쪽이 준 사유·권고를 그대로 옮긴다. 둘 다 사용자에게 보여 줄 말로
+        // 써 준 문장이라 앱에서 고쳐 쓰지 않는다.
+        qualityReason?.let(::add)
+        qualityAdvice?.let(::add)
+        // 사유가 아예 없을 때만 앱이 한 줄 말한다. **원인을 짚지 않는다** —
+        // 모르는 것을 "짧아서" 로 메우면 1분짜리에도 그 말이 붙는다.
+        if (qualityReason == null && qualityAdvice == null) {
+            add("이 영상에서는 나란히 볼 관절 지표를 뽑지 못했어요.")
+        }
+    }
+
+    // 길이는 **앱이 직접 잰 경우에만** 말한다. 서버 목록에서 온 기록은 길이가
+    // 안 담겨 와서 모른다. 그리고 이건 사유가 아니라 다음에 더 잘 찍는 요령이다.
+    seconds?.let { secs ->
+        if (secs < GaitRecord.RECOMMENDED_SECONDS) {
+            add("${GaitRecord.RECOMMENDED_SECONDS}초 이상 찍으면 걸음이 더 담겨요.")
+        }
+    }
+
+    if (video == null) {
+        // 표본 기록임을 숨기지 않는다. 재생을 눌렀는데 아무 일도 안 나면
+        // 앱이 고장 난 것으로 읽힌다.
+        add("이 기록은 화면 확인용 표본이라 재생할 영상 파일이 없어요.")
     }
 }

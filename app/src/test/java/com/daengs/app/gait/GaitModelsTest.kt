@@ -62,7 +62,7 @@ class GaitModelsTest {
 
     // ── 비교 판정 ────────────────────────────────────────────────────────────
 
-    private fun record(id: String, comparable: Boolean = true, seconds: Int = 12) =
+    private fun record(id: String, comparable: Boolean = true, seconds: Int? = 12) =
         GaitRecord(id, LocalDate.of(2026, 8, 31), seconds = seconds, comparable = comparable)
 
     @Test
@@ -265,5 +265,85 @@ class GaitModelsTest {
 
         assertEquals("뚜렷한 차이는 관찰되지 않았습니다 (서버)", server.sentence)
         assertEquals(GaitVerdict.NoClearDifference.sentence, local.sentence)
+    }
+    // -- 상세 요약 문장 -------------------------------------------------------
+    //
+    // 여기가 한 번 뚫린 자리다. comparable 의 뜻이 "10초 넘나" 에서 서버의
+    // quality.status 로 바뀌었는데 문장만 옛 뜻에 남아, **1분짜리 영상에도
+    // "10초보다 짧게 찍혀서" 가 떴다.** 빌드도 테스트도 그대로 통과했다.
+
+    @Test
+    fun `길이가 넉넉한데 비교 불가면 짧다는 말을 하지 않는다`() {
+        val lines = record("a", comparable = false, seconds = 62)
+            .copy(qualityReason = "걷는 구간이 충분히 잡히지 않았어요.")
+            .summaryLines()
+
+        assertTrue("서버 사유가 그대로 나와야 한다", lines.any { it.contains("걷는 구간") })
+        assertFalse("1분짜리에 짧다고 말하면 안 된다: $lines", lines.any { it.contains("짧") })
+    }
+
+    @Test
+    fun `서버가 준 사유와 권고를 그대로 옮긴다`() {
+        val lines = record("a", comparable = false)
+            .copy(
+                qualityReason = "걷는 구간이 충분히 잡히지 않았어요.",
+                qualityAdvice = "쉬지 않고 걷는 장면으로 다시 찍어 주세요.",
+            )
+            .summaryLines()
+
+        assertTrue(lines.contains("걷는 구간이 충분히 잡히지 않았어요."))
+        assertTrue(lines.contains("쉬지 않고 걷는 장면으로 다시 찍어 주세요."))
+    }
+
+    @Test
+    fun `사유가 없으면 원인을 짚지 않고 사실만 말한다`() {
+        val lines = record("a", comparable = false, seconds = 62).summaryLines()
+
+        assertTrue(lines.any { it.contains("관절 지표를 뽑지 못했어요") })
+        assertFalse("원인을 지어내면 안 된다: $lines", lines.any { it.contains("짧") })
+    }
+
+    @Test
+    fun `앱이 직접 잰 길이가 권장보다 짧을 때만 길이 이야기를 한다`() {
+        assertTrue(record("a", seconds = 6).summaryLines().any { it.contains("10초 이상 찍으면") })
+        assertFalse(record("b", seconds = 62).summaryLines().any { it.contains("10초 이상 찍으면") })
+        // 서버 목록에서 온 기록은 길이를 모른다 — 모르면 아무 말도 안 한다.
+        assertFalse(record("c", seconds = null).summaryLines().any { it.contains("10초 이상 찍으면") })
+    }
+
+    @Test
+    fun `길이를 모르면 0초라고 단언하지 않는다`() {
+        val r = record("a", seconds = null)
+        assertEquals("길이 미상", r.lengthLabel)
+        assertEquals(null, r.clockLabel)
+    }
+    // -- 영상 자리 비율 -------------------------------------------------------
+    //
+    // 촬영 가이드는 세로 프레임인데 결과·상세 화면 상자가 가로(16:10) 로 박혀
+    // 있었다. 세로 영상이 좌우로 텅 빈 채 눕고, Crop 이 위아래를 잘라 **머리가
+    // 날아갔다.** 서버가 자른 줄 알았지만 자른 것은 앱이었다.
+
+    @Test
+    fun `비율을 모르면 세로로 친다`() {
+        assertEquals(GaitRecord.PORTRAIT_ASPECT, record("a").displayAspect, 0.001f)
+    }
+
+    @Test
+    fun `아는 비율은 그대로 쓴다`() {
+        val r = record("a").copy(aspect = 3f / 4f)
+        assertEquals(0.75f, r.displayAspect, 0.001f)
+    }
+
+    @Test
+    fun `너무 길쭉하거나 납작한 것은 잘라 담는다`() {
+        assertEquals(GaitRecord.MIN_ASPECT, record("a").copy(aspect = 0.2f).displayAspect, 0.001f)
+        assertEquals(GaitRecord.MAX_ASPECT, record("b").copy(aspect = 5f).displayAspect, 0.001f)
+    }
+
+    @Test
+    fun `세로 영상이 가로로 눕지 않는다`() {
+        // 9:16 로 찍힌 것이 1 보다 커지면(가로가 되면) 화면이 눕힌 것이다.
+        assertTrue(record("a").copy(aspect = 9f / 16f).displayAspect < 1f)
+        assertTrue(record("b").displayAspect < 1f)
     }
 }
