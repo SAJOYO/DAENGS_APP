@@ -452,7 +452,9 @@ fun ChatScreen(
                 onBack = { gaitDetail = null },
                 onCompare = { gaitPicking = record.id },
                 onDelete = {
-                    gait.remove(record.id)
+                    // 서버에서도 지운다. 화면은 기다리지 않는다 — 홀더가 먼저 빼고
+                    // 실패하면 되돌린다.
+                    scope.launch { gait.remove(record.id) }
                     gaitDetail = null
                     // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
                     // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
@@ -492,7 +494,8 @@ fun ChatScreen(
             onConfirm = { past ->
                 gaitPicking = null
                 gaitDetail = null
-                gaitComparing = gait.compare(recentId, past.id)
+                // 비교는 서버가 한다. 문장도 저쪽 message_for_ui 가 온다.
+                scope.launch { gaitComparing = gait.compare(recentId, past.id) }
             },
         )
     }

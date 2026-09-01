@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.daengs.app.pet.PetHolder
 
 /**
  * 보행 기록을 들고 있는 자리. [PetHolder][com.daengs.app.pet.PetHolder] 와 같은 결이다 —
@@ -21,6 +23,15 @@ class GaitHolder(
     private val analyzer: GaitAnalyzer = MockGaitAnalyzer(),
     initial: List<GaitRecord> = GaitSampleRecords.of(),
 ) {
+    /**
+     * 서버에 같이 알릴 것인가.
+     *
+     * **분석기가 진짜 서버를 쓸 때만 목록·삭제·비교도 서버로 간다.** 둘을 따로
+     * 켜면 "분석은 기기에서 했는데 삭제는 서버로 가는" 반쪽 상태가 생긴다.
+     * [MockGaitAnalyzer] 를 끼우면 통째로 기기 안에서 돌아서 단위 테스트와
+     * `@Preview` 가 네트워크를 타지 않는다.
+     */
+    private val remote: Boolean get() = analyzer is HttpGaitAnalyzer
     /** 최근 것이 앞이다. 목록도 카드도 이 순서를 그대로 쓴다. */
     var records: List<GaitRecord> by mutableStateOf(initial)
         private set
@@ -58,17 +69,77 @@ class GaitHolder(
      *
      * 판정은 [GaitComparison.of] 가 지표에서 끌어낸다 — 여기서 문장을 고르지 않는다.
      */
-    fun compare(recentId: String, pastId: String): GaitComparison? {
+    suspend fun compare(recentId: String, pastId: String): GaitComparison? {
         val recent = find(recentId) ?: return null
         val past = find(pastId) ?: return null
-        return GaitComparison.of(recent, past, GaitSampleRecords.metricsFor(recent, past))
+
+        // 표본끼리는 서버에 없다. 서버 주소가 없을 때도 마찬가지다.
+        val sample = recentId.startsWith(SAMPLE_PREFIX) || pastId.startsWith(SAMPLE_PREFIX)
+        if (!remote || sample) {
+            return GaitComparison.of(recent, past, GaitSampleRecords.metricsFor(recent, past))
+        }
+
+        return GaitApi.compare(recentId, pastId)
+            .map { GaitComparison.of(recent, past, it.toMetrics(), it.messageForUi, it.versionWarning) }
+            .onFailure { error = it.message ?: "두 기록을 비교하지 못했어요." }
+            .getOrNull()
     }
 
-    /** 기록 하나를 지운다. 상세 화면의 삭제 자리가 부른다. */
-    fun remove(id: String) {
+    /**
+     * 기록 하나를 지운다. 상세 화면의 삭제 자리가 부른다.
+     *
+     * **화면에서 먼저 빼고 서버를 부른다.** 지우기는 누른 사람이 결과를 이미 아는
+     * 동작이라 몇 초 기다리게 할 이유가 없다. 다만 서버가 실패하면 되돌린다 —
+     * 지운 줄 알았는데 다음에 켜면 살아 있는 것이 제일 나쁘다.
+     *
+     * 표본 기록(`sample-` )은 서버에 없으니 부르지 않는다.
+     */
+    suspend fun remove(id: String) {
+        val before = records
         records = records.filterNot { it.id == id }
+        if (!remote || id.startsWith(SAMPLE_PREFIX)) return
+        GaitApi.delete(id).onFailure {
+            records = before
+            error = it.message ?: "기록을 지우지 못했어요."
+        }
+    }
+
+    /**
+     * 서버에서 이 강아지의 기록을 받아 온다.
+     *
+     * **실패해도 화면을 비우지 않는다.** 목록이 통째로 사라지면 사용자는 기록이
+     * 지워진 줄 안다. 못 받아 왔으면 들고 있던 것을 그대로 두고 [error] 로만 말한다.
+     *
+     * 저쪽은 **오래된 것부터** 준다. 앱 목록은 최근이 앞이라 뒤집는다.
+     */
+    suspend fun load(dogId: String) {
+        if (!remote) return
+        GaitApi.records(dogId)
+            .onSuccess { page -> records = page.records.reversed().map { it.toRecord() } }
+            .onFailure { error = it.message ?: "기록을 받아오지 못했어요." }
+    }
+
+    companion object {
+        /** 화면을 채우려고 만든 기록의 id 접두사. 서버에 없으므로 부르지 않는다. */
+        const val SAMPLE_PREFIX = "sample-"
     }
 }
 
+/**
+ * 서버가 붙어 있으면 [HttpGaitAnalyzer], 아니면 [MockGaitAnalyzer] 를 끼운다.
+ *
+ * **고르는 자리는 여기 하나다.** 화면은 어느 쪽이 들어갔는지 모른다.
+ */
 @Composable
-fun rememberGaitHolder(): GaitHolder = remember { GaitHolder() }
+fun rememberGaitHolder(pets: PetHolder? = null): GaitHolder {
+    val context = LocalContext.current
+    return remember(pets) {
+        GaitHolder(
+            analyzer = if (GaitApi.configured) {
+                HttpGaitAnalyzer(context.applicationContext, dogId = { pets?.primary?.id })
+            } else {
+                MockGaitAnalyzer()
+            },
+        )
+    }
+}

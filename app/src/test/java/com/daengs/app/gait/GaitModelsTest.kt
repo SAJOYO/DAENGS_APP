@@ -3,6 +3,7 @@ package com.daengs.app.gait
 import android.app.Application
 import android.net.Uri
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -187,10 +188,82 @@ class GaitModelsTest {
     }
 
     @Test
-    fun `지우면 목록에서 빠지고 다시 찾아지지 않는다`() {
+    fun `지우면 목록에서 빠지고 다시 찾아지지 않는다`() = runTest {
         val holder = GaitHolder(initial = listOf(record("a"), record("b")))
         holder.remove("a")
         assertEquals(null, holder.find("a"))
         assertEquals(1, holder.records.size)
+    }
+
+    @Test
+    fun `서버 목록 한 줄은 길이를 모른 채로 옮겨진다`() {
+        val summary = GaitSummary.parse(
+            JSONObject(
+                """
+                {"record_id":"5389c92e7f4b41d8a3c6e0192b7d4f8a","date":"2026-08-31",
+                 "comparable":true,"has_overlay":true,"gait_filter_version":"v5-x"}
+                """.trimIndent(),
+            ),
+        )
+        val record = summary.toRecord()
+
+        assertEquals("5389c92e7f4b41d8a3c6e0192b7d4f8a", record.id)
+        assertEquals(LocalDate.of(2026, 8, 31), record.date)
+        assertTrue(record.comparable)
+        // 저쪽 목록에 길이가 없다. 0 초라고 단언하지 않는다.
+        assertEquals(null, record.seconds)
+        assertEquals("길이 미상", record.lengthLabel)
+        assertEquals(null, record.clockLabel)
+    }
+
+    @Test
+    fun `분석 응답의 quality 가 비교 가능 여부를 정한다`() {
+        val ok = GaitAnalyzed.parse(
+            JSONObject("""{"record_id":"a1","date":"2026-08-31","quality":{"status":"ok","quality_tier":"low"}}"""),
+        )
+        val bad = GaitAnalyzed.parse(
+            JSONObject("""{"record_id":"a2","quality":{"status":"unavailable","reason":"프레임을 읽지 못했습니다"}}"""),
+        )
+
+        assertTrue(ok.qualityOk)
+        assertEquals("low", ok.qualityTier)
+        assertFalse(bad.qualityOk)
+        assertEquals("프레임을 읽지 못했습니다", bad.reason)
+        assertEquals(null, bad.date)
+    }
+
+    @Test
+    fun `비교 응답의 관절 문구만 옮기고 모르는 값은 측정 부족이다`() {
+        val compared = GaitCompared.parse(
+            JSONObject(
+                """
+                {"message_for_ui":"일부 관절에서 차이가 관찰됩니다",
+                 "joint_movement_range_comparison":{"Iliac crest":"차이 관찰됨","Hock":"비슷함","Knee":"???"},
+                 "version_warning":"두 기록의 필터 버전이 다릅니다"}
+                """.trimIndent(),
+            ),
+        )
+        val metrics = compared.toMetrics().associate { it.name to it.delta }
+
+        assertEquals(GaitDelta.Slight, metrics["Iliac crest"])
+        assertEquals(GaitDelta.Similar, metrics["Hock"])
+        // 모르는 문자열을 "유사" 로 떨어뜨리면 없는 안심을 준다.
+        assertEquals(GaitDelta.Unknown, metrics["Knee"])
+        assertEquals("두 기록의 필터 버전이 다릅니다", compared.versionWarning)
+    }
+
+    @Test
+    fun `서버 문장이 있으면 앱 문장을 이긴다`() {
+        val recent = record("a")
+        val past = record("b")
+        val server = GaitComparison.of(
+            recent, past,
+            listOf(GaitMetric("Hock", GaitDelta.Similar)),
+            serverMessage = "뚜렷한 차이는 관찰되지 않았습니다 (서버)",
+        )
+        val local = GaitComparison.of(recent, past, listOf(GaitMetric("Hock", GaitDelta.Similar)))
+
+        assertEquals("뚜렷한 차이는 관찰되지 않았습니다 (서버)", server.sentence)
+        assertEquals(GaitVerdict.NoClearDifference.sentence, local.sentence)
     }
 }

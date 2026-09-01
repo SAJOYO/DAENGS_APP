@@ -322,14 +322,17 @@ fun GaitThumbnail(
             contentAlignment = Alignment.Center,
         ) { DaengsIconView(DaengsIcon.Play, Modifier.size(19.dp), tint = DaengPink) }
 
-        if (showLength) {
+        // 길이를 모르는 기록(서버 목록에서 온 것)이면 배지를 아예 안 그린다.
+        // 빈 배지가 남으면 "0초" 로 읽힌다.
+        val clock = record.clockLabel
+        if (showLength && clock != null) {
             Surface(
                 color = TextDark.copy(alpha = 0.55f),
                 shape = RoundedCornerShape(7.dp),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
             ) {
                 Text(
-                    record.clockLabel,
+                    clock,
                     color = CardWhite,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,

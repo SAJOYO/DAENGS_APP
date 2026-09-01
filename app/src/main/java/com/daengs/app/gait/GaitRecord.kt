@@ -20,8 +20,14 @@ data class GaitRecord(
     val id: String,
     /** 찍은 날. 카드와 목록의 제목이 된다. */
     val date: LocalDate,
-    /** 영상 길이(초). 10초 미만이면 카드가 짧다고 말해 준다. */
-    val seconds: Int,
+    /**
+     * 영상 길이(초). 10초 미만이면 카드가 짧다고 말해 준다.
+     *
+     * **서버 목록에는 없다.** 방금 분석한 것은 기기에서 읽어 알지만(`PreparedVideo`),
+     * `GET /gait/records` 응답에 길이가 담기지 않아 지난 기록은 모른다. 모르는 것을
+     * 0 으로 적으면 화면이 "0초" 라고 단언하므로 null 로 둔다.
+     */
+    val seconds: Int? = null,
     /**
      * 원본 영상. 표본 기록은 `null` 이다 — 아직 서버가 없어서 지난 기록은
      * 화면을 채우려고 만든 것이고, 재생할 파일이 실제로는 없다.
@@ -35,11 +41,11 @@ data class GaitRecord(
     /** `08.31`. 카드 제목과 비교 화면의 두 기둥에 같은 모양으로 쓴다. */
     val dateLabel: String get() = date.format(DAY)
 
-    /** `12초`. */
-    val lengthLabel: String get() = "${seconds}초"
+    /** `12초`. 길이를 모르면 그렇게 말한다 — 0 초라고 하지 않는다. */
+    val lengthLabel: String get() = seconds?.let { "${it}초" } ?: "길이 미상"
 
-    /** `00:12`. 썸네일 위 오른쪽 아래에 얹는다. */
-    val clockLabel: String get() = "%02d:%02d".format(seconds / 60, seconds % 60)
+    /** `00:12`. 썸네일 위 오른쪽 아래에 얹는다. 모르면 null 이라 화면이 안 그린다. */
+    val clockLabel: String? get() = seconds?.let { "%02d:%02d".format(it / 60, it % 60) }
 
     /**
      * 카드 오른쪽 위 배지.
@@ -97,7 +103,21 @@ data class GaitComparison(
     val recent: GaitRecord,
     val past: GaitRecord,
     val metrics: List<GaitMetric>,
+    /**
+     * 서버가 준 한 줄(`message_for_ui`). **있으면 이것이 [verdict] 문장을 이긴다** —
+     * 저쪽이 실제 계산에서 유도한 문장이고, API.md 가 화면에 쓸 값으로 지목했다.
+     * 서버가 없을 때(표본끼리 비교)는 null 이고 그때만 앱 문장이 나온다.
+     */
+    val serverMessage: String? = null,
+    /**
+     * 두 기록의 필터 버전이 다를 때 저쪽이 붙이는 경고. **표시해야 한다** —
+     * 같은 영상이라도 버전이 다르면 이동범위가 달라 보인다.
+     */
+    val versionWarning: String? = null,
 ) {
+    /** 화면에 그릴 한 줄. 서버 문장이 있으면 그것, 없으면 [verdict] 의 것이다. */
+    val sentence: String get() = serverMessage ?: verdict.sentence
+
     val verdict: GaitVerdict = when {
         metrics.isEmpty() || metrics.all { it.delta == GaitDelta.Unknown } -> GaitVerdict.NotEnough
         metrics.any { it.delta == GaitDelta.Slight } -> GaitVerdict.SomeDifference
@@ -111,11 +131,23 @@ data class GaitComparison(
          * 한쪽이 못 쓰는 영상인데 나머지 지표만 "유사" 로 남기면, 실제로는 재지도
          * 못한 것을 재서 같다고 한 것처럼 읽힌다.
          */
-        fun of(recent: GaitRecord, past: GaitRecord, metrics: List<GaitMetric>): GaitComparison =
+        fun of(
+            recent: GaitRecord,
+            past: GaitRecord,
+            metrics: List<GaitMetric>,
+            serverMessage: String? = null,
+            versionWarning: String? = null,
+        ): GaitComparison =
             if (recent.comparable && past.comparable) {
-                GaitComparison(recent, past, metrics)
+                GaitComparison(recent, past, metrics, serverMessage, versionWarning)
             } else {
-                GaitComparison(recent, past, metrics.map { it.copy(delta = GaitDelta.Unknown) })
+                GaitComparison(
+                    recent,
+                    past,
+                    metrics.map { it.copy(delta = GaitDelta.Unknown) },
+                    serverMessage,
+                    versionWarning,
+                )
             }
     }
 }

@@ -27,6 +27,12 @@ val apiBaseUrl = localSetting("daengs.apiBaseUrl")
 // 비어 있으면 채팅의 진단 버튼이 스스로 그렇게 말한다.
 val screenUrl = localSetting("daengs.screenUrl")
 
+// 보행 분석 서버. 스크리닝과 **같은 모양**이다 — nginx 가 우리 서버와 같은 호스트에서
+// /gait 접두사로 별도 컨테이너에 넘긴다. 그래서 daengs_backend 의 openapi.json 에는
+// 안 나오고, 계약은 저쪽 저장소의 backend/src/daengs_gait/API.md 에 있다.
+// 비어 있으면 보행 줄이 스스로 그렇게 말한다.
+val gaitUrl = localSetting("daengs.gaitUrl")
+
 // 네이버 지도 NCP 키. 없어도 앱은 켜진다 — 지도 타일만 인증 실패로 비고,
 // 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
 val naverMapClientId = localSetting("daengs.naverMapClientId")
@@ -55,6 +61,7 @@ android {
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoNativeAppKey\"")
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
+        buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
         buildConfigField("String", "NAVER_MAP_NCP_KEY_ID", "\"$naverMapClientId\"")
         buildConfigField("String", "NAVER_MAP_STYLE_ID", "\"$naverMapStyleId\"")
 
