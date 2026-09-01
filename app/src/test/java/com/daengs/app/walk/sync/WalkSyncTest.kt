@@ -182,6 +182,8 @@ class WalkSyncTest {
 
         override suspend fun forgetDog(dogId: String) = Unit
 
+        override suspend fun forgetEverything() = Unit
+
         override suspend fun unfinishedSessions(): List<RecordedSession> =
             sessions.filter { it.endedAtMillis == null }
 

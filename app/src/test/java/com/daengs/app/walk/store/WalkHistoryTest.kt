@@ -125,6 +125,49 @@ class WalkHistoryTest {
      * 위도 0.001° 가 약 111m 다. [TrailRecorder] 의 문턱값(최소 3m · 최대 점프 200m)
      * 안에 들도록 중간 점을 끼워 넣는다.
      */
+    /**
+     * 탈퇴하면 **이 기기의 좌표도 남으면 안 된다.**
+     *
+     * 서버는 탈퇴에서 개인정보를 파기하고 산책도 `ON DELETE CASCADE` 로 지운다.
+     * 그런데 폰의 Room 에는 원본 좌표가 그대로 남아 있었다 — 산책 경로는 집과
+     * 생활권을 그대로 드러내는 값이라, 그걸 두고 "계정을 지우면 데이터도 지운다"
+     * 고 하면 거짓말이 된다. 다음에 이 폰으로 로그인한 사람이 남의 동선을
+     * 물려받기도 한다.
+     */
+    @Test
+    fun `전부 잊으면 좌표까지 사라진다`() = runBlocking {
+        walked("a", startedAt = todayAt(9), meters = 400.0, seconds = 600)
+        walked("b", startedAt = todayAt(19), meters = 600.0, seconds = 900)
+        assertEquals(2, history.finished().size)
+
+        history.forgetEverything()
+
+        assertTrue("세션이 남았다", history.finished().isEmpty())
+        assertNull(log.session("a"))
+        assertNull(log.session("b"))
+        assertTrue("좌표가 남았다", log.fixes("a").isEmpty())
+        assertTrue("좌표가 남았다", log.fixes("b").isEmpty())
+    }
+
+    /** 비어 있을 때 불러도 터지지 않는다 — 강아지를 한 번도 안 걸은 사람도 탈퇴한다. */
+    @Test
+    fun `지울 게 없어도 조용히 끝난다`() = runBlocking {
+        history.forgetEverything()
+        assertTrue(history.finished().isEmpty())
+    }
+
+    /** 아직 안 끝난 산책도 지운다. 탈퇴는 "이 기기에서 나를 지우는 것" 이다. */
+    @Test
+    fun `진행 중인 산책도 지운다`() = runBlocking {
+        walked("open", startedAt = todayAt(9), meters = 300.0, seconds = 400, close = false)
+        assertNotNull(log.session("open"))
+
+        history.forgetEverything()
+
+        assertNull(log.session("open"))
+        assertTrue(log.fixes("open").isEmpty())
+    }
+
     private suspend fun walked(
         id: String,
         startedAt: Long,

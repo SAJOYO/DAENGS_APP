@@ -81,6 +81,21 @@ class WalkHistory(private val log: WalkFixLog) {
         log.forgetDog(dogId)
     }
 
+    /**
+     * 이 기기의 산책을 **전부** 잊는다. **탈퇴할 때** 부른다.
+     *
+     * 서버는 탈퇴에서 개인정보를 파기하고 산책도 같이 지운다. 그런데 폰의 Room 에는
+     * 원본 좌표가 남아 있었다 — **산책 경로는 집과 생활권을 그대로 드러내는 값**이라,
+     * 그걸 두고 "계정을 지우면 데이터도 지운다" 고 하면 거짓말이 된다. 다음에 이
+     * 폰으로 로그인한 사람이 남의 동선을 물려받기도 한다.
+     *
+     * 로그아웃에서는 부르지 않는다. 같은 사람이 다시 로그인할 자리라 지우면
+     * 자기 기록을 잃는다.
+     */
+    suspend fun forgetEverything() = withContext(Dispatchers.IO) {
+        log.forgetEverything()
+    }
+
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {
         val session = log.session(sessionId) ?: return@withContext null
         summarize(session, log.fixes(sessionId))

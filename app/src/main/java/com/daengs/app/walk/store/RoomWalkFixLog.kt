@@ -59,6 +59,8 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         dao.unlinkDog(dogId)
     }
 
+    override suspend fun forgetEverything() = dao.deleteAllSessions()
+
     override suspend fun unfinishedSessions(): List<RecordedSession> =
         dao.unfinishedSessions().withDogs()
 

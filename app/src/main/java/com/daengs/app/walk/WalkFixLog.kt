@@ -49,6 +49,14 @@ interface WalkFixLog {
      */
     suspend fun forgetDog(dogId: String)
 
+    /**
+     * 이 기기의 산책을 **전부** 잊는다. 탈퇴할 때 부른다.
+     *
+     * 산책 경로는 집과 생활권을 드러내는 값이라, 계정을 지웠는데 폰에 남아 있으면
+     * 다음에 이 폰으로 로그인한 사람이 남의 동선을 물려받는다.
+     */
+    suspend fun forgetEverything()
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>
