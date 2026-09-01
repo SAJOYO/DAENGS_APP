@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitVideo
@@ -111,6 +112,9 @@ private sealed interface ChatEntry {
 
     data class Theirs(val text: String) : ChatEntry
 
+    /** 오케스트레이션에 물어보는 중. 답이 오면 이 자리가 [Theirs] 나 [Failed] 로 바뀐다. */
+    data object Thinking : ChatEntry
+
     /** 내가 올린 사진. 원본이 아니라 줄여 놓은 썸네일이다 ([Photo.THUMB_EDGE]). */
     data class MyPhoto(val image: Bitmap) : ChatEntry
 
@@ -141,8 +145,10 @@ private sealed interface ChatEntry {
 }
 
 /**
- * 대화 UI 전용 화면. 실제 RAG 호출은 아직 연결하지 않아, 전송된 질문만 기기 안에서
- * 보여 준다. 네트워크 계약이 붙을 때 이 화면의 [ChatEntry.Theirs] 자리에만 연결하면 된다.
+ * 대화 UI 전용 화면. 자유 텍스트는 `POST /assistant/query` 오케스트레이션으로 간다 —
+ * 자연어 해석·능력 실행·집계는 전부 저쪽이 하고, 앱은 상태(`status`)와
+ * `handoffs` 만 보고 화면을 고른다. **여기서 텍스트를 보고 갈래를 나누지 않는다**
+ * (예전 `GAIT_ASK` 키워드 라우팅은 그래서 지웠다).
  *
  * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningApi]) 실제로 부른다. 다만 서버
  * 주소가 아직 없어, 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
@@ -152,6 +158,12 @@ fun ChatScreen(
     onBack: () -> Unit,
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
+    /**
+     * 만료됐으면 재발급까지 하고 돌려주는 access token. **[MainActivity] 의
+     * `freshToken` 을 그대로 받는다** — 여기서 `TokenStore` 를 직접 읽거나
+     * 세션을 갱신하지 않는다. null 이면 로그인이 안 된 것이다.
+     */
+    accessTokenProvider: suspend () -> String? = { null },
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -169,7 +181,9 @@ fun ChatScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     val entries = remember { mutableStateListOf<ChatEntry>() }
     val scroll = rememberScrollState()
-    var chooser by remember { mutableStateOf(false) }
+    // null 이면 닫힘. [ChooserMode.SkinOnly] 는 서버 skin HANDOFF 가 연 것이라
+    // 보행 묶음을 감춘다 — 사용자가 그 질문에서 보행을 고를 이유가 없다.
+    var chooserMode by remember { mutableStateOf<ChooserMode?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
 
     // 사진을 고르면 **바로 안 보낸다.** 가이드 프레임에서 병변 자리를 받아야
@@ -284,6 +298,38 @@ fun ChatScreen(
         }
     }
 
+    /**
+     * 자유 텍스트 한 줄을 오케스트레이션에 보낸다.
+     *
+     * **여기서 답을 지어내지 않는다.** 로그인이 안 됐을 때만 로컬 문구를 쓰고,
+     * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
+     * 대화 기록도 안 보낸다 — v1 오케스트레이션은 상태가 없다.
+     */
+    val sendQuery: (String) -> Unit = { text ->
+        entries += ChatEntry.Mine(text)
+        val slot = entries.size
+        entries += ChatEntry.Thinking
+        scope.launch {
+            val token = accessTokenProvider()
+            if (token == null) {
+                entries[slot] = ChatEntry.Failed("로그인이 필요해요. 다시 로그인해 주세요.")
+                return@launch
+            }
+            AssistantApi.query(token, text)
+                .onSuccess { response ->
+                    entries[slot] = ChatEntry.Theirs(response.bubbleMessage())
+                    when (response.knownHandoff()) {
+                        // 실행하지 않는다 — 기존 흐름을 그대로 연다. 보행은 카드를
+                        // 하나 더 얹고, 피부는 이미 있는 선택 시트를 스킨 전용으로 연다.
+                        KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
+                        KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
+                        null -> Unit
+                    }
+                }
+                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.") }
+        }
+    }
+
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             gaitCapture = false
@@ -327,7 +373,7 @@ fun ChatScreen(
         ) {
             if (entries.isEmpty()) {
                 AssistantBubble(
-                    "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.\n답변 데이터 연결은 준비 중이에요.",
+                    "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.",
                     avatar,
                 )
             } else {
@@ -335,6 +381,7 @@ fun ChatScreen(
                     when (entry) {
                         is ChatEntry.Mine -> UserBubble(entry.text)
                         is ChatEntry.Theirs -> AssistantBubble(entry.text, avatar)
+                        ChatEntry.Thinking -> AssistantBubble("생각하는 중이에요…", avatar)
                         is ChatEntry.MyPhoto -> PhotoBubble(entry.image)
                         ChatEntry.Screening -> AssistantBubble("사진을 살펴보는 중이에요…", avatar)
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
@@ -379,19 +426,8 @@ fun ChatScreen(
             onSend = {
                 val text = draft.trim()
                 if (text.isNotEmpty()) {
-                    entries += ChatEntry.Mine(text)
-                    // 보행을 물었으면 **말로 답하지 않고 카드를 편다.** 지금 답변
-                    // 연결이 없어서 "준비 중이에요" 만 나가는데, 보행은 실제로
-                    // 되는 기능이라 그 문장이 거짓이 된다.
-                    if (GAIT_ASK.containsMatchIn(text)) {
-                        entries += ChatEntry.Theirs(
-                            "좋아요! 보행 영상을 통해 우리 아이의 걸을 때 모습을 함께 살펴볼게요.",
-                        )
-                        entries += ChatEntry.GaitIntro
-                    } else {
-                        entries += ChatEntry.Theirs("AI 답변 연결을 준비 중이에요.")
-                    }
                     draft = ""
+                    sendQuery(text)
                 }
             },
             // 음성은 **아직 껍데기다.** 버튼 자리와 크기를 먼저 잡아 두고, 녹음과
@@ -400,15 +436,16 @@ fun ChatScreen(
             onVoice = { notice = "음성 입력은 준비 중이에요." },
             // **시트는 항상 연다.** 기능이 둘이 되면서 진단 서버 유무로 시트 전체를
             // 막으면 보행 쪽까지 같이 닫힌다. 못 하는 이유는 그 줄을 눌렀을 때 말한다.
-            onDiagnose = { chooser = true },
+            onDiagnose = { chooserMode = ChooserMode.Full },
         )
     }
 
-    if (chooser) {
+    chooserMode?.let { mode ->
         AiActionDialog(
-            onDismiss = { chooser = false },
+            skinOnly = mode == ChooserMode.SkinOnly,
+            onDismiss = { chooserMode = null },
             onCamera = {
-                chooser = false
+                chooserMode = null
                 when {
                     // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
                     // 로그인 버튼과 같다.
@@ -419,7 +456,7 @@ fun ChatScreen(
                 }
             },
             onAttach = {
-                chooser = false
+                chooserMode = null
                 guidedShot = false
                 if (!ScreeningApi.configured) {
                     notice = SCREEN_NOT_SET
@@ -431,11 +468,11 @@ fun ChatScreen(
             // 를 보지만 여기서는 안 본다 — 서로 다른 서버이고, 보행 쪽은 아직
             // 기기 안에서 도는 흐름이라 주소가 없어도 화면이 다 열린다.
             onGaitCapture = {
-                chooser = false
+                chooserMode = null
                 withCamera { gaitCapture = true }
             },
             onGaitPick = {
-                chooser = false
+                chooserMode = null
                 startGaitPicking()
             },
         )
@@ -637,13 +674,23 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
     }
 }
 
+/**
+ * AI 쪽 말풍선. **여기서만** [assistantMarkdown] 을 부른다 — 이 화면의 다른 텍스트
+ * (내 말풍선, 구조화 카드)는 서버 자유 텍스트가 아니라 마크다운을 볼 이유가 없다.
+ */
 @Composable
 private fun AssistantBubble(text: String, avatar: DogBreed?) {
     Row(verticalAlignment = Alignment.Top) {
         ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
-            Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(14.dp))
+            Text(
+                assistantMarkdown(text),
+                color = TextDark,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(14.dp),
+            )
         }
     }
 }
@@ -800,12 +847,12 @@ private const val CAMERA_DENIED =
     "카메라 권한이 꺼져 있어요. 설정에서 켜거나, 갤러리에서 골라 주세요."
 
 /**
- * 말로 보행 분석을 부르는 표현들.
+ * [AiActionDialog] 를 여는 두 자리.
  *
- * **넓게 잡지 않는다.** "산책" 이나 "다리" 까지 넣으면 산책 이야기를 하다가 카드가
- * 튀어나온다. 걸음 자체를 가리키는 말만 둔다.
+ * '+' 버튼은 늘 [Full] 이다. [SkinOnly] 는 서버 skin HANDOFF 가 열 때만 쓴다 —
+ * 그 문답은 이미 피부 얘기였으니 보행 묶음을 보여줄 이유가 없다.
  */
-private val GAIT_ASK = Regex("보행|걸음걸이|걷는\\s*(모습|자세)|절뚝")
+private enum class ChooserMode { Full, SkinOnly }
 
 /**
  * 카메라 버튼이 여는 시트. **기능이 둘이라 묶음으로 나눈다.**
@@ -813,6 +860,9 @@ private val GAIT_ASK = Regex("보행|걸음걸이|걷는\\s*(모습|자세)|절�
  * 피부는 사진, 보행은 영상이라 고르는 소재가 다르다. 한 줄로 넷을 늘어놓으면
  * "사진찍기"와 "영상 촬영"이 같은 층으로 보여서 무엇을 하는 화면인지가 흐려진다.
  * 묶음 제목을 먼저 읽고 그 안에서 고르는 순서가 되도록 카드를 갈랐다.
+ *
+ * @param skinOnly true 면 보행 묶음을 감춘다 ([ChooserMode.SkinOnly] 참고). '+'
+ *   버튼에서 열 때는 항상 false 라 기존 동작은 그대로다.
  */
 @Composable
 private fun AiActionDialog(
@@ -821,6 +871,7 @@ private fun AiActionDialog(
     onAttach: () -> Unit,
     onGaitCapture: () -> Unit,
     onGaitPick: () -> Unit,
+    skinOnly: Boolean = false,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -839,20 +890,22 @@ private fun AiActionDialog(
                             RowSeparator()
                             SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
                         }
-                        DashedSeparator()
-                        SourceGroup("보행 영상 분석하기") {
-                            SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
-                            RowSeparator()
-                            SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
-                            RowSeparator()
-                            // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
-                            // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
-                            Text(
-                                "💡 뒤에서 걷는 모습 / 10초 이상 권장",
-                                color = TextMuted,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            )
+                        if (!skinOnly) {
+                            DashedSeparator()
+                            SourceGroup("보행 영상 분석하기") {
+                                SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
+                                RowSeparator()
+                                SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                                RowSeparator()
+                                // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
+                                // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
+                                Text(
+                                    "💡 뒤에서 걷는 모습 / 10초 이상 권장",
+                                    color = TextMuted,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                )
+                            }
                         }
                     }
                 }
