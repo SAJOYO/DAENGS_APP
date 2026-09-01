@@ -44,8 +44,17 @@ internal fun AssistantResponse.knownHandoff(): KnownHandoff? =
 // (스크리닝·보행)에는 안 쓴다, [AssistantBubble] 에만 쓴다.
 
 private val BOLD = Regex("\\*\\*(.+?)\\*\\*")
-private val LIST_ITEM = Regex("^[*-]\\s+(.*)$")
+
+// 들여쓰기를 첫 번째 그룹으로 잡는다 — 안 그러면 중첩 항목("    * 세부")이 줄
+// 앞머리부터 시작하지 않아 매치가 안 되고 별표가 그대로 보인다.
+private val LIST_ITEM = Regex("^(\\s*)[*-]\\s+(.*)$")
 private val HEADING = Regex("^#{1,6}\\s+(.*)$")
+
+/** 입력 공백 몇 칸을 한 단계 들여쓰기로 볼지. 4칸 들여쓰기가 실제 관찰된 값이다. */
+private const val INDENT_WIDTH = 4
+
+/** 한 단계 들여쓰기의 출력 폭. 전체 중첩 엔진을 만들지 않고 시각적 위계만 준다. */
+private const val NEST_INDENT = "    "
 
 /**
  * 서버가 준 답변 문자열을 [AssistantBubble] 이 그릴 [AnnotatedString] 으로 바꾼다.
@@ -64,8 +73,10 @@ internal fun assistantMarkdown(text: String): AnnotatedString = buildAnnotatedSt
                 appendWithBold(heading.groupValues[1])
             }
             listItem != null -> {
+                val level = listItem.groupValues[1].length / INDENT_WIDTH
+                append(NEST_INDENT.repeat(level))
                 append("• ")
-                appendWithBold(listItem.groupValues[1])
+                appendWithBold(listItem.groupValues[2])
             }
             else -> appendWithBold(line)
         }

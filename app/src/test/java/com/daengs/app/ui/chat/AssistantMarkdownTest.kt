@@ -73,4 +73,42 @@ class AssistantMarkdownTest {
         assertFalse(r.text.contains("**"))
         assertFalse(r.text.contains("* **"))
     }
+
+    // ── 중첩 목록 (들여쓴 * / -) ──────────────────────────────────────────────
+
+    @Test
+    fun `들여쓴 항목은 별표 없이 부모보다 안쪽으로 들여써서 보인다`() {
+        val input = "* 대처법:\n    * 첫 번째 방법\n    * 두 번째 방법"
+        val r = assistantMarkdown(input)
+        val lines = r.text.split("\n")
+        assertEquals("• 대처법:", lines[0])
+        assertEquals("    • 첫 번째 방법", lines[1])
+        assertEquals("    • 두 번째 방법", lines[2])
+        assertFalse("원시 별표가 남았다: ${r.text}", r.text.contains("*"))
+        assertTrue(lines[1].indexOf("•") > lines[0].indexOf("•"))
+        assertTrue(lines[2].indexOf("•") > lines[0].indexOf("•"))
+    }
+
+    @Test
+    fun `들여쓴 항목 안의 굵은 글씨도 유지된다`() {
+        val text = "    * **원인:** 설명"
+        val r = assistantMarkdown(text)
+        assertEquals("    • 원인: 설명", r.text)
+        assertFalse(r.text.contains("**"))
+        val boldStart = r.text.indexOf("원인:")
+        assertEquals(listOf(boldStart until boldStart + "원인:".length), boldRanges(text))
+    }
+
+    @Test
+    fun `실기기 중첩 목록 원문도 별표가 안 남고 내용은 보존된다`() {
+        val raw = "• 대처법:\n" +
+            "    *   배를 보이게 한 상태에서 진정시킵니다\n" +
+            "    *   앞발과 뒷발을 손으로 부드럽게 잡아줍니다\n" +
+            "    *   쵸크체인을 건 후 짧게 신호를 줍니다"
+        val r = assistantMarkdown(raw)
+        assertFalse("원시 별표가 남았다: ${r.text}", r.text.contains("*"))
+        assertTrue(r.text.contains("배를 보이게 한 상태에서 진정시킵니다"))
+        assertTrue(r.text.contains("앞발과 뒷발을 손으로 부드럽게 잡아줍니다"))
+        assertTrue(r.text.contains("쵸크체인을 건 후 짧게 신호를 줍니다"))
+    }
 }
