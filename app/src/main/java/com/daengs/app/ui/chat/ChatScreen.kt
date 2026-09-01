@@ -74,6 +74,12 @@ import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.gait.GaitCaptureScreen
+import com.daengs.app.ui.camera.rememberVideoRecorder
+import com.daengs.app.ui.camera.rememberCameraController
+import com.daengs.app.ui.camera.hasCameraPermission
+import com.daengs.app.ui.camera.CameraPreview
+import com.daengs.app.ui.camera.takePicture
+import android.Manifest
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
@@ -195,6 +201,17 @@ fun ChatScreen(
 
     /** 촬영 가이드 화면이 떠 있나. */
     var gaitCapture by remember { mutableStateOf(false) }
+    // 앱 안 카메라로 피부 사진을 찍는 중.
+    var skinCapture by remember { mutableStateOf(false) }
+    // 앱 안 카메라의 가이드에 맞춰 찍은 사진인가. 확인 화면이 그 네모에서 시작한다.
+    var guidedShot by remember { mutableStateOf(false) }
+
+    // 카메라 권한. **찍는 동안 가이드를 보여 주려고** 든다 (시스템 카메라로 던질
+    // 때는 필요 없었다). 거부해도 촬영은 막지 않는다 — 시스템 카메라로 떨어진다.
+    var cameraGranted by remember { mutableStateOf(hasCameraPermission(context)) }
+    val askCamera = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> cameraGranted = granted }
 
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
@@ -255,6 +272,12 @@ fun ChatScreen(
         } else {
             recordVideo.launch(gaitTarget)
         }
+    }
+
+    // 촬영 화면을 열 때 한 번 묻는다. 열기 전에 물으면 무엇에 쓰는 권한인지 모르는
+    // 채로 창을 보게 된다.
+    LaunchedEffect(gaitCapture) {
+        if (gaitCapture && !cameraGranted) askCamera.launch(Manifest.permission.CAMERA)
     }
 
     val startGaitPicking: () -> Unit = {
@@ -395,11 +418,19 @@ fun ChatScreen(
                     // 로그인 버튼과 같다.
                     !ScreeningApi.configured -> notice = SCREEN_NOT_SET
                     target == null -> notice = "카메라를 열 수 없어요."
-                    else -> capture.launch(target)
+                    // 권한이 있으면 **앱 안에서** 찍는다 — 그래야 병변에 맞출 네모를
+                    // 찍는 동안 보여 줄 수 있다. 없으면 지금까지처럼 시스템 카메라다.
+                    cameraGranted -> skinCapture = true
+                    else -> {
+                        // 시스템 카메라에는 가이드가 없다. 확인 화면도 기본값에서 시작한다.
+                        guidedShot = false
+                        capture.launch(target)
+                    }
                 }
             },
             onAttach = {
                 chooser = false
+                guidedShot = false
                 if (!ScreeningApi.configured) {
                     notice = SCREEN_NOT_SET
                 } else {
@@ -425,6 +456,7 @@ fun ChatScreen(
     pending?.let { photo ->
         GuideFrameScreen(
             photo = photo.thumbnail,
+            guided = guidedShot,
             onCancel = { pending = null },
             onConfirm = { box ->
                 pending = null
@@ -433,15 +465,73 @@ fun ChatScreen(
         )
     }
 
+    if (skinCapture) {
+        val controller = rememberCameraController(videoEnabled = false)
+        var shooting by remember { mutableStateOf(false) }
+        SkinCaptureScreen(
+            controller = controller,
+            onBack = { skinCapture = false },
+            onPick = {
+                skinCapture = false
+                pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            busy = shooting,
+            onShutter = {
+                if (!shooting && target != null) {
+                    shooting = true
+                    takePicture(
+                        context = context,
+                        controller = controller,
+                        file = Photo.cameraFile(context),
+                        onSaved = {
+                            shooting = false
+                            skinCapture = false
+                            guidedShot = true
+                            open(target)
+                        },
+                        onError = {
+                            shooting = false
+                            notice = "사진을 저장하지 못했어요."
+                        },
+                    )
+                }
+            },
+        )
+    }
+
     // 보행 화면들. **덮는 순서가 곧 되돌아가는 순서다** — 촬영이 제일 위고,
     // 상세와 비교는 그 아래, 시트는 대화 바로 위다.
     if (gaitCapture) {
-        GaitCaptureScreen(
-            onBack = { gaitCapture = false },
-            onRecord = startGaitRecording,
-            onPick = startGaitPicking,
-            avatar = avatar,
-        )
+        // 카메라 권한이 있으면 **앱 안에서** 찍는다. 그래야 가이드를 찍는 동안
+        // 보여 줄 수 있다. 없으면 지금까지처럼 시스템 카메라로 떨어진다 —
+        // **되던 일이 안 되게 만들지 않는다.**
+        if (cameraGranted) {
+            val controller = rememberCameraController(videoEnabled = true)
+            val recorder = rememberVideoRecorder(
+                controller = controller,
+                file = remember { GaitVideo.cameraFile(context) },
+                onDone = { uri ->
+                    gaitCapture = false
+                    runGait(uri)
+                },
+                onError = { notice = it },
+            )
+            GaitCaptureScreen(
+                onBack = { gaitCapture = false },
+                onRecord = recorder::toggle,
+                onPick = startGaitPicking,
+                avatar = avatar,
+                recording = recorder.recording,
+                preview = { CameraPreview(controller, Modifier.fillMaxSize()) },
+            )
+        } else {
+            GaitCaptureScreen(
+                onBack = { gaitCapture = false },
+                onRecord = startGaitRecording,
+                onPick = startGaitPicking,
+                avatar = avatar,
+            )
+        }
     }
 
     gaitDetail?.let { id ->

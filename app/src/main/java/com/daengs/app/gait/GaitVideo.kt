@@ -69,10 +69,18 @@ object GaitVideo {
      * `res/xml/file_paths.xml` 이 그 한 폴더만 열어 두고 있어서, 다른 폴더를
      * 쓰려면 FileProvider 범위를 넓혀야 한다. 넓힐 이유가 없다.
      */
-    fun cameraTarget(context: Context): Uri {
+    fun cameraTarget(context: Context): Uri =
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cameraFile(context))
+
+    /**
+     * 같은 자리를 **파일로** 준다.
+     *
+     * 앱 안 카메라(CameraX)는 `content://` 가 아니라 파일에 쓴다. 두 길이 같은 파일을
+     * 가리켜야 그 뒤(분석·재생)가 어느 쪽으로 찍었는지 몰라도 된다.
+     */
+    fun cameraFile(context: Context): File {
         val dir = File(context.cacheDir, "camera").apply { mkdirs() }
-        val file = File(dir, "gait.mp4")
-        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        return File(dir, "gait.mp4")
     }
 
     private fun Bitmap.scaledToFit(edge: Int): Bitmap {
