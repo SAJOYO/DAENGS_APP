@@ -4,12 +4,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import com.daengs.app.pet.PetHolder
 
 /**
- * 보행 기록을 들고 있는 자리. [PetHolder][com.daengs.app.pet.PetHolder] 와 같은 결이다 —
+ * 보행 기록을 들고 있는 자리. `PetHolder` 와 같은 결이다 —
  * `ViewModel` 을 안 쓰고 `mutableStateOf` 홀더를 `remember` 로 잡는다 (이 저장소의 패턴).
  *
  * **지금은 기기 안에만 있다.** 서버가 붙으면 [records] 의 출처만 바뀐다 — `PetHolder`
@@ -131,12 +131,17 @@ class GaitHolder(
  * **고르는 자리는 여기 하나다.** 화면은 어느 쪽이 들어갔는지 모른다.
  */
 @Composable
-fun rememberGaitHolder(pets: PetHolder? = null): GaitHolder {
+fun rememberGaitHolder(dogId: String?): GaitHolder {
     val context = LocalContext.current
-    return remember(pets) {
+
+    // **홀더를 다시 만들지 않는다.** `remember(dogId)` 로 두면 대표를 바꾸는 순간
+    // 홀더가 새로 생겨서 대화에 올려 둔 기록이 통째로 사라진다. 최신 값만 읽는다.
+    val latest by rememberUpdatedState(dogId)
+
+    return remember {
         GaitHolder(
             analyzer = if (GaitApi.configured) {
-                HttpGaitAnalyzer(context.applicationContext, dogId = { pets?.primary?.id })
+                HttpGaitAnalyzer(context.applicationContext, dogId = { latest })
             } else {
                 MockGaitAnalyzer()
             },

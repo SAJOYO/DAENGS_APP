@@ -145,6 +145,11 @@ fun ChatScreen(
     onBack: () -> Unit,
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
+    /**
+     * 대표 강아지의 id. **보행 기록을 묶는 열쇠다** — 없으면 올려도 목록으로 다시
+     * 못 찾아서, 서버에 보내기 전에 화면이 막는다 ([GaitApi] 주석).
+     */
+    dogId: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -191,7 +196,7 @@ fun ChatScreen(
     // 보행 화면들은 **대화 위에 얹는다.** `MainActivity` 의 [Screen] 으로 빼면 촬영
     // 화면을 열었다 되돌아올 때 대화가 통째로 새로 만들어져, 방금 올린 카드가
     // 사라진다 — 가이드 프레임([GuideFrameScreen])을 대화 위에 덮은 것과 같은 이유다.
-    val gait = rememberGaitHolder()
+    val gait = rememberGaitHolder(dogId)
 
     /** 촬영 가이드 화면이 떠 있나. */
     var gaitCapture by remember { mutableStateOf(false) }

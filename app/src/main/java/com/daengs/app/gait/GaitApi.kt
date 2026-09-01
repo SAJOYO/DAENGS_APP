@@ -70,6 +70,14 @@ object GaitApi {
         date: LocalDate?,
         note: String? = null,
     ): Result<GaitAnalyzed> = call {
+        // **보내기 전에 잰다.** 150MB 를 다 올리고 413 을 받으면 데이터도 시간도
+        // 버린다. 저쪽 한도를 앱이 알고 있으니 여기서 먼저 막는다.
+        sizeOf(context, video)?.let { bytes ->
+            check(bytes <= MAX_UPLOAD_BYTES) {
+                "영상이 너무 커요 (${bytes.asMegabytes()}MB). " +
+                    "${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄이거나 더 짧게 찍어 주세요."
+            }
+        }
         val conn = open("/analyze", "POST", READ_TIMEOUT_MS)
         conn.use {
             it.writeVideoMultipart(context, video, dogId, date, note)
@@ -214,9 +222,33 @@ object GaitApi {
     private fun HttpURLConnection.readJson(): JSONObject {
         val ok = responseCode in 200..299
         val text = (if (ok) inputStream else errorStream)?.bufferedReader()?.use { it.readText() }
-        if (!ok) error(detailOf(text) ?: "보행 서버가 ${responseCode} 를 돌려줬어요.")
+        if (!ok) error(detailOf(text) ?: sentenceFor(responseCode))
         return JSONObject(text ?: "{}")
     }
+
+    /**
+     * 저쪽이 문장을 안 줄 때 앱이 대신 하는 말.
+     *
+     * 코드를 그대로 띄우면("413 을 돌려줬어요") 사용자가 무엇을 해야 할지 모른다.
+     * 뜻은 API.md 의 오류 표에 있다 — 그걸 옮겨 둔다.
+     */
+    private fun sentenceFor(code: Int): String = when (code) {
+        400 -> "영상을 읽지 못했어요. 다른 영상으로 해보세요."
+        413 -> "영상이 너무 커요. ${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄여 주세요."
+        // 컨테이너는 떠 있는데 가중치가 없는 상태다. 사용자가 할 수 있는 게 없다.
+        503 -> "보행 분석 서버가 아직 준비되지 않았어요. 잠시 뒤에 다시 해주세요."
+        404 -> "그 기록을 찾지 못했어요."
+        else -> "보행 서버가 응답하지 못했어요. (${code})"
+    }
+
+    /** 콘텐츠 제공자가 크기를 모르면 null 이다. 그때는 재지 않고 그냥 올린다. */
+    private fun sizeOf(context: Context, uri: Uri): Long? = runCatching {
+        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use {
+            it.length.takeIf { len -> len >= 0 }
+        }
+    }.getOrNull()
+
+    private fun Long.asMegabytes(): Long = this / (1024 * 1024)
 
     private fun detailOf(text: String?): String? = runCatching {
         when (val detail = JSONObject(text ?: "").opt("detail")) {
@@ -234,6 +266,9 @@ object GaitApi {
         } finally {
             disconnect()
         }
+
+    /** 저쪽 기본 한도(`GAIT_MAX_UPLOAD_BYTES`). 서버가 바꾸면 여기도 따라가야 한다. */
+    private const val MAX_UPLOAD_BYTES = 150L * 1024 * 1024
 
     private const val BOUNDARY = "----daengs-gait-boundary-0f3a9c1e"
     private const val CONNECT_TIMEOUT_MS = 15_000
