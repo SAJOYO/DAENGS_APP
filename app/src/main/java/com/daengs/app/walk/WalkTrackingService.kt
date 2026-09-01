@@ -45,6 +45,9 @@ class WalkTrackingService : Service() {
     private lateinit var store: WalkTrackingStore
     private lateinit var writer: WalkFixWriter
 
+    /** 판정하려면 방금 쓴 것을 되읽어야 한다. writer 는 쓰기 전용이라 따로 든다. */
+    private lateinit var log: WalkFixLog
+
     private val sessionLock = Any()
     private var sessionId: String? = null
     private var nextClientSeq = 0
@@ -58,6 +61,7 @@ class WalkTrackingService : Service() {
         locationSource = runtime.locationSource
         store = runtime.store
         writer = runtime.writer
+        log = runtime.log
         tracker = LocationTracker(serviceScope)
         createNotificationChannel()
 
@@ -144,12 +148,17 @@ class WalkTrackingService : Service() {
         }
         tracker.stop()
         pauseTiming()
+        // 지우려면 어느 세션인지 알아야 하는데, closeSession() 이 비워 버린다.
+        val finished = synchronized(sessionLock) { sessionId }
         closeSession()
         val trail = recorder.stop()
         store.publish(trackingState(trail))
         serviceScope.launch {
             try {
                 writer.flush()
+                // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
+                // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
+                if (finished != null) discardIfTooShort(finished)
             } finally {
                 synchronized(sessionLock) {
                     // flush 중 새 산책이 시작됐다면 새 알림까지 지우지 않는다. 새 startId가
@@ -229,6 +238,30 @@ class WalkTrackingService : Service() {
                 ),
             )
         }
+    }
+
+    /**
+     * 너무 짧으면 **산책으로 치지 않고 지운다.**
+     *
+     * 문을 눌렀다가 그냥 닫은 것, 시작을 실수로 누른 것이 0m 짜리 기록으로 쌓이면
+     * 목록이 지저분해지고 홈의 "오늘 몇 회" 가 거짓이 된다.
+     *
+     * **지우고 나서 그렇다고 말한다.** 말없이 사라지면 기록이 유실된 것으로 읽힌다 —
+     * 걷고 왔는데 목록에 없으면 앱이 잘못한 것처럼 보인다. 카드가 이미 그리고 있는
+     * `errorMessage` 자리를 쓴다.
+     */
+    private suspend fun discardIfTooShort(sessionId: String) {
+        val session = log.session(sessionId) ?: return
+        val summary = summarize(session, log.fixes(sessionId))
+        if (summary.countsAsWalk) return
+        log.deleteSession(sessionId)
+        store.publish(
+            trackingState(
+                trail = recorder.snapshot(),
+                lastSample = store.state.value.lastSample,
+                errorMessage = "이동 거리가 너무 짧아서 산책으로 기록하지 않았어요.",
+            ),
+        )
     }
 
     private fun closeSession() = synchronized(sessionLock) {

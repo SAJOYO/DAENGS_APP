@@ -58,6 +58,11 @@ class WalkRuntime internal constructor(
     internal val store: WalkTrackingStore,
     val controller: WalkTrackingController,
     internal val writer: WalkFixWriter,
+    /**
+     * 방금 쓴 것을 **되읽는** 자리. `writer` 는 쓰기 전용 큐라 읽을 수가 없는데,
+     * 산책이 끝나고 "너무 짧은가" 를 재려면 좌표를 다시 봐야 한다.
+     */
+    internal val log: WalkFixLog,
     /** 지난 산책을 읽는 자리. 쓰기와 같은 DB 를 보되 성질이 달라 갈라 뒀다. */
     val history: WalkHistory,
     /** 기기와 서버를 맞추는 자리. 로그인했을 때만 일한다. */

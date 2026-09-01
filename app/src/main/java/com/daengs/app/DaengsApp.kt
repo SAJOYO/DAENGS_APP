@@ -55,6 +55,7 @@ class DaengsApp : Application() {
             store = store,
             controller = ForegroundWalkTrackingController(this, store),
             writer = writer,
+            log = log,
             history = WalkHistory(log),
             sync = WalkSync(log),
         )

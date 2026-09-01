@@ -40,6 +40,8 @@ import com.daengs.app.ui.theme.TextDark
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import com.daengs.app.ui.theme.TextMuted
+import com.daengs.app.ui.walk.formatWalkDistance
+import com.daengs.app.walk.WalkDayTotals
 
 private val StatAccent = listOf(
     Color(0xFFF2B441),
@@ -47,8 +49,21 @@ private val StatAccent = listOf(
     Color(0xFFEE7FA0),
 )
 
+/**
+ * 오늘 걸은 것.
+ *
+ * **숫자는 진짜다.** 예전엔 `HomeDemoData.WALK_STATS` 에 박힌 `1회 · 32분 · 2.3km` 가
+ * 그대로 떴는데, 진짜로 걸어도 안 변하니 카드가 거짓말을 하고 있었다.
+ *
+ * @param totals null 이면 아직 못 읽은 것이다. 0 과 다르다 — 0 으로 그리면 기록이
+ *   있는데도 "0회" 가 잠깐 스친다.
+ */
 @Composable
-fun WalkSummaryCard(modifier: Modifier = Modifier, onOpenHistory: (() -> Unit)? = null) {
+fun WalkSummaryCard(
+    modifier: Modifier = Modifier,
+    totals: WalkDayTotals? = null,
+    onOpenHistory: (() -> Unit)? = null,
+) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = CardWhite,
@@ -66,7 +81,7 @@ fun WalkSummaryCard(modifier: Modifier = Modifier, onOpenHistory: (() -> Unit)? 
                 Spacer(Modifier.width(6.dp))
                 DaengsIconView(DaengsIcon.Paw, Modifier.size(15.dp), tint = DaengPink)
                 Spacer(Modifier.weight(1f))
-                // 이 카드의 숫자는 아직 데모다. 지난 산책은 진짜 기록이라 여기로 들어간다.
+                // 오늘 것만 여기 뜬다. 지난 산책은 목록에서 본다.
                 onOpenHistory?.let { open ->
                     Row(
                         Modifier
@@ -96,7 +111,7 @@ fun WalkSummaryCard(modifier: Modifier = Modifier, onOpenHistory: (() -> Unit)? 
                         .padding(vertical = 12.dp, horizontal = 4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    HomeDemoData.WALK_STATS.forEachIndexed { i, stat ->
+                    todayStats(totals).forEachIndexed { i, stat ->
                         StatItem(stat, StatAccent[i % StatAccent.size])
                     }
                 }
@@ -105,6 +120,37 @@ fun WalkSummaryCard(modifier: Modifier = Modifier, onOpenHistory: (() -> Unit)? 
             }
         }
     }
+}
+
+/**
+ * 카드에 올릴 세 칸.
+ *
+ * 아직 못 읽었으면 `-` 다. **0 으로 그리지 않는다** — 기록이 있는데도 "0회" 가
+ * 스치면 사용자는 기록이 날아간 줄 안다.
+ */
+private fun todayStats(totals: WalkDayTotals?): List<HomeDemoData.WalkStat> = listOf(
+    HomeDemoData.WalkStat(DaengsIcon.Paws, totals?.let { "${it.count}회" } ?: "-", "횟수"),
+    HomeDemoData.WalkStat(
+        DaengsIcon.Clock,
+        totals?.let { formatWalkMinutes(it.activeDurationMillis) } ?: "-",
+        "시간",
+    ),
+    HomeDemoData.WalkStat(
+        DaengsIcon.Pin,
+        totals?.let { formatWalkDistance(it.distanceMeters) } ?: "-",
+        "거리",
+    ),
+)
+
+/**
+ * 홈 카드의 시간 표기.
+ *
+ * 목록·상세는 `00:32` 처럼 초까지 쓰지만(`formatWalkDuration`), 여기는 하루치 합이라
+ * **분이면 충분하다.** 카드가 좁아서 자릿수가 늘면 세 칸이 서로 밀린다.
+ */
+private fun formatWalkMinutes(millis: Long): String {
+    val minutes = millis.coerceAtLeast(0L) / 60_000L
+    return if (minutes >= 60L) "${minutes / 60L}시간 ${minutes % 60L}분" else "${minutes}분"
 }
 
 @Composable
@@ -167,6 +213,32 @@ private fun DailyWordNote(modifier: Modifier = Modifier) {
 @Composable
 private fun WalkSummaryCardPreview() {
     DaengsTheme {
-        WalkSummaryCard(Modifier.padding(14.dp))
+        WalkSummaryCard(
+            Modifier.padding(14.dp),
+            totals = WalkDayTotals(
+                count = 2,
+                activeDurationMillis = 1_920_000L,
+                distanceMeters = 2_310.0,
+            ),
+            onOpenHistory = {},
+        )
+    }
+}
+
+/** 아직 못 읽은 상태. 세 칸이 `-` 여야 한다 — 0 으로 그리면 거짓말이 스친다. */
+@Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF1EC)
+@Composable
+private fun WalkSummaryCardUnreadPreview() {
+    DaengsTheme {
+        WalkSummaryCard(Modifier.padding(14.dp), totals = null, onOpenHistory = {})
+    }
+}
+
+/** 오늘 아직 안 걸었을 때. `0회 · 0분 · 0m` 다. */
+@Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF1EC)
+@Composable
+private fun WalkSummaryCardEmptyPreview() {
+    DaengsTheme {
+        WalkSummaryCard(Modifier.padding(14.dp), totals = WalkDayTotals.EMPTY, onOpenHistory = {})
     }
 }

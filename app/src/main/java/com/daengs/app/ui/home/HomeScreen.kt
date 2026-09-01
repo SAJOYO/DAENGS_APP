@@ -45,6 +45,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
 import com.daengs.app.pet.Pet
+import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
@@ -101,6 +102,8 @@ fun HomeScreen(
     onOpenWalk: (() -> Unit)? = null,
     /** 산책 요약 카드의 "지난 산책". 기록 목록으로 나간다. */
     onOpenWalkHistory: (() -> Unit)? = null,
+    /** 오늘 걸은 것. null 이면 아직 못 읽은 것이라 카드가 `-` 로 둔다. */
+    todayWalks: WalkDayTotals? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -255,7 +258,7 @@ fun HomeScreen(
                 ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
             }
             Spacer(Modifier.height(10.dp))
-            WalkSummaryCard(Modifier.padding(horizontal = 14.dp), onOpenWalkHistory)
+            WalkSummaryCard(Modifier.padding(horizontal = 14.dp), todayWalks, onOpenWalkHistory)
             Spacer(Modifier.height(10.dp))
         }
     }
