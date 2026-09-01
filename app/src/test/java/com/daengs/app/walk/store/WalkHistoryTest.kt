@@ -132,7 +132,7 @@ class WalkHistoryTest {
         seconds: Int,
         close: Boolean = true,
     ) {
-        log.openSession(RecordedSession(id, dogId = null, startedAtMillis = startedAt))
+        log.openSession(RecordedSession(id, dogIds = emptyList(), startedAtMillis = startedAt))
         val steps = ((meters / 100.0).toInt() + 1).coerceAtLeast(1)
         for (i in 0..steps) {
             log.append(

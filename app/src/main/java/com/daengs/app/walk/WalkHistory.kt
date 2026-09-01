@@ -68,6 +68,19 @@ class WalkHistory(private val log: WalkFixLog) {
         false
     }
 
+    /**
+     * 지운 강아지를 기록에서도 지운다.
+     *
+     * **그 아이와만 나간 산책만 지운다.** 다른 아이와 같이 나간 산책은 남는다 —
+     * 그건 남은 아이의 기록이기도 해서, 지우면 그 아이의 운동량이 통째로 빈다.
+     *
+     * 서버도 같은 규칙이라(강아지 삭제 API 가 그렇게 한다) 다음 동기화 때 지운 산책이
+     * 되돌아오지 않는다.
+     */
+    suspend fun forgetDog(dogId: String) = withContext(Dispatchers.IO) {
+        log.forgetDog(dogId)
+    }
+
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {
         val session = log.session(sessionId) ?: return@withContext null
         summarize(session, log.fixes(sessionId))

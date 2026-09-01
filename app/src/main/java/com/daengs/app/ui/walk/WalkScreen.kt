@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -47,8 +48,10 @@ import com.daengs.app.map.layers.trail.toTrailLayerState
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
+import com.daengs.app.pet.Pet
 import com.daengs.app.ui.common.DaengsFloatingButton
 import com.daengs.app.ui.common.DaengsTextAction
+import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
@@ -79,8 +82,13 @@ fun WalkScreen(
     modifier: Modifier = Modifier,
     /** 산책하는 아이. 내 위치에 그 얼굴이 서고, 기록에도 이 아이가 남는다. */
     avatarBreed: DogBreed? = null,
-    /** 기록에 남길 대표 강아지. 없으면 null 로 저장된다 — 아무나 갖다 붙이지 않는다. */
-    dogId: String? = null,
+    /**
+     * 데리고 나갈 수 있는 아이들. 등록한 강아지 전부다.
+     *
+     * **누구를 데리고 나갈지는 이 화면에서 고른다.** 기본은 전부 선택이다 — 한 마리만
+     * 기르는 사람에게는 그 아이가 이미 골라진 채로 보인다.
+     */
+    pets: List<Pet> = emptyList(),
     /**
      * 산책을 끝냈을 때. **서버로 올리라는 신호**다.
      *
@@ -97,6 +105,14 @@ fun WalkScreen(
 
     val tracking by walkController.state.collectAsState()
     val trackingActive = tracking.trail.state != TrackingState.OFF
+
+    // **기본은 전부 선택.** 강아지 목록이 늦게 오므로 목록이 바뀌면 다시 잡는다.
+    // 산책 중에는 안 건드린다 — 걷는 중에 목록이 새로 오면서 고른 것이 뒤집히면
+    // 시작할 때 고른 아이와 기록에 남은 아이가 달라진다.
+    var selectedDogIds by remember { mutableStateOf(pets.map { it.id }.toSet()) }
+    LaunchedEffect(pets, trackingActive) {
+        if (!trackingActive) selectedDogIds = pets.map { it.id }.toSet()
+    }
 
     var granted by remember { mutableStateOf(inspectionMode || hasLocationPermission(context)) }
     // 대략적 위치만 허용된 상태. **산책은 이걸로 못 한다** — 경로를 그리려면 정밀 위치다.
@@ -152,7 +168,7 @@ fun WalkScreen(
         ActivityResultContracts.RequestPermission(),
     ) {
         // 알림을 거부해도 안드로이드는 작업 관리자에 FGS 를 띄우고 기록 자체는 된다.
-        walkController.start(dogId)
+        walkController.start(selectedDogIds.toList())
     }
 
     fun startWalk() {
@@ -164,7 +180,7 @@ fun WalkScreen(
         ) {
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            walkController.start(dogId)
+            walkController.start(selectedDogIds.toList())
         }
     }
 
@@ -267,6 +283,31 @@ fun WalkScreen(
                     )
                 }
             }
+            // **산책 중에는 안 보인다.** 중간에 바꾸면 "언제부터 누가"를 따져야 하는데
+            // 그 값을 좌표마다 두지 않기로 했다.
+            // 지도 위라 **바탕이 있어야 읽힌다.** 없으면 글씨가 지하철 노선과 겹쳐
+            // 무슨 말인지 안 보인다.
+            if (!trackingActive && pets.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = CardWhite,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    DogPickRow(
+                        pets = pets,
+                        selected = selectedDogIds,
+                        onToggle = { id ->
+                            selectedDogIds = if (id in selectedDogIds) {
+                                selectedDogIds - id
+                            } else {
+                                selectedDogIds + id
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    )
+                }
+            }
             WalkControlCard(
                 state = tracking,
                 locationGranted = granted,
@@ -353,7 +394,7 @@ private class PreviewWalkTrackingController : WalkTrackingController {
         ),
     )
 
-    override fun start(dogId: String?) = Unit
+    override fun start(dogIds: List<String>) = Unit
 
     override fun pause() = Unit
 

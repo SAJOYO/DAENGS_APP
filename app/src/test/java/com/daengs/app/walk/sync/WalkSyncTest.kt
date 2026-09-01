@@ -133,7 +133,7 @@ class WalkSyncTest {
 
     private fun session(id: String, ended: Boolean, synced: Long? = null) = RecordedSession(
         id = id,
-        dogId = "dog-1",
+        dogIds = listOf("dog-1"),
         startedAtMillis = 1_000L,
         endedAtMillis = if (ended) 2_000L else null,
         weather = RecordedWeather(weatherCode = 61, isDay = true, temperatureC = 18.5f),
@@ -154,7 +154,7 @@ class WalkSyncTest {
         walk = RemoteWalk(
             id = "server-$sessionId",
             clientSessionId = sessionId,
-            dogId = null,
+            dogIds = emptyList(),
             startedAtMillis = 1_000L,
             endedAtMillis = 2_000L,
             weather = null,
@@ -179,6 +179,8 @@ class WalkSyncTest {
         override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) = Unit
 
         override suspend fun deleteSession(sessionId: String) = Unit
+
+        override suspend fun forgetDog(dogId: String) = Unit
 
         override suspend fun unfinishedSessions(): List<RecordedSession> =
             sessions.filter { it.endedAtMillis == null }

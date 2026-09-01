@@ -100,7 +100,7 @@ class WalkFixWriterTest {
         }
     }
 
-    private fun session(id: String) = RecordedSession(id = id, dogId = null, startedAtMillis = 0L)
+    private fun session(id: String) = RecordedSession(id = id, dogIds = emptyList(), startedAtMillis = 0L)
 
     private fun fix(seq: Int) = RecordedFix(
         clientSeq = seq,
@@ -143,6 +143,10 @@ class WalkFixWriterTest {
 
         override suspend fun deleteSession(sessionId: String) {
             calls += "delete:$sessionId"
+        }
+
+        override suspend fun forgetDog(dogId: String) {
+            calls += "forget:$dogId"
         }
 
         override suspend fun unfinishedSessions(): List<RecordedSession> = emptyList()

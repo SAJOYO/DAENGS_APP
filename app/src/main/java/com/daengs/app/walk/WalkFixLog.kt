@@ -41,6 +41,14 @@ interface WalkFixLog {
     /** 올라갔다고 표시한다. 다시 올리지 않으려는 표시다. */
     suspend fun markSynced(sessionId: String, syncedAtMillis: Long)
 
+    /**
+     * 그 아이를 기록에서 지운다. **강아지를 지울 때 부른다.**
+     *
+     * 그 아이와만 나간 산책은 통째로 지우고, 다른 아이와 같이 나간 산책은 그 아이만
+     * 뗀다 — 그 산책은 남은 아이의 기록이기도 하다. 서버도 같은 규칙이다.
+     */
+    suspend fun forgetDog(dogId: String)
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>
@@ -48,8 +56,13 @@ interface WalkFixLog {
 
 data class RecordedSession(
     val id: String,
-    /** 대표 강아지. 로그인 전이거나 등록한 강아지가 없으면 null 이다. */
-    val dogId: String?,
+    /**
+     * 데리고 나간 아이들. **여러 마리다.**
+     *
+     * 비어 있을 수 있다 — 로그인 전이거나 등록한 강아지가 없거나, 고르지 않고 나선
+     * 경우다. **그래도 산책은 기록이다.** 사람이 걸은 것은 걸은 것이다.
+     */
+    val dogIds: List<String> = emptyList(),
     val startedAtMillis: Long,
     val endedAtMillis: Long? = null,
     /** 나갈 때의 날씨. 못 받았으면 null 이고 **"맑음"으로 채우지 않는다.** */

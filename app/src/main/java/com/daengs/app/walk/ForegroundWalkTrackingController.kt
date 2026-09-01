@@ -12,11 +12,14 @@ class ForegroundWalkTrackingController(
 
     override val state: StateFlow<WalkTrackingState> = store.state
 
-    override fun start(dogId: String?) {
+    override fun start(dogIds: List<String>) {
         ContextCompat.startForegroundService(
             appContext,
             WalkTrackingService.commandIntent(appContext, WalkTrackingService.ACTION_START)
-                .putExtra(WalkTrackingService.EXTRA_DOG_ID, dogId),
+                .putStringArrayListExtra(
+                    WalkTrackingService.EXTRA_DOG_IDS,
+                    ArrayList(dogIds),
+                ),
         )
     }
 

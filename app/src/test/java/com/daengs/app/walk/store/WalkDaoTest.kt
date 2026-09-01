@@ -44,9 +44,9 @@ class WalkDaoTest {
      */
     @Test
     fun `끝난 산책만 최근 순으로 온다`() = runBlocking {
-        log.openSession(RecordedSession("done-old", dogId = null, startedAtMillis = 1_000L))
-        log.openSession(RecordedSession("done-new", dogId = null, startedAtMillis = 5_000L))
-        log.openSession(RecordedSession("open", dogId = null, startedAtMillis = 9_000L))
+        log.openSession(RecordedSession("done-old", dogIds = emptyList(), startedAtMillis = 1_000L))
+        log.openSession(RecordedSession("done-new", dogIds = emptyList(), startedAtMillis = 5_000L))
+        log.openSession(RecordedSession("open", dogIds = emptyList(), startedAtMillis = 9_000L))
         log.closeSession("done-old", 2_000L)
         log.closeSession("done-new", 6_000L)
 
@@ -56,7 +56,7 @@ class WalkDaoTest {
     /** 날씨는 세션을 연 뒤 따로 온다. 못 받으면 null 로 남고 "맑음"으로 채우지 않는다. */
     @Test
     fun `날씨는 나중에 찍히고 한 번만 쓴다`() = runBlocking {
-        log.openSession(RecordedSession("s1", dogId = null, startedAtMillis = 1_000L))
+        log.openSession(RecordedSession("s1", dogIds = emptyList(), startedAtMillis = 1_000L))
         assertNull(log.session("s1")?.weather)
 
         log.stampWeather("s1", RecordedWeather(weatherCode = 61, isDay = true, temperatureC = 18.5f))
@@ -69,13 +69,41 @@ class WalkDaoTest {
         assertEquals(61, log.session("s1")?.weather?.weatherCode)
     }
 
-    /** 대표 강아지가 세션에 남는다. 없으면 null 그대로 — 아무나 갖다 붙이지 않는다. */
+    /**
+     * 데리고 나간 아이들이 **다** 남는다.
+     *
+     * 한 아이만 남으면 나중에 챗봇이 나머지 아이의 운동량을 통째로 못 본다.
+     * 아무도 안 골랐으면 빈 목록 그대로다 — 아무나 갖다 붙이지 않는다.
+     */
     @Test
-    fun `강아지가 세션에 남는다`() = runBlocking {
-        log.openSession(RecordedSession("s1", dogId = "dog-1", startedAtMillis = 1_000L))
-        log.openSession(RecordedSession("s2", dogId = null, startedAtMillis = 2_000L))
-        assertEquals("dog-1", log.session("s1")?.dogId)
-        assertNull(log.session("s2")?.dogId)
+    fun `데리고 나간 아이들이 다 남는다`() = runBlocking {
+        log.openSession(
+            RecordedSession("s1", dogIds = listOf("dog-1", "dog-2"), startedAtMillis = 1_000L),
+        )
+        log.openSession(RecordedSession("s2", dogIds = emptyList(), startedAtMillis = 2_000L))
+
+        assertEquals(listOf("dog-1", "dog-2"), log.session("s1")?.dogIds)
+        assertEquals(emptyList<String>(), log.session("s2")?.dogIds)
+    }
+
+    /** 같은 아이를 두 번 적어도 한 줄이다. 서버의 walk_pets 와 같은 성질이다. */
+    @Test
+    fun `같은 아이를 두 번 적어도 한 마리다`() = runBlocking {
+        log.openSession(
+            RecordedSession("s1", dogIds = listOf("dog-1", "dog-1"), startedAtMillis = 1_000L),
+        )
+
+        assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
+    }
+
+    /** 세션을 지우면 연결도 같이 간다. 남으면 없는 산책을 가리키는 줄이 된다. */
+    @Test
+    fun `세션을 지우면 아이 연결도 지워진다`() = runBlocking {
+        log.openSession(RecordedSession("s1", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
+
+        log.deleteSession("s1")
+
+        assertEquals(emptyList<String>(), db.walkDao().sessionDogs("s1").map { it.dogId })
     }
 
     @Test
@@ -107,12 +135,13 @@ class WalkDaoTest {
 
     @Test
     fun `re-opening a known session keeps its original identity and start`() = runBlocking {
-        log.openSession(RecordedSession("s1", dogId = "first", startedAtMillis = 100L))
-        log.openSession(RecordedSession("s1", dogId = "second", startedAtMillis = 999L))
+        log.openSession(RecordedSession("s1", dogIds = listOf("first"), startedAtMillis = 100L))
+        log.openSession(RecordedSession("s1", dogIds = listOf("second"), startedAtMillis = 999L))
 
         val stored = log.session("s1")
 
-        assertEquals("first", stored?.dogId)
+        // 아이도 처음 것이다 — 나중 목록을 덧붙이면 그날 안 나간 아이가 섞인다.
+        assertEquals(listOf("first"), stored?.dogIds)
         assertEquals(100L, stored?.startedAtMillis)
     }
 
@@ -151,8 +180,63 @@ class WalkDaoTest {
         assertTrue(log.fixes("s1").isEmpty())
     }
 
+
+    // -- 강아지를 지웠을 때 ------------------------------------------------
+
+    /**
+     * 그 아이와만 나간 산책은 **통째로 지운다.**
+     *
+     * 남겨 두면 목록에 "누구와 갔는지 모르는 기록" 이 쌓인다.
+     */
+    @Test
+    fun `그 아이와만 나간 산책은 같이 지운다`() = runBlocking {
+        log.openSession(RecordedSession("solo", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
+        log.append("solo", fix(0))
+
+        log.forgetDog("dog-1")
+
+        assertNull(log.session("solo"))
+        assertTrue(log.fixes("solo").isEmpty())
+    }
+
+    /**
+     * 다른 아이와 같이 나간 산책은 **남긴다.**
+     *
+     * 그건 남은 아이의 기록이기도 해서, 지우면 그 아이의 운동량이 통째로 빈다.
+     */
+    @Test
+    fun `같이 나간 산책은 남기고 그 아이만 뗀다`() = runBlocking {
+        log.openSession(
+            RecordedSession("together", dogIds = listOf("dog-1", "dog-2"), startedAtMillis = 1_000L),
+        )
+
+        log.forgetDog("dog-1")
+
+        assertEquals(listOf("dog-2"), log.session("together")?.dogIds)
+    }
+
+    /** 강아지를 등록하기 전에 걸은 산책. **사람이 걸은 것은 걸은 것이다.** */
+    @Test
+    fun `아무도 안 붙은 산책은 안 건드린다`() = runBlocking {
+        log.openSession(RecordedSession("alone", dogIds = emptyList(), startedAtMillis = 1_000L))
+
+        log.forgetDog("dog-1")
+
+        assertEquals("alone", log.session("alone")?.id)
+    }
+
+    /** 남의 아이를 지워도 내 산책은 그대로다. */
+    @Test
+    fun `다른 아이를 지우면 아무 일도 없다`() = runBlocking {
+        log.openSession(RecordedSession("s1", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
+
+        log.forgetDog("dog-9")
+
+        assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
+    }
+
     private fun session(id: String, startedAtMillis: Long = 0L) =
-        RecordedSession(id, dogId = null, startedAtMillis = startedAtMillis)
+        RecordedSession(id, dogIds = emptyList(), startedAtMillis = startedAtMillis)
 
     private fun fix(
         seq: Int,

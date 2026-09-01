@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
                         onSignIn = { screen = Screen.Landing },
-                        pets = pets.pets,
+                        pets = pets.pets.orEmpty(),
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
@@ -223,6 +223,20 @@ class MainActivity : ComponentActivity() {
                             scope.launch {
                                 val token = freshToken() ?: return@launch
                                 pets.choosePrimary(token, pet.id)
+                            }
+                        },
+                        deletePetBusy = pets.busy,
+                        deletePetError = pets.error,
+                        onDismissDeletePet = { pets.clearError() },
+                        onDeletePet = { pet ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그
+                                // 아이의 산책이 다음 동기화 때 되돌아온다.
+                                if (pets.remove(token, pet.id)) {
+                                    walkRuntime.history.forgetDog(pet.id)
+                                    todayWalks = walkRuntime.history.todayTotals()
+                                }
                             }
                         },
                         withdrawBusy = withdrawBusy,
@@ -283,6 +297,7 @@ class MainActivity : ComponentActivity() {
                         // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
                         onSync = { scope.launch { walkRuntime.sync.syncOnce(freshToken()) } },
                         onBack = { screen = Screen.Home },
+                        pets = pets.pets.orEmpty(),
                         onOpen = { id ->
                             openedWalkId = id
                             screen = Screen.WalkDetail
@@ -294,6 +309,7 @@ class MainActivity : ComponentActivity() {
                             sessionId = id,
                             history = walkRuntime.history,
                             onBack = { screen = Screen.WalkHistory },
+                            pets = pets.pets.orEmpty(),
                         )
                     }
 
@@ -301,7 +317,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
                         avatarBreed = pets.primary?.breedArt,
-                        dogId = pets.primary?.id,
+                        pets = pets.pets.orEmpty(),
                         onFinished = {
                             scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
                         },

@@ -115,6 +115,11 @@ fun HomeScreen(
     onAddPet: (() -> Unit)? = null,
     onEditPet: ((Pet) -> Unit)? = null,
     onPickPrimary: ((Pet) -> Unit)? = null,
+    /** 지우기. **그 아이와만 나간 산책 기록도 같이 지워진다.** */
+    onDeletePet: ((Pet) -> Unit)? = null,
+    deletePetBusy: Boolean = false,
+    deletePetError: String? = null,
+    onDismissDeletePet: (() -> Unit)? = null,
     /** 회원 탈퇴. 상태는 [MainActivity] 가 들고 있다 (랜딩의 busy·error 와 같은 결). */
     onWithdraw: (() -> Unit)? = null,
     withdrawBusy: Boolean = false,
@@ -204,6 +209,10 @@ fun HomeScreen(
                 onAddPet = { onAddPet?.invoke() },
                 onEditPet = { onEditPet?.invoke(it) },
                 onPickPrimary = { onPickPrimary?.invoke(it) },
+                onDeletePet = { onDeletePet?.invoke(it) },
+                deleteBusy = deletePetBusy,
+                deleteError = deletePetError,
+                onDismissDelete = { onDismissDeletePet?.invoke() },
                 signedIn = signedIn,
                 onSignIn = { onSignIn?.invoke() },
                 onSignOut = { onSignOut?.invoke() },
