@@ -483,8 +483,6 @@ class VisionResult(BaseModel):
 화면 회전은 `rememberSaveable`, 앱 재시작은 `RoomStore` 담당.
 
 ### 다음에 할 것
-- **이름표를 사용자가 정하게 하기.** 지금은 `HomeDemoData.ROOM_LABEL` 하드코딩("노을이네").
-  이름표를 눌러 입력 → `RoomStore` 에 저장하는 흐름. 배치·테마와 같은 자리에 넣으면 된다
 - 마리 수 3 / 10 눈으로 비교 (`RoomDefaults.DOG_COUNT`)
 
 ### 미확인

@@ -60,6 +60,14 @@ import com.daengs.app.ui.theme.TextMuted
 fun TodayCard(
     dateLabel: String,
     note: String,
+    /**
+     * 날씨 아이콘.
+     *
+     * **기본값을 안 준다.** 기본값을 주는 순간 잊은 호출부가 조용히 해를 그린다 —
+     * 비 오는 날에 해가 떠 있던 것이 정확히 그 모양이었다. 필수로 두면 컴파일러가
+     * 호출부를 다 짚어 준다.
+     */
+    icon: DaengsIcon,
     accent: Color = DaengPink,
     accentSoft: Color = PinkSoft,
     modifier: Modifier = Modifier,
@@ -92,7 +100,7 @@ fun TodayCard(
                         fontSize = 15.sp,
                     )
                     Spacer(Modifier.width(20.dp))
-                    DaengsIconView(DaengsIcon.Sun, Modifier.size(17.dp), tint = accent)
+                    DaengsIconView(icon, Modifier.size(17.dp), tint = accent)
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(dateLabel, color = TextDark, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -268,7 +276,16 @@ private fun RoomNameDialogPreview() {
 @Composable
 private fun TodayCardPreview() {
     DaengsTheme {
-        TodayCard(HomeDemoData.MOCK_DATE, HomeDemoData.TODAY_NOTE, modifier = Modifier.padding(12.dp))
+        Column(Modifier.padding(12.dp)) {
+            // 세 벌을 나란히 둔다 — 새 아이콘을 눈으로 보는 자리다.
+            TodayCard(HomeDemoData.MOCK_DATE, "산책 가기 좋은 날!", DaengsIcon.Sun)
+            Spacer(Modifier.height(10.dp))
+            TodayCard(HomeDemoData.MOCK_DATE, "비가 오고 있어요", DaengsIcon.CloudRain)
+            Spacer(Modifier.height(10.dp))
+            TodayCard(HomeDemoData.MOCK_DATE, "눈이 내리고 있어요", DaengsIcon.CloudSnow)
+            Spacer(Modifier.height(10.dp))
+            TodayCard(HomeDemoData.MOCK_DATE, "선선한 밤이에요", DaengsIcon.Moon)
+        }
     }
 }
 

@@ -36,7 +36,7 @@ import java.time.LocalTime
  * 걸면 배터리와 시간을 쓴다. 마지막 위치가 없으면 그냥 폴백이다.
  */
 @Composable
-fun rememberOutsideView(): State<OutsideView> {
+fun rememberOutsideView(): State<OutsideSnapshot> {
     val context = LocalContext.current
     val state = remember { mutableStateOf(fallback()) }
 
@@ -87,7 +87,9 @@ fun rememberOutsideView(): State<OutsideView> {
         // 마지막 위치가 없어 빈손이었다가 나중에 생기기도 한다.
         while (true) {
             lastKnownLocation(context)?.let { where ->
-                OutsideApi.fetch(where.latitude, where.longitude)?.let { state.value = it }
+                OutsideApi.fetchNow(where.latitude, where.longitude)?.let {
+                    state.value = OutsideSnapshot.of(it)
+                }
             }
             delay(REFRESH_MS)
         }
@@ -129,8 +131,9 @@ private fun lastKnownLocation(context: Context): Location? {
  * 6시~18시로 자르면 계절에 따라 한두 시간씩 틀리지만, 폴백은 "그럴듯하면 된다".
  * 제대로 된 낮·밤은 [OutsideApi] 가 주는 `is_day` 다.
  */
-private fun fallback(): OutsideView {
+private fun fallback(): OutsideSnapshot {
     val hour = LocalTime.now().hour
     val time = if (hour in 6..17) OutsideTime.DAY else OutsideTime.NIGHT
-    return OutsideView.of(time, OutsideWeather.CLEAR)
+    // **기온은 안 지어낸다.** 모르는 값을 넣으면 "많이 추워요" 가 한여름에 뜬다.
+    return OutsideSnapshot(OutsideView.of(time, OutsideWeather.CLEAR), temperatureC = null)
 }
