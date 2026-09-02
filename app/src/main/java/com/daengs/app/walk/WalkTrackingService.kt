@@ -22,6 +22,7 @@ import com.daengs.app.location.LocationTracker
 import com.daengs.app.miniroom.OutsideApi
 import com.daengs.app.miniroom.OutsideTime
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -153,13 +154,17 @@ class WalkTrackingService : Service() {
         val finished = synchronized(sessionLock) { sessionId }
         closeSession()
         val trail = recorder.stop()
-        store.publish(trackingState(trail))
+        store.publish(trackingState(trail, finishingSessionId = finished))
         serviceScope.launch {
             try {
                 writer.flush()
                 // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
                 // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
-                if (finished != null) discardIfTooShort(finished)
+                if (finished != null) finishOrDiscard(finished)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                publishCompletionFailure(error.message ?: "산책을 저장하지 못했어요.")
             } finally {
                 synchronized(sessionLock) {
                     // flush 중 새 산책이 시작됐다면 새 알림까지 지우지 않는다. 새 startId가
@@ -251,18 +256,42 @@ class WalkTrackingService : Service() {
      * 걷고 왔는데 목록에 없으면 앱이 잘못한 것처럼 보인다. 카드가 이미 그리고 있는
      * `errorMessage` 자리를 쓴다.
      */
-    private suspend fun discardIfTooShort(sessionId: String) {
-        val session = log.session(sessionId) ?: return
+    private suspend fun finishOrDiscard(sessionId: String) {
+        val session = log.session(sessionId)
+        if (session == null) {
+            publishCompletionFailure("저장한 산책을 다시 읽지 못했어요.")
+            return
+        }
         val summary = summarize(session, log.fixes(sessionId))
-        if (summary.countsAsWalk) return
-        log.deleteSession(sessionId)
-        store.publish(
+        if (!summary.countsAsWalk) {
+            log.deleteSession(sessionId)
+            publishCompletionFailure("이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.")
+            return
+        }
+        publishIfStillInactive(
             trackingState(
                 trail = recorder.snapshot(),
-                lastSample = store.state.value.lastSample,
-                errorMessage = "이동 거리가 너무 짧아서 산책으로 기록하지 않았어요.",
+                completedSessionId = sessionId,
             ),
         )
+    }
+
+    private fun publishCompletionFailure(message: String) {
+        publishIfStillInactive(
+            trackingState(
+                trail = recorder.snapshot(),
+                errorMessage = message,
+            ),
+        )
+    }
+
+    /** 저장하는 사이 새 산책이 시작됐다면 이전 산책 결과로 현재 상태를 덮지 않는다. */
+    private fun publishIfStillInactive(state: WalkTrackingState) {
+        synchronized(sessionLock) {
+            if (sessionId == null && recorder.snapshot().state == TrackingState.OFF) {
+                store.publish(state)
+            }
+        }
     }
 
     private fun closeSession() = synchronized(sessionLock) {
@@ -309,12 +338,16 @@ class WalkTrackingService : Service() {
         trail: TrailSnapshot,
         lastSample: LocationSample? = store.state.value.lastSample,
         errorMessage: String? = null,
+        finishingSessionId: String? = null,
+        completedSessionId: String? = null,
     ): WalkTrackingState = WalkTrackingState(
         trail = trail,
         lastSample = lastSample,
         errorMessage = errorMessage,
         activeDurationMillis = activeDurationMillis,
         activeSinceRealtimeMillis = activeSinceRealtimeMillis,
+        finishingSessionId = finishingSessionId,
+        completedSessionId = completedSessionId,
     )
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {

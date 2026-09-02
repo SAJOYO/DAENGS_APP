@@ -15,6 +15,10 @@ data class WalkTrackingState(
     val activeDurationMillis: Long = 0L,
     /** 기록 중인 현재 구간의 monotonic 시작 시각. 일시정지·종료 상태에서는 null이다. */
     val activeSinceRealtimeMillis: Long? = null,
+    /** 종료를 눌렀고 Room 기록을 비운 뒤 산책 인정 여부를 판정하는 중인 세션. */
+    val finishingSessionId: String? = null,
+    /** 저장과 유효성 판정까지 끝나 결과 화면으로 넘길 수 있는 세션. */
+    val completedSessionId: String? = null,
 ) {
     fun elapsedMillisAt(realtimeMillis: Long): Long =
         activeDurationMillis + activeSinceRealtimeMillis
@@ -44,6 +48,9 @@ interface WalkTrackingController {
     fun resume()
 
     fun stop()
+
+    /** 결과 화면을 닫은 뒤 같은 완료 결과가 다시 뜨지 않게 소비한다. */
+    fun dismissCompletion()
 }
 
 /** 시작된 서비스와 화면 사이의 프로세스 로컬 상태 다리. */
@@ -53,6 +60,10 @@ class WalkTrackingStore {
 
     internal fun publish(state: WalkTrackingState) {
         _state.value = state
+    }
+
+    internal fun dismissCompletion() {
+        _state.value = _state.value.copy(completedSessionId = null)
     }
 }
 

@@ -54,4 +54,16 @@ class WalkTrackingTest {
         controller.stop()
         assertEquals(WalkTrackingService.ACTION_STOP, shadowOf(application).nextStartedService.action)
     }
+
+    @Test
+    fun `completion is consumed without sending another service command`() {
+        val store = WalkTrackingStore()
+        store.publish(WalkTrackingState(completedSessionId = "walk-1"))
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val controller = ForegroundWalkTrackingController(context, store)
+
+        controller.dismissCompletion()
+
+        assertEquals(null, store.state.value.completedSessionId)
+    }
 }

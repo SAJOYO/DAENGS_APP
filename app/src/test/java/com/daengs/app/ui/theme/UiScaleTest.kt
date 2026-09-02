@@ -82,4 +82,10 @@ class UiScaleTest {
             previous = current
         }
     }
+
+    @Test
+    fun `가로 화면은 긴 변이 아니라 짧은 변으로 크기를 정한다`() {
+        assertEquals(1f, uiScaleForWindow(891, 411), 1e-6f)
+        assertEquals(1f, uiScaleForWindow(411, 891), 1e-6f)
+    }
 }

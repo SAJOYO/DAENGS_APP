@@ -29,6 +29,8 @@ class ForegroundWalkTrackingController(
 
     override fun stop() = send(WalkTrackingService.ACTION_STOP)
 
+    override fun dismissCompletion() = store.dismissCompletion()
+
     private fun send(action: String) {
         appContext.startService(WalkTrackingService.commandIntent(appContext, action))
     }

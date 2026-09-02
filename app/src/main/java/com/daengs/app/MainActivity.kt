@@ -1,6 +1,7 @@
 package com.daengs.app
 
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -96,8 +97,17 @@ class MainActivity : ComponentActivity() {
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
                 // 번쩍였다가 홈으로 넘어간다.
                 val saved = remember { store.load() }
-                var screen by remember {
+                var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Home)
+                }
+                // 나머지 앱은 기존 세로 구성을 지키고, 산책만 지도 시야가 넓은 가로로 쓴다.
+                // rememberSaveable 이 회전 재생성 뒤에도 Walk 를 복원하므로 홈으로 튕기지 않는다.
+                LaunchedEffect(screen) {
+                    requestedOrientation = if (screen == Screen.Walk) {
+                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
                 }
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
@@ -505,8 +515,10 @@ class MainActivity : ComponentActivity() {
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
+                        history = walkRuntime.history,
                         avatarBreed = pets.primary?.breedArt,
                         pets = pets.pets.orEmpty(),
+                        outside = outside,
                         onFinished = {
                             scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
                         },

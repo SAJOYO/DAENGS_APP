@@ -16,6 +16,16 @@ fun uiScale(screenWidthDp: Int): Float {
 }
 
 /**
+ * 회전 가능한 화면의 배율.
+ *
+ * 가로 화면에서 긴 변(예: 891dp)을 기준으로 삼으면 모든 UI가 상한까지 부풀어 지도에
+ * 들어갈 정보가 줄어든다. 폰의 물리적 폭에 가까운 **짧은 변**을 자로 삼으면 세로
+ * 화면의 기존 크기는 그대로이고, 산책 화면을 가로로 돌려도 같은 손가락 크기를 유지한다.
+ */
+fun uiScaleForWindow(screenWidthDp: Int, screenHeightDp: Int): Float =
+    uiScale(minOf(screenWidthDp, screenHeightDp))
+
+/**
  * 화면을 그린 기준 폭(dp).
  *
  * 근거 둘이다. 이 저장소의 `@Preview` 26개가 `widthDp = 411` 이라 사실상의 기준이고,
