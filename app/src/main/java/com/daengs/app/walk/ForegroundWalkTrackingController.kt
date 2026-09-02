@@ -2,6 +2,7 @@ package com.daengs.app.walk
 
 import android.content.Context
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 class ForegroundWalkTrackingController(
@@ -11,6 +12,7 @@ class ForegroundWalkTrackingController(
     private val appContext = context.applicationContext
 
     override val state: StateFlow<WalkTrackingState> = store.state
+    override val events: SharedFlow<WalkEvent> = store.events
 
     override fun start(dogIds: List<String>) {
         ContextCompat.startForegroundService(
@@ -28,6 +30,13 @@ class ForegroundWalkTrackingController(
     override fun resume() = send(WalkTrackingService.ACTION_RESUME)
 
     override fun stop() = send(WalkTrackingService.ACTION_STOP)
+
+    override fun recordMoment(type: WalkMomentType) {
+        appContext.startService(
+            WalkTrackingService.commandIntent(appContext, WalkTrackingService.ACTION_RECORD_MOMENT)
+                .putExtra(WalkTrackingService.EXTRA_MOMENT_TYPE, type.behaviorCode),
+        )
+    }
 
     override fun dismissCompletion() = store.dismissCompletion()
 

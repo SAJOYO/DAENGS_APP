@@ -38,7 +38,9 @@ import kotlinx.coroutines.launch
  * 계산은 이 서비스의 책임이 아니며, 명시적인 종료만 저장 세션을 닫는다.
  */
 class WalkTrackingService : Service() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // 위치와 사용자 명령을 한 스레드에서 직렬 처리한다. 액션을 추가하는 순간 위치 갱신이
+    // 이전 momentGroups 상태를 덮는 경쟁을 만들지 않게 하는 세션 경계다.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val recorder = TrailRecorder()
 
     private lateinit var locationSource: LocationSource
@@ -53,6 +55,7 @@ class WalkTrackingService : Service() {
     private var sessionId: String? = null
     private var nextClientSeq = 0
     private var chainIndex = 0
+    private var nextMomentNumber = 1L
     private var activeDurationMillis = 0L
     private var activeSinceRealtimeMillis: Long? = null
 
@@ -78,6 +81,11 @@ class WalkTrackingService : Service() {
             ACTION_PAUSE -> pauseRecording(startId)
             ACTION_RESUME -> resumeRecording(startId)
             ACTION_STOP -> stopRecording(startId)
+            ACTION_RECORD_MOMENT -> recordMoment(
+                intent.getStringExtra(EXTRA_MOMENT_TYPE)
+                    ?.let { code -> WalkMomentType.entries.firstOrNull { it.behaviorCode == code } },
+                startId,
+            )
             else -> stopIfInactive(startId)
         }
         // 복구 정책 없이 프로세스가 살아난 것만으로 산책을 재개하지 않는다.
@@ -110,9 +118,17 @@ class WalkTrackingService : Service() {
         writer.clearFailure()
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
+        nextMomentNumber = 1L
         val trail = recorder.start()
         openSession(dogIds)
-        store.publish(trackingState(trail = trail, lastSample = null))
+        store.publish(
+            trackingState(
+                trail = trail,
+                lastSample = null,
+                latestMomentFix = null,
+                momentGroups = emptyList(),
+            ),
+        )
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
         tracker.start(locationSource)
@@ -138,7 +154,9 @@ class WalkTrackingService : Service() {
         val trail = recorder.resume()
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         synchronized(sessionLock) { chainIndex += 1 }
-        store.publish(trackingState(trail))
+        // 일시정지 전에 받은 좌표로 재개 직후 행동을 찍지 않는다. 새 fix가 올 때까지
+        // 행동 버튼은 비활성화된다.
+        store.publish(trackingState(trail, latestMomentFix = null))
         promote(trail, errorMessage = null)
         tracker.start(locationSource)
     }
@@ -184,6 +202,38 @@ class WalkTrackingService : Service() {
         if (recorder.snapshot().state == TrackingState.OFF) stopSelf(startId)
     }
 
+    private fun recordMoment(type: WalkMomentType?, startId: Int) {
+        if (type == null || recorder.snapshot().state != TrackingState.RECORDING) {
+            stopIfInactive(startId)
+            return
+        }
+        val current = store.state.value
+        val sample = current.latestMomentFix
+        if (sample == null || !sample.isFreshEnoughForMoment(SystemClock.elapsedRealtimeNanos())) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        val update = current.momentGroups.addOrGroupMoment(
+            sample = sample,
+            candidateId = "moment-$nextMomentNumber",
+            type = type,
+            recordedAtMillis = System.currentTimeMillis(),
+        )
+        if (update.groupCreated) nextMomentNumber++
+        store.publish(current.copy(momentGroups = update.moments))
+        store.publish(
+            WalkEvent.MomentRecorded(
+                type = type,
+                outcome = when {
+                    update.groupCreated -> WalkMomentOutcome.CREATED
+                    update.actionAdded -> WalkMomentOutcome.MERGED
+                    else -> WalkMomentOutcome.ALREADY_EXISTS
+                },
+                momentId = update.selectedMomentId,
+            ),
+        )
+    }
+
     private fun acceptLocation(sample: LocationSample) {
         synchronized(sessionLock) {
             sessionId?.let { id ->
@@ -201,7 +251,18 @@ class WalkTrackingService : Service() {
                 )
             }
         }
-        store.publish(trackingState(trail = recorder.add(sample), lastSample = sample))
+        val latestMomentFix = if (sample.isAccurateEnoughForMoment()) {
+            sample
+        } else {
+            store.state.value.latestMomentFix
+        }
+        store.publish(
+            trackingState(
+                trail = recorder.add(sample),
+                lastSample = sample,
+                latestMomentFix = latestMomentFix,
+            ),
+        )
     }
 
     private fun openSession(dogIds: List<String>) {
@@ -265,7 +326,10 @@ class WalkTrackingService : Service() {
         val summary = summarize(session, log.fixes(sessionId))
         if (!summary.countsAsWalk) {
             log.deleteSession(sessionId)
-            publishCompletionFailure("이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.")
+            publishCompletionFailure(
+                "이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.",
+                clearMoments = true,
+            )
             return
         }
         publishIfStillInactive(
@@ -276,11 +340,13 @@ class WalkTrackingService : Service() {
         )
     }
 
-    private fun publishCompletionFailure(message: String) {
+    private fun publishCompletionFailure(message: String, clearMoments: Boolean = false) {
         publishIfStillInactive(
             trackingState(
                 trail = recorder.snapshot(),
                 errorMessage = message,
+                latestMomentFix = if (clearMoments) null else store.state.value.latestMomentFix,
+                momentGroups = if (clearMoments) emptyList() else store.state.value.momentGroups,
             ),
         )
     }
@@ -337,12 +403,16 @@ class WalkTrackingService : Service() {
     private fun trackingState(
         trail: TrailSnapshot,
         lastSample: LocationSample? = store.state.value.lastSample,
+        latestMomentFix: LocationSample? = store.state.value.latestMomentFix,
+        momentGroups: List<WalkMoment> = store.state.value.momentGroups,
         errorMessage: String? = null,
         finishingSessionId: String? = null,
         completedSessionId: String? = null,
     ): WalkTrackingState = WalkTrackingState(
         trail = trail,
         lastSample = lastSample,
+        latestMomentFix = latestMomentFix,
+        momentGroups = momentGroups,
         errorMessage = errorMessage,
         activeDurationMillis = activeDurationMillis,
         activeSinceRealtimeMillis = activeSinceRealtimeMillis,
@@ -430,6 +500,7 @@ class WalkTrackingService : Service() {
         const val ACTION_PAUSE = "com.daengs.app.walk.PAUSE"
         const val ACTION_RESUME = "com.daengs.app.walk.RESUME"
         const val ACTION_STOP = "com.daengs.app.walk.STOP"
+        const val ACTION_RECORD_MOMENT = "com.daengs.app.walk.RECORD_MOMENT"
 
         private const val CHANNEL_ID = "walk_tracking"
         private const val NOTIFICATION_ID = 4101
@@ -439,6 +510,7 @@ class WalkTrackingService : Service() {
         private const val REQUEST_STOP = 4104
 
         const val EXTRA_DOG_IDS = "dogIds"
+        const val EXTRA_MOMENT_TYPE = "momentType"
 
         fun commandIntent(context: Context, action: String): Intent =
             Intent(context, WalkTrackingService::class.java).setAction(action)

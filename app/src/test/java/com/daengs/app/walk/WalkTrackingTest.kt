@@ -53,6 +53,13 @@ class WalkTrackingTest {
         assertEquals(WalkTrackingService.ACTION_RESUME, shadowOf(application).nextStartedService.action)
         controller.stop()
         assertEquals(WalkTrackingService.ACTION_STOP, shadowOf(application).nextStartedService.action)
+        controller.recordMoment(WalkMomentType.SOCIAL)
+        val momentIntent = shadowOf(application).nextStartedService
+        assertEquals(WalkTrackingService.ACTION_RECORD_MOMENT, momentIntent.action)
+        assertEquals(
+            WalkMomentType.SOCIAL.behaviorCode,
+            momentIntent.getStringExtra(WalkTrackingService.EXTRA_MOMENT_TYPE),
+        )
     }
 
     @Test
@@ -64,6 +71,6 @@ class WalkTrackingTest {
 
         controller.dismissCompletion()
 
-        assertEquals(null, store.state.value.completedSessionId)
+        assertEquals(WalkTrackingState(), store.state.value)
     }
 }
