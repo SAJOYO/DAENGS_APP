@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordedWeather
+import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -167,6 +168,25 @@ class WalkDaoTest {
 
         assertTrue(log.unfinishedSessions().isEmpty())
         assertEquals(500L, log.session("s1")?.endedAtMillis)
+    }
+
+    @Test
+    fun `원본 업로드와 계산 완료를 서로 다른 단계로 저장한다`() = runBlocking {
+        log.openSession(session("s1"))
+        log.closeSession("s1", endedAtMillis = 500L)
+
+        log.markRawUploaded("s1", serverWalkId = "walk-1", changedAtMillis = 600L)
+
+        val uploaded = log.session("s1")
+        assertEquals(WalkSyncState.RAW_UPLOADED, uploaded?.syncState)
+        assertEquals("walk-1", uploaded?.serverWalkId)
+        assertEquals(listOf("s1"), log.sessionsPendingAnalysis().map { it.id })
+
+        log.markDerived("s1", changedAtMillis = 700L)
+
+        assertEquals(WalkSyncState.DERIVED, log.session("s1")?.syncState)
+        assertEquals(700L, log.session("s1")?.syncedAtMillis)
+        assertTrue(log.sessionsPendingAnalysis().isEmpty())
     }
 
     @Test

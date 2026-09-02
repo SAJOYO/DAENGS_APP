@@ -4,6 +4,7 @@ import android.app.Application
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -13,7 +14,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * 버전 3 에서 4 로 올라가도 **걸은 기록이 그대로 남는지.**
+ * 버전 3 에서 최신으로 올라가도 **걸은 기록과 동기화 단계가 그대로 남는지.**
  *
  * 이 DB 에는 사용자가 걸은 원본 좌표가 들어 있고, 서버에 사본이 없는 산책도 있다
  * (아직 안 올라간 것). 마이그레이션이 잘못되면 앱 업데이트 한 번에 지난 산책이
@@ -34,7 +35,7 @@ class WalkMigrationTest {
     }
 
     @Test
-    fun `3에서 4로 올라가도 세션과 좌표와 강아지가 남는다`() = runBlocking {
+    fun `3에서 5로 올라가도 세션과 좌표와 강아지가 남는다`() = runBlocking {
         legacyV3 {
             execSQL(
                 "INSERT INTO walk_session VALUES " +
@@ -45,7 +46,7 @@ class WalkMigrationTest {
             execSQL("INSERT INTO walk_fix VALUES ('s1',1,0,1200,37.501,127.0,5.0,0)")
         }
 
-        val db = openV4()
+        val db = openLatest()
         val log = RoomWalkFixLog(db.walkDao())
 
         val kept = log.finishedSessions()
@@ -58,9 +59,13 @@ class WalkMigrationTest {
         // 좌표는 손대지 않는다. 표를 다시 만드는 동안 쓸려 나가면 안 된다.
         assertEquals(listOf(0, 1), log.fixes("s1").map { it.clientSeq })
 
-        // 날씨와 "올라간 시각" 도 그대로다.
+        // 날씨와 "올라간 시각"도 그대로다. 예전 synced는 계산 완료가 아니라 원본
+        // 업로드만 뜻했으므로 raw_uploaded로 옮겨져 다음 sync에서 finalize된다.
         assertEquals(61, log.session("s1")?.weather?.weatherCode)
         assertEquals(9000L, log.session("s2")?.syncedAtMillis)
+        assertEquals(WalkSyncState.LOCAL_ONLY, log.session("s1")?.syncState)
+        assertEquals(WalkSyncState.RAW_UPLOADED, log.session("s2")?.syncState)
+        assertEquals(null, log.session("s2")?.serverWalkId)
 
         db.close()
     }
@@ -72,7 +77,7 @@ class WalkMigrationTest {
             execSQL("INSERT INTO walk_session VALUES ('s1','dog-1',1000,2000,NULL,NULL,NULL,NULL)")
         }
 
-        val db = openV4()
+        val db = openLatest()
         val log = RoomWalkFixLog(db.walkDao())
         db.walkDao().insertSessionDog(WalkSessionDogRow(sessionId = "s1", dogId = "dog-2"))
 
@@ -116,12 +121,13 @@ class WalkMigrationTest {
         legacy.close()
     }
 
-    private fun openV4(): WalkDatabase =
+    private fun openLatest(): WalkDatabase =
         Room.databaseBuilder(context, WalkDatabase::class.java, NAME)
             .addMigrations(
                 WalkDatabase.MIGRATION_1_2,
                 WalkDatabase.MIGRATION_2_3,
                 WalkDatabase.MIGRATION_3_4,
+                WalkDatabase.MIGRATION_4_5,
             )
             .build()
 

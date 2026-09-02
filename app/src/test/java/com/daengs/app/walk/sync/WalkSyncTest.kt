@@ -4,6 +4,7 @@ import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
+import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -29,7 +30,12 @@ class WalkSyncTest {
     fun `끝났고 안 올라간 것만 올린다`() = runBlocking {
         log.sessions += session("done", ended = true)
         log.sessions += session("open", ended = false)
-        log.sessions += session("already", ended = true, synced = 1L)
+        log.sessions += session(
+            "already",
+            ended = true,
+            state = WalkSyncState.DERIVED,
+            synced = 1L,
+        )
 
         sync.syncOnce("token")
 
@@ -44,6 +50,8 @@ class WalkSyncTest {
         sync.syncOnce("token")
 
         assertEquals(NOW, log.sessions.single { it.id == "done" }.syncedAtMillis)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single { it.id == "done" }.syncState)
+        assertEquals(listOf("server-done"), api.finalized.map { it.first })
     }
 
     /**
@@ -59,6 +67,7 @@ class WalkSyncTest {
         sync.syncOnce("token")
 
         assertNull(log.sessions.single().syncedAtMillis)
+        assertEquals(WalkSyncState.LOCAL_ONLY, log.sessions.single().syncState)
     }
 
     /** 한 건이 막혀도 나머지는 시도한다 — 큰 산책 하나에 다른 기록이 볼모가 되면 안 된다. */
@@ -73,6 +82,7 @@ class WalkSyncTest {
         assertEquals(listOf("good"), api.uploaded.map { it.id })
         assertNull(log.sessions.single { it.id == "bad" }.syncedAtMillis)
         assertEquals(NOW, log.sessions.single { it.id == "good" }.syncedAtMillis)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single { it.id == "good" }.syncState)
     }
 
     /** 긴 산책은 나눠 보낸다. 순번이 서버 PK 라 나눠도 중복이 안 생긴다. */
@@ -87,6 +97,58 @@ class WalkSyncTest {
         assertEquals(2_000, api.uploadedPoints.size)
         assertEquals(listOf(2_000, 500), api.appended.map { it.size })
         assertEquals(NOW, log.sessions.single().syncedAtMillis)
+        assertEquals(4_500, api.finalized.single().second.expectedPointCount)
+        assertEquals(4_499, api.finalized.single().second.terminalClientSeq)
+    }
+
+    @Test
+    fun `마지막 chunk가 실패하면 raw uploaded나 finalize로 넘어가지 않는다`() = runBlocking {
+        log.sessions += session("long", ended = true)
+        log.fixes["long"] = (0 until 2_500).map { fix(it) }
+        api.appendFails = true
+
+        sync.syncOnce("token")
+
+        assertEquals(WalkSyncState.LOCAL_ONLY, log.sessions.single().syncState)
+        assertEquals(0, api.finalizeCalls)
+    }
+
+    /** finalize만 실패하면 원본은 다시 보내지 않고 다음 실행에서 finalize부터 잇는다. */
+    @Test
+    fun `계산 응답을 못 받으면 raw uploaded에서 finalize만 다시 시도한다`() = runBlocking {
+        log.sessions += session("done", ended = true)
+        api.finalizeFails = true
+
+        sync.syncOnce("token")
+
+        val waiting = log.sessions.single()
+        assertEquals(WalkSyncState.RAW_UPLOADED, waiting.syncState)
+        assertEquals("server-done", waiting.serverWalkId)
+        assertEquals(1, api.uploadCalls)
+
+        api.finalizeFails = false
+        sync.syncOnce("token")
+
+        assertEquals(1, api.uploadCalls)
+        assertEquals(2, api.finalizeCalls)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single().syncState)
+    }
+
+    /** v4에서 올라온 기록은 raw_uploaded지만 서버 id가 없어 create로 id만 다시 얻는다. */
+    @Test
+    fun `예전 업로드 기록은 서버 id를 다시 얻어 finalize한다`() = runBlocking {
+        log.sessions += session(
+            "legacy",
+            ended = true,
+            state = WalkSyncState.RAW_UPLOADED,
+            synced = 1L,
+        )
+
+        sync.syncOnce("token")
+
+        assertEquals(1, api.uploadCalls)
+        assertEquals("server-legacy", api.finalized.single().first)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single().syncState)
     }
 
     @Test
@@ -97,15 +159,22 @@ class WalkSyncTest {
 
         val restored = log.sessions.single()
         assertEquals("from-server", restored.id)
-        // 되찾은 것은 이미 서버에 있으므로 올린 것으로 표시된다 — 다시 올리지 않는다.
+        // 목록에는 분석 상태가 없으므로 원본 업로드까지만 확실한 것으로 기록한다.
         assertEquals(NOW, restored.syncedAtMillis)
+        assertEquals(WalkSyncState.RAW_UPLOADED, restored.syncState)
+        assertEquals("server-from-server", restored.serverWalkId)
         assertEquals(2, log.fixes["from-server"]?.size)
     }
 
     /** 이미 있는 것은 **덮어쓰지 않는다.** 끝난 기록은 바뀌지 않으므로 받을 이유가 없다. */
     @Test
     fun `이미 있는 산책은 다시 안 받는다`() = runBlocking {
-        log.sessions += session("mine", ended = true, synced = 1L)
+        log.sessions += session(
+            "mine",
+            ended = true,
+            state = WalkSyncState.DERIVED,
+            synced = 1L,
+        )
         api.remote += remote("mine")
 
         sync.syncOnce("token")
@@ -131,12 +200,20 @@ class WalkSyncTest {
 
     // -- 대역 -------------------------------------------------------------
 
-    private fun session(id: String, ended: Boolean, synced: Long? = null) = RecordedSession(
+    private fun session(
+        id: String,
+        ended: Boolean,
+        state: WalkSyncState = WalkSyncState.LOCAL_ONLY,
+        serverWalkId: String? = null,
+        synced: Long? = null,
+    ) = RecordedSession(
         id = id,
         dogIds = listOf("dog-1"),
         startedAtMillis = 1_000L,
         endedAtMillis = if (ended) 2_000L else null,
         weather = RecordedWeather(weatherCode = 61, isDay = true, temperatureC = 18.5f),
+        syncState = state,
+        serverWalkId = serverWalkId,
         syncedAtMillis = synced,
     )
 
@@ -190,12 +267,30 @@ class WalkSyncTest {
         override suspend fun finishedSessions(): List<RecordedSession> =
             sessions.filter { it.endedAtMillis != null }
 
-        override suspend fun unsyncedSessions(): List<RecordedSession> =
-            sessions.filter { it.endedAtMillis != null && it.syncedAtMillis == null }
+        override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
+            sessions.filter {
+                it.endedAtMillis != null && it.syncState != WalkSyncState.DERIVED
+            }
 
-        override suspend fun markSynced(sessionId: String, syncedAtMillis: Long) {
+        override suspend fun markRawUploaded(
+            sessionId: String,
+            serverWalkId: String,
+            changedAtMillis: Long,
+        ) {
             val index = sessions.indexOfFirst { it.id == sessionId }
-            sessions[index] = sessions[index].copy(syncedAtMillis = syncedAtMillis)
+            sessions[index] = sessions[index].copy(
+                syncState = WalkSyncState.RAW_UPLOADED,
+                serverWalkId = serverWalkId,
+                syncedAtMillis = changedAtMillis,
+            )
+        }
+
+        override suspend fun markDerived(sessionId: String, changedAtMillis: Long) {
+            val index = sessions.indexOfFirst { it.id == sessionId }
+            sessions[index] = sessions[index].copy(
+                syncState = WalkSyncState.DERIVED,
+                syncedAtMillis = changedAtMillis,
+            )
         }
 
         override suspend fun session(sessionId: String): RecordedSession? =
@@ -206,12 +301,19 @@ class WalkSyncTest {
     }
 
     private class FakeApi : WalkApiClient {
+        override val configured: Boolean = true
+
         val uploaded = mutableListOf<RecordedSession>()
         val uploadedPoints = mutableListOf<RecordedFix>()
         val appended = mutableListOf<List<RecordedFix>>()
         val remote = mutableListOf<RemoteWalkDetail>()
         var uploadFails = false
+        var appendFails = false
         var failFor: String? = null
+        var finalizeFails = false
+        var uploadCalls = 0
+        var finalizeCalls = 0
+        val finalized = mutableListOf<Pair<String, WalkFinalizeManifest>>()
         var detailCalls = 0
 
         override suspend fun upload(
@@ -219,6 +321,7 @@ class WalkSyncTest {
             session: RecordedSession,
             fixes: List<RecordedFix>,
         ): Result<String> {
+            uploadCalls++
             if (uploadFails || session.id == failFor) {
                 return Result.failure(IllegalStateException("서버에 닿지 못했어요."))
             }
@@ -233,6 +336,22 @@ class WalkSyncTest {
             fixes: List<RecordedFix>,
         ): Result<Unit> {
             appended += fixes
+            if (appendFails) {
+                return Result.failure(IllegalStateException("이어붙이지 못했습니다."))
+            }
+            return Result.success(Unit)
+        }
+
+        override suspend fun finalize(
+            token: String,
+            walkId: String,
+            manifest: WalkFinalizeManifest,
+        ): Result<Unit> {
+            finalizeCalls++
+            if (finalizeFails) {
+                return Result.failure(IllegalStateException("응답을 잃었습니다."))
+            }
+            finalized += walkId to manifest
             return Result.success(Unit)
         }
 

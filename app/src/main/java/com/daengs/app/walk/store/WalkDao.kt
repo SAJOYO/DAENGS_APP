@@ -97,20 +97,24 @@ interface WalkDao {
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
 
-    /**
-     * 끝났는데 아직 안 올라간 것. **올릴 대상**이다.
-     *
-     * 오래된 것부터 준다 — 밀린 것이 여럿이면 걸었던 순서대로 올라가는 편이
-     * 중간에 실패했을 때 어디까지 됐는지 읽기 쉽다.
-     */
+    /** 끝났지만 아직 계산 완료되지 않은 것. 오래된 것부터 이어서 처리한다. */
     @Query(
         "SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL " +
-            "AND syncedAtMillis IS NULL ORDER BY startedAtMillis",
+            "AND syncState <> 'derived' ORDER BY startedAtMillis",
     )
-    suspend fun unsyncedSessions(): List<WalkSessionRow>
+    suspend fun sessionsPendingAnalysis(): List<WalkSessionRow>
 
-    @Query("UPDATE walk_session SET syncedAtMillis = :syncedAtMillis WHERE id = :sessionId")
-    suspend fun markSynced(sessionId: String, syncedAtMillis: Long)
+    @Query(
+        "UPDATE walk_session SET syncState = 'raw_uploaded', serverWalkId = :serverWalkId, " +
+            "syncedAtMillis = :changedAtMillis WHERE id = :sessionId",
+    )
+    suspend fun markRawUploaded(sessionId: String, serverWalkId: String, changedAtMillis: Long)
+
+    @Query(
+        "UPDATE walk_session SET syncState = 'derived', syncedAtMillis = :changedAtMillis " +
+            "WHERE id = :sessionId AND syncState = 'raw_uploaded'",
+    )
+    suspend fun markDerived(sessionId: String, changedAtMillis: Long)
 
     /** 날씨는 세션을 연 뒤 따로 온다. 열린 세션이든 끝난 세션이든 한 번만 쓴다. */
     @Query(
