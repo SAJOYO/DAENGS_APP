@@ -89,13 +89,18 @@ fun TodayCard(
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "TODAY",
-                    color = DaengPinkDeep,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                )
-                Spacer(Modifier.width(20.dp))
+                // **접으면 `TODAY` 를 뺀다.** 바로 옆에 오늘 날짜가 붙으므로 같은 말을
+                // 두 번 하는 셈이고, 접는 이유가 방을 비켜 주는 것인데 그만큼 덜 비킨다.
+                // 펼친 카드에서는 제목 노릇을 하므로 그때는 남긴다.
+                if (expanded) {
+                    Text(
+                        "TODAY",
+                        color = DaengPinkDeep,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                    )
+                    Spacer(Modifier.width(20.dp))
+                }
                 DaengsIconView(icon, Modifier.size(17.dp), tint = accent)
                 // 접혀 있으면 날짜가 이 줄로 올라온다. 접어 놔도 오늘이 며칠인지는
                 // 보여야 한다 — 그게 이 카드를 두는 이유다.
