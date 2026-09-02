@@ -44,6 +44,9 @@ import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.home.HomeDemoData
+import com.daengs.app.ui.common.SettingDivider
+import com.daengs.app.ui.common.SettingRow
+import com.daengs.app.ui.common.SettingSection
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -139,17 +142,17 @@ fun MyScreen(
         }
 
         if (signedIn) {
-            Section {
-                MyRow("로그아웃", onClick = onSignOut)
-                RowDivider()
-                MyRow("회원 탈퇴", onClick = { confirming = true }, tint = DaengsColors.Error)
+            SettingSection {
+                SettingRow("로그아웃", onClick = onSignOut)
+                SettingDivider()
+                SettingRow("회원 탈퇴", onClick = { confirming = true }, tint = DaengsColors.Error)
             }
         } else {
             // 눌러도 아무 일 없는 버튼을 두지 않는다 — 로그인 안 한 사람에게
             // "로그아웃"은 비활성이 아니라 **없는 것**이 맞다
             // (LandingScreen 의 canLogin 안내와 같은 규칙).
-            Section {
-                MyRow("카카오로 로그인", onClick = onSignIn, tint = DaengPink)
+            SettingSection {
+                SettingRow("카카오로 로그인", onClick = onSignIn, tint = DaengPink)
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -363,16 +366,6 @@ private fun DialogAction(label: String, tint: Color, weight: FontWeight, onClick
 }
 
 /** 줄 사이 가는 선. */
-@Composable
-private fun RowDivider() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp)
-            .height(1.dp)
-            .background(DaengsColors.BorderNeutral),
-    )
-}
 
 @Composable
 private fun ProfileHead(breed: DogBreed, dogName: String?, roomLabel: String) {
@@ -417,7 +410,7 @@ private fun PetSection(
     // null 은 "아직 못 받아 왔다" 다. 빈 목록과 다르게 다뤄야, 잠깐 뜨는 사이에
     // "등록된 강아지가 없어요" 가 번쩍이지 않는다.
     if (pets == null) {
-        Section {
+        SettingSection {
             Box(Modifier.fillMaxWidth().padding(vertical = 22.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(20.dp), color = DaengPink, strokeWidth = 2.dp)
             }
@@ -429,7 +422,12 @@ private fun PetSection(
         pets.forEach { pet ->
             PetCard(
                 pet,
-                onEdit = { onEdit(pet) },
+                // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
+                // 묻는 화면은 떠난 아이에게 할 말이 아니다.
+                onEdit = {
+                    if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
+                    else onEdit(pet)
+                },
                 onPickPrimary = { onPickPrimary(pet) },
                 onDelete = { onDelete(pet) },
                 sentOn = farewellOf(pet),
@@ -492,18 +490,23 @@ private fun PetCard(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            // **배웅한 아이는 편지로만 간다.** 대표로 세우거나 지우는 자리를 그대로
-            // 두면, 떠난 아이 옆에 매번 그 버튼들이 붙어 있게 된다.
+            // **대표 자리는 배웅한 아이에게도 그대로 둔다.** 한 마리만 키우다 보낸
+            // 경우 그 아이가 대표일 수밖에 없고, 여러 마리여도 떠난 아이를 대표로
+            // 두고 싶을 수 있다. 여기서 막으면 그 선택을 못 하게 된다.
+            //
+            // 대신 **삭제는 아이의 자리로 옮겼다.** 떠난 아이 옆에 지우기 버튼이 매번
+            // 붙어 있는 것과, 그 아이의 화면에서 조용히 고르는 것은 다르다.
             if (sentOn != null) {
-                if (onFarewell != null) {
+                if (pet.isPrimary) {
+                    Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                } else {
                     Text(
-                        "편지",
-                        color = DaengPink,
+                        "대표로",
+                        color = TextMuted,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onFarewell)
+                            .clickable(onClick = onPickPrimary)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
@@ -574,7 +577,7 @@ private fun Section(content: @Composable () -> Unit) {
  * 붙여 직접 짠다 (`LandingScreen` 과 같은 결).
  */
 @Composable
-private fun MyRow(
+private fun SettingRow(
     label: String,
     onClick: () -> Unit,
     tint: Color = TextDark,

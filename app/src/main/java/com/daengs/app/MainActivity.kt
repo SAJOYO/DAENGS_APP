@@ -9,6 +9,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
 import com.daengs.app.ui.home.BottomTab
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -26,6 +29,8 @@ import com.daengs.app.dogcard.CardHolder
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.rememberFarewellStore
 import com.daengs.app.farewell.FarewellScreen
+import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
@@ -142,6 +147,21 @@ class MainActivity : ComponentActivity() {
                 // 배웅한 날이 바뀌면 목록이 다시 그려져야 한다. 저장소는 상태가 아니라
                 // 파일이라, 바뀐 것을 알릴 값을 하나 둔다.
                 var farewellTick by remember { mutableIntStateOf(0) }
+                // 지우기는 두 군데서 부른다 — 목록의 삭제와 배웅한 아이의 자리.
+                // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그 아이의 산책이
+                // 다음 동기화 때 되돌아온다.
+                val removePet: (Pet) -> Unit = { pet ->
+                    scope.launch {
+                        val token = freshToken() ?: return@launch
+                        if (pets.remove(token, pet.id)) {
+                            walkRuntime.history.forgetDog(pet.id)
+                            todayWalks = walkRuntime.history.todayTotals()
+                            // 배웅 기록도 같이 지운다. 아이가 없으면 남을 자리가 없다.
+                            farewells.undo(pet.id)
+                            farewellTick++
+                        }
+                    }
+                }
                 var roomName by remember { mutableStateOf<String?>(null) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
@@ -280,6 +300,36 @@ class MainActivity : ComponentActivity() {
                                 farewellTick++
                             },
                             onClose = { farewell = null },
+                            face = {
+                                val art = pet.breedArt
+                                if (art != null) {
+                                    DogAvatar(art, Modifier.size(120.dp))
+                                } else {
+                                    PawAvatar(size = 120.dp)
+                                }
+                            },
+                            // **읽기만 한다.** 함께 있을 때 적어 둔 것을 보여 주는 것이지
+                            // 고치는 자리가 아니다. 모르는 항목은 줄에서 빠진다.
+                            profile = buildList {
+                                add("견종" to (pet.breedArt?.label ?: "믹스"))
+                                pet.sex?.let {
+                                    add("성별" to if (it == Pet.Sex.MALE) "남아" else "여아")
+                                }
+                                pet.weightKg?.let { add("몸무게" to "${it}kg") }
+                                pet.birthDate?.let { d ->
+                                    val label =
+                                        if (pet.birthDateKind == Pet.BirthDateKind.FAMILY_DAY) {
+                                            "가족이 된 날"
+                                        } else {
+                                            "생일"
+                                        }
+                                    add(label to "%d년 %d월 %d일".format(d.year, d.monthValue, d.dayOfMonth))
+                                }
+                            },
+                            onDelete = {
+                                removePet(pet)
+                                farewell = null
+                            },
                         )
                     } else HomeScreen(
                         onOpenDex = { screen = Screen.Dex },
@@ -339,17 +389,7 @@ class MainActivity : ComponentActivity() {
                         deletePetBusy = pets.busy,
                         deletePetError = pets.error,
                         onDismissDeletePet = { pets.clearError() },
-                        onDeletePet = { pet ->
-                            scope.launch {
-                                val token = freshToken() ?: return@launch
-                                // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그
-                                // 아이의 산책이 다음 동기화 때 되돌아온다.
-                                if (pets.remove(token, pet.id)) {
-                                    walkRuntime.history.forgetDog(pet.id)
-                                    todayWalks = walkRuntime.history.todayTotals()
-                                }
-                            }
-                        },
+                        onDeletePet = removePet,
                         withdrawBusy = withdrawBusy,
                         withdrawError = withdrawError,
                         onDismissWithdraw = { withdrawError = null },
