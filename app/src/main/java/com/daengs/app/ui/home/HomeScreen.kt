@@ -151,6 +151,8 @@ fun HomeScreen(
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
+    /** 카드 실험실. 개발자 패널에서만 열린다. */
+    onOpenCutoutLab: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
@@ -332,6 +334,7 @@ fun HomeScreen(
                 onOpenWalk = onOpenWalk,
                 profileBreed = profileBreed,
                 onPickProfile = { devBreed = it },
+                onOpenCutoutLab = onOpenCutoutLab,
                 roomName = roomName,
                 defaultLabel = defaultRoomLabel(pets?.firstOrNull { it.isPrimary }?.name),
                 onRenameRoom = onRenameRoom,
@@ -388,6 +391,8 @@ private fun RoomSection(
     onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    /** 카드 실험실. 개발자 패널에서만 열린다. */
+    onOpenCutoutLab: (() -> Unit)?,
     /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
     roomName: String?,
     /** 사용자가 안 정했을 때 걸리는 이름. 대표 강아지에서 지은 값이다. */
@@ -511,6 +516,7 @@ private fun RoomSection(
                 onPickProfile = onPickProfile,
                 outside = outside,
                 onPickOutside = onPickOutside,
+                onOpenCutoutLab = onOpenCutoutLab,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }

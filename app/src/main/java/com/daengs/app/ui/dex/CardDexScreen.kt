@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.art.rememberAssetImage
+import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.PinkFaint
@@ -98,20 +99,38 @@ private const val SLOT_RATIO = 1.25f
 
 
 @Composable
-fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun CardDexScreen(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    /**
+     * 뽑기 화면을 띄운다. null 이면 "카드 뽑기" 자리가 안 보인다 —
+     * `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    draw: (@Composable (onDone: () -> Unit) -> Unit)? = null,
+    startInDraw: Boolean = false,
+) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
     // 카드가 둘이 되면서 "켜졌다"만으로는 무엇을 그릴지 모른다.
     var scene by remember { mutableStateOf<ImmersiveScene?>(null) }
     // 이머시브가 출발할 자리. 그리드가 사라진 뒤에도 써야 하므로 여기 둔다.
     var from by remember { mutableStateOf(Rect.Zero) }
+    // **화면을 안 늘린다.** 뽑기는 `Screen` 에 새 갈래를 내지 않고 도감 위에 덮인다 —
+    // 확대 뷰·이머시브가 이미 그 방식이라 결이 맞고, `MainActivity` 를 안 건드린다.
+    var drawing by remember { mutableStateOf(startInDraw && draw != null) }
 
     BackHandler {
         when {
+            drawing -> drawing = false
             scene != null -> scene = null
             opened != null -> opened = null
             else -> onClose()
         }
+    }
+
+    if (drawing && draw != null) {
+        draw { drawing = false }
+        return
     }
 
     scene?.let { showing ->
@@ -123,6 +142,7 @@ fun CardDexScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         DexGrid(
             onOpen = { opened = it },
             onClose = onClose,
+            onDraw = draw?.let { { drawing = true } },
             onImmersive = { at, picked ->
                 from = at
                 scene = picked
@@ -147,6 +167,7 @@ private fun DexGrid(
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
     onImmersive: (Rect, ImmersiveScene) -> Unit,
+    onDraw: (() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         // 두 칸. 웹판에서 한 칸이면 카드가 화면을 꽉 채워 무거웠다.
@@ -157,7 +178,7 @@ private fun DexGrid(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
-            DexHeader(onClose = onClose)
+            DexHeader(onClose = onClose, onDraw = onDraw)
         }
         items(DEX_CARDS) { card ->
             GridCard(
@@ -174,7 +195,7 @@ private fun DexGrid(
 }
 
 @Composable
-private fun DexHeader(onClose: () -> Unit) {
+private fun DexHeader(onClose: () -> Unit, onDraw: (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -195,6 +216,20 @@ private fun DexHeader(onClose: () -> Unit) {
             color = TextMuted,
             fontSize = 12.sp,
         )
+        onDraw?.let { go ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "＋ 카드 뽑기",
+                color = DaengPink,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CardWhite)
+                    .clickable(onClick = go)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
         Spacer(Modifier.height(8.dp))
     }
 }

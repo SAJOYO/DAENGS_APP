@@ -85,6 +85,11 @@ fun DeveloperPanel(
     onPickProfile: (DogBreed) -> Unit,
     outside: OutsideView,
     onPickOutside: (OutsideView) -> Unit,
+    /**
+     * 카드 실험실. 카드 기능을 만드는 동안만 쓰는 입구다 — 얼굴이 구멍에 잘 앉는지
+     * 보려면 실기기에서 사진을 넣어 봐야 한다.
+     */
+    onOpenCutoutLab: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -102,6 +107,18 @@ fun DeveloperPanel(
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
             )
+            if (onOpenCutoutLab != null) {
+                Text(
+                    "누끼",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(PanelPick)
+                        .clickable(onClick = onOpenCutoutLab)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
         }
 
         // 소품 목록은 여기 안 넣는다. 좌표는 이미 방 위에 라벨로 그려지고 있어서
