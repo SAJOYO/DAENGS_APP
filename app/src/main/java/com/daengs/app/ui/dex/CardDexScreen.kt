@@ -296,7 +296,7 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             )
         }
         Spacer(Modifier.height(10.dp))
-        Text("채소가 된 네오", color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("채소가 된 우리 아이", color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Text(
             // **여기가 오래 거짓말을 하던 자리다.** 분자·분모가 둘 다 `DEX_CARDS.size` 라
@@ -399,8 +399,21 @@ private fun GridCard(slot: DexSlot, onOpen: () -> Unit, onImmersive: ((Rect) -> 
             // **이름을 안 알려 준다.** 무엇인지 모르는 게 뽑을 이유다.
             Text("???", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         } else {
-            Text(card.name, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(card.statLine, color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)
+            // **카드의 이름은 우리 아이 이름이다.** 카탈로그의 `Cabbage Neo` 는 저쪽
+            // 개(네오)의 카드 이름이라, 내가 뽑은 카드에 그대로 두면 남의 개 이름이 된다.
+            Text(
+                mine?.dogName ?: card.name,
+                color = TextDark,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            // 어느 야채인지는 여기 남긴다. 그림과 번호만으로는 헷갈린다.
+            Text(
+                "${card.ko} · ${card.statLine}",
+                color = TextMuted,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+            )
             if (slot.count > 1) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -587,8 +600,17 @@ private fun CardViewer(slots: List<DexSlot>, startIndex: Int, onClose: () -> Uni
                             Text("???", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Text("아직 안 뽑았어요", color = Color(0xFFD9C9C3), fontSize = 12.sp)
                         } else {
-                            Text(card.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(card.statLine, color = Color(0xFFD9C9C3), fontSize = 12.sp)
+                            Text(
+                                mine?.dogName ?: card.name,
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "${card.ko} · ${card.statLine}",
+                                color = Color(0xFFD9C9C3),
+                                fontSize = 12.sp,
+                            )
                         }
                     }
                     Spacer(Modifier.size(18.dp))
@@ -744,12 +766,8 @@ private fun CardDetailSheet(
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
             )
-            // 한글 이름은 그림 어디에도 없다. 여기서만 볼 수 있다.
-            Text(
-                if (mine != null) "${card.ko} · ${card.name}" else card.ko,
-                color = Color(0xFFD9C9C3),
-                fontSize = 13.sp,
-            )
+            // 어느 야채인지.
+            Text(card.ko, color = Color(0xFFD9C9C3), fontSize = 13.sp)
             mine?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -760,7 +778,11 @@ private fun CardDetailSheet(
             }
 
             Spacer(Modifier.height(14.dp))
-            card.detailRows().forEach { row ->
+            // **번호판도 내 카드의 것으로.** 카탈로그의 `NEO-0824` 는 저쪽 카드에
+            // 인쇄된 값이고, 우리 카드에는 아이 생일에서 만든 번호가 찍혀 있다.
+            // 번호판은 **내 카드의 것만** 보여 준다. 카탈로그의 `NEO-0824` 는 저쪽
+            // 카드에 인쇄돼 있던 값이라 우리 화면에 나올 이유가 없다.
+            card.detailRows(code = mine?.codeText, showCode = mine != null).forEach { row ->
                 Row(Modifier.padding(vertical = 3.dp)) {
                     Text(
                         row.label,
