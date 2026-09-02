@@ -555,21 +555,6 @@ private fun RoomSection(
         //
         // 정렬 자체는 BottomEnd 로 두고 offset 으로만 끌어온다 — 그래야
         // 이름표 크기를 재지 않아도 되고, 글꼴 크기가 커져도 안 흔들린다.
-        if (turntableOpen) {
-            TurntablePanel(
-                onClose = { turntableOpen = false },
-                drawn = drawnCards,
-                onOpenDraw = onOpenDraw?.let { go ->
-                    {
-                        // 뽑으러 가면 판은 닫는다. 돌아왔을 때 덮여 있으면 방이 안 보인다.
-                        turntableOpen = false
-                        go()
-                    }
-                },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-        }
-
         NamePlate(
             label = roomName?.trim()?.takeIf(String::isNotEmpty) ?: defaultLabel,
             // 로그인 전에는 못 누른다 — 고쳐도 저장할 곳이 없다.
@@ -591,6 +576,24 @@ private fun RoomSection(
                     )
                 },
         )
+
+        // **판은 이름표보다 나중에 그린다.** Box 는 나중에 부른 것이 위로 올라오는데,
+        // 이름표가 뒤에 있어서 판을 열면 그 위로 "○○이네" 가 떠 있었다 — 판이 방에서
+        // 올라온 물건이 아니라 이름표 밑에 낀 종이처럼 보인다.
+        if (turntableOpen) {
+            TurntablePanel(
+                onClose = { turntableOpen = false },
+                drawn = drawnCards,
+                onOpenDraw = onOpenDraw?.let { go ->
+                    {
+                        // 뽑으러 가면 판은 닫는다. 돌아왔을 때 덮여 있으면 방이 안 보인다.
+                        turntableOpen = false
+                        go()
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
 
         if (renaming && onRenameRoom != null) {
             RoomNameDialog(
