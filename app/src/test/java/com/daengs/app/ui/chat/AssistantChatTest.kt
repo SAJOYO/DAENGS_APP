@@ -33,11 +33,11 @@ class AssistantChatTest {
 
     private fun verdict(grade: WalkVerdict.Grade) = WalkVerdict(
         grade = grade,
-        reasons = emptyList(),
+        axes = emptyList(),
         capped = false,
         windows = emptyList(),
+        timeline = emptyList(),
         locationLabel = "",
-        notes = emptyList(),
     )
 
     @Test

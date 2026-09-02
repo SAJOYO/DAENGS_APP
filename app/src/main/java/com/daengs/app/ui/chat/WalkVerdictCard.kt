@@ -3,6 +3,7 @@ package com.daengs.app.ui.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -108,6 +110,7 @@ fun WalkVerdictCard(verdict: WalkVerdict, modifier: Modifier = Modifier) {
 
             AnimatedVisibility(expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (verdict.timeline.isNotEmpty()) TimelineStrip(verdict.timeline)
                     if (verdict.capped) {
                         Text(
                             "일부 값을 몰라 한 단계 낮춰 봤어요.",
@@ -115,15 +118,7 @@ fun WalkVerdictCard(verdict: WalkVerdict, modifier: Modifier = Modifier) {
                             fontSize = 12.sp,
                         )
                     }
-                    verdict.reasons.forEach { reason ->
-                        Row {
-                            Text("· ", color = TextMuted, fontSize = 13.sp)
-                            Text(reason, color = TextDark, fontSize = 13.sp, lineHeight = 20.sp)
-                        }
-                    }
-                    verdict.notes.forEach { note ->
-                        Text(note, color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
-                    }
+                    verdict.axes.forEach { AxisRow(it) }
                     if (verdict.locationLabel.isNotBlank()) {
                         Text(verdict.locationLabel, color = TextMuted, fontSize = 11.sp)
                     }
@@ -132,6 +127,40 @@ fun WalkVerdictCard(verdict: WalkVerdict, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * 축 한 줄 — `기온   주의   체감온도 33.3℃ (여름식)`.
+ *
+ * **등급이 숫자보다 앞이다.** `PM10 42㎍/㎥` 로는 대부분 판단을 못 하는데, 그 해석은
+ * 저쪽이 축마다 등급으로 이미 붙여 놨다. 숫자는 뒤에 흐리게 남겨 아는 사람만 본다.
+ */
+@Composable
+private fun AxisRow(axis: WalkVerdict.Axis) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            axis.label,
+            color = TextDark,
+            fontSize = 13.sp,
+            modifier = Modifier.width(AXIS_LABEL_WIDTH),
+        )
+        Text(
+            gradeShort(axis.grade),
+            color = gradeColor(axis.grade),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(AXIS_GRADE_WIDTH),
+        )
+        if (axis.note.isNotBlank()) {
+            Text(axis.note, color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
+        }
+    }
+}
+
+/** 축 이름 칸. 세 줄의 등급이 세로로 맞아야 훑을 수 있다. */
+private val AXIS_LABEL_WIDTH = 60.dp
+
+/** 등급 칸. */
+private val AXIS_GRADE_WIDTH = 44.dp
 
 /** 등급 뱃지. 카드에서 색을 지닌 유일한 자리라 위험한 날이 여기서 눈에 띈다. */
 @Composable
@@ -151,7 +180,7 @@ private fun GradeChip(grade: WalkVerdict.Grade) {
 private fun WindowChip(window: WalkVerdict.Window) {
     Surface(color = PinkFaint, shape = RoundedCornerShape(10.dp)) {
         Text(
-            "${hour(window.from)}~${hour(window.to)}",
+            windowSpan(window),
             color = TextDark,
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -159,8 +188,54 @@ private fun WindowChip(window: WalkVerdict.Window) {
     }
 }
 
+/**
+ * `12시` 또는 `12시~14시`.
+ *
+ * **끝이 시작과 같으면 범위로 안 쓴다.** 저쪽 `to` 는 구간의 끝이 아니라 "마지막으로
+ * 좋은 시각" 이라, 좋은 시점이 하나뿐이면 둘이 같아진다. 그걸 그대로 그리면
+ * `12시~12시` 라는 없는 범위가 된다.
+ */
+internal fun windowSpan(window: WalkVerdict.Window): String =
+    if (window.isPoint) hour(window.from) else "${hour(window.from)}~${hour(window.to)}"
+
 /** `10시`. 분은 안 쓴다 — 저쪽 시간대는 정시 단위라 `10시 00분` 은 자리만 먹는다. */
 private fun hour(at: LocalDateTime): String = "${at.hour}시"
+
+/**
+ * 시간별 등급 띠.
+ *
+ * **"3시간 후에는?" 을 되묻지 않게 하는 자리다.** v1 오케스트레이션은 무상태라 그
+ * 질문이 새 질문으로 가서 "지금" 을 다시 판정해 준다. 값은 이미 왔으니 펴 둔다.
+ *
+ * 가로로 민다 — 24시간을 한 줄에 욱여넣으면 칸이 글자보다 좁아진다.
+ */
+@Composable
+private fun TimelineStrip(points: List<WalkVerdict.Point>) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("시간대별", color = TextMuted, fontSize = 12.sp)
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            points.forEach { point ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        color = gradeTint(point.grade),
+                        shape = RoundedCornerShape(6.dp),
+                    ) {
+                        Text(
+                            gradeShort(point.grade),
+                            color = gradeColor(point.grade),
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        )
+                    }
+                    Text("${point.at.hour}", color = TextMuted, fontSize = 10.sp)
+                }
+            }
+        }
+    }
+}
 
 private fun gradeShort(grade: WalkVerdict.Grade): String = when (grade) {
     WalkVerdict.Grade.GOOD -> "좋음"
@@ -193,24 +268,37 @@ private fun WalkVerdictCardPreview() {
             WalkVerdictCard(
                 WalkVerdict(
                     grade = WalkVerdict.Grade.GOOD,
-                    reasons = listOf("체감온도 21.4℃ (여름식)", "PM10 18㎍/㎥", "강수 없음"),
+                    axes = listOf(
+                        WalkVerdict.Axis("heat", "기온", WalkVerdict.Grade.GOOD, "체감온도 21.4℃ (여름식)"),
+                        WalkVerdict.Axis("air", "미세먼지", WalkVerdict.Grade.GOOD, "PM10 18㎍/㎥"),
+                        WalkVerdict.Axis("rain", "비", WalkVerdict.Grade.GOOD, "강수 없음"),
+                    ),
                     capped = false,
                     windows = listOf(
-                        WalkVerdict.Window(base, base.plusHours(2), WalkVerdict.Grade.GOOD),
+                        WalkVerdict.Window(base, base, WalkVerdict.Grade.GOOD),
                         WalkVerdict.Window(
                             base.plusHours(7),
                             base.plusHours(9),
                             WalkVerdict.Grade.GOOD,
                         ),
                     ),
+                    timeline = (0..11).map {
+                        WalkVerdict.Point(
+                            base.plusHours(it.toLong()),
+                            if (it in 3..5) WalkVerdict.Grade.CAUTION else WalkVerdict.Grade.GOOD,
+                        )
+                    },
                     locationLabel = "역삼1동 (측정소: 강남구) 기준",
-                    notes = emptyList(),
                 ),
             )
             WalkVerdictCard(
                 WalkVerdict(
                     grade = WalkVerdict.Grade.UNSAFE,
-                    reasons = listOf("체감온도 33.3℃ (여름식)", "폭염주의보"),
+                    axes = listOf(
+                        WalkVerdict.Axis("heat", "기온", WalkVerdict.Grade.UNSAFE, "체감온도 33.3℃ (여름식)"),
+                        WalkVerdict.Axis("air", "미세먼지", WalkVerdict.Grade.CAUTION, "PM10 82㎍/㎥"),
+                        WalkVerdict.Axis("rain", "비", WalkVerdict.Grade.GOOD, "강수 없음"),
+                    ),
                     capped = true,
                     windows = listOf(
                         WalkVerdict.Window(
@@ -219,8 +307,13 @@ private fun WalkVerdictCardPreview() {
                             WalkVerdict.Grade.CAUTION,
                         ),
                     ),
+                    timeline = (0..11).map {
+                        WalkVerdict.Point(
+                            base.plusHours(it.toLong()),
+                            if (it < 4) WalkVerdict.Grade.UNSAFE else WalkVerdict.Grade.UNKNOWN,
+                        )
+                    },
                     locationLabel = "역삼1동 (측정소: 강남구) 기준",
-                    notes = listOf("한낮에는 아스팔트가 뜨거워 발바닥이 델 수 있어요."),
                 ),
             )
         }

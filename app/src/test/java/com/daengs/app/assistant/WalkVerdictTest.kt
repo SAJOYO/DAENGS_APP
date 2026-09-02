@@ -32,7 +32,6 @@ class WalkVerdictTest {
                 {
                   "now": {
                     "grade": "CAUTION",
-                    "dominant": ["heat"],
                     "capped": false,
                     "axes": {
                       "heat": {"grade": "CAUTION", "note": "체감온도 33.3℃ (여름식)"},
@@ -44,34 +43,38 @@ class WalkVerdictTest {
                      "grade": "GOOD"}
                   ],
                   "location": {"label": "역삼1동 (측정소: 강남구) 기준"},
-                  "notes": ["한낮 아스팔트를 피해 주세요."]
+                  "notes": ["대기질 미래 구간은 권역 일 예보 기준이다 (③-b)"]
                 }
                 """.trimIndent(),
             ),
         )
 
         assertEquals(WalkVerdict.Grade.CAUTION, verdict.grade)
-        // dominant 가 가리킨 축만. 좋은 축(air)은 이유가 아니다.
-        assertEquals(listOf("체감온도 33.3℃ (여름식)"), verdict.reasons)
+        // 좋은 축도 뺀 것 없이, 기온 → 미세먼지 → 비 순서로.
+        assertEquals(listOf("기온", "미세먼지"), verdict.axes.map { it.label })
+        assertEquals(WalkVerdict.Grade.CAUTION, verdict.axes[0].grade)
+        assertEquals("체감온도 33.3℃ (여름식)", verdict.axes[0].note)
+        assertEquals(WalkVerdict.Grade.GOOD, verdict.axes[1].grade)
         assertFalse(verdict.capped)
         assertEquals(1, verdict.windows.size)
         assertEquals(LocalDateTime.of(2026, 9, 2, 18, 0), verdict.windows[0].from)
         assertEquals(LocalDateTime.of(2026, 9, 2, 20, 0), verdict.windows[0].to)
         assertEquals(WalkVerdict.Grade.GOOD, verdict.windows[0].grade)
         assertEquals("역삼1동 (측정소: 강남구) 기준", verdict.locationLabel)
-        assertEquals(listOf("한낮 아스팔트를 피해 주세요."), verdict.notes)
+        // 위 notes 는 명세 절 번호가 박힌 방법론 각주라 안 옮긴다. 필드가 와도
+        // 모델에 자리가 없다는 것을 이 테스트가 컴파일된다는 사실로 고정한다.
     }
 
     @Test
-    fun `dominant 가 비면 축 전부를 이유로 쓴다`() {
-        // 깎을 것이 없는 좋은 날. 여기서 이유가 비면 카드가 등급만 있는 지금과 같아진다.
+    fun `축 순서는 저쪽 키 순서를 안 따른다`() {
+        // JSON 객체 키 순서는 약속된 것이 아니다. 같은 카드가 볼 때마다 다르게
+        // 보이면 안 되므로 우리가 정한 순서로 세운다.
         val verdict = WalkVerdict.parse(
             JSONObject(
                 """
                 {
                   "now": {
                     "grade": "GOOD",
-                    "dominant": [],
                     "axes": {
                       "heat": {"note": "체감온도 21.4℃ (여름식)"},
                       "rain": {"note": "강수 없음"}
@@ -83,10 +86,26 @@ class WalkVerdictTest {
         )
 
         assertEquals(WalkVerdict.Grade.GOOD, verdict.grade)
-        assertEquals(
-            setOf("체감온도 21.4℃ (여름식)", "강수 없음"),
-            verdict.reasons.toSet(),
+        assertEquals(listOf("기온", "비"), verdict.axes.map { it.label })
+    }
+
+    @Test
+    fun `모르는 축은 키를 이름으로 쓴다`() {
+        // 저쪽이 축을 하나 더 만드는 날, 그 줄이 사라지는 것보다 보이는 편이 낫다.
+        val verdict = WalkVerdict.parse(
+            JSONObject(
+                """
+                {
+                  "now": {
+                    "grade": "GOOD",
+                    "axes": {"pollen": {"grade": "CAUTION", "note": "꽃가루 많음"}}
+                  }
+                }
+                """.trimIndent(),
+            ),
         )
+        assertEquals(listOf("pollen"), verdict.axes.map { it.label })
+        assertEquals(WalkVerdict.Grade.CAUTION, verdict.axes[0].grade)
     }
 
     @Test
@@ -114,7 +133,7 @@ class WalkVerdictTest {
     fun `now 가 통째로 없어도 안 죽는다`() {
         val verdict = WalkVerdict.parse(JSONObject("{}"))
         assertEquals(WalkVerdict.Grade.UNKNOWN, verdict.grade)
-        assertTrue(verdict.reasons.isEmpty())
+        assertTrue(verdict.axes.isEmpty())
         assertTrue(verdict.windows.isEmpty())
         assertEquals("", verdict.locationLabel)
     }
@@ -210,5 +229,66 @@ class WalkVerdictTest {
         val response = AssistantResponse.parse(JSONObject(json))
         assertEquals(WalkVerdict.Grade.GOOD, response.walk?.grade)
         assertEquals(1, response.resultCount)
+    }
+
+    @Test
+    fun `시간별 등급을 읽는다`() {
+        // "3시간 후에는?" 을 되묻지 않게 하는 값이다. 안 읽으면 카드가 그걸 못 그린다.
+        val verdict = WalkVerdict.parse(
+            JSONObject(
+                """
+                {
+                  "now": {"grade": "GOOD"},
+                  "timeline": [
+                    {"at": "2026-09-02T12:00:00+09:00", "grade": "GOOD"},
+                    {"at": "2026-09-02T13:00:00+09:00", "grade": "CAUTION"},
+                    {"at": "2026-09-02T14:00:00+09:00", "grade": "unknown"}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        assertEquals(3, verdict.timeline.size)
+        assertEquals(12, verdict.timeline[0].at.hour)
+        assertEquals(WalkVerdict.Grade.CAUTION, verdict.timeline[1].grade)
+        assertEquals(WalkVerdict.Grade.UNKNOWN, verdict.timeline[2].grade)
+    }
+
+    @Test
+    fun `좋은 시각이 하나뿐인 구간은 범위가 아니다`() {
+        // 저쪽 to 는 "마지막으로 좋은 시각" 이라 하나뿐이면 from 과 같아진다.
+        // 그대로 그리면 "12시~12시" 라는 없는 범위가 된다.
+        val verdict = WalkVerdict.parse(
+            JSONObject(
+                """
+                {
+                  "now": {"grade": "GOOD"},
+                  "windows": [
+                    {"from": "2026-09-02T12:00:00+09:00", "to": "2026-09-02T12:00:00+09:00",
+                     "grade": "GOOD"}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        assertTrue(verdict.windows[0].isPoint)
+    }
+
+    @Test
+    fun `이어지는 구간은 범위다`() {
+        val verdict = WalkVerdict.parse(
+            JSONObject(
+                """
+                {
+                  "now": {"grade": "GOOD"},
+                  "windows": [
+                    {"from": "2026-09-02T12:00:00+09:00", "to": "2026-09-02T15:00:00+09:00",
+                     "grade": "GOOD"}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        assertFalse(verdict.windows[0].isPoint)
     }
 }
