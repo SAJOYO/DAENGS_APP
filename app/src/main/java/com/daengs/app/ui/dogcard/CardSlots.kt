@@ -126,7 +126,7 @@ val PEPPER_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.76f, 51.67f, 18.44f, 13.83f),
     avatar = Hole(13.80f, 13.54f, 8.78f, 6.59f),
-    name = null,
+    name = Slot(59.44f, 6.25f, 76.11f, 12.08f),
     code = null,
 )
 
@@ -137,7 +137,7 @@ val EGGPLANT_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(48.24f, 56.32f, 18.64f, 13.98f),
     avatar = Hole(14.26f, 13.82f, 9.08f, 6.81f),
-    name = null,
+    name = Slot(70.56f, 7.99f, 76.85f, 13.61f),
     code = null,
 )
 
@@ -148,7 +148,7 @@ val CARROT_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(50.83f, 50.76f, 13.89f, 10.42f),
     avatar = Hole(14.07f, 13.68f, 8.73f, 6.55f),
-    name = null,
+    name = Slot(63.89f, 6.25f, 70.93f, 13.19f),
     code = null,
 )
 
@@ -159,7 +159,7 @@ val DANHOBAK_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.57f, 50.56f, 15.35f, 11.51f),
     avatar = Hole(13.80f, 13.68f, 8.73f, 6.55f),
-    name = null,
+    name = Slot(73.52f, 6.25f, 80.56f, 12.64f),
     code = null,
 )
 
@@ -170,7 +170,7 @@ val MUSHROOM_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.57f, 44.93f, 14.22f, 10.67f),
     avatar = Hole(14.44f, 9.58f, 7.73f, 5.80f),
-    name = null,
+    name = Slot(56.48f, 4.03f, 67.96f, 9.86f),
     code = null,
 )
 
@@ -181,7 +181,7 @@ val BROCCOLI_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.48f, 51.53f, 10.02f, 7.52f),
     avatar = Hole(14.54f, 9.86f, 7.71f, 5.78f),
-    name = null,
+    name = Slot(53.52f, 4.03f, 67.22f, 9.86f),
     code = null,
 )
 
@@ -192,7 +192,7 @@ val CUCUMBER_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(50.56f, 47.43f, 10.29f, 7.71f),
     avatar = Hole(14.91f, 9.86f, 7.72f, 5.79f),
-    name = null,
+    name = Slot(57.22f, 4.1f, 69.44f, 9.72f),
     code = null,
 )
 
@@ -203,7 +203,7 @@ val SPINACH_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(47.22f, 36.60f, 13.20f, 9.90f),
     avatar = Hole(14.72f, 9.79f, 7.73f, 5.80f),
-    name = null,
+    name = Slot(50.56f, 4.03f, 67.22f, 9.86f),
     code = null,
 )
 
@@ -214,7 +214,7 @@ val TOMATO_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.94f, 46.18f, 15.74f, 11.80f),
     avatar = Hole(14.63f, 9.44f, 7.73f, 5.80f),
-    name = null,
+    name = Slot(51.3f, 3.82f, 67.22f, 9.44f),
     code = null,
 )
 
@@ -225,7 +225,7 @@ val LETTUCE_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(50.00f, 38.82f, 9.97f, 7.48f),
     avatar = Hole(13.06f, 12.85f, 7.71f, 5.78f),
-    name = null,
+    name = Slot(53.52f, 6.32f, 71.67f, 11.94f),
     code = null,
 )
 
