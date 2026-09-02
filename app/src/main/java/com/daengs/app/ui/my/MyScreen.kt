@@ -145,7 +145,7 @@ fun MyScreen(
 
         // 로그인 여부와 무관하게 앱 안에서 언제든 찾을 수 있어야 합니다.
         Section {
-            MyRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
+            SettingRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
         }
         Spacer(Modifier.height(14.dp))
 
