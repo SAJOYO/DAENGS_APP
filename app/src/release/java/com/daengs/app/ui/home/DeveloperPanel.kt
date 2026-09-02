@@ -43,5 +43,6 @@ fun DeveloperPanel(
     onPickProfile: (DogBreed) -> Unit,
     outside: OutsideView,
     onPickOutside: (OutsideView) -> Unit,
+    onOpenCutoutLab: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) = Unit

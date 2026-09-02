@@ -9,6 +9,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
 import com.daengs.app.ui.home.BottomTab
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -22,12 +25,23 @@ import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
+import com.daengs.app.ui.dogcard.rememberComposedCard
+import com.daengs.app.dogcard.CardHolder
+import androidx.compose.runtime.mutableIntStateOf
+import com.daengs.app.farewell.FarewellScreen
+import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PawAvatar
+import com.daengs.app.ui.dogcard.CardDrawScreen
+import com.daengs.app.ui.dogcard.DrawDog
+import com.daengs.app.ui.dogcard.birthCode
+import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
+import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesScreen
@@ -38,7 +52,7 @@ import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
 
-/** 화면 다섯. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
+/** 화면들. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
 private enum class Screen {
     Landing,
     /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
@@ -52,6 +66,8 @@ private enum class Screen {
     WalkHistory,
     /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
     WalkDetail,
+    /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
+    CutoutLab,
 }
 
 class MainActivity : ComponentActivity() {
@@ -61,6 +77,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val walkRuntime = (application as DaengsApp).walkRuntime
+        val cardStore = (application as DaengsApp).cardStore
         val walkController = walkRuntime.controller
         setContent {
             DaengsTheme {
@@ -70,6 +87,9 @@ class MainActivity : ComponentActivity() {
                 val store = rememberTokenStore()
                 // 탈퇴할 때 방까지 지워야 해서 여기서도 잡는다 (홈이 쓰는 것과 같은 저장소).
                 val roomStore = rememberRoomStore()
+                // 방 액자에 건 카드. **방과 도감이 만나는 자리가 여기 하나다** —
+                // 고르는 곳은 도감이고 걸리는 곳은 방이라, 둘 다 아는 쪽이 들어야 한다.
+                var frameCardId by remember { mutableStateOf(roomStore.loadFrameCardId()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
 
@@ -82,6 +102,10 @@ class MainActivity : ComponentActivity() {
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
+
+                // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
+                // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
+                val cards = remember { CardHolder(cardStore) }
 
                 // 창밖 날씨. **여기서 들고 있는다** — 화면이 바뀌어도 안 죽는다.
                 // 홈 안에서 부르면 도감·산책을 갔다 올 때마다 폴백(맑은 낮)부터 다시
@@ -117,6 +141,28 @@ class MainActivity : ComponentActivity() {
                 // 마이로 돌아와야** 하는데, 홈 안에서 들면 화면이 바뀔 때 같이 죽어서
                 // 등록을 마치고 나면 방으로 떨어진다.
                 var myOpen by rememberSaveable { mutableStateOf(false) }
+                // 날씨 카드가 펴져 있나. **화면이 바뀌어도 기억한다** — 접어 두고
+                // 도감에 갔다 왔는데 다시 펴져 있으면 접은 뜻이 없다.
+                var weatherOpen by rememberSaveable { mutableStateOf(true) }
+                // 도감을 열자마자 뽑기를 띄울지. 턴테이블의 "뽑으러 가기" 가 켠다.
+                var dexOpensDraw by remember { mutableStateOf(false) }
+                // 배웅. **화면을 안 늘린다** — 마이 위에 덮인다 (`myOpen` 과 같은 결).
+                //
+                // 배웅한 날은 **서버가 갖고 있다**(`pets.farewell_on`). 기기에 적어 두던
+                // 것을 옮긴 것이라, 기기를 바꿔도 그 기록이 남는다.
+                var farewell by remember { mutableStateOf<Pet?>(null) }
+                // 지우기는 두 군데서 부른다 — 목록의 삭제와 배웅한 아이의 자리.
+                // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그 아이의 산책이
+                // 다음 동기화 때 되돌아온다.
+                val removePet: (Pet) -> Unit = { pet ->
+                    scope.launch {
+                        val token = freshToken() ?: return@launch
+                        if (pets.remove(token, pet.id)) {
+                            walkRuntime.history.forgetDog(pet.id)
+                            todayWalks = walkRuntime.history.todayTotals()
+                        }
+                    }
+                }
                 var roomName by remember { mutableStateOf<String?>(null) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
@@ -162,6 +208,13 @@ class MainActivity : ComponentActivity() {
                     if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
                     // 로그인 직후. **새 폰이면 여기서 지난 산책이 되돌아온다.**
                     walkRuntime.sync.syncOnce(token)
+
+                    // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
+                    // 남의 카드는 안 건드린다 (`CardDao.claimOrphans`).
+                    session?.appUserId?.let { cards.claimOrphans(it) }
+                    // 출시본에서는 아무 일도 안 일어난다 — 디버그 소스셋의 시드다.
+                    pets.primary?.let { seedCards(context, cardStore, it.id, it.name, it.birthDate) }
+                    cards.load(session?.appUserId)
                 }
 
                 LaunchedEffect(Unit) {
@@ -231,7 +284,65 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
-                    Screen.Home -> HomeScreen(
+                    // 배웅은 **마이 위에 덮인다.** 화면을 늘리지 않는 것은 확대 뷰나
+                    // 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기 때문이다.
+                    Screen.Home -> if (farewell != null) {
+                        val pet = farewell!!
+                        FarewellScreen(
+                            dogName = pet.name,
+                            // **목록의 값을 본다.** 서버에 보내고 목록을 다시 받으므로
+                            // 여기 값이 곧 서버의 값이다.
+                            sentOn = pets.pets?.firstOrNull { it.id == pet.id }?.farewellOn
+                                ?: pet.farewellOn,
+                            onSendOff = { day ->
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    pets.sendOff(token, pet, day)
+                                }
+                            },
+                            onUndo = {
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    pets.sendOff(token, pet, null)
+                                }
+                            },
+                            onClose = { farewell = null },
+                            face = {
+                                val art = pet.breedArt
+                                if (art != null) {
+                                    DogAvatar(art, Modifier.size(120.dp))
+                                } else {
+                                    PawAvatar(size = 120.dp)
+                                }
+                            },
+                            // **읽기만 한다.** 함께 있을 때 적어 둔 것을 보여 주는 것이지
+                            // 고치는 자리가 아니다. 모르는 항목은 줄에서 빠진다.
+                            profile = buildList {
+                                add("견종" to (pet.breedArt?.label ?: "믹스"))
+                                pet.sex?.let {
+                                    add("성별" to if (it == Pet.Sex.MALE) "남아" else "여아")
+                                }
+                                pet.weightKg?.let { add("몸무게" to "${it}kg") }
+                                pet.birthDate?.let { d ->
+                                    val label =
+                                        if (pet.birthDateKind == Pet.BirthDateKind.FAMILY_DAY) {
+                                            "가족이 된 날"
+                                        } else {
+                                            "생일"
+                                        }
+                                    add(label to "%d년 %d월 %d일".format(d.year, d.monthValue, d.dayOfMonth))
+                                }
+                            },
+                            onDelete = {
+                                removePet(pet)
+                                farewell = null
+                            },
+                        )
+                    } else HomeScreen(
+                        // 액자 그림. 고른 카드가 지워졌으면 못 찾고, 그때는 발자국이다.
+                        framePicture = rememberComposedCard(
+                            cards.cards.firstOrNull { it.id == frameCardId },
+                        ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
@@ -245,6 +356,13 @@ class MainActivity : ComponentActivity() {
                         tab = homeTab,
                         onSelectTab = { homeTab = it },
                         myOpen = myOpen,
+                        weatherOpen = weatherOpen,
+                        drawnCards = cards.cards,
+                        onOpenDraw = {
+                            dexOpensDraw = true
+                            screen = Screen.Dex
+                        },
+                        onToggleWeather = { weatherOpen = !weatherOpen },
                         onOpenMy = { myOpen = true },
                         onCloseMy = { myOpen = false },
                         outside = outside,
@@ -252,6 +370,8 @@ class MainActivity : ComponentActivity() {
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
+                        onFarewell = { farewell = it },
+                        farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
                                 val token = freshToken() ?: return@launch
@@ -285,17 +405,7 @@ class MainActivity : ComponentActivity() {
                         deletePetBusy = pets.busy,
                         deletePetError = pets.error,
                         onDismissDeletePet = { pets.clearError() },
-                        onDeletePet = { pet ->
-                            scope.launch {
-                                val token = freshToken() ?: return@launch
-                                // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그
-                                // 아이의 산책이 다음 동기화 때 되돌아온다.
-                                if (pets.remove(token, pet.id)) {
-                                    walkRuntime.history.forgetDog(pet.id)
-                                    todayWalks = walkRuntime.history.todayTotals()
-                                }
-                            }
-                        },
+                        onDeletePet = removePet,
                         withdrawBusy = withdrawBusy,
                         withdrawError = withdrawError,
                         onDismissWithdraw = { withdrawError = null },
@@ -314,6 +424,7 @@ class MainActivity : ComponentActivity() {
                                         // 물려받는다.
                                         store.clear()
                                         roomStore.clear()
+                                        frameCardId = null
                                         pets.forget()
                                         // **산책 좌표도 지운다.** 서버는 탈퇴에서
                                         // 산책까지 지우는데 폰의 Room 에는 원본이
@@ -322,6 +433,10 @@ class MainActivity : ComponentActivity() {
                                         // 데이터도 지운다" 고 할 수 없다.
                                         walkRuntime.history.forgetEverything()
                                         todayWalks = walkRuntime.history.todayTotals()
+                                        // 뽑은 카드도 이 기기에만 있다. 서버에 사본이
+                                        // 없으므로 여기서 안 지우면 다음에 로그인한
+                                        // 사람이 남의 도감을 물려받는다.
+                                        cards.forgetEverything()
                                         session = null
                                         screen = Screen.Landing
                                     }
@@ -345,6 +460,11 @@ class MainActivity : ComponentActivity() {
                             if (old != null && AuthApi.configured) {
                                 scope.launch { AuthApi.logout(old.refreshToken) }
                             }
+                        },
+                        onOpenCutoutLab = if (BuildConfig.DEBUG) {
+                            { screen = Screen.CutoutLab }
+                        } else {
+                            null
                         },
                     )
 
@@ -392,7 +512,46 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
-                    Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
+                    Screen.Dex -> CardDexScreen(
+                        onClose = { screen = Screen.Home },
+                        startInDraw = dexOpensDraw.also { dexOpensDraw = false },
+                        drawn = cards.cards,
+                        framedCardId = frameCardId,
+                        onFrame = { card ->
+                            frameCardId = card?.id
+                            roomStore.saveFrameCardId(card?.id)
+                        },
+                        draw = { done ->
+                            CardDrawScreen(
+                                dogs = pets.pets.orEmpty().map { pet ->
+                                    DrawDog(
+                                        id = pet.id,
+                                        name = pet.name,
+                                        codeText = pet.birthDate
+                                            ?.let { birthCode(it.monthValue, it.dayOfMonth) }
+                                            ?: birthCode(8, 24),
+                                        isPrimary = pet.isPrimary,
+                                    )
+                                },
+                                drawsLeft = cards.drawsLeft(),
+                                onCancel = done,
+                                onDrawn = { dog, template, face, core ->
+                                    cards.draw(
+                                        template = template,
+                                        face = face,
+                                        core = core,
+                                        dogId = dog?.id,
+                                        dogName = dog?.name ?: "우리 아이",
+                                        codeText = dog?.codeText ?: birthCode(8, 24),
+                                        appUserId = session?.appUserId,
+                                    )
+                                },
+                                onOpenDex = done,
+                            )
+                        },
+                    )
+
+                    Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
                 }
             }
         }

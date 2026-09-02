@@ -11,6 +11,13 @@ composeBom = "2026.02.01"
 kakaoSdk = "2.24.0"
 securityCrypto = "1.1.0-beta01"
 splashscreen = "1.0.1"
+# 누끼(피사체 오려내기). **모델은 APK 에 없다** — Play 서비스가 기기 첫 사용 때
+# 내려받는다. APK 가 커지는 건 라이브러리 코드만큼이고, 재보니 디버그 APK
+# 30,350,250 → 31,459,428 바이트로 **약 1.1MB** 늘었다 (같은 커밋을 worktree 에
+# 따로 빌드해 비교).
+# 2026-08-29 기준 이 아티팩트에 존재하는 판은 이 beta1 하나뿐이다.
+mlkitSubjectSegmentation = "16.0.0-beta1"
+
 # 지도 기반 (원본 geo 저장소와 같은 버전 — 기존 라이브러리는 안 올린다)
 naverMap = "3.23.3"
 playServicesLocation = "21.4.0"
@@ -48,6 +55,10 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakaoSdk" }
+# 그룹이 com.google.mlkit 이 아니라 **com.google.android.gms** 다. 이 기능은
+# 번들 판이 없고 Play 서비스로만 배달된다. InputImage 는 vision-common 이
+# 전이로 딸려온다.
+mlkit-subject-segmentation = { group = "com.google.android.gms", name = "play-services-mlkit-subject-segmentation", version.ref = "mlkitSubjectSegmentation" }
 naver-map-sdk = { group = "com.naver.maps", name = "map-sdk", version.ref = "naverMap" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }

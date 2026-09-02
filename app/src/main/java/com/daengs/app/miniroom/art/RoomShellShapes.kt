@@ -511,11 +511,19 @@ fun DrawScope.drawWallFrame(g: RoomGeometry, picture: ImageBitmap?, pulse: Float
                         (artTop + artH / 2f - roiCy).roundToInt(),
                     ),
                     dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
-                    filterQuality = FilterQuality.None,
+                    // **여기만 보간을 켠다.** 방은 픽셀 화풍이라 어디서나 None 인데,
+                    // 액자에 들어가는 것은 픽셀 그림이 아니라 사진에 가까운 카드다.
+                    // 800px 짜리를 60px 로 줄이면서 최근접으로 뽑으면 눈코가 통째로
+                    // 날아가서 우리 아이인지 알아볼 수가 없다.
+                    filterQuality = FilterQuality.Medium,
                 )
             }
         } else {
-            drawRect(FrameEmpty, Offset(artLeft, artTop), Size(artW, artH))
+            // **빈 액자를 검은 판으로 두지 않는다.** 아직 카드가 없는 사람의 방에
+            // 시커먼 사각형이 걸려 있으면 그림이 안 불러와진 것으로 보인다.
+            // 대지 위에 발자국 하나. 카드가 생기면 그 카드로 갈아 끼운다.
+            drawRect(FrameMat, Offset(artLeft, artTop), Size(artW, artH))
+            drawPaw(Offset(artLeft + artW / 2f, artTop + artH / 2f), minOf(artW, artH) * 0.37f)
         }
 
         if (pulse > 0.001f) {
@@ -527,6 +535,44 @@ fun DrawScope.drawWallFrame(g: RoomGeometry, picture: ImageBitmap?, pulse: Float
         }
     }
 }
+
+/**
+ * 발자국 하나. 빈 액자에 걸린다.
+ *
+ * 에셋을 안 만든다 — 타원 다섯 개다. 액자 속은 화면에서 60px 남짓이라 그림 파일로
+ * 넣어도 그 크기로 줄어들고, 리소스만 한 장 는다.
+ *
+ * 발가락은 **부채꼴로 벌린다.** 나란히 찍으면 발자국이 아니라 점 네 개다.
+ * 가운데 둘은 조금 높고 크다 — 실제 발바닥이 그렇고, 그래야 위아래가 생긴다.
+ *
+ * @param r 발자국 전체가 들어가는 반지름
+ */
+private fun DrawScope.drawPaw(center: Offset, r: Float) {
+    // 발바닥. 완전한 타원보다 가로로 넓은 편이 발로 읽힌다.
+    drawOval(
+        PawInk,
+        Offset(center.x - r * 0.52f, center.y - r * 0.02f),
+        Size(r * 1.04f, r * 0.80f),
+    )
+    // (가로 위치, 세로 위치, 크기) — 가운데 둘이 높고 크다
+    val toes = listOf(
+        Triple(-0.62f, -0.44f, 0.30f),
+        Triple(-0.22f, -0.72f, 0.34f),
+        Triple(0.22f, -0.72f, 0.34f),
+        Triple(0.62f, -0.44f, 0.30f),
+    )
+    for ((tx, ty, ts) in toes) {
+        val w = r * ts
+        drawOval(
+            PawInk,
+            Offset(center.x + r * tx - w / 2f, center.y + r * ty - w * 0.62f),
+            Size(w, w * 1.24f),
+        )
+    }
+}
+
+/** 발자국 색. 대지(크림)에 얹히므로 방의 나무 톤에서 가져온 따뜻한 갈색이다. */
+private val PawInk = Color(0xFFC2A184)
 
 /** 액자 나무. 방 그림의 가구 톤에서 가져왔다. */
 private val FrameWood = Color(0xFF6E5636)

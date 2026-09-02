@@ -37,3 +37,18 @@ fun roomRoster(pets: List<Pet>?): List<DogBreed> = when {
 
     else -> pets.map { it.roomBreed }
 }
+
+/**
+ * 방에 선 아이들 중 **배웅한 아이의 자리**.
+ *
+ * [roomRoster] 와 같은 차례이므로 여기서 나온 번호가 곧 그 명부의 첨자다. 견종 목록에
+ * 배웅 여부를 같이 담지 않는 이유는 `miniroom` 이 [Pet] 을 모르기 때문이다 —
+ * 견종은 그리는 데 필요한 값이고 배웅은 앱의 사실이라, 만나는 자리는 여기 하나면 된다.
+ *
+ * 못 받아 왔거나(null) 견본을 세운 경우에는 아무도 없다. **견본에 무지개를 달면 안
+ * 된다** — 남의 아이도 아닌, 있지도 않은 아이를 배웅한 것으로 만든다.
+ */
+fun departedInRoom(pets: List<Pet>?): Set<Int> {
+    if (pets.isNullOrEmpty()) return emptySet()
+    return pets.indices.filter { pets[it].farewellOn != null }.toSet()
+}

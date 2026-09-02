@@ -67,6 +67,15 @@ class DogActor(
      * ([com.daengs.app.miniroom.art.DogPose]), 그걸 즉시 하면 몸이 순간이동한다.
      */
     var stand: Float = 0f
+
+    /**
+     * 배웅한 아이인가. 표시만 달라지고 **걷는 것은 똑같다.**
+     *
+     * 한 번은 제자리에 앉혀 봤는데 그게 아니었다. 배웅은 방에서 내보내는 것도, 세워
+     * 두는 것도 아니다 — 그 아이는 방에서 계속 뛰어다니고, 쉬고 있을 때 곁에 하트가
+     * 뜰 뿐이다. 멈춰 세우면 그 순간 방이 박제가 된다.
+     */
+    var departed: Boolean = false
 }
 
 /**
@@ -94,6 +103,12 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
 
     /** 개발자 도구가 덮어쓴 견종. null 이면 명부대로 선다. */
     private var breedOverride: DogBreed? = null
+
+    /**
+     * 배웅한 아이의 명부 자리. 견종과 따로 두는 이유는 [setRoster] 가 자리를 유지하기
+     * 때문이다 — 명부가 갱신될 때마다 이 값도 [applyRoster] 에서 다시 얹어야 한다.
+     */
+    private var departedAt: Set<Int> = emptySet()
 
     var dogs: List<DogActor> = emptyList()
         private set
@@ -172,7 +187,22 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
     }
 
     private fun applyRoster() {
-        dogs.forEachIndexed { i, d -> d.breed = breedOverride ?: roster[i] }
+        dogs.forEachIndexed { i, d ->
+            d.breed = breedOverride ?: roster[i]
+            d.departed = i in departedAt
+        }
+    }
+
+    /**
+     * 배웅한 아이가 명부의 몇 번째인가.
+     *
+     * 명부와 따로 받는다. 견종은 안 바뀌었는데 배웅만 한 경우가 있고([setRoster] 는
+     * 그때 일찍 빠져나간다), 반대로 강아지를 새로 등록해 명부만 늘어난 경우도 있다.
+     */
+    fun setDeparted(indices: Set<Int>) {
+        if (indices == departedAt) return
+        departedAt = indices
+        dogs.forEachIndexed { i, d -> d.departed = i in indices }
     }
 
     fun byId(id: Int): DogActor? = dogs.firstOrNull { it.id == id }
@@ -455,8 +485,10 @@ val DogActor.depthCell: Int get() = floor(pos.x).toInt() + floor(pos.y).toInt()
  * ([DogHerd.setRoster]).
  */
 @Composable
-fun rememberDogHerd(roster: List<DogBreed>): DogHerd {
+fun rememberDogHerd(roster: List<DogBreed>, departed: Set<Int> = emptySet()): DogHerd {
     val herd = remember { DogHerd(roster) }
     remember(roster) { herd.setRoster(roster); roster }
+    // 명부 **뒤에** 얹는다. setRoster 가 는 마리를 새로 만들면서 이 표시를 지운다.
+    remember(roster, departed) { herd.setDeparted(departed); departed }
     return herd
 }

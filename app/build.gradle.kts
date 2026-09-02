@@ -228,6 +228,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
+    implementation(libs.mlkit.subject.segmentation)
     implementation(libs.naver.map.sdk)
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.serialization.json)
