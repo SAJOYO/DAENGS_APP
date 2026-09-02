@@ -109,8 +109,14 @@ class MainActivity : ComponentActivity() {
                 // 방 이름표. **null 은 아직 안 정했거나 못 받아온 것**이고, 그때
                 // 화면이 대표 강아지 이름으로 짓는다.
                 // 홈의 하단 탭. **여기서 들고 있는다** — 화면이 바뀌어도 안 지워진다.
-                // 마이 탭에서 강아지를 추가하러 나갔다 오면 마이로 돌아와야 한다.
                 var homeTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
+
+                // 마이 화면이 열려 있나. **탭이 아니라 상단바의 프로필 버튼으로 연다.**
+                //
+                // 탭과 같은 이유로 여기서 든다 — **강아지를 추가하러 나갔다 오면
+                // 마이로 돌아와야** 하는데, 홈 안에서 들면 화면이 바뀔 때 같이 죽어서
+                // 등록을 마치고 나면 방으로 떨어진다.
+                var myOpen by rememberSaveable { mutableStateOf(false) }
                 var roomName by remember { mutableStateOf<String?>(null) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
@@ -238,6 +244,9 @@ class MainActivity : ComponentActivity() {
                         onSignIn = { screen = Screen.Landing },
                         tab = homeTab,
                         onSelectTab = { homeTab = it },
+                        myOpen = myOpen,
+                        onOpenMy = { myOpen = true },
+                        onCloseMy = { myOpen = false },
                         outside = outside,
                         pets = pets.pets.orEmpty(),
                         canAddMore = pets.canAddMore,
