@@ -176,6 +176,10 @@ fun HomeScreen(
     onDismissRename: (() -> Unit)? = null,
     /** 지우기. **그 아이와만 나간 산책 기록도 같이 지워진다.** */
     onDeletePet: ((Pet) -> Unit)? = null,
+    /** 아이를 배웅하는 자리로. 마이가 그 길을 연다 */
+    onFarewell: ((Pet) -> Unit)? = null,
+    /** 이미 배웅한 아이의 날짜 */
+    farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deletePetBusy: Boolean = false,
     deletePetError: String? = null,
     onDismissDeletePet: (() -> Unit)? = null,
@@ -296,6 +300,8 @@ fun HomeScreen(
                 onEditPet = { onEditPet?.invoke(it) },
                 onPickPrimary = { onPickPrimary?.invoke(it) },
                 onDeletePet = { onDeletePet?.invoke(it) },
+                onFarewell = onFarewell,
+                farewellOf = farewellOf,
                 deleteBusy = deletePetBusy,
                 deleteError = deletePetError,
                 onDismissDelete = { onDismissDeletePet?.invoke() },

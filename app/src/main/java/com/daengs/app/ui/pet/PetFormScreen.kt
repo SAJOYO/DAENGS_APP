@@ -55,6 +55,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daengs.app.ui.common.DateWheel
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
 import com.daengs.app.pet.PetDraft
@@ -105,13 +106,19 @@ fun PetFormScreen(
     var sex by remember { mutableStateOf(initial?.sex) }
     var neutered by remember { mutableStateOf(initial?.neutered) }
     var weight by remember { mutableStateOf(initial?.weightKg?.let { trimZero(it) }.orEmpty()) }
-    var dateText by remember { mutableStateOf(initial?.birthDate?.toString().orEmpty()) }
+    // **날짜는 고르는 것이지 쓰는 것이 아니다.** 예전에는 `2023-05-14` 로 적게 했는데,
+    // 하이픈 자리를 틀리거나 자판을 숫자로 바꾸는 것부터가 번거로웠다.
+    //
+    // **모름을 남겨 둔다.** 필수로 하면 모르는 사람이 아무 날이나 넣는다 — 유기견을
+    // 데려온 경우가 그렇다. 그래서 켜야 다이얼이 나온다.
+    var dateOn by remember { mutableStateOf(initial?.birthDate != null) }
+    var day by remember { mutableStateOf(initial?.birthDate ?: LocalDate.now()) }
     var dateKind by remember {
         mutableStateOf(initial?.birthDateKind ?: Pet.BirthDateKind.BIRTHDAY)
     }
 
-    val parsedDate = remember(dateText) { parseDate(dateText) }
-    val dateBad = dateText.isNotBlank() && parsedDate == null
+    val parsedDate = day.takeIf { dateOn }
+    val dateBad = false
 
     val draft = PetDraft(
         name = name,
@@ -186,10 +193,29 @@ fun PetFormScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        TextInput(dateText, { dateText = it }, "2023-05-14", KeyboardType.Number)
-        if (dateBad) {
+        if (!dateOn) {
+            Text(
+                "+ 날짜 고르기",
+                color = DaengPink,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { dateOn = true }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
+        } else {
+            DateWheel(value = day, onChange = { day = it })
             Spacer(Modifier.height(6.dp))
-            Text("2023-05-14 처럼 적어 주세요.", color = DaengsColors.Error, fontSize = 12.sp)
+            Text(
+                "모르겠어요",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { dateOn = false }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
         }
 
         if (error != null) {

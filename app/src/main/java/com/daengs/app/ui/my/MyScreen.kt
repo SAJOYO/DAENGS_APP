@@ -86,6 +86,10 @@ fun MyScreen(
      * 하고 나서 부른다.
      */
     onDeletePet: (Pet) -> Unit,
+    /** 아이를 배웅하는 자리로 보낸다. 삭제 창에서도, 아이 카드에서도 여기로 온다 */
+    onFarewell: ((Pet) -> Unit)? = null,
+    /** 이미 배웅한 아이의 날짜. 없으면 아직 함께 있는 아이다 */
+    farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deleteBusy: Boolean,
     deleteError: String?,
     onDismissDelete: () -> Unit,
@@ -128,6 +132,8 @@ fun MyScreen(
                 onEdit = onEditPet,
                 onPickPrimary = onPickPrimary,
                 onDelete = { deleting = it },
+                onFarewell = onFarewell,
+                farewellOf = farewellOf,
             )
             Spacer(Modifier.height(14.dp))
         }
@@ -175,6 +181,13 @@ fun MyScreen(
                 deleting = null
                 onDismissDelete()
             },
+            onFarewell = onFarewell?.let {
+                {
+                    deleting = null
+                    onDismissDelete()
+                    it(pet)
+                }
+            },
         )
     }
 
@@ -206,6 +219,8 @@ private fun DeletePetDialog(
     error: String?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /** 배웅하기로 보내는 자리. null 이면 안내가 안 붙는다 */
+    onFarewell: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
         Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
@@ -224,6 +239,41 @@ private fun DeletePetDialog(
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
+                // **배웅하기가 있다고 알려 준다.** 무지개다리를 건넌 아이를 지우려고 온
+                // 사람이 이 길을 모르면 산책도 카드도 같이 잃는다 — 그러고 나서 알게
+                // 되면 늦다. 여기가 그 사람이 반드시 지나는 자리다.
+                if (onFarewell != null) {
+                    Spacer(Modifier.height(14.dp))
+                    Surface(color = PinkFaint, shape = RoundedCornerShape(12.dp)) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                "무지개다리를 건넜다면",
+                                color = TextDark,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "지우는 대신 배웅할 수 있어요. ${pet.name}(이)는 목록에 " +
+                                    "그대로 있고 함께한 기록도 남아요.",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "배웅하기",
+                                color = DaengPink,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable(enabled = !busy, onClick = onFarewell)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
                 if (error != null) {
                     Spacer(Modifier.height(12.dp))
                     Text(error, color = DaengsColors.Error, fontSize = 13.sp, lineHeight = 19.sp)
@@ -359,6 +409,8 @@ private fun PetSection(
     onEdit: (Pet) -> Unit,
     onPickPrimary: (Pet) -> Unit,
     onDelete: (Pet) -> Unit,
+    onFarewell: ((Pet) -> Unit)?,
+    farewellOf: (Pet) -> java.time.LocalDate?,
 ) {
     Text("내 강아지", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
 
@@ -380,6 +432,8 @@ private fun PetSection(
                 onEdit = { onEdit(pet) },
                 onPickPrimary = { onPickPrimary(pet) },
                 onDelete = { onDelete(pet) },
+                sentOn = farewellOf(pet),
+                onFarewell = onFarewell?.let { go -> { go(pet) } },
             )
         }
         if (canAddMore) {
@@ -399,6 +453,9 @@ private fun PetCard(
     onEdit: () -> Unit,
     onPickPrimary: () -> Unit,
     onDelete: () -> Unit,
+    /** 배웅한 날. 있으면 이 아이는 떠난 아이다 */
+    sentOn: java.time.LocalDate? = null,
+    onFarewell: (() -> Unit)? = null,
 ) {
     Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -408,11 +465,50 @@ private fun PetCard(
             PetFace(pet, 46.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    // 배웅한 아이. **글자가 아니라 무지개다** — "사망" 같은 말을 목록에
+                    // 붙여 두면 매번 그 단어를 읽게 된다.
+                    if (sentOn != null) {
+                        Spacer(Modifier.width(6.dp))
+                        DaengsIconView(DaengsIcon.Rainbow, Modifier.size(16.dp))
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
-                Text(petSubtitle(pet), color = TextMuted, fontSize = 12.sp)
+                // 배웅한 아이는 나이·몸무게 대신 **간 날**을 적는다. 떠난 아이에게
+                // "3살" 이라고 붙어 있으면 시간이 멈춘 것처럼 읽힌다.
+                if (sentOn != null) {
+                    Text(
+                        "%d년 %d월 %d일에 배웅했어요".format(
+                            sentOn.year,
+                            sentOn.monthValue,
+                            sentOn.dayOfMonth,
+                        ),
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                    )
+                } else {
+                    Text(petSubtitle(pet), color = TextMuted, fontSize = 12.sp)
+                }
             }
             Spacer(Modifier.width(8.dp))
+            // **배웅한 아이는 편지로만 간다.** 대표로 세우거나 지우는 자리를 그대로
+            // 두면, 떠난 아이 옆에 매번 그 버튼들이 붙어 있게 된다.
+            if (sentOn != null) {
+                if (onFarewell != null) {
+                    Text(
+                        "편지",
+                        color = DaengPink,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onFarewell)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+                return@Row
+            }
             if (pet.isPrimary) {
                 Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             } else {
