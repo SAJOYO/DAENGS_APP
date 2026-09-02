@@ -23,6 +23,9 @@ import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.dogcard.CardHolder
+import com.daengs.app.ui.dogcard.CardDrawScreen
+import com.daengs.app.ui.dogcard.DrawDog
+import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
 import com.daengs.app.miniroom.rememberOutsideView
@@ -418,7 +421,37 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
-                    Screen.Dex -> CardDexScreen(onClose = { screen = Screen.Home })
+                    Screen.Dex -> CardDexScreen(
+                        onClose = { screen = Screen.Home },
+                        draw = { done ->
+                            CardDrawScreen(
+                                dogs = pets.pets.orEmpty().map { pet ->
+                                    DrawDog(
+                                        id = pet.id,
+                                        name = pet.name,
+                                        codeText = pet.birthDate
+                                            ?.let { birthCode(it.monthValue, it.dayOfMonth) }
+                                            ?: birthCode(8, 24),
+                                        isPrimary = pet.isPrimary,
+                                    )
+                                },
+                                drawsLeft = cards.drawsLeft(),
+                                onCancel = done,
+                                onDrawn = { dog, template, face, core ->
+                                    cards.draw(
+                                        template = template,
+                                        face = face,
+                                        core = core,
+                                        dogId = dog?.id,
+                                        dogName = dog?.name ?: "우리 아이",
+                                        codeText = dog?.codeText ?: birthCode(8, 24),
+                                        appUserId = session?.appUserId,
+                                    )
+                                },
+                                onOpenDex = done,
+                            )
+                        },
+                    )
 
                     Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
                 }

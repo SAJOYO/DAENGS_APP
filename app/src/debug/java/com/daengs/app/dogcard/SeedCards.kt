@@ -38,7 +38,10 @@ suspend fun seedCards(
     }
 
     val code = birthDate?.let { birthCode(it.monthValue, it.dayOfMonth) } ?: birthCode(8, 24)
-    val now = System.currentTimeMillis()
+    // **오늘로 넣으면 안 된다.** 하루 세 번 제한이 "오늘 자정 이후의 카드"를 세는데,
+    // 시드를 오늘로 넣으면 앱을 처음 켠 날 바로 "오늘 뽑기를 다 썼어요"가 뜬다.
+    // 이건 뽑은 게 아니라 원래 있던 것이라 지난 날짜로 둔다.
+    val now = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
     CARD_TEMPLATES.forEachIndexed { index, template ->
         store.add(
             DrawnCard(

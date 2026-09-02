@@ -236,7 +236,12 @@ fun CutoutLabScreen(onBack: () -> Unit) {
                 )
             }
 
-            NeckPicker(done.bitmap, neck) { neck = it }
+            NeckPicker(
+            bitmap = done.bitmap,
+            neck = neck,
+            onChange = { neck = it },
+            background = { Checkered(Modifier.fillMaxSize()) },
+        )
             Lab("가로선을 위아래로 끌면 그 아래가 사라진다.", 11.sp, Faint)
 
             // **여기가 요점이다.** 저쪽 완성 카드에서 네 자리(아바타 · 큰 얼굴 ·
@@ -277,106 +282,11 @@ fun CutoutLabScreen(onBack: () -> Unit) {
     }
 }
 
-/**
- * 누끼 위에 목선을 얹고 끌게 한다.
- *
- * 선 아래는 **그리기로만** 지운다 — 비트맵을 다시 만들면 손가락을 못 따라온다.
- * 실제로 굽는 것은 [Cutout.fadedBelow] 이고, 자리가 정해진 뒤 한 번만 부른다.
- */
-@Composable
-private fun NeckPicker(bitmap: Bitmap, neck: Float, onChange: (Float) -> Unit) {
-    // **`pointerInput(Unit)` 안에서 `neck` 을 그냥 읽으면 안 된다.** 그 블록은 처음
-    // 한 번만 만들어지므로 첫 조합 때의 값이 박제되고, 한 번 끈 다음부터는 늘 처음
-    // 자리를 기준으로 계산해서 선이 튄다. 갱신되는 참조를 따로 들고 읽는다.
-    val latest by rememberUpdatedState(neck)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { change, drag ->
-                    change.consume()
-                    onChange((latest + drag / size.height).coerceIn(0.05f, 1f))
-                }
-            },
-    ) {
-        Checkered(Modifier.fillMaxSize()) { FadedImage(bitmap, neck, "누끼 결과") }
-        // 선은 그림 위에 그린다. 사라지는 자리와 눈금이 어긋나면 못 맞춘다.
-        Canvas(Modifier.fillMaxSize()) {
-            val y = size.height * neck
-            drawLine(
-                Good,
-                Offset(0f, y),
-                Offset(size.width, y),
-                strokeWidth = 2.dp.toPx(),
-            )
-            drawCircle(Good, 9.dp.toPx(), Offset(size.width - 18.dp.toPx(), y))
-        }
-    }
-}
-
-/** [neck] 아래가 서서히 사라지게 그린다. 비트맵은 안 건드린다. */
-@Composable
-private fun FadedImage(bitmap: Bitmap, neck: Float, label: String?) {
-    Image(
-        bitmap = bitmap.asImageBitmap(),
-        contentDescription = label,
-        contentScale = ContentScale.Fit,
-        filterQuality = FilterQuality.High,
-        modifier = Modifier
-            .fillMaxSize()
-            // 지우개가 그림하고만 섞여야 한다. 레이어를 안 뜨면 뒤 체커보드까지 지운다.
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                if (neck >= 1f) return@drawWithContent
-                val top = size.height * neck
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        1f to Color.Black,
-                        startY = top,
-                        endY = (top + size.height * 0.16f).coerceAtMost(size.height),
-                    ),
-                    blendMode = BlendMode.DstOut,
-                )
-            },
-    )
-}
-
 private val Dim = Color(0xFF9AA3AE)
 private val Faint = Color(0xFF6C7480)
-private val Good = Color(0xFF8FD94A)
 private val Warn = Color(0xFFFFD98A)
+private val Good = NeckLine
 
-/** 알파를 눈으로 보려면 뒤에 무늬가 있어야 한다. 단색이면 흰 털과 구분이 안 된다. */
-@Composable
-private fun Checkered(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Box(modifier.clip(RoundedCornerShape(8.dp))) {
-        Canvas(Modifier.fillMaxSize()) {
-            val cell = 12.dp.toPx()
-            var y = 0f
-            var row = 0
-            while (y < size.height) {
-                var x = 0f
-                var col = 0
-                while (x < size.width) {
-                    val dark = (row + col) % 2 == 0
-                    drawRect(
-                        color = if (dark) Color(0xFF3A3F46) else Color(0xFF2A2E34),
-                        topLeft = Offset(x, y),
-                        size = Size(cell, cell),
-                    )
-                    x += cell
-                    col++
-                }
-                y += cell
-                row++
-            }
-        }
-        content()
-    }
-}
 
 @Composable
 private fun Lab(text: String, size: TextUnit, color: Color, weight: FontWeight = FontWeight.Normal) =
