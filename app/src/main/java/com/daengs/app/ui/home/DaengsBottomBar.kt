@@ -48,16 +48,15 @@ enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Dex("도감", DaengsIcon.Book),
 
     /**
-     * **이름표가 "저장소" 지만 상수 이름은 [My] 그대로다.**
+     * 찍은 사진과 영상을 모아 볼 자리. **아직 준비 중이다.**
      *
-     * 지금 여는 화면은 강아지 목록·프로필·설정이라 아직 "마이" 다. 이름표만 먼저
-     * 바꾼 것은, 사진·영상을 어디에 남길지(파일 저장소) 정해지면 이 탭이 그 자리가
-     * 될 예정이기 때문이다. 화면 내용이 실제로 저장소가 될 때 상수도 같이 바꾼다 —
-     * **지금 바꾸면 코드가 하는 일과 이름이 어긋난다.**
+     * 예전에는 이 자리가 "마이"(강아지 목록·설정)였고 이름표만 먼저 "저장소" 로
+     * 바꿔 뒀다. 그때 주석에 "화면 내용이 실제로 저장소가 될 때 상수도 같이 바꾼다"
+     * 고 적었고, 지금 그렇게 했다 — **이름표와 하는 일이 어긋난 채로 두지 않는다.**
      *
-     * 코드 주석에 남아 있는 "마이 탭" 은 이 상수를 가리키는 말이라 그대로 둔다.
+     * 마이는 상단바의 프로필 사진 버튼으로 간다. 탭이 아니다.
      */
-    My("저장소", DaengsIcon.Person),
+    Storage("저장소", DaengsIcon.Camera),
 }
 
 private val BarHeight = 64.dp
@@ -102,7 +101,7 @@ fun DaengsBottomBar(
                 // 가운데 버튼 자리
                 Spacer(Modifier.weight(1f))
                 BottomItem(BottomTab.Dex, selected, onSelect, Modifier.weight(1f))
-                BottomItem(BottomTab.My, selected, onSelect, Modifier.weight(1f))
+                BottomItem(BottomTab.Storage, selected, onSelect, Modifier.weight(1f))
             }
         }
 

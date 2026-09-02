@@ -11,9 +11,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * What the current subscription is doing. A feed can end in two ways that the UI must tell
- * apart: a finite source (replay) running out, and a source failing. Both used to be silent —
- * failure crashed the process, completion froze the app on a dead feed.
+ * 지금 구독이 어떤 상태인가.
+ *
+ * 피드가 끝나는 길은 둘이고 **화면은 그 둘을 구분해야 한다** — 끝이 있는 소스(리플레이)가
+ * 다 떨어진 것과, 소스가 실패한 것. 예전에는 둘 다 조용했다. 실패는 프로세스를 죽였고,
+ * 완료는 죽은 피드를 붙잡은 채 앱을 얼렸다.
  */
 sealed interface FeedStatus {
     data object Idle : FeedStatus
@@ -25,7 +27,7 @@ sealed interface FeedStatus {
     data class Failed(val cause: Throwable) : FeedStatus
 }
 
-/** Owns the app's single continuous location subscription. */
+/** 앱에 하나뿐인 연속 위치 구독을 맡는다. */
 class LocationTracker(
     private val scope: CoroutineScope,
 ) {
@@ -52,8 +54,8 @@ class LocationTracker(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                // The feed is the only owner of this failure: nothing above collect() can catch it,
-                // and an uncaught throw here takes the process down.
+                // 이 실패를 받아 줄 곳은 여기뿐이다 — collect() 위쪽에서는 아무도 못 잡고,
+                // 여기서 안 잡고 던지면 프로세스가 내려간다.
                 if (generation == token) _status.value = FeedStatus.Failed(error)
             }
         }

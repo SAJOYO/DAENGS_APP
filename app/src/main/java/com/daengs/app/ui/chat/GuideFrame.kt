@@ -32,8 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,6 +66,26 @@ fun GuideFrameScreen(
     photo: Bitmap,
     onCancel: () -> Unit,
     onConfirm: (FloatArray) -> Unit,
+    /** 맨 위 제목. 이 네모를 쓰는 곳이 진단만은 아니다. */
+    title: String = "병변이 네모 안에 오도록 맞춰 주세요",
+    /** 확인 버튼 글자. */
+    confirmLabel: String = "이 자리로 진단",
+    /**
+     * 네모 대신 **원**을 보여 준다.
+     *
+     * 자르는 범위는 그대로 네모다 — 바뀌는 건 어디를 맞추라고 알려 주는가뿐이다.
+     * 얼굴만 담고 싶을 때 네모는 **모서리로 어깨가 딸려 들어온다.** 원이면 그
+     * 모서리가 눈에 보이게 빠져서, 같은 상자를 줘도 사람이 얼굴에 맞춘다.
+     */
+    circle: Boolean = false,
+    /**
+     * 네모 아래 안내. null 이면 [Band] 의 병변 밴드 안내를 쓴다.
+     *
+     * **밴드는 진단 전용이다** — 저쪽이 STEP 10 에서 실측한 값이라 "너무 작아요"
+     * 같은 문장이 병변 크기를 기준으로 나온다. 강아지 얼굴을 고르는 자리에서
+     * 그 문장이 뜨면 사용자는 무엇이 잘못됐는지 알 수가 없다.
+     */
+    guidance: String? = null,
     /**
      * 앱 안 카메라의 가이드에 맞춰 찍었으면 **그 네모에서 시작한다.**
      *
@@ -112,7 +135,7 @@ fun GuideFrameScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "병변이 네모 안에 오도록 맞춰 주세요",
+                title,
                 color = CardWhite,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
@@ -182,12 +205,12 @@ fun GuideFrameScreen(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )
-                GuideOverlay(box, w, h, bad = hint.bad)
+                GuideOverlay(box, w, h, bad = guidance == null && hint.bad, circle = circle)
             }
 
             Text(
-                hint.text,
-                color = if (hint.bad) Color(0xFFFFD9D9) else CardWhite,
+                guidance ?: hint.text,
+                color = if (guidance == null && hint.bad) Color(0xFFFFD9D9) else CardWhite,
                 fontSize = 13.sp,
             )
 
@@ -195,7 +218,7 @@ fun GuideFrameScreen(
                 GuideButton("다시 고르기", CardWhite.copy(alpha = 0.14f), CardWhite, onCancel)
                 // **밴드 밖이어도 보낼 수 있다.** 막아 버리면 저쪽이 왜 다시 찍어야
                 // 하는지 문장으로 돌려주는 길이 막힌다 — 판단은 서버가 한다.
-                GuideButton("이 자리로 진단", DaengPink, TextDark) {
+                GuideButton(confirmLabel, DaengPink, TextDark) {
                     onConfirm(floatArrayOf(box.x, box.y, w, h))
                 }
             }
@@ -205,7 +228,7 @@ fun GuideFrameScreen(
 
 /** 네모 밖을 어둡게 덮고 테두리와 손잡이를 그린다. */
 @Composable
-private fun GuideOverlay(box: Offset, w: Float, h: Float, bad: Boolean) {
+private fun GuideOverlay(box: Offset, w: Float, h: Float, bad: Boolean, circle: Boolean = false) {
     val edge = if (bad) Color(0xFFFFD9D9) else DaengPink
     Canvas(Modifier.fillMaxSize()) {
         val x = box.x * size.width
@@ -213,13 +236,28 @@ private fun GuideOverlay(box: Offset, w: Float, h: Float, bad: Boolean) {
         val bw = w * size.width
         val bh = h * size.height
         val scrim = Color(0xFF4A3B36).copy(alpha = if (bad) 0.55f else 0.5f)
-        // 구멍은 블렌드 모드 없이 **주변 넷을 칠해서** 만든다. 레이어를 따로
-        // 뜨지 않아도 되고, 사진 위에서 결과가 같다.
-        drawRect(scrim, Offset.Zero, Size(size.width, y))
-        drawRect(scrim, Offset(0f, y + bh), Size(size.width, size.height - y - bh))
-        drawRect(scrim, Offset(0f, y), Size(x, bh))
-        drawRect(scrim, Offset(x + bw, y), Size(size.width - x - bw, bh))
-        drawRect(edge, Offset(x, y), Size(bw, bh), style = Stroke(3.dp.toPx()))
+        if (circle) {
+            // 원일 때는 **경로 하나를 짝수-홀수 규칙으로** 칠한다. 바깥을 네 조각으로
+            // 나눠 칠하는 방법이 원에는 안 통하고(모서리가 남는다), 그렇다고 레이어를
+            // 떠서 뚫으면 아래 주석이 피하려던 그 비용이 든다.
+            val hole = Path().apply {
+                fillType = PathFillType.EvenOdd
+                addRect(Rect(0f, 0f, size.width, size.height))
+                addOval(Rect(x, y, x + bw, y + bh))
+            }
+            drawPath(hole, scrim)
+            drawOval(edge, Offset(x, y), Size(bw, bh), style = Stroke(3.dp.toPx()))
+        } else {
+            // 구멍은 블렌드 모드 없이 **주변 넷을 칠해서** 만든다. 레이어를 따로
+            // 뜨지 않아도 되고, 사진 위에서 결과가 같다.
+            drawRect(scrim, Offset.Zero, Size(size.width, y))
+            drawRect(scrim, Offset(0f, y + bh), Size(size.width, size.height - y - bh))
+            drawRect(scrim, Offset(0f, y), Size(x, bh))
+            drawRect(scrim, Offset(x + bw, y), Size(size.width - x - bw, bh))
+            drawRect(edge, Offset(x, y), Size(bw, bh), style = Stroke(3.dp.toPx()))
+        }
+        // 손잡이는 **원일 때도 상자 모서리에 둔다.** 잡는 판정이 상자 모서리로
+        // 되어 있어서(위 `sizing`), 테두리로 옮기면 보이는 곳과 잡히는 곳이 어긋난다.
         drawCircle(CardWhite, 13.dp.toPx(), Offset(x + bw, y + bh))
         drawCircle(edge, 10.dp.toPx(), Offset(x + bw, y + bh))
     }

@@ -50,6 +50,7 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkDayTotals
 import kotlinx.coroutines.delay
 import com.daengs.app.ui.my.MyScreen
+import com.daengs.app.ui.storage.StorageComingSoon
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
@@ -135,9 +136,23 @@ fun HomeScreen(
      * 위로 올린 것과 같은 이유다.
      */
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
+    /**
+     * 마이 화면이 열려 있나. **탭이 아니라 상단바의 프로필 사진 버튼으로 연다.**
+     *
+     * 하단 저장소 탭과 갈라져 있다 — 예전에는 둘이 같은 자리였는데, 탭 이름이
+     * "저장소" 가 되면서 하는 일과 어긋났다.
+     *
+     * 값은 [MainActivity] 가 들고 있다. 강아지를 추가하러 나갔다 오면 마이로
+     * 돌아와야 하는데, 여기서 들면 화면이 바뀔 때 같이 죽는다.
+     */
+    myOpen: Boolean = false,
+    onOpenMy: (() -> Unit)? = null,
+    onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
+    /** 카드 실험실. 개발자 패널에서만 열린다. */
+    onOpenCutoutLab: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
@@ -169,6 +184,10 @@ fun HomeScreen(
 ) {
     // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
     BackHandler(enabled = tab != BottomTab.Home) { onSelectTab(BottomTab.Home) }
+    // 마이는 탭이 아니라 프로필 버튼으로 여는 화면이라 **따로 닫아 준다.**
+    // ⚠️ 위의 탭 핸들러보다 **나중에** 등록한다 — 컴포즈는 나중에 등록된 것이
+    // 이기므로, 마이가 열려 있으면 탭이 무엇이든 마이가 먼저 닫힌다.
+    BackHandler(enabled = myOpen) { onCloseMy?.invoke() }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
     // 프로필 얼굴의 견종.
@@ -237,7 +256,7 @@ fun HomeScreen(
                 DaengsTopBar(
                     // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
                     onBell = {},
-                    onProfile = { onSelectTab(BottomTab.My) },
+                    onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                 )
             }
@@ -249,6 +268,11 @@ fun HomeScreen(
                 // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
                 // 화면이 되기 전에는 눈에 안 띄던 것이다.
                 onSelect = { tab ->
+                    // **마이가 열려 있으면 먼저 닫는다.** 마이는 탭이 아니라 홈 위에
+                    // 덮이는 화면인데 바는 그대로 보인다. 안 닫으면 `selected` 가
+                    // 여전히 홈이라 바의 홈을 눌러도 아무 일이 안 일어나서,
+                    // 뒤로가기 말고는 나올 길이 없다.
+                    if (myOpen) onCloseMy?.invoke()
                     when (tab) {
                         BottomTab.Dex -> onOpenDex?.invoke()
                         BottomTab.Nearby -> onOpenPlaces?.invoke()
@@ -259,7 +283,7 @@ fun HomeScreen(
             )
         },
     ) { inner ->
-        if (tab == BottomTab.My) {
+        if (myOpen) {
             MyScreen(
                 breed = profileBreed,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
@@ -284,6 +308,11 @@ fun HomeScreen(
             return@Scaffold
         }
 
+        if (tab == BottomTab.Storage) {
+            StorageComingSoon(Modifier.padding(inner))
+            return@Scaffold
+        }
+
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
         // 방은 RoomGeometry.of(width, height) 로 받은 상자에 맞춰 스스로 줄어든다.
@@ -305,6 +334,7 @@ fun HomeScreen(
                 onOpenWalk = onOpenWalk,
                 profileBreed = profileBreed,
                 onPickProfile = { devBreed = it },
+                onOpenCutoutLab = onOpenCutoutLab,
                 roomName = roomName,
                 defaultLabel = defaultRoomLabel(pets?.firstOrNull { it.isPrimary }?.name),
                 onRenameRoom = onRenameRoom,
@@ -361,6 +391,8 @@ private fun RoomSection(
     onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    /** 카드 실험실. 개발자 패널에서만 열린다. */
+    onOpenCutoutLab: (() -> Unit)?,
     /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
     roomName: String?,
     /** 사용자가 안 정했을 때 걸리는 이름. 대표 강아지에서 지은 값이다. */
@@ -484,6 +516,7 @@ private fun RoomSection(
                 onPickProfile = onPickProfile,
                 outside = outside,
                 onPickOutside = onPickOutside,
+                onOpenCutoutLab = onOpenCutoutLab,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }
