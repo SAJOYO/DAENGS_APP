@@ -129,16 +129,9 @@ fun LandingScreen(
                 )
             }
 
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "둘러보기",
-                color = TextDark,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable(enabled = !busy, onClick = onSkip)
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-            )
+            // 둘러보기는 **디버그 빌드에만** 있다 — 출시 앱은 로그인이 필수다.
+            // 진짜는 `app/src/debug/.../SkipBrowse.kt`, 릴리스는 빈 껍데기다.
+            SkipBrowse(enabled = !busy, onSkip = onSkip)
         }
     }
 }

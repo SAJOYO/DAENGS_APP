@@ -6,6 +6,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +52,9 @@ private val PanelPick = Color(0xFF00E5FF)
 /** DEV 스위치. 방 오른쪽 위에 작게 붙는다. */
 @Composable
 fun DeveloperToggle(on: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    // 위 여백을 **여기서** 챙긴다. 호출부에 두면 릴리스 스텁이 아무것도 안 그려도
+    // 그 Spacer 만 남아 인벤토리 버튼 아래에 설명할 수 없는 9dp 가 생긴다.
+    Spacer(Modifier.height(9.dp))
     Row(
         modifier
             .clip(RoundedCornerShape(6.dp))
@@ -80,8 +85,6 @@ fun DeveloperPanel(
     onPickProfile: (DogBreed) -> Unit,
     outside: OutsideView,
     onPickOutside: (OutsideView) -> Unit,
-    signedIn: Boolean = false,
-    onSignOut: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -99,20 +102,6 @@ fun DeveloperPanel(
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
             )
-            // 로그아웃 자리가 여기인 이유: `마이` 탭이 아직 껍데기다. 진짜 화면이
-            // 생기면 그리로 옮긴다.
-            if (signedIn && onSignOut != null) {
-                Text(
-                    "로그아웃",
-                    color = Color.Black,
-                    fontSize = 9.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(PanelPick)
-                        .clickable(onClick = onSignOut)
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                )
-            }
         }
 
         // 소품 목록은 여기 안 넣는다. 좌표는 이미 방 위에 라벨로 그려지고 있어서

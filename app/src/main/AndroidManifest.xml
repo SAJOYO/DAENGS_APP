@@ -7,13 +7,13 @@
       위치. **쓰는 곳이 둘이라 한 군데 모아 둔다.**
 
         COARSE   창밖 날씨(Open-Meteo) · 장소 지도
-        FINE     장소 지도만. 지도 화면이 떠 있는 동안만 쓴다
+        FINE     장소 지도와 사용자가 시작한 산책 기록
+        FGS      산책 중 화면이 꺼져도 위치 기록을 이어 간다
+        알림     산책 기록 상태와 일시정지·종료 액션을 표시한다
 
       창밖 날씨는 **정밀 위치가 필요 없다** — 시·군 단위면 충분하고, 장식 하나에
       정밀 위치를 묻는 건 과하다. 거부해도 앱은 그대로 돌아간다(맑은 낮으로 떨어진다).
       지도가 FINE 을 받는 것은 별개이고, 날씨 때문에 받는 게 아니다.
-
-      산책 추적용 FOREGROUND_SERVICE 는 geo 에 남고 여기로 안 온다.
 
       ⚠️ 예전에는 날씨와 지도가 **각각 선언해서 COARSE 가 두 번** 적혀 있었다.
       병합기가 합쳐 주므로 동작은 같았지만, 주석 둘이 서로 다른 이유를 대고 있어
@@ -23,6 +23,19 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      앱 안 카메라. 시스템 카메라로 던질 때는 필요 없던 권한이다 — 그쪽은 카메라 앱이
+      제 권한으로 찍어 결과만 넘겨 줬다. 찍는 동안 가이드를 얹으려면 우리가 직접
+      열어야 해서 이 권한이 든다.
+
+      **거부해도 촬영이 막히지 않는다.** 가이드 없이 시스템 카메라로 떨어진다.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
          여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,
@@ -36,6 +49,13 @@
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
+
+        <!-- 보행 영상 찍기. 사진과 같은 이유로 여기 적어 둔다 — 없으면 영상
+             카메라가 있는 기기에서도 "없다"가 나온다. 인텐트는 별개다(IMAGE_CAPTURE
+             를 적어 뒀다고 VIDEO_CAPTURE 까지 보이지는 않는다). -->
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -48,12 +68,24 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Daengs">
+        <!-- 세로로 고정한다. 가로 화면은 만든 적이 없어서 눕히면 방도 카드도 무너진다.
+             configChanges 는 일부러 안 넣는다 — 방향이 고정되면 회전으로 인한 재생성
+             자체가 없고, 넣으면 다른 설정 변경까지 우리가 떠안는다. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Daengs.Splash"
             android:windowSoftInputMode="adjustResize">
+            <!-- ⚠️ targetSdk 가 37 이라 위의 screenOrientation 만으로는 부족하다.
+                 안드로이드 16(API 36)부터 **큰 화면에서는 앱의 방향 요청을 무시하는
+                 것이 기본**이다. 폰(sw < 600dp)에서는 속성만으로 되지만, 태블릿·폴더블
+                 펼침·데스크톱 모드에서는 이 property 가 있어야 세로가 지켜진다. -->
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE"
+                android:value="false" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -90,6 +122,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <service
+            android:name=".walk.WalkTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

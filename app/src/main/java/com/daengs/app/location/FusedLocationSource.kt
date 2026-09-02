@@ -21,22 +21,47 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class FusedLocationSource(context: Context) : LocationSource {
     private val client = LocationServices.getFusedLocationProviderClient(context)
 
+    /**
+     * 지금 위치 한 번.
+     *
+     * **새 좌표를 못 구하면 마지막으로 알던 곳이라도 준다.** `getCurrentLocation` 은
+     * 실내이거나 대략적 위치 권한만 있을 때 그냥 null 을 돌려주는데, 그때 실패로
+     * 끝내면 지도가 **네이버 기본 카메라(서울시청)** 에 앉은 채로 남는다 —
+     * 사용자에게는 앱이 자기를 시청에 데려다 놓은 것으로 보인다.
+     *
+     * 오래된 좌표라도 "내가 아는 마지막 자리"가 시청보다 낫다. 얼마나 오래됐는지는
+     * [LocationSample.capturedAtMillis] 에 그대로 실려 간다.
+     */
     @SuppressLint("MissingPermission")
     override suspend fun currentLocation(): LocationSample = suspendCancellableCoroutine { continuation ->
         val cancellation = CancellationTokenSource()
+
+        fun fallbackToLastKnown() {
+            client.lastLocation
+                .addOnSuccessListener { last ->
+                    if (!continuation.isActive) return@addOnSuccessListener
+                    if (last == null) {
+                        continuation.resumeWithException(
+                            IllegalStateException(
+                                "현재 위치를 가져오지 못했습니다. 위치 설정을 확인해주세요.",
+                            ),
+                        )
+                    } else {
+                        continuation.resume(last.toSample())
+                    }
+                }
+                .addOnFailureListener { error ->
+                    if (continuation.isActive) continuation.resumeWithException(error)
+                }
+        }
+
         client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cancellation.token)
             .addOnSuccessListener { location ->
                 if (!continuation.isActive) return@addOnSuccessListener
-                if (location == null) {
-                    continuation.resumeWithException(
-                        IllegalStateException("현재 위치를 가져오지 못했습니다. 위치 설정을 확인해주세요."),
-                    )
-                } else {
-                    continuation.resume(location.toSample())
-                }
+                if (location == null) fallbackToLastKnown() else continuation.resume(location.toSample())
             }
-            .addOnFailureListener { error ->
-                if (continuation.isActive) continuation.resumeWithException(error)
+            .addOnFailureListener {
+                if (continuation.isActive) fallbackToLastKnown()
             }
         continuation.invokeOnCancellation { cancellation.cancel() }
     }

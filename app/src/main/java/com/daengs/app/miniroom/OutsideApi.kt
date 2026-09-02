@@ -24,22 +24,19 @@ object OutsideApi {
     private const val TIMEOUT_MS = 6_000
 
     /**
-     * 한 번 불러 **날씨와 낮·밤을 같이** 받는다.
+     * 받은 그대로.
      *
-     * `is_day` 를 쓰는 이유: 시각으로 가르면 계절에 따라 틀린다. 한국은 겨울 일몰이
-     * 17:15, 여름이 19:57 이라 두 시간 반이 차이 난다. 고정 시각으로 자르면 반년은
-     * 틀린 그림을 보여주게 된다.
-     *
-     * 실패하면 `null` 이다. 부르는 쪽이 폴백을 정한다 — 여기서 기본값을 만들어
-     * 돌려주면 "못 받았다" 와 "맑은 낮이다" 가 구별되지 않는다.
+     * 창밖 그림은 [OutsideSnapshot] 이 이걸 세 갈래로 접어서 쓰지만, **산책 기록에는 원본을
+     * 남긴다** — 접은 값만 저장하면 나중에 "소나기였는지 뇌우였는지"를 되살릴 수 없다.
+     * 기온도 같이 받는다 (URL 에 한 단어를 더한 것뿐이다).
      */
-    suspend fun fetch(latitude: Double, longitude: Double): OutsideView? =
+    suspend fun fetchNow(latitude: Double, longitude: Double): OutsideNow? =
         withContext(Dispatchers.IO) {
             runCatching {
                 val url = URL(
                     "https://api.open-meteo.com/v1/forecast" +
                         "?latitude=$latitude&longitude=$longitude" +
-                        "&current=weather_code,is_day&timezone=auto"
+                        "&current=weather_code,is_day,temperature_2m&timezone=auto"
                 )
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
@@ -51,10 +48,16 @@ object OutsideApi {
                     if (conn.responseCode !in 200..299) return@runCatching null
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     val current = JSONObject(body).getJSONObject("current")
-                    OutsideView.of(
+                    OutsideNow(
+                        weatherCode = current.getInt("weather_code"),
                         time = if (current.getInt("is_day") == 1) OutsideTime.DAY
                         else OutsideTime.NIGHT,
-                        weather = weatherOf(current.getInt("weather_code")),
+                        // 기온만 빠져도 날씨 전체를 버리지 않는다.
+                        temperatureC = if (current.has("temperature_2m")) {
+                            current.getDouble("temperature_2m").toFloat()
+                        } else {
+                            null
+                        },
                     )
                 } finally {
                     conn.disconnect()
@@ -69,8 +72,9 @@ object OutsideApi {
      * **얼어붙는 쪽을 눈으로** 본다 — 어는 비(66·67)와 어는 이슬비(56·57)는 바닥이
      * 하얘지므로 창밖 그림으로는 눈이 맞다.
      *
-     * 안개(45·48)와 흐림(1·2·3)은 맑음으로 간다. 따로 그림이 없고, 억지로 비나 눈에
-     * 넣으면 안 오는 비가 내린다.
+     * 흐림은 그림이 따로 없지만 **맑음 그림에 회색 막을 씌워** 만든다
+     * ([OutsideWeather.CLOUDY]). 예전에는 흐림도 안개도 전부 맑음이라, 하늘이
+     * 잿빛인 날에 창밖에 해가 떠 있었다.
      *
      * 표: https://open-meteo.com/en/docs (WMO Weather interpretation codes)
      */
@@ -81,6 +85,24 @@ object OutsideApi {
         in 61..65 -> OutsideWeather.RAIN           // 비
         in 80..82 -> OutsideWeather.RAIN           // 소나기
         in 95..99 -> OutsideWeather.RAIN           // 뇌우
-        else -> OutsideWeather.CLEAR               // 맑음 · 흐림 · 안개
+        // **구름 많음(2)부터 흐림이다.** 구름 조금(1)은 해가 보이는 날이라 맑음에 둔다.
+        // 안개(45·48)도 여기다 — 회색 하늘이라는 점에서 흐림에 가깝고, 맑음에 두면
+        // 안개 낀 아침에 해가 뜬다.
+        2, 3, 45, 48 -> OutsideWeather.CLOUDY      // 구름 많음 · 흐림 · 안개
+        else -> OutsideWeather.CLEAR               // 맑음(0) · 구름 조금(1)
     }
 }
+
+/**
+ * 지금 바깥 날씨. **접기 전의 값**이다.
+ *
+ * 창밖 그림은 [OutsideApi.weatherOf] 로 세 갈래로 접어 쓰고, 산책 기록은 이걸 그대로
+ * 저장한다 — 같은 한 번의 호출에서 둘 다 나온다.
+ */
+data class OutsideNow(
+    /** WMO 코드. 표: https://open-meteo.com/en/docs */
+    val weatherCode: Int,
+    val time: OutsideTime,
+    /** 섭씨. 못 받으면 null 이고 기록에서 기온 줄만 빠진다. */
+    val temperatureC: Float?,
+)

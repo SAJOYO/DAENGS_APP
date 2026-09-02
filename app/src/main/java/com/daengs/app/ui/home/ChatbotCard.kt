@@ -1,20 +1,18 @@
 package com.daengs.app.ui.home
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,10 +30,7 @@ import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
-import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
-import com.daengs.app.ui.theme.PinkFaint
-import com.daengs.app.ui.theme.PinkSoft
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 
@@ -51,7 +46,14 @@ fun ChatbotCard(
         color = CardWhite,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
+        // ⚠️ **칸 높이는 [HomeScreen.CardSlotHeight] 로 고정이다** — 인벤토리 패널과
+        // 같이 쓰는 자리라 여기서 줄일 수 없다. 예시 질문 칩을 뺀 뒤 아래가 휑해져서
+        // 남은 높이를 위아래로 고르게 편다. 칸을 줄여 방을 키우는 것은 별도 과제다
+        // (STATUS.md 의 열린 질문 ⑤).
+        Column(
+            Modifier.fillMaxHeight().padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.SpaceEvenly,
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(HomeDemoData.CHAT_TITLE, color = TextDark, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Spacer(Modifier.width(6.dp))
@@ -85,24 +87,7 @@ fun ChatbotCard(
                     DaengsIconView(DaengsIcon.Send, Modifier.size(20.dp), tint = CardWhite)
                 }
             }
-            Spacer(Modifier.height(9.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomeDemoData.SUGGESTIONS.take(2).forEach { SuggestionChip(it, onOpenChat) }
-            }
         }
-    }
-}
-
-@Composable
-private fun SuggestionChip(label: String, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = PinkFaint,
-        border = BorderStroke(1.dp, PinkSoft),
-        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onClick),
-    ) {
-        Text(label, color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
     }
 }
 

@@ -13,6 +13,7 @@ Kotlin + Jetpack Compose. 이 저장소는 **홈 화면과 미니룸**을 담당
 | [`HISTORY.md`](HISTORY.md) | 어떻게 여기까지 왔나. **되돌리기 번거로운 결정이 여기 있다** |
 | [`CONTEXT.md`](CONTEXT.md) | 앱 전체 기획 (백엔드·인증·데이터 포함). 이 저장소 밖 이야기도 많다 |
 | [`docs/collaboration.md`](docs/collaboration.md) | 협업 규칙. 우선순위 · Iteration · PR · 회고 |
+| [`docs/map-style.md`](docs/map-style.md) | 지도 스타일. 콘솔에 넣은 색과 편집기 제약 |
 | [`docs/asset-workflow.md`](docs/asset-workflow.md) | 에셋을 직접 그릴 때의 격자·각도·기준점 |
 
 ## 명령어

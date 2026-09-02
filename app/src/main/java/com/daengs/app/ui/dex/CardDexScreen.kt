@@ -43,6 +43,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -265,7 +273,18 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
     val card = DEX_CARDS[index]
     // 확대 뷰는 한 장뿐이라 원본 해상도로 읽는다.
     val art = rememberAssetImage(card.art)
-    val rub = rememberRubState()
+
+    // 카드를 한 번 더 누르면 설명이 열린다. **문지르면 안 열린다** — 안 움직이고
+    // 뗐을 때만 탭이다 (`Modifier.rubbable`). 포일을 구경하다 설명이 튀어나오면
+    // 그건 방해다.
+    var showDetail by remember { mutableStateOf(false) }
+    // 카드를 넘기면 설명은 그 카드의 것으로 바뀐다. 닫지 않는다 — 웹판도 그렇고,
+    // 설명을 보며 넘기는 것이 이 시트의 쓸모다.
+    val rub = rememberRubState(onTap = { showDetail = !showDetail })
+
+    // 설명이 열려 있으면 뒤로가기가 그것부터 닫는다. 바깥(도감)의 BackHandler 보다
+    // 안쪽이라 저절로 먼저 잡힌다.
+    BackHandler(enabled = showDetail) { showDetail = false }
 
     // 폰을 기울이면 카드가 따라 기운다. **확대 뷰에서만** 켠다 — 그리드에서 열두 장이
     // 한꺼번에 도는 건 산만하고 비싸다.
@@ -306,7 +325,25 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
             Modifier.systemBarsPadding().padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // 설명이 열리면 **카드를 죽인다.** 글씨가 포일 위에 얹히면 둘 다 안 읽힌다.
+            //
+            // 검은 사각형을 덮지 않고 투명도를 내린다 — 카드 그림은 모서리가 둥글게
+            // 뚫린 알파 이미지라, 사각형을 얹으면 그 뚫린 자리가 네모로 도드라진다.
+            // 바탕이 이미 어두워서 투명도만 내려도 어두워진다.
+            val cardAlpha by animateFloatAsState(
+                targetValue = if (showDetail) 0.5f else 1f,
+                animationSpec = tween(durationMillis = 180),
+                label = "cardDim",
+            )
+            // 바깥 상자가 **카드의 자리**다. 설명 시트가 이 상자를 꽉 채워서 카드와
+            // 정확히 같은 크기가 된다.
             Box(Modifier.fillMaxWidth()) {
+            // 죽는 것은 카드와 팝아웃뿐이다. 시트는 이 겹 밖에 있어서 안 죽는다.
+            //
+            // ⚠️ 투명도를 `rubbable` 과 **같은 사슬에 걸면 안 된다.** 그러면 탭이
+            // 안 먹혀서 카드를 눌렀을 때 뒤의 "밖을 눌러 닫기" 가 대신 발동한다 —
+            // 실기기에서 그렇게 나왔다. 겹을 따로 둔다.
+            Box(Modifier.fillMaxWidth().graphicsLayer { alpha = cardAlpha }) {
             HoloCard(
                 art = art,
                 foil = card.foil,
@@ -320,16 +357,34 @@ private fun CardViewer(startIndex: Int, onClose: () -> Unit) {
                 Canvas(Modifier.matchParentSize()) { drawPopOut(hero, card.pop.fit, popped) }
             }
             }
+
+            if (showDetail) {
+                CardDetailSheet(
+                    card = card,
+                    onPrev = { index = (index - 1 + DEX_CARDS.size) % DEX_CARDS.size },
+                    onNext = { index = (index + 1) % DEX_CARDS.size },
+                    onClose = { showDetail = false },
+                    // **카드와 같은 크기.** 카드 자리를 그대로 덮는다.
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+            }
             Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                NavButton("‹") { index = (index - 1 + DEX_CARDS.size) % DEX_CARDS.size }
-                Spacer(Modifier.size(18.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(card.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(card.statLine, color = Color(0xFFD9C9C3), fontSize = 12.sp)
+            // 설명이 열리면 이 줄은 시트에 가린다. 넘기기는 시트 안으로 옮겨 간다.
+            if (!showDetail) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    NavButton("‹") { index = (index - 1 + DEX_CARDS.size) % DEX_CARDS.size }
+                    Spacer(Modifier.size(18.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(card.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(card.statLine, color = Color(0xFFD9C9C3), fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.size(18.dp))
+                    NavButton("›") { index = (index + 1) % DEX_CARDS.size }
                 }
-                Spacer(Modifier.size(18.dp))
-                NavButton("›") { index = (index + 1) % DEX_CARDS.size }
+                Spacer(Modifier.height(6.dp))
+                // 안 알려 주면 아무도 두 번 안 누른다. 웹판에도 있던 힌트다.
+                Text("탭하여 상세보기", color = Color(0xFF9E8B84), fontSize = 12.sp)
             }
         }
 
@@ -394,6 +449,130 @@ private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: 
         dstSize = IntSize(gw.roundToInt(), gh.roundToInt()),
         alpha = t,
         filterQuality = FilterQuality.High,
+    )
+}
+
+/**
+ * 카드 설명 시트.
+ *
+ * **웹판에 있던 것을 되살린 것이다.** Compose 로 옮길 때 조용히 빠졌다 — 카드 그림에
+ * 제목·기술·수치가 구워져 있어서 "다시 만들 게 효과뿐" 이라고 보았는데, 그림에 안
+ * 구워진 **글**(부제·코드·플레이버·에디션)이 같이 사라졌다 (HISTORY 12절).
+ *
+ * 저쪽 `main.js` 의 `detailMarkup` 과 같은 순서다. 순서를 바꾸면 웹과 앱이 다른
+ * 카드처럼 보인다.
+ *
+ * **[Dialog] 를 안 쓴다.** 도감은 이미 자기 손으로 배경을 죽이고 있어서 한 겹 더
+ * 얹으면 되고, Dialog 는 별도 창이라 그 아래 카드의 포일·기울기와 안 겹친다.
+ *
+ * 작은 폰에서 잘리므로 **세로로 스크롤된다** (웹도 `overflow-y: auto`).
+ */
+@Composable
+private fun CardDetailSheet(
+    card: DexCard,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        // **살짝 비친다.** 뒤의 카드가 어렴풋이 보여야 "그 카드의 설명" 으로 읽힌다.
+        // 더 투명하게 하면 포일 위에서 글씨가 안 읽힌다 — 여기가 그 경계다.
+        color = Color(0xDE1C1614),
+        modifier = modifier,
+    ) {
+        // 카드 한가운데에 앉힌다. 위에 붙여 두면 아래가 휑하게 남는다.
+        //
+        // 스크롤을 감싸는 상자가 카드 크기를 잡아 주므로, 글이 길어지면 그 안에서
+        // 스크롤되고 짧으면 가운데로 모인다.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+            ) {
+            Text(card.tagline, color = card.accent, fontSize = 13.sp, lineHeight = 19.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                card.name,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            // 한글 이름은 그림 어디에도 없다. 여기서만 볼 수 있다.
+            Text(card.ko, color = Color(0xFFD9C9C3), fontSize = 13.sp)
+
+            Spacer(Modifier.height(14.dp))
+            card.detailRows().forEach { row ->
+                Row(Modifier.padding(vertical = 3.dp)) {
+                    Text(
+                        row.label,
+                        color = Color(0xFF9E8B84),
+                        fontSize = 12.sp,
+                        modifier = Modifier.width(64.dp),
+                    )
+                    Column {
+                        Text(row.value, color = Color.White, fontSize = 13.sp)
+                        // 기술 부연. 없는 카드가 있어서 있을 때만 붙는다.
+                        if (row.note.isNotBlank()) {
+                            Text(
+                                row.note,
+                                color = Color(0xFF9E8B84),
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Text(
+                card.flavor,
+                color = Color(0xFFD9C9C3),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                fontStyle = FontStyle.Italic,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                card.edition,
+                color = card.accent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x1AFFFFFF))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+
+            Spacer(Modifier.height(16.dp))
+            // **넘기기를 여기 둔다.** 설명이 열리면 카드 옆 ‹ › 는 가려지므로, 설명을
+            // 보면서 다음 카드로 가려면 이 줄이 있어야 한다 (웹판도 같다).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                    SheetAction("‹ 이전", onPrev)
+                    Spacer(Modifier.size(10.dp))
+                    SheetAction("다음 ›", onNext)
+                    Spacer(Modifier.weight(1f))
+                    SheetAction("닫기", onClose)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = Color.White,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0x22FFFFFF))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
     )
 }
 

@@ -65,15 +65,74 @@ object AuthApi {
             }
         }
 
-    /** 지금 로그인한 회원. 토큰이 실제로 먹히는지 확인하는 데 쓴다. */
-    suspend fun me(accessToken: String): Result<String> =
+    /** 지금 로그인한 회원. 토큰이 실제로 먹히는지 확인하는 데도 쓴다. */
+    suspend fun me(accessToken: String): Result<AppMe> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val conn = open("/auth/app/me", "GET")
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
-                conn.use { it.readJson() }.getString("app_user_id")
+                conn.use { it.readJson() }.toAppMe()
             }
         }
+
+    /**
+     * 미니룸 이름표를 정한다.
+     *
+     * **null 을 보내면 되돌린다** — 다시 대표 강아지 이름을 따라간다. 서버도 빈
+     * 문자열을 안 받는다: "아직 안 정했다" 와 "정해서 지웠다" 가 같은 값이 되면
+     * 무엇을 그릴지 못 정한다.
+     */
+    suspend fun setRoomName(accessToken: String, name: String?): Result<AppMe> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject().apply {
+                    put("room_name", name?.trim()?.takeIf(String::isNotEmpty) ?: JSONObject.NULL)
+                }.toString()
+                val conn = open("/auth/app/me", "PATCH")
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                conn.use { it.send(body); it.readJson() }.toAppMe()
+            }.recoverCatching { cause ->
+                // 서버가 준 문장은 그대로 통과시킨다 (failIfNotOk 가 IllegalStateException).
+                if (cause is IllegalStateException) throw cause
+                throw IllegalStateException("서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
+            }
+        }
+
+    /**
+     * 회원 탈퇴. **되돌릴 수 없다.**
+     *
+     * ⚠️ **[readJson] 을 쓰면 안 된다.** 서버가 204 로 답해서 본문이 비어 있는데,
+     * 빈 문자열을 `JSONObject` 에 넣으면 던진다 — **성공한 탈퇴가 실패로 보인다.**
+     * 상태 코드만 본다.
+     *
+     * ⚠️ **인증 방식이 확실하지 않다.** 저쪽 OpenAPI 에 이 경로의 security scheme 이
+     * 안 걸려 있다. 회원을 지우려면 누구인지는 알아야 하므로 [me] 와 같은 방식으로
+     * access 토큰을 헤더에 싣는다. **서버가 이 헤더를 읽는지 확인이 필요하다** —
+     * 안 읽으면서 204 를 주면 앱은 성공으로 알고 넘어간다.
+     */
+    suspend fun withdraw(accessToken: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val conn = open("/auth/app/withdraw", "POST")
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                // 응답 코드를 읽어야 요청이 실제로 나간다 ([logout] 과 같은 이유).
+                conn.use { it.failIfNotOk() }
+                Unit
+            }.recoverCatching { cause ->
+                // **서버가 준 문장은 그대로 통과시킨다** ([failIfNotOk] 가
+                // IllegalStateException 으로 던진다). 나머지는 연결이 안 된 것이고,
+                // 그때 예외 메시지는 `Unable to resolve host "..."` 같은 영어 한 줄이라
+                // 사용자에게 그대로 보여주면 안 된다.
+                if (cause is IllegalStateException) throw cause
+                throw IllegalStateException("서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
+            }
+        }
+
+    private fun JSONObject.toAppMe(): AppMe = AppMe(
+        appUserId = getString("app_user_id"),
+        // 없으면 아직 안 정한 것이다. 서버가 대신 지어 주지 않는다.
+        roomName = if (isNull("room_name")) null else optString("room_name").takeIf { it.isNotBlank() },
+    )
 
     // -- 아래는 배관 -------------------------------------------------------
 
@@ -111,14 +170,19 @@ object AuthApi {
     /**
      * 200 대가 아니면 서버가 준 메시지를 그대로 예외에 담는다. 저쪽이 사용자에게 보여
      * 줄 문장으로 써 놨다 ("이용이 정지된 계정입니다" 같은).
+     *
+     * [readJson] 에서 떼어냈다 — **본문이 없는 응답(204)도 상태는 봐야 하기 때문**이다.
      */
+    private fun HttpURLConnection.failIfNotOk() {
+        if (responseCode in 200..299) return
+        val detail = runCatching {
+            JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
+        }.getOrNull()
+        error(if (detail.isNullOrBlank()) "서버 오류 ($responseCode)" else detail)
+    }
+
     private fun HttpURLConnection.readJson(): JSONObject {
-        if (responseCode !in 200..299) {
-            val detail = runCatching {
-                JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
-            }.getOrNull()
-            error(if (detail.isNullOrBlank()) "서버 오류 ($responseCode)" else detail)
-        }
+        failIfNotOk()
         return JSONObject(inputStream.bufferedReader().use { it.readText() })
     }
 

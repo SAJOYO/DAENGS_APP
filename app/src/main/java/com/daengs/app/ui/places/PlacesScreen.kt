@@ -16,8 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,16 +24,22 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
+import com.daengs.app.ui.common.DaengsFloatingButton
+import com.daengs.app.ui.theme.DaengsColors
+import com.daengs.app.ui.theme.PinkFaint
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.daengs.app.BuildConfig
@@ -54,10 +59,13 @@ import com.daengs.app.map.features.places.PlaceOriginMode
 import com.daengs.app.map.features.places.canonicalPlaceKeysByMarker
 import com.daengs.app.map.features.places.canonicalPlaceMarkers
 import com.daengs.app.map.features.places.selectedPlaceKind
+import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.PlaceApi
 import com.daengs.app.place.PlaceKind
+import com.daengs.app.place.PlaceKey
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlin.math.abs
@@ -70,7 +78,12 @@ import kotlinx.coroutines.launch
  * APP에는 사용자 강아지 선택이 없으므로 원본 계약이 지원하는 조건 없는 검색을 보낸다.
  */
 @Composable
-fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun PlacesScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** 내 위치에 세울 얼굴. 대표 강아지가 없으면 null 이고 기본 파란 점이 나온다. */
+    avatarBreed: DogBreed? = null,
+) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val scope = rememberCoroutineScope()
@@ -101,6 +114,17 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     var locating by remember { mutableStateOf(false) }
     var locationError by remember { mutableStateOf<String?>(null) }
     var initialPlaceSearchStarted by remember { mutableStateOf(false) }
+    // 패널이 지도를 얼마나 덮는지. 재서 넘긴다 — 패널 높이가 결과 수에 따라 변한다.
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    // 사용자가 방금 고른 장소. 지도를 그리로 옮기고 나면 다시 비운다.
+    var centerOn by remember { mutableStateOf<GeoPoint?>(null) }
+
+    fun focusOn(key: PlaceKey) {
+        followDevice = false
+        centerOn = canonicalPlaceMarkers(discovery)
+            .firstOrNull { it.id == placeMarkerId(key) }?.point
+        placeDiscovery.select(key)
+    }
 
     fun acceptLocation(sample: LocationSample) {
         currentPosition = sample.point
@@ -120,6 +144,9 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
     fun locateAndSearch(kind: PlaceKind, preferParking: Boolean) {
         if (!granted) return
+        // 내 위치로 갈 때는 골라 둔 장소를 놓는다. 안 그러면 결과가 오는 순간
+        // 지도가 그 장소로 도로 끌려간다.
+        centerOn = null
         scope.launch {
             locating = true
             locationError = null
@@ -152,13 +179,13 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        granted = result.values.any { it }
+        granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted && !initialPlaceSearchStarted) {
             initialPlaceSearchStarted = true
             locateAndSearch(DEFAULT_PLACE_KIND, false)
         }
     }
-
     LaunchedEffect(Unit) {
         if (!inspectionMode && !granted) {
             permissionLauncher.launch(
@@ -204,7 +231,7 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
     Box(modifier.fillMaxSize()) {
         if (inspectionMode) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
+            Box(Modifier.fillMaxSize().background(PinkFaint))
         } else {
             MapHost(
                 scene = MapScene(
@@ -213,32 +240,37 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 ),
                 searchOrigin = discovery.origin,
                 followDevice = followDevice,
+                avatarRes = avatarBreed?.portraitRes,
+                bottomPaddingPx = panelHeightPx,
+                centerOn = centerOn,
                 onCameraIdle = { cameraCandidate = it },
                 onCameraGesture = { followDevice = false },
-                onSelectPlace = { id -> markerKeys[id]?.let(placeDiscovery::select) },
+                onSelectPlace = { id -> markerKeys[id]?.let(::focusOn) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
 
-        FilledTonalButton(
+        DaengsFloatingButton(
+            label = "← 홈",
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
                 .padding(12.dp),
-        ) { Text("← 홈") }
+        )
 
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(top = 12.dp),
+                .padding(start = 12.dp, top = 68.dp, end = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (movedFromOrigin) {
-                    FilledTonalButton(
+                    DaengsFloatingButton(
+                        label = "이 지역 검색",
                         enabled = !discovery.loading && !locating,
                         onClick = {
                             val origin = cameraCandidate
@@ -254,16 +286,22 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                                 )
                             }
                         },
-                    ) { Text("이 지역 검색") }
+                    )
                 }
-                FilledTonalButton(
+                DaengsFloatingButton(
+                    label = if (locating) "찾는 중" else "내 위치",
                     enabled = granted && !discovery.loading && !locating,
                     onClick = { locateAndSearch(selectedKind, discovery.preferParking) },
-                ) { Text(if (locating) "찾는 중" else "내 위치") }
+                )
             }
             locationError?.let { error ->
-                Surface(color = MaterialTheme.colorScheme.errorContainer) {
-                    Text(error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                Surface(color = DaengsColors.ErrorSoft, shape = RoundedCornerShape(12.dp)) {
+                    Text(
+                        error,
+                        color = DaengsColors.Error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             }
         }
@@ -273,7 +311,7 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             journey = journey,
             onSearch = ::searchAtCurrentOrigin,
             onRetry = placeDiscovery::retry,
-            onSelect = placeDiscovery::select,
+            onSelect = ::focusOn,
             onJourney = { place ->
                 val origin = devicePosition
                 if (origin == null) {
@@ -290,7 +328,8 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             onCall = { phone -> dial(context, phone) },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .onSizeChanged { panelHeightPx = it.height },
         )
     }
 }
@@ -316,5 +355,7 @@ private fun dial(context: Context, phone: String) {
 @Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun PlacesScreenPreview() {
-    DaengsTheme { PlacesScreen(onBack = {}) }
+    DaengsTheme {
+        PlacesScreen(onBack = {})
+    }
 }
