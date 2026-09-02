@@ -21,6 +21,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daengs.app.R
 import com.daengs.app.miniroom.art.rememberAssetImage
 import kotlin.math.roundToInt
 
@@ -366,7 +368,24 @@ private data class SlotFace(
     val fill: Float,
 )
 
-private val TITLE = SlotFace(FontFamily.Serif, FontWeight.Bold, 0.06f, 0.60f)
+/**
+ * 카드 이름에 쓰는 글씨체 — 케리스 케듀체 Bold.
+ *
+ * **한글에 `FontFamily.Serif` 는 사실상 안 먹는다.** 안드로이드 기본 serif 에는 한글이
+ * 없어서 시스템 한글 폰트로 떨어지고, 결국 기기 기본 고딕이 나온다. 저쪽 원화의
+ * `CABBAGE NEO` 는 각진 영문 서체인데 우리 한글만 딴 세상이었다.
+ *
+ * **굵기 하나만 넣는다.** 한글 폰트는 글자 수가 많아 굵기마다 0.4~1MB 씩 는다.
+ * 그리고 윤곽선(Line) 판은 안 쓴다 — 이름이 얹히는 자리가 홀로그램 무지개라
+ * 획 속으로 배경이 비쳐서 뭉개지고, 그리드에서 40dp 로 줄면 아예 사라진다.
+ *
+ * **라이선스는 확인했다** (눈누, 2026-09-02). 임베딩·상업적 이용·재배포 모두 허용이고
+ * 출처 표기 의무도 없다. 금지된 것은 폰트 파일 자체를 유료로 파는 것뿐이라 해당 없다.
+ * APK 에 파일이 들어가 배포되는 것이 "임베딩" 이다.
+ */
+private val KeduBold = FontFamily(Font(R.font.keris_kedu_bold, FontWeight.Bold))
+
+private val TITLE = SlotFace(KeduBold, FontWeight.Bold, 0.06f, 0.60f)
 private val CODE = SlotFace(FontFamily.SansSerif, FontWeight.Black, 0.01f, 0.58f)
 
 /** 생일을 번호판 글자로. 저쪽 `NEO-0824` 가 월일이라 그 자리에 그대로 들어간다. */
