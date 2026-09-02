@@ -27,7 +27,6 @@ import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.dogcard.CardHolder
 import androidx.compose.runtime.mutableIntStateOf
-import com.daengs.app.farewell.rememberFarewellStore
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
@@ -142,11 +141,10 @@ class MainActivity : ComponentActivity() {
                 // 도감에 갔다 왔는데 다시 펴져 있으면 접은 뜻이 없다.
                 var weatherOpen by rememberSaveable { mutableStateOf(true) }
                 // 배웅. **화면을 안 늘린다** — 마이 위에 덮인다 (`myOpen` 과 같은 결).
-                val farewells = rememberFarewellStore()
+                //
+                // 배웅한 날은 **서버가 갖고 있다**(`pets.farewell_on`). 기기에 적어 두던
+                // 것을 옮긴 것이라, 기기를 바꿔도 그 기록이 남는다.
                 var farewell by remember { mutableStateOf<Pet?>(null) }
-                // 배웅한 날이 바뀌면 목록이 다시 그려져야 한다. 저장소는 상태가 아니라
-                // 파일이라, 바뀐 것을 알릴 값을 하나 둔다.
-                var farewellTick by remember { mutableIntStateOf(0) }
                 // 지우기는 두 군데서 부른다 — 목록의 삭제와 배웅한 아이의 자리.
                 // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그 아이의 산책이
                 // 다음 동기화 때 되돌아온다.
@@ -156,9 +154,6 @@ class MainActivity : ComponentActivity() {
                         if (pets.remove(token, pet.id)) {
                             walkRuntime.history.forgetDog(pet.id)
                             todayWalks = walkRuntime.history.todayTotals()
-                            // 배웅 기록도 같이 지운다. 아이가 없으면 남을 자리가 없다.
-                            farewells.undo(pet.id)
-                            farewellTick++
                         }
                     }
                 }
@@ -289,15 +284,21 @@ class MainActivity : ComponentActivity() {
                         val pet = farewell!!
                         FarewellScreen(
                             dogName = pet.name,
-                            // farewellTick 을 읽어야 배웅 직후 화면이 다시 그려진다.
-                            sentOn = farewells.dayOf(pet.id).also { farewellTick },
+                            // **목록의 값을 본다.** 서버에 보내고 목록을 다시 받으므로
+                            // 여기 값이 곧 서버의 값이다.
+                            sentOn = pets.pets?.firstOrNull { it.id == pet.id }?.farewellOn
+                                ?: pet.farewellOn,
                             onSendOff = { day ->
-                                farewells.sendOff(pet.id, day)
-                                farewellTick++
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    pets.sendOff(token, pet, day)
+                                }
                             },
                             onUndo = {
-                                farewells.undo(pet.id)
-                                farewellTick++
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    pets.sendOff(token, pet, null)
+                                }
                             },
                             onClose = { farewell = null },
                             face = {
@@ -355,7 +356,7 @@ class MainActivity : ComponentActivity() {
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
                         onFarewell = { farewell = it },
-                        farewellOf = { farewellTick; farewells.dayOf(it.id) },
+                        farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
                                 val token = freshToken() ?: return@launch
