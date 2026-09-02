@@ -2,6 +2,7 @@ package com.daengs.app.ui.dex
 
 import com.daengs.app.ui.dogcard.drawInHoleOf
 import com.daengs.app.ui.dogcard.drawPersonalCardAt
+import com.daengs.app.ui.dogcard.drawSlotTextAt
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -339,15 +340,18 @@ private fun DrawScope.drawStage(
             win.cx + (cardPos.x - win.cx) * k,
             win.cy + (cardPos.y - win.cy) * k,
         )
+        val fs = Size(cardSize.width * k, cardSize.height * k)
         drawImage(
             image = frame,
             dstOffset = androidx.compose.ui.unit.IntOffset(fp.x.roundToInt(), fp.y.roundToInt()),
-            dstSize = androidx.compose.ui.unit.IntSize(
-                (cardSize.width * k).roundToInt(),
-                (cardSize.height * k).roundToInt(),
-            ),
+            dstSize = androidx.compose.ui.unit.IntSize(fs.width.roundToInt(), fs.height.roundToInt()),
             filterQuality = FilterQuality.High,
         )
+        // **창틀에도 우리 글자를 얹는다.** 카드가 녹으면 그 아래가 이 틀인데, 저쪽
+        // 글자를 지워 두기만 하고 우리 것을 안 찍으면 이름 자리가 빈 채로 드러난다.
+        hero?.let {
+            drawSlotTextAt(measurer, it.name, it.code, scene.frameName, scene.frameCode, fp, fs)
+        }
     }
 
     // 카드 그림. 틀 위에 같은 자리로 얹혀 있다가 녹는다. 녹고 나면 아래의 틀이 드러나

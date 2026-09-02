@@ -356,6 +356,23 @@ fun DrawScope.drawPersonalCardAt(
     drawSlotText(measurer, code, template.code, CODE, at, box)
 }
 
+/**
+ * 이름·번호판만 **임의의 사각형에** 그린다. 이머시브 창틀이 쓴다 — 창틀은 그림이
+ * 이미 비워져 있고 글자만 얹으면 된다.
+ */
+fun DrawScope.drawSlotTextAt(
+    measurer: TextMeasurer,
+    name: String,
+    code: String,
+    nameSlot: Slot?,
+    codeSlot: Slot?,
+    at: Offset,
+    box: Size,
+) {
+    drawSlotText(measurer, name, nameSlot, TITLE, at, box)
+    drawSlotText(measurer, code, codeSlot, CODE, at, box)
+}
+
 /** 이름·번호판. 카드 **위에** 그린다 — 아래에 두면 카드가 덮는다. */
 fun DrawScope.drawCardText(
     measurer: TextMeasurer,

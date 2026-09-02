@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.daengs.app.ui.dogcard.CardFace
 import com.daengs.app.ui.dogcard.CardTemplate
 import com.daengs.app.ui.dogcard.Hole
+import com.daengs.app.ui.dogcard.Slot
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -74,6 +75,15 @@ data class ImmersiveScene(
      * 녹으면 드러나서 **창틀**이 된다. 없으면(`null`) 예전처럼 카드가 녹기만 한다.
      */
     val frame: String?,
+    /**
+     * 창틀에 우리 글자를 찍을 자리. **창틀 크기 대비 %** 다.
+     *
+     * 카드의 자리를 그대로 못 쓴다 — 창틀은 카드와 크기도 비율도 다른 별도 렌더다
+     * (고구마 창틀 1067x1474 vs 카드 816x1125). `tools/punch_card_frame.py` 가
+     * 저쪽 글자를 지우면서 같은 값을 쓴다.
+     */
+    val frameName: Slot? = null,
+    val frameCode: Slot? = null,
     /**
      * 배경음. `assets/` 아래 경로이고, null 이면 무음이다.
      *
@@ -179,6 +189,8 @@ val CABBAGE_SCENE = ImmersiveScene(
     subject = "neo-hologram/art/cabbage-subject.webp",
     card = "neo-hologram/art/cabbage-card.webp",
     frame = "neo-hologram/art/cabbage-card-frame.webp",
+    frameName = Slot(51.5f, 5.2f, 65.0f, 9.8f),
+    frameCode = Slot(75.0f, 5.2f, 94.5f, 9.8f),
     bgm = bgmFor("cabbage"),
     window = ImmersiveScene.Win(4.91f, 10.28f, 90.51f, 81.58f),
     fit = ImmersiveScene.Fit(6.06f, 14.15f, 87.43f, 62.70f),
@@ -206,6 +218,8 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
     subject = "neo-hologram/art/sweet-potato-subject.webp",
     card = "neo-hologram/art/sweet-potato-card.webp",
     frame = "neo-hologram/art/sweet-potato-card-frame.webp",
+    frameName = Slot(58.8f, 5.2f, 70.0f, 9.8f),
+    frameCode = Slot(73.5f, 5.2f, 93.0f, 9.8f),
     bgm = bgmFor("sweet-potato"),
     window = ImmersiveScene.Win(6.28f, 10.85f, 88.57f, 81.61f),
     fit = ImmersiveScene.Fit(11.52f, 14.93f, 80.02f, 62.84f),
@@ -235,6 +249,8 @@ val LETTUCE_SCENE = ImmersiveScene(
     subject = "neo-hologram/art/lettuce-subject.webp",
     card = "neo-hologram/art/lettuce-card.webp",
     frame = "neo-hologram/art/lettuce-card-frame.webp",
+    frameName = Slot(53.8f, 5.4f, 67.0f, 9.4f),
+    frameCode = Slot(75.5f, 5.2f, 95.0f, 9.4f),
     bgm = bgmFor("lettuce"),
     window = ImmersiveScene.Win(5.17f, 11.55f, 90.46f, 76.39f),
     fit = ImmersiveScene.Fit(11.22f, 15.47f, 80.33f, 62.13f),
