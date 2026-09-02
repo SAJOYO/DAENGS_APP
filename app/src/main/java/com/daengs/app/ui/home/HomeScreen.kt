@@ -50,6 +50,7 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkDayTotals
 import kotlinx.coroutines.delay
 import com.daengs.app.ui.my.MyScreen
+import com.daengs.app.ui.storage.StorageComingSoon
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
@@ -135,6 +136,18 @@ fun HomeScreen(
      * 위로 올린 것과 같은 이유다.
      */
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
+    /**
+     * 마이 화면이 열려 있나. **탭이 아니라 상단바의 프로필 사진 버튼으로 연다.**
+     *
+     * 하단 저장소 탭과 갈라져 있다 — 예전에는 둘이 같은 자리였는데, 탭 이름이
+     * "저장소" 가 되면서 하는 일과 어긋났다.
+     *
+     * 값은 [MainActivity] 가 들고 있다. 강아지를 추가하러 나갔다 오면 마이로
+     * 돌아와야 하는데, 여기서 들면 화면이 바뀔 때 같이 죽는다.
+     */
+    myOpen: Boolean = false,
+    onOpenMy: (() -> Unit)? = null,
+    onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
@@ -169,6 +182,10 @@ fun HomeScreen(
 ) {
     // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
     BackHandler(enabled = tab != BottomTab.Home) { onSelectTab(BottomTab.Home) }
+    // 마이는 탭이 아니라 프로필 버튼으로 여는 화면이라 **따로 닫아 준다.**
+    // ⚠️ 위의 탭 핸들러보다 **나중에** 등록한다 — 컴포즈는 나중에 등록된 것이
+    // 이기므로, 마이가 열려 있으면 탭이 무엇이든 마이가 먼저 닫힌다.
+    BackHandler(enabled = myOpen) { onCloseMy?.invoke() }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
     // 프로필 얼굴의 견종.
@@ -237,7 +254,7 @@ fun HomeScreen(
                 DaengsTopBar(
                     // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
                     onBell = {},
-                    onProfile = { onSelectTab(BottomTab.My) },
+                    onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                 )
             }
@@ -259,7 +276,7 @@ fun HomeScreen(
             )
         },
     ) { inner ->
-        if (tab == BottomTab.My) {
+        if (myOpen) {
             MyScreen(
                 breed = profileBreed,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
@@ -281,6 +298,11 @@ fun HomeScreen(
                 onDismissWithdraw = { onDismissWithdraw?.invoke() },
                 modifier = Modifier.padding(inner),
             )
+            return@Scaffold
+        }
+
+        if (tab == BottomTab.Storage) {
+            StorageComingSoon(Modifier.padding(inner))
             return@Scaffold
         }
 
