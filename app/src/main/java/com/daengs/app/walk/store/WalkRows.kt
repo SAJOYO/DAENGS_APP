@@ -1,9 +1,11 @@
 package com.daengs.app.walk.store
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.daengs.app.walk.WalkSyncState
 
 @Entity(tableName = "walk_session")
 data class WalkSessionRow(
@@ -18,7 +20,10 @@ data class WalkSessionRow(
     val weatherCode: Int? = null,
     val isDay: Boolean? = null,
     val temperatureC: Float? = null,
-    /** 서버에 올라간 시각. null 이면 아직 이 기기에만 있다. */
+    @ColumnInfo(defaultValue = "'local_only'")
+    val syncState: String = WalkSyncState.LOCAL_ONLY.storedValue,
+    val serverWalkId: String? = null,
+    /** 마지막 동기화 상태 전이 시각. */
     val syncedAtMillis: Long? = null,
 )
 

@@ -4,6 +4,7 @@ import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
+import com.daengs.app.walk.WalkSyncState
 
 class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
     override suspend fun openSession(session: RecordedSession) {
@@ -15,6 +16,8 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
                 weatherCode = session.weather?.weatherCode,
                 isDay = session.weather?.isDay,
                 temperatureC = session.weather?.temperatureC,
+                syncState = session.syncState.storedValue,
+                serverWalkId = session.serverWalkId,
                 syncedAtMillis = session.syncedAtMillis,
             ),
         )
@@ -67,8 +70,8 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
     override suspend fun finishedSessions(): List<RecordedSession> =
         dao.finishedSessions().withDogs()
 
-    override suspend fun unsyncedSessions(): List<RecordedSession> =
-        dao.unsyncedSessions().withDogs()
+    override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
+        dao.sessionsPendingAnalysis().withDogs()
 
     /**
      * 아이들을 **한 번에** 붙인다.
@@ -82,8 +85,14 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         return map { row -> row.toModel(dogs[row.id].orEmpty()) }
     }
 
-    override suspend fun markSynced(sessionId: String, syncedAtMillis: Long) =
-        dao.markSynced(sessionId, syncedAtMillis)
+    override suspend fun markRawUploaded(
+        sessionId: String,
+        serverWalkId: String,
+        changedAtMillis: Long,
+    ) = dao.markRawUploaded(sessionId, serverWalkId, changedAtMillis)
+
+    override suspend fun markDerived(sessionId: String, changedAtMillis: Long) =
+        dao.markDerived(sessionId, changedAtMillis)
 
     override suspend fun session(sessionId: String): RecordedSession? =
         dao.session(sessionId)?.toModel(dao.sessionDogs(sessionId).map { it.dogId })
@@ -101,6 +110,8 @@ fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession 
     weather = weatherCode?.let {
         RecordedWeather(weatherCode = it, isDay = isDay ?: true, temperatureC = temperatureC)
     },
+    syncState = WalkSyncState.fromStored(syncState),
+    serverWalkId = serverWalkId,
     syncedAtMillis = syncedAtMillis,
 )
 

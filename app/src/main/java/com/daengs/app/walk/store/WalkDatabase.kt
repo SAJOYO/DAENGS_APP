@@ -8,10 +8,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
-/** 산책 원본 위치만 소유하는 로컬 DB. 네트워크 동기화 여부는 이 저장소의 책임이 아니다. */
+/** 산책 원본 위치와 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
     entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -103,9 +103,31 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * "좌표가 올라감"과 "계산이 끝남" 사이를 복구 가능한 상태로 만든다.
+         *
+         * 예전 [syncedAtMillis]는 chunk 업로드 직후 찍혔다. 그 기록을 `derived`로
+         * 간주하면 실제로는 분석이 없는 산책을 영원히 finalize하지 않으므로
+         * `raw_uploaded`로 옮긴다. 예전 행에는 서버 id가 없지만 create API가
+         * `client_session_id`에 멱등이라 다음 동기화에서 다시 얻을 수 있다.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE walk_session ADD COLUMN syncState TEXT NOT NULL " +
+                        "DEFAULT 'local_only'",
+                )
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN serverWalkId TEXT")
+                connection.execSQL(
+                    "UPDATE walk_session SET syncState = 'raw_uploaded' " +
+                        "WHERE syncedAtMillis IS NOT NULL",
+                )
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }

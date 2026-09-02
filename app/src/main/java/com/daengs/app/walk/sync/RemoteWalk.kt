@@ -3,6 +3,7 @@ package com.daengs.app.walk.sync
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordedWeather
+import com.daengs.app.walk.WalkSyncState
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -20,14 +21,21 @@ data class RemoteWalk(
     val endedAtMillis: Long,
     val weather: RecordedWeather?,
 ) {
-    /** 로컬 DB 에 넣을 모양으로. **되찾은 것은 이미 서버에 있으므로 올린 것으로 표시한다.** */
-    fun toSession(syncedAtMillis: Long): RecordedSession = RecordedSession(
+    /**
+     * 로컬 DB 에 넣을 모양으로.
+     *
+     * 목록 응답에는 분석 상태가 없으므로 `derived`라고 추측하지 않는다. 원본은 서버에
+     * 있음을 알기 때문에 `raw_uploaded`로 두고, 다음 동기화가 finalize를 멱등 호출한다.
+     */
+    fun toSession(rawUploadedAtMillis: Long): RecordedSession = RecordedSession(
         id = clientSessionId,
         dogIds = dogIds,
         startedAtMillis = startedAtMillis,
         endedAtMillis = endedAtMillis,
         weather = weather,
-        syncedAtMillis = syncedAtMillis,
+        syncState = WalkSyncState.RAW_UPLOADED,
+        serverWalkId = id,
+        syncedAtMillis = rawUploadedAtMillis,
     )
 
     companion object {
