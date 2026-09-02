@@ -70,12 +70,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.assistant.WalkVerdict
+import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
-import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.gait.rememberGaitHolder
+import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
@@ -526,16 +527,20 @@ fun ChatScreen(
                     pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 }
             },
-            // 보행은 **진단 서버와 무관하다.** 피부 두 줄은 [ScreeningApi.configured]
-            // 를 보지만 여기서는 안 본다 — 서로 다른 서버이고, 보행 쪽은 아직
-            // 기기 안에서 도는 흐름이라 주소가 없어도 화면이 다 열린다.
+            // 보행은 **진단 서버와 다른 서버**다 (backend 뒤, `/app/gait/…`). 그래도
+            // 피부 두 줄과 **같은 규칙**을 따른다 — 꺼져 있으면 화면이 스스로 말한다.
+            //
+            // ⚠️ 예전에는 여기서 안 봤다. 보행이 기기 안에서 돌던 시절의 주석이 남아
+            //    있었는데, 이제는 서버가 필요하다. 안 보면 꺼졌을 때 [MockGaitAnalyzer]
+            //    로 조용히 떨어져 **가짜 결과가 진짜처럼 보인다** (#64).
             onGaitCapture = {
                 chooserMode = null
-                withCamera { gaitCapture = true }
+                if (!GaitApi.configured) notice = GAIT_NOT_SET
+                else withCamera { gaitCapture = true }
             },
             onGaitPick = {
                 chooserMode = null
-                startGaitPicking()
+                if (!GaitApi.configured) notice = GAIT_NOT_SET else startGaitPicking()
             },
         )
     }
@@ -935,6 +940,15 @@ private fun Float.percentText(): String = String.format("%.1f%%", this)
 
 private const val SCREEN_NOT_SET =
     "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+
+/**
+ * 보행이 꺼져 있을 때 (`daengs.gaitUrl`, 릴리즈는 `daengs.gaitUrlRelease` 가 빈 경우).
+ *
+ * ⚠️ **꺼졌을 때 조용히 [MockGaitAnalyzer] 로 도는 것을 막으려고 있는 문구다.** 그러면
+ *    4단계가 다 차오르고 결과 카드까지 떠서, 서버를 한 번도 안 거쳤는데 분석이 끝난 것처럼
+ *    보인다. 테스터에게 그 화면이 나가면 안 된다 (#64).
+ */
+private const val GAIT_NOT_SET = "보행 분석은 아직 준비 중이에요."
 
 /**
  * 카메라 권한을 거부했을 때.

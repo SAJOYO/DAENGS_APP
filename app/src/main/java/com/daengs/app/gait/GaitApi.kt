@@ -55,13 +55,21 @@ import java.time.LocalDate
 object GaitApi {
 
     /**
-     * 주소가 없으면 아무것도 못 부른다. 화면이 이걸 보고 보행 줄을 막는다.
+     * 보행을 부를 수 있는 상태인가. 화면이 이걸 보고 보행 줄을 막는다.
      *
-     * **옛 `GAIT_BASE_URL` 이 아니라 [BuildConfig.API_BASE_URL] 을 본다** — 보행이
-     * backend 뒤로 들어왔기 때문이다. 옛 값은 롤백용으로 빌드 설정에 남겨 두었다.
+     * 두 가지를 같이 본다:
+     *
+     * - **주소** — 옛 `GAIT_BASE_URL` 이 아니라 [BuildConfig.API_BASE_URL] 이다.
+     *   보행이 backend 뒤로 들어왔기 때문이다.
+     * - **스위치** — [BuildConfig.GAIT_ENABLED]. `daengs.gaitUrl`(릴리즈는
+     *   `daengs.gaitUrlRelease`)을 비우면 꺼진다.
+     *
+     * ⚠️ **스위치를 따로 둔 이유**: 주소만 보면 **릴리즈에서 보행을 끌 방법이 사라진다**
+     *    (`API_BASE_URL` 은 릴리즈에 반드시 있다). #64 가 "테스터 빌드에서는 꺼 두는 편이
+     *    안전하다"며 남겨 둔 손잡이라, 주소를 옮기면서 그것까지 없애면 안 된다.
      */
     val configured: Boolean
-        get() = BuildConfig.API_BASE_URL.isNotBlank()
+        get() = BuildConfig.API_BASE_URL.isNotBlank() && BuildConfig.GAIT_ENABLED
 
     // -- 엔드포인트 ---------------------------------------------------------
 
