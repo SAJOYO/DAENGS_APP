@@ -130,6 +130,9 @@ class MainActivity : ComponentActivity() {
                 // 마이로 돌아와야** 하는데, 홈 안에서 들면 화면이 바뀔 때 같이 죽어서
                 // 등록을 마치고 나면 방으로 떨어진다.
                 var myOpen by rememberSaveable { mutableStateOf(false) }
+                // 날씨 카드가 펴져 있나. **화면이 바뀌어도 기억한다** — 접어 두고
+                // 도감에 갔다 왔는데 다시 펴져 있으면 접은 뜻이 없다.
+                var weatherOpen by rememberSaveable { mutableStateOf(true) }
                 var roomName by remember { mutableStateOf<String?>(null) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
@@ -265,6 +268,8 @@ class MainActivity : ComponentActivity() {
                         tab = homeTab,
                         onSelectTab = { homeTab = it },
                         myOpen = myOpen,
+                        weatherOpen = weatherOpen,
+                        onToggleWeather = { weatherOpen = !weatherOpen },
                         onOpenMy = { myOpen = true },
                         onCloseMy = { myOpen = false },
                         outside = outside,
