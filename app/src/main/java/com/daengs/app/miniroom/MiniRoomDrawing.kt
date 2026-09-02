@@ -226,7 +226,14 @@ fun DrawScope.drawDog(
 
     // **몸 변형 밖에서 그린다.** 안에서 그리면 좌우 반전과 기울임을 같이 받아서
     // 무지개가 눕거나 뒤집힌다. 숨쉬기(bob)만 따라가면 머리에 붙어 보인다.
-    if (dog.departed) {
+    // **쉬고 있을 때만 뜬다.** 걷는 내내 하트가 따라다니면 몸에 붙은 장식이 되는데,
+    // 멈췄을 때 곁에 놓이면 그 아이를 생각하는 순간이 된다.
+    //
+    // [DogActor.stand] 를 그대로 쓴다 — 0 이 앉음, 1 이 걸음이고 0.18초에 걸쳐 오간다.
+    // 여기에 태우면 하트가 걸음과 같은 속도로 사라지고 나타난다. 표시용 시계를 따로
+    // 두면 그 둘이 어긋나서, 이미 걷기 시작했는데 하트가 남아 끌려간다.
+    val restHeart = 1f - dog.stand
+    if (dog.departed && restHeart > 0.02f) {
         // **몸 변형 밖에서 그린다.** 안에서 그리면 좌우 반전에 같이 뒤집혀서 하트가
         // 몸 뒤로 넘어간다. 바라보는 쪽은 여기서 [DogActor.mirrored] 로 직접 고른다.
         val ahead = if (dog.mirrored) -HEART_AHEAD else HEART_AHEAD
@@ -238,7 +245,7 @@ fun DrawScope.drawDog(
                 foot.y - art.box.size.height * s * HEART_UP + bob * s,
             ),
             radius = art.box.size.width * s * HEART_R * beat,
-            alpha = alpha,
+            alpha = alpha * restHeart,
         )
     }
 }

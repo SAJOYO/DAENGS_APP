@@ -69,12 +69,11 @@ class DogActor(
     var stand: Float = 0f
 
     /**
-     * 배웅한 아이인가.
+     * 배웅한 아이인가. 표시만 달라지고 **걷는 것은 똑같다.**
      *
-     * **자기 자리에 앉는다.** 목록에서는 무지개가 붙는데 방에서는 다른 아이들과 똑같이
-     * 돌아다니면, 화면 두 곳이 다른 말을 한다. 방은 매일 보는 자리라 더 그렇다.
-     *
-     * 방에서 빼지 않는다 — 배웅은 지우는 것이 아니다.
+     * 한 번은 제자리에 앉혀 봤는데 그게 아니었다. 배웅은 방에서 내보내는 것도, 세워
+     * 두는 것도 아니다 — 그 아이는 방에서 계속 뛰어다니고, 쉬고 있을 때 곁에 하트가
+     * 뜰 뿐이다. 멈춰 세우면 그 순간 방이 박제가 된다.
      */
     var departed: Boolean = false
 }
@@ -369,12 +368,6 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
             // 처음 자리가 나빴거나, 서 있는 자리에 가구가 놓였다. 충돌을 무시하고
             // 가까운 빈 칸으로 걸어 나온다 — 순간이동시키면 눈에 띄게 튄다.
             val trapped = blockedAt(d.pos.x, d.pos.y, blocked, d.bodyRadius)
-            // **배웅한 아이는 제자리에 앉는다.** 가구에 깔린 경우에만 걸어 나온다 —
-            // 안 그러면 서랍장 밑에 낀 채로 영영 앉아 있는다.
-            if (d.departed && !trapped) {
-                d.moving = false
-                continue
-            }
             if (trapped) {
                 d.target = nearestFree(d.pos, blocked)
                 d.restUntil = 0L
