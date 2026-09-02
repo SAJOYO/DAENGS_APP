@@ -1,6 +1,7 @@
 package com.daengs.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,43 +70,57 @@ fun TodayCard(
      */
     icon: DaengsIcon,
     accent: Color = DaengPink,
-    accentSoft: Color = PinkSoft,
     modifier: Modifier = Modifier,
+    /**
+     * 펴져 있나. 접으면 `TODAY` 줄만 남기고 방을 비켜 준다.
+     *
+     * 이 카드는 방 왼쪽 위를 덮고 있어서, 미니룸을 보려면 카드를 피해 봐야 했다.
+     */
+    expanded: Boolean = true,
+    /** 눌렀을 때. null 이면 안 접힌다 — `@Preview` 가 그렇게 쓴다. */
+    onToggle: (() -> Unit)? = null,
 ) {
-    Column(modifier) {
-        // 시안의 걸린 못 두 개
-        Row(
-            Modifier.padding(horizontal = 14.dp).width(112.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            repeat(2) {
-                Box(
-                    Modifier
-                        .size(7.dp)
-                        .background(accentSoft, RoundedCornerShape(50)),
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = CardWhite.copy(alpha = 0.92f),
+        modifier = modifier
+            .shadow(6.dp, RoundedCornerShape(16.dp), clip = false)
+            .then(if (onToggle != null) Modifier.clickable(onClick = onToggle) else Modifier),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "TODAY",
+                    color = DaengPinkDeep,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
                 )
-            }
-        }
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = CardWhite.copy(alpha = 0.92f),
-            modifier = Modifier.shadow(6.dp, RoundedCornerShape(16.dp), clip = false),
-        ) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(20.dp))
+                DaengsIconView(icon, Modifier.size(17.dp), tint = accent)
+                // 접혀 있으면 날짜가 이 줄로 올라온다. 접어 놔도 오늘이 며칠인지는
+                // 보여야 한다 — 그게 이 카드를 두는 이유다.
+                if (!expanded) {
+                    Spacer(Modifier.width(10.dp))
                     Text(
-                        "TODAY",
-                        color = DaengPinkDeep,
-                        fontWeight = FontWeight.Bold,
+                        dateLabel,
+                        color = TextDark,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        dateLabel,
+                        color = TextDark,
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                     )
-                    Spacer(Modifier.width(20.dp))
-                    DaengsIconView(icon, Modifier.size(17.dp), tint = accent)
+                    Spacer(Modifier.height(2.dp))
+                    Text(note, color = TextMuted, fontSize = 12.sp)
                 }
-                Spacer(Modifier.height(3.dp))
-                Text(dateLabel, color = TextDark, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                Spacer(Modifier.height(2.dp))
-                Text(note, color = TextMuted, fontSize = 12.sp)
             }
         }
     }
@@ -269,6 +284,19 @@ private fun RoomNameDialogPreview() {
             onConfirm = {},
             onDismiss = {},
         )
+    }
+}
+
+@Preview(name = "TODAY · 접힘/펴짐", showBackground = true, backgroundColor = 0xFFF3D8D2)
+@Composable
+private fun TodayCardFoldPreview() {
+    DaengsTheme {
+        Column(Modifier.padding(12.dp)) {
+            TodayCard(HomeDemoData.MOCK_DATE, "산책 가기 좋은 날!", DaengsIcon.Sun, expanded = true)
+            Spacer(Modifier.height(10.dp))
+            // 접으면 날짜가 첫 줄로 올라온다. 방을 가리지 않으면서 오늘은 알려 준다.
+            TodayCard(HomeDemoData.MOCK_DATE, "산책 가기 좋은 날!", DaengsIcon.Sun, expanded = false)
+        }
     }
 }
 

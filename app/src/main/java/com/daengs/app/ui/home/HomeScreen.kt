@@ -146,6 +146,9 @@ fun HomeScreen(
      * 돌아와야 하는데, 여기서 들면 화면이 바뀔 때 같이 죽는다.
      */
     myOpen: Boolean = false,
+    /** 날씨 카드가 펴져 있나. 접으면 방을 비켜 준다 */
+    weatherOpen: Boolean = true,
+    onToggleWeather: (() -> Unit)? = null,
     onOpenMy: (() -> Unit)? = null,
     onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
@@ -322,6 +325,8 @@ fun HomeScreen(
                 .fillMaxSize(),
         ) {
             RoomSection(
+                weatherOpen = weatherOpen,
+                onToggleWeather = onToggleWeather,
                 state = roomState,
                 catalog = catalog,
                 dateLabel = dateLabel,
@@ -385,6 +390,9 @@ private fun RoomSection(
     frameTimeMs: Long?,
     inventoryOpen: Boolean,
     onToggleInventory: () -> Unit,
+    /** 날씨 카드가 펴져 있나. 접으면 방 왼쪽 위를 비켜 준다 */
+    weatherOpen: Boolean,
+    onToggleWeather: (() -> Unit)?,
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
@@ -487,8 +495,9 @@ private fun RoomSection(
             note = todayNote,
             icon = weatherIcon(outside),
             accent = theme.roomAccent,
-            accentSoft = theme.roomAccentSoft,
             modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
+            expanded = weatherOpen,
+            onToggle = onToggleWeather,
         )
         Column(
             Modifier.align(Alignment.TopEnd).padding(end = 14.dp, top = 14.dp),
