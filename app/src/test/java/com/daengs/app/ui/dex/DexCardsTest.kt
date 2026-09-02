@@ -26,7 +26,6 @@ class DexCardsTest {
             val where = "No.${card.no} ${card.id}"
             assertTrue("$where tagline", card.tagline.isNotBlank())
             assertTrue("$where ko", card.ko.isNotBlank())
-            assertTrue("$where code", card.code.isNotBlank())
             assertTrue("$where type", card.type.isNotBlank())
             assertTrue("$where move", card.move.isNotBlank())
             assertTrue("$where flavor", card.flavor.isNotBlank())
@@ -47,8 +46,19 @@ class DexCardsTest {
 
     @Test
     fun `표는 웹판과 같은 순서다`() {
-        val labels = DEX_CARDS.first().detailRows().map { it.label }
+        val labels = DEX_CARDS.first().detailRows(code = "DG-0824").map { it.label }
         assertEquals(listOf("No.", "Code", "Type", "Move", "CRUNCH"), labels)
+    }
+
+    /**
+     * **번호판은 내 카드에만 있다.** 카탈로그에는 번호가 없다 — 예전에는 저쪽 카드에
+     * 인쇄된 `NEO-0824` 를 박아 뒀는데, 그건 이 저장소를 만든 사람의 강아지 이름이라
+     * 다른 사람 화면에 나오면 안 되는 값이었다. 번호는 아이 생일에서 만든다.
+     */
+    @Test
+    fun `번호를 안 주면 그 줄이 빠진다`() {
+        val labels = DEX_CARDS.first().detailRows().map { it.label }
+        assertEquals(listOf("No.", "Type", "Move", "CRUNCH"), labels)
     }
 
     @Test
@@ -72,7 +82,8 @@ class DexCardsTest {
     /** 기술 부연은 **없는 카드가 있다.** 없으면 빈 문자열이고 화면에서 줄이 빠진다. */
     @Test
     fun `기술 부연은 있는 카드에만 붙는다`() {
-        val move = { no: Int -> DEX_CARDS.single { it.no == no }.detailRows()[3] }
+        // 번호판 줄이 빠져서 기술은 셋째 줄이다.
+        val move = { no: Int -> DEX_CARDS.single { it.no == no }.detailRows()[2] }
         assertTrue(move(1).note.isNotBlank())
         assertTrue(move(2).note.isBlank())
     }

@@ -782,7 +782,7 @@ private fun CardDetailSheet(
             // 인쇄된 값이고, 우리 카드에는 아이 생일에서 만든 번호가 찍혀 있다.
             // 번호판은 **내 카드의 것만** 보여 준다. 카탈로그의 `NEO-0824` 는 저쪽
             // 카드에 인쇄돼 있던 값이라 우리 화면에 나올 이유가 없다.
-            card.detailRows(code = mine?.codeText, showCode = mine != null).forEach { row ->
+            card.detailRows(code = mine?.codeText).forEach { row ->
                 Row(Modifier.padding(vertical = 3.dp)) {
                     Text(
                         row.label,

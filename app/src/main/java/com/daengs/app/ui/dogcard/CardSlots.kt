@@ -409,8 +409,16 @@ private val KeduBold = FontFamily(Font(R.font.keris_kedu_bold, FontWeight.Bold))
 private val TITLE = SlotFace(KeduBold, FontWeight.Bold, 0.06f, 0.60f)
 private val CODE = SlotFace(FontFamily.SansSerif, FontWeight.Black, 0.01f, 0.58f)
 
-/** 생일을 번호판 글자로. 저쪽 `NEO-0824` 가 월일이라 그 자리에 그대로 들어간다. */
-fun birthCode(month: Int, day: Int): String = "NEO-%02d%02d".format(month, day)
+/**
+ * 생일을 번호판 글자로.
+ *
+ * **접두사가 `NEO` 였다.** 저쪽 카드에 인쇄된 `NEO-0824` 를 그대로 흉내 낸 것인데,
+ * 네오는 이 저장소를 만든 사람의 강아지 이름이다. 다른 사람이 쓰면 남의 개 이름이
+ * 자기 카드 번호판에 찍힌다. 앱 이름을 딴 `DG` 로 바꾼다.
+ *
+ * 자릿수는 그대로 둔다 — 번호판 칸이 좁아서 긴 접두사는 글자가 줄어든다.
+ */
+fun birthCode(month: Int, day: Int): String = "DG-%02d%02d".format(month, day)
 
 private fun DrawScope.drawSlotText(
     measurer: TextMeasurer,
