@@ -3,6 +3,8 @@ package com.daengs.app.ui.home
 import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
+import org.junit.Assert.assertFalse
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -10,9 +12,10 @@ import org.junit.Test
 /** 등록한 강아지가 방에 서는가. `miniroom` 과 `pet` 이 만나는 유일한 자리다. */
 class RoomRosterTest {
 
-    private fun pet(id: String, breed: String) = Pet(
+    private fun pet(id: String, breed: String, farewell: LocalDate? = null) = Pet(
         id = id, name = "네옹", breed = breed, sex = null, neutered = null,
         weightKg = null, birthDate = null, birthDateKind = null, isPrimary = false,
+        farewellOn = farewell,
     )
 
     @Test
@@ -51,5 +54,49 @@ class RoomRosterTest {
         val roster = roomRoster(listOf(pet("mix-1", "mix")))
         assertEquals(1, roster.size)
         assertTrue(roster.single() in DogBreed.ROOM_BREEDS)
+    }
+
+    // -- 배웅한 아이 ---------------------------------------------------------
+    //
+    // 방은 매일 보는 자리다. 목록에는 무지개가 붙는데 방에서만 다른 아이들과 똑같이
+    // 돌아다니면 화면 두 곳이 다른 말을 한다.
+
+    @Test
+    fun `배웅한 아이의 자리를 명부와 같은 차례로 준다`() {
+        val gone = LocalDate.of(2026, 3, 14)
+        val pets = listOf(
+            pet("1", "dog_beagle"),
+            pet("2", "dog_welsh_corgi", gone),
+            pet("3", "dog_poodle"),
+        )
+        assertEquals(setOf(1), departedInRoom(pets))
+        // 명부와 첨자가 맞물려야 한다 — 어긋나면 멀쩡한 아이에게 무지개가 붙는다.
+        assertEquals(3, roomRoster(pets).size)
+    }
+
+    @Test
+    fun `배웅한 아이가 없으면 비어 있다`() {
+        assertTrue(departedInRoom(listOf(pet("1", "dog_beagle"))).isEmpty())
+    }
+
+    /**
+     * **견본에는 안 붙인다.** 있지도 않은 아이를 배웅한 것으로 만든다.
+     */
+    @Test
+    fun `못 받아 왔거나 견본일 때는 아무도 아니다`() {
+        assertTrue(departedInRoom(null).isEmpty())
+        assertTrue(departedInRoom(emptyList()).isEmpty())
+        assertFalse(roomRoster(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `여러 마리를 배웅했으면 다 나온다`() {
+        val gone = LocalDate.of(2026, 1, 1)
+        val pets = listOf(
+            pet("1", "dog_beagle", gone),
+            pet("2", "dog_welsh_corgi"),
+            pet("3", "dog_poodle", gone),
+        )
+        assertEquals(setOf(0, 2), departedInRoom(pets))
     }
 }

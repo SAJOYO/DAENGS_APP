@@ -217,7 +217,7 @@ fun HomeScreen(
         ?: HomeDemoData.DOG_BREED
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
-    val herd = rememberDogHerd(roomRoster(pets))
+    val herd = rememberDogHerd(roomRoster(pets), departedInRoom(pets))
     val store = rememberRoomStore()
     // 테마는 id 만 저장한다 — 원시값이라 화면 회전에도 그대로 남는다
     var themeId by rememberSaveable { mutableStateOf(store.loadThemeId() ?: RoomTheme.DEFAULT.id) }

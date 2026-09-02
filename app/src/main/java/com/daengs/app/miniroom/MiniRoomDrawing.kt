@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.IntSize
@@ -16,6 +17,7 @@ import com.daengs.app.miniroom.art.drawDogBreed
 import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.sprite.drawSpriteFrame
 import com.daengs.app.miniroom.sprite.frameIndexAt
+import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.RoomPalette
 import kotlin.math.abs
 import kotlin.math.floor
@@ -221,7 +223,77 @@ fun DrawScope.drawDog(
             }
         }
     }
+
+    // **몸 변형 밖에서 그린다.** 안에서 그리면 좌우 반전과 기울임을 같이 받아서
+    // 무지개가 눕거나 뒤집힌다. 숨쉬기(bob)만 따라가면 머리에 붙어 보인다.
+    if (dog.departed) {
+        // **몸 변형 밖에서 그린다.** 안에서 그리면 좌우 반전에 같이 뒤집혀서 하트가
+        // 몸 뒤로 넘어간다. 바라보는 쪽은 여기서 [DogActor.mirrored] 로 직접 고른다.
+        val ahead = if (dog.mirrored) -HEART_AHEAD else HEART_AHEAD
+        // 아주 느린 박동. `t` 는 마리마다 밀려 있어서 여러 마리를 배웅해도 안 맞춰 뛴다.
+        val beat = 1f + sin(t / 620f) * HEART_BEAT
+        drawHeart(
+            center = Offset(
+                foot.x + art.box.size.width * s * ahead,
+                foot.y - art.box.size.height * s * HEART_UP + bob * s,
+            ),
+            radius = art.box.size.width * s * HEART_R * beat,
+            alpha = alpha,
+        )
+    }
 }
+
+/**
+ * 배웅한 아이 곁의 작은 하트.
+ *
+ * **처음에는 무지개였다.** 흰 띠 세 줄로 아치를 그렸더니 실기기에서 **와이파이 표시로
+ * 보였다** — 같은 중심에서 커지는 호 여러 개는 이미 그 뜻으로 굳은 모양이라, 무엇을
+ * 그렸든 그렇게 읽힌다.
+ *
+ * 하트는 그런 자리가 없다. 그리고 **작게 둘 수 있다** — 무지개는 아치가 읽히려면
+ * 커야 해서 강아지만 해졌는데, 하트는 몇 픽셀이어도 하트다.
+ *
+ * 머리 위가 아니라 **앞에** 둔다. 위에 얹으면 아이콘을 씌운 것 같고, 앞에 있으면
+ * 그 자리에 놓아 둔 것으로 읽힌다.
+ */
+fun DrawScope.drawHeart(center: Offset, radius: Float, alpha: Float = 1f) {
+    val w = radius
+    val h = radius
+    val path = Path().apply {
+        moveTo(center.x, center.y + h * 0.92f)
+        cubicTo(
+            center.x - w * 1.05f, center.y + h * 0.18f,
+            center.x - w * 0.86f, center.y - h * 0.78f,
+            center.x, center.y - h * 0.16f,
+        )
+        cubicTo(
+            center.x + w * 0.86f, center.y - h * 0.78f,
+            center.x + w * 1.05f, center.y + h * 0.18f,
+            center.x, center.y + h * 0.92f,
+        )
+        close()
+    }
+    // 바닥이 나무색이라 분홍이 묻는다. 아래로 살짝 민 그림자 한 겹이면 떠 보인다.
+    translate(0f, radius * 0.16f) {
+        drawPath(path, RoomPalette.Shadow.copy(alpha = 0.22f * alpha))
+    }
+    // **하이라이트를 안 찍는다.** 방 소품들은 다 안쪽 위에 흰 점을 갖고 있어서 따라
+    // 넣었는데, 이 하트는 지름이 열 몇 픽셀이라 빛 반사가 아니라 **얼룩**으로 보였다.
+    // 소품에서 통하는 것이 표시에서는 안 통한다 — 그만큼 작다.
+    drawPath(path, DaengPink.copy(alpha = alpha))
+}
+
+/** 하트 크기 (강아지 그림 가로 대비). **작다** — 소품이 아니라 표시다. */
+private const val HEART_R = 0.15f
+
+/** 몸 중심에서 앞쪽으로 (그림 상자 가로 대비). */
+private const val HEART_AHEAD = 0.40f
+
+/** 발밑에서 띄우는 높이 (그림 상자 세로 대비). 가슴께다. */
+private const val HEART_UP = 0.34f
+
+/** 하트가 뛰는 폭. 아주 작게 — 크게 뛰면 장식이 아니라 알림이 된다. */
+private const val HEART_BEAT = 0.07f
 
 /** 화면 좌표가 이 강아지 위인가. 그리는 순서와 무관하게 판정한다. */
 fun DogActor.hitTest(pos: Offset, art: ItemArt, g: RoomGeometry): Boolean {

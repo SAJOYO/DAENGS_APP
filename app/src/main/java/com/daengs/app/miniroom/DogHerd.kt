@@ -67,6 +67,16 @@ class DogActor(
      * ([com.daengs.app.miniroom.art.DogPose]), 그걸 즉시 하면 몸이 순간이동한다.
      */
     var stand: Float = 0f
+
+    /**
+     * 배웅한 아이인가.
+     *
+     * **자기 자리에 앉는다.** 목록에서는 무지개가 붙는데 방에서는 다른 아이들과 똑같이
+     * 돌아다니면, 화면 두 곳이 다른 말을 한다. 방은 매일 보는 자리라 더 그렇다.
+     *
+     * 방에서 빼지 않는다 — 배웅은 지우는 것이 아니다.
+     */
+    var departed: Boolean = false
 }
 
 /**
@@ -94,6 +104,12 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
 
     /** 개발자 도구가 덮어쓴 견종. null 이면 명부대로 선다. */
     private var breedOverride: DogBreed? = null
+
+    /**
+     * 배웅한 아이의 명부 자리. 견종과 따로 두는 이유는 [setRoster] 가 자리를 유지하기
+     * 때문이다 — 명부가 갱신될 때마다 이 값도 [applyRoster] 에서 다시 얹어야 한다.
+     */
+    private var departedAt: Set<Int> = emptySet()
 
     var dogs: List<DogActor> = emptyList()
         private set
@@ -172,7 +188,22 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
     }
 
     private fun applyRoster() {
-        dogs.forEachIndexed { i, d -> d.breed = breedOverride ?: roster[i] }
+        dogs.forEachIndexed { i, d ->
+            d.breed = breedOverride ?: roster[i]
+            d.departed = i in departedAt
+        }
+    }
+
+    /**
+     * 배웅한 아이가 명부의 몇 번째인가.
+     *
+     * 명부와 따로 받는다. 견종은 안 바뀌었는데 배웅만 한 경우가 있고([setRoster] 는
+     * 그때 일찍 빠져나간다), 반대로 강아지를 새로 등록해 명부만 늘어난 경우도 있다.
+     */
+    fun setDeparted(indices: Set<Int>) {
+        if (indices == departedAt) return
+        departedAt = indices
+        dogs.forEachIndexed { i, d -> d.departed = i in indices }
     }
 
     fun byId(id: Int): DogActor? = dogs.firstOrNull { it.id == id }
@@ -338,6 +369,12 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
             // 처음 자리가 나빴거나, 서 있는 자리에 가구가 놓였다. 충돌을 무시하고
             // 가까운 빈 칸으로 걸어 나온다 — 순간이동시키면 눈에 띄게 튄다.
             val trapped = blockedAt(d.pos.x, d.pos.y, blocked, d.bodyRadius)
+            // **배웅한 아이는 제자리에 앉는다.** 가구에 깔린 경우에만 걸어 나온다 —
+            // 안 그러면 서랍장 밑에 낀 채로 영영 앉아 있는다.
+            if (d.departed && !trapped) {
+                d.moving = false
+                continue
+            }
             if (trapped) {
                 d.target = nearestFree(d.pos, blocked)
                 d.restUntil = 0L
@@ -455,8 +492,10 @@ val DogActor.depthCell: Int get() = floor(pos.x).toInt() + floor(pos.y).toInt()
  * ([DogHerd.setRoster]).
  */
 @Composable
-fun rememberDogHerd(roster: List<DogBreed>): DogHerd {
+fun rememberDogHerd(roster: List<DogBreed>, departed: Set<Int> = emptySet()): DogHerd {
     val herd = remember { DogHerd(roster) }
     remember(roster) { herd.setRoster(roster); roster }
+    // 명부 **뒤에** 얹는다. setRoster 가 는 마리를 새로 만들면서 이 표시를 지운다.
+    remember(roster, departed) { herd.setDeparted(departed); departed }
     return herd
 }

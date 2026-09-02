@@ -27,6 +27,7 @@ import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.art.itemSpecs
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 
@@ -45,6 +46,28 @@ private fun MiniRoomCanvasPreview() {
 }
 
 /** 문이 반쯤 열린 상태. 무한 애니메이션은 미리보기에서 안 돌아서 값을 찍어준다. */
+/**
+ * 배웅한 아이가 있는 방.
+ *
+ * 하트가 **얼마나 작아야 하는지**를 여기서 본다. 실기기에서는 폰을 들고 방을 열어야
+ * 하는데, 이 표시는 크기 하나로 성패가 갈린다 — 크면 소품이 되고 작으면 안 보인다.
+ */
+@Preview(name = "배웅한 아이", widthDp = 411, heightDp = 380, showBackground = true, backgroundColor = 0xFFFDF1EC)
+@Composable
+private fun MiniRoomDepartedPreview() {
+    DaengsTheme {
+        MiniRoomCanvas(
+            state = rememberMiniRoomState(),
+            catalog = rememberItemCatalog(),
+            // 셋 중 가운데 아이만 배웅했다. 나머지 둘과 나란히 놓고 봐야 표시가
+            // 눈에 띄는지, 너무 튀는지를 잴 수 있다.
+            herd = rememberDogHerd(DogBreed.demoRoster(3), departed = setOf(1)),
+            modifier = Modifier.fillMaxWidth().aspectRatio(RoomSpec.ASPECT),
+            frameTimeMs = 400L,
+        )
+    }
+}
+
 @Preview(widthDp = 411, heightDp = 380, showBackground = true, backgroundColor = 0xFFFDF1EC)
 @Composable
 private fun MiniRoomDoorOpenPreview() {
