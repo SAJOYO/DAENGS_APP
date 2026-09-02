@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -98,6 +99,7 @@ fun MyScreen(
     onDismissWithdraw: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var confirming by rememberSaveable { mutableStateOf(false) }
     // 어느 아이를 지우려는지. **카드가 아니라 화면이 들고 있다** — 목록이 새로
     // 오면서 카드가 다시 만들어져도 창이 안 닫힌다.
@@ -131,6 +133,12 @@ fun MyScreen(
             )
             Spacer(Modifier.height(14.dp))
         }
+
+        // 로그인 여부와 무관하게 앱 안에서 언제든 찾을 수 있어야 합니다.
+        Section {
+            MyRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
+        }
+        Spacer(Modifier.height(14.dp))
 
         if (signedIn) {
             Section {

@@ -409,7 +409,11 @@ fun ChatScreen(
                 entries.forEach { entry ->
                     when (entry) {
                         is ChatEntry.Mine -> UserBubble(entry.text)
-                        is ChatEntry.Theirs -> AssistantBubble(entry.text, avatar)
+                        is ChatEntry.Theirs -> AssistantBubble(
+                            entry.text,
+                            avatar,
+                            reportable = true,
+                        )
                         ChatEntry.Thinking -> AssistantBubble("생각하는 중이에요…", avatar)
                         is ChatEntry.MyPhoto -> PhotoBubble(entry.image)
                         ChatEntry.Screening -> AssistantBubble("사진을 살펴보는 중이에요…", avatar)
@@ -713,7 +717,7 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
  * (내 말풍선, 구조화 카드)는 서버 자유 텍스트가 아니라 마크다운을 볼 이유가 없다.
  */
 /**
- * 챗봇이 한 말. **길게 누르면 복사된다.**
+ * 챗봇이 한 말. AI가 생성한 답변은 **길게 누르면 복사·신고 메뉴가 뜹니다.**
  *
  * 메신저와 같은 손버릇이라 따로 안내하지 않아도 찾는다. 말풍선마다 복사 아이콘을
  * 달면 대화가 길어질수록 화면이 아이콘으로 덮인다.
@@ -723,10 +727,23 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
  */
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun AssistantBubble(text: String, avatar: DogBreed?) {
+private fun AssistantBubble(
+    text: String,
+    avatar: DogBreed?,
+    reportable: Boolean = false,
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val shown = assistantMarkdown(text)
+    var actionsOpen by remember { mutableStateOf(false) }
+    var reportConfirmOpen by remember { mutableStateOf(false) }
+    val copyShownText = {
+        // 원문 마크다운이 아니라 화면에 보이는 글자를 복사합니다.
+        clipboard.setText(AnnotatedString(shown.text))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(context, "복사했어요", Toast.LENGTH_SHORT).show()
+        }
+    }
     Row(verticalAlignment = Alignment.Top) {
         ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
@@ -739,17 +756,7 @@ private fun AssistantBubble(text: String, avatar: DogBreed?) {
                     // 짧게 누르는 것은 아무 일도 안 한다. 말풍선은 누르는 것이 아니다.
                     onClick = {},
                     onLongClick = {
-                        // ⚠️ **원문이 아니라 화면에 보이는 글자를 담는다.**
-                        //    서버 답변은 마크다운이라 원문을 그대로 복사하면 붙여넣은
-                        //    곳에 `**굵게**` 의 별표가 같이 간다. [assistantMarkdown] 이
-                        //    이미 표시를 걷어낸 문자열을 들고 있으므로 그것을 쓴다.
-                        clipboard.setText(AnnotatedString(shown.text))
-                        // ⚠️ **안드로이드 13(API 33)부터는 시스템이 알아서 알린다.**
-                        //    거기서 우리 것까지 띄우면 "복사됨" 이 두 번 뜬다.
-                        //    minSdk 가 26이라 그 아래 기기에서는 우리가 알려야 한다.
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                            Toast.makeText(context, "복사했어요", Toast.LENGTH_SHORT).show()
-                        }
+                        if (reportable) actionsOpen = true else copyShownText()
                     },
                 ),
         ) {
@@ -760,6 +767,130 @@ private fun AssistantBubble(text: String, avatar: DogBreed?) {
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(14.dp),
             )
+        }
+    }
+    if (actionsOpen) {
+        AssistantActionsDialog(
+            onCopy = {
+                actionsOpen = false
+                copyShownText()
+            },
+            onReport = {
+                actionsOpen = false
+                reportConfirmOpen = true
+            },
+            onDismiss = { actionsOpen = false },
+        )
+    }
+    if (reportConfirmOpen) {
+        ReportAnswerDialog(
+            onConfirm = {
+                reportConfirmOpen = false
+                val opened = openReportEmail(context, shown.text)
+                Toast.makeText(
+                    context,
+                    if (opened) {
+                        "메일 앱을 열었어요. 신고 이유를 적고 보내 주세요."
+                    } else {
+                        "메일 앱을 찾을 수 없어요. $REPORT_EMAIL 로 신고해 주세요."
+                    },
+                    Toast.LENGTH_LONG,
+                ).show()
+            },
+            onDismiss = { reportConfirmOpen = false },
+        )
+    }
+}
+
+@Composable
+private fun AssistantActionsDialog(
+    onCopy: () -> Unit,
+    onReport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        AssistantActionsContent(onCopy, onReport)
+    }
+}
+
+@Composable
+private fun AssistantActionsContent(onCopy: () -> Unit, onReport: () -> Unit) {
+    Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            AssistantAction("복사", TextDark, onCopy)
+            AssistantAction("신고", DaengsColors.Error, onReport)
+        }
+    }
+}
+
+@Composable
+private fun AssistantAction(label: String, tint: Color, onClick: () -> Unit) {
+    Text(
+        label,
+        color = tint,
+        fontSize = 15.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+    )
+}
+
+@Composable
+private fun ReportAnswerDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        ReportAnswerContent(onConfirm, onDismiss)
+    }
+}
+
+@Composable
+private fun ReportAnswerContent(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(22.dp)) {
+            Text(
+                "이 AI 답변을 신고할까요?",
+                color = TextDark,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "답변 내용이 신고 메일에 포함돼요. 메일 앱에서 이유를 적고 보내 주세요.",
+                color = TextMuted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                AssistantDialogAction("취소", TextMuted, onDismiss)
+                Spacer(Modifier.width(6.dp))
+                AssistantDialogAction("메일 열기", DaengsColors.Error, onConfirm)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantDialogAction(label: String, tint: Color, onClick: () -> Unit) {
+    Text(
+        label,
+        color = tint,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun ReportActionsPreview() {
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            AssistantActionsContent({}, {})
+            ReportAnswerContent({}, {})
         }
     }
 }
