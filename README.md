@@ -40,6 +40,28 @@ sdk.dir=C:/Users/<이름>/AppData/Local/Android/Sdk
 **슬래시(`/`)로 쓰는 게 편하다.** 역슬래시를 쓰면 `C\:\\Users\\...` 처럼 두 번 겹쳐
 써야 하고, 하나라도 틀리면 `java.io.IOException: Invalid file path` 가 난다.
 
+### 출시용 업로드 키 (선택)
+
+**없어도 개발에는 지장이 없다.** 릴리즈 빌드가 서명 없이 나가고 경고만 뜬다 —
+컴파일과 용량 확인에는 그대로 쓸 수 있고, 설치·업로드만 안 된다.
+
+```properties
+daengs.uploadKeyStore=keystore/upload.jks
+daengs.uploadKeyAlias=daengs-upload
+daengs.uploadKeyPassword=<비밀번호>
+```
+
+- **이건 "업로드 키" 다.** Play 앱 서명을 쓰므로 진짜 앱 서명 키는 구글이 만들어
+  보관하고, 우리는 올릴 때 신원을 증명하는 이 키만 갖는다. 잃어도 Play Console 에서
+  재설정할 수 있다 — 그래도 잃지 않는 편이 낫다
+- ⚠️ **키 파일과 비밀번호는 저장소에 안 들어간다.** `.gitignore` 가 `*.jks` 를
+  막고 있고 `local.properties` 도 원래 무시된다. **팀원과는 저장소 밖에서 나눈다**
+- 새로 만들려면:
+
+  ```bash
+  keytool -genkeypair -v -keystore keystore/upload.jks     -alias daengs-upload -keyalg RSA -keysize 4096 -validity 10000
+  ```
+
 ### 출시 빌드는 다른 서버를 본다
 
 **개발은 지금 개발 서버 그대로 쓰고, 릴리즈만 GCP 의 https 서버를 본다.** 개발

@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/** Canonical kind vocabulary exposed by the server's `PlaceKind` schema. */
+/** 서버 `PlaceKind` 스키마가 정한 종류 목록. 이름을 여기서 새로 만들지 않는다. */
 enum class PlaceKind(val wire: String) {
     HOSPITAL("hospital"),
     PHARMACY("pharmacy"),
@@ -90,7 +90,12 @@ enum class DogAccessState {
     }
 }
 
-/** Stable source-record identity. This is deliberately not an internal database id. */
+/**
+ * 원본 레코드를 가리키는 안정된 식별자.
+ *
+ * **일부러 내부 DB id 가 아니다.** DB id 는 우리 사정으로 바뀔 수 있어서
+ * 클라이언트가 붙잡고 있을 값이 못 된다.
+ */
 data class PlaceKey(
     val source: String,
     val ref: String,
@@ -138,7 +143,10 @@ data class MedicalFacts(
     val staffCount: Int?,
 )
 
-/** Nullable booleans remain three-state facts: unknown is never converted to false. */
+/**
+ * null 을 허용하는 boolean 은 **세 가지 상태**를 뜻한다 — 예 · 아니오 · 모름.
+ * 모름을 false 로 바꾸지 않는다. 안 물어본 것과 아니라고 답한 것은 다르다.
+ */
 data class PlaceFacts(
     val address: String?,
     val phone: String?,
@@ -167,7 +175,7 @@ data class PlaceResult(
 
 data class DogAccessEvaluation(
     val state: DogAccessState,
-    /** Kept as a wire string so a newly added server reason is not discarded. */
+    /** 서버가 준 문자열 그대로 둔다. 사유가 새로 생겨도 앱이 버리지 않게. */
     val reason: String,
 )
 
@@ -188,7 +196,7 @@ data class BooleanFactCoverage(
 
 data class PlaceSort(
     val type: PlaceSortType,
-    /** Server-owned ranking vocabulary, kept in order for honest UI explanations. */
+    /** 정렬 기준은 서버가 정한다. **순서를 지켜야** 화면에서 왜 이 순서인지 설명할 수 있다. */
     val basis: List<String>,
     val applied: List<String>,
     val bandMeters: Int?,
@@ -212,7 +220,7 @@ data class PlaceSearchConditions(
 
 data class PlaceSearchResponse(
     val conditions: PlaceSearchConditions?,
-    /** The server preserves requested kind order; the client must preserve group order too. */
+    /** 서버가 요청한 종류 순서를 지켜서 준다. 앱도 그룹 순서를 흐트러뜨리면 안 된다. */
     val groups: List<PlaceSearchGroup>,
 )
 

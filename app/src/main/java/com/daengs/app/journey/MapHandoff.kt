@@ -9,7 +9,12 @@ import java.net.URI
 
 private const val NAVER_MAP_PACKAGE = "com.nhn.android.nmap"
 
-/** Only the server-owned NAVER route scheme may cross into an external Intent. */
+/**
+ * 밖으로 나가는 Intent 에는 **서버가 준 네이버 경로 스킴만** 통과시킨다.
+ *
+ * 서버에서 받은 문자열을 그대로 `startActivity` 에 넘기는 자리라, 검사 없이 두면
+ * 엉뚱한 앱이나 주소로 사용자를 보낼 수 있다.
+ */
 fun isTrustedNaverHandoff(url: String): Boolean {
     val uri = runCatching { URI.create(url) }.getOrNull() ?: return false
     return uri.scheme == "nmap" && uri.host == "route" && uri.path.trimStart('/').substringBefore('/') in

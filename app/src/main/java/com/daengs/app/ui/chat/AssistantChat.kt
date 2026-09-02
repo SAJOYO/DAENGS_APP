@@ -6,6 +6,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.WalkVerdict
 
 /**
  * [AssistantResponse] → 화면이 할 일. 순수 함수로 빼 둔 이유는 이 매핑 자체가
@@ -20,6 +21,42 @@ internal fun AssistantResponse.bubbleMessage(): String =
     } else {
         message
     }
+
+/**
+ * 말풍선 아래 얹을 산책 카드. 없으면 null 이다.
+ *
+ * **등급을 모를 때는 카드를 안 띄운다.** 저쪽이 관측 자료가 모자라면 `ABSTAINED` 로
+ * "현재 관측 자료만으로 산책 조건을 판단할 수 없습니다." 를 보내는데, 그건 판정이
+ * 아니라 못 하겠다는 말이라 등급 칸과 시간대 칸이 있는 카드에 담을 것이 없다.
+ * 그때는 저쪽 문장을 그대로 말풍선으로 보여주는 편이 정직하다.
+ */
+internal fun AssistantResponse.walkCard(): WalkVerdict? =
+    walk?.takeIf { it.grade != WalkVerdict.Grade.UNKNOWN }
+
+/**
+ * 산책만 물었을 때 저쪽 한 줄을 갈음할 말풍선. 그 밖에는 null 이고, 그때는
+ * [bubbleMessage] 를 그대로 쓴다.
+ *
+ * **여기는 챗봇이다.** 저쪽 `message` 는 `"현재 산책 판단: GOOD"` 인데 이건 사람이
+ * 대화에서 들을 말이 아니다. 등급에 붙은 이름으로 바꿔 띄우고, 근거와 시간대는
+ * 아래 카드가 맡는다.
+ *
+ * **문장을 지어내는 게 아니라 등급의 이름을 붙이는 것이다.** 매핑은 [walkSentenceOf]
+ * 하나뿐이고 등급마다 한 줄씩 고정이다 — 값을 보고 말을 만들지 않는다.
+ *
+ * 능력이 둘 이상이면 갈음하지 않는다. 그때 `message` 는 `"[산책]\n…\n\n[훈련]\n…"`
+ * 처럼 라벨을 붙여 이어붙은 것이라, 갈아 끼우면 **산책이 아닌 답변까지 사라진다.**
+ */
+internal fun AssistantResponse.walkSentence(): String? =
+    walkCard()?.takeIf { resultCount <= 1 }?.let { walkSentenceOf(it.grade) }
+
+internal fun walkSentenceOf(grade: WalkVerdict.Grade): String = when (grade) {
+    WalkVerdict.Grade.GOOD -> "지금은 산책하기 좋아요."
+    WalkVerdict.Grade.CAUTION -> "나가도 되지만 조심하는 게 좋아요."
+    WalkVerdict.Grade.UNSAFE -> "지금은 안 나가는 게 좋겠어요."
+    // [walkCard] 가 막아서 여기까지 오지 않는다. 그래도 말할 것은 둔다.
+    WalkVerdict.Grade.UNKNOWN -> "지금 자료로는 판단하기 어려워요."
+}
 
 /** 화면이 실제로 재사용할 수 있는 handoff 대상. 그 밖의 target 은 서버 메시지만 보여주고 끝난다. */
 internal enum class KnownHandoff { GAIT, SKIN }

@@ -30,6 +30,12 @@ data class Pet(
     val weightKg: Float?,
     val birthDate: LocalDate?,
     val birthDateKind: BirthDateKind?,
+    /**
+     * 배웅한 날. **null 이면 아직 함께 있는 아이다.**
+     *
+     * 삭제와 다른 값이다 — 이 날짜가 차도 아이는 목록에 남고 함께한 산책도 카드도 남는다.
+     */
+    val farewellOn: LocalDate? = null,
     val isPrimary: Boolean,
 ) {
     /** 이 견종의 얼굴 그림. 모르는 견종(믹스 등)이면 null 이고, 화면이 대체 얼굴을 쓴다. */
@@ -54,6 +60,23 @@ data class Pet(
      */
     enum class BirthDateKind { BIRTHDAY, FAMILY_DAY }
 
+    /**
+     * 지금 값을 그대로 담은 초안.
+     *
+     * **서버가 PUT 이라 필요하다.** 한 칸만 바꾸려 해도 나머지를 다 실어 보내야 하는데,
+     * 부르는 쪽마다 손으로 옮겨 적으면 언젠가 한 칸을 빠뜨리고 그 칸이 null 로 덮인다.
+     */
+    fun toDraft(): PetDraft = PetDraft(
+        name = name,
+        breed = breed,
+        sex = sex,
+        neutered = neutered,
+        weightKg = weightKg,
+        birthDate = birthDate,
+        birthDateKind = birthDateKind,
+        farewellOn = farewellOn,
+    )
+
     companion object {
         fun parse(json: JSONObject): Pet = Pet(
             id = json.getString("id"),
@@ -74,6 +97,7 @@ data class Pet(
                 "family_day" -> BirthDateKind.FAMILY_DAY
                 else -> null
             },
+            farewellOn = json.optStringOrNull("farewell_on")?.let(LocalDate::parse),
             isPrimary = json.optBoolean("is_primary"),
         )
 
@@ -93,6 +117,14 @@ data class PetDraft(
     val weightKg: Float? = null,
     val birthDate: LocalDate? = null,
     val birthDateKind: Pet.BirthDateKind? = null,
+    /**
+     * 배웅한 날.
+     *
+     * ⚠️ **수정 화면도 이 값을 그대로 실어 보내야 한다.** 서버가 PATCH 가 아니라 PUT
+     * 이라 안 보낸 칸은 null 로 덮인다 — 몸무게 한 번 고쳤다고 배웅한 날이 지워지면
+     * 안 된다.
+     */
+    val farewellOn: LocalDate? = null,
 ) {
     /**
      * 보낼 수 있는 상태인가.
@@ -112,6 +144,7 @@ data class PetDraft(
         put("neutered", neutered ?: JSONObject.NULL)
         put("weight_kg", weightKg ?: JSONObject.NULL)
         put("birth_date", birthDate?.toString() ?: JSONObject.NULL)
+        put("farewell_on", farewellOn?.toString() ?: JSONObject.NULL)
         put(
             "birth_date_kind",
             when (birthDateKind) {

@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.daengs.app.assistant.AssistantApi
+import com.daengs.app.assistant.WalkVerdict
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
@@ -132,6 +133,14 @@ private sealed interface ChatEntry {
     data class Report(val report: ScreeningReport) : ChatEntry
 
     data class Failed(val message: String) : ChatEntry
+
+    /**
+     * 산책 판정 카드. 저쪽이 준 판정을 그대로 그린다 ([WalkVerdict] · [WalkVerdictCard]).
+     *
+     * 등급 · 이유 · 추천 시간대가 있어야 해서 말풍선이 아니라 카드다. 보행 카드와
+     * 다른 점은 **누를 것이 없다는 것** — 여기서 시작되는 흐름이 없고 결과만 남는다.
+     */
+    data class WalkCard(val verdict: WalkVerdict) : ChatEntry
 
     /** 보행 흐름의 첫 카드. 영상을 어디서 가져올지 고르는 자리다. */
     data object GaitIntro : ChatEntry
@@ -357,7 +366,13 @@ fun ChatScreen(
             val where = runCatching { fused.currentLocation().point }.getOrNull()
             AssistantApi.query(token, text, where)
                 .onSuccess { response ->
-                    entries[slot] = ChatEntry.Theirs(response.bubbleMessage())
+                    // 대기 자리를 답으로 갈아 끼운다. 산책만 물었으면 저쪽 한 줄
+                    // ("현재 산책 판단: GOOD") 대신 대화체 문장을 쓰고 ([walkSentence]),
+                    // 근거와 시간대는 아래 카드가 맡는다.
+                    entries[slot] = ChatEntry.Theirs(
+                        response.walkSentence() ?: response.bubbleMessage(),
+                    )
+                    response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
                     when (response.knownHandoff()) {
                         // 실행하지 않는다 — 기존 흐름을 그대로 연다. 보행은 카드를
                         // 하나 더 얹고, 피부는 이미 있는 선택 시트를 스킨 전용으로 연다.
@@ -432,6 +447,10 @@ fun ChatScreen(
                         // 바탕에 테두리를 가져서, 말풍선을 한 겹 더 두르면 흰 상자
                         // 안의 흰 상자가 된다. 대신 아바타 자리만큼 왼쪽을 비워
                         // 두어 "AI 가 준 것" 이라는 줄맞춤은 지킨다.
+                        is ChatEntry.WalkCard -> BesideAvatar {
+                            WalkVerdictCard(entry.verdict)
+                        }
+
                         ChatEntry.GaitIntro -> BesideAvatar {
                             GaitIntroCard(
                                 onCapture = { gaitCapture = true },

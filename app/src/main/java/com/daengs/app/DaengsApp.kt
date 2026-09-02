@@ -1,6 +1,10 @@
 package com.daengs.app
 
 import android.app.Application
+import com.daengs.app.dogcard.CardFiles
+import com.daengs.app.dogcard.CardStore
+import com.daengs.app.dogcard.RoomCardStore
+import com.daengs.app.dogcard.store.CardDatabase
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.walk.ForegroundWalkTrackingController
 import com.daengs.app.walk.WalkFixWriter
@@ -32,6 +36,13 @@ class DaengsApp : Application() {
     lateinit var walkRuntime: WalkRuntime
         private set
 
+    /**
+     * 뽑아 놓은 카드. **산책과 DB 파일을 나눠 뒀다** — 탈퇴 때 통째로 지우는 산책과
+     * 달리 카드는 나중에 파는 재화라 지우는 규칙이 정반대다 (`CardDatabase` 주석).
+     */
+    lateinit var cardStore: CardStore
+        private set
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank()) {
@@ -42,6 +53,11 @@ class DaengsApp : Application() {
             NaverMapSdk.getInstance(this).client =
                 NaverMapSdk.NcpKeyClient(BuildConfig.NAVER_MAP_NCP_KEY_ID)
         }
+
+        cardStore = RoomCardStore(
+            dao = CardDatabase.open(this).cardDao(),
+            files = CardFiles(this),
+        )
 
         val store = WalkTrackingStore()
         val log = RoomWalkFixLog(WalkDatabase.open(this).walkDao())

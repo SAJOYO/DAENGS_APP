@@ -75,6 +75,23 @@ val naverMapClientId = localSetting("daengs.naverMapClientId")
 // **없으면 기본 네이버 지도로 뜬다** — 앱은 정상 동작하고, 스타일만 안 입는다.
 val naverMapStyleId = localSetting("daengs.naverMapStyleId")
 
+/**
+ * 플레이스토어 업로드 키.
+ *
+ * **Play 앱 서명을 쓰므로 이건 "업로드 키" 다.** 진짜 앱 서명 키는 구글이 만들어
+ * 보관하고, 우리는 올릴 때 신원을 증명하는 이 키만 갖는다. 그래서 이 키를 잃어도
+ * Play Console 에서 재설정할 수 있다 — 그래도 잃지 않는 편이 낫다.
+ *
+ * **비어 있으면 릴리즈에 서명하지 않는다.** 키를 못 받은 사람도 `assembleRelease` 로
+ * 컴파일과 용량은 확인할 수 있어야 한다. 그때는 아래에서 경고를 낸다.
+ */
+val uploadKeyStore = localSetting("daengs.uploadKeyStore")
+val uploadKeyAlias = localSetting("daengs.uploadKeyAlias")
+val uploadKeyPassword = localSetting("daengs.uploadKeyPassword")
+val uploadKeyFile = uploadKeyStore.takeIf { it.isNotBlank() }?.let { rootProject.file(it) }
+val canSignRelease = uploadKeyFile?.exists() == true &&
+    uploadKeyAlias.isNotBlank() && uploadKeyPassword.isNotBlank()
+
 android {
     namespace = "com.daengs.app"
     compileSdk {
@@ -128,6 +145,16 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+
+        // 업로드 키. **파일이 있을 때만 만든다** — 키가 없는 사람의 빌드가 깨지면 안 된다.
+        if (canSignRelease) {
+            create("upload") {
+                storeFile = uploadKeyFile
+                storePassword = uploadKeyPassword
+                keyAlias = uploadKeyAlias
+                keyPassword = uploadKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -141,6 +168,16 @@ android {
         release {
             optimization {
                 enable = false
+            }
+            // 서명. 키가 없으면 서명 없이 나가고 경고만 낸다 — 서명 없는 AAB 는
+            // 업로드도 설치도 안 되지만, 컴파일과 용량 확인에는 쓸 수 있다.
+            if (canSignRelease) {
+                signingConfig = signingConfigs.getByName("upload")
+            } else {
+                logger.warn(
+                    "⚠ 업로드 키가 없어 릴리즈에 서명하지 않습니다. " +
+                        "local.properties 의 daengs.uploadKeyStore 를 확인하세요.",
+                )
             }
             // 출시 서버. https 라 평문 예외가 필요 없다.
             buildConfigField(
@@ -191,6 +228,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
+    implementation(libs.mlkit.subject.segmentation)
     implementation(libs.naver.map.sdk)
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.serialization.json)

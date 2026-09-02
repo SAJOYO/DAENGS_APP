@@ -39,6 +39,9 @@ enum class DaengsIcon {
 
     // 보행 영상.
     Video, VideoLibrary, Play, Chart, Compare, Check, Close, Trash, Bulb, Joint,
+
+    /** 배웅한 아이 표시. **이 아이콘만 tint 를 안 쓴다** — 무지개는 색이 곧 뜻이다. */
+    Rainbow,
 }
 
 @Composable
@@ -66,6 +69,7 @@ fun DaengsIconView(
                 DaengsIcon.ChevronRight -> iconChevronRight(tint)
                 DaengsIcon.CaretDown -> iconCaretDown(tint)
                 DaengsIcon.Sun -> iconSun(tint)
+                DaengsIcon.Rainbow -> iconRainbow()
                 DaengsIcon.Moon -> iconMoon(tint)
                 DaengsIcon.Cloud -> iconCloud(tint)
                 DaengsIcon.CloudRain -> iconCloudRain(tint)
@@ -357,6 +361,37 @@ private fun DrawScope.iconCaretDown(tint: Color) {
         moveTo(7.5f, 10f); lineTo(12f, 14.5f); lineTo(16.5f, 10f); close()
     }
     drawPath(p, tint)
+}
+
+/**
+ * 무지개. 배웅한 아이 옆에 붙는다.
+ *
+ * **[tint] 를 안 받는다.** 다른 아이콘은 색이 장식이지만 무지개는 색이 곧 뜻이라,
+ * 한 색으로 칠하면 아무것도 아닌 반원이 된다.
+ *
+ * 일곱 겹은 24px 안에서 뭉친다. 다섯 겹으로 줄이고 두께를 키웠다.
+ */
+private fun DrawScope.iconRainbow() {
+    val bands = listOf(
+        Color(0xFFE86A6A),
+        Color(0xFFF0A23C),
+        Color(0xFFF2D24B),
+        Color(0xFF6FBF73),
+        Color(0xFF5B8FD9),
+    )
+    val stroke = 1.7f
+    bands.forEachIndexed { i, color ->
+        val r = 9.5f - i * stroke
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(12f - r, 16f - r),
+            size = Size(r * 2f, r * 2f),
+            style = Stroke(width = stroke, cap = StrokeCap.Butt),
+        )
+    }
 }
 
 private fun DrawScope.iconSun(tint: Color) {

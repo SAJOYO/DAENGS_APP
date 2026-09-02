@@ -30,8 +30,10 @@ data class PlaceDiscoveryState(
 )
 
 /**
- * Owns canonical Place request lifecycle so MapViewModel does not absorb another feature's
- * request construction, retry memory, and stale-response rules.
+ * 장소 검색 요청의 생애를 맡는다.
+ *
+ * 요청 만들기 · 재시도 기억 · 늦게 온 응답 버리기를 여기 모아 둬서, `MapViewModel` 이
+ * 남의 기능 사정까지 떠안지 않게 한다.
  */
 class PlaceDiscoveryController(
     private val repository: PlaceSearchRepository,

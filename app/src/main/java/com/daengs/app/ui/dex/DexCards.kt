@@ -38,7 +38,6 @@ data class DexCard(
     val ko: String,
     /** 한 줄 부제. 설명 시트 맨 위. */
     val tagline: String,
-    val code: String,
     val type: String,
     val move: String,
     /** 기술 부연. **없는 카드가 있다** — 저쪽에서 빈 문자열이면 여기서도 비운다. */
@@ -77,9 +76,18 @@ data class DetailRow(val label: String, val value: String, val note: String = ""
  * **스탯 라벨이 빈 카드(No.11 토마토)는 `Stat` 으로 떨어진다.** 그 카드만 스탯 바에
  * 라벨이 안 찍혀 있어서 저쪽이 비워 뒀고, 웹도 같은 자리에 `Stat` 을 쓴다.
  */
-fun DexCard.detailRows(total: Int = DEX_CARDS.size): List<DetailRow> = listOf(
+fun DexCard.detailRows(
+    total: Int = DEX_CARDS.size,
+    /** 내 카드의 번호판. null 이면 카탈로그의 것을 쓴다 */
+    /**
+     * 번호판. **카탈로그에는 없다** — 예전에는 `NEO-0824` 를 박아 뒀는데, 저쪽 카드에
+     * 인쇄돼 있던 값이라 우리 화면에 나올 이유가 없었다. 번호는 내 카드에만 있고
+     * 아이 생일에서 만든다(`birthCode`). null 이면 그 줄이 아예 안 나온다.
+     */
+    code: String? = null,
+): List<DetailRow> = listOfNotNull(
     DetailRow("No.", "${pad2(no)} / ${pad2(total)}"),
-    DetailRow("Code", code),
+    code?.let { DetailRow("Code", it) },
     DetailRow("Type", type),
     DetailRow("Move", move, moveNote),
     DetailRow(statLabel.ifBlank { "Stat" }, stat.toString()),
@@ -102,9 +110,8 @@ private fun pad2(value: Int): String = value.toString().padStart(2, '0')
  */
 val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
-        no = 1, id = "cabbage", name = "Cabbage Neo", ko = "캐비지 네오",
-        tagline = "강아지인지 채소인지 끝내 모를",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 1, id = "cabbage", name = "Cabbage", ko = "배추",
+        tagline = "강아지인지 채소인지 끝내 모를", type = "VEGGIE DOG",
         move = "LEAFY LOOK",
         moveNote = "Opponent stunned by awkward cuteness.",
         statLabel = "CRUNCH", stat = 820,
@@ -113,9 +120,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Prism, accent = Color(0xFF8FD94A),
     ),
     DexCard(
-        no = 2, id = "pepper", name = "Pepper Neo", ko = "페퍼 네오",
-        tagline = "노랗고 수상하게 강한",
-        code = "NEO-Y0824", type = "VEGGIE DOG",
+        no = 2, id = "pepper", name = "Pepper", ko = "피망",
+        tagline = "노랗고 수상하게 강한", type = "VEGGIE DOG",
         move = "YELLOW SHOCK",
         statLabel = "CRISP", stat = 860,
         flavor = "Sweet face. Zero warning. Maximum pepper.",
@@ -123,9 +129,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Prism, accent = Color(0xFFFFD838),
     ),
     DexCard(
-        no = 3, id = "eggplant", name = "Eggplant Neo", ko = "에그플랜트 네오",
-        tagline = "보라색으로 반들거리며 아무 생각 없는",
-        code = "NEO-E0824", type = "VEGGIE DOG",
+        no = 3, id = "eggplant", name = "Eggplant", ko = "가지",
+        tagline = "보라색으로 반들거리며 아무 생각 없는", type = "VEGGIE DOG",
         move = "NIGHT SHADE",
         statLabel = "GLOSS", stat = 900,
         flavor = "Deep purple. Empty thoughts. Unfairly glossy.",
@@ -133,9 +138,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Crystal, accent = Color(0xFFA86BFF),
     ),
     DexCard(
-        no = 4, id = "carrot", name = "Carrot Neo", ko = "캐럿 네오",
-        tagline = "흙에서 막 나왔는데 과하게 차려입은",
-        code = "NEO-C0824", type = "VEGGIE DOG",
+        no = 4, id = "carrot", name = "Carrot", ko = "당근",
+        tagline = "흙에서 막 나왔는데 과하게 차려입은", type = "VEGGIE DOG",
         move = "ROOT RUSH",
         statLabel = "SNAP", stat = 830,
         flavor = "Straight from the dirt. Still overdressed.",
@@ -143,19 +147,17 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Gold, accent = Color(0xFFFF8A2B),
     ),
     DexCard(
-        no = 5, id = "danhobak", name = "Danhobak Neo", ko = "단호박 네오",
-        tagline = "껍질만 단단하고 속은 물렁한",
-        code = "NEO-D0824", type = "VEGGIE DOG",
+        no = 5, id = "danhobak", name = "Danhobak", ko = "단호박",
+        tagline = "껍질만 단단하고 속은 물렁한", type = "VEGGIE DOG",
         move = "SWEET IMPACT",
         statLabel = "CRUNCH", stat = 840,
-        flavor = "Hard shell. Soft Neo.",
+        flavor = "Hard shell. Soft pup.",
         edition = "Hard Shell Edition",
         foil = Foil.Oilslick, accent = Color(0xFF7D9B46),
     ),
     DexCard(
-        no = 6, id = "mushroom", name = "Mushroom Neo", ko = "머쉬룸 네오",
-        tagline = "나비넥타이까지 맨 포자 살포자",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 6, id = "mushroom", name = "Mushroom", ko = "버섯",
+        tagline = "나비넥타이까지 맨 포자 살포자", type = "VEGGIE DOG",
         move = "FUNGAL FACE",
         moveNote = "Mushroom master of confusing cuteness.",
         statLabel = "MYCELIUM MASH", stat = 820,
@@ -164,9 +166,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Sunburst, accent = Color(0xFFCBB08A),
     ),
     DexCard(
-        no = 7, id = "broccoli", name = "Broccoli Neo", ko = "브로콜리 네오",
-        tagline = "왕관은 큰데 판단력은 작은",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 7, id = "broccoli", name = "Broccoli", ko = "브로콜리",
+        tagline = "왕관은 큰데 판단력은 작은", type = "VEGGIE DOG",
         move = "FLORET FORCE",
         moveNote = "Big crown. Tiny judgment.",
         statLabel = "MYCELIUM MASH", stat = 850,
@@ -175,9 +176,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Holo, accent = Color(0xFF7BBF3A),
     ),
     DexCard(
-        no = 8, id = "cucumber", name = "Cucumber Neo", ko = "큐컴버 네오",
-        tagline = "거의 물인데 태도만은 확실한",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 8, id = "cucumber", name = "Cucumber", ko = "오이",
+        tagline = "거의 물인데 태도만은 확실한", type = "VEGGIE DOG",
         move = "COOL CRUNCH",
         moveNote = "Mostly water. Entirely attitude.",
         statLabel = "MYCELIUM MASH", stat = 810,
@@ -186,9 +186,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Reverse, accent = Color(0xFF4FAE52),
     ),
     DexCard(
-        no = 9, id = "spinach", name = "Spinach Neo", ko = "스피니치 네오",
-        tagline = "잎은 부드러운데 힘이 말이 안 되는",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 9, id = "spinach", name = "Spinach", ko = "시금치",
+        tagline = "잎은 부드러운데 힘이 말이 안 되는", type = "VEGGIE DOG",
         move = "IRON LEAF",
         moveNote = "Soft leaf. Unreasonable power.",
         statLabel = "MYCELIUM MASH", stat = 860,
@@ -197,9 +196,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Aurora, accent = Color(0xFF3F8F3F),
     ),
     DexCard(
-        no = 10, id = "sweet-potato", name = "Sweet Potato Neo", ko = "스위트포테이토 네오",
-        tagline = "깊이 묻혀 있다가 더 깊이 차려입고 나온",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 10, id = "sweet-potato", name = "Sweet Potato", ko = "고구마",
+        tagline = "깊이 묻혀 있다가 더 깊이 차려입고 나온", type = "VEGGIE DOG",
         move = "ROOT RUMBLE",
         moveNote = "Buried deep. Dressed deeper.",
         statLabel = "MYCELIUM MASH", stat = 830,
@@ -208,9 +206,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         foil = Foil.Cosmos, accent = Color(0xFFA0656F),
     ),
     DexCard(
-        no = 11, id = "tomato", name = "Tomato Neo", ko = "토마토 네오",
-        tagline = "잘 익고 둥글고 준비까지 끝난",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 11, id = "tomato", name = "Tomato", ko = "토마토",
+        tagline = "잘 익고 둥글고 준비까지 끝난", type = "VEGGIE DOG",
         move = "JUICY BLAST",
         statLabel = "", stat = 840,
         flavor = "Ripe, round, and ready.",
@@ -225,9 +222,8 @@ val DEX_CARDS: List<DexCard> = listOf(
         ),
     ),
     DexCard(
-        no = 12, id = "lettuce", name = "Lettuce Neo", ko = "레터스 네오",
-        tagline = "잎은 제멋대로인데 웃음만 큰",
-        code = "NEO-0824", type = "VEGGIE DOG",
+        no = 12, id = "lettuce", name = "Lettuce", ko = "상추",
+        tagline = "잎은 제멋대로인데 웃음만 큰", type = "VEGGIE DOG",
         move = "LEAF PARADE",
         moveNote = "Loose leaves strut in a fresh breeze.",
         statLabel = "FRESH FLUTTER", stat = 800,
