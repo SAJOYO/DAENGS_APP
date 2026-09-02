@@ -322,6 +322,40 @@ fun DrawScope.drawCardFace(face: CardFace, template: CardTemplate) {
     drawInHole(face, template.avatar)
 }
 
+/**
+ * 합쳐 놓은 카드 한 장을 **임의의 사각형에** 그린다.
+ *
+ * 이머시브 진입 연출이 쓴다 — 거기서는 카드가 화면 한가운데에서 자라며 녹는데,
+ * 그동안 보이는 것이 저쪽 완성 카드가 아니라 **우리 카드**여야 한다.
+ *
+ * 순서는 화면에서 그리는 것과 같다: 얼굴 → 자리를 비운 판 → 글자.
+ */
+fun DrawScope.drawPersonalCardAt(
+    art: ImageBitmap,
+    template: CardTemplate,
+    face: CardFace?,
+    measurer: TextMeasurer,
+    name: String,
+    code: String,
+    at: Offset,
+    box: Size,
+    alpha: Float = 1f,
+) {
+    if (face != null) {
+        drawInHoleOf(face, template.face, at, box)
+        drawInHoleOf(face, template.avatar, at, box)
+    }
+    drawImage(
+        image = art,
+        dstOffset = IntOffset(at.x.roundToInt(), at.y.roundToInt()),
+        dstSize = IntSize(box.width.roundToInt(), box.height.roundToInt()),
+        alpha = alpha,
+        filterQuality = FilterQuality.High,
+    )
+    drawSlotText(measurer, name, template.name, TITLE, at, box)
+    drawSlotText(measurer, code, template.code, CODE, at, box)
+}
+
 /** 이름·번호판. 카드 **위에** 그린다 — 아래에 두면 카드가 덮는다. */
 fun DrawScope.drawCardText(
     measurer: TextMeasurer,
@@ -333,14 +367,27 @@ fun DrawScope.drawCardText(
     drawSlotText(measurer, code, template.code, CODE)
 }
 
-private fun DrawScope.drawInHole(face: CardFace, hole: Hole) {
+private fun DrawScope.drawInHole(face: CardFace, hole: Hole) =
+    drawInHoleOf(face, hole, Offset.Zero, size)
+
+/**
+ * 얼굴을 **임의의 사각형 안**의 구멍에 끼운다.
+ *
+ * 카드는 화면을 통째로 쓰지만 이머시브의 주인공 누끼는 무대 한가운데의 한 조각이라,
+ * 자리와 크기를 받아야 한다. 규칙은 [drawInHole] 과 한 벌이다 — 두 벌이 되면 카드와
+ * 무대에서 얼굴 자리가 달라진다.
+ *
+ * @param at 사각형의 왼쪽 위
+ * @param box 사각형 크기. [hole] 은 이 크기 대비 % 다
+ */
+fun DrawScope.drawInHoleOf(face: CardFace, hole: Hole, at: Offset, box: Size) {
     val core = face.core
     if (core.width <= 0 || core.height <= 0) return
 
-    val cx = size.width * hole.cx / 100f
-    val cy = size.height * hole.cy / 100f
-    val rx = size.width * hole.rx / 100f * CLIP_BLEED
-    val ry = size.height * hole.ry / 100f * CLIP_BLEED
+    val cx = at.x + box.width * hole.cx / 100f
+    val cy = at.y + box.height * hole.cy / 100f
+    val rx = box.width * hole.rx / 100f * CLIP_BLEED
+    val ry = box.height * hole.ry / 100f * CLIP_BLEED
 
     // 또렷한 얼굴이 구멍을 덮을 만큼 키운다. 짧은 쪽이 아니라 **모자란 쪽**에
     // 맞춰야 구멍이 찬다.
@@ -355,7 +402,7 @@ private fun DrawScope.drawInHole(face: CardFace, hole: Hole) {
         // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
         // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
         // 잘리고 이마만 남았다 — 실기기에서 봤다.
-        val top = cy + size.height * hole.ry / 100f - core.bottom * scale
+        val top = cy + box.height * hole.ry / 100f - core.bottom * scale
         drawImage(
             image = face.image,
             dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
@@ -425,12 +472,14 @@ private fun DrawScope.drawSlotText(
     text: String,
     slot: Slot?,
     face: SlotFace,
+    at: Offset = Offset.Zero,
+    box: Size = size,
 ) {
     if (slot == null || text.isBlank()) return
-    val left = size.width * slot.x0 / 100f
-    val top = size.height * slot.y0 / 100f
-    val right = size.width * slot.x1 / 100f
-    val bottom = size.height * slot.y1 / 100f
+    val left = at.x + box.width * slot.x0 / 100f
+    val top = at.y + box.height * slot.y0 / 100f
+    val right = at.x + box.width * slot.x1 / 100f
+    val bottom = at.y + box.height * slot.y1 / 100f
     val boxW = right - left
     val boxH = bottom - top
     if (boxW <= 0f || boxH <= 0f) return

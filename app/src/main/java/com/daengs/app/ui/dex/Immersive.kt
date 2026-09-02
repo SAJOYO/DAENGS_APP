@@ -1,5 +1,9 @@
 package com.daengs.app.ui.dex
 
+import androidx.compose.ui.graphics.ImageBitmap
+import com.daengs.app.ui.dogcard.CardFace
+import com.daengs.app.ui.dogcard.CardTemplate
+import com.daengs.app.ui.dogcard.Hole
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -262,7 +266,46 @@ val LETTUCE_SCENE = ImmersiveScene(
  * ⚠️ **곡은 여기 안 매여 있다.** `CARD_BGM` 이 곡의 원본이라 이머시브를 꺼도
  * 턴테이블은 그대로 돈다. 그러려고 갈라 뒀다.
  */
-const val IMMERSIVE_IN_BUILD = false
+const val IMMERSIVE_IN_BUILD = true
+
+/**
+ * 무대 주인공의 얼굴에 끼울 것. 얼굴 그림과 누끼 안에서의 자리다.
+ *
+ * 자리는 [ImmersiveScene.faceInSubject] 가 카드의 구멍에서 계산한다 — 따로 재지 않는다.
+ */
+@Immutable
+data class SubjectFace(
+    val face: CardFace,
+    val hole: Hole,
+    /**
+     * 진입 연출에 쓸 **우리 카드**. 자리를 비운 판과 글자까지 한 벌이다.
+     *
+     * null 이면 저쪽 완성 카드가 그대로 녹는다 — 무대에는 우리 아이가 서 있는데
+     * 들어가는 카드만 저쪽 것인 어정쩡한 상태가 되므로, 있으면 늘 넘긴다.
+     */
+    val entryArt: ImageBitmap? = null,
+    val template: CardTemplate? = null,
+    val name: String = "",
+    val code: String = "",
+)
+
+
+/**
+ * 누끼 안에서의 **얼굴 자리**. 무대 주인공에도 우리 아이 얼굴을 끼우려고 쓴다.
+ *
+ * **따로 재지 않는다.** 두 값을 이미 갖고 있어서 나누면 나온다 —
+ * 카드 안 얼굴 구멍([CardTemplate.face])과 카드 안 누끼 자리([ImmersiveScene.fit])가
+ * 둘 다 카드 크기 대비 % 라, 누끼를 기준으로 다시 재면 그만이다.
+ *
+ * 그래서 무대에 쓸 값이 카드의 값을 따라간다 — 카드 구멍을 고치면 무대도 같이 맞는다.
+ */
+fun ImmersiveScene.faceInSubject(template: CardTemplate): Hole = Hole(
+    cx = (template.face.cx - fit.x) / fit.w * 100f,
+    cy = (template.face.cy - fit.y) / fit.h * 100f,
+    rx = template.face.rx / fit.w * 100f,
+    ry = template.face.ry / fit.h * 100f,
+)
+
 
 /**
  * 카드 번호 → 이머시브 장면. **여기 없으면 이머시브가 아니다.**

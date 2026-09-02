@@ -193,6 +193,8 @@ fun CardDexScreen(
     var from by remember { mutableStateOf(Rect.Zero) }
     // 무대에 쓸 이름. 들어간 칸의 내 카드 이름이고, 아직 안 뽑았으면 null 이다.
     var sceneName by remember { mutableStateOf<String?>(null) }
+    // 무대 주인공에 끼울 얼굴. 들어간 칸의 내 카드에서 온다.
+    var sceneFace by remember { mutableStateOf<SubjectFace?>(null) }
     // **화면을 안 늘린다.** 뽑기는 `Screen` 에 새 갈래를 내지 않고 도감 위에 덮인다 —
     // 확대 뷰·이머시브가 이미 그 방식이라 결이 맞고, `MainActivity` 를 안 건드린다.
     var drawing by remember { mutableStateOf(startInDraw && draw != null) }
@@ -217,6 +219,7 @@ fun CardDexScreen(
             scene = showing,
             // 무대에도 카드와 같은 이름을 쓴다. 꾹 눌러 들어간 그 칸의 내 카드다.
             titleOverride = sceneName,
+            hero = sceneFace,
             from = from,
             onClose = { scene = null },
         )
@@ -229,10 +232,11 @@ fun CardDexScreen(
             onOpen = { opened = it },
             onClose = onClose,
             onDraw = draw?.let { { drawing = true } },
-            onImmersive = { at, picked, whose ->
+            onImmersive = { at, picked, whose, theirFace ->
                 from = at
                 scene = picked
                 sceneName = whose
+                sceneFace = theirFace
             },
         )
 
@@ -254,7 +258,7 @@ private fun DexGrid(
     slots: List<DexSlot>,
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
-    onImmersive: (Rect, ImmersiveScene, String?) -> Unit,
+    onImmersive: (Rect, ImmersiveScene, String?, SubjectFace?) -> Unit,
     onDraw: (() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
@@ -287,7 +291,9 @@ private fun DexGrid(
                 onImmersive = IMMERSIVE_SCENES[slot.card.no]
                     ?.takeIf { IMMERSIVE_IN_BUILD && !slot.locked }
                     ?.let { picked ->
-                        { at: Rect -> onImmersive(at, picked, slot.owned.firstOrNull()?.dogName) }
+                        { at: Rect, hero: SubjectFace? ->
+                            onImmersive(at, picked, slot.owned.firstOrNull()?.dogName, hero)
+                        }
                     },
             )
         }
@@ -341,7 +347,11 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
 }
 
 @Composable
-private fun GridCard(slot: DexSlot, onOpen: () -> Unit, onImmersive: ((Rect) -> Unit)?) {
+private fun GridCard(
+    slot: DexSlot,
+    onOpen: () -> Unit,
+    onImmersive: ((Rect, SubjectFace?) -> Unit)?,
+) {
     val card = slot.card
     // 그리드에서는 작게 그리므로 절반 크기로 읽는다. 12장을 원본으로 들면 55MB 다.
     //
@@ -362,7 +372,22 @@ private fun GridCard(slot: DexSlot, onOpen: () -> Unit, onImmersive: ((Rect) -> 
     // 이머시브가 **이 카드 자리에서** 출발하도록 화면 위 사각형을 들고 있는다.
     // 창 위 좌표라 이머시브가 자기 자리를 빼서 쓴다 — 둘 다 같은 창이라 그걸로 맞는다.
     var at by remember { mutableStateOf(Rect.Zero) }
-    val enter = onImmersive?.let { go -> { go(at) } }
+    // 무대 주인공에 끼울 얼굴. **합쳐 놓은 카드가 있을 때만** 넘긴다 — 시드는 얼굴이
+    // 없어서 누끼가 뚫린 채로 그려진다. 자리는 카드 구멍에서 계산해 온다.
+    val hero = drawn?.takeIf { it.composed }?.let { d ->
+        IMMERSIVE_SCENES[card.no]?.let { sc ->
+            SubjectFace(
+                face = d.face!!,
+                hole = sc.faceInSubject(d.template!!),
+                // 진입 연출도 우리 카드로 녹는다. 그리드가 이미 읽어 둔 판을 그대로 쓴다.
+                entryArt = art,
+                template = d.template,
+                name = d.name,
+                code = d.code,
+            )
+        }
+    }
+    val enter = onImmersive?.let { go -> { go(at, hero) } }
     val rub = rememberRubState(onTap = onOpen, onHold = enter)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -453,7 +478,7 @@ private fun GridCard(slot: DexSlot, onOpen: () -> Unit, onImmersive: ((Rect) -> 
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(card.accent.copy(alpha = 0.25f))
-                    .clickable { onImmersive(at) }
+                    .clickable { onImmersive(at, hero) }
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
