@@ -267,6 +267,80 @@ class GaitModelsTest {
         assertEquals(900, ticket.expiresInSeconds)
     }
 
+    /**
+     * **실제 서버가 준 응답 그대로다** (2026-09-02, `daengback` 에서 받아 옮김).
+     *
+     * 방금 만든 기록은 **거의 모든 값이 `null`** 인데, 앱은 confirm 직후 바로 이걸
+     * 폴링한다. 여기서 파서가 터지면 분석이 시작도 못 하고 죽는다 — 손으로 지어낸
+     * JSON 으로는 이 조합을 놓치기 쉬워서 실제 응답을 박아 둔다.
+     */
+    @Test
+    fun `갓 만든 기록은 거의 전부 null 인데 그대로 읽힌다`() {
+        val analyzed = GaitAnalyzed.parse(
+            JSONObject(
+                """
+                {"record_id":"0eb458e4-6d57-4a9e-b945-f1873a5dae3b",
+                 "pet_id":"9061a4ed-b7bd-44ce-8dc3-b8eed7456ef1","status":"PENDING",
+                 "quality_status":null,"quality_tier":null,"gait_filter_version":null,
+                 "captured_at":null,"source_file":"IMG_8631.mov","note":null,
+                 "created_at":"2026-09-02T04:49:03.055693Z","comparable":false,
+                 "has_overlay":false,"quality":null,"summary_for_ui":null,
+                 "video_meta":null,"failure_reason":null}
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("PENDING", analyzed.status)
+        // 아직 끝나지 않았다 — 폴링이 계속돼야 한다.
+        assertFalse(analyzed.settled)
+        assertFalse(analyzed.qualityOk)
+        assertEquals(null, analyzed.date)
+        assertEquals(null, analyzed.reason)
+        assertEquals(null, analyzed.qualityTier)
+        assertEquals(null, analyzed.failureReason)
+    }
+
+    /** 목록도 같은 상태를 담아 온다. **아직 안 끝난 기록이 목록에 섞인다.** */
+    @Test
+    fun `목록에 아직 분석 중인 기록이 섞여도 비교 대상으로 세우지 않는다`() {
+        val page = GaitPage.parse(
+            JSONObject(
+                """
+                {"records":[{"record_id":"0eb458e4-6d57-4a9e-b945-f1873a5dae3b",
+                 "pet_id":"9061a4ed-b7bd-44ce-8dc3-b8eed7456ef1","status":"PENDING",
+                 "quality_status":null,"quality_tier":null,"gait_filter_version":null,
+                 "captured_at":null,"source_file":"IMG_8631.mov","note":null,
+                 "created_at":"2026-09-02T04:49:03.055693Z","comparable":false,
+                 "has_overlay":false}],"next_cursor":null}
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(1, page.records.size)
+        assertEquals(null, page.nextCursor)
+        // 서버가 이미 false 로 준다 — 앱이 따로 판단하지 않는다.
+        assertFalse(page.records[0].toRecord().comparable)
+    }
+
+    /** 티켓도 실제 응답 그대로. 임시 bridge 주소지만 앱은 해석하지 않는다. */
+    @Test
+    fun `실제 서버가 준 티켓을 그대로 읽는다`() {
+        val ticket = GaitTicket.parse(
+            JSONObject(
+                """
+                {"record_id":"0eb458e4-6d57-4a9e-b945-f1873a5dae3b","status":"PENDING",
+                 "upload_url":"http://daengback.weareithero.cloud/app/gait/_bridge/upload/gait/9061a4ed-b7bd-44ce-8dc3-b8eed7456ef1/original/cbb2cc7ed79a4bccbd5431234c59ada1.mov",
+                 "upload_headers":{"Content-Type":"video/quicktime"},
+                 "expires_in_seconds":900}
+                """.trimIndent(),
+            ),
+        )
+
+        assertTrue(ticket.uploadUrl.endsWith(".mov"))
+        assertEquals("video/quicktime", ticket.uploadHeaders["Content-Type"])
+        assertEquals(900, ticket.expiresInSeconds)
+    }
+
     @Test
     fun `끝난 상태만 폴링을 멈춘다`() {
         // 폴링이 여기서 끝을 판단한다. PROCESSING 을 끝으로 보면 결과 없는 카드가 뜬다.
