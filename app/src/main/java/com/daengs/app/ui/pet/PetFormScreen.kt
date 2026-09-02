@@ -127,6 +127,9 @@ fun PetFormScreen(
         neutered = neutered,
         weightKg = weight.toFloatOrNull(),
         birthDate = parsedDate,
+        // ⚠️ **고치는 화면이 배웅한 날을 지우면 안 된다.** 서버가 PUT 이라 안 실으면
+        // null 로 덮인다 — 몸무게 한 번 고쳤다고 그 날이 사라지면 안 된다.
+        farewellOn = initial?.farewellOn,
         // 날짜를 안 넣었으면 종류도 안 보낸다 — 서버가 "같이 있거나 같이 없어야
         // 한다"로 막고, 여기서 맞춰야 422 를 안 받는다.
         birthDateKind = parsedDate?.let { dateKind },
