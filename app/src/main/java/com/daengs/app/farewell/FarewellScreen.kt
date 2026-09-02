@@ -6,6 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import com.daengs.app.ui.DaengsIconView
+import com.daengs.app.ui.DaengsIcon
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -37,6 +42,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.common.DateWheel
+import androidx.compose.ui.window.Dialog
+import com.daengs.app.ui.common.SettingDivider
+import com.daengs.app.ui.common.SettingRow
+import com.daengs.app.ui.common.SettingSection
+import com.daengs.app.ui.theme.DaengsColors
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import com.daengs.app.miniroom.art.drawPawStamp
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -63,10 +78,19 @@ fun FarewellScreen(
     onSendOff: (LocalDate) -> Unit,
     onUndo: () -> Unit,
     onClose: () -> Unit,
+    /** 얼굴. 아이의 자리 맨 위에 선다 */
+    face: (@Composable () -> Unit)? = null,
+    /** 함께 있을 때 적어 둔 것. 견종·성별·몸무게 같은 줄들 */
+    profile: List<Pair<String, String>> = emptyList(),
+    /** 기록에서 지운다. **아이의 자리 안에만 둔다** — 목록에 지우기가 붙어 있으면 안 된다 */
+    onDelete: (() -> Unit)? = null,
 ) {
-    // 이미 배웅한 아이는 편지부터 보여 준다. 다시 들어와 읽을 수 있어야 한다.
-    var letter by remember(sentOn) { mutableStateOf(sentOn != null) }
-    BackHandler(onBack = onClose)
+    // 배웅한 아이는 **그 아이의 자리**부터 연다. 편지는 거기서 고른다 — 들어올 때마다
+    // 편지가 먼저 펼쳐지면, 잠깐 얼굴만 보러 온 사람에게도 매번 그 글이 열린다.
+    var letter by remember(sentOn) { mutableStateOf(false) }
+    BackHandler {
+        if (letter) letter = false else onClose()
+    }
 
     Column(
         Modifier
@@ -78,43 +102,191 @@ fun FarewellScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            // **편지에서 닫으면 그 아이의 자리로 돌아온다.** 마이로 튕겨 나가면
+            // 얼굴을 한 번 더 보려고 목록을 다시 뒤져야 한다. 뒤로가기와 같은 길이다.
             Text(
-                "닫기",
+                if (letter) "← 돌아가기" else "닫기",
                 color = TextMuted,
                 fontSize = 14.sp,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable(onClick = onClose)
+                    .clickable { if (letter) letter = false else onClose() }
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
         Spacer(Modifier.height(10.dp))
 
-        if (letter) {
-            Letter(dogName)
-            Spacer(Modifier.height(20.dp))
-            Memories()
-            Spacer(Modifier.height(14.dp))
-            // 잘못 눌렀을 수 있다. 조용히, 그러나 찾을 수 있게 둔다.
-            Text(
-                "배웅을 되돌릴게요",
-                color = TextMuted,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable {
-                        onUndo()
-                        onClose()
-                    }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+        when {
+            letter -> Letter(dogName)
+
+            sentOn != null -> Home(
+                dogName = dogName,
+                sentOn = sentOn,
+                face = face,
+                profile = profile,
+                onLetter = { letter = true },
+                onUndo = {
+                    onUndo()
+                    onClose()
+                },
+                onDelete = onDelete,
             )
-        } else {
-            Ask(dogName) { day ->
+
+            else -> Ask(dogName) { day ->
                 onSendOff(day)
                 letter = true
             }
         }
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
+ * 배웅한 아이의 자리.
+ *
+ * **고치는 화면이 아니다.** 여기 오는 사람은 몸무게를 바꾸러 오지 않는다. 함께 있을 때
+ * 적어 둔 것은 **읽기만** 하고, 할 수 있는 일은 편지와 추억뿐이다.
+ */
+@Composable
+private fun ColumnScope.Home(
+    dogName: String,
+    sentOn: LocalDate,
+    face: (@Composable () -> Unit)?,
+    profile: List<Pair<String, String>>,
+    onLetter: () -> Unit,
+    onUndo: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    var confirmDelete by remember { mutableStateOf(false) }
+    face?.invoke()
+    Spacer(Modifier.height(14.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(dogName, color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(8.dp))
+        DaengsIconView(DaengsIcon.Rainbow, Modifier.size(22.dp))
+    }
+    Spacer(Modifier.height(6.dp))
+    Text(
+        "%d년 %d월 %d일에 배웅했어요".format(sentOn.year, sentOn.monthValue, sentOn.dayOfMonth),
+        color = TextMuted,
+        fontSize = 13.sp,
+    )
+
+    if (profile.isNotEmpty()) {
+        Spacer(Modifier.height(20.dp))
+        Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(18.dp)) {
+                profile.forEachIndexed { i, (label, value) ->
+                    if (i > 0) Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(label, color = TextMuted, fontSize = 13.sp, modifier = Modifier.width(78.dp))
+                        Text(value, color = TextDark, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(18.dp))
+    BigButton("편지 보기", filled = true, onClick = onLetter)
+    Spacer(Modifier.height(10.dp))
+    // 추억은 아직 없다. 눌리지 않게 두고 무엇이 올 자리인지만 말한다.
+    BigButton("추억 보기 · 준비 중", filled = false, onClick = null)
+
+    // **되돌릴 수 없는 일은 맨 아래 줄로 내린다.** 로그아웃·회원 탈퇴가 쓰는 그 모양이다 —
+    // 화면 한가운데의 버튼으로 두면 편지를 보러 온 손이 먼저 닿는다.
+    Spacer(Modifier.height(34.dp))
+    SettingSection {
+        SettingRow("배웅을 되돌릴게요", onClick = onUndo, tint = TextMuted)
+        onDelete?.let {
+            SettingDivider()
+            SettingRow("기록에서 지울게요", onClick = { confirmDelete = true }, tint = DaengsColors.Error)
+        }
+    }
+
+    if (confirmDelete && onDelete != null) {
+        ConfirmDelete(
+            dogName = dogName,
+            onConfirm = {
+                confirmDelete = false
+                onDelete()
+            },
+            onDismiss = { confirmDelete = false },
+        )
+    }
+}
+
+/**
+ * 기록에서 지우기 전에 한 번 더 묻는다.
+ *
+ * **배웅과 지우기는 다르다.** 배웅은 있었던 일을 적어 두는 것이고 지우기는 없던 일로
+ * 만드는 것이다. 여기서 안 물으면 아이의 자리를 보러 왔다가 그 자리를 잃는다.
+ *
+ * 되돌릴 수 없는 쪽(지우기)이 왼쪽이고 취소가 오른쪽이다 — 삭제 창·탈퇴 창과 같은 배치다.
+ */
+@Composable
+private fun ConfirmDelete(dogName: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+            Column(Modifier.padding(22.dp)) {
+                Text(
+                    "$dogName(을)를 기록에서 지울까요?",
+                    color = TextDark,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "배웅한 날도, $dogName(와)과만 나간 산책도 함께 사라지고 되돌릴 수 없어요.",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                )
+                Spacer(Modifier.height(18.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text(
+                        "지우기",
+                        color = DaengsColors.Error,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onConfirm)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "취소",
+                        color = DaengPink,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onDismiss)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BigButton(label: String, filled: Boolean, onClick: (() -> Unit)?) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (filled) DaengPink else CardWhite)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (filled) CardWhite else TextMuted,
+            fontSize = 15.sp,
+            fontWeight = if (filled) FontWeight.Bold else FontWeight.Normal,
+        )
     }
 }
 
@@ -181,7 +353,13 @@ private val LetterFont = FontFamily(Font(R.font.griun_fromsol))
 @Composable
 private fun Letter(dogName: String) {
     Surface(color = CardWhite, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
+        Column(
+            Modifier
+                // **발자국은 글자 아래에 깐다.** 편지지가 아니라 지나간 자국이라
+                // 위에 얹으면 글을 가린다. 아주 옅게, 몇 개만.
+                .drawBehind { pawTrail() }
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
             Text(
                 FAREWELL_TITLE,
                 color = TextDark,
@@ -210,6 +388,32 @@ private fun Letter(dogName: String) {
                 fontFamily = LetterFont,
                 modifier = Modifier.align(Alignment.End),
             )
+        }
+    }
+}
+
+/**
+ * 편지지에 남은 발자국.
+ *
+ * **자리를 난수로 뽑지 않는다.** 다시 그릴 때마다 자국이 옮겨 다니면 종이가 아니라
+ * 화면으로 보인다. 카드 크기 대비 비율로 박아 둔다.
+ *
+ * 글자를 가리지 않게 **가장자리 쪽으로** 몰고, 크기와 기울기를 조금씩 달리해 한 마리가
+ * 걸어간 것처럼 둔다.
+ */
+private fun DrawScope.pawTrail() {
+    val ink = DaengPink.copy(alpha = 0.10f)
+    // (가로 %, 세로 %, 크기 %, 기울기°)
+    val steps = listOf(
+        Triple(0.86f, 0.09f, 0.055f) to -18f,
+        Triple(0.10f, 0.34f, 0.042f) to 12f,
+        Triple(0.90f, 0.62f, 0.048f) to 24f,
+        Triple(0.14f, 0.88f, 0.038f) to -8f,
+    )
+    steps.forEach { (at, tilt) ->
+        val center = Offset(size.width * at.first, size.height * at.second)
+        rotate(tilt, center) {
+            drawPawStamp(center, size.width * at.third, ink)
         }
     }
 }
