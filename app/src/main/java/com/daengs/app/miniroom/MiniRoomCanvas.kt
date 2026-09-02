@@ -26,11 +26,11 @@ import com.daengs.app.miniroom.art.FrameSpec
 import com.daengs.app.miniroom.art.ItemCatalog
 import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.drawDoorHint
-import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.miniroom.art.drawWallFrame
 import com.daengs.app.miniroom.art.drawDoorOpening
 import com.daengs.app.miniroom.art.drawDeveloperOverlay
 import com.daengs.app.miniroom.art.drawRoomBackground
+import com.daengs.app.miniroom.art.drawWindowOutside
 import com.daengs.app.miniroom.sprite.rememberFrameClock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -58,6 +58,8 @@ fun MiniRoomCanvas(
     state: MiniRoomState,
     catalog: ItemCatalog,
     theme: RoomTheme = RoomTheme.DEFAULT,
+    /** 창밖·문밖에 보이는 바깥. 시간 x 날씨 여섯 벌 중 하나다. */
+    outside: OutsideView = OutsideView.DEFAULT,
     modifier: Modifier = Modifier,
     herd: DogHerd? = null,
     /** 편집 모드 = 가구를 만지는 중. 강아지는 확 숨고 터치도 가구만 받는다. */
@@ -67,6 +69,20 @@ fun MiniRoomCanvas(
     onDoorOpened: (() -> Unit)? = null,
     /** 벽에 건 액자를 눌렀을 때. 도감으로 들어가는 문이다. */
     onFrameTap: (() -> Unit)? = null,
+    /**
+     * 턴테이블을 눌렀을 때. 카드 음악을 트는 곳으로 간다.
+     *
+     * 붙박이라 [pickTopmost] 가 안 잡으므로 [pickFixture] 로 따로 본다.
+     */
+    onTurntableTap: (() -> Unit)? = null,
+    /**
+     * 액자에 걸 그림. null 이면 발자국이 걸린다.
+     *
+     * 예전에는 여기서 저쪽 카드 한 장을 직접 읽었다. 한 장도 안 뽑은 사람의 방에도
+     * 남의 개가 걸려 있었고, 뽑아도 안 바뀌었다. 무엇을 걸지는 방이 정할 일이 아니라
+     * 받는 값이다.
+     */
+    framePicture: ImageBitmap? = null,
     /** 편집 모드에서 빈 곳을 눌렀을 때. 선택 해제용. */
     onEmptyTap: (() -> Unit)? = null,
     doorOpenOverride: Float? = null,
@@ -80,10 +96,13 @@ fun MiniRoomCanvas(
     // 테마가 바뀌면 그림 전체가 바뀐다 — 색을 덧칠하는 게 아니라 다른 그림이다.
     val roomImage = ImageBitmap.imageResource(theme.room)
 
-    // 액자 속 그림. 도감 웹 데모의 카드를 그대로 쓴다 — 같은 파일을 리소스로 한 벌 더
-    // 넣지 않으려는 것이다. 작게 그리므로 절반 크기로 읽는다.
-    val framePicture = rememberAssetImage("neo-hologram/art/cabbage-card.webp", sample = 2)
+    // 바깥. **테마를 안 탄다** — 방 그림 여섯 테마에서 다른 것은 창틀·창살뿐이고
+    // 유리 안 풍경은 같아서, 한 벌이 테마 전부를 덮는다.
+    val windowOutside = ImageBitmap.imageResource(outside.window)
+    val doorOutside = ImageBitmap.imageResource(outside.door)
+
     val frameCallback by rememberUpdatedState(onFrameTap)
+    val turntableCallback by rememberUpdatedState(onTurntableTap)
     val measurer = rememberTextMeasurer()
 
     // 0 = 닫힘, 1 = 활짝
@@ -168,8 +187,21 @@ fun MiniRoomCanvas(
                             }
                             return@awaitEachGesture
                         }
-                        // 강아지가 아니면 벽에 걸린 것만 본다 (가구는 편집 모드에서만).
-                        // 액자를 먼저 본다. 둘은 안 겹치지만 순서를 정해 둔다.
+                        // 강아지가 아니면 벽에 걸린 것과 붙박이만 본다
+                        // (가구는 편집 모드에서만). 서로 안 겹치지만 순서를 정해 둔다.
+                        if (turntableCallback != null &&
+                            state.items.pickFixture(down.position, g, catalog, ItemIds.TURNTABLE) != null
+                        ) {
+                            var slid = false
+                            while (true) {
+                                val e = awaitPointerEvent()
+                                val ch = e.changes.firstOrNull { it.id == down.id } ?: break
+                                if ((ch.position - down.position).getDistance() > viewConfiguration.touchSlop) slid = true
+                                if (!ch.pressed) break
+                            }
+                            if (!slid) turntableCallback?.invoke()
+                            return@awaitEachGesture
+                        }
                         if (frameCallback != null && FrameSpec.contains(g, down.position)) {
                             var slid = false
                             while (true) {
@@ -262,7 +294,10 @@ fun MiniRoomCanvas(
                 val pulse = ((sin(t / 900f) + 1f) / 2f) * (1f - open)
 
                 drawRoomBackground(g, roomImage)
-                drawDoorOpening(g, roomImage, open)
+                // 창밖은 방 그림 **바로 뒤에.** 유리 모양으로 잘려 있어 창틀·창살을
+                // 덮지 않는다.
+                drawWindowOutside(g, windowOutside, outside.veil)
+                drawDoorOpening(g, roomImage, doorOutside, open, outside.veil)
                 drawDoorHint(g, pulse)
                 drawWallFrame(g, framePicture, pulse)
 

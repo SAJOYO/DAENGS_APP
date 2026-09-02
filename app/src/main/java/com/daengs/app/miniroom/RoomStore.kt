@@ -28,15 +28,39 @@ class RoomStore(context: Context) {
         prefs.edit().putString(KEY_ITEMS, RoomCodec.encode(items)).apply()
     }
 
+    /**
+     * 액자에 건 카드. null 이면 아직 안 골랐다 — 그때는 발자국이 걸린다.
+     *
+     * **카드 id 만 든다.** 방은 그 문자열이 무엇을 뜻하는지 모른다. 카드가 지워졌으면
+     * 못 찾을 뿐이고, 그때도 발자국으로 돌아간다.
+     */
+    fun loadFrameCardId(): String? = prefs.getString(KEY_FRAME, null)
+
+    fun saveFrameCardId(id: String?) {
+        prefs.edit().apply { if (id == null) remove(KEY_FRAME) else putString(KEY_FRAME, id) }.apply()
+    }
+
     fun loadThemeId(): String? = prefs.getString(KEY_THEME, null)
 
     fun saveThemeId(id: String) {
         prefs.edit().putString(KEY_THEME, id).apply()
     }
 
+    /**
+     * 방을 통째로 잊는다. **회원 탈퇴에서만 쓴다.**
+     *
+     * 방 배치는 서버에 사본이 없어서 이 기기에만 있다. 안 지우면 다음에 이 폰으로
+     * 로그인한 사람이 남이 꾸며 둔 방을 물려받는다. 로그아웃은 "잠깐 나감" 이라
+     * 그대로 두는 게 맞고, 탈퇴는 "흔적을 지움" 이라 다르다.
+     */
+    fun clear() {
+        prefs.edit().clear().apply()
+    }
+
     private companion object {
         const val KEY_ITEMS = "items"
         const val KEY_THEME = "theme"
+        const val KEY_FRAME = "frame_card"
     }
 }
 

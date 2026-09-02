@@ -1,13 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  클라우드 백업에서 뺄 것.
+
+  로그인 토큰과 산책 원본 위치는 **이 기기의 것**이다. 백업으로 남의 기기에 딸려 가면
+  안 된다. allowBackup 이 켜져 있어서 안 적으면 기본으로 포함된다.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="sharedpref" path="daengs_session.xml" />
+    <exclude domain="database" path="daengs_walk.db" />
+    <exclude domain="database" path="daengs_walk.db-journal" />
+    <exclude domain="database" path="daengs_walk.db-shm" />
+    <exclude domain="database" path="daengs_walk.db-wal" />
 </full-backup-content>

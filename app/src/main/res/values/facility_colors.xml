@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 시설 아이콘 그룹 색. drawable 의 fillColor 가 이 이름을 참조한다 —
+     색을 바꿀 때 벡터 8개가 아니라 여기 한 곳만 고친다.
+
+     **색상(hue)이 곧 카테고리다.** 여덟을 한 색으로 통일하면 지도에서 병원과 카페를
+     구분할 수 없다. 그래서 앱 화풍에 맞추면서도 채도·명도만 낮췄고, 색상 간격은
+     그대로 뒀다 (FacilityColorTest 가 그 간격을 지킨다).
+
+     **따뜻한 쪽으로 쏠려 있는 것이 의도다.** 앱이 크림·분홍이라 원색 여덟이 얹히면
+     지도만 남의 화면처럼 보인다. 제일 흔한 셋(병원 로즈 · 음식 테라코타 · 용품 골드)을
+     따뜻하게 두고 나머지를 색상환 반대편으로 흩었다. 기타는 무채색이라 색상이 아니라
+     "색이 없다"는 사실로 구분된다 (앱의 TextSecondary 와 같은 값). -->
+<resources>
+    <color name="facility_medical">#C4536B</color>
+    <color name="facility_supply">#BFA045</color>
+    <color name="facility_food">#D08A5A</color>
+    <color name="facility_stay">#6C86A8</color>
+    <color name="facility_culture">#9B7BA6</color>
+    <color name="facility_outdoor">#7FA06A</color>
+    <color name="facility_care">#5E9E92</color>
+    <color name="facility_etc">#A79089</color>
+</resources>

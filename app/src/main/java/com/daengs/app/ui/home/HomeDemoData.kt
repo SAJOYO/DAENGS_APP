@@ -7,12 +7,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * 홈 화면에 뿌리는 값 전부. 백엔드 연동이 없으므로 여기 하드코딩이 유일한 출처다.
- * 나중에 실제 API 를 붙일 때 이 파일만 걷어내면 된다.
+ * 홈 화면의 **고정 문구**와 @Preview 용 값.
+ *
+ * 원래는 "홈 화면에 뿌리는 값 전부" 였다. 지금은 아니다 — 산책 숫자(`WalkDayTotals`),
+ * 방 이름표(`roomLabel`), 날씨 문구(`homeWeatherWords`), 강아지 이름·얼굴(`Pet`)이
+ * 하나씩 진짜 값으로 나갔다.
+ *
+ * **여기 남은 것은 데이터가 아니라 라벨이다.** 사람이 정한 말이고 서버가 주는 값이
+ * 아니라서 상수인 것이 맞다. 화면에 뜨는 사실(숫자·이름·날씨)을 여기 새로 넣지 말 것 —
+ * 그러면 카드가 또 거짓말을 시작한다.
  */
 object HomeDemoData {
-
-    const val DOG_NAME = "노을"
 
     /**
      * 대표 견종. 프로필 얼굴이 이걸 따른다.
@@ -21,31 +26,19 @@ object HomeDemoData {
      * [DogBreed.ALL] 첫 항목이라 방에 먼저 들어오는 개와도 같다 —
      * 상단바 얼굴과 방 안 강아지가 따로 놓지 않는다.
      */
-    val DOG_BREED = DogBreed.BEAGLE
-    const val ROOM_LABEL = "노을이네"
+    val DOG_BREED = DogBreed.TOY_POODLE_LIGHT_BROWN
+    /** @Preview 전용. 진짜 이름표는 계정에 저장되고 [roomLabel] 이 정한다. */
+    const val ROOM_LABEL = "네옹이네"
 
-    const val TODAY_NOTE = "산책 가기 좋은 날!"
     const val CHAT_TITLE = "댕스 AI 챗봇"
     const val CHAT_PLACEHOLDER = "무엇이든 물어보세요!"
-    const val CHAT_MORE = "추천 질문 보기"
 
     const val WALK_TITLE = "오늘의 산책 요약"
+    /** 제목만 고정이다. 내용은 날씨를 따른다 ([homeWeatherWords]). */
     const val DAILY_WORD_TITLE = "오늘의 한 마디"
-    val DAILY_WORD_LINES = listOf("바람이 좋아서", "산책하기 딱 좋은 날이댕!")
 
-    val SUGGESTIONS = listOf(
-        "오늘 산책 언제가 좋을까?",
-        "강아지 더위 주의사항 알려줘!",
-        "간식 추천해줘!",
-    )
-
+    /** 카드의 한 칸. 값은 [com.daengs.app.walk.WalkDayTotals] 에서 오지 여기 박혀 있지 않다. */
     data class WalkStat(val icon: DaengsIcon, val value: String, val label: String)
-
-    val WALK_STATS = listOf(
-        WalkStat(DaengsIcon.Paws, "1회", "횟수"),
-        WalkStat(DaengsIcon.Clock, "32분", "시간"),
-        WalkStat(DaengsIcon.Pin, "2.3km", "거리"),
-    )
 
     /** 시안에 박힌 날짜. @Preview 를 결정적으로 만들 때 쓴다. */
     const val MOCK_DATE = "05.20 (화)"

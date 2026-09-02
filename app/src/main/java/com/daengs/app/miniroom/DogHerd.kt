@@ -67,6 +67,15 @@ class DogActor(
      * ([com.daengs.app.miniroom.art.DogPose]), 그걸 즉시 하면 몸이 순간이동한다.
      */
     var stand: Float = 0f
+
+    /**
+     * 배웅한 아이인가. 표시만 달라지고 **걷는 것은 똑같다.**
+     *
+     * 한 번은 제자리에 앉혀 봤는데 그게 아니었다. 배웅은 방에서 내보내는 것도, 세워
+     * 두는 것도 아니다 — 그 아이는 방에서 계속 뛰어다니고, 쉬고 있을 때 곁에 하트가
+     * 뜰 뿐이다. 멈춰 세우면 그 순간 방이 박제가 된다.
+     */
+    var departed: Boolean = false
 }
 
 /**
@@ -75,10 +84,31 @@ class DogActor(
  * 위치는 저장하지 않는다 — 어차피 계속 돌아다녀서 저장해도 의미가 없다.
  */
 @Stable
-class DogHerd(count: Int, seed: Int = 7) {
+class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
+
+    /** 명부 없이 세울 때. **데모다** — 사용자 강아지를 아직 못 받아 온 자리에서 쓴다. */
+    constructor(count: Int, seed: Int = 7) : this(DogBreed.demoRoster(count), seed)
 
     private val rnd = Random(seed)
     private var lastMs = 0L
+
+    /**
+     * 방에 서 있어야 할 견종 — **사용자가 등록한 강아지 목록**이다.
+     *
+     * [dogs] 의 breed 와 따로 두는 이유는 개발자 도구다. 거기서 견종을 덮어써도
+     * 명부는 그대로여야 **되돌렸을 때 내 강아지로 돌아온다.**
+     */
+    var roster: List<DogBreed> = initialRoster
+        private set
+
+    /** 개발자 도구가 덮어쓴 견종. null 이면 명부대로 선다. */
+    private var breedOverride: DogBreed? = null
+
+    /**
+     * 배웅한 아이의 명부 자리. 견종과 따로 두는 이유는 [setRoster] 가 자리를 유지하기
+     * 때문이다 — 명부가 갱신될 때마다 이 값도 [applyRoster] 에서 다시 얹어야 한다.
+     */
+    private var departedAt: Set<Int> = emptySet()
 
     var dogs: List<DogActor> = emptyList()
         private set
@@ -87,7 +117,7 @@ class DogHerd(count: Int, seed: Int = 7) {
     var draggingId: Int? = null
 
     init {
-        dogs = List(count) { newDog(it) }
+        dogs = List(initialRoster.size) { newDog(it, initialRoster[it]) }
         spread()
     }
 
@@ -108,10 +138,10 @@ class DogHerd(count: Int, seed: Int = 7) {
      * 견종은 **뽑지 않고 차례대로 돌린다.** 무작위로 뽑으면 여러 마리가 다 같은 견종으로
      * 나오는 판이 생겨서, 여러 마리라는 게 눈에 안 들어온다.
      */
-    private fun newDog(i: Int): DogActor {
+    private fun newDog(i: Int, breed: DogBreed): DogActor {
         val d = DogActor(
             id = i,
-            breed = DogBreed.ALL[i % DogBreed.ALL.size],
+            breed = breed,
             sizeScale = 1f,
             // 무작위가 아니라 대기 주기(8프레임 / 6fps ≈ 1333ms)를 마리 수로 나눠 흩는다.
             // 무작위면 둘이 우연히 겹쳐서 여전히 같이 움직이는 판이 나온다.
@@ -130,13 +160,49 @@ class DogHerd(count: Int, seed: Int = 7) {
         return Offset(lo + rnd.nextFloat() * (hi - lo), lo + rnd.nextFloat() * (hi - lo))
     }
 
-    fun setCount(n: Int) {
-        if (n == dogs.size) return
-        dogs = if (n < dogs.size) {
-            dogs.take(n)
-        } else {
-            dogs + List(n - dogs.size) { newDog(dogs.size + it) }
+    /**
+     * 방에 세울 견종을 통째로 갈아끼운다.
+     *
+     * **자리를 유지한다.** 강아지를 등록하거나 견종을 고칠 때마다 목록을 다시 받아
+     * 오는데(`PetHolder`), 그때 방 전체를 새로 세우면 **멀쩡히 걷던 아이들이
+     * 순간이동한다.** 남는 마리는 그대로 두고 견종만 갈아끼우고, 는 마리만 새로 놓는다.
+     *
+     * 개발자 도구가 견종을 덮어쓰고 있으면 그게 이긴다 — 사람이 방금 누른 것이라
+     * 화면의 진짜다. 되돌리면 새 명부로 돌아온다.
+     */
+    fun setRoster(breeds: List<DogBreed>) {
+        if (breeds == roster && breeds.size == dogs.size) return
+        roster = breeds
+        val kept = dogs.take(breeds.size)
+        val added = List(breeds.size - kept.size) { newDog(kept.size + it, breeds[kept.size + it]) }
+        dogs = kept + added
+        applyRoster()
+        // 새로 온 아이만 자리를 잡는다. 이미 있던 아이는 걷던 자리에 그대로 둔다.
+        for (d in added) {
+            d.pos = freeSpot(emptySet(), d)
+            d.target = d.pos
         }
+        // 잡고 있던 아이가 명부에서 빠졌을 수 있다.
+        if (dogs.none { it.id == draggingId }) draggingId = null
+    }
+
+    private fun applyRoster() {
+        dogs.forEachIndexed { i, d ->
+            d.breed = breedOverride ?: roster[i]
+            d.departed = i in departedAt
+        }
+    }
+
+    /**
+     * 배웅한 아이가 명부의 몇 번째인가.
+     *
+     * 명부와 따로 받는다. 견종은 안 바뀌었는데 배웅만 한 경우가 있고([setRoster] 는
+     * 그때 일찍 빠져나간다), 반대로 강아지를 새로 등록해 명부만 늘어난 경우도 있다.
+     */
+    fun setDeparted(indices: Set<Int>) {
+        if (indices == departedAt) return
+        departedAt = indices
+        dogs.forEachIndexed { i, d -> d.departed = i in indices }
     }
 
     fun byId(id: Int): DogActor? = dogs.firstOrNull { it.id == id }
@@ -147,8 +213,19 @@ class DogHerd(count: Int, seed: Int = 7) {
      * @param breed null 이면 원래대로 [DogBreed.ALL] 을 차례로 돌린다
      */
     fun setBreedOverride(breed: DogBreed?) {
+        breedOverride = breed
         dogs.forEachIndexed { i, d ->
-            d.breed = breed ?: DogBreed.ALL[i % DogBreed.ALL.size]
+            // **기본 구성과 다르게 [DogBreed.ALL] 을 다 받는다.**
+            //
+            // 방에 저절로 도는 견종은 [DogBreed.ROOM_BREEDS] 세 종이다(위 [newDog]).
+            // 그런데 이 함수는 **개발자 패널 전용**이라 성격이 다르다 — 사람이 칩을
+            // 눌러 고른 것이고, 새로 들어온 강아지 그림을 화면에서 확인하는 유일한
+            // 길이다. 여기서 걸러 버리면 칩 25개 중 22개가 눌러도 아무 일이 없고,
+            // 하필 "섞기"로 되돌아가서 고장 난 줄도 모른다.
+            //
+            // **되돌릴 때는 명부로 돌아간다.** 예전엔 [DogBreed.ROOM_BREEDS] 로 돌아갔는데,
+            // 그러면 도구를 껐을 때 방에 **내 강아지가 아닌 개**가 남는다.
+            d.breed = breed ?: roster[i]
         }
     }
 
@@ -403,9 +480,15 @@ class DogHerd(count: Int, seed: Int = 7) {
  */
 val DogActor.depthCell: Int get() = floor(pos.x).toInt() + floor(pos.y).toInt()
 
+/**
+ * 명부대로 선 무리를 기억한다. 명부가 바뀌면 **자리를 지킨 채** 갈아끼운다
+ * ([DogHerd.setRoster]).
+ */
 @Composable
-fun rememberDogHerd(count: Int): DogHerd {
-    val herd = remember { DogHerd(count) }
-    remember(count) { herd.setCount(count); count }
+fun rememberDogHerd(roster: List<DogBreed>, departed: Set<Int> = emptySet()): DogHerd {
+    val herd = remember { DogHerd(roster) }
+    remember(roster) { herd.setRoster(roster); roster }
+    // 명부 **뒤에** 얹는다. setRoster 가 는 마리를 새로 만들면서 이 표시를 지운다.
+    remember(roster, departed) { herd.setDeparted(departed); departed }
     return herd
 }

@@ -27,6 +27,7 @@ import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.art.itemSpecs
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 
@@ -45,6 +46,28 @@ private fun MiniRoomCanvasPreview() {
 }
 
 /** 문이 반쯤 열린 상태. 무한 애니메이션은 미리보기에서 안 돌아서 값을 찍어준다. */
+/**
+ * 배웅한 아이가 있는 방.
+ *
+ * 하트가 **얼마나 작아야 하는지**를 여기서 본다. 실기기에서는 폰을 들고 방을 열어야
+ * 하는데, 이 표시는 크기 하나로 성패가 갈린다 — 크면 소품이 되고 작으면 안 보인다.
+ */
+@Preview(name = "배웅한 아이", widthDp = 411, heightDp = 380, showBackground = true, backgroundColor = 0xFFFDF1EC)
+@Composable
+private fun MiniRoomDepartedPreview() {
+    DaengsTheme {
+        MiniRoomCanvas(
+            state = rememberMiniRoomState(),
+            catalog = rememberItemCatalog(),
+            // 셋 중 가운데 아이만 배웅했다. 나머지 둘과 나란히 놓고 봐야 표시가
+            // 눈에 띄는지, 너무 튀는지를 잴 수 있다.
+            herd = rememberDogHerd(DogBreed.demoRoster(3), departed = setOf(1)),
+            modifier = Modifier.fillMaxWidth().aspectRatio(RoomSpec.ASPECT),
+            frameTimeMs = 400L,
+        )
+    }
+}
+
 @Preview(widthDp = 411, heightDp = 380, showBackground = true, backgroundColor = 0xFFFDF1EC)
 @Composable
 private fun MiniRoomDoorOpenPreview() {
@@ -56,6 +79,39 @@ private fun MiniRoomDoorOpenPreview() {
             frameTimeMs = 400L,
             doorOpenOverride = 0.55f,
         )
+    }
+}
+
+/**
+ * 창밖·문밖 여섯 벌. **문을 반쯤 열어 둔다** — 안 그러면 문밖 그림이 안 보여서
+ * 절반만 확인하게 된다.
+ *
+ * 이걸 미리보기로 두는 이유: 실제 시각·날씨를 따르기 때문에 앱을 켜서 볼 수 있는
+ * 것은 지금 바깥에 있는 한 벌뿐이다. 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
+ *
+ * **폭을 411dp 로 맞춘다.** 창유리는 화면에서 101px 밖에 안 되고 문틈은 86px 이다.
+ * 원본 크기로 보면 비가 굵어 보이는데 화면에서는 점이 된다 (HISTORY 11절).
+ */
+@Preview(widthDp = 411, heightDp = 1180, showBackground = true, backgroundColor = 0xFFFDF1EC)
+@Composable
+private fun OutsideViewsPreview() {
+    DaengsTheme {
+        Column(
+            modifier = Modifier.background(CreamBg).padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            OutsideView.entries.forEach { outside ->
+                Text(outside.label, fontSize = 10.sp, color = TextMuted)
+                MiniRoomCanvas(
+                    state = rememberMiniRoomState(),
+                    catalog = rememberItemCatalog(),
+                    outside = outside,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(RoomSpec.ASPECT),
+                    frameTimeMs = 400L,
+                    doorOpenOverride = 0.7f,
+                )
+            }
+        }
     }
 }
 

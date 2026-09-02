@@ -34,11 +34,29 @@ import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 
+/**
+ * 하단 탭.
+ *
+ * **[Nearby] 는 예전에 "산책기록" 이었다.** 그런데 여는 화면은 처음부터 장소 지도라
+ * 이름과 내용이 달랐다 — 탭을 누르면 산책 기록이 나올 줄 알고 누른다. 산책 기록은
+ * 홈의 "오늘의 산책 요약" 카드에서 펼치는 것으로 자리가 정해져서, 이 탭은 장소
+ * 찾기 전용이 됐다.
+ */
 enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Home("홈", DaengsIcon.Home),
-    Walks("산책기록", DaengsIcon.Paws),
-    Community("커뮤니티", DaengsIcon.Chat),
-    My("마이", DaengsIcon.Person),
+    Nearby("내 주변", DaengsIcon.Pin),
+    Dex("도감", DaengsIcon.Book),
+
+    /**
+     * 찍은 사진과 영상을 모아 볼 자리. **아직 준비 중이다.**
+     *
+     * 예전에는 이 자리가 "마이"(강아지 목록·설정)였고 이름표만 먼저 "저장소" 로
+     * 바꿔 뒀다. 그때 주석에 "화면 내용이 실제로 저장소가 될 때 상수도 같이 바꾼다"
+     * 고 적었고, 지금 그렇게 했다 — **이름표와 하는 일이 어긋난 채로 두지 않는다.**
+     *
+     * 마이는 상단바의 프로필 사진 버튼으로 간다. 탭이 아니다.
+     */
+    Storage("저장소", DaengsIcon.Camera),
 }
 
 private val BarHeight = 64.dp
@@ -79,11 +97,11 @@ fun DaengsBottomBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 BottomItem(BottomTab.Home, selected, onSelect, Modifier.weight(1f))
-                BottomItem(BottomTab.Walks, selected, onSelect, Modifier.weight(1f))
+                BottomItem(BottomTab.Nearby, selected, onSelect, Modifier.weight(1f))
                 // 가운데 버튼 자리
                 Spacer(Modifier.weight(1f))
-                BottomItem(BottomTab.Community, selected, onSelect, Modifier.weight(1f))
-                BottomItem(BottomTab.My, selected, onSelect, Modifier.weight(1f))
+                BottomItem(BottomTab.Dex, selected, onSelect, Modifier.weight(1f))
+                BottomItem(BottomTab.Storage, selected, onSelect, Modifier.weight(1f))
             }
         }
 

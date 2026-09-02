@@ -4,8 +4,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -50,6 +52,68 @@ fun DrawScope.drawRoomBackground(g: RoomGeometry, room: ImageBitmap) {
         filterQuality = FilterQuality.None,
     )
 }
+
+/**
+ * 창유리가 방 그림에서 차지하는 자리.
+ *
+ * **마스크는 여기 없다.** 창밖 그림이 이미 유리 모양으로 잘려 있어서(알파), 코드가
+ * 아는 것은 얹을 사각형 하나뿐이다. 창살을 좌표로 잡아 오려내는 일이 없다.
+ *
+ * 값은 손으로 잰 게 아니라 **테마 여섯 장을 겹쳐 뽑았다.** 창틀·창살·벽은 테마마다
+ * 색이 달라지고 유리 안 풍경은 안 변하므로, 전부 일치하는 화소가 곧 유리다
+ * (`tools/make_outside.py`). 저쪽이 방 아트를 다시 그리면 그 스크립트를 다시 돌린다.
+ */
+object WindowSpec {
+    val glass = Rect(left = 30.66f, top = 15.55f, right = 51.69f, bottom = 51.07f)
+
+    /** 백분율 → 화면 px */
+    fun rectOf(g: RoomGeometry): Rect = Rect(
+        g.stage.left + glass.left / 100f * g.stage.width,
+        g.stage.top + glass.top / 100f * g.stage.height,
+        g.stage.left + glass.right / 100f * g.stage.width,
+        g.stage.top + glass.bottom / 100f * g.stage.height,
+    )
+}
+
+/**
+ * 창밖. 방 그림 **위에** 유리 자리로 얹는다.
+ *
+ * 방 그림을 깔고 곧바로 부른다 — 소품·강아지보다 뒤이고, 창틀·창살은 방 그림에
+ * 구워져 있으므로 이 그림이 그 위를 덮지 않는다(유리 모양으로 잘려 있다).
+ */
+fun DrawScope.drawWindowOutside(g: RoomGeometry, outside: ImageBitmap, veil: Boolean = false) {
+    val dst = WindowSpec.rectOf(g)
+    val offset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt())
+    val size = IntSize(dst.width.roundToInt(), dst.height.roundToInt())
+    drawImage(
+        image = outside,
+        dstOffset = offset,
+        dstSize = size,
+        filterQuality = FilterQuality.None,
+    )
+    // 흐림. **그림을 한 벌 더 굽지 않고 같은 그림에 회색 막을 씌운다.**
+    //
+    // 창밖 PNG 는 유리 모양으로 잘린 알파라, 같은 그림을 회색으로 물들여 겹치면
+    // 유리 안쪽만 정확히 흐려진다 — 창틀은 안 건드린다. 진짜 흐림 그림이 구워지면
+    // ([OutsideView] 주석) 이 막을 지우고 PNG 만 갈아끼우면 된다.
+    if (veil) {
+        drawImage(
+            image = outside,
+            dstOffset = offset,
+            dstSize = size,
+            filterQuality = FilterQuality.None,
+            colorFilter = ColorFilter.tint(CloudVeil, BlendMode.SrcAtop),
+        )
+    }
+}
+
+/**
+ * 흐린 날 유리에 씌우는 막.
+ *
+ * 파랑기를 살짝 뺀 회색이다. 완전한 회색이면 하늘이 죽은 것처럼 보이고, 너무 옅으면
+ * 맑음과 구분이 안 된다. **실기기에서 보고 정한다** — 화면에서 유리는 작다.
+ */
+private val CloudVeil = Color(0x8C9AA6B0)
 
 /**
  * 문 규격 — **방 그림에 자로 재서 뽑은 값**이다.
@@ -103,15 +167,6 @@ object DoorSpec {
      */
     val SHEAR: Float get() = BOTTOM.last() - BOTTOM.first()
 
-    /**
-     * 문 너머로 보여줄 바깥. **창유리에서 오려 쓴다.**
-     *
-     * 문간을 어둡게 칠했더니 나가는 문이 아니라 검은 구멍으로 읽혔다. 밖이 보여야
-     * 나가는 문이다. 새로 그리면 화풍이 깨지므로 같은 그림의 창유리를 쓴다 —
-     * 창살이 안 걸리는 오른쪽 아래 한 칸이다.
-     */
-    val outside = Rect(left = 42.87f, top = 30.53f, right = 48.84f, bottom = 43.37f)
-
     /** 경첩은 오른쪽. 그림에서 손잡이가 왼쪽에 있다. 열릴 때 이쪽으로 눌린다. */
     const val HINGE_RIGHT = true
 
@@ -144,52 +199,50 @@ object DoorSpec {
  * 방 그림을 깔아둔 **뒤에**, 소품과 강아지보다 **앞서** 부른다. 문으로 든 볕이
  * 소품 밑으로 깔려야 하기 때문이다.
  *
- *  1. 문 너머 바깥 — 창유리를 오려 늘린다
+ *  1. 문 너머 바깥 — **문 비율로 그린 [outside]** 를 깐다 (하늘·땅·길이 다 들어 있다)
  *  2. 문지방 볕과 인방 그늘 — 평평한 스티커로 안 보이게
- *  3. 눌린 문짝 — 같은 그림에서 오려 경첩 쪽으로 누른다
+ *  3. 눌린 문짝 — 방 그림에서 오려 경첩 쪽으로 누른다
  *  4. 바닥에 번지는 볕 — 이게 "나간다"를 만든다
  */
-fun DrawScope.drawDoorOpening(g: RoomGeometry, room: ImageBitmap, open: Float) {
+fun DrawScope.drawDoorOpening(
+    g: RoomGeometry,
+    room: ImageBitmap,
+    outside: ImageBitmap,
+    open: Float,
+    veil: Boolean = false,
+) {
     if (open <= 0.001f) return
 
     val dst = DoorSpec.rectOf(g, DoorSpec.leaf)
+    // 밑변이 기운 만큼. 문지방 볕을 놓는 데 쓴다 (4번)
     val lift = DoorSpec.SHEAR * dst.height
 
     clipPath(doorPath(dst)) {
-        // 1) 바깥. 창유리 한 칸을 문 비율로 늘린다
-        val view = DoorSpec.sourcePx(room, DoorSpec.outside)
+        // 1) 바깥. **문 비율로 따로 그린 그림**을 그대로 깐다.
+        //
+        // 예전에는 창유리 한 칸을 늘려 썼는데(`DoorSpec.outside`), 창은 236x498 이고
+        // 문은 137x382 라 늘리면 뭉갰다. 게다가 창유리 아래쪽이 나뭇잎이라 문이
+        // 아니라 "바닥까지 내려온 창" 으로 읽혀서, 잔디·흙길 띠를 코드로 덮어
+        // 가리고 있었다. 그 띠 색이 낮·맑음으로 박혀 있어 밤이어도 문만 대낮이었다.
+        //
+        // 이제 하늘·땅·길이 그림 안에 다 있다. 지평선 기울기도 구워져 있어서
+        // 여기서 기울일 것이 없다.
         drawImage(
-            image = room,
-            srcOffset = IntOffset(view.left, view.top),
-            srcSize = IntSize(view.width, view.height),
+            image = outside,
             dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
             dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
             filterQuality = FilterQuality.None,
         )
-
-        // 2) 나갈 땅. **이게 없으면 창문으로 보인다.**
-        //
-        // 창유리를 그대로 쓰면 아래쪽이 나뭇잎이라 문이 아니라 바닥까지 내려온
-        // 창처럼 읽힌다. 아래를 잔디와 흙길로 덮어야 나갈 데가 생긴다.
-        // 밑변이 기울어 있으므로 지평선도 같이 기운다.
-        fun band(v0: Float, v1: Float, color: Color) {
-            val y0 = dst.top + dst.height * v0
-            val y1 = dst.top + dst.height * v1
-            drawPath(
-                Path().apply {
-                    moveTo(dst.left, y0)
-                    lineTo(dst.right, y0 + lift)
-                    lineTo(dst.right, y1 + lift)
-                    lineTo(dst.left, y1)
-                    close()
-                },
-                color,
+        // 흐림. 창과 같은 막이다 ([drawWindowOutside] 주석).
+        if (veil) {
+            drawImage(
+                image = outside,
+                dstOffset = IntOffset(dst.left.roundToInt(), dst.top.roundToInt()),
+                dstSize = IntSize(dst.width.roundToInt(), dst.height.roundToInt()),
+                filterQuality = FilterQuality.None,
+                colorFilter = ColorFilter.tint(CloudVeil, BlendMode.SrcAtop),
             )
         }
-        band(HORIZON, HORIZON + 0.10f, GrassFar)
-        band(HORIZON + 0.10f, HORIZON + 0.19f, GrassNear)
-        band(HORIZON + 0.19f, 1.04f, PathSun)
-        band(HORIZON + 0.19f, HORIZON + 0.215f, PathEdge)
     }
 
     // 3) 눌린 문짝. 잘라내기도 이미지와 **똑같이** 눌러야 한다. 눌린 사각형에
@@ -277,19 +330,9 @@ fun DrawScope.drawDoorHint(g: RoomGeometry, pulse: Float) {
     drawPath(doorPath(DoorSpec.rectOf(g, DoorSpec.leaf)), Color.White.copy(alpha = 0.10f * pulse))
 }
 
-/**
- * 문 너머 지평선 위치. 문짝 높이 대비.
- *
- * 이 아래는 창유리 대신 땅을 깐다. 창유리만 쓰면 아래쪽이 나뭇잎이라
- * 바닥까지 내려온 창처럼 보인다.
- */
-private const val HORIZON = 0.62f
-
-/** 바깥 땅. 먼 잔디 → 가까운 잔디 → 볕 든 흙길 순으로 깔린다. */
-private val GrassFar = Color(0xFF7E9A5C)
-private val GrassNear = Color(0xFF93AF66)
-private val PathEdge = Color(0xFFB8A176)
-private val PathSun = Color(0xFFDCC69A)
+// 문 너머 지평선(0.62)과 잔디·흙길 색은 여기 있었다. 이제 문밖 그림 안에 들어
+// 있으므로 코드에서 걷어냈다. **값은 `tools/make_outside.py` 로 옮겨 갔다** —
+// 그림을 다시 그릴 때 지평선 높이가 필요하면 거기를 본다.
 
 /** 문으로 들어온 볕. 바닥에 번진다. */
 private val Sunbeam = Color(0xFFFFE9B8)
@@ -334,6 +377,25 @@ fun DrawScope.drawPawStamp(center: Offset, r: Float, color: Color) {
  * 벽이 물러나는 평면이라 **액자도 같이 기울어야** 벽에 붙어 보인다. 그림에서 벽의
  * 위 가장자리를 재보니 가로 1% 갈 때마다 세로로 0.35% 내려간다 ([SLOPE]).
  */
+/**
+ * 액자에 걸 때 보여줄 **카드 안의 그림창** (카드 크기 대비 %).
+ *
+ * `ImmersiveScene.fit` 과 같은 값이다. 거기서 참조하지 않고 여기 적어 둔 이유는
+ * `miniroom` 이 `ui.dex` 를 모르게 두기 위해서다 — 방이 도감을 알면 의존이 거꾸로
+ * 흐른다. 카드 그림이 바뀌면 두 곳을 같이 고친다.
+ */
+private object PictureRoi {
+    const val x = 6.06f
+    const val y = 14.15f
+    const val w = 87.43f
+    const val h = 62.70f
+}
+
+private val PICTURE_ROI = PictureRoi
+
+/** 그림창을 액자 속에 넣을 때 남기는 여유. 1 이면 딱 맞고, 작을수록 물러난다. */
+private const val PICTURE_FIT = 0.94f
+
 object FrameSpec {
     /** 왼쪽 모서리 (스테이지 가로 %) */
     const val LEFT = 72f
@@ -422,21 +484,46 @@ fun DrawScope.drawWallFrame(g: RoomGeometry, picture: ImageBitmap?, pulse: Float
         val artH = height - (border + mat) * 2f
         if (picture != null) {
             clipRect(artLeft, artTop, artLeft + artW, artTop + artH) {
-                // 카드는 세로로 긴 그림이다. 가로를 채우고 위쪽을 보여준다 —
-                // 카드 얼굴이 위에 있어서 아래를 잘라야 뭔지 알아본다.
-                val scale = artW / picture.width
+                // 카드는 세로로 길고(810x1125) 액자 속은 가로로 넓다. 예전에는 가로를
+                // 채우고 **위쪽만** 보여줬는데, 그러면 강아지 아래가 잘렸다.
+                //
+                // 그래서 카드 전체가 아니라 **그림창만** 액자에 맞춘다. 그 자리는
+                // [ImmersiveScene.fit] 이 이미 알고 있는 값이다 — 이머시브가 누끼를
+                // 카드 안 제자리에 놓을 때 쓰는 사각형이라, 강아지가 그 안에 있다.
+                //
+                // 그림창이 **다 들어오게**(contain) 맞추고 가운데를 잡는다. 덮이게
+                // 키웠더니 액자 속이 그림창보다 넓지 않아서 아래가 또 잘렸다.
+                // 남는 자리는 카드의 홀로그램 테두리가 채우므로 빈 데가 안 생긴다.
+                val roiW = picture.width * PICTURE_ROI.w / 100f
+                val roiH = picture.height * PICTURE_ROI.h / 100f
+                // 살짝 물러나 액자 테두리에 딱 붙지 않게. 붙으면 잘린 것처럼 보인다.
+                val s = minOf(artW / roiW, artH / roiH) * PICTURE_FIT
+
+                val drawW = picture.width * s
+                val drawH = picture.height * s
+                // 그림창의 중심이 액자 속 중심에 오도록 그림 전체를 민다.
+                val roiCx = (PICTURE_ROI.x + PICTURE_ROI.w / 2f) / 100f * drawW
+                val roiCy = (PICTURE_ROI.y + PICTURE_ROI.h / 2f) / 100f * drawH
                 drawImage(
                     image = picture,
-                    dstOffset = IntOffset(artLeft.roundToInt(), artTop.roundToInt()),
-                    dstSize = IntSize(
-                        artW.roundToInt(),
-                        (picture.height * scale).roundToInt(),
+                    dstOffset = IntOffset(
+                        (artLeft + artW / 2f - roiCx).roundToInt(),
+                        (artTop + artH / 2f - roiCy).roundToInt(),
                     ),
-                    filterQuality = FilterQuality.None,
+                    dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
+                    // **여기만 보간을 켠다.** 방은 픽셀 화풍이라 어디서나 None 인데,
+                    // 액자에 들어가는 것은 픽셀 그림이 아니라 사진에 가까운 카드다.
+                    // 800px 짜리를 60px 로 줄이면서 최근접으로 뽑으면 눈코가 통째로
+                    // 날아가서 우리 아이인지 알아볼 수가 없다.
+                    filterQuality = FilterQuality.Medium,
                 )
             }
         } else {
-            drawRect(FrameEmpty, Offset(artLeft, artTop), Size(artW, artH))
+            // **빈 액자를 검은 판으로 두지 않는다.** 아직 카드가 없는 사람의 방에
+            // 시커먼 사각형이 걸려 있으면 그림이 안 불러와진 것으로 보인다.
+            // 대지 위에 발자국 하나. 카드가 생기면 그 카드로 갈아 끼운다.
+            drawRect(FrameMat, Offset(artLeft, artTop), Size(artW, artH))
+            drawPaw(Offset(artLeft + artW / 2f, artTop + artH / 2f), minOf(artW, artH) * 0.37f)
         }
 
         if (pulse > 0.001f) {
@@ -448,6 +535,44 @@ fun DrawScope.drawWallFrame(g: RoomGeometry, picture: ImageBitmap?, pulse: Float
         }
     }
 }
+
+/**
+ * 발자국 하나. 빈 액자에 걸린다.
+ *
+ * 에셋을 안 만든다 — 타원 다섯 개다. 액자 속은 화면에서 60px 남짓이라 그림 파일로
+ * 넣어도 그 크기로 줄어들고, 리소스만 한 장 는다.
+ *
+ * 발가락은 **부채꼴로 벌린다.** 나란히 찍으면 발자국이 아니라 점 네 개다.
+ * 가운데 둘은 조금 높고 크다 — 실제 발바닥이 그렇고, 그래야 위아래가 생긴다.
+ *
+ * @param r 발자국 전체가 들어가는 반지름
+ */
+private fun DrawScope.drawPaw(center: Offset, r: Float) {
+    // 발바닥. 완전한 타원보다 가로로 넓은 편이 발로 읽힌다.
+    drawOval(
+        PawInk,
+        Offset(center.x - r * 0.52f, center.y - r * 0.02f),
+        Size(r * 1.04f, r * 0.80f),
+    )
+    // (가로 위치, 세로 위치, 크기) — 가운데 둘이 높고 크다
+    val toes = listOf(
+        Triple(-0.62f, -0.44f, 0.30f),
+        Triple(-0.22f, -0.72f, 0.34f),
+        Triple(0.22f, -0.72f, 0.34f),
+        Triple(0.62f, -0.44f, 0.30f),
+    )
+    for ((tx, ty, ts) in toes) {
+        val w = r * ts
+        drawOval(
+            PawInk,
+            Offset(center.x + r * tx - w / 2f, center.y + r * ty - w * 0.62f),
+            Size(w, w * 1.24f),
+        )
+    }
+}
+
+/** 발자국 색. 대지(크림)에 얹히므로 방의 나무 톤에서 가져온 따뜻한 갈색이다. */
+private val PawInk = Color(0xFFC2A184)
 
 /** 액자 나무. 방 그림의 가구 톤에서 가져왔다. */
 private val FrameWood = Color(0xFF6E5636)
