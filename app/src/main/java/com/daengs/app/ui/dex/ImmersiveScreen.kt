@@ -140,6 +140,13 @@ private const val SHELL_TILT = 0.156f
 fun ImmersiveScreen(
     scene: ImmersiveScene = CABBAGE_SCENE,
     /**
+     * 무대 위에 쓸 이름. **내 카드로 들어갔으면 우리 아이 이름이다.**
+     *
+     * 무대는 카드와 같은 것을 가리키는데 카드에는 아이 이름이 찍혀 있고 무대만
+     * `CABBAGE NEO` 라고 하면 같은 것이 두 이름을 갖는다.
+     */
+    titleOverride: String? = null,
+    /**
      * 눌린 카드의 **창 위** 자리. 여기서 출발한다.
      *
      * [Rect.Zero] 면 자리를 모른다는 뜻이고, 그때는 가운데에서 조금 작게 시작한다.
@@ -224,7 +231,7 @@ fun ImmersiveScreen(
             // 결계 위에서 겉돈다. accent2 를 흰쪽으로 당긴 값이라 배추에서는 전과
             // 거의 같은 색이 나온다.
             Text(
-                scene.title,
+                titleOverride ?: scene.title,
                 color = lerp(scene.accent2, Color.White, 0.62f),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,

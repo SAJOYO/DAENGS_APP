@@ -53,8 +53,12 @@ const val IMMERSIVE_SLOP = 10f
 @Immutable
 data class ImmersiveScene(
     /**
-     * 카드 이름. **화면에 박아 두면 안 된다** — 배추 하나뿐일 때는 상수였는데,
-     * 고구마를 넣으니 보랏빛 결계 위에 "CABBAGE NEO" 가 떴다.
+     * 무대 이름. **화면에 박아 두면 안 된다** — 배추 하나뿐일 때는 상수였는데,
+     * 고구마를 넣으니 보랏빛 결계 위에 배추 이름이 떴다.
+     *
+     * 내 카드로 들어갔으면 화면이 **우리 아이 이름으로 덮어쓴다**
+     * (`ImmersiveScreen(titleOverride = ...)`). 여기 값은 아직 안 뽑은 카드로
+     * 들어갔을 때(프리뷰·표본)만 쓰인다.
      */
     val title: String,
     val place: String,
@@ -165,7 +169,7 @@ data class ImmersiveScene(
 
 /** No.01 배추. 이슬 맺힌 텃밭. */
 val CABBAGE_SCENE = ImmersiveScene(
-    title = "CABBAGE NEO",
+    title = "배추",
     place = "이슬 맺힌 텃밭 · 해 뜨기 직전",
     back = "neo-hologram/art/cabbage-back.webp",
     subject = "neo-hologram/art/cabbage-subject.webp",
@@ -192,7 +196,7 @@ val CABBAGE_SCENE = ImmersiveScene(
  * 그림자만 저쪽 값(0.22)을 따른다.
  */
 val SWEET_POTATO_SCENE = ImmersiveScene(
-    title = "SWEET POTATO NEO",
+    title = "고구마",
     place = "보랏빛 결계 · 의식이 시작되기 직전",
     back = "neo-hologram/art/sweet-potato-back.webp",
     subject = "neo-hologram/art/sweet-potato-subject.webp",
@@ -221,7 +225,7 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
  * 짧아서**다. 틀마다 다르므로 카드가 늘 때마다 저쪽이 재서 준다.
  */
 val LETTUCE_SCENE = ImmersiveScene(
-    title = "LETTUCE NEO",
+    title = "상추",
     place = "황금 무대 · 잎이 날리는 밤",
     back = "neo-hologram/art/lettuce-back.webp",
     subject = "neo-hologram/art/lettuce-subject.webp",

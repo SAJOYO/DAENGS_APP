@@ -191,6 +191,8 @@ fun CardDexScreen(
     var scene by remember { mutableStateOf<ImmersiveScene?>(null) }
     // 이머시브가 출발할 자리. 그리드가 사라진 뒤에도 써야 하므로 여기 둔다.
     var from by remember { mutableStateOf(Rect.Zero) }
+    // 무대에 쓸 이름. 들어간 칸의 내 카드 이름이고, 아직 안 뽑았으면 null 이다.
+    var sceneName by remember { mutableStateOf<String?>(null) }
     // **화면을 안 늘린다.** 뽑기는 `Screen` 에 새 갈래를 내지 않고 도감 위에 덮인다 —
     // 확대 뷰·이머시브가 이미 그 방식이라 결이 맞고, `MainActivity` 를 안 건드린다.
     var drawing by remember { mutableStateOf(startInDraw && draw != null) }
@@ -211,7 +213,13 @@ fun CardDexScreen(
     }
 
     scene?.let { showing ->
-        ImmersiveScreen(scene = showing, from = from, onClose = { scene = null })
+        ImmersiveScreen(
+            scene = showing,
+            // 무대에도 카드와 같은 이름을 쓴다. 꾹 눌러 들어간 그 칸의 내 카드다.
+            titleOverride = sceneName,
+            from = from,
+            onClose = { scene = null },
+        )
         return
     }
 
@@ -221,9 +229,10 @@ fun CardDexScreen(
             onOpen = { opened = it },
             onClose = onClose,
             onDraw = draw?.let { { drawing = true } },
-            onImmersive = { at, picked ->
+            onImmersive = { at, picked, whose ->
                 from = at
                 scene = picked
+                sceneName = whose
             },
         )
 
@@ -245,7 +254,7 @@ private fun DexGrid(
     slots: List<DexSlot>,
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
-    onImmersive: (Rect, ImmersiveScene) -> Unit,
+    onImmersive: (Rect, ImmersiveScene, String?) -> Unit,
     onDraw: (() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
@@ -275,7 +284,9 @@ private fun DexGrid(
                 // 주면 뽑을 이유가 없다.
                 onImmersive = IMMERSIVE_SCENES[slot.card.no]
                     ?.takeIf { !slot.locked }
-                    ?.let { picked -> { at: Rect -> onImmersive(at, picked) } },
+                    ?.let { picked ->
+                        { at: Rect -> onImmersive(at, picked, slot.owned.firstOrNull()?.dogName) }
+                    },
             )
         }
     }
