@@ -31,11 +31,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
+import com.daengs.app.legal.openPrivacyPolicy
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.PinkFaint
@@ -98,6 +100,7 @@ fun MyScreen(
     onDismissWithdraw: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var confirming by rememberSaveable { mutableStateOf(false) }
     // 어느 아이를 지우려는지. **카드가 아니라 화면이 들고 있다** — 목록이 새로
     // 오면서 카드가 다시 만들어져도 창이 안 닫힌다.
@@ -152,6 +155,13 @@ fun MyScreen(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
+        }
+
+        // 로그인 여부와 상관없이 **늘 있다.** 플레이스토어가 앱 안에서 열리는 방침 링크를
+        // 요구하고, 심사자는 카카오 계정 없이 들어온다 (`legal/LegalLinks.kt`).
+        Spacer(Modifier.height(14.dp))
+        Section {
+            MyRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
         }
 
         Spacer(Modifier.weight(1f))

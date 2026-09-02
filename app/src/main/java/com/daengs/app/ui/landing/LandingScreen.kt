@@ -20,11 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import com.daengs.app.legal.openPrivacyPolicy
 import com.daengs.app.ui.DaengsLogo
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.home.HomeDemoData
@@ -59,6 +61,7 @@ fun LandingScreen(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     Box(
         modifier
             .fillMaxSize()
@@ -128,6 +131,19 @@ fun LandingScreen(
                     modifier = Modifier.padding(top = 10.dp),
                 )
             }
+
+            // 방침 링크는 로그인 **전**에도 보여야 한다 — 플레이 심사자는 카카오 계정이
+            // 없어서 저장소 탭까지 못 들어온다 (`legal/LegalLinks.kt`).
+            Text(
+                "개인정보처리방침",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .padding(top = 14.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { openPrivacyPolicy(context) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
 
             // 둘러보기는 **디버그 빌드에만** 있다 — 출시 앱은 로그인이 필수다.
             // 진짜는 `app/src/debug/.../SkipBrowse.kt`, 릴리스는 빈 껍데기다.
