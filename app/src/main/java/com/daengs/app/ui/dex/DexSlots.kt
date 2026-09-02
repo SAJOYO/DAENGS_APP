@@ -21,6 +21,15 @@ data class DexSlot(
 ) {
     val locked: Boolean get() = owned.isEmpty()
     val count: Int get() = owned.size
+
+    /**
+     * **뽑아서 만든 장수.** 화면의 `×N` 은 이 값을 쓴다.
+     *
+     * [count] 와 다르다 — 개발 기기의 시드는 뽑은 게 아니라 원래 있던 카드라 안 센다.
+     * 시금치를 한 번 뽑았는데 ×2 로 보이면 "두 번 뽑았다" 는 거짓말이 된다.
+     * 넘겨 보는 것은 [owned] 전부라 시드도 볼 수 있다.
+     */
+    val drawnCount: Int get() = owned.count { it.drawn }
 }
 
 /**

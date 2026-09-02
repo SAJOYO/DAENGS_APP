@@ -21,6 +21,17 @@ data class DrawnCard(
     val codeText: String,
     val core: IntRect,
 ) {
+    /**
+     * 얼굴이 낀 카드인가. 곧 **뽑아서 만든 카드인가** 와 같은 말이다.
+     *
+     * 개발 기기에 미리 넣어 둔 열두 장은 뽑은 게 아니라 원래 있던 카드라 누끼가 없고,
+     * 그래서 얼굴 자리도 비어 있다. 그 둘을 같이 세면 시금치를 한 번 뽑았는데 ×2 로
+     * 보인다 — 원래 있던 것까지 "두 번 뽑았다" 고 말하는 셈이다.
+     *
+     * 컬럼을 새로 두지 않는다. 얼굴 자리가 없다는 것이 이미 그 뜻이다.
+     */
+    val drawn: Boolean get() = core.width > 0 && core.height > 0
+
     fun toRow(): DrawnCardRow = DrawnCardRow(
         id = id,
         appUserId = appUserId,

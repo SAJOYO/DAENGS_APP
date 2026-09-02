@@ -282,8 +282,10 @@ private fun DexGrid(
                 //
                 // **아직 안 뽑은 칸에서는 안 들어간다.** 잠긴 카드가 무대까지 열어
                 // 주면 뽑을 이유가 없다.
+                // 이머시브는 v1 에 안 들어간다 (`IMMERSIVE_IN_BUILD` 주석 참고).
+                // null 이면 꾹 누르기도, 캡션 아래 배지도 안 붙는다.
                 onImmersive = IMMERSIVE_SCENES[slot.card.no]
-                    ?.takeIf { !slot.locked }
+                    ?.takeIf { IMMERSIVE_IN_BUILD && !slot.locked }
                     ?.let { picked ->
                         { at: Rect -> onImmersive(at, picked, slot.owned.firstOrNull()?.dogName) }
                     },
@@ -425,10 +427,10 @@ private fun GridCard(slot: DexSlot, onOpen: () -> Unit, onImmersive: ((Rect) -> 
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
             )
-            if (slot.count > 1) {
+            if (slot.drawnCount > 1) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "×${slot.count}",
+                    "×${slot.drawnCount}",
                     color = DaengPink,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -647,7 +649,7 @@ private fun CardViewer(slots: List<DexSlot>, startIndex: Int, onClose: () -> Uni
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "이 야채로 ${slot.count}장 뽑았어요",
+                        "이 야채로 ${slot.drawnCount}장 뽑았어요",
                         color = Color(0xFF9E8B84),
                         fontSize = 12.sp,
                     )
