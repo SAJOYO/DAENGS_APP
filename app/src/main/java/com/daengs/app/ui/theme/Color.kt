@@ -25,6 +25,11 @@ object DaengsColors {
     val Success = Color(0xFF4E9B70)
     val Warning = Color(0xFFC98B32)
     val Error = Color(0xFFC45E5E)
+
+    // 오류를 바탕으로 깔 때. [BrandPrimary] : [BrandPrimarySoft] 와 같은 비율로
+    // [Error] 를 옅게 뽑았다. M3 의 errorContainer 자리에 들어간다 — 안 주면
+    // 기본 빨강·보라가 크림·핑크 사이로 튀어나온다 (Theme.kt 참고).
+    val ErrorSoft = Color(0xFFFBE3E3)
 }
 
 // 시안(design/home-screen.png)에서 뽑은 파스텔 팔레트.

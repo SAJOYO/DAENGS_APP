@@ -144,3 +144,18 @@ private fun newNonce(): String {
     val bytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
     return bytes.joinToString("") { "%02x".format(it) }
 }
+
+
+/**
+ * 지금 로그인한 회원. `GET /auth/app/me` 의 답이다.
+ *
+ * 여기 있는 것만 앱이 쓴다 — 이메일·가입 시각도 오지만 쓸 자리가 없어서 안 담는다.
+ */
+data class AppMe(
+    val appUserId: String,
+    /**
+     * 미니룸 이름표. **null 이면 아직 안 정한 것**이고, 그때 화면이 대표 강아지
+     * 이름으로 짓는다 ([com.daengs.app.ui.home.defaultRoomLabel]).
+     */
+    val roomName: String?,
+)

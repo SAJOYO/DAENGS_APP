@@ -6,7 +6,12 @@
   안드로이드는 targetSdk 28 부터 평문 HTTP 를 기본으로 막으므로, 그대로 두면 로그인
   요청이 시작도 못 하고 CleartextNotPermitted 로 죽는다.
 
-  **릴리스에는 안 건다.** 서버에 TLS 가 붙으면 이 파일을 지우면 된다.
+  **릴리스에는 안 건다.** 릴리즈 빌드는 https 인 출시 서버(daengapi)를 보므로 평문
+  예외가 필요 없다 — 주소를 빌드 종류로 가른 이유가 그것이다(`app/build.gradle.kts`
+  의 `apiBaseUrlRelease` 주석).
+
+  **그래서 이 파일은 지우지 않는다.** 개발 서버가 `http://` 로 남아 있는 한 디버그
+  빌드에는 계속 필요하다.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">

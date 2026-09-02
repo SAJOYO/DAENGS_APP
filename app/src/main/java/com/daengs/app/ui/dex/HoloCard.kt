@@ -220,7 +220,13 @@ fun Modifier.rubbable(state: RubState, consume: Boolean = true): Modifier = this
                 state.move(change.position, size.toSize())
                 if (consume) change.consume()
             }
-            if (!change.pressed) break
+            if (!change.pressed) {
+                // **탭도 먹는다.** 안 먹으면 이 카드 뒤에 깔린 "밖을 눌러 닫기" 가
+                // 같은 탭으로 같이 발동한다 — 설명을 열자마자 뷰어가 닫혔다.
+                // 문지르기(moved)는 위에서 이미 먹고 있다.
+                if (!moved && consume && state.onTap != null) change.consume()
+                break
+            }
         }
         state.hold = 0f
         state.release()

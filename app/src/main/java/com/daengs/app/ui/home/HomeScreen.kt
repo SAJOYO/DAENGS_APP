@@ -1,5 +1,6 @@
 package com.daengs.app.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,15 +28,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
 import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
+import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
-import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.miniroom.art.ItemCatalog
@@ -43,7 +46,13 @@ import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
+import com.daengs.app.pet.Pet
+import com.daengs.app.walk.WalkDayTotals
+import kotlinx.coroutines.delay
+import com.daengs.app.ui.my.MyScreen
+import com.daengs.app.ui.storage.StorageComingSoon
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
 
 /**
@@ -55,6 +64,15 @@ import com.daengs.app.ui.theme.DaengsTheme
  * 다른 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
  */
 internal val CardSlotHeight = 146.dp
+
+/**
+ * 강아지 목록이 늦을 때 "불러오는 중" 을 띄우기까지 기다리는 시간.
+ *
+ * **바로 띄우지 않는다.** 빠른 망에서는 목록이 눈 깜짝할 사이에 오는데, 그때 표시가
+ * 떴다 사라지면 그것 자체가 깜빡임이다 — 데모 강아지 네 마리가 사라지던 것을 고쳐
+ * 놓고 같은 종류의 깜빡임을 새로 만드는 셈이 된다.
+ */
+private const val DOGS_LOADING_DELAY_MS = 600L
 
 /**
  * 이름표가 앉는 자리 — **방 그림 기준 백분율**이다.
@@ -88,30 +106,106 @@ private object NamePlateSpec {
 fun HomeScreen(
     modifier: Modifier = Modifier,
     frameTimeMs: Long? = null,
+    /**
+     * 지금 켜져 있는 하단 탭. **밖에서 들고 있는다.**
+     *
+     * 안에서 `remember` 로 들고 있으면 강아지를 추가하러 나갔다 오는 순간 사라진다 —
+     * `when (screen)` 이 이 화면을 컴포지션에서 들어내기 때문이다. 그래서 마이 탭에서
+     * 시작한 일이 끝나면 늘 홈으로 튕겼다.
+     */
+    tab: BottomTab = BottomTab.Home,
+    onSelectTab: (BottomTab) -> Unit = {},
     dateLabel: String = HomeDemoData.todayLabel(),
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
     onOpenChat: (() -> Unit)? = null,
-    /** 산책기록 탭을 눌렀을 때. 장소 지도로 들어간다 — 지도 진입점을 어디에 둘지
-     *  제품 결정이 나기 전까지의 임시 배선이다 (이 탭은 그동안 아무것도 안 했다). */
+    /** 내 주변 탭을 눌렀을 때. 병원·카페·펫샵을 지도에서 찾는다. */
     onOpenPlaces: (() -> Unit)? = null,
+    /** 방문을 열었을 때. 산책 화면으로 나간다 — **탭이 아니라 문이 산책의 입구다.** */
+    onOpenWalk: (() -> Unit)? = null,
+    /** 산책 요약 카드의 "지난 산책". 기록 목록으로 나간다. */
+    onOpenWalkHistory: (() -> Unit)? = null,
+    /** 오늘 걸은 것. null 이면 아직 못 읽은 것이라 카드가 `-` 로 둔다. */
+    todayWalks: WalkDayTotals? = null,
+    /**
+     * 창밖·문밖의 지금.
+     *
+     * **[MainActivity] 가 들고 내려보낸다.** 여기서 [rememberOutsideView] 를 부르면
+     * 홈이 컴포지션에서 빠질 때 같이 죽어서, 도감이나 산책을 갔다 오면 폴백(맑은 낮,
+     * 기온 없음)부터 다시 시작한다 — 카드가 눈앞에서 한 번 바뀐다. `homeTab` 을
+     * 위로 올린 것과 같은 이유다.
+     */
+    outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
+    /**
+     * 마이 화면이 열려 있나. **탭이 아니라 상단바의 프로필 사진 버튼으로 연다.**
+     *
+     * 하단 저장소 탭과 갈라져 있다 — 예전에는 둘이 같은 자리였는데, 탭 이름이
+     * "저장소" 가 되면서 하는 일과 어긋났다.
+     *
+     * 값은 [MainActivity] 가 들고 있다. 강아지를 추가하러 나갔다 오면 마이로
+     * 돌아와야 하는데, 여기서 들면 화면이 바뀔 때 같이 죽는다.
+     */
+    myOpen: Boolean = false,
+    onOpenMy: (() -> Unit)? = null,
+    onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     onSignOut: (() -> Unit)? = null,
-    /** 누끼 실험실. 개발자 패널에서만 열린다. */
+    /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)? = null,
+    /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
+    onSignIn: (() -> Unit)? = null,
+    /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
+    pets: List<Pet>? = null,
+    canAddMore: Boolean = false,
+    onAddPet: (() -> Unit)? = null,
+    onEditPet: ((Pet) -> Unit)? = null,
+    onPickPrimary: ((Pet) -> Unit)? = null,
+    /**
+     * 방 앞 이름표. **null 이면 아직 안 정한 것**이고, 그때 대표 강아지 이름으로
+     * 짓는다 ([defaultRoomLabel]).
+     */
+    roomName: String? = null,
+    /** 이름표를 정한다. null 을 주면 되돌린다. 로그인 전이면 null 이라 안 눌린다. */
+    onRenameRoom: ((String?) -> Unit)? = null,
+    renameBusy: Boolean = false,
+    renameError: String? = null,
+    onDismissRename: (() -> Unit)? = null,
+    /** 지우기. **그 아이와만 나간 산책 기록도 같이 지워진다.** */
+    onDeletePet: ((Pet) -> Unit)? = null,
+    deletePetBusy: Boolean = false,
+    deletePetError: String? = null,
+    onDismissDeletePet: (() -> Unit)? = null,
+    /** 회원 탈퇴. 상태는 [MainActivity] 가 들고 있다 (랜딩의 busy·error 와 같은 결). */
+    onWithdraw: (() -> Unit)? = null,
+    withdrawBusy: Boolean = false,
+    withdrawError: String? = null,
+    onDismissWithdraw: (() -> Unit)? = null,
 ) {
-    var bottomTab by rememberSaveable { mutableStateOf(BottomTab.Home) }
+    // 탭에서 뒤로 누르면 앱을 나가는 게 아니라 홈으로 온다 (PlacesScreen 과 같은 결).
+    BackHandler(enabled = tab != BottomTab.Home) { onSelectTab(BottomTab.Home) }
+    // 마이는 탭이 아니라 프로필 버튼으로 여는 화면이라 **따로 닫아 준다.**
+    // ⚠️ 위의 탭 핸들러보다 **나중에** 등록한다 — 컴포즈는 나중에 등록된 것이
+    // 이기므로, 마이가 열려 있으면 탭이 무엇이든 마이가 먼저 닫힌다.
+    BackHandler(enabled = myOpen) { onCloseMy?.invoke() }
     var inventoryOpen by rememberSaveable { mutableStateOf(false) }
 
-    // 프로필 얼굴의 견종. 개발자 패널에서 바꿀 수 있다.
+    // 프로필 얼굴의 견종.
     //
-    // 상단바와 챗봇 카드 둘 다 이걸 쓴다. 그 둘은 방 밖에 있어서 상태를
-    // 방 안에 두면 닿지 않는다 — 그래서 견종 고르기(방 안)와 달리 여기 있다.
-    // rememberSaveable 이 아니다 — 개발자 도구로 바꿔 본 것은 앱을 다시 켜면 지워진다.
-    var profileBreed by remember { mutableStateOf(HomeDemoData.DOG_BREED) }
+    // **대표 강아지를 따라간다.** 상단바와 챗봇 카드가 이걸 쓰고, 대표는 마이 탭에서
+    // 고른다 — 그게 "대표 강아지"라는 말의 뜻이다.
+    //
+    // 대표의 견종이 우리 그림에 없으면(믹스 등) 기본 얼굴로 떨어진다. 아무 얼굴이나
+    // 골라 보여 주면 사용자는 자기 개가 아닌 얼굴을 상단바에서 보게 된다.
+    //
+    // 개발자 패널이 바꾼 값은 그 위에 잠깐 덮어쓴다 — 세션 한정이고 저장하지 않는다.
+    var devBreed by remember { mutableStateOf<DogBreed?>(null) }
+    val profileBreed = devBreed
+        ?: pets?.firstOrNull { it.isPrimary }?.breedArt
+        ?: HomeDemoData.DOG_BREED
 
-    val herd = rememberDogHerd(RoomDefaults.DOG_COUNT)
+    // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
+    val herd = rememberDogHerd(roomRoster(pets))
     val store = rememberRoomStore()
     // 테마는 id 만 저장한다 — 원시값이라 화면 회전에도 그대로 남는다
     var themeId by rememberSaveable { mutableStateOf(store.loadThemeId() ?: RoomTheme.DEFAULT.id) }
@@ -134,6 +228,23 @@ fun HomeScreen(
     // 테마마다 소품 그림이 다르므로 카탈로그가 테마를 알아야 한다.
     val catalog = rememberItemCatalog(roomTheme)
 
+    // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
+    // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
+    //
+    // 값은 [outside] 파라미터로 온다. 여기서 만들지 않는 이유는 그 주석에 있다.
+    // @Preview 는 결정적이어야 한다 — 기본값이 기기 시각을 안 보게 한 벌로 고정한다.
+    val live = if (LocalInspectionMode.current) PREVIEW_OUTSIDE else outside
+    var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
+    val outside = outsideOverride ?: live.view
+    // 오버라이드 중에는 기온을 **모르는 것으로 친다.** 33도인데 "밤 눈" 을 강제하면
+    // 눈+더위라는 없는 칸이 생긴다. null 은 어차피 반드시 지원해야 하는 경로다.
+    val temperatureC = if (outsideOverride == null) live.temperatureC else null
+    // 개발자 패널이 덮었으면 그건 **고른 값**이라 아는 것으로 친다.
+    val known = outsideOverride != null || live.known
+    val words = remember(outside, temperatureC, known) {
+        homeWeatherWords(outside, temperatureC, known)
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = CreamBg,
@@ -143,24 +254,65 @@ fun HomeScreen(
         topBar = {
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
+                    // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
                     onBell = {},
-                    onProfile = {},
+                    onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                 )
             }
         },
         bottomBar = {
             DaengsBottomBar(
-                selected = bottomTab,
-                onSelect = {
-                    bottomTab = it
-                    if (it == BottomTab.Dex) onOpenDex?.invoke()
-                    if (it == BottomTab.Walks) onOpenPlaces?.invoke()
+                selected = tab,
+                // **밀어서 여는 탭은 선택 상태를 안 남긴다.** 남기면 도감에서
+                // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
+                // 화면이 되기 전에는 눈에 안 띄던 것이다.
+                onSelect = { tab ->
+                    // **마이가 열려 있으면 먼저 닫는다.** 마이는 탭이 아니라 홈 위에
+                    // 덮이는 화면인데 바는 그대로 보인다. 안 닫으면 `selected` 가
+                    // 여전히 홈이라 바의 홈을 눌러도 아무 일이 안 일어나서,
+                    // 뒤로가기 말고는 나올 길이 없다.
+                    if (myOpen) onCloseMy?.invoke()
+                    when (tab) {
+                        BottomTab.Dex -> onOpenDex?.invoke()
+                        BottomTab.Nearby -> onOpenPlaces?.invoke()
+                        else -> onSelectTab(tab)
+                    }
                 },
                 onCenter = { onOpenChat?.invoke() },
             )
         },
     ) { inner ->
+        if (myOpen) {
+            MyScreen(
+                breed = profileBreed,
+                roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
+                pets = pets,
+                canAddMore = canAddMore,
+                onAddPet = { onAddPet?.invoke() },
+                onEditPet = { onEditPet?.invoke(it) },
+                onPickPrimary = { onPickPrimary?.invoke(it) },
+                onDeletePet = { onDeletePet?.invoke(it) },
+                deleteBusy = deletePetBusy,
+                deleteError = deletePetError,
+                onDismissDelete = { onDismissDeletePet?.invoke() },
+                signedIn = signedIn,
+                onSignIn = { onSignIn?.invoke() },
+                onSignOut = { onSignOut?.invoke() },
+                onWithdraw = { onWithdraw?.invoke() },
+                withdrawBusy = withdrawBusy,
+                withdrawError = withdrawError,
+                onDismissWithdraw = { onDismissWithdraw?.invoke() },
+                modifier = Modifier.padding(inner),
+            )
+            return@Scaffold
+        }
+
+        if (tab == BottomTab.Storage) {
+            StorageComingSoon(Modifier.padding(inner))
+            return@Scaffold
+        }
+
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
         // 방은 RoomGeometry.of(width, height) 로 받은 상자에 맞춰 스스로 줄어든다.
@@ -179,11 +331,20 @@ fun HomeScreen(
                 theme = roomTheme,
                 herd = herd,
                 onOpenDex = onOpenDex,
-                signedIn = signedIn,
-                onSignOut = onSignOut,
+                onOpenWalk = onOpenWalk,
                 profileBreed = profileBreed,
-                onPickProfile = { profileBreed = it },
+                onPickProfile = { devBreed = it },
                 onOpenCutoutLab = onOpenCutoutLab,
+                roomName = roomName,
+                defaultLabel = defaultRoomLabel(pets?.firstOrNull { it.isPrimary }?.name),
+                onRenameRoom = onRenameRoom,
+                renameBusy = renameBusy,
+                renameError = renameError,
+                onDismissRename = onDismissRename,
+                outside = outside,
+                onPickOutside = { outsideOverride = it },
+                todayNote = words.today,
+                dogsLoading = pets == null,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -205,7 +366,12 @@ fun HomeScreen(
                 ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
             }
             Spacer(Modifier.height(10.dp))
-            WalkSummaryCard(Modifier.padding(horizontal = 14.dp))
+            WalkSummaryCard(
+                Modifier.padding(horizontal = 14.dp),
+                todayWalks,
+                words.daily,
+                onOpenWalkHistory,
+            )
             Spacer(Modifier.height(10.dp))
         }
     }
@@ -222,11 +388,32 @@ private fun RoomSection(
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
-    signedIn: Boolean,
-    onSignOut: (() -> Unit)?,
+    onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)?,
+    /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
+    roomName: String?,
+    /** 사용자가 안 정했을 때 걸리는 이름. 대표 강아지에서 지은 값이다. */
+    defaultLabel: String,
+    onRenameRoom: ((String?) -> Unit)?,
+    renameBusy: Boolean,
+    renameError: String?,
+    onDismissRename: (() -> Unit)?,
+    /** 창밖에 얹을 것. **개발자 패널이 이기는 것까지 정해서** 넘어온다. */
+    outside: OutsideView,
+    onPickOutside: (OutsideView) -> Unit,
+    /** TODAY 카드 한 줄. 같은 날씨에서 지은 말이라 창밖과 안 어긋난다. */
+    todayNote: String,
+    /**
+     * 강아지 목록을 아직 못 받았나.
+     *
+     * 그동안 방은 비어 있다 ([roomRoster] 가 아무도 안 세운다). 오래 걸리면 빈 방이
+     * 고장처럼 보이므로 그때만 한 줄 띄운다 — **금방 끝나면 안 띄운다.** 뜨자마자
+     * 사라지는 표시는 데모 강아지가 사라지던 것과 똑같이 깜빡임이다.
+     */
+    dogsLoading: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -234,12 +421,17 @@ private fun RoomSection(
     // 턴테이블 판. 방을 덮지 않고 아래에서 올라온다 — 이 방의 전축을 튼 것이라
     // 방과 턴테이블이 계속 보여야 그 맥락이 산다.
     var turntableOpen by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    // 저장을 눌렀는지. **성공했을 때만 창을 닫으려고** 둔다 — 실패했는데 닫히면
+    // 사용자는 저장된 줄 알고 나간다.
+    var renameSubmitted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(renameBusy) {
+        if (!renameSubmitted || renameBusy) return@LaunchedEffect
+        renameSubmitted = false
+        if (renameError == null) renaming = false
+    }
     var breedOverride by remember { mutableStateOf<DogBreed?>(null) }
-    // 창밖·문밖. 실제 시각·날씨를 따르되 **개발자 패널이 이기게** 둔다 —
-    // 밤·눈을 보려고 밤에 눈이 오길 기다릴 수는 없다.
-    val liveOutside by rememberOutsideView()
-    var outsideOverride by remember { mutableStateOf<OutsideView?>(null) }
-    val outside = outsideOverride ?: liveOutside
     // @Preview 안에서는 무한 애니메이션이 돌지 않아 프레임 0 에 얼어붙는다.
     // 미리보기에서는 중간 프레임을 찍어 강아지 자세가 보이게 한다.
     val previewFrame = if (LocalInspectionMode.current) 400L else null
@@ -263,18 +455,37 @@ private fun RoomSection(
             // 편집 모드에서 탭 = 선택. 돌리기/치우기는 버튼으로 뺐다.
             onItemTap = { item -> state.select(item.instanceId) },
             onEmptyTap = { state.select(null) },
-            // 문이 활짝 열린 순간. 산책 게임 화면이 생기면 여기서 넘기면 된다.
-            // (CONTEXT.md 4번: 미니룸(홈) -> [방문 클릭] -> 산책 게임)
-            onDoorOpened = {},
+            // 문이 활짝 열린 순간 산책으로 나간다
+            // (CONTEXT.md 4번: 미니룸(홈) -> [방문 클릭] -> 산책).
+            // 편집 중에는 안 받는다 — 가구를 옮기다 화면이 넘어가면 하던 일을 잃는다.
+            onDoorOpened = if (inventoryOpen) null else onOpenWalk,
             // 벽의 액자 -> 네오 채소 도감. 편집 중에는 안 받는다 — 가구를 옮기다가
             // 화면이 넘어가면 하던 일을 잃는다.
             onFrameTap = if (inventoryOpen) null else onOpenDex,
             // 뒷벽의 턴테이블 -> 내 카드의 음악. 액자와 같은 이유로 편집 중에는 안 받는다.
             onTurntableTap = if (inventoryOpen) null else { { turntableOpen = true } },
         )
+        // 목록이 늦을 때만 뜬다. 600ms 를 기다렸다 띄우므로 빠른 망에서는 안 보인다.
+        var showDogsLoading by remember { mutableStateOf(false) }
+        LaunchedEffect(dogsLoading) {
+            showDogsLoading = false
+            if (dogsLoading) {
+                delay(DOGS_LOADING_DELAY_MS)
+                showDogsLoading = true
+            }
+        }
+        if (showDogsLoading) {
+            Text(
+                "강아지를 불러오는 중이에요",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
         TodayCard(
             dateLabel = dateLabel,
-            note = HomeDemoData.TODAY_NOTE,
+            note = todayNote,
+            icon = weatherIcon(outside),
             accent = theme.roomAccent,
             accentSoft = theme.roomAccentSoft,
             modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
@@ -284,10 +495,12 @@ private fun RoomSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             InventoryButton(open = inventoryOpen, onClick = onToggleInventory)
-            if (BuildConfig.DEBUG) {
-                Spacer(Modifier.height(9.dp))
-                DeveloperToggle(on = developer, onToggle = { developer = !developer })
-            }
+            // `BuildConfig.DEBUG` 로 감싸지 않는다 — **소스셋이 곧 가드다.**
+            // 릴리스에는 아무것도 안 그리는 껍데기가 들어간다
+            // (`app/src/release/.../DeveloperPanel.kt`). 여기에 검사를 하나 더
+            // 두면 어느 쪽이 진짜인지 헷갈리고, 예전에 토글만 감싸고 패널은
+            // 안 감쌌던 것도 그래서 생긴 일이다.
+            DeveloperToggle(on = developer, onToggle = { developer = !developer })
         }
 
         if (developer) {
@@ -302,9 +515,7 @@ private fun RoomSection(
                 profileBreed = profileBreed,
                 onPickProfile = onPickProfile,
                 outside = outside,
-                onPickOutside = { outsideOverride = it },
-                signedIn = signedIn,
-                onSignOut = onSignOut,
+                onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
@@ -326,7 +537,9 @@ private fun RoomSection(
         }
 
         NamePlate(
-            label = HomeDemoData.ROOM_LABEL,
+            label = roomName?.trim()?.takeIf(String::isNotEmpty) ?: defaultLabel,
+            // 로그인 전에는 못 누른다 — 고쳐도 저장할 곳이 없다.
+            onClick = onRenameRoom?.let { { renaming = true } },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset {
@@ -344,6 +557,23 @@ private fun RoomSection(
                     )
                 },
         )
+
+        if (renaming && onRenameRoom != null) {
+            RoomNameDialog(
+                current = roomName,
+                fallback = defaultLabel,
+                busy = renameBusy,
+                error = renameError,
+                onConfirm = {
+                    renameSubmitted = true
+                    onRenameRoom(it)
+                },
+                onDismiss = {
+                    renaming = false
+                    onDismissRename?.invoke()
+                },
+            )
+        }
 
         // 선택된 가구 위에 뜨는 버튼. 캔버스가 아니라 오버레이라 터치·그림자가 공짜다.
         val selected = state.items.firstOrNull { it.instanceId == state.selectedId }
@@ -385,3 +615,6 @@ private fun HomeScreenSmallPreview() {
         HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
     }
 }
+
+/** @Preview 전용. 맑고 포근한 낮 — 시안이 그린 상태다. */
+private val PREVIEW_OUTSIDE = OutsideSnapshot(OutsideView.DAY_CLEAR, temperatureC = 21f)

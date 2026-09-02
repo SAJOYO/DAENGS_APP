@@ -16,18 +16,37 @@ import org.junit.Test
 class OutsideViewTest {
 
     @Test
-    fun `여섯 벌이 전부 있다`() {
-        assertEquals(6, OutsideView.entries.size)
+    fun `시간 x 날씨가 빠짐없이 있다`() {
+        val expected = OutsideTime.entries.size * OutsideWeather.entries.size
+        assertEquals(expected, OutsideView.entries.size)
         val combos = OutsideView.entries.map { it.time to it.weather }.toSet()
-        assertEquals("시간 2 x 날씨 3 이 빠짐없이 있어야 한다", 6, combos.size)
+        assertEquals("한 칸도 비면 안 된다", expected, combos.size)
+    }
+
+    /**
+     * **흐림만 그림을 빌려 쓴다.** 맑음 그림에 회색 막을 씌워 만들기 때문이다
+     * ([OutsideWeather.CLOUDY]). 나머지는 자기 그림이 있어야 한다.
+     */
+    @Test
+    fun `흐림만 맑음 그림을 빌려 쓴다`() {
+        OutsideView.entries.forEach {
+            assertEquals("${it.name} 의 막 여부", it.weather == OutsideWeather.CLOUDY, it.veil)
+        }
+        val cloudy = OutsideView.entries.filter { it.weather == OutsideWeather.CLOUDY }
+        cloudy.forEach { c ->
+            val clear = OutsideView.of(c.time, OutsideWeather.CLEAR)
+            assertEquals("${c.name} 은 같은 시간 맑음 그림을 쓴다", clear.window, c.window)
+            assertEquals("${c.name} 은 같은 시간 맑음 문 그림을 쓴다", clear.door, c.door)
+        }
     }
 
     @Test
-    fun `벌마다 다른 그림을 가리킨다`() {
-        val windows = OutsideView.entries.map { it.window }.toSet()
-        val doors = OutsideView.entries.map { it.door }.toSet()
-        assertEquals("창 그림 여섯 장이 서로 달라야 한다", 6, windows.size)
-        assertEquals("문 그림 여섯 장이 서로 달라야 한다", 6, doors.size)
+    fun `막을 안 쓰는 벌은 저마다 다른 그림이다`() {
+        val own = OutsideView.entries.filterNot { it.veil }
+        val windows = own.map { it.window }.toSet()
+        val doors = own.map { it.door }.toSet()
+        assertEquals("창 그림이 서로 달라야 한다", own.size, windows.size)
+        assertEquals("문 그림이 서로 달라야 한다", own.size, doors.size)
         OutsideView.entries.forEach {
             assertTrue("${it.name} 의 창·문 그림이 같은 리소스다", it.window != it.door)
         }

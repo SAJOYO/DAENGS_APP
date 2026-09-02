@@ -1,11 +1,23 @@
 package com.daengs.app
 
 import android.app.Application
+import com.daengs.app.location.FusedLocationSource
+import com.daengs.app.walk.ForegroundWalkTrackingController
+import com.daengs.app.walk.WalkFixWriter
+import com.daengs.app.walk.WalkHistory
+import com.daengs.app.walk.sync.WalkSync
+import com.daengs.app.walk.WalkRuntime
+import com.daengs.app.walk.WalkTrackingStore
+import com.daengs.app.walk.store.RoomWalkFixLog
+import com.daengs.app.walk.store.WalkDatabase
 import com.kakao.sdk.common.KakaoSdk
 import com.naver.maps.map.NaverMapSdk
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
- * 카카오 SDK 를 켠다.
+ * 프로세스 공용 SDK와 산책 기록 런타임을 초기화한다.
  *
  * **왜 Application 인가.** 로그인이 끝나면 카카오가 우리 앱의
  * `AuthCodeHandlerActivity` 를 부르는데, 그 사이에 프로세스가 죽었다가 다시 뜰 수 있다.
@@ -17,6 +29,9 @@ import com.naver.maps.map.NaverMapSdk
  * 로그인 버튼만 막히고 "둘러보기" 로 방까지 들어가진다.
  */
 class DaengsApp : Application() {
+    lateinit var walkRuntime: WalkRuntime
+        private set
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank()) {
@@ -27,5 +42,22 @@ class DaengsApp : Application() {
             NaverMapSdk.getInstance(this).client =
                 NaverMapSdk.NcpKeyClient(BuildConfig.NAVER_MAP_NCP_KEY_ID)
         }
+
+        val store = WalkTrackingStore()
+        val log = RoomWalkFixLog(WalkDatabase.open(this).walkDao())
+        val writer = WalkFixWriter(
+            log = log,
+            // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+        )
+        walkRuntime = WalkRuntime(
+            locationSource = FusedLocationSource(this),
+            store = store,
+            controller = ForegroundWalkTrackingController(this, store),
+            writer = writer,
+            log = log,
+            history = WalkHistory(log),
+            sync = WalkSync(log),
+        )
     }
 }

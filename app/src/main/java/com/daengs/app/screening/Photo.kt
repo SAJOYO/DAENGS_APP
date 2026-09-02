@@ -106,10 +106,13 @@ object Photo {
      * 캐시에 쓰고 이름을 고정한다. 찍을 때마다 새 파일을 만들면 캐시가 계속 늘고,
      * 사진 한 장을 보내고 나면 다시 쓸 일이 없다.
      */
-    fun cameraTarget(context: Context): Uri {
+    fun cameraTarget(context: Context): Uri =
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cameraFile(context))
+
+    /** 같은 자리를 **파일로**. 앱 안 카메라는 `content://` 가 아니라 파일에 쓴다. */
+    fun cameraFile(context: Context): File {
         val dir = File(context.cacheDir, "camera").apply { mkdirs() }
-        val file = File(dir, "capture.jpg")
-        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        return File(dir, "capture.jpg")
     }
 
     private fun Bitmap.rotated(orientation: Int): Bitmap {

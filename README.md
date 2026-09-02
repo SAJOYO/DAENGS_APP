@@ -40,6 +40,48 @@ sdk.dir=C:/Users/<이름>/AppData/Local/Android/Sdk
 **슬래시(`/`)로 쓰는 게 편하다.** 역슬래시를 쓰면 `C\:\\Users\\...` 처럼 두 번 겹쳐
 써야 하고, 하나라도 틀리면 `java.io.IOException: Invalid file path` 가 난다.
 
+### 출시용 업로드 키 (선택)
+
+**없어도 개발에는 지장이 없다.** 릴리즈 빌드가 서명 없이 나가고 경고만 뜬다 —
+컴파일과 용량 확인에는 그대로 쓸 수 있고, 설치·업로드만 안 된다.
+
+```properties
+daengs.uploadKeyStore=keystore/upload.jks
+daengs.uploadKeyAlias=daengs-upload
+daengs.uploadKeyPassword=<비밀번호>
+```
+
+- **이건 "업로드 키" 다.** Play 앱 서명을 쓰므로 진짜 앱 서명 키는 구글이 만들어
+  보관하고, 우리는 올릴 때 신원을 증명하는 이 키만 갖는다. 잃어도 Play Console 에서
+  재설정할 수 있다 — 그래도 잃지 않는 편이 낫다
+- ⚠️ **키 파일과 비밀번호는 저장소에 안 들어간다.** `.gitignore` 가 `*.jks` 를
+  막고 있고 `local.properties` 도 원래 무시된다. **팀원과는 저장소 밖에서 나눈다**
+- 새로 만들려면:
+
+  ```bash
+  keytool -genkeypair -v -keystore keystore/upload.jks     -alias daengs-upload -keyalg RSA -keysize 4096 -validity 10000
+  ```
+
+### 출시 빌드는 다른 서버를 본다
+
+**개발은 지금 개발 서버 그대로 쓰고, 릴리즈만 GCP 의 https 서버를 본다.** 개발
+서버가 `http://` 인데 평문 HTTP 허용이 디버그 소스셋에만 있어서, 릴리즈 빌드는 개발
+서버로 요청이 소켓 단계에서 죽는다. 그렇다고 개발 서버를 https 로 옮기면 매번 주소를
+바꿔 끼워야 한다. 그래서 **빌드 종류로 갈랐다.**
+
+```properties
+daengs.apiBaseUrlRelease=https://daengapi.weareithero.cloud
+daengs.screenUrlRelease=https://daengapi.weareithero.cloud/screen
+daengs.gaitUrlRelease=https://daengapi.weareithero.cloud/gait
+```
+
+- **`daengapi` 한 호스트가 전부를 받는다** — 백엔드(`/`) · 진단(`/screen/`) ·
+  보행(`/gait/`) · 장소(`/v2/places/`). `daengapp` 은 웹 프론트용이라 앱은 안 쓴다
+- **안 넣어도 빌드는 된다.** 릴리즈가 개발 주소로 떨어지고 **빌드 로그에 경고**가
+  뜬다. 조용히 떨어지면 "켜지는데 통신만 죽는" 릴리즈가 나와서 한참 헤맨다
+- 그래서 `app/src/debug/AndroidManifest.xml` 은 **지우지 않는다.** 개발 서버가
+  `http://` 인 한 디버그에는 계속 필요하다
+
 ### 카카오 로그인을 켜려면 (선택)
 
 **안 채워도 앱은 돌아간다.** 랜딩 화면에서 `둘러보기` 를 누르면 방까지 들어가진다.
@@ -116,6 +158,43 @@ uv run --extra train --extra serve python serve.py --release <release폴더> --h
   adb reverse --list              # 걸려 있는지 확인
   ```
 
+### 지도를 켜려면 (선택)
+
+**안 채워도 앱은 켜진다.** 지도 타일만 인증 실패로 비고 나머지 화면은 그대로 돈다
+(카카오 키와 같은 철학).
+
+```properties
+daengs.naverMapClientId=<네이버 클라우드 플랫폼의 Maps 클라이언트 ID>
+daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도 됨
+```
+
+네이버 클라우드 플랫폼 콘솔 → Maps → 인증 정보. 앱 패키지명 `com.daengs.app` 을
+등록해야 그 키로 타일이 나온다.
+
+- 지도 SDK 도 메이븐 센트럴에 없다. `settings.gradle.kts` 가 네이버 저장소를 따로
+  열어 두었다 (카카오와 같은 이유).
+- **키가 없으면 격자만 뜬다.** 마커·검색·카드는 정상이라 앱이 고장 난 것처럼 보이는데,
+  로그에 `NaverMap: Authorization failed: [800] Client is unspecified` 가 찍힌다.
+- **스타일 ID 는 있으면 좋은 것이다.** 콘솔 → Maps → Style Editor 에서 지도를 앱
+  팔레트로 칠하고 [Publish] 하면 My Style ID 가 나온다. 넣은 색과 편집기 제약은
+  [`docs/map-style.md`](docs/map-style.md) 에 있다. **없으면 기본 네이버 지도**로
+  뜨고 앱은 그대로 돈다. ID 가 틀리면 조용히 기본 지도가 되므로, 로그에
+  `DaengsMap` 태그로 실패를 남겨 둔다.
+- **내 주변 탭의 장소 검색은 이 키와 별개다** — 그쪽은 `daengs.apiBaseUrl` 의
+  서버를 부른다.
+
+### 산책을 기록하려면
+
+하단 **산책기록** 탭에서 위치 권한을 허용하고 `산책 시작`을 누른다. Android 13 이상은
+알림 권한도 묻는다. 알림을 거부해도 기록은 가능하지만 알림창의 일시정지·종료 버튼은
+보이지 않을 수 있다.
+
+- 화면을 나가거나 꺼도 위치 Foreground Service가 기록을 이어 간다.
+- 지도에는 흔들림과 정확도 낮은 점을 걸러낸 경로가 보인다.
+- 기기가 보고한 원본 위치는 `daengs_walk.db`에 먼저 저장한다.
+- 현재는 **로컬 기록만 한다.** 백엔드 업로드·점수·영토·기록 목록은 연결하지 않았다.
+- 강제 종료로 닫히지 않은 세션은 DB에 남지만, 이어 기록/폐기 화면은 아직 없다.
+
 ### 빌드 · 테스트 · 설치
 
 ```bash
@@ -147,8 +226,10 @@ PC 마다 다른 `~/.android/debug.keystore` 로 서명되면, 같은 테스트 
 ```
 app/          안드로이드 앱 (Kotlin + Jetpack Compose)
   src/main/java/com/daengs/app/
+    map/        네이버 지도 표면과 장소·산책 동선 레이어
     miniroom/   미니룸 — 좌표계·배치·강아지·그리기
     ui/         홈 화면, 인벤토리, 개발자 패널
+    walk/       산책 기록 코어·Foreground Service·Room 저장 계약
   src/main/res/drawable-nodpi/   픽셀 아트 (WebP)
   src/test/     단위 테스트 84개
 tools/        파이썬 도구 (에셋 반입·가공)

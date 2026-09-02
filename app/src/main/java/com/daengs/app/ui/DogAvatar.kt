@@ -1,5 +1,6 @@
 package com.daengs.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -14,7 +15,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.Dp
 import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.PinkSoft
 
 /**
@@ -43,6 +49,24 @@ fun DogAvatar(
             .clip(CircleShape)
             .border(1.dp, PinkSoft, CircleShape),
     )
+}
+
+/**
+ * 그림이 없는 견종(믹스)의 얼굴.
+ *
+ * **아무 견종 얼굴이나 갖다 쓰지 않는다.** 그러면 사용자는 자기 개가 아닌 얼굴을
+ * 보게 된다. 발자국은 "우리가 이 아이 얼굴을 모른다"는 사실을 그대로 말한다.
+ *
+ * 마이 탭의 강아지 카드와 등록 폼의 견종 고르기가 **같은 그림**을 써야 해서 여기 둔다.
+ */
+@Composable
+fun PawAvatar(modifier: Modifier = Modifier, size: Dp) {
+    Box(
+        modifier.size(size).clip(CircleShape).background(PinkFaint),
+        contentAlignment = Alignment.Center,
+    ) {
+        DaengsIconView(DaengsIcon.Paw, Modifier.size(size * 0.5f), tint = DaengPink)
+    }
 }
 
 @Preview

@@ -6,6 +6,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +52,9 @@ private val PanelPick = Color(0xFF00E5FF)
 /** DEV 스위치. 방 오른쪽 위에 작게 붙는다. */
 @Composable
 fun DeveloperToggle(on: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    // 위 여백을 **여기서** 챙긴다. 호출부에 두면 릴리스 스텁이 아무것도 안 그려도
+    // 그 Spacer 만 남아 인벤토리 버튼 아래에 설명할 수 없는 9dp 가 생긴다.
+    Spacer(Modifier.height(9.dp))
     Row(
         modifier
             .clip(RoundedCornerShape(6.dp))
@@ -80,11 +85,9 @@ fun DeveloperPanel(
     onPickProfile: (DogBreed) -> Unit,
     outside: OutsideView,
     onPickOutside: (OutsideView) -> Unit,
-    signedIn: Boolean = false,
-    onSignOut: (() -> Unit)? = null,
     /**
-     * 누끼 실험실. 카드 기능을 만드는 동안만 쓰는 입구다 —
-     * 세그멘테이션이 쓸 만한지 보려면 실기기에서 사진을 넣어 봐야 한다.
+     * 카드 실험실. 카드 기능을 만드는 동안만 쓰는 입구다 — 얼굴이 구멍에 잘 앉는지
+     * 보려면 실기기에서 사진을 넣어 봐야 한다.
      */
     onOpenCutoutLab: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -104,20 +107,6 @@ fun DeveloperPanel(
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
             )
-            // 로그아웃 자리가 여기인 이유: `마이` 탭이 아직 껍데기다. 진짜 화면이
-            // 생기면 그리로 옮긴다.
-            if (signedIn && onSignOut != null) {
-                Text(
-                    "로그아웃",
-                    color = Color.Black,
-                    fontSize = 9.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(PanelPick)
-                        .clickable(onClick = onSignOut)
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                )
-            }
             if (onOpenCutoutLab != null) {
                 Text(
                     "누끼",

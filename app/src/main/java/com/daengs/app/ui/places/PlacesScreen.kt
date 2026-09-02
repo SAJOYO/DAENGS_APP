@@ -2,53 +2,192 @@ package com.daengs.app.ui.places
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.tooling.preview.Preview
+import com.daengs.app.ui.common.DaengsFloatingButton
+import com.daengs.app.ui.theme.DaengsColors
+import com.daengs.app.ui.theme.PinkFaint
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+import com.daengs.app.BuildConfig
+import com.daengs.app.journey.HttpJourneyRepository
+import com.daengs.app.journey.JourneyApi
+import com.daengs.app.journey.openNaverHandoff
+import com.daengs.app.location.FeedStatus
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.location.LocationSample
+import com.daengs.app.location.LocationTracker
+import com.daengs.app.map.features.journey.PlaceJourneyController
+import com.daengs.app.map.features.places.DEFAULT_PLACE_KIND
+import com.daengs.app.map.features.places.PlaceDiscoveryController
+import com.daengs.app.map.features.places.PlaceDiscoveryPanel
+import com.daengs.app.map.features.places.PlaceOriginMode
+import com.daengs.app.map.features.places.canonicalPlaceKeysByMarker
+import com.daengs.app.map.features.places.canonicalPlaceMarkers
+import com.daengs.app.map.features.places.selectedPlaceKind
+import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
+import com.daengs.app.place.PlaceApi
+import com.daengs.app.place.PlaceKind
+import com.daengs.app.place.PlaceKey
+import com.daengs.app.place.PlaceRepository
+import com.daengs.app.ui.theme.DaengsTheme
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 /**
- * 장소 지도의 뼈대 — 네이버 지도 + 현재 위치까지만.
+ * geo Android의 canonical Place 화면을 APP 셸에 연결한다.
  *
- * 검색 패널·마커는 다음 카드다. 이 화면의 책임은 "지도가 뜨고, 내 위치가 보이고,
- * 지도를 손으로 움직이면 따라가기를 멈춘다"까지다. 검색이 들어오면 [MapScene.places]
- * 에 마커가 채워진다.
- *
- * 위치 권한은 이 화면에 들어올 때 묻는다 — 앱 시작 시점에 묻으면 지도를 안 쓰는
- * 사람에게도 팝업이 뜬다. 거절하면 위치 없이 지도만 보인다 (앱은 안 죽는다).
+ * 검색 종류·요청·결과 카드·마커·journey 표시는 원본 `main@c5f0d5f`의 동작이다.
+ * APP에는 사용자 강아지 선택이 없으므로 원본 계약이 지원하는 조건 없는 검색을 보낸다.
  */
 @Composable
-fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun PlacesScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** 내 위치에 세울 얼굴. 대표 강아지가 없으면 null 이고 기본 파란 점이 나온다. */
+    avatarBreed: DogBreed? = null,
+) {
     val context = LocalContext.current
-    var granted by remember { mutableStateOf(hasLocationPermission(context)) }
+    val inspectionMode = LocalInspectionMode.current
+    val scope = rememberCoroutineScope()
+    val source = remember(context) { FusedLocationSource(context.applicationContext) }
+    val locationTracker = remember(scope) { LocationTracker(scope) }
+    val placeDiscovery = remember(scope) {
+        PlaceDiscoveryController(
+            repository = PlaceRepository(PlaceApi(baseUrl = { BuildConfig.API_BASE_URL })),
+            dogContext = null,
+            scope = scope,
+        )
+    }
+    val placeJourney = remember(scope) {
+        PlaceJourneyController(
+            repository = HttpJourneyRepository(JourneyApi(baseUrl = { BuildConfig.API_BASE_URL })),
+            dogId = "",
+            scope = scope,
+        )
+    }
+    val discovery by placeDiscovery.state.collectAsState()
+    val journey by placeJourney.state.collectAsState()
+
+    var granted by remember { mutableStateOf(inspectionMode || hasLocationPermission(context)) }
+    var currentPosition by remember { mutableStateOf<GeoPoint?>(null) }
+    var devicePosition by remember { mutableStateOf<GeoPoint?>(null) }
+    var cameraCandidate by remember { mutableStateOf<GeoPoint?>(null) }
+    var followDevice by remember { mutableStateOf(true) }
+    var locating by remember { mutableStateOf(false) }
+    var locationError by remember { mutableStateOf<String?>(null) }
+    var initialPlaceSearchStarted by remember { mutableStateOf(false) }
+    // 패널이 지도를 얼마나 덮는지. 재서 넘긴다 — 패널 높이가 결과 수에 따라 변한다.
+    var panelHeightPx by remember { mutableIntStateOf(0) }
+    // 사용자가 방금 고른 장소. 지도를 그리로 옮기고 나면 다시 비운다.
+    var centerOn by remember { mutableStateOf<GeoPoint?>(null) }
+
+    fun focusOn(key: PlaceKey) {
+        followDevice = false
+        centerOn = canonicalPlaceMarkers(discovery)
+            .firstOrNull { it.id == placeMarkerId(key) }?.point
+        placeDiscovery.select(key)
+    }
+
+    fun acceptLocation(sample: LocationSample) {
+        currentPosition = sample.point
+        if (!sample.isMock) devicePosition = sample.point
+    }
+
+    fun beginSearch(
+        origin: GeoPoint,
+        kind: PlaceKind,
+        preferParking: Boolean,
+        originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
+    ) {
+        placeJourney.clear()
+        locationError = null
+        placeDiscovery.search(origin, listOf(kind), preferParking, originMode)
+    }
+
+    fun locateAndSearch(kind: PlaceKind, preferParking: Boolean) {
+        if (!granted) return
+        // 내 위치로 갈 때는 골라 둔 장소를 놓는다. 안 그러면 결과가 오는 순간
+        // 지도가 그 장소로 도로 끌려간다.
+        centerOn = null
+        scope.launch {
+            locating = true
+            locationError = null
+            runCatching { source.currentLocation() }
+                .onSuccess { sample ->
+                    if (sample.isMock) {
+                        locationError = "가상 위치로는 주변 장소를 검색할 수 없어요."
+                    } else {
+                        acceptLocation(sample)
+                        followDevice = true
+                        beginSearch(sample.point, kind, preferParking)
+                    }
+                }
+                .onFailure { error ->
+                    locationError = error.message ?: "현재 위치를 확인하지 못했습니다."
+                }
+            locating = false
+        }
+    }
+
+    fun searchAtCurrentOrigin(kind: PlaceKind, preferParking: Boolean) {
+        val pinned = discovery.origin?.takeIf { discovery.originMode == PlaceOriginMode.PINNED }
+        when {
+            pinned != null -> beginSearch(pinned, kind, preferParking, PlaceOriginMode.PINNED)
+            devicePosition != null -> beginSearch(devicePosition!!, kind, preferParking)
+            else -> locateAndSearch(kind, preferParking)
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result -> granted = result.values.any { it } }
-
+    ) { result ->
+        granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted && !initialPlaceSearchStarted) {
+            initialPlaceSearchStarted = true
+            locateAndSearch(DEFAULT_PLACE_KIND, false)
+        }
+    }
     LaunchedEffect(Unit) {
-        if (!granted) {
+        if (!inspectionMode && !granted) {
             permissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -58,49 +197,148 @@ fun PlacesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
-    var currentPosition by remember { mutableStateOf<GeoPoint?>(null) }
-    var followDevice by remember { mutableStateOf(true) }
-
-    // 화면을 떠나면 collect 도 같이 취소된다 — 지도 화면이 떠 있는 동안만 위치를 쓴다
-    // (manifest 주석과 같은 약속. 백그라운드 추적은 산책 축이고 여기 없다).
-    LaunchedEffect(granted) {
-        if (granted) {
-            val source = FusedLocationSource(context)
-            runCatching { source.currentLocation() }
-                .onSuccess { currentPosition = it.point }
-            source.locationUpdates().collect { sample -> currentPosition = sample.point }
+    LaunchedEffect(locationTracker) {
+        locationTracker.updates.collect(::acceptLocation)
+    }
+    LaunchedEffect(locationTracker) {
+        locationTracker.status.collect { status ->
+            if (status is FeedStatus.Failed) {
+                locationError = status.cause.message ?: "위치 업데이트를 이어가지 못했습니다."
+            }
         }
+    }
+    LaunchedEffect(granted, inspectionMode) {
+        if (inspectionMode) return@LaunchedEffect
+        if (granted) {
+            locationTracker.start(source)
+            if (!initialPlaceSearchStarted) {
+                initialPlaceSearchStarted = true
+                locateAndSearch(DEFAULT_PLACE_KIND, false)
+            }
+        } else {
+            locationTracker.stop()
+        }
+    }
+    DisposableEffect(locationTracker) {
+        onDispose(locationTracker::stop)
     }
 
     BackHandler(onBack = onBack)
 
+    val selectedKind = selectedPlaceKind(discovery)
+    val markerKeys = canonicalPlaceKeysByMarker(discovery)
+    val movedFromOrigin = cameraMovedFrom(cameraCandidate, discovery.origin)
+
     Box(modifier.fillMaxSize()) {
-        MapHost(
-            scene = MapScene(currentPosition = currentPosition),
-            searchOrigin = null,
-            followDevice = followDevice,
-            onCameraIdle = { /* 검색 카드에서 "이 지역 검색"의 재료가 된다 */ },
-            onCameraGesture = { followDevice = false },
-            onSelectPlace = { /* 마커는 다음 카드 */ },
-            modifier = Modifier.fillMaxSize(),
-        )
-        FilledTonalButton(
+        if (inspectionMode) {
+            Box(Modifier.fillMaxSize().background(PinkFaint))
+        } else {
+            MapHost(
+                scene = MapScene(
+                    currentPosition = currentPosition,
+                    places = canonicalPlaceMarkers(discovery),
+                ),
+                searchOrigin = discovery.origin,
+                followDevice = followDevice,
+                avatarRes = avatarBreed?.portraitRes,
+                bottomPaddingPx = panelHeightPx,
+                centerOn = centerOn,
+                onCameraIdle = { cameraCandidate = it },
+                onCameraGesture = { followDevice = false },
+                onSelectPlace = { id -> markerKeys[id]?.let(::focusOn) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        DaengsFloatingButton(
+            label = "← 홈",
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
                 .padding(12.dp),
-        ) { Text("← 홈") }
-        if (granted) {
-            FilledTonalButton(
-                onClick = { followDevice = true },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(16.dp),
-            ) { Text("내 위치") }
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 68.dp, end = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (movedFromOrigin) {
+                    DaengsFloatingButton(
+                        label = "이 지역 검색",
+                        enabled = !discovery.loading && !locating,
+                        onClick = {
+                            val origin = cameraCandidate
+                            if (origin == null) {
+                                locationError = "지도를 이동한 뒤 이 지역을 검색해주세요."
+                            } else {
+                                followDevice = false
+                                beginSearch(
+                                    origin,
+                                    selectedKind,
+                                    discovery.preferParking,
+                                    PlaceOriginMode.PINNED,
+                                )
+                            }
+                        },
+                    )
+                }
+                DaengsFloatingButton(
+                    label = if (locating) "찾는 중" else "내 위치",
+                    enabled = granted && !discovery.loading && !locating,
+                    onClick = { locateAndSearch(selectedKind, discovery.preferParking) },
+                )
+            }
+            locationError?.let { error ->
+                Surface(color = DaengsColors.ErrorSoft, shape = RoundedCornerShape(12.dp)) {
+                    Text(
+                        error,
+                        color = DaengsColors.Error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
         }
+
+        PlaceDiscoveryPanel(
+            state = discovery,
+            journey = journey,
+            onSearch = ::searchAtCurrentOrigin,
+            onRetry = placeDiscovery::retry,
+            onSelect = ::focusOn,
+            onJourney = { place ->
+                val origin = devicePosition
+                if (origin == null) {
+                    placeJourney.reject(
+                        place.key,
+                        "현재 위치를 확인한 뒤 길찾기를 다시 눌러주세요.",
+                    )
+                } else {
+                    placeJourney.load(origin, place)
+                }
+            },
+            onRetryJourney = placeJourney::retry,
+            onOpenHandoff = { url -> openNaverHandoff(context, url) },
+            onCall = { phone -> dial(context, phone) },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .onSizeChanged { panelHeightPx = it.height },
+        )
     }
+}
+
+private fun cameraMovedFrom(candidate: GeoPoint?, origin: GeoPoint?): Boolean {
+    candidate ?: return false
+    origin ?: return false
+    return abs(candidate.latitude - origin.latitude) > 0.0005 ||
+        abs(candidate.longitude - origin.longitude) > 0.0005
 }
 
 private fun hasLocationPermission(context: Context): Boolean =
@@ -108,3 +346,16 @@ private fun hasLocationPermission(context: Context): Boolean =
         PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
+
+private fun dial(context: Context, phone: String) {
+    val safe = phone.filter { it.isDigit() || it in "+*#," }
+    if (safe.isNotBlank()) context.startActivity(Intent(Intent.ACTION_DIAL, "tel:$safe".toUri()))
+}
+
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
+@Composable
+private fun PlacesScreenPreview() {
+    DaengsTheme {
+        PlacesScreen(onBack = {})
+    }
+}

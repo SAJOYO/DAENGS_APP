@@ -12,12 +12,13 @@ import androidx.compose.ui.unit.dp
 import com.daengs.app.R
 
 /**
- * Marker icon buckets. The server decides which bucket a facility falls into
- * (`icon_group` in the search response) because the source `kind` list grows with
- * every new dataset; the app only maps a known bucket to a drawable.
+ * 마커 아이콘 묶음.
  *
- * An unknown wire value is [ETC], never a dropped marker — a facility we cannot
- * classify still exists on the map.
+ * **어느 묶음인지는 서버가 정한다** (검색 응답의 `icon_group`). 원본 `kind` 목록은
+ * 데이터셋이 늘 때마다 같이 늘어나므로, 앱은 아는 묶음을 그림에 잇는 일만 한다.
+ *
+ * 모르는 값이 오면 [ETC] 다 — **마커를 버리지 않는다.** 분류를 못 했을 뿐
+ * 그 시설은 지도 위에 실제로 있다.
  */
 enum class FacilityIconGroup(val wire: String, @DrawableRes val marker: Int) {
     MEDICAL("medical", R.drawable.ic_facility_medical),
