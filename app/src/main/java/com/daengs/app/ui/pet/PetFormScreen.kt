@@ -63,6 +63,7 @@ import com.daengs.app.ui.DogAvatar
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.daengs.app.ui.PawAvatar
+import com.daengs.app.ui.my.PrivacyPolicyLink
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
@@ -244,6 +245,15 @@ fun PetFormScreen(
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("취소", color = TextMuted, fontSize = 14.sp) }
+        }
+        if (initial == null) {
+            // 첫 등록은 취소가 없어서 이 화면을 끝내기 전엔 My 화면에 못 간다.
+            // 방침을 읽고 나서 등록할 수 있게 여기에도 둔다. 수정 화면에는 안 둔다 —
+            // 거기서는 My 화면이 한 번 뒤로 가면 있다.
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                PrivacyPolicyLink()
+            }
         }
         Spacer(Modifier.height(24.dp))
     }

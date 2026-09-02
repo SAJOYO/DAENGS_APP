@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.daengs.app.ui.DaengsLogo
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.home.HomeDemoData
+import com.daengs.app.ui.my.PrivacyPolicyLink
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
@@ -132,6 +133,10 @@ fun LandingScreen(
             // 둘러보기는 **디버그 빌드에만** 있다 — 출시 앱은 로그인이 필수다.
             // 진짜는 `app/src/debug/.../SkipBrowse.kt`, 릴리스는 빈 껍데기다.
             SkipBrowse(enabled = !busy, onSkip = onSkip)
+
+            // 릴리스는 로그인이 필수라 이 화면을 못 지나면 My 화면의 방침 링크에
+            // 닿을 수 없다. Play 정책상 앱 안에서 찾을 수 있어야 해서 여기에도 둔다.
+            PrivacyPolicyLink(Modifier.padding(top = 10.dp))
         }
     }
 }

@@ -255,6 +255,11 @@ dependencies {
     // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트
     // 클래스패스에 얹어 그 껍데기를 가린다. 앱 APK 에는 안 들어간다.
     testImplementation(libs.org.json)
+    // Compose 화면을 Robolectric 위에서 그려 노드를 찾는다 (개인정보처리방침 링크가
+    // 로그인 전·첫 등록 화면에 실제로 있는지). 단위 테스트에만 얹고 APK 에는 안 들어간다.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
