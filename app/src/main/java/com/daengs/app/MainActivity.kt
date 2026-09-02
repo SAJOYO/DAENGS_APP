@@ -23,6 +23,9 @@ import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.dogcard.CardHolder
+import androidx.compose.runtime.mutableIntStateOf
+import com.daengs.app.farewell.rememberFarewellStore
+import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
@@ -133,6 +136,12 @@ class MainActivity : ComponentActivity() {
                 // 날씨 카드가 펴져 있나. **화면이 바뀌어도 기억한다** — 접어 두고
                 // 도감에 갔다 왔는데 다시 펴져 있으면 접은 뜻이 없다.
                 var weatherOpen by rememberSaveable { mutableStateOf(true) }
+                // 배웅. **화면을 안 늘린다** — 마이 위에 덮인다 (`myOpen` 과 같은 결).
+                val farewells = rememberFarewellStore()
+                var farewell by remember { mutableStateOf<Pet?>(null) }
+                // 배웅한 날이 바뀌면 목록이 다시 그려져야 한다. 저장소는 상태가 아니라
+                // 파일이라, 바뀐 것을 알릴 값을 하나 둔다.
+                var farewellTick by remember { mutableIntStateOf(0) }
                 var roomName by remember { mutableStateOf<String?>(null) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
@@ -254,7 +263,25 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
-                    Screen.Home -> HomeScreen(
+                    // 배웅은 **마이 위에 덮인다.** 화면을 늘리지 않는 것은 확대 뷰나
+                    // 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기 때문이다.
+                    Screen.Home -> if (farewell != null) {
+                        val pet = farewell!!
+                        FarewellScreen(
+                            dogName = pet.name,
+                            // farewellTick 을 읽어야 배웅 직후 화면이 다시 그려진다.
+                            sentOn = farewells.dayOf(pet.id).also { farewellTick },
+                            onSendOff = { day ->
+                                farewells.sendOff(pet.id, day)
+                                farewellTick++
+                            },
+                            onUndo = {
+                                farewells.undo(pet.id)
+                                farewellTick++
+                            },
+                            onClose = { farewell = null },
+                        )
+                    } else HomeScreen(
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
@@ -277,6 +304,8 @@ class MainActivity : ComponentActivity() {
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
+                        onFarewell = { farewell = it },
+                        farewellOf = { farewellTick; farewells.dayOf(it.id) },
                         onPickPrimary = { pet ->
                             scope.launch {
                                 val token = freshToken() ?: return@launch
