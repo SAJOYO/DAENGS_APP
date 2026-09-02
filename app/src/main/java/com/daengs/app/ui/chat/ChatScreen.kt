@@ -70,12 +70,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.assistant.WalkVerdict
+import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
-import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.gait.rememberGaitHolder
+import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
@@ -176,8 +177,12 @@ fun ChatScreen(
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
     /**
-     * 대표 강아지의 id. **보행 기록을 묶는 열쇠다** — 없으면 올려도 목록으로 다시
-     * 못 찾아서, 서버에 보내기 전에 화면이 막는다 ([GaitApi] 주석).
+     * 대표 강아지의 id. **서버가 만든 `pets.id` UUID 다** — `MainActivity` 가
+     * `pets.primary?.id` 를 그대로 넘긴다.
+     *
+     * 보행 기록을 묶는 열쇠이고, 이제 **소유권 검증의 근거이기도 하다** (#64):
+     * 저쪽이 이 값으로 `pets.app_user_id` 까지 따라가 토큰의 주인이 맞는지 본다.
+     * 없으면 올려도 목록으로 다시 못 찾아서, 보내기 전에 화면이 막는다.
      */
     dogId: String? = null,
     /**
@@ -248,7 +253,15 @@ fun ChatScreen(
     // 보행 화면들은 **대화 위에 얹는다.** `MainActivity` 의 [Screen] 으로 빼면 촬영
     // 화면을 열었다 되돌아올 때 대화가 통째로 새로 만들어져, 방금 올린 카드가
     // 사라진다 — 가이드 프레임([GuideFrameScreen])을 대화 위에 덮은 것과 같은 이유다.
-    val gait = rememberGaitHolder(dogId)
+    // 보행도 backend 뒤로 들어왔다 (#64) — 올리는 것도 받아오는 것도 토큰이 있어야 한다.
+    val gait = rememberGaitHolder(petId = dogId, accessToken = accessTokenProvider)
+
+    // **목록의 정본은 서버다** (#64). 전에는 기기 안의 표본만 보고 있어서, 다른 기기에서
+    // 올린 기록이 보이지 않았다. 대표 강아지가 정해지면 받아온다 — 실패해도 들고 있던
+    // 것을 지우지 않는다 (`GaitHolder.load`).
+    LaunchedEffect(dogId) {
+        gait.load(dogId ?: return@LaunchedEffect)
+    }
 
     /** 촬영 가이드 화면이 떠 있나. */
     var gaitCapture by remember { mutableStateOf(false) }
@@ -518,16 +531,20 @@ fun ChatScreen(
                     pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 }
             },
-            // 보행은 **진단 서버와 무관하다.** 피부 두 줄은 [ScreeningApi.configured]
-            // 를 보지만 여기서는 안 본다 — 서로 다른 서버이고, 보행 쪽은 아직
-            // 기기 안에서 도는 흐름이라 주소가 없어도 화면이 다 열린다.
+            // 보행은 **진단 서버와 다른 서버**다 (backend 뒤, `/app/gait/…`). 그래도
+            // 피부 두 줄과 **같은 규칙**을 따른다 — 꺼져 있으면 화면이 스스로 말한다.
+            //
+            // ⚠️ 예전에는 여기서 안 봤다. 보행이 기기 안에서 돌던 시절의 주석이 남아
+            //    있었는데, 이제는 서버가 필요하다. 안 보면 꺼졌을 때 [MockGaitAnalyzer]
+            //    로 조용히 떨어져 **가짜 결과가 진짜처럼 보인다** (#64).
             onGaitCapture = {
                 chooserMode = null
-                withCamera { gaitCapture = true }
+                if (!GaitApi.configured) notice = GAIT_NOT_SET
+                else withCamera { gaitCapture = true }
             },
             onGaitPick = {
                 chooserMode = null
-                startGaitPicking()
+                if (!GaitApi.configured) notice = GAIT_NOT_SET else startGaitPicking()
             },
         )
     }
@@ -1054,6 +1071,15 @@ private fun Float.percentText(): String = String.format("%.1f%%", this)
 
 private const val SCREEN_NOT_SET =
     "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+
+/**
+ * 보행이 꺼져 있을 때 (`daengs.gaitUrl`, 릴리즈는 `daengs.gaitUrlRelease` 가 빈 경우).
+ *
+ * ⚠️ **꺼졌을 때 조용히 [MockGaitAnalyzer] 로 도는 것을 막으려고 있는 문구다.** 그러면
+ *    4단계가 다 차오르고 결과 카드까지 떠서, 서버를 한 번도 안 거쳤는데 분석이 끝난 것처럼
+ *    보인다. 테스터에게 그 화면이 나가면 안 된다 (#64).
+ */
+private const val GAIT_NOT_SET = "보행 분석은 아직 준비 중이에요."
 
 /**
  * 카메라 권한을 거부했을 때.

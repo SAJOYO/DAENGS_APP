@@ -164,6 +164,10 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
             buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
             buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
+            // 보행 기능 스위치. **`daengs.gaitUrl` 을 비우면 꺼진다** (#64 의 완화책).
+            // 주소 자체는 이제 API_BASE_URL 을 쓰지만(보행이 backend 뒤로 들어감),
+            // 껐다 켜는 손잡이는 그대로 이 키에 남겨 둔다.
+            buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
             optimization {
@@ -195,6 +199,10 @@ android {
                 "GAIT_BASE_URL",
                 "\"${releaseUrl("gaitUrl", gaitUrlRelease, gaitUrl)}\"",
             )
+            // ⚠️ **fallback 을 타지 않는다.** releaseUrl 은 비어 있으면 개발 값으로 떨어지는데,
+            //    그러면 "릴리즈에서 보행 끄기"(#64)가 동작하지 않는다. 여기서는 릴리즈 키만 본다 —
+            //    `daengs.gaitUrlRelease` 가 비면 릴리즈 빌드에서 보행이 꺼진다.
+            buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrlRelease.isNotBlank()}")
         }
     }
     compileOptions {

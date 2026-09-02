@@ -22,6 +22,12 @@ import androidx.compose.ui.platform.LocalContext
 class GaitHolder(
     private val analyzer: GaitAnalyzer = MockGaitAnalyzer(),
     initial: List<GaitRecord> = GaitSampleRecords.of(),
+    /**
+     * access token. 목록·삭제가 쓴다 (분석은 [HttpGaitAnalyzer] 가 자기 것을 쓴다).
+     *
+     * **[MockGaitAnalyzer] 를 끼울 때는 부르지 않는다** — 아래 [remote] 가 먼저 막는다.
+     */
+    private val accessToken: suspend () -> String? = { null },
 ) {
     /**
      * 서버에 같이 알릴 것인가.
@@ -79,10 +85,13 @@ class GaitHolder(
             return GaitComparison.of(recent, past, GaitSampleRecords.metricsFor(recent, past))
         }
 
-        return GaitApi.compare(recentId, pastId)
-            .map { GaitComparison.of(recent, past, it.toMetrics(), it.messageForUi, it.versionWarning) }
-            .onFailure { error = it.message ?: "두 기록을 비교하지 못했어요." }
-            .getOrNull()
+        // ⚠️ **새 계약(`/app/gait/…`)에는 비교가 아직 없다.** 옛 `/gait/compare` 는 인증이
+        //    없던 주소라 같이 쓸 수 없고(#64), 기록도 저쪽에 없다 — 새 기록은 backend DB 에
+        //    산다. 그래서 **지어내지 않고 말한다.** 여기서 표본 지표로 물러서면 서버가
+        //    계산하지 않은 비교를 진짜처럼 보여 주게 된다.
+        //    backend 에 `/app/gait/compare` 가 생기면 이 자리에 그대로 끼운다.
+        error = "기록 비교는 아직 준비 중이에요. 조금만 기다려 주세요."
+        return null
     }
 
     /**
@@ -98,7 +107,13 @@ class GaitHolder(
         val before = records
         records = records.filterNot { it.id == id }
         if (!remote || id.startsWith(SAMPLE_PREFIX)) return
-        GaitApi.delete(id).onFailure {
+        val token = accessToken()
+        if (token == null) {
+            records = before
+            error = "로그인이 필요해요. 다시 로그인해 주세요."
+            return
+        }
+        GaitApi.delete(token, id).onFailure {
             records = before
             error = it.message ?: "기록을 지우지 못했어요."
         }
@@ -112,9 +127,10 @@ class GaitHolder(
      *
      * 저쪽은 **오래된 것부터** 준다. 앱 목록은 최근이 앞이라 뒤집는다.
      */
-    suspend fun load(dogId: String) {
+    suspend fun load(petId: String) {
         if (!remote) return
-        GaitApi.records(dogId)
+        val token = accessToken() ?: return  // 로그인 전이면 조용히 둔다 — 화면이 아직 뜨는 중이다
+        GaitApi.records(token, petId)
             .onSuccess { page -> records = page.records.reversed().map { it.toRecord() } }
             .onFailure { error = it.message ?: "기록을 받아오지 못했어요." }
     }
@@ -131,20 +147,30 @@ class GaitHolder(
  * **고르는 자리는 여기 하나다.** 화면은 어느 쪽이 들어갔는지 모른다.
  */
 @Composable
-fun rememberGaitHolder(dogId: String?): GaitHolder {
+fun rememberGaitHolder(
+    petId: String?,
+    /** `MainActivity` 의 `freshToken` — 만료됐으면 재발급까지 하고 준다. */
+    accessToken: suspend () -> String? = { null },
+): GaitHolder {
     val context = LocalContext.current
 
-    // **홀더를 다시 만들지 않는다.** `remember(dogId)` 로 두면 대표를 바꾸는 순간
+    // **홀더를 다시 만들지 않는다.** `remember(petId)` 로 두면 대표를 바꾸는 순간
     // 홀더가 새로 생겨서 대화에 올려 둔 기록이 통째로 사라진다. 최신 값만 읽는다.
-    val latest by rememberUpdatedState(dogId)
+    val latest by rememberUpdatedState(petId)
+    val token by rememberUpdatedState(accessToken)
 
     return remember {
         GaitHolder(
             analyzer = if (GaitApi.configured) {
-                HttpGaitAnalyzer(context.applicationContext, dogId = { latest })
+                HttpGaitAnalyzer(
+                    context.applicationContext,
+                    petId = { latest },
+                    accessToken = { token() },
+                )
             } else {
                 MockGaitAnalyzer()
             },
+            accessToken = { token() },
         )
     }
 }
