@@ -1,6 +1,12 @@
 package com.daengs.app.ui.home
 
 import androidx.compose.foundation.background
+import kotlin.math.roundToInt
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,7 +120,29 @@ fun TodayCard(
                     )
                 }
             }
-            AnimatedVisibility(visible = expanded) {
+            // **접혀도 가로폭은 안 줄어든다.**
+            //
+            // `AnimatedVisibility` 로 감쌌더니 접을 때 안내문이 조합에서 통째로 빠져
+            // 카드가 좌우로 출렁였다 — 이 안내문이 카드에서 제일 넓은 줄이다.
+            //
+            // 그래서 **재기는 그대로 하고 높이만 줄여 보고한다.** 폭은 원래 값을 그대로
+            // 내보내므로 접고 펴는 동안 카드 좌우가 붙박이다.
+            val open by animateFloatAsState(
+                targetValue = if (expanded) 1f else 0f,
+                animationSpec = tween(durationMillis = 180),
+                label = "todayFold",
+            )
+            Box(
+                Modifier
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, (placeable.height * open).roundToInt()) {
+                            placeable.place(0, 0)
+                        }
+                    }
+                    .clipToBounds()
+                    .graphicsLayer { alpha = open },
+            ) {
                 Column {
                     Spacer(Modifier.height(3.dp))
                     Text(
