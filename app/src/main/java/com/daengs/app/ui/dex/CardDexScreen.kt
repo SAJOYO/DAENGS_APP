@@ -56,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import com.daengs.app.dogcard.cardFileName
+import com.daengs.app.ui.dogcard.rememberCardSaver
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -513,6 +515,8 @@ private fun CardViewer(slots: List<DexSlot>, startIndex: Int, onClose: () -> Uni
     // 확대 뷰는 한 장뿐이라 원본 해상도로 읽는다.
     val art = rememberCardImage(cover)
     val measurer = rememberTextMeasurer()
+    // 카드를 파일로 꺼낸다. 뽑은 카드가 있을 때만 쓸 자리가 생긴다.
+    val saver = rememberCardSaver()
 
     // 카드를 한 번 더 누르면 설명이 열린다. **문지르면 안 열린다** — 안 움직이고
     // 뗐을 때만 탭이다 (`Modifier.rubbable`). 포일을 구경하다 설명이 튀어나오면
@@ -619,6 +623,30 @@ private fun CardViewer(slots: List<DexSlot>, startIndex: Int, onClose: () -> Uni
                 CardDetailSheet(
                     card = card,
                     mine = mine,
+                    // **그림을 다 읽은 뒤에만 저장이 뜬다.** 아직 안 읽혔는데 눌리면
+                    // 빈 카드가 파일로 나간다.
+                    onSave = if (mine != null && art != null) {
+                        {
+                            saver.save(
+                                fileName = cardFileName(
+                                    templateId = mine.templateId,
+                                    cardId = mine.id,
+                                    at = mine.drawnAtMillis,
+                                ),
+                                art = art,
+                                // 얼굴이 없는 카드(시드 열두 장)는 원화가 곧 그림이라
+                                // 합치지 않고 그대로 내보낸다.
+                                template = if (drawn?.composed == true) drawn.template else null,
+                                face = drawn?.face,
+                                name = mine.dogName,
+                                code = mine.codeText,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    saveBusy = saver.busy,
+                    saveNote = saver.note,
                     onPrev = { index = (index - 1 + slots.size) % slots.size },
                     onNext = { index = (index + 1) % slots.size },
                     onClose = { showDetail = false },
@@ -771,6 +799,11 @@ private fun CardDetailSheet(
     card: DexCard,
     /** 이 칸에서 지금 보고 있는 내 카드. null 이면 카탈로그 설명만 보여 준다 */
     mine: DrawnCard? = null,
+    /** 이미지로 저장한다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
+    onSave: (() -> Unit)? = null,
+    saveBusy: Boolean = false,
+    /** 저장하고 나서 한 줄. 잠시 뒤 사라진다 */
+    saveNote: String? = null,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onClose: () -> Unit,
@@ -862,6 +895,23 @@ private fun CardDetailSheet(
                     .background(Color(0x1AFFFFFF))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
             )
+
+            if (onSave != null) {
+                Spacer(Modifier.height(14.dp))
+                // **넘기기와 한 줄에 안 둔다.** 넘기기는 구경하는 동작이고 저장은
+                // 파일이 하나 생기는 동작이라, 같은 줄에 있으면 다음 카드를 누르려다
+                // 저장 창이 뜬다.
+                SheetAction(
+                    if (saveBusy) "저장하는 중…" else "이미지로 저장",
+                    onClick = if (saveBusy) ({}) else onSave,
+                )
+                // 저장은 창이 닫히고 나면 아무 표시가 없다 — 됐는지 안 됐는지를
+                // 여기서 말해 준다.
+                if (saveNote != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(saveNote, color = Color(0xFF9E8B84), fontSize = 12.sp)
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
             // **넘기기를 여기 둔다.** 설명이 열리면 카드 옆 ‹ › 는 가려지므로, 설명을
