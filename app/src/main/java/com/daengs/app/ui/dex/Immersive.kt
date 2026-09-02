@@ -1,5 +1,10 @@
 package com.daengs.app.ui.dex
 
+import androidx.compose.ui.graphics.ImageBitmap
+import com.daengs.app.ui.dogcard.CardFace
+import com.daengs.app.ui.dogcard.CardTemplate
+import com.daengs.app.ui.dogcard.Hole
+import com.daengs.app.ui.dogcard.Slot
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -53,8 +58,12 @@ const val IMMERSIVE_SLOP = 10f
 @Immutable
 data class ImmersiveScene(
     /**
-     * 카드 이름. **화면에 박아 두면 안 된다** — 배추 하나뿐일 때는 상수였는데,
-     * 고구마를 넣으니 보랏빛 결계 위에 "CABBAGE NEO" 가 떴다.
+     * 무대 이름. **화면에 박아 두면 안 된다** — 배추 하나뿐일 때는 상수였는데,
+     * 고구마를 넣으니 보랏빛 결계 위에 배추 이름이 떴다.
+     *
+     * 내 카드로 들어갔으면 화면이 **우리 아이 이름으로 덮어쓴다**
+     * (`ImmersiveScreen(titleOverride = ...)`). 여기 값은 아직 안 뽑은 카드로
+     * 들어갔을 때(프리뷰·표본)만 쓰인다.
      */
     val title: String,
     val place: String,
@@ -66,6 +75,15 @@ data class ImmersiveScene(
      * 녹으면 드러나서 **창틀**이 된다. 없으면(`null`) 예전처럼 카드가 녹기만 한다.
      */
     val frame: String?,
+    /**
+     * 창틀에 우리 글자를 찍을 자리. **창틀 크기 대비 %** 다.
+     *
+     * 카드의 자리를 그대로 못 쓴다 — 창틀은 카드와 크기도 비율도 다른 별도 렌더다
+     * (고구마 창틀 1067x1474 vs 카드 816x1125). `tools/punch_card_frame.py` 가
+     * 저쪽 글자를 지우면서 같은 값을 쓴다.
+     */
+    val frameName: Slot? = null,
+    val frameCode: Slot? = null,
     /**
      * 배경음. `assets/` 아래 경로이고, null 이면 무음이다.
      *
@@ -165,13 +183,15 @@ data class ImmersiveScene(
 
 /** No.01 배추. 이슬 맺힌 텃밭. */
 val CABBAGE_SCENE = ImmersiveScene(
-    title = "CABBAGE NEO",
+    title = "배추",
     place = "이슬 맺힌 텃밭 · 해 뜨기 직전",
     back = "neo-hologram/art/cabbage-back.webp",
     subject = "neo-hologram/art/cabbage-subject.webp",
     card = "neo-hologram/art/cabbage-card.webp",
     frame = "neo-hologram/art/cabbage-card-frame.webp",
-    bgm = "neo-hologram/audio/cabbage.ogg",
+    frameName = Slot(51.5f, 5.2f, 65.0f, 9.8f),
+    frameCode = Slot(75.0f, 5.2f, 94.5f, 9.8f),
+    bgm = bgmFor("cabbage"),
     window = ImmersiveScene.Win(4.91f, 10.28f, 90.51f, 81.58f),
     fit = ImmersiveScene.Fit(6.06f, 14.15f, 87.43f, 62.70f),
     leaves = 7,
@@ -192,13 +212,15 @@ val CABBAGE_SCENE = ImmersiveScene(
  * 그림자만 저쪽 값(0.22)을 따른다.
  */
 val SWEET_POTATO_SCENE = ImmersiveScene(
-    title = "SWEET POTATO NEO",
+    title = "고구마",
     place = "보랏빛 결계 · 의식이 시작되기 직전",
     back = "neo-hologram/art/sweet-potato-back.webp",
     subject = "neo-hologram/art/sweet-potato-subject.webp",
     card = "neo-hologram/art/sweet-potato-card.webp",
     frame = "neo-hologram/art/sweet-potato-card-frame.webp",
-    bgm = "neo-hologram/audio/sweet-potato.ogg",
+    frameName = Slot(58.8f, 5.2f, 70.0f, 9.8f),
+    frameCode = Slot(73.5f, 5.2f, 93.0f, 9.8f),
+    bgm = bgmFor("sweet-potato"),
     window = ImmersiveScene.Win(6.28f, 10.85f, 88.57f, 81.61f),
     fit = ImmersiveScene.Fit(11.52f, 14.93f, 80.02f, 62.84f),
     shells = listOf(
@@ -221,13 +243,15 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
  * 짧아서**다. 틀마다 다르므로 카드가 늘 때마다 저쪽이 재서 준다.
  */
 val LETTUCE_SCENE = ImmersiveScene(
-    title = "LETTUCE NEO",
+    title = "상추",
     place = "황금 무대 · 잎이 날리는 밤",
     back = "neo-hologram/art/lettuce-back.webp",
     subject = "neo-hologram/art/lettuce-subject.webp",
     card = "neo-hologram/art/lettuce-card.webp",
     frame = "neo-hologram/art/lettuce-card-frame.webp",
-    bgm = "neo-hologram/audio/lettuce.ogg",
+    frameName = Slot(53.8f, 5.4f, 67.0f, 9.4f),
+    frameCode = Slot(75.5f, 5.2f, 95.0f, 9.4f),
+    bgm = bgmFor("lettuce"),
     window = ImmersiveScene.Win(5.17f, 11.55f, 90.46f, 76.39f),
     fit = ImmersiveScene.Fit(11.22f, 15.47f, 80.33f, 62.13f),
     shells = listOf(
@@ -240,6 +264,66 @@ val LETTUCE_SCENE = ImmersiveScene(
     accent = Color(0xFFB2D121),
     accent2 = Color(0xFFE3F493),
 )
+
+/**
+ * 이머시브를 빌드에 넣는가.
+ *
+ * **한 번 껐다가 다시 켰다.** 무대는 그림 넉 장(배경·주인공 누끼·진입 카드·창틀)으로
+ * 이뤄지는데, 카드가 "우리 아이의 카드" 가 된 뒤로 **무대에 선 주인공만 저쪽 강아지로
+ * 남았다.** 그 반쪽 상태로는 "내 카드로 들어갔는데 남의 개가 서 있는" 화면이 나서,
+ * 야채 몸통에 얼굴이 합쳐진 전신 그림이 올 때까지 꺼 뒀었다.
+ *
+ * 전신 그림은 필요 없었다. **카드에서 한 것과 똑같이 누끼의 얼굴 자리만 뚫으면 된다**
+ * (`tools/punch_subject_face.py`). 자리는 재지도 않는다 — 카드 안 얼굴 구멍과 카드 안
+ * 누끼 자리를 이미 갖고 있어서 [ImmersiveScene.faceInSubject] 가 나눠서 구한다.
+ *
+ * 값을 남겨 두는 이유는 **끄고 내보낼 수 있어야 하기 때문**이다. 이머시브가 걸린
+ * 카드는 열두 장 중 셋뿐이라, 원화가 모자란 채로 심사를 받아야 하는 날이 오면 여기
+ * 하나로 뺀다.
+ *
+ * ⚠️ **곡은 여기 안 매여 있다.** `CARD_BGM` 이 곡의 원본이라 이머시브를 꺼도
+ * 턴테이블은 그대로 돈다. 그러려고 갈라 뒀다.
+ */
+const val IMMERSIVE_IN_BUILD = true
+
+/**
+ * 무대 주인공의 얼굴에 끼울 것. 얼굴 그림과 누끼 안에서의 자리다.
+ *
+ * 자리는 [ImmersiveScene.faceInSubject] 가 카드의 구멍에서 계산한다 — 따로 재지 않는다.
+ */
+@Immutable
+data class SubjectFace(
+    val face: CardFace,
+    val hole: Hole,
+    /**
+     * 진입 연출에 쓸 **우리 카드**. 자리를 비운 판과 글자까지 한 벌이다.
+     *
+     * null 이면 저쪽 완성 카드가 그대로 녹는다 — 무대에는 우리 아이가 서 있는데
+     * 들어가는 카드만 저쪽 것인 어정쩡한 상태가 되므로, 있으면 늘 넘긴다.
+     */
+    val entryArt: ImageBitmap? = null,
+    val template: CardTemplate? = null,
+    val name: String = "",
+    val code: String = "",
+)
+
+
+/**
+ * 누끼 안에서의 **얼굴 자리**. 무대 주인공에도 우리 아이 얼굴을 끼우려고 쓴다.
+ *
+ * **따로 재지 않는다.** 두 값을 이미 갖고 있어서 나누면 나온다 —
+ * 카드 안 얼굴 구멍([CardTemplate.face])과 카드 안 누끼 자리([ImmersiveScene.fit])가
+ * 둘 다 카드 크기 대비 % 라, 누끼를 기준으로 다시 재면 그만이다.
+ *
+ * 그래서 무대에 쓸 값이 카드의 값을 따라간다 — 카드 구멍을 고치면 무대도 같이 맞는다.
+ */
+fun ImmersiveScene.faceInSubject(template: CardTemplate): Hole = Hole(
+    cx = (template.face.cx - fit.x) / fit.w * 100f,
+    cy = (template.face.cy - fit.y) / fit.h * 100f,
+    rx = template.face.rx / fit.w * 100f,
+    ry = template.face.ry / fit.h * 100f,
+)
+
 
 /**
  * 카드 번호 → 이머시브 장면. **여기 없으면 이머시브가 아니다.**

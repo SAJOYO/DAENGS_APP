@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -62,6 +64,20 @@ fun HoloCard(
     hold: Float = 0f,
     /** 게이지 색. 카드마다 다르다(저쪽 `accent`). */
     holdColor: Color = Color.White,
+    /**
+     * 아직 안 뽑은 카드를 덮는 색. null 이면 평소대로 그린다.
+     *
+     * **포일을 안 돌린다.** 잠긴 카드가 반짝이면 뽑았을 때의 대비가 죽는다 — 무엇인지
+     * 모르겠지만 갖고 싶은 상태여야 하는데, 반짝이면 이미 가진 것처럼 보인다.
+     *
+     * 원화를 다시 굽지 않고 색을 덮는다. 미니룸 창밖 흐림이 쓰는 방식과 같다
+     * (`RoomShellShapes.drawWindowOutside`).
+     */
+    veil: Color? = null,
+    /** 카드 그림 **아래**에 그릴 것. 내가 뽑은 카드는 얼굴이 여기로 들어간다 */
+    beneath: (DrawScope.() -> Unit)? = null,
+    /** 카드 그림 **위**에 그릴 것. 이름·번호판이 여기다 */
+    above: (DrawScope.() -> Unit)? = null,
 ) {
     val ratio = if (art != null) art.width.toFloat() / art.height else 0.8f
     Canvas(
@@ -81,15 +97,21 @@ fun HoloCard(
                 }
             },
     ) {
+        // 얼굴이 먼저다. 카드가 그 위를 덮으면서 구멍만 뚫려 보인다.
+        if (veil == null) beneath?.invoke(this)
         if (art != null) {
             drawImage(
                 image = art,
                 dstOffset = IntOffset.Zero,
                 dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
                 filterQuality = FilterQuality.High,
+                colorFilter = veil?.let { ColorFilter.tint(it, BlendMode.SrcAtop) },
             )
         }
-        drawFoil(foil, input, tune)
+        if (veil == null) {
+            above?.invoke(this)
+            drawFoil(foil, input, tune)
+        }
         // **카드 안에서 그린다.** 밖에서 그리면 칸 크기를 따라가서 카드보다 넓어진다 —
         // 카드는 높이 기준이라 칸보다 좁다.
         if (hold > 0f) drawHoldRing(hold, holdColor)

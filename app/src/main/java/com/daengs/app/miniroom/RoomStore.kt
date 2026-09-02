@@ -28,6 +28,18 @@ class RoomStore(context: Context) {
         prefs.edit().putString(KEY_ITEMS, RoomCodec.encode(items)).apply()
     }
 
+    /**
+     * 액자에 건 카드. null 이면 아직 안 골랐다 — 그때는 발자국이 걸린다.
+     *
+     * **카드 id 만 든다.** 방은 그 문자열이 무엇을 뜻하는지 모른다. 카드가 지워졌으면
+     * 못 찾을 뿐이고, 그때도 발자국으로 돌아간다.
+     */
+    fun loadFrameCardId(): String? = prefs.getString(KEY_FRAME, null)
+
+    fun saveFrameCardId(id: String?) {
+        prefs.edit().apply { if (id == null) remove(KEY_FRAME) else putString(KEY_FRAME, id) }.apply()
+    }
+
     fun loadThemeId(): String? = prefs.getString(KEY_THEME, null)
 
     fun saveThemeId(id: String) {
@@ -48,6 +60,7 @@ class RoomStore(context: Context) {
     private companion object {
         const val KEY_ITEMS = "items"
         const val KEY_THEME = "theme"
+        const val KEY_FRAME = "frame_card"
     }
 }
 

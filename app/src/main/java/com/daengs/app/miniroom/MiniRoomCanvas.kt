@@ -26,7 +26,6 @@ import com.daengs.app.miniroom.art.FrameSpec
 import com.daengs.app.miniroom.art.ItemCatalog
 import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.drawDoorHint
-import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.miniroom.art.drawWallFrame
 import com.daengs.app.miniroom.art.drawDoorOpening
 import com.daengs.app.miniroom.art.drawDeveloperOverlay
@@ -76,6 +75,14 @@ fun MiniRoomCanvas(
      * 붙박이라 [pickTopmost] 가 안 잡으므로 [pickFixture] 로 따로 본다.
      */
     onTurntableTap: (() -> Unit)? = null,
+    /**
+     * 액자에 걸 그림. null 이면 발자국이 걸린다.
+     *
+     * 예전에는 여기서 저쪽 카드 한 장을 직접 읽었다. 한 장도 안 뽑은 사람의 방에도
+     * 남의 개가 걸려 있었고, 뽑아도 안 바뀌었다. 무엇을 걸지는 방이 정할 일이 아니라
+     * 받는 값이다.
+     */
+    framePicture: ImageBitmap? = null,
     /** 편집 모드에서 빈 곳을 눌렀을 때. 선택 해제용. */
     onEmptyTap: (() -> Unit)? = null,
     doorOpenOverride: Float? = null,
@@ -94,9 +101,6 @@ fun MiniRoomCanvas(
     val windowOutside = ImageBitmap.imageResource(outside.window)
     val doorOutside = ImageBitmap.imageResource(outside.door)
 
-    // 액자 속 그림. 도감 웹 데모의 카드를 그대로 쓴다 — 같은 파일을 리소스로 한 벌 더
-    // 넣지 않으려는 것이다. 작게 그리므로 절반 크기로 읽는다.
-    val framePicture = rememberAssetImage("neo-hologram/art/cabbage-card.webp", sample = 2)
     val frameCallback by rememberUpdatedState(onFrameTap)
     val turntableCallback by rememberUpdatedState(onTurntableTap)
     val measurer = rememberTextMeasurer()

@@ -69,6 +69,15 @@ class PetHolder {
     suspend fun remove(token: String, id: String): Boolean =
         guard { PetApi.delete(token, id) } andThen { refresh(token) }
 
+    /**
+     * 아이를 배웅한다. [day] 가 null 이면 되돌린다.
+     *
+     * **가진 값을 통째로 다시 보낸다.** 서버가 PUT 이라 안 보낸 칸은 null 로 덮인다 —
+     * 날짜 하나 바꾸자고 이름과 몸무게를 잃을 수는 없다.
+     */
+    suspend fun sendOff(token: String, pet: Pet, day: java.time.LocalDate?): Boolean =
+        edit(token, pet.id, pet.toDraft().copy(farewellOn = day))
+
     suspend fun choosePrimary(token: String, id: String): Boolean =
         guard { PetApi.setPrimary(token, id) } andThen { refresh(token) }
 
