@@ -25,6 +25,7 @@ import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.rememberRoomStore
+import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
@@ -86,6 +87,9 @@ class MainActivity : ComponentActivity() {
                 val store = rememberTokenStore()
                 // 탈퇴할 때 방까지 지워야 해서 여기서도 잡는다 (홈이 쓰는 것과 같은 저장소).
                 val roomStore = rememberRoomStore()
+                // 방 액자에 건 카드. **방과 도감이 만나는 자리가 여기 하나다** —
+                // 고르는 곳은 도감이고 걸리는 곳은 방이라, 둘 다 아는 쪽이 들어야 한다.
+                var frameCardId by remember { mutableStateOf(roomStore.loadFrameCardId()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
 
@@ -335,6 +339,10 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else HomeScreen(
+                        // 액자 그림. 고른 카드가 지워졌으면 못 찾고, 그때는 발자국이다.
+                        framePicture = rememberComposedCard(
+                            cards.cards.firstOrNull { it.id == frameCardId },
+                        ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
                         onOpenPlaces = { screen = Screen.Places },
@@ -416,6 +424,7 @@ class MainActivity : ComponentActivity() {
                                         // 물려받는다.
                                         store.clear()
                                         roomStore.clear()
+                                        frameCardId = null
                                         pets.forget()
                                         // **산책 좌표도 지운다.** 서버는 탈퇴에서
                                         // 산책까지 지우는데 폰의 Room 에는 원본이
@@ -507,6 +516,11 @@ class MainActivity : ComponentActivity() {
                         onClose = { screen = Screen.Home },
                         startInDraw = dexOpensDraw.also { dexOpensDraw = false },
                         drawn = cards.cards,
+                        framedCardId = frameCardId,
+                        onFrame = { card ->
+                            frameCardId = card?.id
+                            roomStore.saveFrameCardId(card?.id)
+                        },
                         draw = { done ->
                             CardDrawScreen(
                                 dogs = pets.pets.orEmpty().map { pet ->

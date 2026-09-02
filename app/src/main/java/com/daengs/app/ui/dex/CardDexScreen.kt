@@ -186,6 +186,14 @@ fun CardDexScreen(
      */
     draw: (@Composable (onDone: () -> Unit) -> Unit)? = null,
     startInDraw: Boolean = false,
+    /** 지금 방 액자에 걸려 있는 카드. null 이면 발자국이 걸려 있다 */
+    framedCardId: String? = null,
+    /**
+     * 액자에 건다. null 을 주면 내리고 발자국으로 돌아간다.
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onFrame: ((DrawnCard?) -> Unit)? = null,
 ) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
@@ -248,7 +256,13 @@ fun CardDexScreen(
             exit = fadeOut(),
         ) {
             val start = opened ?: 0
-            CardViewer(slots = slots, startIndex = start, onClose = { opened = null })
+            CardViewer(
+                slots = slots,
+                startIndex = start,
+                onClose = { opened = null },
+                framedCardId = framedCardId,
+                onFrame = onFrame,
+            )
         }
     }
 }
@@ -497,7 +511,13 @@ private fun GridCard(
  * 속도로는 못 가른다).
  */
 @Composable
-private fun CardViewer(slots: List<DexSlot>, startIndex: Int, onClose: () -> Unit) {
+private fun CardViewer(
+    slots: List<DexSlot>,
+    startIndex: Int,
+    onClose: () -> Unit,
+    framedCardId: String? = null,
+    onFrame: ((DrawnCard?) -> Unit)? = null,
+) {
     var index by remember { mutableIntStateOf(startIndex) }
     val slot = slots[index]
     val card = slot.card
@@ -647,6 +667,13 @@ private fun CardViewer(slots: List<DexSlot>, startIndex: Int, onClose: () -> Uni
                     },
                     saveBusy = saver.busy,
                     saveNote = saver.note,
+                    // 이 카드가 지금 액자에 걸려 있나. 걸려 있으면 내리는 자리가 된다.
+                    framed = mine != null && mine.id == framedCardId,
+                    onFrame = if (mine != null && onFrame != null) {
+                        { onFrame(if (mine.id == framedCardId) null else mine) }
+                    } else {
+                        null
+                    },
                     onPrev = { index = (index - 1 + slots.size) % slots.size },
                     onNext = { index = (index + 1) % slots.size },
                     onClose = { showDetail = false },
@@ -804,6 +831,10 @@ private fun CardDetailSheet(
     saveBusy: Boolean = false,
     /** 저장하고 나서 한 줄. 잠시 뒤 사라진다 */
     saveNote: String? = null,
+    /** 이 카드가 지금 방 액자에 걸려 있나 */
+    framed: Boolean = false,
+    /** 액자에 걸거나 내린다. null 이면 그 자리가 안 뜬다 */
+    onFrame: (() -> Unit)? = null,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onClose: () -> Unit,
@@ -895,6 +926,17 @@ private fun CardDetailSheet(
                     .background(Color(0x1AFFFFFF))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
             )
+
+            if (onFrame != null) {
+                Spacer(Modifier.height(14.dp))
+                // **거는 것과 내리는 것을 한 자리에 둔다.** 버튼을 둘 두면 안 걸린
+                // 카드에서도 "내리기" 가 보이고, 그게 무엇을 내린다는 건지 알 수 없다.
+                SheetAction(if (framed) "액자에서 내리기" else "방 액자에 걸기", onFrame)
+                if (framed) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("지금 방에 걸려 있어요", color = Color(0xFF9E8B84), fontSize = 12.sp)
+                }
+            }
 
             if (onSave != null) {
                 Spacer(Modifier.height(14.dp))

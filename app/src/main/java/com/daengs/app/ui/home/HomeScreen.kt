@@ -40,6 +40,7 @@ import com.daengs.app.miniroom.RoomGeometry
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.RoomTheme
+import androidx.compose.ui.graphics.ImageBitmap
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.miniroom.art.ItemCatalog
 import com.daengs.app.miniroom.art.footprintFacing
@@ -174,6 +175,13 @@ fun HomeScreen(
      * 짓는다 ([defaultRoomLabel]).
      */
     roomName: String? = null,
+    /**
+     * 방 액자에 걸린 그림. null 이면 발자국이 걸린다.
+     *
+     * 어느 카드를 걸었는지는 도감에서 고르고 [MainActivity] 가 들고 있다 — 방과 도감이
+     * 서로를 모르는 채로 만나는 자리가 거기 하나다.
+     */
+    framePicture: ImageBitmap? = null,
     /** 이름표를 정한다. null 을 주면 되돌린다. 로그인 전이면 null 이라 안 눌린다. */
     onRenameRoom: ((String?) -> Unit)? = null,
     renameBusy: Boolean = false,
@@ -336,6 +344,7 @@ fun HomeScreen(
                 .fillMaxSize(),
         ) {
             RoomSection(
+                framePicture = framePicture,
                 weatherOpen = weatherOpen,
                 onToggleWeather = onToggleWeather,
                 drawnCards = drawnCards,
@@ -418,6 +427,8 @@ private fun RoomSection(
     onPickProfile: (DogBreed) -> Unit,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)?,
+    /** 액자에 걸린 그림. null 이면 발자국. */
+    framePicture: ImageBitmap? = null,
     /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
     roomName: String?,
     /** 사용자가 안 정했을 때 걸리는 이름. 대표 강아지에서 지은 값이다. */
@@ -489,6 +500,7 @@ private fun RoomSection(
             onFrameTap = if (inventoryOpen) null else onOpenDex,
             // 뒷벽의 턴테이블 -> 내 카드의 음악. 액자와 같은 이유로 편집 중에는 안 받는다.
             onTurntableTap = if (inventoryOpen) null else { { turntableOpen = true } },
+            framePicture = framePicture,
         )
         // 목록이 늦을 때만 뜬다. 600ms 를 기다렸다 띄우므로 빠른 망에서는 안 보인다.
         var showDogsLoading by remember { mutableStateOf(false) }
