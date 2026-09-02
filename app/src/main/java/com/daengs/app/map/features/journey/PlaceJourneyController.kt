@@ -20,7 +20,12 @@ data class PlaceJourneyState(
     val error: String? = null,
 )
 
-/** Owns one selected Place -> journey request and rejects stale responses after another click. */
+/**
+ * 고른 장소 하나에 대한 길찾기 요청을 맡는다.
+ *
+ * 다른 장소를 누른 뒤에 **먼저 보낸 응답이 늦게 오면 버린다** — 안 버리면 방금 고른
+ * 곳 위에 아까 고른 곳의 결과가 덮인다.
+ */
 class PlaceJourneyController(
     private val repository: JourneyRepository,
     private val dogId: String,

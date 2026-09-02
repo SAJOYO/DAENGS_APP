@@ -26,7 +26,7 @@ data class DogSearchContext(
         }
     }
 }
-/** Typed request for the canonical place endpoint. `goods` cannot be represented here. */
+/** 장소 검색 요청. `goods` 는 이 모양으로 표현할 수 없다. */
 data class PlaceSearchRequest(
     val origin: GeoPoint,
     val radiusMeters: Int = 3_000,
