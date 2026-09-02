@@ -70,6 +70,55 @@ class CardTuneTest {
         }
     }
 
+    // -- 턴테이블이 보여 주는 것 --------------------------------------------
+
+    private fun drawn(templateId: String) = com.daengs.app.dogcard.DrawnCard(
+        id = templateId,
+        appUserId = null,
+        templateId = templateId,
+        dogId = null,
+        dogName = "네옹",
+        drawnAtMillis = 0L,
+        codeText = "DG-0824",
+        core = androidx.compose.ui.unit.IntRect(0, 0, 10, 10),
+    )
+
+    /**
+     * **한 장도 안 뽑았으면 한 곡도 안 뜬다.**
+     *
+     * 예전에는 카탈로그를 다 늘어놓아서, 아무것도 없는 사람에게도 다섯 곡이 들렸다.
+     * 그러면 카드를 뽑을 이유가 그만큼 없어진다.
+     */
+    @Test
+    fun `안 뽑았으면 곡이 없다`() {
+        assertTrue(ownedTunes(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `뽑은 카드의 곡만 뜬다`() {
+        val mine = ownedTunes(listOf(drawn("cabbage"), drawn("carrot")))
+        assertEquals(listOf("cabbage", "carrot"), mine.map { it.card.id })
+    }
+
+    /** 곡이 없는 야채를 뽑아도 목록은 안 는다. 열두 장 중 다섯 장에만 곡이 있다. */
+    @Test
+    fun `곡 없는 카드는 목록에 안 든다`() {
+        assertTrue(ownedTunes(listOf(drawn("pepper"), drawn("eggplant"))).isEmpty())
+    }
+
+    /** 같은 야채를 여러 장 뽑아도 곡은 하나다. 한 곡이 두 줄로 뜨면 안 된다. */
+    @Test
+    fun `같은 야채를 두 장 뽑아도 곡은 하나다`() {
+        assertEquals(1, ownedTunes(listOf(drawn("cabbage"), drawn("cabbage"))).size)
+    }
+
+    /** 뽑은 순서가 아니라 도감 순서다. 어제 뽑은 곡이 매번 자리를 옮기면 안 된다. */
+    @Test
+    fun `카탈로그 순서를 따른다`() {
+        val mine = ownedTunes(listOf(drawn("lettuce"), drawn("cabbage")))
+        assertEquals(CARD_TUNES.filter { it.card.id in setOf("cabbage", "lettuce") }, mine)
+    }
+
     @Test
     fun `곡 경로가 비어 있지 않다`() {
         CARD_TUNES.forEach { assertTrue(it.asset.isNotBlank()) }
