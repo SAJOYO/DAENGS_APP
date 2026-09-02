@@ -167,8 +167,12 @@ fun ChatScreen(
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
     /**
-     * 대표 강아지의 id. **보행 기록을 묶는 열쇠다** — 없으면 올려도 목록으로 다시
-     * 못 찾아서, 서버에 보내기 전에 화면이 막는다 ([GaitApi] 주석).
+     * 대표 강아지의 id. **서버가 만든 `pets.id` UUID 다** — `MainActivity` 가
+     * `pets.primary?.id` 를 그대로 넘긴다.
+     *
+     * 보행 기록을 묶는 열쇠이고, 이제 **소유권 검증의 근거이기도 하다** (#64):
+     * 저쪽이 이 값으로 `pets.app_user_id` 까지 따라가 토큰의 주인이 맞는지 본다.
+     * 없으면 올려도 목록으로 다시 못 찾아서, 보내기 전에 화면이 막는다.
      */
     dogId: String? = null,
     /**
@@ -239,7 +243,15 @@ fun ChatScreen(
     // 보행 화면들은 **대화 위에 얹는다.** `MainActivity` 의 [Screen] 으로 빼면 촬영
     // 화면을 열었다 되돌아올 때 대화가 통째로 새로 만들어져, 방금 올린 카드가
     // 사라진다 — 가이드 프레임([GuideFrameScreen])을 대화 위에 덮은 것과 같은 이유다.
-    val gait = rememberGaitHolder(dogId)
+    // 보행도 backend 뒤로 들어왔다 (#64) — 올리는 것도 받아오는 것도 토큰이 있어야 한다.
+    val gait = rememberGaitHolder(petId = dogId, accessToken = accessTokenProvider)
+
+    // **목록의 정본은 서버다** (#64). 전에는 기기 안의 표본만 보고 있어서, 다른 기기에서
+    // 올린 기록이 보이지 않았다. 대표 강아지가 정해지면 받아온다 — 실패해도 들고 있던
+    // 것을 지우지 않는다 (`GaitHolder.load`).
+    LaunchedEffect(dogId) {
+        gait.load(dogId ?: return@LaunchedEffect)
+    }
 
     /** 촬영 가이드 화면이 떠 있나. */
     var gaitCapture by remember { mutableStateOf(false) }

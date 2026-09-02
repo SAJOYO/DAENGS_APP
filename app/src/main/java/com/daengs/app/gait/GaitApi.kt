@@ -2,12 +2,12 @@ package com.daengs.app.gait
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import com.daengs.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.DataOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -15,158 +15,224 @@ import java.net.URLEncoder
 import java.time.LocalDate
 
 /**
- * 보행 분석 서버. **`/gait/…` 를 부르는 곳은 여기 하나다.**
+ * 보행 분석 API. **`/app/gait/…` 를 부르는 곳은 여기 하나다.**
  *
- * 계약은 저쪽 저장소(`SAJOYO/DAENGS_dev`)의 `backend/src/daengs_gait/API.md` 다.
- * `daengs_backend` 의 `openapi.json` 에는 안 나온다 — nginx 가 같은 호스트에서
- * `/gait` 접두사로 **별도 컨테이너**에 넘기기 때문이고, 스크리닝(`/screen`)과 같은
- * 모양이다.
+ * 계약은 저쪽 저장소(`SAJOYO/DAENGS_dev`)의 `routers/gait.py` · `schemas/gait.py` 다
+ * (결정 D-043). `daengs_backend` 의 `openapi.json` 에 나온다 —
+ * [PetApi][com.daengs.app.pet.PetApi] · [AuthApi][com.daengs.app.auth.AuthApi] 와
+ * **같은 서버 · 같은 토큰**이라 [BuildConfig.API_BASE_URL] 을 그대로 쓴다.
  *
- * [AuthApi][com.daengs.app.auth.AuthApi] · [ScreeningApi][com.daengs.app.screening.ScreeningApi]
- * 와 같은 이유로 HTTP 라이브러리를 안 쓴다. 부를 엔드포인트가 여섯이고 배관은
- * 스크리닝에서 이미 한 번 썼다.
+ * ### 옛 `/gait/…` 에서 무엇이 바뀌었나 (#64)
  *
- * ### 인증이 아직 없다
+ * ⚠️ 주소를 KDoc 에 쓸 때 `/gait/` 뒤에 `*` 를 붙이지 않는다. **Kotlin 은 블록 주석이
+ *    중첩돼서** 그 `/` + `*` 가 새 주석을 열고, 파일 끝에서 "Unclosed comment" 로 터진다.
+ *    원본이 `…` 를 쓴 이유가 이것이다 (실제로 한 번 밟았다).
  *
- * 저쪽 API.md 가 못박아 뒀다 — 이 서비스는 인증·인가를 구현하지 않고, `dog_id` 는
- * **넘어온 값을 그대로 믿는다.** 소유권 검증은 `daengs_backend` 의 auth 계층 몫이고,
- * 최종 모양은 `앱 → daengs_backend → gait` 다. 지금 `daengback.~/gait/…` 가 직접
- * 열려 있는 것은 개발·검증 편의다.
+ * 옛 주소는 **인증이 없었다.** `dog_id` 를 넘어온 대로 믿어서, 남의 id 를 넣으면 남의
+ * 기록을 받아오고 지울 수 있었다. 이제 backend 가 토큰으로 사람을 확인하고
+ * `pet_id → pets.app_user_id` 로 소유권을 검증한다. **없는 것과 남의 것은 똑같이 404 다**
+ * — 403 을 주면 "그 기록이 존재한다"가 새기 때문이다.
  *
- * **그래서 토큰이 붙을 자리를 [authHeaders] 하나로 미리 뚫어 뒀다.** 인증이 생기면
- * 이 람다만 채우면 되고, 여섯 호출부는 안 건드린다. 주소가 backend 뒤로 옮겨가도
- * [BuildConfig.GAIT_BASE_URL] 한 줄이다.
+ * 그리고 **한 방 업로드가 아니라 세 걸음**이 됐다. 영상이 backend 를 통과하지 않고
+ * 저장소로 직접 가는 구조라서다:
+ *
+ * ```
+ * ① POST /app/gait/analyze      → 기록(PENDING) + 업로드 티켓
+ * ② PUT  <티켓의 upload_url>     → 영상 바이트 (backend 아님)
+ * ③ POST /app/gait/records/{id}/confirm → 서버가 실존 확인 후 분석 큐에 넣음
+ * ④ GET  /app/gait/records/{id} → status 가 DONE/FAILED 가 될 때까지 폴링
+ * ```
+ *
+ * ⚠️ **②의 주소·헤더를 앱이 해석하지 않는다.** 지금 서버는 임시로 자기 자신을 가리키는
+ *    주소를 주지만(LocalBridge), 곧 GCS Signed URL 로 바뀐다. 티켓이 준 `upload_url` 에
+ *    `upload_headers` 를 그대로 얹어 보내면 **두 경우 모두 그대로 동작한다** — 그래서
+ *    여기서 호스트를 뜯어보거나 우리 토큰을 얹지 않는다. Signed URL 에 우리 헤더를
+ *    얹으면 서명이 깨진다.
+ *
+ * [ScreeningApi][com.daengs.app.screening.ScreeningApi] 와 같은 이유로 HTTP 라이브러리를
+ * 안 쓴다 — 부를 엔드포인트가 여섯이고 배관은 이미 여러 번 썼다.
  */
 object GaitApi {
 
-    /** 주소가 없으면 아무것도 못 부른다. 화면이 이걸 보고 보행 줄을 막는다. */
-    val configured: Boolean
-        get() = BuildConfig.GAIT_BASE_URL.isNotBlank()
-
     /**
-     * 매 요청에 얹을 헤더. **인증이 붙을 자리다.**
+     * 주소가 없으면 아무것도 못 부른다. 화면이 이걸 보고 보행 줄을 막는다.
      *
-     * 지금은 비어 있다. `daengs_backend` 뒤로 옮겨가면 여기서 access token 을
-     * 돌려주면 되고, 그러면 [analyze] 부터 [delete] 까지 전부 같이 따라간다.
+     * **옛 `GAIT_BASE_URL` 이 아니라 [BuildConfig.API_BASE_URL] 을 본다** — 보행이
+     * backend 뒤로 들어왔기 때문이다. 옛 값은 롤백용으로 빌드 설정에 남겨 두었다.
      */
-    var authHeaders: () -> Map<String, String> = { emptyMap() }
+    val configured: Boolean
+        get() = BuildConfig.API_BASE_URL.isNotBlank()
 
     // -- 엔드포인트 ---------------------------------------------------------
 
     /**
-     * 영상 한 편을 올려 분석한다. `POST /gait/analyze` (multipart).
+     * ① 기록을 만들고 업로드 티켓을 받는다. `POST /app/gait/analyze`.
      *
-     * ⚠️ **분 단위로 걸린다.** 사진 한 장이 아니라 영상 전체를 5fps 로 훑고 overlay
-     * 까지 인코딩한다 — 저쪽 실측이 480x854 · 37초 영상에 CPU 약 2분이다. nginx 가
-     * `proxy_read_timeout 600s` 로 열어 뒀고 [READ_TIMEOUT_MS] 도 거기 맞췄다.
-     *
-     * ⚠️ **`dogId` 를 안 주면 [records] 로 다시 못 찾는다.** 목록이 `dog_id` 로만
-     * 거른다. 그래서 필수 인자로 뒀다 — 선택 인자로 두면 언젠가 빠뜨린다.
+     * 아직 영상은 안 보낸다 — 여기서 오는 것은 `record_id` 와 **어디에 올릴지**다.
+     * 저장 키는 **backend 가 만든다.** 앱이 정할 수 없고, 보내는 [sourceFile] 은
+     * 표시용 이름일 뿐이다 (확장자만 키에 반영된다).
      */
-    suspend fun analyze(
-        context: Context,
-        video: Uri,
-        dogId: String,
-        date: LocalDate?,
+    suspend fun startAnalysis(
+        accessToken: String,
+        petId: String,
+        sourceFile: String,
+        contentType: String,
+        capturedAt: LocalDate?,
         note: String? = null,
-    ): Result<GaitAnalyzed> = call {
-        // **보내기 전에 잰다.** 150MB 를 다 올리고 413 을 받으면 데이터도 시간도
-        // 버린다. 저쪽 한도를 앱이 알고 있으니 여기서 먼저 막는다.
-        sizeOf(context, video)?.let { bytes ->
-            check(bytes <= MAX_UPLOAD_BYTES) {
-                "영상이 너무 커요 (${bytes.asMegabytes()}MB). " +
-                    "${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄이거나 더 짧게 찍어 주세요."
-            }
+    ): Result<GaitTicket> = call {
+        val body = JSONObject()
+            .put("pet_id", petId)
+            .put("source_file", sourceFile)
+            .put("content_type", contentType)
+        capturedAt?.let { body.put("captured_at", it.toString()) }
+        note?.let { body.put("note", it) }
+        open("/analyze", "POST", accessToken).use {
+            it.writeJson(body)
+            GaitTicket.parse(it.readJson())
         }
-        val conn = open("/analyze", "POST", READ_TIMEOUT_MS)
+    }
+
+    /**
+     * ② 영상 바이트를 티켓이 가리키는 곳에 올린다.
+     *
+     * **backend 가 아니라 저장소로 간다** (지금은 임시로 backend 를 경유하지만 앱은
+     * 그것을 몰라야 한다 — 위 클래스 주석). 그래서 여기서는:
+     *
+     * - 주소를 [GaitTicket.uploadUrl] 그대로 쓴다 (base URL 을 붙이지 않는다)
+     * - 헤더도 [GaitTicket.uploadHeaders] 그대로 얹는다
+     * - **우리 access token 을 얹지 않는다** — GCS Signed URL 이면 서명이 깨진다
+     *
+     * **영상을 메모리에 통째로 올리지 않는다.** 한도가 150MB 라 `ByteArray` 로 읽으면
+     * 그 자리에서 OOM 이다. `setChunkedStreamingMode` 로 흘려보낸다.
+     */
+    suspend fun upload(context: Context, ticket: GaitTicket, video: Uri): Result<Unit> = call {
+        val conn = (URL(ticket.uploadUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "PUT"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = UPLOAD_TIMEOUT_MS
+            doOutput = true
+            setChunkedStreamingMode(0)
+            ticket.uploadHeaders.forEach { (k, v) -> setRequestProperty(k, v) }
+        }
         conn.use {
-            it.writeVideoMultipart(context, video, dogId, date, note)
-            GaitAnalyzed.parse(it.readJson())
+            val stream: InputStream = context.contentResolver.openInputStream(video)
+                ?: error("영상을 열 수 없습니다.")
+            stream.use { input -> it.outputStream.use { out -> input.copyTo(out) } }
+            // 저장소는 본문 없이 200/204 만 준다. 실패면 여기서 문장을 뽑아 던진다.
+            if (it.responseCode !in 200..299) error(uploadFailureFor(it.responseCode))
         }
     }
 
     /**
-     * 한 강아지의 기록 목록. `GET /gait/records`.
+     * ③ "올렸다"고 알린다. `POST /app/gait/records/{id}/confirm`.
      *
-     * 저쪽은 **오래된 것부터** 준다 (시간 변화를 보는 서비스라 시계열 순서가
-     * 자연스럽다는 이유). 앱 목록은 최근이 앞이라 [GaitAnalyzed.toRecord] 를 거친
-     * 뒤 화면 쪽에서 뒤집는다.
+     * **서버가 앱의 말만 믿지 않는다** — 저장소에 실제로 있는지 확인한 뒤에야 분석
+     * 큐에 넣는다. 그래서 업로드가 중간에 끊겼으면 여기서 409 가 온다.
      */
-    suspend fun records(dogId: String, limit: Int = 20, cursor: String? = null): Result<GaitPage> =
-        call {
-            val query = buildString {
-                append("?dog_id=").append(encode(dogId))
-                append("&limit=").append(limit)
-                if (cursor != null) append("&cursor=").append(encode(cursor))
-            }
-            open("/records$query", "GET").use { GaitPage.parse(it.readJson()) }
-        }
-
-    /** 기록 단건. `GET /gait/records/{id}`. 목록에 없는 `features` 가 여기 있다. */
-    suspend fun record(recordId: String): Result<GaitAnalyzed> = call {
-        open("/records/${encode(recordId)}", "GET").use { GaitAnalyzed.parse(it.readJson()) }
+    suspend fun confirm(accessToken: String, recordId: String): Result<GaitSummary> = call {
+        open("/records/${encode(recordId)}/confirm", "POST", accessToken)
+            .use { GaitSummary.parse(it.readJson()) }
     }
 
     /**
-     * 기록과 영상 파일을 지운다. `DELETE /gait/records/{id}`.
+     * ④ 기록 단건. `GET /app/gait/records/{id}`. 진행 상태([GaitAnalyzed.status])도 여기 있다.
      *
-     * ⚠️ **부분 실패를 성공으로 감추지 않는다.** 저쪽이 원본만 못 지웠으면 500 에
-     * 무엇이 남았는지를 담아 준다. 개인 데이터라 그걸 삼키면 안 된다.
+     * 분석이 끝났는지 아는 방법이 이것뿐이다 — 옛 주소처럼 한 방에 결과가 오지 않는다.
      */
-    suspend fun delete(recordId: String): Result<Unit> = call {
-        open("/records/${encode(recordId)}", "DELETE").use { it.readJson() }
+    suspend fun record(accessToken: String, recordId: String): Result<GaitAnalyzed> = call {
+        open("/records/${encode(recordId)}", "GET", accessToken)
+            .use { GaitAnalyzed.parse(it.readJson()) }
+    }
+
+    /**
+     * 한 강아지의 기록 목록. `GET /app/gait/records?pet_id=`.
+     *
+     * **`dog_id` 가 아니라 `pet_id` 다.** 서버가 만든 진짜 `pets.id` UUID 이고, 남의 것을
+     * 넣으면 404 다 (옛 주소에서는 그대로 통했다 — 그게 #64 였다).
+     *
+     * 저쪽은 **오래된 것부터** 준다. 앱 목록은 최근이 앞이라 [GaitHolder] 가 뒤집는다.
+     */
+    suspend fun records(
+        accessToken: String,
+        petId: String,
+        limit: Int = 20,
+        cursor: String? = null,
+    ): Result<GaitPage> = call {
+        val query = buildString {
+            append("?pet_id=").append(encode(petId))
+            append("&limit=").append(limit)
+            if (cursor != null) append("&cursor=").append(encode(cursor))
+        }
+        open("/records$query", "GET", accessToken).use { GaitPage.parse(it.readJson()) }
+    }
+
+    /**
+     * 기록을 지운다. `DELETE /app/gait/records/{id}`.
+     *
+     * 서버는 지우기로 표시만 하고 **저장소 파일 정리는 워커가 이어서** 한다. 앱에서는
+     * 지운 순간 목록에서 사라지고 다시 조회하면 404 다.
+     */
+    suspend fun delete(accessToken: String, recordId: String): Result<Unit> = call {
+        open("/records/${encode(recordId)}", "DELETE", accessToken).use { it.readJson() }
         Unit
     }
 
-    /**
-     * 두 기록을 나란히 본다. `POST /gait/compare`.
-     *
-     * 둘 다 `quality.status == "ok"` 여야 한다. 아니면 저쪽이 `unavailable` 과 사유를
-     * 돌려준다 — 앱은 목록의 `comparable` 로 미리 걸러 그 상황을 잘 안 만든다.
-     */
-    suspend fun compare(recordIdA: String, recordIdB: String): Result<GaitCompared> = call {
-        val body = JSONObject().put("record_id_a", recordIdA).put("record_id_b", recordIdB)
-        open("/compare", "POST").use {
-            it.writeJson(body)
-            GaitCompared.parse(it.readJson())
-        }
-    }
+    // -- 올릴 파일의 이름과 형식 -------------------------------------------
 
     /**
-     * 스켈레톤 영상 주소.
-     *
-     * 응답의 `overlay_url` 은 **앱 기준 절대 경로**(`/gait/records/…/overlay`)라
-     * 호스트를 앞에 붙여야 한다. 그런데 우리가 든 것은 `/gait` 까지 포함된 주소라
-     * 거기에 그대로 이으면 `/gait/gait/…` 가 된다. **그래서 응답 값을 쓰지 않고
-     * 여기서 짓는다** — 규칙이 하나뿐이라 이쪽이 덜 깨진다.
+     * 표시용 파일 이름. 저장 키는 서버가 만들지만 **확장자는 여기서 온 것을 쓴다.**
+     * 못 읽으면 `gait.mp4` 로 둔다 — 확장자가 분석 결과를 바꾸지는 않는다.
      */
-    fun overlayUrl(recordId: String): String =
-        BuildConfig.GAIT_BASE_URL.trimEnd('/') + "/records/" + encode(recordId) + "/overlay"
+    fun displayNameOf(context: Context, uri: Uri): String = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
+            }
+    }.getOrNull() ?: "gait.mp4"
+
+    fun contentTypeOf(context: Context, uri: Uri): String =
+        context.contentResolver.getType(uri) ?: "video/mp4"
+
+    /**
+     * 보내기 전에 크기를 잰다. **150MB 를 다 올리고 413 을 받으면 데이터도 시간도 버린다.**
+     * 콘텐츠 제공자가 크기를 모르면 null 이고, 그때는 재지 않고 그냥 올린다.
+     */
+    fun oversizeMessage(context: Context, uri: Uri): String? {
+        val bytes = runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use {
+                it.length.takeIf { len -> len >= 0 }
+            }
+        }.getOrNull() ?: return null
+        if (bytes <= MAX_UPLOAD_BYTES) return null
+        return "영상이 너무 커요 (${bytes.asMegabytes()}MB). " +
+            "${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄이거나 더 짧게 찍어 주세요."
+    }
 
     // -- 배관 ---------------------------------------------------------------
 
     private suspend fun <T> call(block: () -> T): Result<T> = withContext(Dispatchers.IO) {
         runCatching {
             check(configured) {
-                "보행 서버 주소가 없습니다. local.properties 의 daengs.gaitUrl 을 채우세요."
+                "서버 주소가 없습니다. local.properties 의 daengs.apiBaseUrl 을 채우세요."
             }
             block()
         }.recoverCatching { cause ->
             // 서버가 준 문장은 그대로 통과시킨다. 나머지(연결 실패)는 영어 한 줄이라
-            // 말풍선에 그대로 띄우면 안 된다 — 스크리닝과 같은 판단이다.
+            // 말풍선에 그대로 띄우면 안 된다 — 스크리닝·펫과 같은 판단이다.
             if (cause is IllegalStateException) throw cause
-            throw IllegalStateException("보행 서버에 닿지 못했어요.\n${BuildConfig.GAIT_BASE_URL}", cause)
+            throw IllegalStateException("보행 서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
         }
     }
 
-    private fun open(path: String, method: String, readTimeout: Int = SHORT_READ_TIMEOUT_MS) =
-        (URL(BuildConfig.GAIT_BASE_URL.trimEnd('/') + path).openConnection() as HttpURLConnection)
+    private fun open(path: String, method: String, accessToken: String) =
+        (URL(BuildConfig.API_BASE_URL.trimEnd('/') + BASE_PATH + path)
+            .openConnection() as HttpURLConnection)
             .apply {
                 requestMethod = method
                 connectTimeout = CONNECT_TIMEOUT_MS
-                this.readTimeout = readTimeout
+                readTimeout = SHORT_READ_TIMEOUT_MS
                 setRequestProperty("Accept", "application/json")
-                authHeaders().forEach { (k, v) -> setRequestProperty(k, v) }
+                setRequestProperty("Authorization", "Bearer $accessToken")
             }
 
     private fun HttpURLConnection.writeJson(body: JSONObject) {
@@ -176,77 +242,46 @@ object GaitApi {
     }
 
     /**
-     * `multipart/form-data` 본문을 직접 쓴다.
-     *
-     * **영상을 메모리에 통째로 올리지 않는다.** 한도가 150MB 라 `ByteArray` 로 읽으면
-     * 그 자리에서 OOM 이다. `setChunkedStreamingMode` 로 흘려보내고 원본은
-     * `ContentResolver` 스트림에서 바로 복사한다.
-     */
-    private fun HttpURLConnection.writeVideoMultipart(
-        context: Context,
-        video: Uri,
-        dogId: String,
-        date: LocalDate?,
-        note: String?,
-    ) {
-        doOutput = true
-        setChunkedStreamingMode(0)
-        setRequestProperty("Content-Type", "multipart/form-data; boundary=$BOUNDARY")
-        DataOutputStream(outputStream).use { out ->
-            fun field(name: String, value: String) {
-                out.writeBytes("--$BOUNDARY\r\n")
-                out.writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n\r\n")
-                out.write(value.toByteArray())
-                out.writeBytes("\r\n")
-            }
-            field("dog_id", dogId)
-            date?.let { field("date", it.toString()) }
-            note?.let { field("note", it) }
-
-            out.writeBytes("--$BOUNDARY\r\n")
-            out.writeBytes("Content-Disposition: form-data; name=\"video\"; filename=\"gait.mp4\"\r\n")
-            out.writeBytes("Content-Type: video/mp4\r\n\r\n")
-            val stream: InputStream = context.contentResolver.openInputStream(video)
-                ?: error("영상을 열 수 없습니다.")
-            stream.use { it.copyTo(out) }
-            out.writeBytes("\r\n--$BOUNDARY--\r\n")
-        }
-    }
-
-    /**
      * 본문을 읽는다. 오류면 **저쪽 `detail` 을 꺼내 던진다.**
      *
-     * 저쪽이 사용자에게 보여 줄 말로 써 놨다("영상을 읽을 수 없습니다" 같은).
-     * 삭제 실패는 `detail` 이 객체라 그 안의 `message` 를 쓴다.
+     * 저쪽이 사용자에게 보여 줄 말로 써 놨다("강아지를 찾을 수 없습니다" 같은).
      */
     private fun HttpURLConnection.readJson(): JSONObject {
         val ok = responseCode in 200..299
         val text = (if (ok) inputStream else errorStream)?.bufferedReader()?.use { it.readText() }
         if (!ok) error(detailOf(text) ?: sentenceFor(responseCode))
-        return JSONObject(text ?: "{}")
+        return JSONObject(text.orEmpty().ifBlank { "{}" })
     }
 
     /**
-     * 저쪽이 문장을 안 줄 때 앱이 대신 하는 말.
+     * 저쪽이 문장을 안 줄 때 앱이 대신 하는 말. **새 계약의 오류들이다.**
      *
-     * 코드를 그대로 띄우면("413 을 돌려줬어요") 사용자가 무엇을 해야 할지 모른다.
-     * 뜻은 API.md 의 오류 표에 있다 — 그걸 옮겨 둔다.
+     * 코드를 그대로 띄우면("409 를 돌려줬어요") 사용자가 무엇을 해야 할지 모른다.
      */
     private fun sentenceFor(code: Int): String = when (code) {
-        400 -> "영상을 읽지 못했어요. 다른 영상으로 해보세요."
-        413 -> "영상이 너무 커요. ${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄여 주세요."
-        // 컨테이너는 떠 있는데 가중치가 없는 상태다. 사용자가 할 수 있는 게 없다.
-        503 -> "보행 분석 서버가 아직 준비되지 않았어요. 잠시 뒤에 다시 해주세요."
+        // 토큰이 없거나 만료됐다. 앱이 재발급을 시도하고도 여기 오면 다시 로그인해야 한다.
+        401 -> "로그인이 필요해요. 다시 로그인해 주세요."
+        // **남의 것도 여기로 온다** — 없는 것과 구분하지 않는 것이 서버의 규칙이다.
         404 -> "그 기록을 찾지 못했어요."
+        // confirm 을 두 번 불렀거나, 업로드가 끝나기 전에 불렀다.
+        409 -> "업로드가 끝나지 않았어요. 다시 시도해 주세요."
+        413 -> "영상이 너무 커요. ${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄여 주세요."
+        // 요청 모양이 틀렸다. 사용자가 할 수 있는 게 없어 개발 중에만 보인다.
+        422 -> "요청을 처리하지 못했어요. 앱을 최신 버전으로 업데이트해 주세요."
+        // 저장소가 아직 설정되지 않았다(서버 준비 중). 사용자가 할 수 있는 게 없다.
+        503 -> "보행 분석이 아직 준비되지 않았어요. 잠시 뒤에 다시 해주세요."
         else -> "보행 서버가 응답하지 못했어요. (${code})"
     }
 
-    /** 콘텐츠 제공자가 크기를 모르면 null 이다. 그때는 재지 않고 그냥 올린다. */
-    private fun sizeOf(context: Context, uri: Uri): Long? = runCatching {
-        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use {
-            it.length.takeIf { len -> len >= 0 }
-        }
-    }.getOrNull()
+    /**
+     * 업로드는 저장소가 받는다 — **backend 의 `detail` 문장이 없다.** 그래서 코드로만
+     * 말을 고른다. 만료된 티켓(403/404)은 다시 시도하면 새 티켓이 나온다.
+     */
+    private fun uploadFailureFor(code: Int): String = when (code) {
+        403, 404 -> "업로드 시간이 지났어요. 다시 시도해 주세요."
+        413 -> "영상이 너무 커요. ${MAX_UPLOAD_BYTES.asMegabytes()}MB 아래로 줄여 주세요."
+        else -> "영상을 올리지 못했어요. 연결을 확인하고 다시 시도해 주세요. (${code})"
+    }
 
     private fun Long.asMegabytes(): Long = this / (1024 * 1024)
 
@@ -267,29 +302,74 @@ object GaitApi {
             disconnect()
         }
 
-    /** 저쪽 기본 한도(`GAIT_MAX_UPLOAD_BYTES`). 서버가 바꾸면 여기도 따라가야 한다. */
+    /** backend 의 보행 계약이 사는 자리. nginx 가 접두사를 떼지 않는다 (`/screen` 과 같다). */
+    private const val BASE_PATH = "/app/gait"
+
+    /** 저쪽 nginx `/app/gait/` 는 200m 를 받는다. 앱은 그보다 낮게 먼저 막는다. */
     private const val MAX_UPLOAD_BYTES = 150L * 1024 * 1024
 
-    private const val BOUNDARY = "----daengs-gait-boundary-0f3a9c1e"
     private const val CONNECT_TIMEOUT_MS = 15_000
 
-    /** 목록·삭제·비교는 금방 온다. */
+    /** 티켓 발급·confirm·목록·삭제는 금방 온다. **분석을 기다리지 않는다.** */
     private const val SHORT_READ_TIMEOUT_MS = 30_000
 
-    /** 분석만 길다. nginx 가 열어 둔 600s 에 맞춘다. */
-    private const val READ_TIMEOUT_MS = 600_000
+    /** 업로드만 길다. 116MB 가 모바일 회선으로 나갈 시간을 준다. */
+    private const val UPLOAD_TIMEOUT_MS = 600_000
+}
+
+/**
+ * ①이 돌려준 것 — 기록 하나와 **어디에 올릴지**.
+ *
+ * ⚠️ [uploadUrl] 과 [uploadHeaders] 를 **해석하지 않고 그대로 쓴다.** 지금은 서버가
+ *    자기 주소를 주지만(임시 bridge) 곧 GCS Signed URL 이 온다. 그대로 쓰면 둘 다
+ *    동작하고, 뜯어보기 시작하면 저장소가 바뀔 때마다 앱이 바뀐다.
+ */
+data class GaitTicket(
+    val recordId: String,
+    val status: String,
+    val uploadUrl: String,
+    val uploadHeaders: Map<String, String>,
+    val expiresInSeconds: Int,
+) {
+    companion object {
+        fun parse(json: JSONObject): GaitTicket {
+            val headers = json.optJSONObject("upload_headers")
+            return GaitTicket(
+                recordId = json.getString("record_id"),
+                status = json.optString("status", GaitStatus.PENDING),
+                uploadUrl = json.getString("upload_url"),
+                uploadHeaders = headers?.keys()?.asSequence()
+                    ?.associateWith { headers.optString(it) } ?: emptyMap(),
+                expiresInSeconds = json.optInt("expires_in_seconds", 0),
+            )
+        }
+    }
+}
+
+/** 서버가 쓰는 진행 상태. 폴링이 이 값으로 끝을 판단한다. */
+object GaitStatus {
+    const val PENDING = "PENDING"
+    const val UPLOADED = "UPLOADED"
+    const val PROCESSING = "PROCESSING"
+    const val DONE = "DONE"
+    const val FAILED = "FAILED"
+
+    /** 더 기다려도 안 바뀌는 상태. */
+    fun settled(status: String): Boolean = status == DONE || status == FAILED
 }
 
 /**
  * 서버가 돌려준 기록 한 건.
  *
- * **점수·등급을 담는 필드가 없다.** 저쪽 응답에는 `internal_feature_vector` 와
- * `_dev_only_*` 가 있는데, API.md 가 **화면 노출 금지**라고 못박아 뒀다 — 수백 개의
- * 숫자가 화면에 나오면 사용자는 그것을 건강 점수로 읽는다. 여기서 아예 안 받으면
- * 화면이 지어낼 수 없다 ([GaitRecord] 가 같은 방법을 쓴다).
+ * **점수·등급을 담는 필드가 없다.** 저쪽에는 `internal_feature_vector` 가 있는데
+ * **응답 스키마가 아예 그 필드를 모른다** — 화면에 수백 개의 숫자가 나오면 사용자는
+ * 그것을 건강 점수로 읽는다. 여기서도 안 받으므로 화면이 지어낼 수 없다.
+ *
+ * [status] 가 새로 생겼다. 옛 주소는 한 방에 결과를 줘서 이 값이 필요 없었다.
  */
 data class GaitAnalyzed(
     val recordId: String,
+    val status: String,
     val date: LocalDate?,
     val qualityOk: Boolean,
     /** `good` / `low`. `qualityOk` 가 false 면 null 이다. */
@@ -298,25 +378,35 @@ data class GaitAnalyzed(
     val reason: String?,
     val recommendation: String?,
     val hasOverlay: Boolean,
+    /**
+     * 워커가 실패한 사유. **운영 진단용이라 화면에 그대로 띄우지 않는다** —
+     * 스택 조각이나 내부 경로가 들어 있을 수 있다.
+     */
+    val failureReason: String?,
 ) {
+    val settled: Boolean get() = GaitStatus.settled(status)
+
     companion object {
         fun parse(json: JSONObject): GaitAnalyzed {
             val quality = json.optJSONObject("quality")
-            val ok = quality?.optString("status") == "ok"
             return GaitAnalyzed(
                 recordId = json.getString("record_id"),
-                date = json.optStringOrNull("date")?.let(LocalDate::parse),
-                qualityOk = ok,
-                qualityTier = quality?.optStringOrNull("quality_tier"),
+                status = json.optString("status", GaitStatus.DONE),
+                // 옛 응답의 `date` 가 `captured_at` 으로 바뀌었다.
+                date = json.optStringOrNull("captured_at")?.let(LocalDate::parse),
+                // **앱이 정하지 않는다.** 저쪽 quality_status 가 그대로 온다.
+                qualityOk = json.optStringOrNull("quality_status") == "ok",
+                qualityTier = json.optStringOrNull("quality_tier"),
                 reason = quality?.optStringOrNull("reason"),
                 recommendation = quality?.optStringOrNull("recommendation"),
                 hasOverlay = json.optBoolean("has_overlay", false),
+                failureReason = json.optStringOrNull("failure_reason"),
             )
         }
     }
 }
 
-/** 목록 한 장. 저쪽은 요약만 준다 — `trajectories` · `features` 는 단건에만 있다. */
+/** 목록 한 장. 저쪽은 요약만 준다 — `quality` 세부는 단건에만 있다. */
 data class GaitPage(val records: List<GaitSummary>, val nextCursor: String?) {
     companion object {
         fun parse(json: JSONObject): GaitPage {
@@ -338,6 +428,7 @@ data class GaitPage(val records: List<GaitSummary>, val nextCursor: String?) {
  */
 data class GaitSummary(
     val recordId: String,
+    val status: String,
     val date: LocalDate?,
     val comparable: Boolean,
     val hasOverlay: Boolean,
@@ -347,41 +438,12 @@ data class GaitSummary(
     companion object {
         fun parse(json: JSONObject): GaitSummary = GaitSummary(
             recordId = json.getString("record_id"),
-            date = json.optStringOrNull("date")?.let(LocalDate::parse),
+            status = json.optString("status", GaitStatus.DONE),
+            date = json.optStringOrNull("captured_at")?.let(LocalDate::parse),
             comparable = json.optBoolean("comparable", false),
             hasOverlay = json.optBoolean("has_overlay", false),
             filterVersion = json.optStringOrNull("gait_filter_version"),
         )
-    }
-}
-
-/**
- * 비교 결과.
- *
- * **문장을 앱이 짓지 않는다.** [messageForUi] 가 저쪽이 실제 계산에서 유도한 한 줄이고,
- * API.md 가 화면에 쓸 것으로 지목한 값이다. `_dev_only_*` 는 받지 않는다.
- */
-data class GaitCompared(
-    val available: Boolean,
-    val messageForUi: String?,
-    /** 관절 이름 → `"차이 관찰됨"` / `"비슷함"`. */
-    val jointComparison: Map<String, String>,
-    val reliabilityNote: String?,
-    /** 두 기록의 필터 버전이 다를 때. **표시해야 한다** — 같은 영상도 달라 보인다. */
-    val versionWarning: String?,
-) {
-    companion object {
-        fun parse(json: JSONObject): GaitCompared {
-            val joints = json.optJSONObject("joint_movement_range_comparison")
-            return GaitCompared(
-                available = json.optString("status", "ok") != "unavailable",
-                messageForUi = json.optStringOrNull("message_for_ui"),
-                jointComparison = joints?.keys()?.asSequence()
-                    ?.associateWith { joints.optString(it) } ?: emptyMap(),
-                reliabilityNote = json.optStringOrNull("reliability_note"),
-                versionWarning = json.optStringOrNull("version_warning"),
-            )
-        }
     }
 }
 
@@ -395,8 +457,10 @@ internal fun JSONObject.optStringOrNull(key: String): String? =
  * 목록 한 줄을 화면이 아는 [GaitRecord] 로 옮긴다.
  *
  * **길이와 표지가 없다.** 저쪽 목록 응답에 담기지 않고, 지난 기록의 원본은 기기에
- * 없다. 표지는 `has_overlay` 가 true 면 오버레이 영상에서 뽑을 수 있지만 목록을
- * 그리자고 영상 넷을 내려받을 이유가 없다 — 화면이 발바닥 자리표시로 물러선다.
+ * 없다. 화면이 발바닥 자리표시로 물러선다.
+ *
+ * 아직 끝나지 않은 기록(`PENDING`·`PROCESSING`)도 목록에 온다. **비교 대상으로는
+ * 세우지 않는다** — 서버의 `comparable` 이 이미 false 라 그대로 따라가면 된다.
  */
 fun GaitSummary.toRecord(): GaitRecord = GaitRecord(
     id = recordId,
@@ -406,27 +470,3 @@ fun GaitSummary.toRecord(): GaitRecord = GaitRecord(
     thumbnail = null,
     comparable = comparable,
 )
-
-/**
- * 비교 응답을 표 세 줄로 옮긴다.
- *
- * 저쪽은 관절 이름별로 `"차이 관찰됨"` / `"비슷함"` 을 준다. **문자열을 그대로
- * 믿지 않고 아는 값만 옮긴다** — 모르는 문자열이 오면 [GaitDelta.Unknown] 이다.
- * "차이 관찰됨" 을 놓쳐서 "유사" 로 떨어지면 없는 안심을 주게 된다.
- *
- * 비교 자체가 불가(`status: unavailable`)면 표를 통째로 [GaitDelta.Unknown] 으로
- * 만든다. 그러면 [GaitComparison] 이 판정을 `NotEnough` 로 끌어낸다.
- */
-fun GaitCompared.toMetrics(): List<GaitMetric> {
-    if (!available) return emptyList()
-    return jointComparison.map { (joint, verdict) ->
-        GaitMetric(
-            name = joint,
-            delta = when (verdict) {
-                "비슷함" -> GaitDelta.Similar
-                "차이 관찰됨" -> GaitDelta.Slight
-                else -> GaitDelta.Unknown
-            },
-        )
-    }
-}
