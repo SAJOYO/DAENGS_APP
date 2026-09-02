@@ -76,8 +76,17 @@ data class CardTemplate(
     val ratio: Float,
     val face: Hole,
     val avatar: Hole,
-    val name: Slot,
-    val code: Slot,
+    /**
+     * 이름바·번호판 자리. **null 이면 안 그린다.**
+     *
+     * 12장 공통이 아니다 — `tools/punch_card_slots.py` 는 공통이라고 적어 뒀는데,
+     * 피망·당근·가지·단호박은 검은 프레임에 제목이 가운데 오고 번호판이 아래에
+     * 따로 있다. 공통 상수 하나로 두면 그 넷에서 **엉뚱한 자리에 글자가 찍힌다.**
+     * 받은 판은 이름·번호 자리가 이미 비워져 있어서 안 그려도 카드가 성립한다.
+     * 실기기에서 재는 대로 한 장씩 채운다 (`docs/card-holes.md`).
+     */
+    val name: Slot?,
+    val code: Slot?,
 )
 
 val CABBAGE_CARD = CardTemplate(
@@ -102,7 +111,134 @@ val SWEET_POTATO_CARD = CardTemplate(
     code = Slot(75.0f, 4.8f, 94.0f, 9.4f),
 )
 
-val CARD_TEMPLATES = listOf(CABBAGE_CARD, SWEET_POTATO_CARD)
+/**
+ * 새로 들어온 열 장은 1080×1440 한 판이다. 배추·고구마만 저쪽에서 따로 온 원화라
+ * 캔버스가 다르다 (810×1125 · 816×1125). WebP 헤더로 확인했다.
+ */
+private const val SLOTS_RATIO = 1080f / 1440f
+
+val PEPPER_CARD = CardTemplate(
+    id = "pepper",
+    label = "피망",
+    art = "neo-hologram/art/pepper-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(51.76f, 51.67f, 18.44f, 13.83f),
+    avatar = Hole(13.80f, 13.54f, 8.78f, 6.59f),
+    name = null,
+    code = null,
+)
+
+val EGGPLANT_CARD = CardTemplate(
+    id = "eggplant",
+    label = "가지",
+    art = "neo-hologram/art/eggplant-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(48.24f, 56.32f, 18.64f, 13.98f),
+    avatar = Hole(14.26f, 13.82f, 9.08f, 6.81f),
+    name = null,
+    code = null,
+)
+
+val CARROT_CARD = CardTemplate(
+    id = "carrot",
+    label = "당근",
+    art = "neo-hologram/art/carrot-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(50.83f, 50.76f, 13.89f, 10.42f),
+    avatar = Hole(14.07f, 13.68f, 8.73f, 6.55f),
+    name = null,
+    code = null,
+)
+
+val DANHOBAK_CARD = CardTemplate(
+    id = "danhobak",
+    label = "단호박",
+    art = "neo-hologram/art/danhobak-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(51.57f, 50.56f, 15.35f, 11.51f),
+    avatar = Hole(13.80f, 13.68f, 8.73f, 6.55f),
+    name = null,
+    code = null,
+)
+
+val MUSHROOM_CARD = CardTemplate(
+    id = "mushroom",
+    label = "버섯",
+    art = "neo-hologram/art/mushroom-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(51.57f, 44.93f, 14.22f, 10.67f),
+    avatar = Hole(14.44f, 9.58f, 7.73f, 5.80f),
+    name = null,
+    code = null,
+)
+
+val BROCCOLI_CARD = CardTemplate(
+    id = "broccoli",
+    label = "브로콜리",
+    art = "neo-hologram/art/broccoli-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(51.48f, 51.53f, 10.02f, 7.52f),
+    avatar = Hole(14.54f, 9.86f, 7.71f, 5.78f),
+    name = null,
+    code = null,
+)
+
+val CUCUMBER_CARD = CardTemplate(
+    id = "cucumber",
+    label = "오이",
+    art = "neo-hologram/art/cucumber-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(50.56f, 47.43f, 10.29f, 7.71f),
+    avatar = Hole(14.91f, 9.86f, 7.72f, 5.79f),
+    name = null,
+    code = null,
+)
+
+val SPINACH_CARD = CardTemplate(
+    id = "spinach",
+    label = "시금치",
+    art = "neo-hologram/art/spinach-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(47.22f, 36.60f, 13.20f, 9.90f),
+    avatar = Hole(14.72f, 9.79f, 7.73f, 5.80f),
+    name = null,
+    code = null,
+)
+
+val TOMATO_CARD = CardTemplate(
+    id = "tomato",
+    label = "토마토",
+    art = "neo-hologram/art/tomato-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(51.94f, 46.18f, 15.74f, 11.80f),
+    avatar = Hole(14.63f, 9.44f, 7.73f, 5.80f),
+    name = null,
+    code = null,
+)
+
+val LETTUCE_CARD = CardTemplate(
+    id = "lettuce",
+    label = "상추",
+    art = "neo-hologram/art/lettuce-card-slots.webp",
+    ratio = SLOTS_RATIO,
+    face = Hole(50.00f, 38.82f, 9.97f, 7.48f),
+    avatar = Hole(13.06f, 12.85f, 7.71f, 5.78f),
+    name = null,
+    code = null,
+)
+
+/**
+ * 도감 순서(No.01~12)와 같다. 뽑기가 이 목록을 **균등**으로 뽑는다.
+ *
+ * id 는 `ui/dex/DexCards.kt` 의 `DEX_CARDS` 와 한 글자도 안 다르다. 그래서 뽑은
+ * 카드를 도감 칸에 얹을 때 변환표가 필요 없다 — **우연히 맞은 것이라** 어긋나면
+ * 조용히 카드가 사라진다. `CardTemplateTest` 가 그것을 잠근다.
+ */
+val CARD_TEMPLATES = listOf(
+    CABBAGE_CARD, PEPPER_CARD, EGGPLANT_CARD, CARROT_CARD,
+    DANHOBAK_CARD, MUSHROOM_CARD, BROCCOLI_CARD, CUCUMBER_CARD,
+    SPINACH_CARD, SWEET_POTATO_CARD, TOMATO_CARD, LETTUCE_CARD,
+)
 
 /**
  * 구멍에 끼울 얼굴.
@@ -239,10 +375,10 @@ fun birthCode(month: Int, day: Int): String = "NEO-%02d%02d".format(month, day)
 private fun DrawScope.drawSlotText(
     measurer: TextMeasurer,
     text: String,
-    slot: Slot,
+    slot: Slot?,
     face: SlotFace,
 ) {
-    if (text.isBlank()) return
+    if (slot == null || text.isBlank()) return
     val left = size.width * slot.x0 / 100f
     val top = size.height * slot.y0 / 100f
     val right = size.width * slot.x1 / 100f
@@ -294,6 +430,21 @@ private fun Float.toSp() = (this / 2.6f).sp
 @Composable
 private fun CabbageTemplatePreview() {
     PersonalCard(CABBAGE_CARD, face = null, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(200.dp))
+}
+
+@Preview(name = "피망 판 · 구멍이 제일 큰 카드", widthDp = 220, heightDp = 310)
+@Composable
+private fun PepperTemplatePreview() {
+    PersonalCard(PEPPER_CARD, face = null, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(200.dp))
+}
+
+// 피망 rx 18.44% · 상추 9.97% 로 **구멍이 3.4배 차이 난다**. 같은 얼굴을 끼워도
+// 한쪽은 카드를 채우고 한쪽은 잎 사이의 점이 된다. 둘을 나란히 놓고 본다.
+
+@Preview(name = "상추 판 · 구멍이 제일 작은 카드", widthDp = 220, heightDp = 310)
+@Composable
+private fun LettuceTemplatePreview() {
+    PersonalCard(LETTUCE_CARD, face = null, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(200.dp))
 }
 
 @Preview(name = "고구마 판 · 작게", widthDp = 130, heightDp = 190)
