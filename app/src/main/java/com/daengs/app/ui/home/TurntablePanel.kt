@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import com.daengs.app.dogcard.DrawnCard
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,7 +79,14 @@ val CARD_TUNES: List<CardTune> = DEX_CARDS.mapNotNull { card ->
 }
 
 @Composable
-fun TurntablePanel(onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun TurntablePanel(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** 내가 뽑은 카드. 곡 목록이 여기서 나온다 */
+    drawn: List<DrawnCard> = emptyList(),
+    /** 뽑으러 간다. null 이면 그 자리가 안 뜬다 — `@Preview` 가 그렇게 쓴다 */
+    onOpenDraw: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -138,23 +146,74 @@ fun TurntablePanel(onClose: () -> Unit, modifier: Modifier = Modifier) {
             )
         }
 
-        CARD_TUNES.forEach { tune ->
-            TuneRow(
-                tune = tune,
-                playing = playing == tune.asset,
-                onToggle = { playing = if (playing == tune.asset) null else tune.asset },
-                onSave = {
-                    saving = tune
-                    save.launch("${tune.card.name}.ogg")
-                },
-            )
-        }
+        // **내가 뽑은 카드의 곡만.** 카탈로그를 다 늘어놓으면 한 장도 안 뽑은 사람에게도
+        // 다 들려서 카드를 뽑을 이유가 없어진다.
+        val mine = remember(drawn) { ownedTunes(drawn) }
 
-        val left = DEX_CARDS.size - CARD_TUNES.size
-        if (left > 0) {
-            Text("나머지 ${left}장은 아직 곡이 없습니다", color = TextMuted, fontSize = 11.sp)
+        if (mine.isEmpty()) {
+            Empty(onOpenDraw)
+        } else {
+            mine.forEach { tune ->
+                TuneRow(
+                    tune = tune,
+                    playing = playing == tune.asset,
+                    onToggle = { playing = if (playing == tune.asset) null else tune.asset },
+                    onSave = {
+                        saving = tune
+                        save.launch("${tune.card.name}.ogg")
+                    },
+                )
+            }
+
+            val left = CARD_TUNES.size - mine.size
+            if (left > 0) {
+                Text("곡이 있는 카드가 ${left}장 더 있어요", color = TextMuted, fontSize = 11.sp)
+            }
         }
         note?.let { Text(it, color = DaengPink, fontSize = 11.sp) }
+    }
+}
+
+/**
+ * 내가 가진 곡. **카탈로그 순서를 그대로 따른다** — 뽑은 순서로 늘어놓으면 어제 뽑은
+ * 곡이 매번 자리를 옮긴다.
+ */
+internal fun ownedTunes(drawn: List<DrawnCard>): List<CardTune> {
+    val ids = drawn.map { it.templateId }.toSet()
+    return CARD_TUNES.filter { it.card.id in ids }
+}
+
+/**
+ * 한 곡도 없을 때.
+ *
+ * **빈 채로 두지 않는다.** 턴테이블은 방의 붙박이라 아무나 누르는데, 열었더니 아무것도
+ * 없으면 고장으로 읽힌다. 무엇을 하면 곡이 생기는지 말하고 그 자리로 보낸다.
+ */
+@Composable
+private fun Empty(onOpenDraw: (() -> Unit)?) {
+    Text(
+        "노래를 가진 카드를 뽑아보세요",
+        color = TextDark,
+        fontSize = 13.sp,
+    )
+    Text(
+        "카드마다 곡이 있는 것은 아니에요. 뽑으면 여기에 쌓여요.",
+        color = TextMuted,
+        fontSize = 11.sp,
+        lineHeight = 17.sp,
+    )
+    onOpenDraw?.let { go ->
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(DaengPink)
+                .clickable(onClick = go),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("뽑으러 가기", color = CardWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 

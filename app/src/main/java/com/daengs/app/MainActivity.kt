@@ -140,6 +140,8 @@ class MainActivity : ComponentActivity() {
                 // 날씨 카드가 펴져 있나. **화면이 바뀌어도 기억한다** — 접어 두고
                 // 도감에 갔다 왔는데 다시 펴져 있으면 접은 뜻이 없다.
                 var weatherOpen by rememberSaveable { mutableStateOf(true) }
+                // 도감을 열자마자 뽑기를 띄울지. 턴테이블의 "뽑으러 가기" 가 켠다.
+                var dexOpensDraw by remember { mutableStateOf(false) }
                 // 배웅. **화면을 안 늘린다** — 마이 위에 덮인다 (`myOpen` 과 같은 결).
                 //
                 // 배웅한 날은 **서버가 갖고 있다**(`pets.farewell_on`). 기기에 적어 두던
@@ -347,6 +349,11 @@ class MainActivity : ComponentActivity() {
                         onSelectTab = { homeTab = it },
                         myOpen = myOpen,
                         weatherOpen = weatherOpen,
+                        drawnCards = cards.cards,
+                        onOpenDraw = {
+                            dexOpensDraw = true
+                            screen = Screen.Dex
+                        },
                         onToggleWeather = { weatherOpen = !weatherOpen },
                         onOpenMy = { myOpen = true },
                         onCloseMy = { myOpen = false },
@@ -498,6 +505,7 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        startInDraw = dexOpensDraw.also { dexOpensDraw = false },
                         drawn = cards.cards,
                         draw = { done ->
                             CardDrawScreen(

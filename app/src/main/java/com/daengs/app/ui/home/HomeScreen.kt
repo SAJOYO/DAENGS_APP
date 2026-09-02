@@ -46,6 +46,7 @@ import com.daengs.app.miniroom.art.footprintFacing
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.rememberItemCatalog
 import com.daengs.app.miniroom.rememberMiniRoomState
+import com.daengs.app.dogcard.DrawnCard
 import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkDayTotals
 import kotlinx.coroutines.delay
@@ -149,6 +150,10 @@ fun HomeScreen(
     /** 날씨 카드가 펴져 있나. 접으면 방을 비켜 준다 */
     weatherOpen: Boolean = true,
     onToggleWeather: (() -> Unit)? = null,
+    /** 내가 뽑은 카드. 턴테이블의 곡 목록이 여기서 나온다 */
+    drawnCards: List<DrawnCard> = emptyList(),
+    /** 도감을 열고 곧장 뽑기를 띄운다. 턴테이블의 "뽑으러 가기" 가 쓴다 */
+    onOpenDraw: (() -> Unit)? = null,
     onOpenMy: (() -> Unit)? = null,
     onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
@@ -333,6 +338,8 @@ fun HomeScreen(
             RoomSection(
                 weatherOpen = weatherOpen,
                 onToggleWeather = onToggleWeather,
+                drawnCards = drawnCards,
+                onOpenDraw = onOpenDraw,
                 state = roomState,
                 catalog = catalog,
                 dateLabel = dateLabel,
@@ -399,6 +406,10 @@ private fun RoomSection(
     /** 날씨 카드가 펴져 있나. 접으면 방 왼쪽 위를 비켜 준다 */
     weatherOpen: Boolean,
     onToggleWeather: (() -> Unit)?,
+    /** 내가 뽑은 카드. 턴테이블의 곡 목록이 여기서 나온다 */
+    drawnCards: List<DrawnCard>,
+    /** 도감을 열고 곧장 뽑기를 띄운다 */
+    onOpenDraw: (() -> Unit)?,
     theme: RoomTheme,
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
@@ -547,6 +558,14 @@ private fun RoomSection(
         if (turntableOpen) {
             TurntablePanel(
                 onClose = { turntableOpen = false },
+                drawn = drawnCards,
+                onOpenDraw = onOpenDraw?.let { go ->
+                    {
+                        // 뽑으러 가면 판은 닫는다. 돌아왔을 때 덮여 있으면 방이 안 보인다.
+                        turntableOpen = false
+                        go()
+                    }
+                },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
