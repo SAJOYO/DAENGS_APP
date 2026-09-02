@@ -87,7 +87,11 @@ fun FarewellScreen(
 ) {
     // 배웅한 아이는 **그 아이의 자리**부터 연다. 편지는 거기서 고른다 — 들어올 때마다
     // 편지가 먼저 펼쳐지면, 잠깐 얼굴만 보러 온 사람에게도 매번 그 글이 열린다.
-    var letter by remember(sentOn) { mutableStateOf(false) }
+    //
+    // ⚠️ **[sentOn] 을 키로 잡으면 안 된다.** 배웅을 마치면 `sentOn` 이 null 에서
+    // 날짜로 바뀌는데, 그 순간 키가 달라져 이 값이 초기값으로 되돌아간다 — 방금 보낸
+    // 사람에게 편지 대신 견종·몸무게 표가 떴다.
+    var letter by remember { mutableStateOf(false) }
     BackHandler {
         if (letter) letter = false else onClose()
     }
@@ -117,7 +121,13 @@ fun FarewellScreen(
         Spacer(Modifier.height(10.dp))
 
         when {
-            letter -> Letter(dogName)
+            letter -> {
+                Letter(dogName)
+                // 배웅을 마친 흐름의 끝이 여기다. 편지를 읽고 나면 다음에 올 것을
+                // 알려 준다 — 그 아이의 자리에도 같은 자리가 있다.
+                Spacer(Modifier.height(20.dp))
+                Memories()
+            }
 
             sentOn != null -> Home(
                 dogName = dogName,
