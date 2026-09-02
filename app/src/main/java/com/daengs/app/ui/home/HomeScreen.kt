@@ -266,6 +266,11 @@ fun HomeScreen(
                 // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
                 // 화면이 되기 전에는 눈에 안 띄던 것이다.
                 onSelect = { tab ->
+                    // **마이가 열려 있으면 먼저 닫는다.** 마이는 탭이 아니라 홈 위에
+                    // 덮이는 화면인데 바는 그대로 보인다. 안 닫으면 `selected` 가
+                    // 여전히 홈이라 바의 홈을 눌러도 아무 일이 안 일어나서,
+                    // 뒤로가기 말고는 나올 길이 없다.
+                    if (myOpen) onCloseMy?.invoke()
                     when (tab) {
                         BottomTab.Dex -> onOpenDex?.invoke()
                         BottomTab.Nearby -> onOpenPlaces?.invoke()
