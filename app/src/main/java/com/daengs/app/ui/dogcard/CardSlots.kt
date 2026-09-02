@@ -312,6 +312,27 @@ private const val CORE_OVERFILL = 1.15f
  * 목 아래로 흐려지는 꼬리까지 셈에 들어가서, 꼬리가 한쪽으로 퍼진 사진에서는
  * 머리가 반대쪽으로 밀리고 구멍 한쪽이 통째로 빈다.
  */
+/**
+ * 얼굴을 이 카드의 두 구멍에 끼운다. **`PersonalCard` 밖에서도 쓴다** — 도감이
+ * 같은 카드를 그려야 하는데, 거기는 포일과 꾹 게이지가 함께 도는 `HoloCard` 안이다.
+ * 합치는 규칙이 두 벌이 되면 뽑을 때와 도감에서 얼굴 자리가 달라진다.
+ */
+fun DrawScope.drawCardFace(face: CardFace, template: CardTemplate) {
+    drawInHole(face, template.face)
+    drawInHole(face, template.avatar)
+}
+
+/** 이름·번호판. 카드 **위에** 그린다 — 아래에 두면 카드가 덮는다. */
+fun DrawScope.drawCardText(
+    measurer: TextMeasurer,
+    template: CardTemplate,
+    name: String,
+    code: String,
+) {
+    drawSlotText(measurer, name, template.name, TITLE)
+    drawSlotText(measurer, code, template.code, CODE)
+}
+
 private fun DrawScope.drawInHole(face: CardFace, hole: Hole) {
     val core = face.core
     if (core.width <= 0 || core.height <= 0) return
