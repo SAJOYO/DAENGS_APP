@@ -1,5 +1,8 @@
 package com.daengs.app.ui.dex
 
+import com.daengs.app.ui.dogcard.drawInHoleOf
+import com.daengs.app.ui.dogcard.drawPersonalCardAt
+import com.daengs.app.ui.dogcard.drawSlotTextAt
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -140,6 +143,18 @@ private const val SHELL_TILT = 0.156f
 fun ImmersiveScreen(
     scene: ImmersiveScene = CABBAGE_SCENE,
     /**
+     * 무대 위에 쓸 이름. **내 카드로 들어갔으면 우리 아이 이름이다.**
+     *
+     * 무대는 카드와 같은 것을 가리키는데 카드에는 아이 이름이 찍혀 있고 무대만
+     * `CABBAGE NEO` 라고 하면 같은 것이 두 이름을 갖는다.
+     */
+    titleOverride: String? = null,
+    /**
+     * 무대 주인공의 얼굴에 끼울 우리 아이. null 이면 누끼가 뚫린 채로 그려진다
+     * (야채 한가운데가 비어 보인다) — 내 카드로 들어갈 때는 늘 들어온다.
+     */
+    hero: SubjectFace? = null,
+    /**
      * 눌린 카드의 **창 위** 자리. 여기서 출발한다.
      *
      * [Rect.Zero] 면 자리를 모른다는 뜻이고, 그때는 가운데에서 조금 작게 시작한다.
@@ -150,6 +165,7 @@ fun ImmersiveScreen(
 ) {
     val back = rememberAssetImage(scene.back)
     val subject = rememberAssetImage(scene.subject)
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val card = rememberAssetImage(scene.card)
     val frame = scene.frame?.let { rememberAssetImage(it) }
     val parts = remember(scene) { buildScene(scene, seedOf("cabbage")) }
@@ -207,7 +223,7 @@ fun ImmersiveScreen(
         Canvas(Modifier.fillMaxSize()) {
             val fromHere =
                 if (from.width > 0f) from.translate(-rootAt.x, -rootAt.y) else Rect.Zero
-            drawStage(scene, parts, back, subject, card, frame, aim, enter, t.toLong(), fromHere)
+            drawStage(scene, parts, back, subject, card, frame, aim, enter, t.toLong(), fromHere, hero, measurer)
         }
 
         // 글자는 창이 벌어진 뒤에 뜬다. 진입 내내 떠 있으면 카드 위에 겹쳐서,
@@ -224,7 +240,7 @@ fun ImmersiveScreen(
             // 결계 위에서 겉돈다. accent2 를 흰쪽으로 당긴 값이라 배추에서는 전과
             // 거의 같은 색이 나온다.
             Text(
-                scene.title,
+                titleOverride ?: scene.title,
                 color = lerp(scene.accent2, Color.White, 0.62f),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -273,6 +289,8 @@ private fun DrawScope.drawStage(
     enter: Float,
     timeMs: Long,
     from: Rect,
+    hero: SubjectFace?,
+    measurer: androidx.compose.ui.text.TextMeasurer,
 ) {
     val settle = (enter / SETTLE_END).coerceIn(0f, 1f)
     val melt = ((enter - MELT_FROM) / (MELT_TO - MELT_FROM)).coerceIn(0f, 1f)
@@ -280,7 +298,7 @@ private fun DrawScope.drawStage(
 
     // 틀이 없는 카드는 예전 연출로 돈다 — 카드가 커지면서 통째로 녹는다.
     if (card == null || frame == null) {
-        drawScene(scene, parts, back, subject, aim, enter, timeMs)
+        drawScene(scene, parts, back, subject, aim, enter, timeMs, hero = hero)
         if (card != null && enter < 1f) {
             val alpha = (1f - enter * 1.6f).coerceIn(0f, 1f)
             if (alpha > 0.001f) {
@@ -311,7 +329,7 @@ private fun DrawScope.drawStage(
         right = win.cx + win.hw * k,
         bottom = win.cy + win.hh * k,
     ) {
-        drawScene(scene, parts, back, subject, aim, open, timeMs, cardPos, cardSize)
+        drawScene(scene, parts, back, subject, aim, open, timeMs, cardPos, cardSize, hero)
     }
 
     // 틀. **창과 같은 중심에서 같은 배율로** 커진다. 둘이 같은 값을 읽으므로 어긋날
@@ -322,30 +340,50 @@ private fun DrawScope.drawStage(
             win.cx + (cardPos.x - win.cx) * k,
             win.cy + (cardPos.y - win.cy) * k,
         )
+        val fs = Size(cardSize.width * k, cardSize.height * k)
         drawImage(
             image = frame,
             dstOffset = androidx.compose.ui.unit.IntOffset(fp.x.roundToInt(), fp.y.roundToInt()),
-            dstSize = androidx.compose.ui.unit.IntSize(
-                (cardSize.width * k).roundToInt(),
-                (cardSize.height * k).roundToInt(),
-            ),
+            dstSize = androidx.compose.ui.unit.IntSize(fs.width.roundToInt(), fs.height.roundToInt()),
             filterQuality = FilterQuality.High,
         )
+        // **창틀에도 우리 글자를 얹는다.** 카드가 녹으면 그 아래가 이 틀인데, 저쪽
+        // 글자를 지워 두기만 하고 우리 것을 안 찍으면 이름 자리가 빈 채로 드러난다.
+        hero?.let {
+            drawSlotTextAt(measurer, it.name, it.code, scene.frameName, scene.frameCode, fp, fs)
+        }
     }
 
     // 카드 그림. 틀 위에 같은 자리로 얹혀 있다가 녹는다. 녹고 나면 아래의 틀이 드러나
     // 창틀이 된다 — 그림이 지워진 자리가 곧 창이다.
     if (melt < 1f) {
-        drawImage(
-            image = card,
-            dstOffset = androidx.compose.ui.unit.IntOffset(cardPos.x.roundToInt(), cardPos.y.roundToInt()),
-            dstSize = androidx.compose.ui.unit.IntSize(
-                cardSize.width.roundToInt(),
-                cardSize.height.roundToInt(),
-            ),
-            alpha = 1f - melt,
-            filterQuality = FilterQuality.High,
-        )
+        // **녹는 것도 우리 카드다.** 무대에는 우리 아이가 서 있는데 들어가는 카드만
+        // 저쪽 것이면 같은 것이 두 얼굴을 갖는다.
+        val mine = hero?.takeIf { it.entryArt != null && it.template != null }
+        if (mine != null) {
+            drawPersonalCardAt(
+                art = mine.entryArt!!,
+                template = mine.template!!,
+                face = mine.face,
+                measurer = measurer,
+                name = mine.name,
+                code = mine.code,
+                at = cardPos,
+                box = cardSize,
+                alpha = 1f - melt,
+            )
+        } else {
+            drawImage(
+                image = card,
+                dstOffset = androidx.compose.ui.unit.IntOffset(cardPos.x.roundToInt(), cardPos.y.roundToInt()),
+                dstSize = androidx.compose.ui.unit.IntSize(
+                    cardSize.width.roundToInt(),
+                    cardSize.height.roundToInt(),
+                ),
+                alpha = 1f - melt,
+                filterQuality = FilterQuality.High,
+            )
+        }
     }
 }
 
@@ -471,6 +509,7 @@ private fun DrawScope.drawScene(
     timeMs: Long,
     cardPos: Offset? = null,
     cardSize: Size? = null,
+    hero: SubjectFace? = null,
 ) {
     // 1. 하늘 — 해 뜨기 직전의 텃밭
     drawRect(
@@ -573,6 +612,10 @@ private fun DrawScope.drawScene(
         // 속. 시차 하나로 통째로 움직인다.
         val d = parallax(aim, Par.SUBJECT)
         translate(d.x, d.y) {
+            // **얼굴이 먼저다.** 누끼에 뚫어 둔 구멍으로 우리 아이가 비친다 —
+            // 카드에서 하는 것과 같은 순서이고, 자리는 카드의 구멍에서 계산해 온다
+            // (`ImmersiveScene.faceInSubject`). 야채 몸통은 저쪽 그림 그대로 쓴다.
+            hero?.let { drawInHoleOf(it.face, it.hole, pos, sz) }
             drawImage(
                 image = subject,
                 dstOffset = androidx.compose.ui.unit.IntOffset(pos.x.roundToInt(), pos.y.roundToInt()),

@@ -423,6 +423,7 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        drawn = cards.cards,
                         draw = { done ->
                             CardDrawScreen(
                                 dogs = pets.pets.orEmpty().map { pet ->

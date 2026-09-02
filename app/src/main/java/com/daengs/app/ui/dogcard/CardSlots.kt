@@ -126,7 +126,7 @@ val PEPPER_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.76f, 51.67f, 18.44f, 13.83f),
     avatar = Hole(13.80f, 13.54f, 8.78f, 6.59f),
-    name = null,
+    name = Slot(59.44f, 6.25f, 76.11f, 12.08f),
     code = null,
 )
 
@@ -137,7 +137,7 @@ val EGGPLANT_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(48.24f, 56.32f, 18.64f, 13.98f),
     avatar = Hole(14.26f, 13.82f, 9.08f, 6.81f),
-    name = null,
+    name = Slot(70.56f, 7.99f, 76.85f, 13.61f),
     code = null,
 )
 
@@ -148,7 +148,7 @@ val CARROT_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(50.83f, 50.76f, 13.89f, 10.42f),
     avatar = Hole(14.07f, 13.68f, 8.73f, 6.55f),
-    name = null,
+    name = Slot(63.89f, 6.25f, 70.93f, 13.19f),
     code = null,
 )
 
@@ -159,7 +159,7 @@ val DANHOBAK_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.57f, 50.56f, 15.35f, 11.51f),
     avatar = Hole(13.80f, 13.68f, 8.73f, 6.55f),
-    name = null,
+    name = Slot(73.52f, 6.25f, 80.56f, 12.64f),
     code = null,
 )
 
@@ -170,7 +170,7 @@ val MUSHROOM_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.57f, 44.93f, 14.22f, 10.67f),
     avatar = Hole(14.44f, 9.58f, 7.73f, 5.80f),
-    name = null,
+    name = Slot(56.48f, 4.03f, 67.96f, 9.86f),
     code = null,
 )
 
@@ -181,7 +181,7 @@ val BROCCOLI_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.48f, 51.53f, 10.02f, 7.52f),
     avatar = Hole(14.54f, 9.86f, 7.71f, 5.78f),
-    name = null,
+    name = Slot(53.52f, 4.03f, 67.22f, 9.86f),
     code = null,
 )
 
@@ -192,7 +192,7 @@ val CUCUMBER_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(50.56f, 47.43f, 10.29f, 7.71f),
     avatar = Hole(14.91f, 9.86f, 7.72f, 5.79f),
-    name = null,
+    name = Slot(57.22f, 4.1f, 69.44f, 9.72f),
     code = null,
 )
 
@@ -203,7 +203,7 @@ val SPINACH_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(47.22f, 36.60f, 13.20f, 9.90f),
     avatar = Hole(14.72f, 9.79f, 7.73f, 5.80f),
-    name = null,
+    name = Slot(50.56f, 4.03f, 67.22f, 9.86f),
     code = null,
 )
 
@@ -214,7 +214,7 @@ val TOMATO_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(51.94f, 46.18f, 15.74f, 11.80f),
     avatar = Hole(14.63f, 9.44f, 7.73f, 5.80f),
-    name = null,
+    name = Slot(51.3f, 3.82f, 67.22f, 9.44f),
     code = null,
 )
 
@@ -225,7 +225,7 @@ val LETTUCE_CARD = CardTemplate(
     ratio = SLOTS_RATIO,
     face = Hole(50.00f, 38.82f, 9.97f, 7.48f),
     avatar = Hole(13.06f, 12.85f, 7.71f, 5.78f),
-    name = null,
+    name = Slot(53.52f, 6.32f, 71.67f, 11.94f),
     code = null,
 )
 
@@ -312,14 +312,99 @@ private const val CORE_OVERFILL = 1.15f
  * 목 아래로 흐려지는 꼬리까지 셈에 들어가서, 꼬리가 한쪽으로 퍼진 사진에서는
  * 머리가 반대쪽으로 밀리고 구멍 한쪽이 통째로 빈다.
  */
-private fun DrawScope.drawInHole(face: CardFace, hole: Hole) {
+/**
+ * 얼굴을 이 카드의 두 구멍에 끼운다. **`PersonalCard` 밖에서도 쓴다** — 도감이
+ * 같은 카드를 그려야 하는데, 거기는 포일과 꾹 게이지가 함께 도는 `HoloCard` 안이다.
+ * 합치는 규칙이 두 벌이 되면 뽑을 때와 도감에서 얼굴 자리가 달라진다.
+ */
+fun DrawScope.drawCardFace(face: CardFace, template: CardTemplate) {
+    drawInHole(face, template.face)
+    drawInHole(face, template.avatar)
+}
+
+/**
+ * 합쳐 놓은 카드 한 장을 **임의의 사각형에** 그린다.
+ *
+ * 이머시브 진입 연출이 쓴다 — 거기서는 카드가 화면 한가운데에서 자라며 녹는데,
+ * 그동안 보이는 것이 저쪽 완성 카드가 아니라 **우리 카드**여야 한다.
+ *
+ * 순서는 화면에서 그리는 것과 같다: 얼굴 → 자리를 비운 판 → 글자.
+ */
+fun DrawScope.drawPersonalCardAt(
+    art: ImageBitmap,
+    template: CardTemplate,
+    face: CardFace?,
+    measurer: TextMeasurer,
+    name: String,
+    code: String,
+    at: Offset,
+    box: Size,
+    alpha: Float = 1f,
+) {
+    if (face != null) {
+        drawInHoleOf(face, template.face, at, box)
+        drawInHoleOf(face, template.avatar, at, box)
+    }
+    drawImage(
+        image = art,
+        dstOffset = IntOffset(at.x.roundToInt(), at.y.roundToInt()),
+        dstSize = IntSize(box.width.roundToInt(), box.height.roundToInt()),
+        alpha = alpha,
+        filterQuality = FilterQuality.High,
+    )
+    drawSlotText(measurer, name, template.name, TITLE, at, box)
+    drawSlotText(measurer, code, template.code, CODE, at, box)
+}
+
+/**
+ * 이름·번호판만 **임의의 사각형에** 그린다. 이머시브 창틀이 쓴다 — 창틀은 그림이
+ * 이미 비워져 있고 글자만 얹으면 된다.
+ */
+fun DrawScope.drawSlotTextAt(
+    measurer: TextMeasurer,
+    name: String,
+    code: String,
+    nameSlot: Slot?,
+    codeSlot: Slot?,
+    at: Offset,
+    box: Size,
+) {
+    drawSlotText(measurer, name, nameSlot, TITLE, at, box)
+    drawSlotText(measurer, code, codeSlot, CODE, at, box)
+}
+
+/** 이름·번호판. 카드 **위에** 그린다 — 아래에 두면 카드가 덮는다. */
+fun DrawScope.drawCardText(
+    measurer: TextMeasurer,
+    template: CardTemplate,
+    name: String,
+    code: String,
+) {
+    drawSlotText(measurer, name, template.name, TITLE)
+    drawSlotText(measurer, code, template.code, CODE)
+}
+
+private fun DrawScope.drawInHole(face: CardFace, hole: Hole) =
+    drawInHoleOf(face, hole, Offset.Zero, size)
+
+/**
+ * 얼굴을 **임의의 사각형 안**의 구멍에 끼운다.
+ *
+ * 카드는 화면을 통째로 쓰지만 이머시브의 주인공 누끼는 무대 한가운데의 한 조각이라,
+ * 자리와 크기를 받아야 한다. 규칙은 [drawInHole] 과 한 벌이다 — 두 벌이 되면 카드와
+ * 무대에서 얼굴 자리가 달라진다.
+ *
+ * @param at 사각형의 왼쪽 위
+ * @param box 사각형 크기. [hole] 은 이 크기 대비 % 다
+ */
+fun DrawScope.drawInHoleOf(face: CardFace, hole: Hole, at: Offset, box: Size) {
     val core = face.core
     if (core.width <= 0 || core.height <= 0) return
 
-    val cx = size.width * hole.cx / 100f
-    val cy = size.height * hole.cy / 100f
-    val rx = size.width * hole.rx / 100f * CLIP_BLEED
-    val ry = size.height * hole.ry / 100f * CLIP_BLEED
+    val cx = at.x + box.width * hole.cx / 100f
+    val cy = at.y + box.height * hole.cy / 100f
+    val rx = box.width * hole.rx / 100f * CLIP_BLEED
+    val ry = box.height * hole.ry / 100f * CLIP_BLEED
 
     // 또렷한 얼굴이 구멍을 덮을 만큼 키운다. 짧은 쪽이 아니라 **모자란 쪽**에
     // 맞춰야 구멍이 찬다.
@@ -334,7 +419,7 @@ private fun DrawScope.drawInHole(face: CardFace, hole: Hole) {
         // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
         // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
         // 잘리고 이마만 남았다 — 실기기에서 봤다.
-        val top = cy + size.height * hole.ry / 100f - core.bottom * scale
+        val top = cy + box.height * hole.ry / 100f - core.bottom * scale
         drawImage(
             image = face.image,
             dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
@@ -388,20 +473,30 @@ private val KeduBold = FontFamily(Font(R.font.keris_kedu_bold, FontWeight.Bold))
 private val TITLE = SlotFace(KeduBold, FontWeight.Bold, 0.06f, 0.60f)
 private val CODE = SlotFace(FontFamily.SansSerif, FontWeight.Black, 0.01f, 0.58f)
 
-/** 생일을 번호판 글자로. 저쪽 `NEO-0824` 가 월일이라 그 자리에 그대로 들어간다. */
-fun birthCode(month: Int, day: Int): String = "NEO-%02d%02d".format(month, day)
+/**
+ * 생일을 번호판 글자로.
+ *
+ * **접두사가 `NEO` 였다.** 저쪽 카드에 인쇄된 `NEO-0824` 를 그대로 흉내 낸 것인데,
+ * 네오는 이 저장소를 만든 사람의 강아지 이름이다. 다른 사람이 쓰면 남의 개 이름이
+ * 자기 카드 번호판에 찍힌다. 앱 이름을 딴 `DG` 로 바꾼다.
+ *
+ * 자릿수는 그대로 둔다 — 번호판 칸이 좁아서 긴 접두사는 글자가 줄어든다.
+ */
+fun birthCode(month: Int, day: Int): String = "DG-%02d%02d".format(month, day)
 
 private fun DrawScope.drawSlotText(
     measurer: TextMeasurer,
     text: String,
     slot: Slot?,
     face: SlotFace,
+    at: Offset = Offset.Zero,
+    box: Size = size,
 ) {
     if (slot == null || text.isBlank()) return
-    val left = size.width * slot.x0 / 100f
-    val top = size.height * slot.y0 / 100f
-    val right = size.width * slot.x1 / 100f
-    val bottom = size.height * slot.y1 / 100f
+    val left = at.x + box.width * slot.x0 / 100f
+    val top = at.y + box.height * slot.y0 / 100f
+    val right = at.x + box.width * slot.x1 / 100f
+    val bottom = at.y + box.height * slot.y1 / 100f
     val boxW = right - left
     val boxH = bottom - top
     if (boxW <= 0f || boxH <= 0f) return

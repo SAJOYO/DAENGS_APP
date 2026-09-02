@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.ui.dex.DEX_CARDS
 import com.daengs.app.ui.dex.DexCard
-import com.daengs.app.ui.dex.IMMERSIVE_SCENES
+import com.daengs.app.ui.dex.bgmFor
 import com.daengs.app.ui.dex.SceneMusic
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
@@ -68,12 +68,13 @@ import kotlinx.coroutines.withContext
 data class CardTune(val card: DexCard, val asset: String)
 
 /**
- * 곡이 있는 카드들. **이머시브 장면에서 뽑는다** — 곡을 두 군데 적어 두면 어긋난다.
+ * 곡이 있는 카드들. **`CARD_BGM` 에서 뽑는다** — 곡을 두 군데 적어 두면 어긋난다.
  *
- * 지금은 배추·고구마·상추 셋이다. 나머지 아홉 장은 저쪽에서 곡이 오면 늘어난다.
+ * 예전에는 이머시브 장면에서 뽑았다. 그때는 곡이 있는 카드가 곧 무대가 있는 카드라
+ * 같은 말이었는데 이제 아니다 — 시금치·당근은 무대 없이 곡만 있다.
  */
 val CARD_TUNES: List<CardTune> = DEX_CARDS.mapNotNull { card ->
-    IMMERSIVE_SCENES[card.no]?.bgm?.let { CardTune(card, it) }
+    bgmFor(card.id)?.let { CardTune(card, it) }
 }
 
 @Composable
