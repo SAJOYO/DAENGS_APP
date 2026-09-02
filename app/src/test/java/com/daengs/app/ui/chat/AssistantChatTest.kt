@@ -1,7 +1,9 @@
 package com.daengs.app.ui.chat
 
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.WalkVerdict
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -17,7 +19,26 @@ class AssistantChatTest {
         message: String = "",
         handoffs: List<AssistantResponse.Handoff> = emptyList(),
         clarify: AssistantResponse.Clarify? = null,
-    ) = AssistantResponse(requestId = "r", status = status, message = message, handoffs = handoffs, clarify = clarify)
+        walk: WalkVerdict? = null,
+        resultCount: Int = 0,
+    ) = AssistantResponse(
+        requestId = "r",
+        status = status,
+        message = message,
+        handoffs = handoffs,
+        clarify = clarify,
+        walk = walk,
+        resultCount = resultCount,
+    )
+
+    private fun verdict(grade: WalkVerdict.Grade) = WalkVerdict(
+        grade = grade,
+        reasons = emptyList(),
+        capped = false,
+        windows = emptyList(),
+        locationLabel = "",
+        notes = emptyList(),
+    )
 
     @Test
     fun `CLARIFY는 질문을 우선한다`() {
@@ -72,5 +93,69 @@ class AssistantChatTest {
     fun `handoffs가 비어 있으면 null이다`() {
         val r = response(AssistantResponse.Status.ANSWERED, message = "ok")
         assertNull(r.knownHandoff())
+    }
+
+    // ── 산책 카드 ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `산책 판정이 있으면 카드가 뜬다`() {
+        val r = response(
+            AssistantResponse.Status.ANSWERED,
+            message = "현재 산책 판단: GOOD",
+            walk = verdict(WalkVerdict.Grade.GOOD),
+            resultCount = 1,
+        )
+        assertEquals(WalkVerdict.Grade.GOOD, r.walkCard()?.grade)
+    }
+
+    @Test
+    fun `산책 판정이 없으면 카드가 없다`() {
+        val r = response(AssistantResponse.Status.ANSWERED, message = "훈련 답변")
+        assertNull(r.walkCard())
+    }
+
+    @Test
+    fun `등급을 모르면 카드 대신 서버 문장을 쓴다`() {
+        // ABSTAINED. 판정이 아니라 못 하겠다는 말이라 등급 칸이 빈 카드가 된다.
+        val r = response(
+            AssistantResponse.Status.UNCERTAIN,
+            message = "현재 관측 자료만으로 산책 조건을 판단할 수 없습니다.",
+            walk = verdict(WalkVerdict.Grade.UNKNOWN),
+            resultCount = 1,
+        )
+        assertNull(r.walkCard())
+        assertNull(r.walkSentence())
+        assertEquals("현재 관측 자료만으로 산책 조건을 판단할 수 없습니다.", r.bubbleMessage())
+    }
+
+    @Test
+    fun `산책만 물으면 대화체 문장으로 갈음한다`() {
+        val r = response(
+            AssistantResponse.Status.ANSWERED,
+            message = "현재 산책 판단: UNSAFE",
+            walk = verdict(WalkVerdict.Grade.UNSAFE),
+            resultCount = 1,
+        )
+        assertEquals("지금은 안 나가는 게 좋겠어요.", r.walkSentence())
+    }
+
+    @Test
+    fun `능력이 둘이면 서버 문장을 그대로 쓴다`() {
+        // 라벨을 붙여 이어붙은 문자열을 갈아 끼우면 훈련 답변까지 사라진다.
+        val r = response(
+            AssistantResponse.Status.ANSWERED,
+            message = "[산책]\n현재 산책 판단: GOOD\n\n[훈련]\n앉아를 가르치려면…",
+            walk = verdict(WalkVerdict.Grade.GOOD),
+            resultCount = 2,
+        )
+        assertNull(r.walkSentence())
+        assertNotNull(r.walkCard())
+    }
+
+    @Test
+    fun `등급마다 문장이 다르다`() {
+        assertEquals("지금은 산책하기 좋아요.", walkSentenceOf(WalkVerdict.Grade.GOOD))
+        assertEquals("나가도 되지만 조심하는 게 좋아요.", walkSentenceOf(WalkVerdict.Grade.CAUTION))
+        assertEquals("지금은 안 나가는 게 좋겠어요.", walkSentenceOf(WalkVerdict.Grade.UNSAFE))
     }
 }
