@@ -2,7 +2,9 @@ package com.daengs.app.map.features.places
 
 import com.daengs.app.journey.JourneyMode
 import com.daengs.app.journey.toJourneyResponse
+import com.daengs.app.map.features.journey.PlaceJourneyState
 import com.daengs.app.place.DogAccessState
+import com.daengs.app.place.PlaceFailure
 import com.daengs.app.place.PlaceKey
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceSearchResponse
@@ -82,6 +84,61 @@ class PlaceDiscoveryPanelTest {
     }
 
     @Test
+    fun `panel presentation keeps failures distinct from empty results`() {
+        val presentation = PlaceDiscoveryState(
+            requestedKinds = listOf(PlaceKind.CAFE),
+            search = PlaceSearchState.Failed(PlaceFailure.Offline),
+        ).toPanelPresentation()
+
+        assertEquals("인터넷 연결을 확인해주세요.", presentation.errorMessage)
+        assertTrue(presentation.retryable)
+        assertEquals(PlaceResultsPresentation.Failed, presentation.results)
+    }
+
+    @Test
+    fun `panel presentation derives result counts and coverage before composition`() {
+        val presentation = PlaceDiscoveryState(
+            requestedKinds = listOf(PlaceKind.CAFE),
+            search = PlaceSearchState.Content(response()),
+        ).toPanelPresentation()
+
+        assertEquals("500m 구간 안에서 주차 가능 우선", presentation.sortDescription)
+        assertEquals("반환 결과 주차 정보 · 가능 1 · 불가 0 · 미상 1", presentation.parkingCoverage)
+        assertEquals("입장 평가 · 가능 0 · 불일치 1 · 미상 1", presentation.dogAccessCoverage)
+        val results = presentation.results as PlaceResultsPresentation.Content
+        assertEquals("2곳", results.countLabel)
+        assertEquals(listOf("먼 주차 카페", "가까운 정보 미상 카페"), results.hits.map { it.place.name })
+    }
+
+    @Test
+    fun `card presentation preserves positive negative and unknown fact semantics`() {
+        val groups = response().groups
+        val cafeCards = groups.first().results.map { it.toCardPresentation() }
+        val hospitalCard = groups.last().results.single().toCardPresentation()
+
+        assertEquals(
+            PlaceTextPresentation("주차 가능", PlaceTextTone.SUCCESS),
+            cafeCards[0].parking,
+        )
+        assertEquals(
+            PlaceTextPresentation("조건 불일치 · 크기 등급 초과", PlaceTextTone.ERROR),
+            cafeCards[0].dogAccess,
+        )
+        assertEquals(
+            PlaceTextPresentation("주차 정보 없음", PlaceTextTone.WARNING),
+            cafeCards[1].parking,
+        )
+        assertEquals(
+            PlaceTextPresentation("정보 부족 · 확인 필요 · 시설 제한 정보 없음", PlaceTextTone.WARNING),
+            cafeCards[1].dogAccess,
+        )
+        assertEquals("현재 영업 여부 미상 · 전화번호 정보 없음", hospitalCard.operation?.text)
+        assertEquals(PlaceTextTone.WARNING, hospitalCard.operation?.tone)
+        assertEquals("오늘 09:00~18:00", hospitalCard.todayHours)
+        assertEquals(null, hospitalCard.phoneAction)
+    }
+
+    @Test
     fun `every canonical kind has a label without throwing`() {
         PlaceKind.entries.forEach { kind ->
             assertTrue(categoryLabel(kind).isNotBlank())
@@ -120,6 +177,27 @@ class PlaceDiscoveryPanelTest {
         assertEquals(JourneyMode.WALK, primary.mode)
         assertEquals("도보 약 31분 · 2.3km · 추정", journeySummary(primary))
         assertTrue(primary.leg.handoff!!.naver.startsWith("nmap://route/walk"))
+    }
+
+    @Test
+    fun `journey action presentation closes every card action state`() {
+        val text = javaClass.getResource("/journey_response.json")!!.readText()
+        val item = Json.parseToJsonElement(text).jsonObject.toJourneyResponse().items.single()
+
+        assertEquals(JourneyActionPresentation.Ready, null.toActionPresentation())
+        assertEquals(
+            JourneyActionPresentation.Loading,
+            PlaceJourneyState(loading = true).toActionPresentation(),
+        )
+        assertEquals(
+            JourneyActionPresentation.Failed("길찾기 실패"),
+            PlaceJourneyState(error = "길찾기 실패").toActionPresentation(),
+        )
+        val handoff = PlaceJourneyState(item = item).toActionPresentation()
+            as JourneyActionPresentation.Handoff
+        assertEquals("도보 약 31분 · 2.3km · 추정", handoff.summary)
+        assertEquals("네이버 지도에서 도보 길찾기", handoff.actionLabel)
+        assertTrue(handoff.url.startsWith("nmap://route/walk"))
     }
 
     private fun response(): PlaceSearchResponse {
