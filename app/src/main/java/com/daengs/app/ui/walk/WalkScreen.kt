@@ -1,16 +1,6 @@
 package com.daengs.app.ui.walk
 
-import android.Manifest
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.SystemClock
-import android.provider.Settings
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,23 +25,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -60,30 +43,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.core.content.ContextCompat
-import com.daengs.app.BuildConfig
-import com.daengs.app.location.FeedStatus
-import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
-import com.daengs.app.location.LocationTracker
-import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
-import com.daengs.app.map.layers.moments.MomentMarkerState
-import com.daengs.app.map.layers.territory.TerritorySiteMarkerState
-import com.daengs.app.map.layers.trail.TrailLayerState
-import com.daengs.app.map.layers.trail.toTrailLayerState
-import com.daengs.app.map.features.territory.TerritoryBoardController
 import com.daengs.app.map.features.territory.TerritoryBoardState
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapPurpose
-import com.daengs.app.map.shell.MapSceneSources
-import com.daengs.app.map.shell.composeMapScene
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideWeather
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
-import com.daengs.app.territory.HttpTerritorySiteRepository
-import com.daengs.app.territory.TerritorySiteApi
 import com.daengs.app.territory.userMessage
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -99,15 +67,10 @@ import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.walk.TrackingState
 import com.daengs.app.walk.TrailSnapshot
-import com.daengs.app.walk.WalkEvent
-import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.WalkMoment
-import com.daengs.app.walk.WalkMomentOutcome
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkRoutePoint
-import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.WalkSummary
-import com.daengs.app.walk.WalkTrackingController
 import com.daengs.app.walk.WalkTrackingState
 import com.daengs.app.walk.isFreshEnoughForMoment
 import java.time.Instant
@@ -116,363 +79,75 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
-/**
- * 실제 GPS 기록 코어 위에 얹은 회전 가능한 산책 게임의 워킹 스켈레톤.
- *
- * 지도·권한·Foreground Service는 기존 구현을 그대로 쓰고, 화면의 상태만
- * 준비 → 기록 → 일시정지 → 저장 → 결과 순서로 분명하게 나눈다.
- */
+/** 산책 상태를 그리며 모든 사용자 입력을 [WalkAction]으로 올리는 순수 화면이다. */
 @Composable
 fun WalkScreen(
-    onBack: () -> Unit,
-    onRequestOrientation: (WalkOrientation) -> Unit,
-    walkController: WalkTrackingController,
-    history: WalkHistory,
+    state: WalkUiState,
+    onAction: (WalkAction) -> Unit,
     modifier: Modifier = Modifier,
     avatarBreed: DogBreed? = null,
-    pets: List<Pet> = emptyList(),
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
+    showMap: Boolean = true,
 ) {
-    val context = LocalContext.current
-    val inspectionMode = LocalInspectionMode.current
-    val scope = rememberCoroutineScope()
-    val source = remember(context) { FusedLocationSource(context.applicationContext) }
-    val locationTracker = remember(scope) { LocationTracker(scope) }
-    val tracking by walkController.state.collectAsState()
-    val trackingActive = tracking.trail.state != TrackingState.OFF
-    var mapPurpose by rememberSaveable { mutableStateOf(MapPurpose.WALK) }
-    val territoryController = remember(scope) {
-        TerritoryBoardController(
-            repository = HttpTerritorySiteRepository(
-                TerritorySiteApi(baseUrl = { BuildConfig.API_BASE_URL }),
-            ),
-            scope = scope,
-        )
-    }
-    val territory by territoryController.state.collectAsState()
-
-    val petIds = pets.map { it.id }.toSet()
-    var selectedDogIds by rememberSaveable(stateSaver = StringSetSaver) {
-        mutableStateOf(petIds)
-    }
-    var knownPetIds by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(petIds) }
-    LaunchedEffect(petIds, trackingActive, tracking.completedSessionId) {
-        // 등록 강아지가 실제로 바뀌었을 때만 기본 선택을 다시 만든다. 단순한 화면 회전은
-        // 같은 id 집합을 복원하므로 사용자가 고른 다견 선택을 덮지 않는다.
-        if (!trackingActive && tracking.completedSessionId == null && petIds != knownPetIds) {
-            selectedDogIds = petIds
-            knownPetIds = petIds
-        }
-    }
-
-    var granted by remember { mutableStateOf(inspectionMode || hasLocationPermission(context)) }
-    var precise by remember { mutableStateOf(inspectionMode || hasPreciseLocation(context)) }
-    var currentPosition by remember { mutableStateOf<GeoPoint?>(null) }
-    var followDevice by rememberSaveable { mutableStateOf(true) }
-    var locationError by remember { mutableStateOf<String?>(null) }
-    var locating by remember { mutableStateOf(false) }
-    var centerOn by remember { mutableStateOf<GeoPoint?>(null) }
-    var centerZoom by remember { mutableStateOf<Double?>(null) }
-    var completedDetail by remember { mutableStateOf<WalkSessionDetail?>(null) }
-    var selectedMomentId by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedRoutePointKey by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedRouteSessionId by rememberSaveable { mutableStateOf<String?>(null) }
-    var momentNotice by remember { mutableStateOf<String?>(null) }
-    var resultExpanded by rememberSaveable { mutableStateOf(true) }
-
-    fun acceptLocation(sample: LocationSample) {
-        currentPosition = sample.point
-    }
-
-    fun locateOnce(recenter: Boolean) {
-        if (!granted || locating) return
-        scope.launch {
-            locating = true
-            locationError = null
-            runCatching { source.currentLocation() }
-                .onSuccess { sample ->
-                    acceptLocation(sample)
-                    if (recenter) {
-                        followDevice = true
-                        centerOn = sample.point
-                        centerZoom = zoomForAccuracy(sample.accuracyMeters)
-                    }
-                }
-                .onFailure { error ->
-                    locationError = error.message ?: "현재 위치를 확인하지 못했습니다."
-                }
-            locating = false
-        }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result ->
-        granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        precise = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
-    }
-    val beginWalk = {
-        selectedMomentId = null
-        selectedRoutePointKey = null
-        selectedRouteSessionId = null
-        momentNotice = null
-        resultExpanded = true
-        walkController.start(selectedDogIds.toList())
-    }
-    val notificationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { beginWalk() }
-
-    fun startWalk() {
-        followDevice = true
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            beginWalk()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        if (!inspectionMode && !granted) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                ),
-            )
-        }
-    }
-    LaunchedEffect(granted, inspectionMode) {
-        if (!inspectionMode && granted && currentPosition == null) locateOnce(recenter = true)
-    }
-    LaunchedEffect(locationTracker) { locationTracker.updates.collect(::acceptLocation) }
-    LaunchedEffect(locationTracker) {
-        locationTracker.status.collect { status ->
-            if (status is FeedStatus.Failed) {
-                locationError = status.cause.message ?: "위치 업데이트를 이어가지 못했습니다."
-            }
-        }
-    }
-    LaunchedEffect(tracking.lastSample) { tracking.lastSample?.let(::acceptLocation) }
-    LaunchedEffect(walkController) {
-        walkController.events.collect { event ->
-            when (event) {
-                WalkEvent.MomentLocationUnavailable -> {
-                    momentNotice = "정확한 GPS가 잡히면 이 자리에 순간을 남길 수 있어요."
-                }
-                is WalkEvent.MomentRecorded -> {
-                    selectedMomentId = event.momentId
-                    momentNotice = when (event.outcome) {
-                        WalkMomentOutcome.CREATED -> "${event.type.label}을 이 장소에 남겼어요."
-                        WalkMomentOutcome.MERGED -> "${event.type.label}을 이 장소에 추가했어요."
-                        WalkMomentOutcome.ALREADY_EXISTS ->
-                            "이미 이 장소에 ${event.type.label}이 남아 있어요."
-                    }
-                }
-            }
-        }
-    }
-    LaunchedEffect(granted, inspectionMode, trackingActive) {
-        if (inspectionMode) return@LaunchedEffect
-        if (granted && !trackingActive) locationTracker.start(source) else locationTracker.stop()
-    }
-    LaunchedEffect(tracking.completedSessionId) {
-        val sessionId = tracking.completedSessionId
-        completedDetail = sessionId?.let { history.sessionDetail(it) }
-        if (selectedRouteSessionId != sessionId) {
-            selectedRoutePointKey = null
-            selectedRouteSessionId = null
-        }
-        if (completedDetail != null) {
-            mapPurpose = MapPurpose.WALK
-            followDevice = false
-            resultExpanded = true
-        }
-    }
-    LaunchedEffect(mapPurpose) {
-        if (mapPurpose == MapPurpose.TERRITORY) {
-            territoryController.activate(currentPosition)
-        } else {
-            territoryController.deactivate()
-        }
-    }
-    LaunchedEffect(mapPurpose, currentPosition, followDevice) {
-        // 사용자가 지도를 밀어 다른 동네를 보고 있을 때 GPS 갱신으로 현재 위치 조회가
-        // 덮어쓰면 안 된다. 기기를 따라가는 동안에만 이동 거리 기준 재조회를 맡긴다.
-        if (shouldRefreshTerritoryFromDevice(mapPurpose, followDevice)) {
-            currentPosition?.let(territoryController::onDevicePosition)
-        }
-    }
-    LaunchedEffect(momentNotice) {
-        val shown = momentNotice ?: return@LaunchedEffect
-        delay(2_200L)
-        if (momentNotice == shown) momentNotice = null
-    }
-    DisposableEffect(locationTracker, territoryController) {
-        onDispose {
-            locationTracker.stop()
-            territoryController.deactivate()
-        }
-    }
-
-    fun closeResultAndGoHome() {
-        walkController.dismissCompletion()
-        completedDetail = null
-        selectedRoutePointKey = null
-        selectedRouteSessionId = null
-        onBack()
-    }
-
-    BackHandler(onBack = if (tracking.completedSessionId != null) ::closeResultAndGoHome else onBack)
-
-    val completedSummary = completedDetail?.summary
-    val completedRoute = completedDetail?.route
-    val displayedMoments = completedDetail?.moments ?: tracking.momentGroups
-    val selectedRoutePoint = completedRoute?.points?.firstOrNull {
-        selectedRouteSessionId == tracking.completedSessionId &&
-            it.routePointKey == selectedRoutePointKey
-    }
-
-    fun selectRoutePoint(point: WalkRoutePoint?) {
-        selectedRoutePointKey = point?.routePointKey
-        selectedRouteSessionId = tracking.completedSessionId.takeIf { point != null }
-        if (point != null) {
-            selectedMomentId = null
-            momentNotice = null
-        }
-    }
-
-    fun selectMoment(id: String) {
-        selectedMomentId = id
-        selectedRoutePointKey = null
-        displayedMoments.firstOrNull { it.id == id }?.let {
-            momentNotice = "${it.actionLabels} · ${formatClock(it.latestRecordedAtMillis, seconds = true)}"
-        }
-    }
+    val mapPresentation = state.toMapPresentation { formatClock(it) }
+    val summary = state.completedSummary
 
     Box(modifier.fillMaxSize()) {
-        if (inspectionMode) {
-            Box(Modifier.fillMaxSize().background(PinkFaint))
-        } else {
+        if (showMap) {
             MapHost(
-                scene = composeMapScene(
-                    purpose = mapPurpose,
-                    sources = MapSceneSources(
-                        currentPosition = currentPosition.takeIf { completedSummary == null },
-                        territorySites = territory.sites.map { site ->
-                            TerritorySiteMarkerState(
-                                id = site.id,
-                                point = site.point,
-                                selected = site.id == territory.selectedSiteId,
-                            )
-                        },
-                        moments = displayedMoments.map { moment ->
-                            MomentMarkerState(
-                                id = moment.id,
-                                point = moment.point,
-                                label = moment.markerLabel,
-                                selected = moment.id == selectedMomentId,
-                            )
-                        },
-                        trail = if (completedDetail == null) {
-                            tracking.trail.toTrailLayerState()
-                        } else {
-                            TrailLayerState()
-                        },
-                        completedRoute = completedRoute?.toCompletedRouteLayerState(
-                            selectedPoint = selectedRoutePoint,
-                            formatTime = ::formatClock,
-                        ) ?: CompletedRouteLayerState(),
-                    ),
-                    walkActive = trackingActive,
-                ),
+                scene = mapPresentation.scene,
                 searchOrigin = null,
-                followDevice = followDevice,
+                followDevice = state.location.followDevice,
                 avatarRes = avatarBreed?.portraitRes,
-                centerOn = centerOn,
-                centerZoom = centerZoom,
-                fitBounds = completedRoute?.bounds.orEmpty().ifEmpty {
-                    listOfNotNull(completedSummary?.anchor)
-                }.takeIf { completedSummary != null && it.isNotEmpty() },
-                onCameraIdle = { point ->
-                    if (mapPurpose == MapPurpose.TERRITORY) {
-                        territoryController.onCameraSettled(point)
-                    }
-                },
-                onCameraGesture = { followDevice = false },
+                centerOn = state.location.centerOn,
+                centerZoom = state.location.centerZoom,
+                fitBounds = mapPresentation.fitBounds,
+                onCameraIdle = { onAction(WalkAction.CameraSettled(it)) },
+                onCameraGesture = { onAction(WalkAction.CameraMoved) },
                 onSelectPlace = {},
-                onSelectTerritorySite = territoryController::select,
-                onSelectMoment = ::selectMoment,
-                onSelectRouteEndpoint = { id ->
-                    selectRoutePoint(
-                        when (id) {
-                            ROUTE_START_ID -> completedRoute?.start
-                            ROUTE_END_ID -> completedRoute?.end
-                            ROUTE_START_END_ID -> completedRoute?.end
-                            else -> null
-                        },
-                    )
-                },
-                onMapTap = { point ->
-                    if (mapPurpose == MapPurpose.TERRITORY) {
-                        territoryController.clearSelection()
-                    } else {
-                        selectRoutePoint(
-                            completedRoute?.nearestPointTo(point, ROUTE_POINT_TAP_RADIUS_METERS),
-                        )
-                    }
-                },
+                onSelectTerritorySite = { onAction(WalkAction.SelectTerritorySite(it)) },
+                onSelectMoment = { onAction(WalkAction.SelectMoment(it)) },
+                onSelectRouteEndpoint = { onAction(WalkAction.SelectRouteEndpoint(it)) },
+                onMapTap = { onAction(WalkAction.MapTapped(it)) },
                 modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            Box(Modifier.fillMaxSize().background(PinkFaint))
         }
 
         WalkGameOverlay(
-            tracking = tracking,
-            summary = completedSummary,
+            tracking = state.tracking,
+            summary = summary,
             outside = outside,
-            locationGranted = granted,
-            preciseLocation = precise,
-            locating = locating,
-            locationError = locationError,
-            pets = pets,
-            selectedDogIds = selectedDogIds,
-            moments = displayedMoments,
-            momentNotice = momentNotice,
-            selectedRoutePoint = selectedRoutePoint,
-            resultExpanded = resultExpanded,
-            mapPurpose = mapPurpose,
-            territory = territory,
-            onToggleDog = { id ->
-                selectedDogIds = if (id in selectedDogIds) selectedDogIds - id else selectedDogIds + id
-            },
-            onHome = if (tracking.completedSessionId != null) ::closeResultAndGoHome else onBack,
-            onMapPurposeChange = { purpose ->
-                mapPurpose = purpose
-                territoryController.clearSelection()
-            },
-            onRetryTerritory = territoryController::retry,
-            onRequestOrientation = onRequestOrientation,
-            onOpenSettings = { openAppSettings(context) },
-            onLocate = { locateOnce(recenter = true) },
-            onStart = ::startWalk,
-            onPause = walkController::pause,
-            onResume = {
-                followDevice = true
-                walkController.resume()
-            },
-            onStop = walkController::stop,
-            onAddMoment = walkController::recordMoment,
-            onClearRoutePoint = { selectRoutePoint(null) },
-            onReviewMap = { resultExpanded = false },
-            onShowResult = { resultExpanded = true },
-            onCloseResult = ::closeResultAndGoHome,
+            locationGranted = state.location.permissionGranted,
+            preciseLocation = state.location.precisePermission,
+            locating = state.location.locating,
+            locationError = state.location.errorMessage,
+            pets = state.selection.pets,
+            selectedDogIds = state.selection.selectedDogIds,
+            moments = state.displayedMoments,
+            momentNotice = state.momentNotice,
+            selectedRoutePoint = state.selectedRoutePoint,
+            resultExpanded = state.completion.resultExpanded,
+            mapPurpose = state.map.purpose,
+            territory = state.territory,
+            onToggleDog = { onAction(WalkAction.ToggleDog(it)) },
+            onHome = { onAction(WalkAction.Home) },
+            onMapPurposeChange = { onAction(WalkAction.ChangeMapPurpose(it)) },
+            onRetryTerritory = { onAction(WalkAction.RetryTerritory) },
+            onRequestOrientation = { onAction(WalkAction.RequestOrientation(it)) },
+            onOpenSettings = { onAction(WalkAction.OpenAppSettings) },
+            onLocate = { onAction(WalkAction.Locate) },
+            onStart = { onAction(WalkAction.StartRequested) },
+            onPause = { onAction(WalkAction.Pause) },
+            onResume = { onAction(WalkAction.Resume) },
+            onStop = { onAction(WalkAction.Stop) },
+            onAddMoment = { onAction(WalkAction.AddMoment(it)) },
+            onClearRoutePoint = { onAction(WalkAction.ClearRoutePoint) },
+            onReviewMap = { onAction(WalkAction.ReviewMap) },
+            onShowResult = { onAction(WalkAction.ShowResult) },
+            onCloseResult = { onAction(WalkAction.CloseResult) },
         )
     }
 }
@@ -788,11 +463,6 @@ internal fun territoryStatusLabel(state: TerritoryBoardState): String = when {
     state.truncated -> "점령지 ${state.sites.size}곳 · 일부만 표시하고 있어요"
     else -> "점령지 ${state.sites.size}곳"
 }
-
-internal fun shouldRefreshTerritoryFromDevice(
-    purpose: MapPurpose,
-    followDevice: Boolean,
-): Boolean = purpose == MapPurpose.TERRITORY && followDevice
 
 @Composable
 private fun WalkRotateButton(
@@ -1346,10 +1016,6 @@ private fun momentHeadline(nowMillis: Long, outside: OutsideSnapshot): String {
     return "$date · $weather$temperature"
 }
 
-private fun formatClock(millis: Long, seconds: Boolean = false): String =
-    (if (seconds) CLOCK_SECONDS_FORMAT else CLOCK_FORMAT)
-        .format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
-
 private fun formatDate(millis: Long): String =
     DATE_FORMAT.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
 
@@ -1363,45 +1029,24 @@ private fun gpsLabel(granted: Boolean, precise: Boolean, sample: LocationSample?
     else -> "GPS 약함"
 }
 
-private fun zoomForAccuracy(accuracyMeters: Float?): Double = when {
-    accuracyMeters == null -> 15.0
-    accuracyMeters <= 50f -> 16.5
-    accuracyMeters <= 200f -> 15.0
-    accuracyMeters <= 1_000f -> 13.5
-    else -> 12.0
-}
-
-private fun openAppSettings(context: Context) {
-    context.startActivity(
-        Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", context.packageName, null),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-    )
-}
-
-private fun hasPreciseLocation(context: Context): Boolean =
-    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-        PackageManager.PERMISSION_GRANTED
-
-private fun hasLocationPermission(context: Context): Boolean =
-    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-        PackageManager.PERMISSION_GRANTED ||
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-        PackageManager.PERMISSION_GRANTED
-
-private val StringSetSaver = Saver<Set<String>, ArrayList<String>>(
-    save = { ArrayList(it) },
-    restore = { it.toSet() },
-)
-
-private val WalkRoutePoint.routePointKey: String get() = "$segmentIndex:$pointIndex"
-
-private const val ROUTE_POINT_TAP_RADIUS_METERS = 35.0
-
 private val DATE_FORMAT = DateTimeFormatter.ofPattern("M.d E", Locale.KOREAN)
-private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREAN)
-private val CLOCK_SECONDS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.KOREAN)
+
+@Preview(showBackground = true)
+@Composable
+private fun WalkScreenPreview() {
+    DaengsTheme {
+        WalkScreen(
+            state = WalkUiState(
+                location = WalkLocationUiState(
+                    permissionGranted = true,
+                    precisePermission = true,
+                ),
+            ),
+            onAction = {},
+            showMap = false,
+        )
+    }
+}
 
 @Preview(showBackground = true)
 @Composable

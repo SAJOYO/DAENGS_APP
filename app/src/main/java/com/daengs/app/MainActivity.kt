@@ -47,7 +47,7 @@ import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkOrientation
-import com.daengs.app.ui.walk.WalkScreen
+import com.daengs.app.ui.walk.WalkRoute
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
@@ -518,7 +518,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    Screen.Walk -> WalkScreen(
+                    Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
