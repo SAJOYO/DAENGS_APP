@@ -51,6 +51,7 @@ import com.daengs.app.dogcard.DrawnCard
 import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkDayTotals
 import kotlinx.coroutines.delay
+import com.daengs.app.ui.dogcard.CardTemplate
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.storage.StorageComingSoon
 import com.daengs.app.ui.theme.CreamBg
@@ -162,6 +163,17 @@ fun HomeScreen(
     onSignOut: (() -> Unit)? = null,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)? = null,
+    /**
+     * 야채를 지정해 카드를 만든다. 개발자 패널에서만 불린다 —
+     * 릴리스에서는 패널이 빈 껍데기라 이 손잡이가 쓰이지 않는다.
+     */
+    onMakeCard: ((CardTemplate) -> Unit)? = null,
+    /**
+     * 개발자 패널이 고른 대표 견종. **부르는 쪽이 든다** — 챗봇 화면도 같은 값을
+     * 봐야 하는데, 홈이 들고 있으면 홈 밖으로 안 나간다. null 이면 진짜 대표를 따른다.
+     */
+    devBreed: DogBreed? = null,
+    onPickDevBreed: ((DogBreed) -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
@@ -221,7 +233,10 @@ fun HomeScreen(
     // 처음부터 발자국을 세우고 있었고, 홈만 빠져 있었다.
     //
     // 개발자 패널이 바꾼 값은 그 위에 잠깐 덮어쓴다 — 세션 한정이고 저장하지 않는다.
-    var devBreed by remember { mutableStateOf<DogBreed?>(null) }
+    //
+    // **그 값을 여기서 들지 않고 [devBreed] 로 받는다.** 챗봇 화면·장소·산책도 같은
+    // "대표 견종"을 보는데, 여기서 들고 있으면 홈 밖으로 못 나가서 로그인해야만
+    // 챗봇 얼굴을 확인할 수 있었다.
     val profileBreed = devBreed ?: pets?.firstOrNull { it.isPrimary }?.breedArt
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
@@ -362,8 +377,9 @@ fun HomeScreen(
                 // 개발자 패널은 **지금 고른 값**이 있어야 하는 고르기다. 발자국을
                 // 고를 수는 없으니 여기서만 데모 견종으로 채운다.
                 profileBreed = profileBreed ?: HomeDemoData.DOG_BREED,
-                onPickProfile = { devBreed = it },
+                onPickProfile = { onPickDevBreed?.invoke(it) },
                 onOpenCutoutLab = onOpenCutoutLab,
+                onMakeCard = onMakeCard,
                 roomName = roomName,
                 defaultLabel = defaultRoomLabel(pets?.firstOrNull { it.isPrimary }?.name),
                 onRenameRoom = onRenameRoom,
@@ -429,6 +445,8 @@ private fun RoomSection(
     onPickProfile: (DogBreed) -> Unit,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)?,
+    /** 야채를 지정해 카드를 만든다. 개발자 패널에서만 불린다. */
+    onMakeCard: ((CardTemplate) -> Unit)?,
     /** 액자에 걸린 그림. null 이면 발자국. */
     framePicture: ImageBitmap? = null,
     /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
@@ -557,6 +575,7 @@ private fun RoomSection(
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,
+                onMakeCard = onMakeCard,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }

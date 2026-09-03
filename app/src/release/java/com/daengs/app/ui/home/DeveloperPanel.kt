@@ -6,6 +6,7 @@ import com.daengs.app.miniroom.DogHerd
 import com.daengs.app.miniroom.MiniRoomState
 import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.ui.dogcard.CardTemplate
 
 /**
  * 릴리스용 빈 껍데기. **진짜는 `app/src/debug/` 에 있다.**
@@ -44,5 +45,6 @@ fun DeveloperPanel(
     outside: OutsideView,
     onPickOutside: (OutsideView) -> Unit,
     onOpenCutoutLab: (() -> Unit)? = null,
+    onMakeCard: ((CardTemplate) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) = Unit
