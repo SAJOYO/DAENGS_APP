@@ -32,6 +32,49 @@ class WalkFixWriterTest {
     }
 
     @Test
+    fun `행동도 세션을 연 뒤 닫기 전에 같은 큐에 저장된다`() {
+        val log = RecordingLog()
+
+        withWriter(log) { writer ->
+            writer.openSession(session("s1"))
+            writer.appendAction(action("a1"))
+            writer.closeSession("s1", 100L)
+        }
+
+        assertEquals(listOf("open:s1", "action:a1", "close:s1"), log.calls)
+    }
+
+    @Test
+    fun `행동 저장 실패는 성공 완료가 되지 않고 flush도 실패한다`() = runTest {
+        val writer = WalkFixWriter(RecordingLog(failAction = true), backgroundScope)
+
+        val stored = writer.appendAction(action("a1"))
+        runCurrent()
+
+        assertEquals("action disk full", runCatching { stored.await() }.exceptionOrNull()?.message)
+        assertEquals("action disk full", runCatching { writer.flush() }.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `행동 완료 신호는 실제 저장이 끝날 때까지 기다린다`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val writer = WalkFixWriter(
+            RecordingLog(blockAction = true, entered = entered, release = release),
+            backgroundScope,
+        )
+
+        val stored = writer.appendAction(action("a1"))
+        runCurrent()
+
+        assertTrue(entered.isCompleted)
+        assertFalse(stored.isCompleted)
+        release.complete(Unit)
+        stored.await()
+        assertTrue(stored.isCompleted)
+    }
+
+    @Test
     fun `a failed write is reported and does not stop later writes`() {
         val log = RecordingLog(failOnSeq = 0)
         var reported: String? = null
@@ -112,8 +155,20 @@ class WalkFixWriterTest {
         isMock = false,
     )
 
+    private fun action(id: String) = RecordedWalkAction(
+        id = id,
+        sessionId = "s1",
+        type = WalkMomentType.EXPLORE,
+        recordedAtMillis = 10L,
+        locationCapturedAtMillis = 9L,
+        point = com.daengs.app.location.GeoPoint(37.0, 127.0),
+        accuracyMeters = 5f,
+    )
+
     private class RecordingLog(
         private val failOnSeq: Int? = null,
+        private val failAction: Boolean = false,
+        private val blockAction: Boolean = false,
         private val blockOnSeq: Int? = null,
         private val entered: CompletableDeferred<Unit>? = null,
         private val release: CompletableDeferred<Unit>? = null,
@@ -131,6 +186,15 @@ class WalkFixWriterTest {
                 release?.await()
             }
             calls += "append:${fix.clientSeq}"
+        }
+
+        override suspend fun appendAction(action: RecordedWalkAction) {
+            if (failAction) error("action disk full")
+            if (blockAction) {
+                entered?.complete(Unit)
+                release?.await()
+            }
+            calls += "action:${action.id}"
         }
 
         override suspend fun closeSession(sessionId: String, endedAtMillis: Long) {
@@ -174,5 +238,7 @@ class WalkFixWriterTest {
         override suspend fun session(sessionId: String): RecordedSession? = null
 
         override suspend fun fixes(sessionId: String): List<RecordedFix> = emptyList()
+
+        override suspend fun actions(sessionId: String): List<RecordedWalkAction> = emptyList()
     }
 }

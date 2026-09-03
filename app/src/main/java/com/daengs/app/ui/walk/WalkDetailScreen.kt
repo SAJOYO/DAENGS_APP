@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
+import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.pet.Pet
@@ -43,6 +44,7 @@ import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.walk.WalkHistory
+import com.daengs.app.walk.WalkMoment
 import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.WalkSummary
 
@@ -80,7 +82,12 @@ fun WalkDetailScreen(
             ?: CompletedRouteLayerState()
         if (!inspectionMode) {
             MapHost(
-                scene = MapScene(completedRoute = completedRoute),
+                scene = MapScene(
+                    moments = detail?.moments.orEmpty().map { moment ->
+                        MomentMarkerState(moment.id, moment.point, moment.markerLabel)
+                    },
+                    completedRoute = completedRoute,
+                ),
                 searchOrigin = null,
                 followDevice = false,
                 onCameraIdle = {},
@@ -108,6 +115,7 @@ fun WalkDetailScreen(
             WalkFacts(
                 walk = it,
                 dogNames = dogNames(it.dogIds, pets),
+                moments = detail?.moments.orEmpty(),
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -119,6 +127,7 @@ fun WalkDetailScreen(
 private fun WalkFacts(
     walk: WalkSummary,
     dogNames: List<String> = emptyList(),
+    moments: List<WalkMoment> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -159,6 +168,14 @@ private fun WalkFacts(
                 Text(
                     // 좌표가 한 점뿐이면 선이 안 그려진다. 지도가 비어 보이는 이유를 말해 준다.
                     "이 산책은 위치가 한 번밖에 안 잡혀서 경로가 없어요.",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                )
+            }
+            if (moments.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "남긴 장소 ${moments.size}곳 · 행동 ${moments.sumOf { it.actions.size }}개",
                     color = TextMuted,
                     fontSize = 12.sp,
                 )

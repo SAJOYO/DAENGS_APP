@@ -36,6 +36,10 @@ interface WalkDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertFix(row: WalkFixRow)
 
+    /** 같은 id를 다시 받아도 버튼 기록 하나만 유지한다. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAction(row: WalkActionRow)
+
     /** 열린 세션만 닫는다. 종료 요청을 반복해도 최초 종료 시각은 변하지 않는다. */
     @Query(
         "UPDATE walk_session SET endedAtMillis = :endedAtMillis " +
@@ -130,4 +134,10 @@ interface WalkDao {
 
     @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId ORDER BY clientSeq")
     suspend fun fixes(sessionId: String): List<WalkFixRow>
+
+    @Query(
+        "SELECT * FROM walk_action WHERE sessionId = :sessionId " +
+            "ORDER BY recordedAtMillis, id",
+    )
+    suspend fun actions(sessionId: String): List<WalkActionRow>
 }
