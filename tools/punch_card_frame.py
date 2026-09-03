@@ -1,32 +1,35 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pillow>=10"]
+# dependencies = ["pillow>=10", "numpy>=1.26", "scipy>=1.11"]
 # ///
 """이머시브 **창틀**에서 저쪽 강아지 이름과 번호를 지운다.
 
-    uv run tools/punch_card_frame.py            # 미리 보기
-    uv run tools/punch_card_frame.py --apply    # 지운다
+    uv run tools/punch_card_frame.py <원본폴더>            # 미리 보기
+    uv run tools/punch_card_frame.py <원본폴더> --apply    # 지운다
 
 ## 왜 창틀까지 건드리나
 
 진입 연출은 카드가 **녹으면서** 그 아래의 창틀이 드러나는 그림이다. 카드는 우리 것으로
-바꿨는데(`drawPersonalCardAt`) 창틀에는 `SWEET POTATO NEO` 와 `NEO-0824` 가 그대로
-박혀 있어서, 녹는 1초 남짓 동안 저쪽 글자가 비쳤다.
+바꿨는데(`drawPersonalCardAt`) 창틀에 저쪽 글자가 박혀 있으면, 녹는 1초 남짓 동안
+`SWEET POTATO NEO` 와 `NEO-0824` 가 비친다.
 
-## 자리는 손으로 쟀다
+## 지우는 규칙은 카드와 한 벌이다
 
-창틀은 카드와 **크기도 비율도 다른 별도 렌더**다 (고구마 창틀 1067x1474 vs 카드
-816x1125). 그래서 `CardSlots.kt` 의 좌표를 그대로 못 쓴다.
+예전 판은 이름 자리를 **직사각형으로 잡아 좌우 이웃 색으로 메웠다.** 그래서
+`SWEET POTATO` 는 남고 뒷말 `NEO` 만 지워졌고, 번호 자리에는 무지개 위로 가로 줄무늬가
+남았다. 지금은 카드와 **같은 함수**(`card_text_slots`)를 불러 글자 화소만 마스크로
+지운다 — 두 벌이 되면 카드와 창틀에서 글자 자리가 갈린다.
 
-자동으로 찾아보려 했는데 은색 프레임의 가로 레일이 글자만큼 밝아서 낱말이 뭉치거나
-쪼개졌다 — 상추만 제대로 잡혔다. 눈금을 얹어 놓고 읽는 편이 빨랐다. 셋뿐이다.
+## 번호 자리는 여기서도 못 지운다
 
-## 지우는 방법
+창틀 셋(배추·고구마·상추)은 전부 버섯형이라 번호가 홀로그램 위에 있다. 앱이
+`ImmersiveScene.frameChip` 으로 어두운 칩을 깔아 덮는다 — 예전 줄무늬도 같이 덮인다.
 
-`name_slot.py` 와 같다 — 줄마다 왼쪽 이웃 색을 오른쪽으로 늘이고 끝만 되돌린다.
-**왼쪽 여러 칸 중 가장 어두운 것**을 고른다. 한 칸만 보면 야채 글자의 흰 번짐이
-걸려서 지운 자리가 하얘지고, 그 위에 얹을 흰 글씨가 묻힌다.
+## 원본에서 시작한다
+
+이미 나가 있는 창틀은 **줄무늬가 구워진 판**이다. 그 위에 또 지우면 줄무늬가 남는다.
+저쪽에서 받은 원본(또는 `git show <지우기 전 커밋>:...`)을 폴더에 넣고 돌린다.
 """
 
 from __future__ import annotations
@@ -34,66 +37,116 @@ from __future__ import annotations
 import pathlib
 import sys
 
+import numpy as np
 from PIL import Image
+
+from card_text_slots import DARK, GLYPH_OVER, GLYPH_WEAK, MIN_AREA, RAIL_MAX_H
+from card_text_slots import bar_spans, erase, runs_of
+from scipy import ndimage
 
 ART = pathlib.Path(__file__).resolve().parent.parent / "app/src/main/assets/neo-hologram/art"
 
-# 창틀 크기 대비 %. (x0, y0, x1, y1)
-#   name — 저쪽 강아지 이름(`NEO`)이 있던 자리. 우리 아이 이름이 여기 들어간다
-#   code — 번호판. 아이 생일에서 만든 번호가 여기 들어간다
-SLOTS = {
-    "cabbage": {"name": (51.5, 5.2, 65.0, 9.8), "code": (75.0, 5.2, 94.5, 9.8)},
-    "sweet-potato": {"name": (58.8, 5.2, 70.0, 9.8), "code": (73.5, 5.2, 93.0, 9.8)},
-    "lettuce": {"name": (53.8, 5.4, 67.0, 9.4), "code": (75.5, 5.2, 95.0, 9.4)},
-}
 
-PAD = 4          # 찾은 자리를 사방으로 이만큼 넓혀 지운다
-TAIL = 0.15      # 오른쪽 끝 이만큼만 원래 색으로 되돌린다
-LOOK = (3, 7, 12, 18, 26)   # 왼쪽 이 칸들 중 가장 어두운 색을 쓴다
+def title_box(lum: np.ndarray) -> tuple[int, int, int, int] | None:
+    """제목 바 사각형. 카드와 같은 방법이다 — 글자 줄을 기준점으로 삼는다."""
+    h, w = lum.shape
+    px0, px1 = int(w * 0.28), int(w * 0.64)
+    ty0, ty1 = int(h * 0.03), int(h * 0.125)
+
+    lit = (lum[ty0:ty1, px0:px1] > 150).mean(axis=1) > 0.20
+    letters = [r for r in runs_of(lit) if r[1] - r[0] > 12]
+    if not letters:
+        return None
+    ls, le = max(letters, key=lambda r: r[1] - r[0])
+    ls += ty0
+    le += ty0
+
+    picks = []
+    for dy in (-10, -8, -6, le - ls + 6, le - ls + 8, le - ls + 10):
+        y = ls + dy
+        if 0 <= y < h:
+            hold = [sp for sp in bar_spans(lum[y] < DARK) if sp[0] <= w // 2 <= sp[1]]
+            if hold:
+                picks.append(hold[0])
+    if not picks:
+        return None
+    x0 = min(sp[0] for sp in picks)
+    x1 = int(np.median([sp[1] for sp in picks]))
+
+    mid = (ls + le) // 2
+    best = None
+    stop = x0 + max(20, int((x1 - x0) * 0.45))
+    for probe in range(x0 + 4, min(stop, x1 - 2), 3):
+        got = [r for r in runs_of(lum[: int(h * 0.22), probe] < DARK) if r[0] <= mid < r[1]]
+        if got and (best is None or got[0][1] - got[0][0] > best[1] - best[0]):
+            best = got[0]
+    if best is None:
+        return None
+    return x0, best[0], x1, best[1]
 
 
-def smear(im: Image.Image, box: tuple[float, float, float, float]) -> None:
+def punch(src: pathlib.Path, apply: bool) -> list[float] | None:
+    veggie = src.name.replace("-card-frame.webp", "")
+    im = Image.open(src).convert("RGBA")
     w, h = im.size
-    x0 = max(0, int(w * box[0] / 100) - PAD)
-    y0 = max(0, int(h * box[1] / 100) - PAD)
-    x1 = min(w, int(w * box[2] / 100) + PAD)
-    y1 = min(h, int(h * box[3] / 100) + PAD)
-    px = im.load()
-    span = max(1, x1 - x0)
-    tail = max(1, int(span * TAIL))
+    rgba = np.asarray(im, dtype=np.int16).copy()
+    rgb = rgba[..., :3]
+    lum = rgb.mean(axis=2)
 
-    def darkest(at: int, y: int, sign: int):
-        best = None
-        for d in LOOK:
-            c = px[min(w - 1, max(0, at + sign * d)), y]
-            if best is None or sum(c[:3]) < sum(best[:3]):
-                best = c
-        return best
+    box = title_box(lum)
+    if box is None:
+        print(f"{veggie:14s} ⚠ 제목 바를 못 찾았다")
+        return None
+    x0, y0, x1, y1 = box
 
-    for y in range(y0, y1):
-        left = darkest(x0, y, -1)
-        right = darkest(x1, y, +1)
-        for x in range(x0, x1):
-            over = x - (x1 - tail)
-            t = 0.0 if over < 0 else over / tail
-            px[x, y] = tuple(int(left[c] + (right[c] - left[c]) * t) for c in range(4))
+    band = lum[y0:y1, x0:x1]
+    bg = np.median(band[band < DARK]) if (band < DARK).any() else 0.0
+    lab, n = ndimage.label(band > bg + GLYPH_WEAK, np.ones((3, 3)))
+    hot = set(np.unique(lab[band > bg + GLYPH_OVER])) - {0}
+    keep = np.zeros(band.shape, bool)
+    for sl, i in zip(ndimage.find_objects(lab), range(1, n + 1)):
+        if i not in hot:
+            continue
+        if sl[0].stop - sl[0].start < max(RAIL_MAX_H, (y1 - y0) * 0.18):
+            continue
+        if (lab[sl] == i).sum() < MIN_AREA:
+            continue
+        keep |= lab == i
+    if not keep.any():
+        print(f"{veggie:14s} ⚠ 글자를 못 찾았다")
+        return None
+
+    mask = np.zeros((h, w), bool)
+    mask[y0:y1, x0:x1] = keep
+    erase(rgb, mask)
+    rgba[..., :3] = rgb
+
+    def pct(v, total):
+        return round(v / total * 100, 2)
+
+    name = [pct(x0, w), pct(y0, h), pct(x1, w), pct(y1, h)]
+    gap, inset = w * 0.016, (y1 - y0) * 0.10
+    code = [pct(x1 + gap, w), pct(y0 + inset, h), 94.5, pct(y1 - inset, h)]
+    print(f"{veggie:14s} frameName = Slot({', '.join(f'{v}f' for v in name)})")
+    print(f"{'':14s} frameCode = Slot({', '.join(f'{v}f' for v in code)})")
+    if apply:
+        Image.fromarray(rgba.clip(0, 255).astype(np.uint8), "RGBA").save(
+            ART / src.name, "WEBP", quality=92, method=6
+        )
+    return name
 
 
 def main() -> None:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     apply = "--apply" in sys.argv
-    for vid, slots in SLOTS.items():
-        path = ART / f"{vid}-card-frame.webp"
-        if not path.exists():
-            print(f"{vid:14s} 창틀이 없다")
-            continue
-        im = Image.open(path).convert("RGBA")
-        for box in slots.values():
-            smear(im, box)
-        print(
-            f"{vid:14s} name={slots['name']}  code={slots['code']}  ({im.width}x{im.height})"
-        )
-        if apply:
-            im.save(path, "WEBP", quality=92, method=6)
+    if not args:
+        raise SystemExit("원본 창틀이 든 폴더를 달라 (지우기 전 판이어야 한다)")
+    src = pathlib.Path(args[0])
+    found = sorted(src.glob("*-card-frame.webp"))
+    if not found:
+        raise SystemExit(f"창틀이 없다: {src}")
+    for p in found:
+        punch(p, apply)
     if not apply:
         print("\n--apply 를 안 줘서 파일은 그대로다.")
 
