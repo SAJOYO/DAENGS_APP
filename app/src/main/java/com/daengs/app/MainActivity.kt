@@ -23,6 +23,7 @@ import com.daengs.app.auth.CancelledByUser
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
@@ -33,8 +34,12 @@ import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
+import com.daengs.app.dogcard.makeDevCard
 import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
+import com.daengs.app.ui.startup.LoadingScreen
+import com.daengs.app.ui.startup.StartupTarget
+import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.ui.pet.PetFormScreen
@@ -47,7 +52,7 @@ import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkOrientation
-import com.daengs.app.ui.walk.WalkScreen
+import com.daengs.app.ui.walk.WalkRoute
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
@@ -55,6 +60,13 @@ import kotlinx.coroutines.launch
 /** 화면들. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
 private enum class Screen {
     Landing,
+    /**
+     * 강아지 목록을 기다리는 동안.
+     *
+     * **저장된 토큰으로 켤 때만 지난다.** 목록 없이 홈을 띄우면 방이 데모로 채워져서
+     * 남의 강아지 넉 마리가 스친다 (`ui/startup/StartupGate.kt`).
+     */
+    Loading,
     /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
     Onboarding,
     Home, Chat, Dex,
@@ -98,7 +110,7 @@ class MainActivity : ComponentActivity() {
                 // 번쩍였다가 홈으로 넘어간다.
                 val saved = remember { store.load() }
                 var screen by rememberSaveable {
-                    mutableStateOf(if (saved == null) Screen.Landing else Screen.Home)
+                    mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
                 // 방향은 기록 세션이 아니라 화면 설정이다. 사용자가 산책에서 고른 방향은
                 // 회전 재생성 뒤에도 남고, 다른 화면은 기존 세로 구성을 지킨다.
@@ -120,6 +132,16 @@ class MainActivity : ComponentActivity() {
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
                 val cards = remember { CardHolder(cardStore) }
+
+                // 개발자 패널이 고른 대표 견종. **여기서 들고 있는다** — 홈이 들고
+                // 있었더니 홈 밖으로 못 나가서, 챗봇 얼굴을 보려면 로그인해서 강아지를
+                // 등록하는 수밖에 없었다. 릴리스에서는 패널이 빈 껍데기라 늘 null 이다.
+                // 저장하지 않는다 (패널 스위치와 같은 규칙).
+                var devBreed by remember { mutableStateOf<DogBreed?>(null) }
+                // **고른 값이 이긴다.** 홈이 하던 그대로다 — 로그인해서 대표가 있는
+                // 상태에서도 다른 견종을 세워 보려고 고르는 것이라, 대표가 이기면
+                // 고르기가 아무 일도 안 하는 것처럼 보인다.
+                val artBreed = devBreed ?: pets.primary?.breedArt
 
                 // 창밖 날씨. **여기서 들고 있는다** — 화면이 바뀌어도 안 죽는다.
                 // 홈 안에서 부르면 도감·산책을 갔다 올 때마다 폴백(맑은 낮)부터 다시
@@ -197,7 +219,7 @@ class MainActivity : ComponentActivity() {
 
                 // access 가 만료됐으면 조용히 재발급한다.
                 //
-                // **못 살린 이유를 구분해야 한다.** [restoreSession] 은 두 경우에 null 을
+                // **못 살린 이유를 구분해야 한다.** freshSession은 두 경우에 null 을
                 // 주는데 대응이 정반대다.
                 //
                 //  - 토큰이 죽었다 (refresh 7일이 지났다) → 저장소를 비웠다. 랜딩으로 보낸다
@@ -233,6 +255,17 @@ class MainActivity : ComponentActivity() {
                     cards.load(session?.appUserId)
                 }
 
+                // **로딩을 떠나는 곳은 여기 하나다.** 갈림길 판정은 순수 함수로 빼서
+                // 테스트가 잠근다 — 서버가 죽었을 때 갇히는 것이 제일 무서운 회귀다.
+                LaunchedEffect(screen, pets.pets, pets.error) {
+                    if (screen != Screen.Loading) return@LaunchedEffect
+                    screen = when (startupTarget(pets.pets, pets.error)) {
+                        StartupTarget.Wait -> return@LaunchedEffect
+                        StartupTarget.Home -> Screen.Home
+                        StartupTarget.Onboarding -> Screen.Onboarding
+                    }
+                }
+
                 LaunchedEffect(Unit) {
                     if (saved != null) {
                         val restored = app.sessionProvider.freshSession()
@@ -247,6 +280,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when (screen) {
+                    Screen.Loading -> LoadingScreen()
+
                     Screen.Landing -> LandingScreen(
                         canLogin = BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank() && AuthApi.configured,
                         busy = busy,
@@ -482,11 +517,40 @@ class MainActivity : ComponentActivity() {
                         } else {
                             null
                         },
+                        // 야채를 지정해 카드를 만든다. **뽑기와 같은 값을 넣는다** —
+                        // 아래 `onDrawn` 과 이름·번호가 갈리면 지정해서 만든 카드만
+                        // 다른 글자를 달고 나와서, 확인하려던 것이 안 맞는다.
+                        onMakeCard = if (BuildConfig.DEBUG) {
+                            { template ->
+                                val dog = pets.primary
+                                scope.launch {
+                                    makeDevCard(
+                                        context = context,
+                                        cards = cards,
+                                        template = template,
+                                        dogId = dog?.id,
+                                        dogName = dog?.name ?: "우리 아이",
+                                        codeText = dog?.birthDate
+                                            ?.let { birthCode(it.monthValue, it.dayOfMonth) }
+                                            ?: birthCode(8, 24),
+                                        appUserId = session?.appUserId,
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        // 이번 판에 뽑아 둔 카드가 한 장이라도 있나. **파일을 뒤지지
+                        // 않는다** — 얼굴 없는 카드는 위에서 막으므로, 목록에 있으면
+                        // 얼굴도 있다.
+                        canMakeCard = cards.cards.isNotEmpty(),
+                        devBreed = devBreed,
+                        onPickDevBreed = { devBreed = it },
                     )
 
                     Screen.Chat -> ChatScreen(
                         onBack = { screen = Screen.Home },
-                        avatar = pets.primary?.breedArt,
+                        avatar = artBreed,
                         dogId = pets.primary?.id,
                         accessTokenProvider = freshToken,
                     )
@@ -518,12 +582,12 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    Screen.Walk -> WalkScreen(
+                    Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
                         history = walkRuntime.history,
-                        avatarBreed = pets.primary?.breedArt,
+                        avatarBreed = artBreed,
                         pets = pets.pets.orEmpty(),
                         outside = outside,
                     )
@@ -536,6 +600,18 @@ class MainActivity : ComponentActivity() {
                         onFrame = { card ->
                             frameCardId = card?.id
                             roomStore.saveFrameCardId(card?.id)
+                        },
+                        onDelete = { card ->
+                            scope.launch {
+                                // **액자를 먼저 비운다.** 걸려 있던 카드를 지우고
+                                // 액자만 두면 그림이 사라진 자리가 남는다 (탈퇴할 때와
+                                // 같은 정리다).
+                                if (frameCardId == card.id) {
+                                    frameCardId = null
+                                    roomStore.saveFrameCardId(null)
+                                }
+                                cards.remove(card.id)
+                            }
                         },
                         draw = { done ->
                             CardDrawScreen(
@@ -560,6 +636,9 @@ class MainActivity : ComponentActivity() {
                                         dogName = dog?.name ?: "우리 아이",
                                         codeText = dog?.codeText ?: birthCode(8, 24),
                                         appUserId = session?.appUserId,
+                                        // 이제 뽑기는 사용자가 원 안에 맞춘 얼굴만
+                                        // 넘긴다. 옛 카드와 갈리는 기준이다.
+                                        userFramed = true,
                                     )
                                 },
                                 onOpenDex = done,

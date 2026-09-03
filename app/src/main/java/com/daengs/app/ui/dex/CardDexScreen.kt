@@ -48,6 +48,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
@@ -62,7 +64,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.DrawnCard
+import androidx.compose.ui.geometry.Size
+import com.daengs.app.ui.dogcard.CardFace
+import com.daengs.app.ui.dogcard.Hole
 import com.daengs.app.ui.dogcard.drawCardFace
+import com.daengs.app.ui.dogcard.drawInHoleOf
 import com.daengs.app.ui.dogcard.drawCardText
 import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.ui.theme.CardWhite
@@ -79,6 +85,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import kotlin.math.roundToInt
+import com.daengs.app.ui.dogcard.rememberComposedCard
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 
 // ---------------------------------------------------------------------------
 // 네오 채소 도감
@@ -194,6 +205,12 @@ fun CardDexScreen(
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
     onFrame: ((DrawnCard?) -> Unit)? = null,
+    /**
+     * 카드 한 장을 지운다. **되돌릴 수 없다.**
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onDelete: ((DrawnCard) -> Unit)? = null,
 ) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
@@ -262,6 +279,7 @@ fun CardDexScreen(
                 onClose = { opened = null },
                 framedCardId = framedCardId,
                 onFrame = onFrame,
+                onDelete = onDelete,
             )
         }
     }
@@ -517,6 +535,12 @@ private fun CardViewer(
     onClose: () -> Unit,
     framedCardId: String? = null,
     onFrame: ((DrawnCard?) -> Unit)? = null,
+    /**
+     * 카드 한 장을 지운다. **되돌릴 수 없다.**
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onDelete: ((DrawnCard) -> Unit)? = null,
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
     val slot = slots[index]
@@ -632,7 +656,16 @@ private fun CardViewer(
             // 팝아웃은 카드 **위로 넘어가야** 하므로 카드와 같은 크기의 덧그림 판에서
             // 음수 좌표로 그린다. Compose 는 기본으로 안 자르므로 그대로 보인다.
             if (hero != null && card.pop != null && !slot.locked) {
-                Canvas(Modifier.matchParentSize()) { drawPopOut(hero, card.pop.fit, popped) }
+                // 카드에 얹은 얼굴을 팝아웃에도 그대로 넘긴다. 합쳐지지 않은 카드
+                // (얼굴 파일이 없는 시드 등)면 null 이고, 그때는 저쪽 누끼가 나온다.
+                val popFace = drawn?.takeIf { it.composed }
+                Canvas(Modifier.matchParentSize()) {
+                    drawPopOut(
+                        hero, card.pop.fit, popped,
+                        face = popFace?.face,
+                        hole = popFace?.template?.let { faceInSubject(card.pop.fit, it) },
+                    )
+                }
             }
             if (slot.locked) {
                 Canvas(Modifier.matchParentSize()) { drawLock() }
@@ -674,6 +707,12 @@ private fun CardViewer(
                     } else {
                         null
                     },
+                    onDelete = if (mine != null && onDelete != null) {
+                        { onDelete(mine) }
+                    } else {
+                        null
+                    },
+                    lastCopy = slot.count <= 1,
                     onPrev = { index = (index - 1 + slots.size) % slots.size },
                     onNext = { index = (index + 1) % slots.size },
                     onClose = { showDetail = false },
@@ -713,23 +752,14 @@ private fun CardViewer(
                 // 넘기는 데 쓰이므로 여기서 또 쓰면 뜻이 겹친다. 점을 눌러 고른다.
                 if (slot.count > 1) {
                     Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        slot.owned.indices.forEach { i ->
-                            Box(
-                                Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .size(if (i == copy) 9.dp else 7.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (i == copy) Color.White else Color(0x66FFFFFF),
-                                    )
-                                    .clickable { copy = i },
-                            )
-                        }
-                    }
+                    CopyStrip(
+                        owned = slot.owned,
+                        picked = copy,
+                        onPick = { copy = it },
+                    )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "이 야채로 ${slot.drawnCount}장 뽑았어요",
+                        "${copy + 1} / ${slot.count} · 이 야채로 ${slot.drawnCount}장 뽑았어요",
                         color = Color(0xFF9E8B84),
                         fontSize = 12.sp,
                     )
@@ -771,7 +801,21 @@ private fun CardViewer(
  * 떠오른 동안 카드를 어둡게 죽인다. **안 죽이면 유령이 하나 더 보인다** — 카드
  * 그림에도 같은 주인공이 인쇄돼 있기 때문이다.
  */
-private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: Float) {
+private fun DrawScope.drawPopOut(
+    hero: ImageBitmap,
+    fit: ImmersiveScene.Fit,
+    t: Float,
+    /**
+     * 튀어나온 누끼에 끼울 **우리 아이 얼굴**. null 이면 저쪽 누끼가 그대로 나온다.
+     *
+     * **저쪽 누끼에는 저쪽 강아지가 박혀 있다.** 뚫려 온 셋(배추·고구마·상추)과 달리
+     * `tomato-subject.webp` 만 얼굴이 안 뚫린 채로 왔고, 그래서 카드에는 우리 아이가
+     * 들어가 있는데 짚으면 남의 개가 떠올랐다 — 같은 카드가 한 순간에 두 얼굴을
+     * 가졌다. 불투명하므로 위에 덮어 그리면 가려진다.
+     */
+    face: CardFace? = null,
+    hole: Hole? = null,
+) {
     if (t <= 0.001f) return
     val w = size.width * fit.w / 100f
     val h = size.height * fit.h / 100f
@@ -804,6 +848,12 @@ private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: 
         alpha = t,
         filterQuality = FilterQuality.High,
     )
+
+    // 얼굴은 **누끼와 같은 사각형**에 끼운다. 자리는 재지 않고 카드 값에서 나눠
+    // 얻으므로(`faceInSubject`) 카드 구멍을 고치면 여기도 같이 맞는다.
+    if (face != null && hole != null) {
+        drawInHoleOf(face, hole, Offset(x, y), Size(gw, gh))
+    }
 }
 
 /**
@@ -835,11 +885,28 @@ private fun CardDetailSheet(
     framed: Boolean = false,
     /** 액자에 걸거나 내린다. null 이면 그 자리가 안 뜬다 */
     onFrame: (() -> Unit)? = null,
+    /** 이 카드를 지운다. **되돌릴 수 없다.** null 이면 그 자리가 안 뜬다 */
+    onDelete: (() -> Unit)? = null,
+    /** 이 칸의 마지막 한 장인가. 지우면 도감 칸이 다시 잠긴다 */
+    lastCopy: Boolean = false,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // **한 번 더 묻는다.** 카드는 서버에 사본이 없어서 지우면 그것으로 끝이다.
+    var confirmDelete by remember { mutableStateOf(false) }
+    if (confirmDelete && onDelete != null) {
+        DeleteCardDialog(
+            lastCopy = lastCopy,
+            onCancel = { confirmDelete = false },
+            onConfirm = {
+                confirmDelete = false
+                onDelete()
+            },
+        )
+    }
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         // **살짝 비친다.** 뒤의 카드가 어렴풋이 보여야 "그 카드의 설명" 으로 읽힌다.
@@ -955,6 +1022,21 @@ private fun CardDetailSheet(
                 }
             }
 
+            if (onDelete != null) {
+                Spacer(Modifier.height(10.dp))
+                // **조용한 글씨다.** 되돌릴 수 없는 자리를 저장과 같은 무게로 두면
+                // 다음 카드를 누르려다 눌린다.
+                Text(
+                    "이 카드 지우기",
+                    color = Color(0xFFC98C86),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { confirmDelete = true }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+
             Spacer(Modifier.height(16.dp))
             // **넘기기를 여기 둔다.** 설명이 열리면 카드 옆 ‹ › 는 가려지므로, 설명을
             // 보면서 다음 카드로 가려면 이 줄이 있어야 한다 (웹판도 같다).
@@ -969,6 +1051,95 @@ private fun CardDetailSheet(
         }
     }
 }
+
+/**
+ * 지우기 전에 한 번 더 묻는다.
+ *
+ * **되돌릴 수 없다는 것과, 도감 칸이 어떻게 되는지를 같이 말한다.** 마지막 한 장을
+ * 지우면 그 칸이 다시 잠기는데(`DexSlot.locked` 이 `owned.isEmpty()` 다), 그걸 모르고
+ * 지우면 모은 것이 줄어든 이유를 알 수가 없다.
+ */
+@Composable
+private fun DeleteCardDialog(
+    lastCopy: Boolean,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("이 카드를 지울까요?") },
+        text = {
+            Text(
+                if (lastCopy) {
+                    "되돌릴 수 없어요. 이 야채의 마지막 한 장이라 도감 칸이 다시 잠겨요."
+                } else {
+                    "되돌릴 수 없어요."
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("지우기", color = Color(0xFFC0554E)) }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("그대로 두기") } },
+    )
+}
+
+/**
+ * 같은 야채를 여러 장 뽑았을 때 고르는 줄.
+ *
+ * 예전에는 7~9dp 짜리 **점**이었다. 누를 자리가 너무 작았고, 무엇보다 **어떤 카드들인지
+ * 안 보였다** — 같은 야채라도 얼굴과 뽑은 날이 다른데 점은 그걸 말해 주지 않는다.
+ *
+ * 좌우 화살표는 **다른 야채**라는 뜻으로 이미 쓰이고 있어서 여기 못 쓴다. 그래서
+ * 작은 카드를 늘어놓고 고르게 한다.
+ *
+ * 그림은 `rememberComposedCard` 가 굽는다 — 방 액자가 쓰는 그것이다. 장수가 많아야
+ * 서너 장이라 다 구워도 부담이 없다.
+ */
+@Composable
+private fun CopyStrip(
+    owned: List<DrawnCard>,
+    picked: Int,
+    onPick: (Int) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        owned.forEachIndexed { i, card ->
+            val thumb = rememberComposedCard(card, width = COPY_THUMB_PX)
+            Box(
+                Modifier
+                    .height(52.dp)
+                    .aspectRatio(COPY_THUMB_RATIO)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0x22FFFFFF))
+                    // 고른 것만 테두리를 두른다. 밝기로만 가르면 포일 위에서 안 보인다.
+                    .border(
+                        width = if (i == picked) 2.dp else 0.dp,
+                        color = if (i == picked) DaengPink else Color.Transparent,
+                        shape = RoundedCornerShape(6.dp),
+                    )
+                    .clickable { onPick(i) },
+            ) {
+                thumb?.let {
+                    Image(
+                        bitmap = it,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 작은 카드를 구울 가로 픽셀. 52dp 높이로 뜨는 자리라 이만하면 넉넉하다. */
+private const val COPY_THUMB_PX = 160
+
+/** 카드 비율. 열두 장이 1080x1440 한 판이다. */
+private const val COPY_THUMB_RATIO = 1080f / 1440f
 
 @Composable
 private fun SheetAction(label: String, onClick: () -> Unit) {

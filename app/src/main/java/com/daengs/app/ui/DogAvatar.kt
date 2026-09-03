@@ -35,14 +35,19 @@ import com.daengs.app.ui.theme.PinkSoft
  *
  * 원본이 불투명한 정사각형이라 [CircleShape] 로 자르고 테두리를 한 겹 두른다.
  * 안 두르면 크림색 배경이 밝은 카드 위에서 경계 없이 번진다.
+ *
+ * @param smart 챗봇이 쓰는 "똑똑이" 판(학사모 + 안경)으로 그린다. **함수를 두 벌로
+ *   나누지 않는다** — 원으로 자르고 테두리를 두르는 규칙이 갈리면 챗봇 얼굴만 경계가
+ *   달라진다. 바뀌는 것은 그림 하나뿐이다
  */
 @Composable
 fun DogAvatar(
     breed: DogBreed,
     modifier: Modifier = Modifier,
+    smart: Boolean = false,
 ) {
     Image(
-        painter = painterResource(breed.portraitRes),
+        painter = painterResource(if (smart) breed.smartRes else breed.portraitRes),
         contentDescription = breed.label,
         contentScale = ContentScale.Crop,
         modifier = modifier
@@ -66,6 +71,30 @@ fun PawAvatar(modifier: Modifier = Modifier, size: Dp) {
         contentAlignment = Alignment.Center,
     ) {
         DaengsIconView(DaengsIcon.Paw, Modifier.size(size * 0.5f), tint = DaengPink)
+    }
+}
+
+/** 챗봇 얼굴. 학사모가 원에 잘리지 않는지, 안경이 뭉개지지 않는지 본다. */
+@Preview
+@Composable
+private fun SmartDogAvatarPreview() {
+    Row {
+        listOf(DogBreed.BEAGLE, DogBreed.SHIBA_INU_BEIGE, DogBreed.BORDER_COLLIE).forEach {
+            DogAvatar(it, Modifier.size(56.dp), smart = true)
+            Spacer(Modifier.width(6.dp))
+        }
+    }
+}
+
+/** 32dp 은 말풍선 얼굴 크기다. **작게 봐야 학사모가 뭉개지는 것이 보인다.** */
+@Preview
+@Composable
+private fun SmartDogAvatarBubbleSizePreview() {
+    Row {
+        DogBreed.ALL.take(8).forEach {
+            DogAvatar(it, Modifier.size(32.dp), smart = true)
+            Spacer(Modifier.width(4.dp))
+        }
     }
 }
 

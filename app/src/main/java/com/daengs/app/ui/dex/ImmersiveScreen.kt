@@ -349,8 +349,14 @@ private fun DrawScope.drawStage(
         )
         // **창틀에도 우리 글자를 얹는다.** 카드가 녹으면 그 아래가 이 틀인데, 저쪽
         // 글자를 지워 두기만 하고 우리 것을 안 찍으면 이름 자리가 빈 채로 드러난다.
-        hero?.let {
-            drawSlotTextAt(measurer, it.name, it.code, scene.frameName, scene.frameCode, fp, fs)
+        hero?.let { h ->
+            // **얼굴이 먼저다.** 아바타 원이 이름 바 왼쪽 끝에 걸쳐 있어서, 글자를
+            // 먼저 찍으면 그 위를 얼굴이 덮는다 (`PersonalCard` 도 얼굴 → 글자 순서다).
+            scene.frameAvatar?.let { hole -> drawInHoleOf(h.face, hole, fp, fs) }
+            drawSlotTextAt(
+                measurer, h.name, h.code,
+                scene.frameName, scene.frameCode, scene.frameChip, fp, fs,
+            )
         }
     }
 

@@ -53,7 +53,9 @@ import com.daengs.app.map.features.places.canonicalPlaceMarkers
 import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.map.features.places.selectedPlaceKind
 import com.daengs.app.map.shell.MapHost
-import com.daengs.app.map.shell.MapScene
+import com.daengs.app.map.shell.MapPurpose
+import com.daengs.app.map.shell.MapSceneSources
+import com.daengs.app.map.shell.composeMapScene
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
 import com.daengs.app.place.PlaceFailure
@@ -176,9 +178,12 @@ fun PlacesScreen(
     Box(modifier.fillMaxSize()) {
         if (showMap) {
             MapHost(
-                scene = MapScene(
-                    currentPosition = location.currentPosition,
-                    places = canonicalPlaceMarkers(discovery),
+                scene = composeMapScene(
+                    purpose = MapPurpose.PLACE_SEARCH,
+                    sources = MapSceneSources(
+                        currentPosition = location.currentPosition,
+                        places = canonicalPlaceMarkers(discovery),
+                    ),
                 ),
                 searchOrigin = discovery.origin,
                 followDevice = followDevice,

@@ -24,6 +24,7 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.RouteEndpointKind
+import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -57,6 +58,7 @@ fun NaverMapSurface(
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
+    onSelectTerritorySite: (String) -> Unit = {},
     onSelectMoment: (String) -> Unit = {},
     onSelectRouteEndpoint: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
@@ -127,6 +129,17 @@ fun NaverMapSurface(
             CameraUpdate.scrollAndZoomTo(LatLng(origin.latitude, origin.longitude), 14.5)
                 .animate(CameraAnimation.Easing),
         )
+    }
+
+    LaunchedEffect(naverMap, scene.baseMapStyle) {
+        val map = naverMap ?: return@LaunchedEffect
+        // 점령지는 3km 원 하나만 읽는다. 더 멀리 축소하면 화면은 넓어지는데 데이터는
+        // 늘지 않아 빈 곳처럼 거짓말하게 되므로, 그 모드에서만 도시 단위 줌을 막는다.
+        map.minZoom = if (scene.baseMapStyle == BaseMapStyle.TERRITORY_FOCUSED) {
+            TERRITORY_MIN_ZOOM
+        } else {
+            MIN_ZOOM
+        }
     }
 
     LaunchedEffect(naverMap, scene.currentPosition, followDevice) {
@@ -224,6 +237,32 @@ fun NaverMapSurface(
                 isHideCollidedMarkers = true
                 setOnClickListener {
                     onSelectPlace(place.id)
+                    true
+                }
+                this.map = map
+            }
+        }
+        onDispose { markers.forEach { it.map = null } }
+    }
+
+    // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
+    // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.
+    DisposableEffect(naverMap, scene.territorySites) {
+        val map = naverMap
+        val markers = if (map == null) emptyList() else scene.territorySites.map { site ->
+            Marker().apply {
+                position = site.point.toLatLng()
+                captionText = if (site.selected) "점령지" else ""
+                captionMinZoom = 0.0
+                width = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
+                height = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
+                anchor = TERRITORY_MARKER_ANCHOR
+                icon = OverlayImage.fromResource(R.drawable.ic_territory_site)
+                zIndex = if (site.selected) SELECTED_MARKER_Z else TERRITORY_MARKER_Z
+                isHideCollidedMarkers = true
+                isHideCollidedSymbols = true
+                setOnClickListener {
+                    onSelectTerritorySite(site.id)
                     true
                 }
                 this.map = map
@@ -510,11 +549,20 @@ private const val ROUTE_SELECTED_OUTLINE_WIDTH = 4
 
 private const val MOMENT_MARKER_PX_SELECTED = 82
 
+private const val TERRITORY_MARKER_PX = 60
+
+private const val TERRITORY_MARKER_PX_SELECTED = 76
+
+private const val TERRITORY_MARKER_Z = 30
+
 /** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
 private const val MOMENT_MARKER_Z = 50
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
+
+/** 전봇대 표시는 핀이 아니라 위치 중심 위에 서는 원형 표식이다. */
+private val TERRITORY_MARKER_ANCHOR = PointF(0.5f, 0.5f)
 
 /** 내 위치 얼굴의 한 변(px)과 흰 테두리 두께. */
 private const val AVATAR_PX = 96
@@ -531,6 +579,9 @@ private const val FIT_PADDING_PX = 80
 private const val SELECTED_PLACE_MIN_ZOOM = 16.0
 
 private const val MIN_ZOOM = 11.0
+
+/** 3km 조회 한 장이 화면을 의미 있게 덮는 실험 시작값. 실기기에서 최종 조정한다. */
+private const val TERRITORY_MIN_ZOOM = 13.0
 
 /** 카메라가 데이터가 덮는 나라를 벗어나지 못하게 한다 — 출처가 전부 국내다. */
 private val KOREA_EXTENT = LatLngBounds(LatLng(32.9, 124.0), LatLng(38.7, 132.0))
