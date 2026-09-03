@@ -157,7 +157,7 @@ data class SpatialDiaryQuery(
                 until = selector.optNonBlank("until")?.let(LocalDate::parse),
                 contextFilters = (0 until facets.length()).map {
                     SpatialDiaryContextFilter.parse(facets.getJSONObject(it))
-                },
+                }.sortedBy { it.axis },
                 metric = SpatialDiaryMetric.fromWire(json.getString("field_metric")),
             )
         }

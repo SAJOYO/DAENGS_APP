@@ -6,8 +6,8 @@
       "since": "2026-09-01",
       "until": "2026-09-30",
       "context_facets": [
-        {"axis": "precipitation", "values": ["rain"], "policy_version": 2},
-        {"axis": "daylight", "values": ["night"], "policy_version": 2}
+        {"axis": "daylight", "values": ["night"], "policy_version": 2},
+        {"axis": "precipitation", "values": ["rain"], "policy_version": 2}
       ]
     },
     "field_metric": "visit_rate"

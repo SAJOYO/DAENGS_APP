@@ -53,7 +53,26 @@ class SpatialDiaryModelsTest {
         assertEquals(3, view.receipt.selectedCapsules)
         assertEquals(1, view.receipt.contextUnknownCount)
         assertEquals("paint-v1", view.projection.paintFingerprint)
-        assertTrue(view.query.contextFilters.first() is PrecipitationFilter)
+        assertTrue(view.query.contextFilters.first() is DaylightFilter)
+        assertTrue(view.query.contextFilters.last() is PrecipitationFilter)
+    }
+
+    @Test
+    fun `parses shuffled response facets into canonical order`() {
+        val json = JSONObject(fixture())
+        val facets = json
+            .getJSONObject("spec")
+            .getJSONObject("walk_selector")
+            .getJSONArray("context_facets")
+        val daylight = facets.getJSONObject(0)
+        val precipitation = facets.getJSONObject(1)
+        facets.put(0, precipitation)
+        facets.put(1, daylight)
+
+        val query = SpatialDiaryView.parse(json).query
+
+        assertTrue(query.contextFilters.first() is DaylightFilter)
+        assertTrue(query.contextFilters.last() is PrecipitationFilter)
     }
 
     @Test
