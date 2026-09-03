@@ -12,14 +12,9 @@ import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
-import com.daengs.app.map.features.journey.PlaceJourneyController
 import com.daengs.app.map.features.journey.PlaceJourneyState
-import com.daengs.app.map.features.places.DEFAULT_PLACE_KIND
-import com.daengs.app.map.features.places.PlaceDiscoveryController
 import com.daengs.app.map.features.places.PlaceDiscoveryState
-import com.daengs.app.map.features.places.PlaceOriginMode
 import com.daengs.app.map.features.places.PlaceSearchArea
-import com.daengs.app.map.features.places.PlaceSearchState
 import com.daengs.app.place.DogSearchContext
 import com.daengs.app.place.PlaceApi
 import com.daengs.app.place.PlaceKey
@@ -61,7 +56,7 @@ sealed interface PlacesAction {
     data object RetryJourney : PlacesAction
 }
 
-/** 시설 화면의 위치·검색·길찾기 생애를 화면 합성과 분리해 소유한다. */
+/** 시설 화면 입력을 위치 생애와 탐색 세션 경계에 연결하고 화면 상태를 합성한다. */
 class PlacesViewModel(
     placeRepository: PlaceSearchRepository,
     journeyRepository: JourneyRepository,
@@ -73,26 +68,17 @@ class PlacesViewModel(
         source = locationSource,
         scope = runtimeScope,
     )
-    // 위치 관측은 최신 상태로 받아도, 그 관측에 매달린 옛 검색 명령은 실행하면 안 된다.
-    // coordinator의 측위 세대와 별도로 두어 두 생애를 섞지 않는다.
-    private var locationSearchGeneration = 0L
-
-    private val discovery = PlaceDiscoveryController(
-        repository = placeRepository,
-        dogContext = null,
-        scope = runtimeScope,
-    )
-    private val journey = PlaceJourneyController(
-        repository = journeyRepository,
+    private val session = PlaceSessionCoordinator(
+        placeRepository = placeRepository,
+        journeyRepository = journeyRepository,
         scope = runtimeScope,
     )
 
     val state: StateFlow<PlacesUiState> = combine(
         location.state,
-        discovery.state,
-        journey.state,
-    ) { location, discovery, journey ->
-        PlacesUiState(location, discovery, journey)
+        session.state,
+    ) { location, session ->
+        PlacesUiState(location, session.discovery, session.journey)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -110,30 +96,27 @@ class PlacesViewModel(
         if (permissionGranted) {
             startDefaultSearchIfNeeded()
         } else {
-            invalidatePendingLocationSearch(cancelLocation = true)
-            journey.clear()
-            discovery.clear()
+            location.cancelLocate()
+            session.clear()
         }
     }
 
     fun deactivate() {
-        invalidatePendingLocationSearch(cancelLocation = true)
         location.deactivate()
-        discovery.cancel()
+        session.deactivate()
     }
 
     fun updatePermission(granted: Boolean, permanentlyDenied: Boolean) {
         if (!granted) {
-            invalidatePendingLocationSearch(cancelLocation = true)
-            journey.clear()
-            discovery.clear()
+            location.cancelLocate()
+            session.clear()
         }
         location.updatePermission(granted, permanentlyDenied)
         if (granted && location.isActive) startDefaultSearchIfNeeded()
     }
 
     fun updateDogContext(context: DogSearchContext?) {
-        discovery.updateDogContext(context)
+        session.updateDogContext(context)
     }
 
     fun onAction(action: PlacesAction) {
@@ -158,104 +141,49 @@ class PlacesViewModel(
         ) {
             return
         }
-        val generation = ++locationSearchGeneration
-        location.locate { sample ->
-            if (generation == locationSearchGeneration) {
-                beginSearch(sample.point, kind, preferParking)
-            }
-        }
+        locate(session.requestDeviceSearch(kind, preferParking))
     }
 
     fun searchAtCurrentOrigin(kind: PlaceKind, preferParking: Boolean) {
-        val discoveryState = discovery.state.value
-        val pinned = discoveryState.origin?.takeIf {
-            discoveryState.originMode == PlaceOriginMode.PINNED
-        }
-        when {
-            pinned != null -> startSearch(pinned, kind, preferParking, PlaceOriginMode.PINNED)
-            location.state.value.devicePosition != null -> startSearch(
-                location.state.value.devicePosition!!,
-                kind,
-                preferParking,
-            )
-            else -> locateAndSearch(kind, preferParking)
-        }
+        session.searchAtCurrentOrigin(
+            kind = kind,
+            preferParking = preferParking,
+            devicePosition = location.state.value.devicePosition,
+        )?.let(::locate)
     }
 
     fun searchAt(point: GeoPoint, kind: PlaceKind, preferParking: Boolean) {
-        startSearch(point, kind, preferParking, PlaceOriginMode.PINNED)
+        session.searchAt(point, kind, preferParking)
     }
 
     fun retrySearch() {
-        invalidatePendingLocationSearch()
-        discovery.retry()
+        session.retrySearch()
     }
 
     fun selectPlace(key: PlaceKey) {
-        discovery.select(key)
+        session.selectPlace(key)
     }
 
     fun loadJourney(place: PlaceResult) {
-        val origin = location.state.value.devicePosition
-        if (origin == null) {
-            journey.reject(place.key, "현재 위치를 확인한 뒤 길찾기를 다시 눌러주세요.")
-        } else {
-            journey.load(origin, place)
-        }
+        session.loadJourney(location.state.value.devicePosition, place)
     }
 
     fun retryJourney() {
-        journey.retry()
+        session.retryJourney()
     }
 
-    private fun beginSearch(
-        origin: GeoPoint,
-        kind: PlaceKind,
-        preferParking: Boolean,
-        originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
-    ) {
-        journey.clear()
-        discovery.search(origin, listOf(kind), preferParking, originMode)
-    }
-
-    private fun startSearch(
-        origin: GeoPoint,
-        kind: PlaceKind,
-        preferParking: Boolean,
-        originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
-    ) {
-        invalidatePendingLocationSearch()
-        beginSearch(origin, kind, preferParking, originMode)
+    private fun locate(request: PendingDevicePlaceSearch) {
+        location.locate { sample -> session.resolveDeviceSearch(request, sample.point) }
     }
 
     private fun startDefaultSearchIfNeeded() {
-        if (discovery.state.value.search !is PlaceSearchState.Idle) return
-        val known = location.state.value.devicePosition
-        if (known == null) {
-            locateAndSearch(DEFAULT_PLACE_KIND, preferParking = false)
-        } else {
-            startSearch(known, DEFAULT_PLACE_KIND, preferParking = false)
-        }
-    }
-
-    private fun invalidatePendingLocationSearch(cancelLocation: Boolean = false) {
-        locationSearchGeneration++
-        if (cancelLocation) location.cancelLocate()
+        session.startDefaultSearchIfNeeded(location.state.value.devicePosition)?.let(::locate)
     }
 
     private fun acceptLocationUpdate(sample: LocationSample) {
         if (PlaceSearchArea.contains(sample.point)) return
-        val currentSearch = discovery.state.value
-        if (currentSearch.originMode == PlaceOriginMode.DEVICE) {
-            invalidatePendingLocationSearch(cancelLocation = true)
-            journey.clear()
-            discovery.search(
-                origin = sample.point,
-                kinds = currentSearch.requestedKinds.ifEmpty { listOf(DEFAULT_PLACE_KIND) },
-                preferParking = currentSearch.preferParking,
-                originMode = PlaceOriginMode.DEVICE,
-            )
-        }
+        location.cancelLocate()
+        session.replaceUnsupportedDeviceOrigin(sample.point)
     }
 
     override fun onCleared() {
