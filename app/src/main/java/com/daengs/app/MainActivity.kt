@@ -501,6 +501,10 @@ class MainActivity : ComponentActivity() {
                         } else {
                             null
                         },
+                        // 이번 판에 뽑아 둔 카드가 한 장이라도 있나. **파일을 뒤지지
+                        // 않는다** — 얼굴 없는 카드는 위에서 막으므로, 목록에 있으면
+                        // 얼굴도 있다.
+                        canMakeCard = cards.cards.isNotEmpty(),
                         devBreed = devBreed,
                         onPickDevBreed = { devBreed = it },
                     )

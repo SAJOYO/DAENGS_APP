@@ -103,9 +103,13 @@ data class ImmersiveScene(
      * 끝은 원을 피해 물러난 자리라 원의 어긋남과 같지 않다.
      *
      * 그래서 원화에서 **직접 쟀다** ([frameName]·[frameCode] 와 같은 방식이다).
-     * 개가 원의 가운데·아래를 덮고 있어 초록 원반이 위쪽 초승달로만 남는데, 원의
-     * 좌·우·위 가장자리가 그 초승달에 다 들어 있어 가로 폭이 곧 지름이 된다.
-     * 잰 값에서 반지름을 8% 키웠다 — 딱 맞게 덮으면 개의 귀·턱이 테두리에 남는다.
+     *
+     * **초록 원반이 아니라 은색 테의 안쪽 구멍을 잡는다.** 원반으로 재면 개가
+     * 가운데·아래를 덮어 초승달만 남아서, 그 초승달의 외접상자가 원이 아니게 된다 —
+     * 고구마가 그렇게 재서 얼굴이 왼쪽 위로 밀려 있었다. 테는 개에 안 가려지므로
+     * 테를 마스크로 잡고 구멍을 메워 그 차이를 보면 원이 그대로 나온다. 세 장 다
+     * 외접상자가 정사각형으로 떨어지는 것이 맞게 잡혔다는 표시다 (155x156 · 187x188 ·
+     * 201x202).
      */
     val frameAvatar: Hole? = null,
     /**
@@ -214,7 +218,7 @@ val CABBAGE_SCENE = ImmersiveScene(
     card = "neo-hologram/art/cabbage-card.webp",
     frame = "neo-hologram/art/cabbage-card-frame.webp",
     frameChip = true,
-    frameAvatar = Hole(13.09f, 8.76f, 7.96f, 5.72f),
+    frameAvatar = Hole(12.86f, 9.46f, 8.89f, 6.39f),
     frameName = Slot(23.43f, 3.95f, 71.89f, 9.62f),
     frameCode = Slot(73.49f, 4.51f, 94.5f, 9.05f),
     bgm = bgmFor("cabbage"),
@@ -245,7 +249,7 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
     card = "neo-hologram/art/sweet-potato-card.webp",
     frame = "neo-hologram/art/sweet-potato-card-frame.webp",
     frameChip = true,
-    frameAvatar = Hole(14.71f, 8.14f, 6.88f, 4.98f),
+    frameAvatar = Hole(13.36f, 9.50f, 8.79f, 6.36f),
     frameName = Slot(23.81f, 4.0f, 72.26f, 10.18f),
     frameCode = Slot(73.86f, 4.62f, 94.5f, 9.56f),
     bgm = bgmFor("sweet-potato"),
@@ -278,7 +282,7 @@ val LETTUCE_SCENE = ImmersiveScene(
     card = "neo-hologram/art/lettuce-card.webp",
     frame = "neo-hologram/art/lettuce-card-frame.webp",
     frameChip = true,
-    frameAvatar = Hole(13.06f, 10.02f, 8.62f, 6.89f),
+    frameAvatar = Hole(12.97f, 10.41f, 8.98f, 7.19f),
     frameName = Slot(23.62f, 4.28f, 73.62f, 10.63f),
     frameCode = Slot(75.22f, 4.91f, 94.5f, 9.99f),
     bgm = bgmFor("lettuce"),

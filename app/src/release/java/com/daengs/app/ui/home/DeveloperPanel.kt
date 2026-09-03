@@ -46,5 +46,6 @@ fun DeveloperPanel(
     onPickOutside: (OutsideView) -> Unit,
     onOpenCutoutLab: (() -> Unit)? = null,
     onMakeCard: ((CardTemplate) -> Unit)? = null,
+    canMakeCard: Boolean = false,
     modifier: Modifier = Modifier,
 ) = Unit

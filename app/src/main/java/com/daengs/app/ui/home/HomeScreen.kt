@@ -169,6 +169,11 @@ fun HomeScreen(
      */
     onMakeCard: ((CardTemplate) -> Unit)? = null,
     /**
+     * 빌려 쓸 얼굴이 있나. 없으면 개발자 패널이 카드 만들기를 잠근다 —
+     * 얼굴 없는 카드는 무대·창틀에 우리 것이 안 얹혀서 만들어 봐야 소용이 없다.
+     */
+    canMakeCard: Boolean = false,
+    /**
      * 개발자 패널이 고른 대표 견종. **부르는 쪽이 든다** — 챗봇 화면도 같은 값을
      * 봐야 하는데, 홈이 들고 있으면 홈 밖으로 안 나간다. null 이면 진짜 대표를 따른다.
      */
@@ -380,6 +385,7 @@ fun HomeScreen(
                 onPickProfile = { onPickDevBreed?.invoke(it) },
                 onOpenCutoutLab = onOpenCutoutLab,
                 onMakeCard = onMakeCard,
+                canMakeCard = canMakeCard,
                 roomName = roomName,
                 defaultLabel = defaultRoomLabel(pets?.firstOrNull { it.isPrimary }?.name),
                 onRenameRoom = onRenameRoom,
@@ -447,6 +453,8 @@ private fun RoomSection(
     onOpenCutoutLab: (() -> Unit)?,
     /** 야채를 지정해 카드를 만든다. 개발자 패널에서만 불린다. */
     onMakeCard: ((CardTemplate) -> Unit)?,
+    /** 빌려 쓸 얼굴이 있나. 개발자 패널이 카드 만들기를 잠글지 정한다. */
+    canMakeCard: Boolean,
     /** 액자에 걸린 그림. null 이면 발자국. */
     framePicture: ImageBitmap? = null,
     /** 이름표에 걸 이름. 사용자가 정한 것이고, null 이면 [defaultLabel] 이 걸린다. */
@@ -576,6 +584,7 @@ private fun RoomSection(
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,
                 onMakeCard = onMakeCard,
+                canMakeCard = canMakeCard,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 6.dp),
             )
         }
