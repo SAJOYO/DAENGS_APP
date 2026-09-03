@@ -1,0 +1,48 @@
+{
+  "spec": {
+    "view_version": 1,
+    "walk_selector": {
+      "pet_id": "11111111-1111-1111-1111-111111111111",
+      "since": "2026-09-01",
+      "until": "2026-09-30",
+      "context_facets": [
+        {"axis": "precipitation", "values": ["rain"], "policy_version": 2},
+        {"axis": "daylight", "values": ["night"], "policy_version": 2}
+      ]
+    },
+    "field_metric": "visit_rate"
+  },
+  "projection": {
+    "paint_version": 2,
+    "grid_version": "hex-v1",
+    "radius_u": 8.0,
+    "profile_name": "계단 3·8·20",
+    "profile_fp": "profile-v1",
+    "sample_step_m": 1.5,
+    "paint_fp": "paint-v1"
+  },
+  "field": {
+    "metric": "visit_rate",
+    "unit": "ratio",
+    "normalization": "selected_walks",
+    "denominator": 3.0,
+    "cells": [
+      {"q": 832649, "r": 375728, "value": 0.6666666666666666, "numerator": 2.0},
+      {"q": 832650, "r": 375728, "value": 0.3333333333333333, "numerator": 1.0}
+    ]
+  },
+  "receipt": {
+    "selector_fingerprint": "selector-v1",
+    "view_as_of": "2026-09-03T07:00:00Z",
+    "total_capsules": 5,
+    "selected_capsules": 3,
+    "contributing_capsules": 3,
+    "context_known_count": 2,
+    "context_unknown_count": 1,
+    "paint_fp": "paint-v1",
+    "field_metric": "visit_rate",
+    "normalization": "selected_walks",
+    "context_policy_version": 2,
+    "aggregation_version": 1
+  }
+}
