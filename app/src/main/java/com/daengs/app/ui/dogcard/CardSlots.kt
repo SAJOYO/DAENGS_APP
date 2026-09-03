@@ -659,6 +659,19 @@ private fun DrawScope.drawSlotText(
 
     var px = boxH * face.fill / INK_HEIGHT
     var laid = measurer.measure(text, styleAt(px), maxLines = 1)
+
+    // **한 번 재서 되맞춘다.** [toSp] 가 밀도 2.6 을 상수로 가정한 환산이라, 실제
+    // 픽셀은 `(px / 2.6) x measurer 의 밀도` 다 — 우리가 예측할 수 없다. 밀도 3.0
+    // 폰에서는 `fill = 0.90` 이 칸의 1.04배가 되어 **바를 넘쳤다.**
+    //
+    // `2.6f` 를 걷어내는 대신 잰 값으로 고친다. 내보내기와 화면이 같은 measurer 를
+    // 쓰기로 한 설계가 그 상수에 걸려 있다 (`CardRender.kt`).
+    val ink = laid.size.height * INK_HEIGHT
+    if (ink > 0f) {
+        px *= boxH * face.fill / ink
+        laid = measurer.measure(text, styleAt(px), maxLines = 1)
+    }
+
     // 넘치면 줄인다. 이름이 긴 개도 있다.
     if (laid.size.width > boxW) {
         px *= boxW / laid.size.width.toFloat()
