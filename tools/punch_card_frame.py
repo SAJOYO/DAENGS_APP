@@ -44,6 +44,9 @@ from card_text_slots import DARK, GLYPH_OVER, GLYPH_WEAK, MIN_AREA, RAIL_MAX_H
 from card_text_slots import bar_spans, erase, runs_of
 from scipy import ndimage
 
+# 낱자 하나가 이보다 넓으면 글자가 아니다 (창틀 제목은 떨어진 세리프다).
+FRAME_GLYPH_MAX_W = 120
+
 ART = pathlib.Path(__file__).resolve().parent.parent / "app/src/main/assets/neo-hologram/art"
 
 
@@ -82,7 +85,23 @@ def title_box(lum: np.ndarray) -> tuple[int, int, int, int] | None:
             best = got[0]
     if best is None:
         return None
-    return x0, best[0], x1, best[1]
+    y0, y1 = best
+
+    # **아바타 원을 밴드 밖으로 밀어낸다.**
+    #
+    # 창틀 왼쪽에는 저쪽 강아지 얼굴이 박힌 밝은 원이 있고, 어두운 바가 그 뒤까지
+    # 이어져 있어서 왼쪽 끝이 원 안에서 잡힌다. 그러면 원의 밝은 화소가 "글자" 로
+    # 걸려 지워지고, 메우면서 그 밝은 색이 바 오른쪽까지 줄무늬로 끌려간다.
+    #
+    # 바 높이의 대부분이 어두운 **첫 세로줄**부터 시작한다 — 원이 지나는 줄은
+    # 위아래가 밝아서 저절로 빠진다.
+    need = (y1 - y0) * 0.80
+    x = x0
+    while x < x1:
+        if (lum[y0:y1, x] < DARK).sum() >= need:
+            break
+        x += 1
+    return x, y0, x1, y1
 
 
 def punch(src: pathlib.Path, apply: bool) -> list[float] | None:
@@ -108,6 +127,12 @@ def punch(src: pathlib.Path, apply: bool) -> list[float] | None:
         if i not in hot:
             continue
         if sl[0].stop - sl[0].start < max(RAIL_MAX_H, (y1 - y0) * 0.18):
+            continue
+        # **폭이 넓은 덩이는 글자가 아니다.** 창틀은 왼쪽에 저쪽 강아지 얼굴이 박힌
+        # 밝은 원이 있는데, 그 테두리가 후광을 타고 제목 글자와 한 덩이가 됐다.
+        # 그대로 메우면 원의 밝은 색이 바 오른쪽까지 줄무늬로 끌려간다 — 실제로
+        # 그렇게 됐다. 카드와 달리 창틀 글자는 낱자가 떨어진 세리프라 폭으로 갈린다.
+        if sl[1].stop - sl[1].start > FRAME_GLYPH_MAX_W:
             continue
         if (lab[sl] == i).sum() < MIN_AREA:
             continue
