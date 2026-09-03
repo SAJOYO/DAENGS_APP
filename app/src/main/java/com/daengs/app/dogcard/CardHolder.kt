@@ -63,6 +63,8 @@ class CardHolder(private val store: CardStore) {
         dogName: String,
         codeText: String,
         appUserId: String?,
+        /** 사용자가 원형 틀에 직접 맞췄나. `DrawnCardRow.userFramed` 참고 */
+        userFramed: Boolean = false,
         now: Long = System.currentTimeMillis(),
     ): DrawnCard? {
         val card = DrawnCard(
@@ -74,6 +76,7 @@ class CardHolder(private val store: CardStore) {
             drawnAtMillis = now,
             codeText = codeText,
             core = core,
+            userFramed = userFramed,
         )
         return runCatching { store.add(card, face) }
             .map { cards = listOf(card) + cards; card }

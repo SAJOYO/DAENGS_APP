@@ -41,6 +41,68 @@ class CardDrawTest {
         }
     }
 
+    /**
+     * 이름칸·번호판이 **열두 장 다 있다.**
+     *
+     * 열 장이 `code = null` 이던 때가 있었다. 저쪽이 번호 자리를 못 지워 줘서 우리도
+     * 안 그렸고, 그래서 **생일이 안 나오고 저쪽 개 이름 `NEO-0824` 가 인쇄된 채로
+     * 남아 있었다.** 다시 null 로 돌아가면 조용히 그 상태가 된다.
+     */
+    @Test
+    fun `이름칸과 번호판이 열두 장 다 있다`() {
+        CARD_TEMPLATES.forEach {
+            assertTrue("${it.id} 이름칸", it.name != null)
+            assertTrue("${it.id} 번호판", it.code != null)
+        }
+    }
+
+    @Test
+    fun `글자 칸이 카드 안에 있고 서로 안 겹친다`() {
+        CARD_TEMPLATES.forEach { t ->
+            val name = t.name!!
+            val code = t.code!!
+            listOf("이름칸" to name, "번호판" to code).forEach { (which, s) ->
+                val where = "${t.id} $which"
+                assertTrue("$where 가로", s.x1 > s.x0)
+                assertTrue("$where 세로", s.y1 > s.y0)
+                assertTrue("$where 왼쪽", s.x0 >= 0f)
+                assertTrue("$where 오른쪽", s.x1 <= 100f)
+                assertTrue("$where 위", s.y0 >= 0f)
+                assertTrue("$where 아래", s.y1 <= 100f)
+            }
+            // 겹치면 이름 위에 번호가 찍힌다.
+            val apart = name.x1 <= code.x0 || code.x1 <= name.x0 ||
+                name.y1 <= code.y0 || code.y1 <= name.y0
+            assertTrue("${t.id} 이름칸과 번호판이 겹친다", apart)
+        }
+    }
+
+    /**
+     * 이름칸이 너무 낮으면 **글자만 깨알같이 찍힌다.** 글자 크기를 칸 높이에서 구하기
+     * 때문이다 (`drawSlotText`). 예전 도구가 상추에서 3.6% 짜리 칸을 뱉은 적이 있다.
+     */
+    @Test
+    fun `이름칸이 충분히 높다`() {
+        CARD_TEMPLATES.forEach {
+            val h = it.name!!.let { s -> s.y1 - s.y0 }
+            assertTrue("${it.id} 이름칸 높이 $h%", h >= 4.0f)
+        }
+    }
+
+    /**
+     * 칩을 까는 것이 **정확히 여덟 장**이다.
+     *
+     * 번호가 홀로그램 위에 있어 못 지우는 카드만 켠다. 피망·당근·단호박·가지는 저쪽이
+     * 인쇄한 검은 상자가 이미 칩이라 끄고, 켜면 상자 안에 상자가 된다. 새 원화가
+     * 들어올 때 조용히 어긋나는 것을 여기서 잡는다.
+     */
+    @Test
+    fun `칩을 까는 카드가 여덟 장이다`() {
+        val off = CARD_TEMPLATES.filterNot { it.codeChip }.map { it.id }.sorted()
+        assertEquals(listOf("carrot", "danhobak", "eggplant", "pepper"), off)
+        assertEquals(8, CARD_TEMPLATES.count { it.codeChip })
+    }
+
     /** 구멍이 카드 밖으로 나가면 얼굴이 잘린 채로만 보인다. */
     @Test
     fun `구멍이 카드 안에 있다`() {
