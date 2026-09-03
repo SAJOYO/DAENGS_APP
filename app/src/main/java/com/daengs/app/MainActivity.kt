@@ -48,6 +48,7 @@ import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesScreen
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
+import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkScreen
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
@@ -100,13 +101,17 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Home)
                 }
-                // 나머지 앱은 기존 세로 구성을 지키고, 산책만 지도 시야가 넓은 가로로 쓴다.
-                // rememberSaveable 이 회전 재생성 뒤에도 Walk 를 복원하므로 홈으로 튕기지 않는다.
-                LaunchedEffect(screen) {
-                    requestedOrientation = if (screen == Screen.Walk) {
-                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    } else {
-                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                // 방향은 기록 세션이 아니라 화면 설정이다. 사용자가 산책에서 고른 방향은
+                // 회전 재생성 뒤에도 남고, 다른 화면은 기존 세로 구성을 지킨다.
+                var walkOrientation by rememberSaveable {
+                    mutableStateOf(WalkOrientation.PORTRAIT)
+                }
+                LaunchedEffect(screen, walkOrientation) {
+                    requestedOrientation = when {
+                        screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        walkOrientation == WalkOrientation.PORTRAIT ->
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     }
                 }
                 var session by remember { mutableStateOf(saved) }
@@ -514,6 +519,7 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
+                        onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
                         history = walkRuntime.history,
                         avatarBreed = pets.primary?.breedArt,

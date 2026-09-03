@@ -17,15 +17,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,6 +43,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,7 +107,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 실제 GPS 기록 코어 위에 얹은 가로형 산책 게임의 워킹 스켈레톤.
+ * 실제 GPS 기록 코어 위에 얹은 회전 가능한 산책 게임의 워킹 스켈레톤.
  *
  * 지도·권한·Foreground Service는 기존 구현을 그대로 쓰고, 화면의 상태만
  * 준비 → 기록 → 일시정지 → 저장 → 결과 순서로 분명하게 나눈다.
@@ -110,6 +115,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun WalkScreen(
     onBack: () -> Unit,
+    onRequestOrientation: (WalkOrientation) -> Unit,
     walkController: WalkTrackingController,
     history: WalkHistory,
     modifier: Modifier = Modifier,
@@ -126,25 +132,32 @@ fun WalkScreen(
     val tracking by walkController.state.collectAsState()
     val trackingActive = tracking.trail.state != TrackingState.OFF
 
-    var selectedDogIds by remember { mutableStateOf(pets.map { it.id }.toSet()) }
-    LaunchedEffect(pets, trackingActive) {
-        if (!trackingActive && tracking.completedSessionId == null) {
-            selectedDogIds = pets.map { it.id }.toSet()
+    val petIds = pets.map { it.id }.toSet()
+    var selectedDogIds by rememberSaveable(stateSaver = StringSetSaver) {
+        mutableStateOf(petIds)
+    }
+    var knownPetIds by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(petIds) }
+    LaunchedEffect(petIds, trackingActive, tracking.completedSessionId) {
+        // 등록 강아지가 실제로 바뀌었을 때만 기본 선택을 다시 만든다. 단순한 화면 회전은
+        // 같은 id 집합을 복원하므로 사용자가 고른 다견 선택을 덮지 않는다.
+        if (!trackingActive && tracking.completedSessionId == null && petIds != knownPetIds) {
+            selectedDogIds = petIds
+            knownPetIds = petIds
         }
     }
 
     var granted by remember { mutableStateOf(inspectionMode || hasLocationPermission(context)) }
     var precise by remember { mutableStateOf(inspectionMode || hasPreciseLocation(context)) }
     var currentPosition by remember { mutableStateOf<GeoPoint?>(null) }
-    var followDevice by remember { mutableStateOf(true) }
+    var followDevice by rememberSaveable { mutableStateOf(true) }
     var locationError by remember { mutableStateOf<String?>(null) }
     var locating by remember { mutableStateOf(false) }
     var centerOn by remember { mutableStateOf<GeoPoint?>(null) }
     var centerZoom by remember { mutableStateOf<Double?>(null) }
     var completedSummary by remember { mutableStateOf<WalkSummary?>(null) }
-    var selectedMomentId by remember { mutableStateOf<String?>(null) }
+    var selectedMomentId by rememberSaveable { mutableStateOf<String?>(null) }
     var momentNotice by remember { mutableStateOf<String?>(null) }
-    var resultExpanded by remember { mutableStateOf(true) }
+    var resultExpanded by rememberSaveable { mutableStateOf(true) }
 
     fun acceptLocation(sample: LocationSample) {
         currentPosition = sample.point
@@ -331,6 +344,7 @@ fun WalkScreen(
                 selectedDogIds = if (id in selectedDogIds) selectedDogIds - id else selectedDogIds + id
             },
             onHome = if (tracking.completedSessionId != null) ::closeResultAndGoHome else onBack,
+            onRequestOrientation = onRequestOrientation,
             onOpenSettings = { openAppSettings(context) },
             onLocate = { locateOnce(recenter = true) },
             onStart = ::startWalk,
@@ -364,6 +378,7 @@ private fun WalkGameOverlay(
     resultExpanded: Boolean,
     onToggleDog: (String) -> Unit,
     onHome: () -> Unit,
+    onRequestOrientation: (WalkOrientation) -> Unit,
     onOpenSettings: () -> Unit,
     onLocate: () -> Unit,
     onStart: () -> Unit,
@@ -385,60 +400,143 @@ private fun WalkGameOverlay(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val layoutMode = walkLayoutMode(maxWidth.value, maxHeight.value)
+        val notice = when {
+            !locationGranted -> "산책 경로를 기록하려면 위치 권한이 필요해요."
+            locationGranted && !preciseLocation -> "정확한 위치를 켜야 경로를 기록할 수 있어요."
+            locationError != null -> locationError
+            tracking.errorMessage != null -> tracking.errorMessage
+            tracking.trail.state == TrackingState.RECORDING -> "동선을 기록하고 있어요"
+            tracking.trail.state == TrackingState.PAUSED -> "산책이 잠시 멈춰 있어요"
+            else -> "산책을 시작하면 지나온 동선이 지도에 남아요"
+        }
+        val momentEnabled = tracking.latestMomentFix
+            ?.isFreshEnoughForMoment(realtimeMillis * 1_000_000L) == true
+
         Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
-            Row(
-                Modifier.align(Alignment.TopStart).zIndex(10f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                WalkHomeButton(onHome)
-                WalkStatsHud(
-                    elapsedMillis = tracking.elapsedMillisAt(realtimeMillis),
-                    distanceMeters = tracking.trail.distanceMeters,
-                )
-            }
-            MomentHud(
-                nowMillis = wallClockMillis,
-                outside = outside,
-                gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
-                modifier = Modifier.align(Alignment.TopEnd),
-            )
-
-            Column(
-                Modifier.align(Alignment.BottomStart),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val notice = when {
-                    !locationGranted -> "산책 경로를 기록하려면 위치 권한이 필요해요."
-                    locationGranted && !preciseLocation ->
-                        "정확한 위치를 켜야 경로를 기록할 수 있어요."
-                    locationError != null -> locationError
-                    tracking.errorMessage != null -> tracking.errorMessage
-                    tracking.trail.state == TrackingState.RECORDING -> "동선을 기록하고 있어요"
-                    tracking.trail.state == TrackingState.PAUSED -> "산책이 잠시 멈춰 있어요"
-                    else -> "산책을 시작하면 지나온 동선이 지도에 남아요"
+            if (layoutMode == WalkLayoutMode.LANDSCAPE) {
+                Row(
+                    Modifier.align(Alignment.TopStart).zIndex(10f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WalkHomeButton(onHome)
+                    WalkStatsHud(
+                        elapsedMillis = tracking.elapsedMillisAt(realtimeMillis),
+                        distanceMeters = tracking.trail.distanceMeters,
+                    )
                 }
-                StatusPill(
-                    label = notice,
-                    error = !preciseLocation || locationError != null || tracking.errorMessage != null,
-                    actionLabel = if (!locationGranted || !preciseLocation) "설정" else null,
-                    onAction = onOpenSettings,
+                Row(
+                    Modifier.align(Alignment.TopEnd),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WalkRotateButton(layoutMode, onRequestOrientation)
+                    MomentHud(
+                        nowMillis = wallClockMillis,
+                        outside = outside,
+                        gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
+                    )
+                }
+                Column(
+                    Modifier.align(Alignment.BottomStart),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatusPill(
+                        label = notice,
+                        error = !preciseLocation || locationError != null || tracking.errorMessage != null,
+                        actionLabel = if (!locationGranted || !preciseLocation) "설정" else null,
+                        onAction = onOpenSettings,
+                    )
+                    DaengsFloatingButton(
+                        label = if (locating) "찾는 중" else "◎ 내 위치",
+                        enabled = locationGranted && !locating,
+                        onClick = onLocate,
+                    )
+                }
+                if (tracking.trail.state == TrackingState.RECORDING) {
+                    WalkMomentDock(
+                        layoutMode = layoutMode,
+                        enabled = momentEnabled,
+                        onAddMoment = onAddMoment,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
+                }
+                WalkPrimaryControl(
+                    tracking = tracking,
+                    resultExpanded = resultExpanded,
+                    pets = pets,
+                    selectedDogIds = selectedDogIds,
+                    locationReady = locationGranted && preciseLocation,
+                    onToggleDog = onToggleDog,
+                    onStart = onStart,
+                    onPause = onPause,
+                    onShowResult = onShowResult,
+                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
-                DaengsFloatingButton(
-                    label = if (locating) "찾는 중" else "◎ 내 위치",
-                    enabled = locationGranted && !locating,
-                    onClick = onLocate,
-                )
-            }
-
-            if (tracking.trail.state == TrackingState.RECORDING) {
-                WalkMomentDock(
-                    enabled = tracking.latestMomentFix
-                        ?.isFreshEnoughForMoment(realtimeMillis * 1_000_000L) == true,
-                    onAddMoment = onAddMoment,
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                )
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().align(Alignment.TopStart),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WalkHomeButton(onHome)
+                    WalkRotateButton(layoutMode, onRequestOrientation)
+                }
+                Column(
+                    Modifier.align(Alignment.TopCenter).padding(top = 52.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    WalkStatsHud(
+                        elapsedMillis = tracking.elapsedMillisAt(realtimeMillis),
+                        distanceMeters = tracking.trail.distanceMeters,
+                    )
+                    MomentHud(
+                        nowMillis = wallClockMillis,
+                        outside = outside,
+                        gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
+                    )
+                }
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .widthIn(max = 380.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (tracking.trail.state == TrackingState.RECORDING) {
+                        WalkMomentDock(
+                            layoutMode = layoutMode,
+                            enabled = momentEnabled,
+                            onAddMoment = onAddMoment,
+                        )
+                    }
+                    StatusPill(
+                        label = notice,
+                        error = !preciseLocation || locationError != null || tracking.errorMessage != null,
+                        actionLabel = if (!locationGranted || !preciseLocation) "설정" else null,
+                        onAction = onOpenSettings,
+                    )
+                    DaengsFloatingButton(
+                        label = if (locating) "찾는 중" else "◎ 내 위치",
+                        enabled = locationGranted && !locating,
+                        onClick = onLocate,
+                    )
+                    WalkPrimaryControl(
+                        tracking = tracking,
+                        resultExpanded = resultExpanded,
+                        pets = pets,
+                        selectedDogIds = selectedDogIds,
+                        locationReady = locationGranted && preciseLocation,
+                        onToggleDog = onToggleDog,
+                        onStart = onStart,
+                        onPause = onPause,
+                        onShowResult = onShowResult,
+                    )
+                }
             }
 
             momentNotice?.let {
@@ -447,33 +545,7 @@ private fun WalkGameOverlay(
                     error = false,
                     actionLabel = null,
                     onAction = {},
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            }
-
-            when {
-                tracking.completedSessionId != null && !resultExpanded -> DaengsFloatingButton(
-                    label = "결과 다시 보기",
-                    onClick = onShowResult,
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                )
-                tracking.completedSessionId == null &&
-                    tracking.finishingSessionId == null &&
-                    tracking.trail.state == TrackingState.RECORDING -> WalkRoundButton(
-                    label = "Ⅱ",
-                    caption = "잠시 멈춤",
-                    onClick = onPause,
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                )
-                tracking.completedSessionId == null &&
-                    tracking.finishingSessionId == null &&
-                    tracking.trail.state == TrackingState.OFF -> ReadyCard(
-                    pets = pets,
-                    selectedDogIds = selectedDogIds,
-                    onToggleDog = onToggleDog,
-                    enabled = locationGranted && preciseLocation,
-                    onStart = onStart,
-                    modifier = Modifier.align(Alignment.BottomEnd),
+                    modifier = Modifier.align(Alignment.Center),
                 )
             }
         }
@@ -485,6 +557,7 @@ private fun WalkGameOverlay(
                 if (summary == null) SavingCard("결과를 준비하고 있어요")
                 else WalkResultCard(
                     summary = summary,
+                    layoutMode = layoutMode,
                     momentGroupCount = moments.size,
                     momentActionCount = moments.sumOf { it.actions.size },
                     onReviewMap = onReviewMap,
@@ -497,16 +570,72 @@ private fun WalkGameOverlay(
             }
         }
         if (modalVisible) {
-            Box(
+            Row(
                 Modifier
+                    .fillMaxWidth()
                     .align(Alignment.TopStart)
                     .systemBarsPadding()
                     .padding(12.dp)
                     .zIndex(30f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 WalkHomeButton(onHome)
+                WalkRotateButton(layoutMode, onRequestOrientation)
             }
         }
+    }
+}
+
+@Composable
+private fun WalkRotateButton(
+    layoutMode: WalkLayoutMode,
+    onRequestOrientation: (WalkOrientation) -> Unit,
+) {
+    DaengsFloatingButton(
+        label = if (layoutMode == WalkLayoutMode.PORTRAIT) "가로 보기" else "세로 보기",
+        onClick = { onRequestOrientation(layoutMode.oppositeOrientation) },
+        modifier = Modifier.semantics { contentDescription = "산책 화면 회전" },
+    )
+}
+
+@Composable
+private fun WalkPrimaryControl(
+    tracking: WalkTrackingState,
+    resultExpanded: Boolean,
+    pets: List<Pet>,
+    selectedDogIds: Set<String>,
+    locationReady: Boolean,
+    onToggleDog: (String) -> Unit,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onShowResult: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when {
+        tracking.completedSessionId != null && !resultExpanded -> DaengsFloatingButton(
+            label = "결과 다시 보기",
+            onClick = onShowResult,
+            modifier = modifier,
+        )
+        tracking.completedSessionId == null &&
+            tracking.finishingSessionId == null &&
+            tracking.trail.state == TrackingState.RECORDING -> WalkRoundButton(
+            label = "Ⅱ",
+            caption = "잠시 멈춤",
+            onClick = onPause,
+            modifier = modifier,
+        )
+        tracking.completedSessionId == null &&
+            tracking.finishingSessionId == null &&
+            tracking.trail.state == TrackingState.OFF -> ReadyCard(
+            pets = pets,
+            selectedDogIds = selectedDogIds,
+            onToggleDog = onToggleDog,
+            enabled = locationReady,
+            onStart = onStart,
+            modifier = modifier,
+        )
     }
 }
 
@@ -540,18 +669,32 @@ private fun WalkHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 /**
  * 산책 중 현재 GPS 자리에 행동 책갈피를 꽂는 네 버튼.
  *
- * 오른손 엄지로 누르기 쉽게 가로 화면 오른쪽에 세로로 둔다. GPS가 아직 없으면 보이되
- * 비활성화해, 버튼이 사라져서 기능을 못 찾는 문제와 엉뚱한 옛 좌표를 쓰는 문제를 함께 막는다.
+ * 가로에서는 오른손 엄지로 누르기 쉽게 오른쪽에 세로로 두고, 세로에서는 지도 폭을
+ * 가리지 않도록 하단에 2×2로 둔다. GPS가 아직 없으면 보이되 비활성화해, 버튼이
+ * 사라져서 기능을 못 찾는 문제와 엉뚱한 옛 좌표를 쓰는 문제를 함께 막는다.
  */
 @Composable
 private fun WalkMomentDock(
+    layoutMode: WalkLayoutMode,
     enabled: Boolean,
     onAddMoment: (WalkMomentType) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        WalkMomentType.entries.forEach { type ->
-            WalkMomentButton(type = type, enabled = enabled, onClick = { onAddMoment(type) })
+    if (layoutMode == WalkLayoutMode.LANDSCAPE) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            WalkMomentType.entries.forEach { type ->
+                WalkMomentButton(type = type, enabled = enabled, onClick = { onAddMoment(type) })
+            }
+        }
+    } else {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            WalkMomentType.entries.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { type ->
+                        WalkMomentButton(type = type, enabled = enabled, onClick = { onAddMoment(type) })
+                    }
+                }
+            }
         }
     }
 }
@@ -674,7 +817,12 @@ private fun ReadyCard(
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier.width(300.dp), color = CardWhite, shape = RoundedCornerShape(20.dp), shadowElevation = 7.dp) {
+    Surface(
+        modifier.widthIn(max = 300.dp).fillMaxWidth(),
+        color = CardWhite,
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 7.dp,
+    ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("산책을 시작할까요?", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             if (pets.isNotEmpty()) {
@@ -726,15 +874,20 @@ private fun ModalScrim(content: @Composable () -> Unit) {
                     onClick = {},
                 ),
         )
-        Box(Modifier.align(Alignment.Center)) { content() }
+        Box(Modifier.align(Alignment.Center).padding(horizontal = 16.dp)) { content() }
     }
 }
 
 @Composable
 private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit) {
-    Surface(color = CardWhite, shape = RoundedCornerShape(24.dp), shadowElevation = 10.dp) {
+    Surface(
+        modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(),
+        color = CardWhite,
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 10.dp,
+    ) {
         Column(
-            Modifier.width(320.dp).padding(22.dp),
+            Modifier.padding(22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -748,7 +901,12 @@ private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit) {
 
 @Composable
 private fun SavingCard(label: String) {
-    Surface(color = CardWhite, shape = RoundedCornerShape(22.dp), shadowElevation = 10.dp) {
+    Surface(
+        modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth(),
+        color = CardWhite,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 10.dp,
+    ) {
         Row(
             Modifier.padding(horizontal = 26.dp, vertical = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -763,24 +921,50 @@ private fun SavingCard(label: String) {
 @Composable
 private fun WalkResultCard(
     summary: WalkSummary,
+    layoutMode: WalkLayoutMode,
     momentGroupCount: Int,
     momentActionCount: Int,
     onReviewMap: () -> Unit,
     onClose: () -> Unit,
 ) {
-    Surface(color = CardWhite, shape = RoundedCornerShape(24.dp), shadowElevation = 12.dp) {
+    Surface(
+        modifier = Modifier.widthIn(max = 470.dp).fillMaxWidth(),
+        color = CardWhite,
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 12.dp,
+    ) {
         Column(
-            Modifier.width(470.dp).padding(22.dp),
+            Modifier.padding(22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("산책 완료!", color = DaengPinkDeep, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                ResultMetric("시작", formatClock(summary.startedAtMillis))
-                ResultMetric("종료", summary.endedAtMillis?.let(::formatClock) ?: "-")
-                ResultMetric("산책 시간", formatDuration(summary.activeDurationMillis))
-                ResultMetric("이동 거리", formatDistance(summary.distanceMeters))
-                ResultMetric("평균 속도", formatAverageSpeed(summary))
+            if (layoutMode == WalkLayoutMode.LANDSCAPE) {
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    ResultMetric("시작", formatClock(summary.startedAtMillis))
+                    ResultMetric("종료", summary.endedAtMillis?.let(::formatClock) ?: "-")
+                    ResultMetric("산책 시간", formatDuration(summary.activeDurationMillis))
+                    ResultMetric("이동 거리", formatDistance(summary.distanceMeters))
+                    ResultMetric("평균 속도", formatAverageSpeed(summary))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        ResultMetric("시작", formatClock(summary.startedAtMillis))
+                        ResultMetric("종료", summary.endedAtMillis?.let(::formatClock) ?: "-")
+                        ResultMetric("산책 시간", formatDuration(summary.activeDurationMillis))
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        ResultMetric("이동 거리", formatDistance(summary.distanceMeters))
+                        ResultMetric("평균 속도", formatAverageSpeed(summary))
+                    }
+                }
             }
             if (momentGroupCount > 0) {
                 Text(
@@ -789,18 +973,25 @@ private fun WalkResultCard(
                     fontSize = 12.sp,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                WalkWideAction(
-                    label = "방으로 돌아가기",
-                    accent = false,
-                    buttonWidth = 190.dp,
-                    onClick = onClose,
-                )
-                WalkWideAction(
-                    label = "지도 둘러보기",
-                    buttonWidth = 190.dp,
-                    onClick = onReviewMap,
-                )
+            if (layoutMode == WalkLayoutMode.LANDSCAPE) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WalkWideAction(
+                        label = "방으로 돌아가기",
+                        accent = false,
+                        buttonWidth = 190.dp,
+                        onClick = onClose,
+                    )
+                    WalkWideAction(
+                        label = "지도 둘러보기",
+                        buttonWidth = 190.dp,
+                        onClick = onReviewMap,
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WalkWideAction("지도 둘러보기", onClick = onReviewMap)
+                    WalkWideAction("방으로 돌아가기", accent = false, onClick = onClose)
+                }
             }
         }
     }
@@ -923,11 +1114,17 @@ private fun hasLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
 
+private val StringSetSaver = Saver<Set<String>, ArrayList<String>>(
+    save = { ArrayList(it) },
+    restore = { it.toSet() },
+)
+
 private val DATE_FORMAT = DateTimeFormatter.ofPattern("M.d E", Locale.KOREAN)
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREAN)
 private val CLOCK_SECONDS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.KOREAN)
 
 @Preview(device = "spec:width=891dp,height=411dp", showBackground = true)
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun WalkReadyPreview() {
     DaengsTheme {
@@ -938,6 +1135,7 @@ private fun WalkReadyPreview() {
                 preciseLocation = true, locating = false, locationError = null,
                 pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
                 momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
                 onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {},
                 onCloseResult = {},
@@ -947,6 +1145,7 @@ private fun WalkReadyPreview() {
 }
 
 @Preview(device = "spec:width=891dp,height=411dp", showBackground = true)
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun WalkRecordingPreview() {
     DaengsTheme {
@@ -964,6 +1163,7 @@ private fun WalkRecordingPreview() {
                 locationGranted = true, preciseLocation = true, locating = false,
                 locationError = null, pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
                 momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
                 onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {}, onCloseResult = {},
             )
@@ -972,6 +1172,7 @@ private fun WalkRecordingPreview() {
 }
 
 @Preview(device = "spec:width=891dp,height=411dp", showBackground = true)
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun WalkPausedPreview() {
     DaengsTheme {
@@ -985,6 +1186,7 @@ private fun WalkPausedPreview() {
                 locationGranted = true, preciseLocation = true, locating = false,
                 locationError = null, pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
                 momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
                 onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {}, onCloseResult = {},
             )
@@ -993,6 +1195,7 @@ private fun WalkPausedPreview() {
 }
 
 @Preview(device = "spec:width=891dp,height=411dp", showBackground = true)
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable
 private fun WalkResultPreview() {
     val summary = WalkSummary(
@@ -1008,6 +1211,7 @@ private fun WalkResultPreview() {
                 preciseLocation = true, locating = false, locationError = null,
                 pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
                 momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
                 onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {},
                 onCloseResult = {},
