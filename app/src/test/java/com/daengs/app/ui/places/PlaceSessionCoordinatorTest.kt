@@ -112,6 +112,33 @@ class PlaceSessionCoordinatorTest {
     }
 
     @Test
+    fun `deactivation cannot leave a cancelled device intent over pinned results`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val session = session(
+            PlaceSearchRepository { request ->
+                requests += request
+                emptyResponse()
+            },
+        )
+        val pinned = GeoPoint(37.51, 127.01)
+        session.searchAt(pinned, PlaceKind.CAFE, preferParking = false)
+        runCurrent()
+        session.requestDeviceSearch(PlaceKind.HOSPITAL, preferParking = false)
+
+        session.deactivate()
+        session.replaceUnsupportedDeviceOrigin(GeoPoint(37.7749, -122.4194))
+        runCurrent()
+
+        assertEquals(1, requests.size)
+        assertEquals(pinned, session.state.value.discovery.origin)
+        assertEquals(PlaceOriginMode.PINNED, session.state.value.discovery.originMode)
+        assertEquals(
+            PlaceSearchOrigin.PinnedMap(pinned),
+            session.state.value.latestIntent?.origin,
+        )
+    }
+
+    @Test
     fun `selecting another place clears journey state for the previous destination`() = runTest {
         val session = session(PlaceSearchRepository { emptyResponse() })
         val first = place("hospital-7", GeoPoint(37.5145, 127.0316))

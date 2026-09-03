@@ -228,5 +228,19 @@ internal class PlaceSessionCoordinator(
 
     private fun invalidatePendingDeviceSearch() {
         intentGeneration++
+        if (latestIntent.value?.origin == PlaceSearchOrigin.CurrentDevice) {
+            latestIntent.value = currentResolvedIntent()
+        }
+    }
+
+    private fun currentResolvedIntent(): PlaceSearchIntent? {
+        val current = discovery.state.value
+        val point = current.origin ?: return null
+        if (current.requestedKinds.isEmpty()) return null
+        val origin = when (current.originMode) {
+            PlaceOriginMode.DEVICE -> PlaceSearchOrigin.DeviceSnapshot(point)
+            PlaceOriginMode.PINNED -> PlaceSearchOrigin.PinnedMap(point)
+        }
+        return PlaceSearchIntent(origin, current.requestedKinds, current.preferParking)
     }
 }
