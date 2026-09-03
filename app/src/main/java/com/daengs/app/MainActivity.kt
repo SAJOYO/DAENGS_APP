@@ -43,7 +43,7 @@ import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
-import com.daengs.app.ui.places.PlacesScreen
+import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkOrientation
@@ -491,9 +491,9 @@ class MainActivity : ComponentActivity() {
                         accessTokenProvider = freshToken,
                     )
 
-                    Screen.Places -> PlacesScreen(
+                    Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
-                        avatarBreed = pets.primary?.breedArt,
+                        primaryPet = pets.primary,
                     )
 
                     Screen.WalkHistory -> WalkHistoryScreen(

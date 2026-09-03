@@ -44,5 +44,7 @@ class PlaceApi(
         }
 }
 
-class PlaceApiException(status: Int, body: String) :
-    IllegalStateException("Place search failed ($status): $body")
+class PlaceApiException(
+    val status: Int,
+    val responseBody: String,
+) : IllegalStateException("Place search failed ($status): $responseBody")
