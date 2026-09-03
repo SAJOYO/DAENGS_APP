@@ -8,12 +8,10 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.journey.HttpJourneyRepository
 import com.daengs.app.journey.JourneyApi
 import com.daengs.app.journey.JourneyRepository
-import com.daengs.app.location.FeedStatus
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
-import com.daengs.app.location.LocationTracker
 import com.daengs.app.map.features.journey.PlaceJourneyController
 import com.daengs.app.map.features.journey.PlaceJourneyState
 import com.daengs.app.map.features.places.DEFAULT_PLACE_KIND
@@ -29,77 +27,12 @@ import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.place.PlaceResult
 import com.daengs.app.place.PlaceSearchRepository
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-sealed interface PlaceLocationState {
-    data object PermissionRequired : PlaceLocationState
-
-    data object PermissionPermanentlyDenied : PlaceLocationState
-
-    data class Locating(val lastKnown: GeoPoint?) : PlaceLocationState
-
-    data class Ready(val point: GeoPoint) : PlaceLocationState
-
-    data class Failed(
-        val failure: PlaceLocationFailure,
-        val lastKnown: GeoPoint?,
-    ) : PlaceLocationState
-
-    data class Unsupported(val point: GeoPoint) : PlaceLocationState
-}
-
-enum class PlaceLocationFailure {
-    MOCK_LOCATION,
-    UNAVAILABLE,
-    UPDATE_FAILED,
-}
-
-val PlaceLocationState.currentPosition: GeoPoint?
-    get() = when (this) {
-        is PlaceLocationState.Locating -> lastKnown
-        is PlaceLocationState.Ready -> point
-        is PlaceLocationState.Failed -> lastKnown
-        is PlaceLocationState.Unsupported -> point
-        PlaceLocationState.PermissionRequired,
-        PlaceLocationState.PermissionPermanentlyDenied,
-        -> null
-    }
-
-val PlaceLocationState.devicePosition: GeoPoint?
-    get() = when (this) {
-        is PlaceLocationState.Locating -> lastKnown
-        is PlaceLocationState.Ready -> point
-        is PlaceLocationState.Failed -> lastKnown
-        is PlaceLocationState.Unsupported,
-        PlaceLocationState.PermissionRequired,
-        PlaceLocationState.PermissionPermanentlyDenied,
-        -> null
-    }
-
-val PlaceLocationState.locating: Boolean get() = this is PlaceLocationState.Locating
-
-fun PlaceLocationState.userMessage(): String? = when (this) {
-    PlaceLocationState.PermissionRequired -> "주변 시설을 찾으려면 위치 권한이 필요해요."
-    PlaceLocationState.PermissionPermanentlyDenied ->
-        "위치 권한이 꺼져 있어요. 설정에서 권한을 허용해주세요."
-    is PlaceLocationState.Failed -> when (failure) {
-        PlaceLocationFailure.MOCK_LOCATION -> "가상 위치로는 주변 장소를 검색할 수 없어요."
-        PlaceLocationFailure.UNAVAILABLE -> "현재 위치를 확인하지 못했습니다."
-        PlaceLocationFailure.UPDATE_FAILED -> "위치 업데이트를 이어가지 못했습니다."
-    }
-    is PlaceLocationState.Unsupported -> "현재는 대한민국 안의 시설만 검색할 수 있어요."
-    is PlaceLocationState.Locating,
-    is PlaceLocationState.Ready,
-    -> null
-}
 
 data class PlacesUiState(
     val location: PlaceLocationState = PlaceLocationState.PermissionRequired,
@@ -132,16 +65,17 @@ sealed interface PlacesAction {
 class PlacesViewModel(
     placeRepository: PlaceSearchRepository,
     journeyRepository: JourneyRepository,
-    private val locationSource: LocationSource,
+    locationSource: LocationSource,
     externalScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
-    private val locationTracker = LocationTracker(runtimeScope)
-    private val mutableLocation = MutableStateFlow<PlaceLocationState>(
-        PlaceLocationState.PermissionRequired,
+    private val location = PlaceLocationCoordinator(
+        source = locationSource,
+        scope = runtimeScope,
     )
-    private var active = false
-    private var locateJob: Job? = null
+    // 위치 관측은 최신 상태로 받아도, 그 관측에 매달린 옛 검색 명령은 실행하면 안 된다.
+    // coordinator의 측위 세대와 별도로 두어 두 생애를 섞지 않는다.
+    private var locationSearchGeneration = 0L
 
     private val discovery = PlaceDiscoveryController(
         repository = placeRepository,
@@ -154,7 +88,7 @@ class PlacesViewModel(
     )
 
     val state: StateFlow<PlacesUiState> = combine(
-        mutableLocation,
+        location.state,
         discovery.state,
         journey.state,
     ) { location, discovery, journey ->
@@ -167,63 +101,35 @@ class PlacesViewModel(
 
     init {
         runtimeScope.launch {
-            locationTracker.updates.collect(::acceptLocationUpdate)
-        }
-        runtimeScope.launch {
-            locationTracker.status.collect { status ->
-                if (status is FeedStatus.Failed) {
-                    mutableLocation.value = PlaceLocationState.Failed(
-                        failure = PlaceLocationFailure.UPDATE_FAILED,
-                        lastKnown = mutableLocation.value.devicePosition,
-                    )
-                }
-            }
+            location.updates.collect(::acceptLocationUpdate)
         }
     }
 
     fun activate(permissionGranted: Boolean) {
-        active = true
-        updatePermission(permissionGranted, permanentlyDenied = false)
+        location.activate(permissionGranted)
+        if (permissionGranted) {
+            startDefaultSearchIfNeeded()
+        } else {
+            invalidatePendingLocationSearch(cancelLocation = true)
+            journey.clear()
+            discovery.clear()
+        }
     }
 
     fun deactivate() {
-        active = false
-        locateJob?.cancel()
-        locateJob = null
-        locationTracker.stop()
+        invalidatePendingLocationSearch(cancelLocation = true)
+        location.deactivate()
         discovery.cancel()
     }
 
     fun updatePermission(granted: Boolean, permanentlyDenied: Boolean) {
         if (!granted) {
-            locateJob?.cancel()
-            locateJob = null
-            locationTracker.stop()
+            invalidatePendingLocationSearch(cancelLocation = true)
             journey.clear()
             discovery.clear()
-            mutableLocation.value = if (permanentlyDenied) {
-                PlaceLocationState.PermissionPermanentlyDenied
-            } else {
-                PlaceLocationState.PermissionRequired
-            }
-            return
         }
-
-        if (mutableLocation.value is PlaceLocationState.PermissionRequired ||
-            mutableLocation.value is PlaceLocationState.PermissionPermanentlyDenied
-        ) {
-            mutableLocation.value = PlaceLocationState.Locating(lastKnown = null)
-        }
-        if (!active) return
-        locationTracker.start(locationSource)
-        if (discovery.state.value.search is PlaceSearchState.Idle) {
-            val known = mutableLocation.value.devicePosition
-            if (known == null) {
-                locateAndSearch(DEFAULT_PLACE_KIND, preferParking = false)
-            } else {
-                beginSearch(known, DEFAULT_PLACE_KIND, preferParking = false)
-            }
-        }
+        location.updatePermission(granted, permanentlyDenied)
+        if (granted && location.isActive) startDefaultSearchIfNeeded()
     }
 
     fun updateDogContext(context: DogSearchContext?) {
@@ -247,40 +153,15 @@ class PlacesViewModel(
     }
 
     fun locateAndSearch(kind: PlaceKind, preferParking: Boolean) {
-        if (mutableLocation.value is PlaceLocationState.PermissionRequired ||
-            mutableLocation.value is PlaceLocationState.PermissionPermanentlyDenied
+        if (location.state.value is PlaceLocationState.PermissionRequired ||
+            location.state.value is PlaceLocationState.PermissionPermanentlyDenied
         ) {
             return
         }
-        locateJob?.cancel()
-        val lastKnown = mutableLocation.value.devicePosition
-        mutableLocation.value = PlaceLocationState.Locating(lastKnown)
-        locateJob = runtimeScope.launch {
-            val sample = try {
-                locationSource.currentLocation()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                mutableLocation.value = PlaceLocationState.Failed(
-                    PlaceLocationFailure.UNAVAILABLE,
-                    lastKnown,
-                )
-                return@launch
-            }
-
-            when {
-                sample.isMock -> mutableLocation.value = PlaceLocationState.Failed(
-                    PlaceLocationFailure.MOCK_LOCATION,
-                    lastKnown,
-                )
-                !PlaceSearchArea.contains(sample.point) -> {
-                    mutableLocation.value = PlaceLocationState.Unsupported(sample.point)
-                    beginSearch(sample.point, kind, preferParking)
-                }
-                else -> {
-                    mutableLocation.value = PlaceLocationState.Ready(sample.point)
-                    beginSearch(sample.point, kind, preferParking)
-                }
+        val generation = ++locationSearchGeneration
+        location.locate { sample ->
+            if (generation == locationSearchGeneration) {
+                beginSearch(sample.point, kind, preferParking)
             }
         }
     }
@@ -291,9 +172,9 @@ class PlacesViewModel(
             discoveryState.originMode == PlaceOriginMode.PINNED
         }
         when {
-            pinned != null -> beginSearch(pinned, kind, preferParking, PlaceOriginMode.PINNED)
-            mutableLocation.value.devicePosition != null -> beginSearch(
-                mutableLocation.value.devicePosition!!,
+            pinned != null -> startSearch(pinned, kind, preferParking, PlaceOriginMode.PINNED)
+            location.state.value.devicePosition != null -> startSearch(
+                location.state.value.devicePosition!!,
                 kind,
                 preferParking,
             )
@@ -302,10 +183,11 @@ class PlacesViewModel(
     }
 
     fun searchAt(point: GeoPoint, kind: PlaceKind, preferParking: Boolean) {
-        beginSearch(point, kind, preferParking, PlaceOriginMode.PINNED)
+        startSearch(point, kind, preferParking, PlaceOriginMode.PINNED)
     }
 
     fun retrySearch() {
+        invalidatePendingLocationSearch()
         discovery.retry()
     }
 
@@ -314,7 +196,7 @@ class PlacesViewModel(
     }
 
     fun loadJourney(place: PlaceResult) {
-        val origin = mutableLocation.value.devicePosition
+        val origin = location.state.value.devicePosition
         if (origin == null) {
             journey.reject(place.key, "현재 위치를 확인한 뒤 길찾기를 다시 눌러주세요.")
         } else {
@@ -336,22 +218,36 @@ class PlacesViewModel(
         discovery.search(origin, listOf(kind), preferParking, originMode)
     }
 
-    private fun acceptLocationUpdate(sample: LocationSample) {
-        if (sample.isMock) {
-            mutableLocation.value = PlaceLocationState.Failed(
-                PlaceLocationFailure.MOCK_LOCATION,
-                mutableLocation.value.devicePosition,
-            )
-            return
-        }
-        if (PlaceSearchArea.contains(sample.point)) {
-            mutableLocation.value = PlaceLocationState.Ready(sample.point)
-            return
-        }
+    private fun startSearch(
+        origin: GeoPoint,
+        kind: PlaceKind,
+        preferParking: Boolean,
+        originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
+    ) {
+        invalidatePendingLocationSearch()
+        beginSearch(origin, kind, preferParking, originMode)
+    }
 
-        mutableLocation.value = PlaceLocationState.Unsupported(sample.point)
+    private fun startDefaultSearchIfNeeded() {
+        if (discovery.state.value.search !is PlaceSearchState.Idle) return
+        val known = location.state.value.devicePosition
+        if (known == null) {
+            locateAndSearch(DEFAULT_PLACE_KIND, preferParking = false)
+        } else {
+            startSearch(known, DEFAULT_PLACE_KIND, preferParking = false)
+        }
+    }
+
+    private fun invalidatePendingLocationSearch(cancelLocation: Boolean = false) {
+        locationSearchGeneration++
+        if (cancelLocation) location.cancelLocate()
+    }
+
+    private fun acceptLocationUpdate(sample: LocationSample) {
+        if (PlaceSearchArea.contains(sample.point)) return
         val currentSearch = discovery.state.value
         if (currentSearch.originMode == PlaceOriginMode.DEVICE) {
+            invalidatePendingLocationSearch(cancelLocation = true)
             journey.clear()
             discovery.search(
                 origin = sample.point,
