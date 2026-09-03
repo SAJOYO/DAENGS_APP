@@ -2,9 +2,8 @@ package com.daengs.app.map.provider.naver
 
 import android.graphics.Color
 import android.graphics.PointF
-import androidx.annotation.DrawableRes
 import android.util.Log
-import com.daengs.app.R
+import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +21,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.graphics.toArgb
 import com.daengs.app.BuildConfig
+import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.completedroute.RouteEndpointKind
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -37,6 +38,7 @@ import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
 import com.naver.maps.map.overlay.PathOverlay
+import com.naver.maps.map.overlay.CircleOverlay
 
 @Composable
 fun NaverMapSurface(
@@ -56,6 +58,8 @@ fun NaverMapSurface(
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
     onSelectMoment: (String) -> Unit = {},
+    onSelectRouteEndpoint: (String) -> Unit = {},
+    onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -64,6 +68,8 @@ fun NaverMapSurface(
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
+    val latestMapTapCallback by rememberUpdatedState(onMapTap)
+    val latestRouteEndpointCallback by rememberUpdatedState(onSelectRouteEndpoint)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
@@ -226,6 +232,14 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
+    DisposableEffect(naverMap) {
+        val map = naverMap
+        map?.setOnMapClickListener { _, coordinate ->
+            latestMapTapCallback(GeoPoint(coordinate.latitude, coordinate.longitude))
+        }
+        onDispose { map?.setOnMapClickListener(null) }
+    }
+
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
     DisposableEffect(naverMap, scene.moments) {
@@ -272,6 +286,102 @@ fun NaverMapSurface(
                 }
         }
         onDispose { lines.forEach { it.map = null } }
+    }
+
+    // 완료 경로는 라이브 trail과 별도다. 완료 화면에서 출발·도착과 끊긴 지점을 더해도
+    // 산책 중 갱신되는 경로 객체의 의미와 수명은 바뀌지 않는다.
+    DisposableEffect(naverMap, scene.completedRoute.paths) {
+        val map = naverMap
+        val lines = if (map == null) {
+            emptyList()
+        } else {
+            scene.completedRoute.paths
+                .filter { it.size >= 2 }
+                .map { path ->
+                    PathOverlay().apply {
+                        coords = path.map(GeoPoint::toLatLng)
+                        width = TRAIL_WIDTH
+                        color = TRAIL_COLOR
+                        outlineWidth = TRAIL_OUTLINE_WIDTH
+                        outlineColor = TRAIL_OUTLINE_COLOR
+                        this.map = map
+                    }
+                }
+        }
+        onDispose { lines.forEach { it.map = null } }
+    }
+
+    DisposableEffect(naverMap, scene.completedRoute.start, scene.completedRoute.end) {
+        val map = naverMap
+        val endpointMarkers = if (map == null) {
+            emptyList()
+        } else {
+            listOfNotNull(scene.completedRoute.start, scene.completedRoute.end).map { endpoint ->
+                Marker().apply {
+                    position = endpoint.point.toLatLng()
+                    captionText = endpoint.label
+                    captionMinZoom = 0.0
+                    width = if (endpoint.selected) ROUTE_ENDPOINT_PX_SELECTED else ROUTE_ENDPOINT_PX
+                    height = if (endpoint.selected) ROUTE_ENDPOINT_PX_SELECTED else ROUTE_ENDPOINT_PX
+                    anchor = MARKER_ANCHOR
+                    icon = OverlayImage.fromResource(
+                        when (endpoint.kind) {
+                            RouteEndpointKind.START -> R.drawable.ic_walk_start
+                            RouteEndpointKind.END -> R.drawable.ic_walk_finish
+                            RouteEndpointKind.START_END -> R.drawable.ic_walk_start_finish
+                        },
+                    )
+                    zIndex = if (endpoint.selected) SELECTED_MARKER_Z else ROUTE_ENDPOINT_Z
+                    isHideCollidedMarkers = false
+                    setOnClickListener {
+                        latestRouteEndpointCallback(endpoint.id)
+                        true
+                    }
+                    this.map = map
+                }
+            }
+        }
+        onDispose { endpointMarkers.forEach { it.map = null } }
+    }
+
+    DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {
+        val map = naverMap
+        val gapDots = if (map == null) {
+            emptyList()
+        } else {
+            scene.completedRoute.gapEndpoints.map { point ->
+                CircleOverlay().apply {
+                    center = point.toLatLng()
+                    radius = ROUTE_GAP_RADIUS_METERS
+                    color = ROUTE_GAP_COLOR
+                    outlineWidth = ROUTE_GAP_OUTLINE_WIDTH
+                    outlineColor = TRAIL_OUTLINE_COLOR
+                    zIndex = ROUTE_GAP_Z
+                    this.map = map
+                }
+            }
+        }
+        onDispose { gapDots.forEach { it.map = null } }
+    }
+
+    DisposableEffect(naverMap, scene.completedRoute.selectedPoint) {
+        val map = naverMap
+        val selectedDot = if (map == null) {
+            null
+        } else {
+            scene.completedRoute.selectedPoint?.let { point ->
+                CircleOverlay().apply {
+                    center = point.toLatLng()
+                    radius = ROUTE_SELECTED_RADIUS_METERS
+                    color = ROUTE_SELECTED_COLOR
+                    outlineWidth = ROUTE_SELECTED_OUTLINE_WIDTH
+                    outlineColor = TRAIL_OUTLINE_COLOR
+                    zIndex = SELECTED_MARKER_Z
+                    this.map = map
+                }
+            }
+        }
+        onDispose { selectedDot?.map = null }
     }
 }
 
@@ -377,6 +487,26 @@ private const val MARKER_PX = 72
 private const val MARKER_PX_SELECTED = 92
 
 private const val MOMENT_MARKER_PX = 64
+
+private const val ROUTE_ENDPOINT_PX = 72
+
+private const val ROUTE_ENDPOINT_PX_SELECTED = 84
+
+private const val ROUTE_ENDPOINT_Z = 80
+
+private const val ROUTE_GAP_Z = 40
+
+private const val ROUTE_GAP_RADIUS_METERS = 4.0
+
+private val ROUTE_GAP_COLOR = Color.argb(220, 112, 108, 105)
+
+private const val ROUTE_GAP_OUTLINE_WIDTH = 3
+
+private const val ROUTE_SELECTED_RADIUS_METERS = 6.0
+
+private val ROUTE_SELECTED_COLOR = DaengPink.toArgb()
+
+private const val ROUTE_SELECTED_OUTLINE_WIDTH = 4
 
 private const val MOMENT_MARKER_PX_SELECTED = 82
 

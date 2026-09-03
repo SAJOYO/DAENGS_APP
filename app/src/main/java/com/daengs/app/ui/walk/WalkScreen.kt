@@ -66,6 +66,7 @@ import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationTracker
+import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.trail.TrailLayerState
 import com.daengs.app.map.layers.trail.toTrailLayerState
@@ -94,6 +95,8 @@ import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.WalkMoment
 import com.daengs.app.walk.WalkMomentOutcome
 import com.daengs.app.walk.WalkMomentType
+import com.daengs.app.walk.WalkRoutePoint
+import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.WalkTrackingController
 import com.daengs.app.walk.WalkTrackingState
@@ -153,8 +156,10 @@ fun WalkScreen(
     var locating by remember { mutableStateOf(false) }
     var centerOn by remember { mutableStateOf<GeoPoint?>(null) }
     var centerZoom by remember { mutableStateOf<Double?>(null) }
-    var completedSummary by remember { mutableStateOf<WalkSummary?>(null) }
+    var completedDetail by remember { mutableStateOf<WalkSessionDetail?>(null) }
     var selectedMomentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedRoutePointKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedRouteSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var momentNotice by remember { mutableStateOf<String?>(null) }
     var resultExpanded by rememberSaveable { mutableStateOf(true) }
 
@@ -192,6 +197,8 @@ fun WalkScreen(
     }
     val beginWalk = {
         selectedMomentId = null
+        selectedRoutePointKey = null
+        selectedRouteSessionId = null
         momentNotice = null
         resultExpanded = true
         walkController.start(selectedDogIds.toList())
@@ -258,8 +265,13 @@ fun WalkScreen(
         if (granted && !trackingActive) locationTracker.start(source) else locationTracker.stop()
     }
     LaunchedEffect(tracking.completedSessionId) {
-        completedSummary = tracking.completedSessionId?.let { history.detail(it) }
-        if (completedSummary != null) {
+        val sessionId = tracking.completedSessionId
+        completedDetail = sessionId?.let { history.sessionDetail(it) }
+        if (selectedRouteSessionId != sessionId) {
+            selectedRoutePointKey = null
+            selectedRouteSessionId = null
+        }
+        if (completedDetail != null) {
             followDevice = false
             resultExpanded = true
         }
@@ -273,12 +285,15 @@ fun WalkScreen(
 
     fun closeResultAndGoHome() {
         walkController.dismissCompletion()
-        completedSummary = null
+        completedDetail = null
+        selectedRoutePointKey = null
+        selectedRouteSessionId = null
         onBack()
     }
 
     fun selectMoment(id: String) {
         selectedMomentId = id
+        selectedRoutePointKey = null
         tracking.momentGroups.firstOrNull { it.id == id }?.let {
             momentNotice = "${it.actionLabels} · ${formatClock(it.latestRecordedAtMillis, seconds = true)}"
         }
@@ -286,12 +301,26 @@ fun WalkScreen(
 
     BackHandler(onBack = if (tracking.completedSessionId != null) ::closeResultAndGoHome else onBack)
 
+    val completedSummary = completedDetail?.summary
+    val completedRoute = completedDetail?.route
+    val selectedRoutePoint = completedRoute?.points?.firstOrNull {
+        selectedRouteSessionId == tracking.completedSessionId &&
+            it.routePointKey == selectedRoutePointKey
+    }
+
+    fun selectRoutePoint(point: WalkRoutePoint?) {
+        selectedRoutePointKey = point?.routePointKey
+        selectedRouteSessionId = tracking.completedSessionId.takeIf { point != null }
+        if (point != null) {
+            selectedMomentId = null
+            momentNotice = null
+        }
+    }
+
     Box(modifier.fillMaxSize()) {
         if (inspectionMode) {
             Box(Modifier.fillMaxSize().background(PinkFaint))
         } else {
-            val completedPaths = completedSummary?.segments.orEmpty()
-                .map { segment -> segment.map { it.point } }
             MapHost(
                 scene = MapScene(
                     currentPosition = currentPosition.takeIf { completedSummary == null },
@@ -303,24 +332,41 @@ fun WalkScreen(
                             selected = moment.id == selectedMomentId,
                         )
                     },
-                    trail = if (completedSummary == null) {
+                    trail = if (completedDetail == null) {
                         tracking.trail.toTrailLayerState()
                     } else {
-                        TrailLayerState(completedPaths)
+                        TrailLayerState()
                     },
+                    completedRoute = completedRoute?.toCompletedRouteLayerState(
+                        selectedPoint = selectedRoutePoint,
+                        formatTime = ::formatClock,
+                    ) ?: CompletedRouteLayerState(),
                 ),
                 searchOrigin = null,
                 followDevice = followDevice,
                 avatarRes = avatarBreed?.portraitRes,
                 centerOn = centerOn,
                 centerZoom = centerZoom,
-                fitBounds = completedPaths.flatten().ifEmpty {
+                fitBounds = completedRoute?.bounds.orEmpty().ifEmpty {
                     listOfNotNull(completedSummary?.anchor)
                 }.takeIf { completedSummary != null && it.isNotEmpty() },
                 onCameraIdle = {},
                 onCameraGesture = { followDevice = false },
                 onSelectPlace = {},
                 onSelectMoment = ::selectMoment,
+                onSelectRouteEndpoint = { id ->
+                    selectRoutePoint(
+                        when (id) {
+                            ROUTE_START_ID -> completedRoute?.start
+                            ROUTE_END_ID -> completedRoute?.end
+                            ROUTE_START_END_ID -> completedRoute?.end
+                            else -> null
+                        },
+                    )
+                },
+                onMapTap = { point ->
+                    selectRoutePoint(completedRoute?.nearestPointTo(point, ROUTE_POINT_TAP_RADIUS_METERS))
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -337,6 +383,7 @@ fun WalkScreen(
             selectedDogIds = selectedDogIds,
             moments = tracking.momentGroups,
             momentNotice = momentNotice,
+            selectedRoutePoint = selectedRoutePoint,
             resultExpanded = resultExpanded,
             onToggleDog = { id ->
                 selectedDogIds = if (id in selectedDogIds) selectedDogIds - id else selectedDogIds + id
@@ -353,6 +400,7 @@ fun WalkScreen(
             },
             onStop = walkController::stop,
             onAddMoment = walkController::recordMoment,
+            onClearRoutePoint = { selectRoutePoint(null) },
             onReviewMap = { resultExpanded = false },
             onShowResult = { resultExpanded = true },
             onCloseResult = ::closeResultAndGoHome,
@@ -373,6 +421,7 @@ private fun WalkGameOverlay(
     selectedDogIds: Set<String>,
     moments: List<WalkMoment>,
     momentNotice: String?,
+    selectedRoutePoint: WalkRoutePoint?,
     resultExpanded: Boolean,
     onToggleDog: (String) -> Unit,
     onHome: () -> Unit,
@@ -384,6 +433,7 @@ private fun WalkGameOverlay(
     onResume: () -> Unit,
     onStop: () -> Unit,
     onAddMoment: (WalkMomentType) -> Unit,
+    onClearRoutePoint: () -> Unit,
     onReviewMap: () -> Unit,
     onShowResult: () -> Unit,
     onCloseResult: () -> Unit,
@@ -400,7 +450,10 @@ private fun WalkGameOverlay(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val layoutMode = walkLayoutMode(maxWidth.value, maxHeight.value)
+        val elapsedMillis = summary?.activeDurationMillis ?: tracking.elapsedMillisAt(realtimeMillis)
+        val distanceMeters = summary?.distanceMeters ?: tracking.trail.distanceMeters
         val notice = when {
+            summary != null -> "경로 가까이를 누르면 그 지점의 기록을 볼 수 있어요"
             !locationGranted -> "산책 경로를 기록하려면 위치 권한이 필요해요."
             locationGranted && !preciseLocation -> "정확한 위치를 켜야 경로를 기록할 수 있어요."
             locationError != null -> locationError
@@ -421,8 +474,8 @@ private fun WalkGameOverlay(
                 ) {
                     WalkHomeButton(onHome)
                     WalkStatsHud(
-                        elapsedMillis = tracking.elapsedMillisAt(realtimeMillis),
-                        distanceMeters = tracking.trail.distanceMeters,
+                        elapsedMillis = elapsedMillis,
+                        distanceMeters = distanceMeters,
                     )
                 }
                 Row(
@@ -431,11 +484,13 @@ private fun WalkGameOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     WalkRotateButton(layoutMode, onRequestOrientation)
-                    MomentHud(
-                        nowMillis = wallClockMillis,
-                        outside = outside,
-                        gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
-                    )
+                    if (summary == null) {
+                        MomentHud(
+                            nowMillis = wallClockMillis,
+                            outside = outside,
+                            gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
+                        )
+                    } else CompletedWalkHud(summary)
                 }
                 Column(
                     Modifier.align(Alignment.BottomStart),
@@ -447,11 +502,13 @@ private fun WalkGameOverlay(
                         actionLabel = if (!locationGranted || !preciseLocation) "설정" else null,
                         onAction = onOpenSettings,
                     )
-                    DaengsFloatingButton(
-                        label = if (locating) "찾는 중" else "◎ 내 위치",
-                        enabled = locationGranted && !locating,
-                        onClick = onLocate,
-                    )
+                    if (summary == null) {
+                        DaengsFloatingButton(
+                            label = if (locating) "찾는 중" else "◎ 내 위치",
+                            enabled = locationGranted && !locating,
+                            onClick = onLocate,
+                        )
+                    }
                 }
                 if (tracking.trail.state == TrackingState.RECORDING) {
                     WalkMomentDock(
@@ -488,14 +545,16 @@ private fun WalkGameOverlay(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     WalkStatsHud(
-                        elapsedMillis = tracking.elapsedMillisAt(realtimeMillis),
-                        distanceMeters = tracking.trail.distanceMeters,
+                        elapsedMillis = elapsedMillis,
+                        distanceMeters = distanceMeters,
                     )
-                    MomentHud(
-                        nowMillis = wallClockMillis,
-                        outside = outside,
-                        gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
-                    )
+                    if (summary == null) {
+                        MomentHud(
+                            nowMillis = wallClockMillis,
+                            outside = outside,
+                            gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
+                        )
+                    } else CompletedWalkHud(summary)
                 }
                 Column(
                     Modifier
@@ -518,11 +577,13 @@ private fun WalkGameOverlay(
                         actionLabel = if (!locationGranted || !preciseLocation) "설정" else null,
                         onAction = onOpenSettings,
                     )
-                    DaengsFloatingButton(
-                        label = if (locating) "찾는 중" else "◎ 내 위치",
-                        enabled = locationGranted && !locating,
-                        onClick = onLocate,
-                    )
+                    if (summary == null) {
+                        DaengsFloatingButton(
+                            label = if (locating) "찾는 중" else "◎ 내 위치",
+                            enabled = locationGranted && !locating,
+                            onClick = onLocate,
+                        )
+                    }
                     WalkPrimaryControl(
                         tracking = tracking,
                         resultExpanded = resultExpanded,
@@ -537,7 +598,22 @@ private fun WalkGameOverlay(
                 }
             }
 
-            momentNotice?.let {
+            if (selectedRoutePoint != null) {
+                WalkRoutePointCard(
+                    point = selectedRoutePoint,
+                    onClose = onClearRoutePoint,
+                    modifier = Modifier
+                        .align(
+                            if (layoutMode == WalkLayoutMode.LANDSCAPE) {
+                                Alignment.BottomCenter
+                            } else {
+                                Alignment.Center
+                            },
+                        )
+                        .widthIn(max = 470.dp)
+                        .fillMaxWidth(),
+                )
+            } else momentNotice?.let {
                 StatusPill(
                     label = it,
                     error = false,
@@ -749,6 +825,67 @@ private fun MomentHud(
                 color = TextMuted,
                 fontSize = 11.sp,
             )
+        }
+    }
+}
+
+@Composable
+private fun CompletedWalkHud(summary: WalkSummary, modifier: Modifier = Modifier) {
+    HudSurface(modifier) {
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                formatDate(summary.startedAtMillis),
+                color = TextDark,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "${formatClock(summary.startedAtMillis)}–${summary.endedAtMillis?.let(::formatClock) ?: "-"} · 저장된 경로",
+                color = TextMuted,
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WalkRoutePointCard(
+    point: WalkRoutePoint,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = CardWhite.copy(alpha = 0.97f),
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 8.dp,
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "경로 지점 · ${formatClock(point.capturedAtMillis, seconds = true)}",
+                    color = TextDark,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "닫기",
+                    color = DaengPinkDeep,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(onClick = onClose).padding(4.dp),
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                ResultMetric("활동 시간", formatDuration(point.activeElapsedMillis))
+                ResultMetric("누적 거리", formatDistance(point.cumulativeDistanceMeters))
+                ResultMetric("구간 속도", formatDerivedSpeed(point.derivedSpeedMetersPerSecond))
+                ResultMetric("GPS 정확도", point.accuracyMeters?.let { "±${it.roundToInt()} m" } ?: "-")
+            }
         }
     }
 }
@@ -1058,6 +1195,11 @@ internal fun formatAverageSpeed(summary: WalkSummary): String {
     return "%.1f km/h".format(Locale.US, kmPerHour)
 }
 
+internal fun formatDerivedSpeed(metersPerSecond: Double?): String =
+    metersPerSecond?.takeIf { it.isFinite() && it >= 0.0 }
+        ?.let { "%.1f km/h".format(Locale.US, it * 3.6) }
+        ?: "-"
+
 private fun momentHeadline(nowMillis: Long, outside: OutsideSnapshot): String {
     val date = DATE_FORMAT.format(Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()))
     if (!outside.known) return "$date · 날씨 확인 중"
@@ -1074,6 +1216,9 @@ private fun momentHeadline(nowMillis: Long, outside: OutsideSnapshot): String {
 private fun formatClock(millis: Long, seconds: Boolean = false): String =
     (if (seconds) CLOCK_SECONDS_FORMAT else CLOCK_FORMAT)
         .format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+
+private fun formatDate(millis: Long): String =
+    DATE_FORMAT.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
 
 private fun gpsLabel(granted: Boolean, precise: Boolean, sample: LocationSample?): String = when {
     !granted -> "GPS 권한 필요"
@@ -1117,6 +1262,10 @@ private val StringSetSaver = Saver<Set<String>, ArrayList<String>>(
     restore = { it.toSet() },
 )
 
+private val WalkRoutePoint.routePointKey: String get() = "$segmentIndex:$pointIndex"
+
+private const val ROUTE_POINT_TAP_RADIUS_METERS = 35.0
+
 private val DATE_FORMAT = DateTimeFormatter.ofPattern("M.d E", Locale.KOREAN)
 private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREAN)
 private val CLOCK_SECONDS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.KOREAN)
@@ -1132,10 +1281,12 @@ private fun WalkReadyPreview() {
                 outside = OutsideSnapshot.DEFAULT, locationGranted = true,
                 preciseLocation = true, locating = false, locationError = null,
                 pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
-                momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                momentNotice = null, selectedRoutePoint = null, resultExpanded = true,
+                onToggleDog = {}, onHome = {},
                 onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
-                onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {},
+                onStop = {}, onAddMoment = {}, onClearRoutePoint = {},
+                onReviewMap = {}, onShowResult = {},
                 onCloseResult = {},
             )
         }
@@ -1160,10 +1311,12 @@ private fun WalkRecordingPreview() {
                 summary = null, outside = OutsideSnapshot.DEFAULT,
                 locationGranted = true, preciseLocation = true, locating = false,
                 locationError = null, pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
-                momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                momentNotice = null, selectedRoutePoint = null, resultExpanded = true,
+                onToggleDog = {}, onHome = {},
                 onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
-                onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {}, onCloseResult = {},
+                onStop = {}, onAddMoment = {}, onClearRoutePoint = {},
+                onReviewMap = {}, onShowResult = {}, onCloseResult = {},
             )
         }
     }
@@ -1183,10 +1336,12 @@ private fun WalkPausedPreview() {
                 summary = null, outside = OutsideSnapshot.DEFAULT,
                 locationGranted = true, preciseLocation = true, locating = false,
                 locationError = null, pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
-                momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                momentNotice = null, selectedRoutePoint = null, resultExpanded = true,
+                onToggleDog = {}, onHome = {},
                 onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
-                onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {}, onCloseResult = {},
+                onStop = {}, onAddMoment = {}, onClearRoutePoint = {},
+                onReviewMap = {}, onShowResult = {}, onCloseResult = {},
             )
         }
     }
@@ -1208,11 +1363,40 @@ private fun WalkResultPreview() {
                 outside = OutsideSnapshot.DEFAULT, locationGranted = true,
                 preciseLocation = true, locating = false, locationError = null,
                 pets = emptyList(), selectedDogIds = emptySet(), moments = emptyList(),
-                momentNotice = null, resultExpanded = true, onToggleDog = {}, onHome = {},
+                momentNotice = null, selectedRoutePoint = null, resultExpanded = true,
+                onToggleDog = {}, onHome = {},
                 onRequestOrientation = {},
                 onOpenSettings = {}, onLocate = {}, onStart = {}, onPause = {}, onResume = {},
-                onStop = {}, onAddMoment = {}, onReviewMap = {}, onShowResult = {},
+                onStop = {}, onAddMoment = {}, onClearRoutePoint = {},
+                onReviewMap = {}, onShowResult = {},
                 onCloseResult = {},
+            )
+        }
+    }
+}
+
+@Preview(device = "spec:width=891dp,height=411dp", showBackground = true)
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
+@Composable
+private fun WalkRoutePointCardPreview() {
+    DaengsTheme {
+        Box(
+            Modifier.fillMaxSize().background(PinkFaint).padding(12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            WalkRoutePointCard(
+                point = WalkRoutePoint(
+                    point = GeoPoint(37.5, 127.0),
+                    capturedAtMillis = 1_788_324_820_000L,
+                    accuracyMeters = 7f,
+                    activeElapsedMillis = 754_000L,
+                    cumulativeDistanceMeters = 842.4,
+                    derivedSpeedMetersPerSecond = 1.2,
+                    segmentIndex = 0,
+                    pointIndex = 12,
+                ),
+                onClose = {},
+                modifier = Modifier.widthIn(max = 470.dp).fillMaxWidth(),
             )
         }
     }

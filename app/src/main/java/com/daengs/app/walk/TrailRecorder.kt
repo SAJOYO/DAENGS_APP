@@ -40,8 +40,13 @@ class TrailRecorder(
     private val maxJumpMeters: Double = 200.0,
     private val maxSamples: Int = 5_000,
 ) {
-    private var snapshot = TrailSnapshot()
+    private var state = TrackingState.OFF
+    private val segments = mutableListOf<MutableList<LocationSample>>()
+    private var storedSampleCount = 0
+    private var distanceMeters = 0.0
+    private var skippedLowAccuracy = 0
     private var breakBeforeNext = false
+    private var publishedSnapshot = TrailSnapshot()
 
     init {
         require(minDistanceMeters >= 0.0) { "minDistanceMeters must not be negative" }
@@ -50,80 +55,114 @@ class TrailRecorder(
         require(maxSamples > 0) { "maxSamples must be positive" }
     }
 
-    fun snapshot(): TrailSnapshot = snapshot
+    fun snapshot(): TrailSnapshot = publishedSnapshot
 
     /** 새 산책을 시작하며 이전 화면용 동선을 비운다. */
     fun start(): TrailSnapshot {
+        state = TrackingState.RECORDING
+        segments.clear()
+        storedSampleCount = 0
+        distanceMeters = 0.0
+        skippedLowAccuracy = 0
         breakBeforeNext = false
-        snapshot = TrailSnapshot(state = TrackingState.RECORDING)
-        return snapshot
+        return publishSnapshot()
     }
 
     fun pause(): TrailSnapshot {
-        if (snapshot.state == TrackingState.RECORDING) {
-            snapshot = snapshot.copy(state = TrackingState.PAUSED)
+        if (state == TrackingState.RECORDING) {
+            state = TrackingState.PAUSED
+            return publishSnapshot()
         }
-        return snapshot
+        return publishedSnapshot
     }
 
     fun resume(): TrailSnapshot {
-        if (snapshot.state == TrackingState.PAUSED) {
+        if (state == TrackingState.PAUSED) {
             breakBeforeNext = true
-            snapshot = snapshot.copy(state = TrackingState.RECORDING)
+            state = TrackingState.RECORDING
+            return publishSnapshot()
         }
-        return snapshot
+        return publishedSnapshot
     }
 
     /** 기록을 끝내되 종료 화면에서 쓸 수 있도록 계산된 동선과 거리는 유지한다. */
     fun stop(): TrailSnapshot {
-        snapshot = snapshot.copy(state = TrackingState.OFF)
-        return snapshot
+        state = TrackingState.OFF
+        return publishSnapshot()
     }
 
     fun add(sample: LocationSample): TrailSnapshot {
-        if (snapshot.state != TrackingState.RECORDING) return snapshot
+        if (!accept(sample, trimAfter = true)) return publishedSnapshot
+        return publishSnapshot()
+    }
+
+    /**
+     * 저장된 원본처럼 중간 화면을 만들 필요가 없는 묶음을 한 번에 재생한다.
+     *
+     * [add]를 반복하면 매 fix마다 불변 화면 목록을 복사한다. 과거 산책을 다시 읽을 때는
+     * 마지막 결과만 필요하므로 내부 목록에 먼저 쌓고 한 번만 복사한다.
+     */
+    fun addAll(samples: Iterable<LocationSample>): TrailSnapshot {
+        var changed = false
+        for (sample in samples) changed = accept(sample, trimAfter = false) || changed
+        if (!changed) return publishedSnapshot
+        trim()
+        return publishSnapshot()
+    }
+
+    private fun accept(sample: LocationSample, trimAfter: Boolean): Boolean {
+        if (state != TrackingState.RECORDING) return false
         if (sample.accuracyMeters != null && sample.accuracyMeters > maxAccuracyMeters) {
-            snapshot = snapshot.copy(skippedLowAccuracy = snapshot.skippedLowAccuracy + 1)
-            return snapshot
+            skippedLowAccuracy += 1
+            return true
         }
 
-        val previous = snapshot.lastSample
+        val previous = segments.lastOrNull()?.lastOrNull()
         val delta = previous?.point?.distanceTo(sample.point) ?: 0.0
         if (previous != null && !breakBeforeNext && delta < minDistanceMeters) {
-            snapshot = snapshot.copy(skippedLowAccuracy = 0)
-            return snapshot
+            val changed = skippedLowAccuracy != 0
+            skippedLowAccuracy = 0
+            return changed
         }
 
         val startsSegment = previous == null || breakBeforeNext || delta > maxJumpMeters
         breakBeforeNext = false
-        val segments = if (startsSegment) {
-            snapshot.segments + listOf(listOf(sample))
+        if (startsSegment) {
+            segments += mutableListOf(sample)
         } else {
-            snapshot.segments.dropLast(1) + listOf(snapshot.segments.last() + sample)
+            segments.last() += sample
         }
-        snapshot = snapshot.copy(
-            segments = trim(segments),
-            distanceMeters = snapshot.distanceMeters + if (startsSegment) 0.0 else delta,
-            skippedLowAccuracy = 0,
-        )
-        return snapshot
+        storedSampleCount += 1
+        distanceMeters += if (startsSegment) 0.0 else delta
+        skippedLowAccuracy = 0
+        if (trimAfter) trim()
+        return true
     }
 
-    private fun trim(segments: List<List<LocationSample>>): List<List<LocationSample>> {
-        var excess = segments.sumOf { it.size } - maxSamples
-        if (excess <= 0) return segments
-        val kept = mutableListOf<List<LocationSample>>()
-        for (segment in segments) {
-            when {
-                excess <= 0 -> kept += segment
-                excess >= segment.size -> excess -= segment.size
-                else -> {
-                    kept += segment.drop(excess)
-                    excess = 0
-                }
+    private fun trim() {
+        var excess = storedSampleCount - maxSamples
+        while (excess > 0 && segments.isNotEmpty()) {
+            val first = segments.first()
+            if (excess >= first.size) {
+                excess -= first.size
+                storedSampleCount -= first.size
+                segments.removeAt(0)
+            } else {
+                first.subList(0, excess).clear()
+                storedSampleCount -= excess
+                excess = 0
             }
         }
-        return kept
+    }
+
+    private fun publishSnapshot(): TrailSnapshot {
+        publishedSnapshot = TrailSnapshot(
+            state = state,
+            segments = segments.map { it.toList() },
+            distanceMeters = distanceMeters,
+            skippedLowAccuracy = skippedLowAccuracy,
+        )
+        return publishedSnapshot
     }
 }
 

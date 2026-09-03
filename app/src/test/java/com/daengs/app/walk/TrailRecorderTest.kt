@@ -134,6 +134,27 @@ class TrailRecorderTest {
     }
 
     @Test
+    fun `저장 원본 묶음 재생은 한 점씩 넣은 것과 같은 결과를 낸다`() {
+        val samples = listOf(
+            sample(37.0, 127.0, 1L),
+            sample(37.000001, 127.0, 2L),
+            sample(37.001, 127.0, 3L, accuracy = 100f),
+            sample(37.0002, 127.0, 4L),
+            sample(35.1796, 129.0756, 5L),
+        )
+        val oneByOne = TrailRecorder(maxSamples = 3).also { recorder ->
+            recorder.start()
+            samples.forEach(recorder::add)
+        }
+        val batched = TrailRecorder(maxSamples = 3).also { recorder ->
+            recorder.start()
+            recorder.addAll(samples)
+        }
+
+        assertEquals(oneByOne.snapshot(), batched.snapshot())
+    }
+
+    @Test
     fun `invalid thresholds fail at construction instead of corrupting a walk`() {
         assertThrows(IllegalArgumentException::class.java) {
             TrailRecorder(minDistanceMeters = -1.0)
