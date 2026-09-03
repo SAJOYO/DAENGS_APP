@@ -291,18 +291,11 @@ fun WalkScreen(
         onBack()
     }
 
-    fun selectMoment(id: String) {
-        selectedMomentId = id
-        selectedRoutePointKey = null
-        tracking.momentGroups.firstOrNull { it.id == id }?.let {
-            momentNotice = "${it.actionLabels} · ${formatClock(it.latestRecordedAtMillis, seconds = true)}"
-        }
-    }
-
     BackHandler(onBack = if (tracking.completedSessionId != null) ::closeResultAndGoHome else onBack)
 
     val completedSummary = completedDetail?.summary
     val completedRoute = completedDetail?.route
+    val displayedMoments = completedDetail?.moments ?: tracking.momentGroups
     val selectedRoutePoint = completedRoute?.points?.firstOrNull {
         selectedRouteSessionId == tracking.completedSessionId &&
             it.routePointKey == selectedRoutePointKey
@@ -317,6 +310,14 @@ fun WalkScreen(
         }
     }
 
+    fun selectMoment(id: String) {
+        selectedMomentId = id
+        selectedRoutePointKey = null
+        displayedMoments.firstOrNull { it.id == id }?.let {
+            momentNotice = "${it.actionLabels} · ${formatClock(it.latestRecordedAtMillis, seconds = true)}"
+        }
+    }
+
     Box(modifier.fillMaxSize()) {
         if (inspectionMode) {
             Box(Modifier.fillMaxSize().background(PinkFaint))
@@ -324,7 +325,7 @@ fun WalkScreen(
             MapHost(
                 scene = MapScene(
                     currentPosition = currentPosition.takeIf { completedSummary == null },
-                    moments = tracking.momentGroups.map { moment ->
+                    moments = displayedMoments.map { moment ->
                         MomentMarkerState(
                             id = moment.id,
                             point = moment.point,
@@ -381,7 +382,7 @@ fun WalkScreen(
             locationError = locationError,
             pets = pets,
             selectedDogIds = selectedDogIds,
-            moments = tracking.momentGroups,
+            moments = displayedMoments,
             momentNotice = momentNotice,
             selectedRoutePoint = selectedRoutePoint,
             resultExpanded = resultExpanded,

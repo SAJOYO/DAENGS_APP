@@ -279,6 +279,8 @@ class WalkSyncTest {
             fixes[sessionId] = fixes[sessionId].orEmpty() + fix
         }
 
+        override suspend fun appendAction(action: com.daengs.app.walk.RecordedWalkAction) = Unit
+
         override suspend fun closeSession(sessionId: String, endedAtMillis: Long) = Unit
 
         override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) = Unit
@@ -326,6 +328,10 @@ class WalkSyncTest {
 
         override suspend fun fixes(sessionId: String): List<RecordedFix> =
             fixes[sessionId].orEmpty()
+
+        override suspend fun actions(
+            sessionId: String,
+        ): List<com.daengs.app.walk.RecordedWalkAction> = emptyList()
     }
 
     private class FakeApi : WalkApiClient {

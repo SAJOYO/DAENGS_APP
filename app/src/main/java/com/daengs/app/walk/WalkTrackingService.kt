@@ -25,6 +25,7 @@ import com.daengs.app.miniroom.OutsideTime
 import com.daengs.app.walk.sync.WalkDeliveryScheduler
 import com.daengs.app.walk.sync.completeAndEnqueueWalk
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,7 +59,6 @@ class WalkTrackingService : Service() {
     private var sessionId: String? = null
     private var nextClientSeq = 0
     private var chainIndex = 0
-    private var nextMomentNumber = 1L
     private var activeDurationMillis = 0L
     private var activeSinceRealtimeMillis: Long? = null
 
@@ -122,7 +122,6 @@ class WalkTrackingService : Service() {
         writer.clearFailure()
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
-        nextMomentNumber = 1L
         val trail = recorder.start()
         openSession(dogIds)
         store.publish(
@@ -229,26 +228,59 @@ class WalkTrackingService : Service() {
             store.publish(WalkEvent.MomentLocationUnavailable)
             return
         }
+        val activeSessionId = synchronized(sessionLock) { sessionId }
+        if (activeSessionId == null) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        val actionId = UUID.randomUUID().toString()
+        val recordedAtMillis = System.currentTimeMillis()
         val update = current.momentGroups.addOrGroupMoment(
             sample = sample,
-            candidateId = "moment-$nextMomentNumber",
+            candidateId = "moment-$actionId",
             type = type,
-            recordedAtMillis = System.currentTimeMillis(),
+            recordedAtMillis = recordedAtMillis,
         )
-        if (update.groupCreated) nextMomentNumber++
+        // 마커는 즉시 반응시키되, 성공 문구는 아래 Room 완료 신호 뒤에만 보낸다.
         store.publish(current.copy(momentGroups = update.moments))
-        store.publish(
-            WalkEvent.MomentRecorded(
-                type = type,
-                outcome = when {
-                    update.groupCreated -> WalkMomentOutcome.CREATED
-                    update.actionAdded -> WalkMomentOutcome.MERGED
-                    else -> WalkMomentOutcome.ALREADY_EXISTS
-                },
-                momentId = update.selectedMomentId,
-            ),
-        )
+        if (update.actionAdded) {
+            // 같은 writer 큐에서 fix와 close 사이에 넣는다. 종료 시 flush가 이 행동까지
+            // 끝낸 뒤 완료 상세를 되읽으므로, 완료 직후와 재실행 뒤가 같은 원본을 본다.
+            val stored = writer.appendAction(
+                RecordedWalkAction(
+                    id = actionId,
+                    sessionId = activeSessionId,
+                    type = type,
+                    recordedAtMillis = recordedAtMillis,
+                    locationCapturedAtMillis = sample.capturedAtMillis,
+                    point = sample.point,
+                    accuracyMeters = sample.accuracyMeters,
+                ),
+            )
+            serviceScope.launch {
+                try {
+                    stored.await()
+                    store.publish(update.recordedEvent(type))
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // writer.failure가 기록 화면에 실패를 알리고, flush도 완료 처리를 막는다.
+                }
+            }
+        } else {
+            store.publish(update.recordedEvent(type))
+        }
     }
+
+    private fun WalkMomentUpdate.recordedEvent(type: WalkMomentType) = WalkEvent.MomentRecorded(
+        type = type,
+        outcome = when {
+            groupCreated -> WalkMomentOutcome.CREATED
+            actionAdded -> WalkMomentOutcome.MERGED
+            else -> WalkMomentOutcome.ALREADY_EXISTS
+        },
+        momentId = selectedMomentId,
+    )
 
     private fun acceptLocation(sample: LocationSample) {
         synchronized(sessionLock) {

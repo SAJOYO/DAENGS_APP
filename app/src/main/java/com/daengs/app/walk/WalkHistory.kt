@@ -107,6 +107,10 @@ class WalkHistory(private val log: WalkFixLog) {
         // 전체 경로는 사용자가 한 세션을 연 이 자리에서만 만든다. 목록과 오늘 합계까지
         // 모든 과거 좌표를 무제한으로 펼치면 기록이 쌓일수록 읽기 비용이 폭증한다.
         val summary = summarize(session, log.fixes(sessionId), maxRouteSamples = Int.MAX_VALUE)
-        WalkSessionDetail(summary = summary, route = summary.toSessionRoute())
+        WalkSessionDetail(
+            summary = summary,
+            route = summary.toSessionRoute(),
+            moments = log.actions(sessionId).toMomentGroups(),
+        )
     }
 }

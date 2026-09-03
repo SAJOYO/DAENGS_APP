@@ -130,4 +130,43 @@ class WalkMomentTest {
         assertEquals(4, WalkMomentType.entries.size)
         assertEquals(4, WalkMomentType.entries.map { it.behaviorCode }.toSet().size)
     }
+
+    @Test
+    fun `저장 행동은 시각 순서로 읽어 현재 반경의 장소로 다시 묶는다`() {
+        val groups = listOf(
+            action("late", WalkMomentType.SOCIAL, 2_000L, 37.56651),
+            action("first", WalkMomentType.EXPLORE, 1_000L, 37.56650),
+            action("far", WalkMomentType.SPECIAL, 3_000L, 37.56700),
+        ).toMomentGroups()
+
+        assertEquals(2, groups.size)
+        assertEquals("moment-first", groups.first().id)
+        assertEquals(setOf(WalkMomentType.EXPLORE, WalkMomentType.SOCIAL), groups.first().types)
+    }
+
+    @Test
+    fun `같은 장소와 행동이 중복 저장돼도 최초 증언만 화면에 남긴다`() {
+        val groups = listOf(
+            action("first", WalkMomentType.EXPLORE, 1_000L, 37.56650),
+            action("repeat", WalkMomentType.EXPLORE, 2_000L, 37.56651),
+        ).toMomentGroups()
+
+        assertEquals(1, groups.single().actions.size)
+        assertEquals(1_000L, groups.single().latestRecordedAtMillis)
+    }
+
+    private fun action(
+        id: String,
+        type: WalkMomentType,
+        recordedAtMillis: Long,
+        latitude: Double,
+    ) = RecordedWalkAction(
+        id = id,
+        sessionId = "walk-1",
+        type = type,
+        recordedAtMillis = recordedAtMillis,
+        locationCapturedAtMillis = recordedAtMillis - 100L,
+        point = GeoPoint(latitude, 126.9780),
+        accuracyMeters = 5f,
+    )
 }

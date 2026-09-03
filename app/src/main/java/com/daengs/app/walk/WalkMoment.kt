@@ -26,8 +26,8 @@ data class WalkMomentAction(
  * 누른 행동은 새 핀을 무한히 만들지 않고 이 장소의 `actions` 집합에 합친다. 같은 행동을
  * 반복해서 눌러도 최초 기록 하나만 유지한다.
  *
- * 첫 워킹 스켈레톤은 메모리에만 보존하고, 서버의 Attestation 계약이 앱까지 내려오면
- * 세션 저장 경계로 옮긴다.
+ * 서버 attestation과는 별개인 사용자 입력 원본을 Room에 남기고, 이 장소 묶음은 읽을 때
+ * 현재 반경 규칙으로 다시 만든다. 그래서 실험 반경을 바꿔도 기존 기록을 이주시킬 필요가 없다.
  */
 data class WalkMoment(
     val id: String,
