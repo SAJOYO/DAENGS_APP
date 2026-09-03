@@ -6,7 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +50,6 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.TextDark
-import kotlin.math.abs
 
 /**
  * 병변에 맞추는 가이드 프레임.
@@ -159,41 +161,50 @@ fun GuideFrameScreen(
                         // 예전에는 오른쪽 아래 한 곳만 손잡이였다. 왼쪽 위를 아무리
                         // 끌어도 네모가 움직이기만 해서, 크기를 바꾸려면 매번 반대편으로
                         // 손을 옮겨야 했다.
-                        var sizing = false
-                        detectTransformGestures(panZoomLock = true) { centroid, pan, zoom, _ ->
-                            val cur = CropBox(box.x, box.y, w)
-                            val next = when {
-                                // 핀치가 들어오면 그것이 이긴다. 두 손가락을 벌리는
-                                // 동안의 미세한 이동까지 따라가면 네모가 떤다.
-                                zoom != 1f -> resizeAroundCenter(cur, aspect, cur.w * zoom)
-
-                                sizing -> {
-                                    // 모서리를 끄는 동안에는 **먼 쪽 축**을 따른다.
-                                    // 대각선으로 끌 때 둘 다 더하면 두 배로 커진다.
-                                    val d = if (abs(pan.x) > abs(pan.y)) {
-                                        pan.x / size.width
-                                    } else {
-                                        pan.y / size.height
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val start = CropBox(box.x, box.y, w)
+                            // 실제 첫 transform 콜백에는 이미 pan 이 생겨 있다. 따라서
+                            // 모서리는 콜백이 아니라 DOWN 좌표에서 한 번만 정한다.
+                            val corner = grabbedCorner(
+                                down.position.x / size.width,
+                                down.position.y / size.height,
+                                start,
+                                aspect,
+                                HANDLE_GRAB,
+                            )
+                            var pinching = false
+                            do {
+                                val event = awaitPointerEvent()
+                                val pan = event.calculatePan()
+                                val zoom = event.calculateZoom()
+                                if (event.changes.count { it.pressed } > 1) pinching = true
+                                val cur = CropBox(box.x, box.y, w)
+                                val next = when {
+                                    // 핀치를 시작했으면 한 손가락이 먼저 떨어져도 그
+                                    // 제스처가 끝날 때까지 이동으로 바꾸지 않는다.
+                                    pinching && zoom != 1f ->
+                                        resizeAroundCenter(cur, aspect, cur.w * zoom)
+                                    pinching -> cur
+                                    corner != null -> {
+                                        val d = cornerResizeDelta(
+                                            corner,
+                                            pan.x / size.width,
+                                            pan.y / size.height,
+                                        )
+                                        resizeAroundCenter(cur, aspect, cur.w + 2f * d)
                                     }
-                                    resizeAroundCenter(cur, aspect, cur.w + 2f * d)
+                                    else -> moveBy(
+                                        cur,
+                                        aspect,
+                                        pan.x / size.width,
+                                        pan.y / size.height,
+                                    )
                                 }
-
-                                else -> moveBy(cur, aspect, pan.x / size.width, pan.y / size.height)
-                            }
-                            // 손을 댄 자리가 모서리였는지는 **첫 마디에 한 번만** 정한다.
-                            // 매번 다시 보면 네모가 손가락 밑에서 커지다가 모서리가
-                            // 멀어지는 순간 이동으로 바뀐다.
-                            if (pan == Offset.Zero && zoom == 1f) {
-                                sizing = grabsCorner(
-                                    centroid.x / size.width,
-                                    centroid.y / size.height,
-                                    cur,
-                                    aspect,
-                                    HANDLE_GRAB,
-                                )
-                            }
-                            box = Offset(next.x, next.y)
-                            w = next.w
+                                box = Offset(next.x, next.y)
+                                w = next.w
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
                         }
                     },
             ) {

@@ -12,6 +12,13 @@ import kotlin.math.hypot
  */
 data class CropBox(val x: Float, val y: Float, val w: Float)
 
+enum class CropCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
 /** 네모의 세로. 사진 비율([aspect] = 가로/세로)을 곱한다. 1을 넘지 않는다. */
 fun heightOf(w: Float, aspect: Float): Float = (w * aspect).coerceAtMost(1f)
 
@@ -30,16 +37,38 @@ fun grabsCorner(
     box: CropBox,
     aspect: Float,
     grab: Float,
-): Boolean {
+): Boolean = grabbedCorner(px, py, box, aspect, grab) != null
+
+fun grabbedCorner(
+    px: Float,
+    py: Float,
+    box: CropBox,
+    aspect: Float,
+    grab: Float,
+): CropCorner? {
     val h = heightOf(box.w, aspect)
-    val xs = floatArrayOf(box.x, box.x + box.w)
-    val ys = floatArrayOf(box.y, box.y + h)
-    for (x in xs) {
-        for (y in ys) {
-            if (hypot(px - x, py - y) < grab) return true
-        }
+    val corners = listOf(
+        CropCorner.TopLeft to (box.x to box.y),
+        CropCorner.TopRight to (box.x + box.w to box.y),
+        CropCorner.BottomLeft to (box.x to box.y + h),
+        CropCorner.BottomRight to (box.x + box.w to box.y + h),
+    )
+    return corners.minByOrNull { (_, point) -> hypot(px - point.first, py - point.second) }
+        ?.takeIf { (_, point) -> hypot(px - point.first, py - point.second) < grab }
+        ?.first
+}
+
+/** 양수면 해당 모서리를 바깥으로 끌어 자르기 영역이 커진 것이다. */
+fun cornerResizeDelta(corner: CropCorner, dx: Float, dy: Float): Float {
+    val horizontal = when (corner) {
+        CropCorner.TopLeft, CropCorner.BottomLeft -> -dx
+        CropCorner.TopRight, CropCorner.BottomRight -> dx
     }
-    return false
+    val vertical = when (corner) {
+        CropCorner.TopLeft, CropCorner.TopRight -> -dy
+        CropCorner.BottomLeft, CropCorner.BottomRight -> dy
+    }
+    return if (abs(dx) > abs(dy)) horizontal else vertical
 }
 
 /**

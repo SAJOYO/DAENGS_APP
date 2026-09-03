@@ -80,4 +80,21 @@ class CropGeometryTest {
         assertEquals(0f, centerOffset(CropBox(0.3f, 0.3f, 0.4f), square), 0.001f)
         assertEquals(0.2f, centerOffset(CropBox(0.5f, 0.3f, 0.4f), square), 0.001f)
     }
+
+    @Test
+    fun `모서리 방향을 잃지 않는다`() {
+        val box = CropBox(0.3f, 0.3f, 0.4f)
+        assertEquals(CropCorner.TopLeft, grabbedCorner(0.3f, 0.3f, box, square, 0.07f))
+        assertEquals(CropCorner.TopRight, grabbedCorner(0.7f, 0.3f, box, square, 0.07f))
+        assertEquals(CropCorner.BottomLeft, grabbedCorner(0.3f, 0.7f, box, square, 0.07f))
+        assertEquals(CropCorner.BottomRight, grabbedCorner(0.7f, 0.7f, box, square, 0.07f))
+    }
+
+    @Test
+    fun `네 모서리는 바깥으로 끌면 모두 커진다`() {
+        assertTrue(cornerResizeDelta(CropCorner.TopLeft, -0.1f, -0.1f) > 0f)
+        assertTrue(cornerResizeDelta(CropCorner.TopRight, 0.1f, -0.1f) > 0f)
+        assertTrue(cornerResizeDelta(CropCorner.BottomLeft, -0.1f, 0.1f) > 0f)
+        assertTrue(cornerResizeDelta(CropCorner.BottomRight, 0.1f, 0.1f) > 0f)
+    }
 }
