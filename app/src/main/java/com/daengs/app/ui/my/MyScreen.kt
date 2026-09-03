@@ -76,7 +76,8 @@ import com.daengs.app.ui.theme.TextMuted
  */
 @Composable
 fun MyScreen(
-    breed: DogBreed,
+    /** 대표 강아지의 견종. **모르면(믹스) null 이고 발자국이 뜬다.** */
+    breed: DogBreed?,
     /** 방 앞 이름표와 **같은 이름**. 두 곳이 다르면 어느 쪽이 내 방인지 헷갈린다. */
     roomLabel: String,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
@@ -376,12 +377,14 @@ private fun DialogAction(label: String, tint: Color, weight: FontWeight, onClick
 /** 줄 사이 가는 선. */
 
 @Composable
-private fun ProfileHead(breed: DogBreed, dogName: String?, roomLabel: String) {
+private fun ProfileHead(breed: DogBreed?, dogName: String?, roomLabel: String) {
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        DogAvatar(breed, Modifier.size(88.dp))
+        // **모르면 발자국이다.** 바로 아래 이름 줄과 같은 규칙이다 — 모르는 것을
+        // 아무 것으로나 채우면 남의 강아지가 내 프로필에 앉는다.
+        if (breed != null) DogAvatar(breed, Modifier.size(88.dp)) else PawAvatar(size = 88.dp)
         Spacer(Modifier.height(10.dp))
         // **모르면 비운다.** 여기 남의 강아지 이름이 박혀 있었다 — 로그인 전이거나
         // 등록한 아이가 없으면 이름 줄이 통째로 빠진다.

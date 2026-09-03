@@ -21,6 +21,7 @@ import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DaengsLogo
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
@@ -30,7 +31,14 @@ import com.daengs.app.ui.theme.TextMuted
 fun DaengsTopBar(
     onBell: () -> Unit,
     onProfile: () -> Unit,
-    avatar: DogBreed = HomeDemoData.DOG_BREED,
+    /**
+     * 대표 강아지의 견종. **null 이면 발자국이다.**
+     *
+     * 예전에는 데모 강아지로 떨어졌다. 마이·산책·장소는 같은 경우 발자국을 세우는데
+     * (아무 얼굴이나 갖다 쓰면 자기 개가 아닌 얼굴을 보게 된다) 상단바만 그 규칙에서
+     * 빠져 있었다.
+     */
+    avatar: DogBreed? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -59,7 +67,8 @@ fun DaengsTopBar(
                 .padding(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            DogAvatar(avatar, Modifier.size(34.dp))
+            if (avatar != null) DogAvatar(avatar, Modifier.size(34.dp))
+            else PawAvatar(size = 34.dp)
             DaengsIconView(DaengsIcon.CaretDown, Modifier.size(15.dp), tint = TextMuted)
         }
     }
@@ -68,5 +77,5 @@ fun DaengsTopBar(
 @Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun DaengsTopBarPreview() {
-    DaengsTheme { DaengsTopBar({}, {}) }
+    DaengsTheme { DaengsTopBar({}, {}, avatar = HomeDemoData.DOG_BREED) }
 }

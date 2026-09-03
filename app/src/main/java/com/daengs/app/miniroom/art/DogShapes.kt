@@ -79,6 +79,17 @@ enum class DogBreed(
      */
     @DrawableRes val portraitRes: Int,
     /**
+     * **챗봇이 쓰는 얼굴.** 같은 견종의 학사모 쓴 "똑똑이" 판이다.
+     *
+     * 챗봇 헤더에는 "댕스 AI" 라고 적혀 있는데 그 옆 얼굴이 [portraitRes] 였다 —
+     * **내 개가 나에게 말을 거는 그림**이라 누가 말하는 건지 흐렸다. 견종은 같으니
+     * 남의 개도 아니고, 학사모와 안경이 있으니 내 개도 아니다.
+     *
+     * [portraitRes] 와 같은 규격이다 (256x256 불투명). `tools/import_smart_portraits.py`
+     * 가 넣는다.
+     */
+    @DrawableRes val smartRes: Int,
+    /**
      * 화면에 그릴 폭. **방 그림 폭 대비 %.**
      *
      * 시트 규격(582x568)은 견종이 같아도 그려진 덩치는 제각각이라, 같은 폭으로
@@ -94,54 +105,63 @@ enum class DogBreed(
     BEAGLE(
         "dog_beagle", "비글", R.drawable.dog_beagle,
         portraitRes = R.drawable.dog_beagle_portrait,
+        smartRes = R.drawable.dog_beagle_smart,
         visualWidth = 13.0f, refBodyRadius = 0.58f, refSpeed = 0.54f,
     ),
 
     TOY_POODLE_SILVER(
         "dog_toy_poodle_silver", "실버 푸들", R.drawable.dog_toy_poodle_silver,
         portraitRes = R.drawable.dog_toy_poodle_silver_portrait,
+        smartRes = R.drawable.dog_toy_poodle_silver_smart,
         visualWidth = 12.0f, refBodyRadius = 0.5f, refSpeed = 0.5f,
     ),
 
     TOY_POODLE_LIGHT_BROWN(
         "dog_toy_poodle_light_brown", "연갈색 푸들", R.drawable.dog_toy_poodle_light_brown,
         portraitRes = R.drawable.dog_toy_poodle_light_brown_portrait,
+        smartRes = R.drawable.dog_toy_poodle_light_brown_smart,
         visualWidth = 12.0f, refBodyRadius = 0.5f, refSpeed = 0.5f,
     ),
 
     TOY_POODLE_CHOCOLATE(
         "dog_toy_poodle_chocolate", "초코 푸들", R.drawable.dog_toy_poodle_chocolate,
         portraitRes = R.drawable.dog_toy_poodle_chocolate_portrait,
+        smartRes = R.drawable.dog_toy_poodle_chocolate_smart,
         visualWidth = 12.0f, refBodyRadius = 0.5f, refSpeed = 0.5f,
     ),
 
     MALTESE(
         "dog_maltese", "말티즈", R.drawable.dog_maltese,
         portraitRes = R.drawable.dog_maltese_portrait,
+        smartRes = R.drawable.dog_maltese_smart,
         visualWidth = 11.0f, refBodyRadius = 0.46f, refSpeed = 0.53f,
     ),
 
     YORKSHIRE_TERRIER(
         "dog_yorkshire_terrier", "요크셔테리어", R.drawable.dog_yorkshire_terrier,
         portraitRes = R.drawable.dog_yorkshire_terrier_portrait,
+        smartRes = R.drawable.dog_yorkshire_terrier_smart,
         visualWidth = 10.5f, refBodyRadius = 0.45f, refSpeed = 0.57f,
     ),
 
     CHIHUAHUA(
         "dog_chihuahua", "치와와", R.drawable.dog_chihuahua,
         portraitRes = R.drawable.dog_chihuahua_portrait,
+        smartRes = R.drawable.dog_chihuahua_smart,
         visualWidth = 9.5f, refBodyRadius = 0.42f, refSpeed = 0.61f,
     ),
 
     BICHON_FRISE(
         "dog_bichon_frise", "비숑프리제", R.drawable.dog_bichon_frise,
         portraitRes = R.drawable.dog_bichon_frise_portrait,
+        smartRes = R.drawable.dog_bichon_frise_smart,
         visualWidth = 11.5f, refBodyRadius = 0.48f, refSpeed = 0.52f,
     ),
 
     LABRADOR_RETRIEVER(
         "dog_labrador_retriever", "래브라도 리트리버", R.drawable.dog_labrador_retriever,
         portraitRes = R.drawable.dog_labrador_retriever_portrait_v2,
+        smartRes = R.drawable.dog_labrador_retriever_smart,
         visualWidth = 16.5f, refBodyRadius = 0.75f, refSpeed = 0.48f,
     ),
 
@@ -159,6 +179,7 @@ enum class DogBreed(
     GOLDEN_RETRIEVER(
         "dog_golden_retriever", "골든리트리버", R.drawable.dog_golden_retriever,
         portraitRes = R.drawable.dog_golden_retriever_portrait_v2,
+        smartRes = R.drawable.dog_golden_retriever_smart,
         visualWidth = 16.5f, refBodyRadius = 0.78f, refSpeed = 0.46f,
     ),
 
@@ -196,54 +217,63 @@ enum class DogBreed(
     JAPANESE_SPITZ(
         "dog_japanese_spitz", "스피츠", R.drawable.dog_japanese_spitz,
         portraitRes = R.drawable.dog_japanese_spitz_portrait,
+        smartRes = R.drawable.dog_japanese_spitz_smart,
         visualWidth = 14.0f, refBodyRadius = 0.60f, refSpeed = 0.54f,
     ),
 
     JINDO(
         "dog_jindo", "진돗개", R.drawable.dog_jindo,
         portraitRes = R.drawable.dog_jindo_portrait,
+        smartRes = R.drawable.dog_jindo_smart,
         visualWidth = 14.5f, refBodyRadius = 0.64f, refSpeed = 0.54f,
     ),
 
     SHIBA_INU_BLACK(
         "dog_shiba_inu_black", "검정 시바", R.drawable.dog_shiba_inu_black,
         portraitRes = R.drawable.dog_shiba_inu_black_portrait,
+        smartRes = R.drawable.dog_shiba_inu_black_smart,
         visualWidth = 13.5f, refBodyRadius = 0.59f, refSpeed = 0.56f,
     ),
 
     SHIBA_INU_BEIGE(
         "dog_shiba_inu_beige", "베이지 시바", R.drawable.dog_shiba_inu_beige,
         portraitRes = R.drawable.dog_shiba_inu_beige_portrait,
+        smartRes = R.drawable.dog_shiba_inu_beige_smart,
         visualWidth = 13.5f, refBodyRadius = 0.59f, refSpeed = 0.56f,
     ),
 
     SHIBA_INU_ORANGE(
         "dog_shiba_inu_orange", "오렌지 시바", R.drawable.dog_shiba_inu_orange,
         portraitRes = R.drawable.dog_shiba_inu_orange_portrait,
+        smartRes = R.drawable.dog_shiba_inu_orange_smart,
         visualWidth = 13.5f, refBodyRadius = 0.59f, refSpeed = 0.56f,
     ),
 
     SIBERIAN_HUSKY(
         "dog_siberian_husky", "시베리안 허스키", R.drawable.dog_siberian_husky,
         portraitRes = R.drawable.dog_siberian_husky_portrait,
+        smartRes = R.drawable.dog_siberian_husky_smart,
         visualWidth = 16.0f, refBodyRadius = 0.72f, refSpeed = 0.52f,
     ),
 
     POMERANIAN_BLACK_TAN(
         "dog_pomeranian_black_tan", "블랙탄 포메라니안", R.drawable.dog_pomeranian_black_tan,
         portraitRes = R.drawable.dog_pomeranian_black_tan_portrait,
+        smartRes = R.drawable.dog_pomeranian_black_tan_smart,
         visualWidth = 11.5f, refBodyRadius = 0.46f, refSpeed = 0.57f,
     ),
 
     POMERANIAN_BEIGE(
         "dog_pomeranian_beige", "베이지 포메라니안", R.drawable.dog_pomeranian_beige,
         portraitRes = R.drawable.dog_pomeranian_beige_portrait,
+        smartRes = R.drawable.dog_pomeranian_beige_smart,
         visualWidth = 11.5f, refBodyRadius = 0.46f, refSpeed = 0.57f,
     ),
 
     POMERANIAN_WHITE(
         "dog_pomeranian_white", "흰색 포메라니안", R.drawable.dog_pomeranian_white,
         portraitRes = R.drawable.dog_pomeranian_white_portrait,
+        smartRes = R.drawable.dog_pomeranian_white_smart,
         visualWidth = 11.5f, refBodyRadius = 0.46f, refSpeed = 0.57f,
     ),
 
@@ -264,48 +294,56 @@ enum class DogBreed(
     BORDER_COLLIE(
         "dog_border_collie", "보더콜리", R.drawable.dog_border_collie,
         portraitRes = R.drawable.dog_border_collie_portrait,
+        smartRes = R.drawable.dog_border_collie_smart,
         visualWidth = 18.5f, refBodyRadius = 0.68f, refSpeed = 0.59f,
     ),
 
     WELSH_CORGI(
         "dog_welsh_corgi", "웰시코기", R.drawable.dog_welsh_corgi,
         portraitRes = R.drawable.dog_welsh_corgi_portrait,
+        smartRes = R.drawable.dog_welsh_corgi_smart,
         visualWidth = 14.8f, refBodyRadius = 0.65f, refSpeed = 0.54f,
     ),
 
     DACHSHUND_SHORT_BROWN(
         "dog_dachshund_short_brown", "단모 갈색 닥스훈트", R.drawable.dog_dachshund_short_brown,
         portraitRes = R.drawable.dog_dachshund_short_brown_portrait,
+        smartRes = R.drawable.dog_dachshund_short_brown_smart,
         visualWidth = 16.5f, refBodyRadius = 0.67f, refSpeed = 0.52f,
     ),
 
     DACHSHUND_SHORT_BLACK(
         "dog_dachshund_short_black", "단모 검정 닥스훈트", R.drawable.dog_dachshund_short_black,
         portraitRes = R.drawable.dog_dachshund_short_black_portrait,
+        smartRes = R.drawable.dog_dachshund_short_black_smart,
         visualWidth = 16.5f, refBodyRadius = 0.67f, refSpeed = 0.52f,
     ),
 
     DACHSHUND_LONG_BEIGE(
         "dog_dachshund_long_beige", "장모 베이지 닥스훈트", R.drawable.dog_dachshund_long_beige,
         portraitRes = R.drawable.dog_dachshund_long_beige_portrait,
+        smartRes = R.drawable.dog_dachshund_long_beige_smart,
         visualWidth = 17.0f, refBodyRadius = 0.69f, refSpeed = 0.5f,
     ),
 
     FRENCH_BULLDOG(
         "dog_french_bulldog", "프렌치불독", R.drawable.dog_french_bulldog,
         portraitRes = R.drawable.dog_french_bulldog_portrait,
+        smartRes = R.drawable.dog_french_bulldog_smart,
         visualWidth = 12.0f, refBodyRadius = 0.55f, refSpeed = 0.47f,
     ),
 
     PUG(
         "dog_pug", "퍼그", R.drawable.dog_pug,
         portraitRes = R.drawable.dog_pug_portrait,
+        smartRes = R.drawable.dog_pug_smart,
         visualWidth = 11.5f, refBodyRadius = 0.52f, refSpeed = 0.47f,
     ),
 
     SCHNAUZER(
         "dog_schnauzer", "슈나우저", R.drawable.dog_schnauzer,
         portraitRes = R.drawable.dog_schnauzer_portrait,
+        smartRes = R.drawable.dog_schnauzer_smart,
         visualWidth = 12.5f, refBodyRadius = 0.54f, refSpeed = 0.52f,
     );
 
