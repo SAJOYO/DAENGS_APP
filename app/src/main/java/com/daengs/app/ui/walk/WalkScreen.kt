@@ -122,7 +122,6 @@ fun WalkScreen(
     avatarBreed: DogBreed? = null,
     pets: List<Pet> = emptyList(),
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
-    onFinished: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
@@ -263,7 +262,6 @@ fun WalkScreen(
         if (completedSummary != null) {
             followDevice = false
             resultExpanded = true
-            onFinished?.invoke()
         }
     }
     LaunchedEffect(momentNotice) {

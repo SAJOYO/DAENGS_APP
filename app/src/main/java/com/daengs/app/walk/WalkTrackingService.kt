@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.daengs.app.DaengsApp
@@ -21,8 +22,9 @@ import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationTracker
 import com.daengs.app.miniroom.OutsideApi
 import com.daengs.app.miniroom.OutsideTime
+import com.daengs.app.walk.sync.WalkDeliveryScheduler
+import com.daengs.app.walk.sync.completeAndEnqueueWalk
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,6 +49,7 @@ class WalkTrackingService : Service() {
     private lateinit var tracker: LocationTracker
     private lateinit var store: WalkTrackingStore
     private lateinit var writer: WalkFixWriter
+    private lateinit var delivery: WalkDeliveryScheduler
 
     /** 판정하려면 방금 쓴 것을 되읽어야 한다. writer 는 쓰기 전용이라 따로 든다. */
     private lateinit var log: WalkFixLog
@@ -65,6 +68,7 @@ class WalkTrackingService : Service() {
         locationSource = runtime.locationSource
         store = runtime.store
         writer = runtime.writer
+        delivery = runtime.delivery
         log = runtime.log
         tracker = LocationTracker(serviceScope)
         createNotificationChannel()
@@ -175,14 +179,26 @@ class WalkTrackingService : Service() {
         store.publish(trackingState(trail, finishingSessionId = finished))
         serviceScope.launch {
             try {
-                writer.flush()
-                // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
-                // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
-                if (finished != null) finishOrDiscard(finished)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                publishCompletionFailure(error.message ?: "산책을 저장하지 못했어요.")
+                completeAndEnqueueWalk(
+                    sessionId = finished,
+                    complete = {
+                        writer.flush()
+                        // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
+                        // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
+                        finished?.let { finishOrDiscard(it) } == true
+                    },
+                    enqueue = delivery::enqueue,
+                    onCompletionFailure = { error ->
+                        publishCompletionFailure(error.message ?: "산책을 저장하지 못했어요.")
+                    },
+                    onEnqueueFailure = { error ->
+                        Log.w(
+                            TAG,
+                            "산책 전달 작업을 예약하지 못했다. 다음 시작에서 다시 찾는다.",
+                            error,
+                        )
+                    },
+                )
             } finally {
                 synchronized(sessionLock) {
                     // flush 중 새 산책이 시작됐다면 새 알림까지 지우지 않는다. 새 startId가
@@ -317,11 +333,11 @@ class WalkTrackingService : Service() {
      * 걷고 왔는데 목록에 없으면 앱이 잘못한 것처럼 보인다. 카드가 이미 그리고 있는
      * `errorMessage` 자리를 쓴다.
      */
-    private suspend fun finishOrDiscard(sessionId: String) {
+    private suspend fun finishOrDiscard(sessionId: String): Boolean {
         val session = log.session(sessionId)
         if (session == null) {
             publishCompletionFailure("저장한 산책을 다시 읽지 못했어요.")
-            return
+            return false
         }
         val summary = summarize(session, log.fixes(sessionId))
         if (!summary.countsAsWalk) {
@@ -330,7 +346,7 @@ class WalkTrackingService : Service() {
                 "이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.",
                 clearMoments = true,
             )
-            return
+            return false
         }
         publishIfStillInactive(
             trackingState(
@@ -338,6 +354,7 @@ class WalkTrackingService : Service() {
                 completedSessionId = sessionId,
             ),
         )
+        return true
     }
 
     private fun publishCompletionFailure(message: String, clearMoments: Boolean = false) {
@@ -496,6 +513,7 @@ class WalkTrackingService : Service() {
     }
 
     companion object {
+        private const val TAG = "WalkTrackingService"
         const val ACTION_START = "com.daengs.app.walk.START"
         const val ACTION_PAUSE = "com.daengs.app.walk.PAUSE"
         const val ACTION_RESUME = "com.daengs.app.walk.RESUME"

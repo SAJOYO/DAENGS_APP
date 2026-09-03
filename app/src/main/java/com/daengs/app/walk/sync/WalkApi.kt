@@ -171,10 +171,14 @@ object WalkApi {
     }
 
     private fun HttpURLConnection.fail(): Nothing {
+        val status = responseCode
         val detail = runCatching {
             JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
         }.getOrNull()
-        error(if (detail.isNullOrBlank()) "서버 오류 ($responseCode)" else detail)
+        throw WalkHttpException(
+            statusCode = status,
+            message = if (detail.isNullOrBlank()) "서버 오류 ($status)" else detail,
+        )
     }
 
     private inline fun <T> HttpURLConnection.use(body: (HttpURLConnection) -> T): T =
@@ -203,3 +207,9 @@ internal fun Long.toIso(): String = Instant.ofEpochMilli(this).toString()
 
 /** ISO-8601 → 밀리초. 서버가 준 것을 로컬 DB 모양으로 되돌린다. */
 internal fun String.isoToMillis(): Long = Instant.parse(this).toEpochMilli()
+
+/** Worker가 재시도할 HTTP 상태와 영구 실패를 구분할 수 있게 상태 코드를 보존한다. */
+internal class WalkHttpException(
+    val statusCode: Int,
+    message: String,
+) : IllegalStateException(message)
