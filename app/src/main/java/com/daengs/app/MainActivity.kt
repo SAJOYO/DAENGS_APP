@@ -544,6 +544,18 @@ class MainActivity : ComponentActivity() {
                             frameCardId = card?.id
                             roomStore.saveFrameCardId(card?.id)
                         },
+                        onDelete = { card ->
+                            scope.launch {
+                                // **액자를 먼저 비운다.** 걸려 있던 카드를 지우고
+                                // 액자만 두면 그림이 사라진 자리가 남는다 (탈퇴할 때와
+                                // 같은 정리다).
+                                if (frameCardId == card.id) {
+                                    frameCardId = null
+                                    roomStore.saveFrameCardId(null)
+                                }
+                                cards.remove(card.id)
+                            }
+                        },
                         draw = { done ->
                             CardDrawScreen(
                                 dogs = pets.pets.orEmpty().map { pet ->
