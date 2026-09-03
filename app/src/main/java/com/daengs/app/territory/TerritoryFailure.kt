@@ -16,8 +16,8 @@ sealed interface TerritoryFailure {
 fun Throwable.toTerritoryFailure(): TerritoryFailure = when (this) {
     is UnknownHostException -> TerritoryFailure.Offline
     is SocketTimeoutException -> TerritoryFailure.TimedOut
-    is IllegalArgumentException -> TerritoryFailure.UnsupportedLocation
     is SerializationException, is NoSuchElementException -> TerritoryFailure.InvalidResponse
+    is IllegalArgumentException -> TerritoryFailure.UnsupportedLocation
     is TerritorySiteApiException -> if (status >= 500) {
         TerritoryFailure.Server
     } else {

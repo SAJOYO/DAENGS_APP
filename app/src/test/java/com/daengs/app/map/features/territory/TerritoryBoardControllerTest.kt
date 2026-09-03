@@ -80,6 +80,23 @@ class TerritoryBoardControllerTest {
     }
 
     @Test
+    fun `returning inside the loaded area cancels a pending far camera query`() = runTest {
+        var calls = 0
+        val controller = TerritoryBoardController(
+            TerritorySiteRepository { calls++; page("site-$calls") },
+            this,
+        )
+        controller.activate(seoul)
+        advanceUntilIdle()
+
+        controller.onCameraSettled(GeoPoint(37.52, 127.0))
+        controller.onCameraSettled(GeoPoint(37.501, 127.0))
+        advanceUntilIdle()
+
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun `old content remains visible while refresh fails`() = runTest {
         var calls = 0
         val second = CompletableDeferred<TerritorySitePage>()

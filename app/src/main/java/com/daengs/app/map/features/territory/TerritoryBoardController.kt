@@ -63,8 +63,9 @@ class TerritoryBoardController(
     }
 
     fun onCameraSettled(point: GeoPoint) {
-        if (!active || !needsRefresh(point)) return
+        if (!active) return
         cameraJob?.cancel()
+        if (!needsRefresh(point)) return
         cameraJob = scope.launch {
             delay(cameraDebounceMillis)
             if (active) refreshIfNeeded(point)
