@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.PointF
 import androidx.annotation.DrawableRes
 import android.util.Log
+import com.daengs.app.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +55,7 @@ fun NaverMapSurface(
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
+    onSelectMoment: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -224,6 +226,31 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
+    // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
+    // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
+    DisposableEffect(naverMap, scene.moments) {
+        val map = naverMap
+        val markers = if (map == null) emptyList() else scene.moments.map { moment ->
+            Marker().apply {
+                position = moment.point.toLatLng()
+                captionText = moment.label
+                captionMinZoom = 12.0
+                width = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                height = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                anchor = MARKER_ANCHOR
+                icon = OverlayImage.fromResource(R.drawable.ic_walk_moment)
+                zIndex = if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
+                isHideCollidedMarkers = false
+                setOnClickListener {
+                    onSelectMoment(moment.id)
+                    true
+                }
+                this.map = map
+            }
+        }
+        onDispose { markers.forEach { it.map = null } }
+    }
+
     DisposableEffect(naverMap, scene.trail) {
         val map = naverMap
         val lines = if (map == null) {
@@ -348,6 +375,13 @@ private const val LIGHTNESS_PLAIN = 0.15f
 private const val MARKER_PX = 72
 
 private const val MARKER_PX_SELECTED = 92
+
+private const val MOMENT_MARKER_PX = 64
+
+private const val MOMENT_MARKER_PX_SELECTED = 82
+
+/** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
+private const val MOMENT_MARKER_Z = 50
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
