@@ -21,8 +21,8 @@ class AssistantApiTest {
     private val 광화문 = GeoPoint(37.5665, 126.9780)
 
     @Test
-    fun `좌표가 없으면 query 하나만 담는다`() {
-        val body = JSONObject(AssistantApi.requestBody("강아지가 손을 물어요", where = null))
+    fun `좌표도 대표 강아지도 없으면 query 하나만 담는다`() {
+        val body = JSONObject(AssistantApi.requestBody("강아지가 손을 물어요", where = null, activeDogId = null))
         assertEquals("강아지가 손을 물어요", body.getString("query"))
         assertFalse(body.has("requested_capability"))
         assertFalse(body.has("source"))
@@ -33,6 +33,40 @@ class AssistantApiTest {
     }
 
     /**
+     * **대표 강아지를 실어야 견종·나이가 답에 반영된다.**
+     *
+     * 저쪽(`SAJOYO/DAENGS_dev#202`)이 이 id 로 `pets` 를 읽는다. 앱이 이 칸을 빼면
+     * 저쪽이 머지돼 있어도 사용자에게는 아무 변화가 없다 — 조용히 안 될 뿐 안 깨진다.
+     */
+    @Test
+    fun `대표 강아지가 있으면 active_dog_id 를 같이 담는다`() {
+        val body = JSONObject(
+            AssistantApi.requestBody(
+                "우리 애 비행기 태울 수 있나요?",
+                where = null,
+                activeDogId = "3f2a1c88-0000-4b1e-9c77-1d2e3f4a5b6c",
+            ),
+        )
+        assertEquals("3f2a1c88-0000-4b1e-9c77-1d2e3f4a5b6c", body.getString("active_dog_id"))
+        assertEquals(2, body.keys().asSequence().count())
+    }
+
+    /**
+     * **대표가 없으면 칸 자체를 뺀다.**
+     *
+     * 서버 스키마가 `extra="forbid"` 라 `active_dog_id: null` 이나 `""` 을 넣으면
+     * 질문이 통째로 422 다. 아직 강아지를 등록하지 않은 사용자가 여기 걸린다.
+     */
+    @Test
+    fun `대표 강아지가 없으면 칸 자체를 뺀다`() {
+        listOf(null, "", "   ").forEach { 없는_값 ->
+            val body = JSONObject(AssistantApi.requestBody("질문", where = null, activeDogId = 없는_값))
+            assertFalse("[$없는_값] 이 실리면 서버가 422 로 질문을 통째로 버린다", body.has("active_dog_id"))
+            assertEquals(1, body.keys().asSequence().count())
+        }
+    }
+
+    /**
      * **좌표를 실으면 산책 질문이 한 번에 답한다.**
      *
      * 안 실으면 서버가 `CLARIFY` 로 위치를 되묻는데, 이어서 묻는 토큰이 없어서
@@ -40,7 +74,7 @@ class AssistantApiTest {
      */
     @Test
     fun `좌표가 있으면 location 을 같이 담는다`() {
-        val body = JSONObject(AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 광화문))
+        val body = JSONObject(AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 광화문, activeDogId = null))
         assertEquals("오늘 산책 나가도 될까?", body.getString("query"))
         val location = body.getJSONObject("location")
         assertEquals(37.5665, location.getDouble("lat"), 1e-9)
@@ -59,7 +93,7 @@ class AssistantApiTest {
     @Test
     fun `한국 밖 좌표는 빼고 질문만 보낸다`() {
         val 도쿄 = GeoPoint(35.6762, 139.6503)
-        val body = JSONObject(AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 도쿄))
+        val body = JSONObject(AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 도쿄, activeDogId = null))
         assertFalse("범위 밖 좌표가 실리면 서버가 422 로 질문을 통째로 버린다", body.has("location"))
         assertEquals("오늘 산책 나가도 될까?", body.getString("query"))
     }
@@ -67,7 +101,7 @@ class AssistantApiTest {
     @Test
     fun `경계값은 실린다`() {
         listOf(GeoPoint(33.0, 124.0), GeoPoint(39.0, 132.0)).forEach {
-            val body = JSONObject(AssistantApi.requestBody("질문", where = it))
+            val body = JSONObject(AssistantApi.requestBody("질문", where = it, activeDogId = null))
             assertTrue("$it 는 한국 범위 안이다", body.has("location"))
         }
     }

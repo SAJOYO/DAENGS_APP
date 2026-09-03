@@ -346,6 +346,9 @@ fun ChatScreen(
      * **여기서 답을 지어내지 않는다.** 로그인이 안 됐을 때만 로컬 문구를 쓰고,
      * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
      * 대화 기록도 안 보낸다 — v1 오케스트레이션은 상태가 없다.
+     *
+     * 같이 싣는 것은 좌표와 **[dogId]** 뿐이다. 견종·나이는 앱이 지어 보내는 게 아니라
+     * 저쪽이 그 id 로 `pets` 를 읽는다.
      */
     // 물어보는 중인가. **연타를 막는다** — 한 번이 의미 라우터 + 생성이라 값이 비싸고,
     // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
@@ -368,7 +371,7 @@ fun ChatScreen(
             // 필요한데 없으면 CLARIFY 로 되묻는데, 이어서 묻는 토큰이 없어서
             // (무상태) 그 되묻기는 사용자에게 막다른 길이다. 그래서 미리 싣는다.
             val where = runCatching { fused.currentLocation().point }.getOrNull()
-            AssistantApi.query(token, text, where)
+            AssistantApi.query(token, text, where, activeDogId = dogId)
                 .onSuccess { response ->
                     // 대기 자리를 답으로 갈아 끼운다. 산책만 물었으면 저쪽 한 줄
                     // ("현재 산책 판단: GOOD") 대신 대화체 문장을 쓰고 ([walkSentence]),
