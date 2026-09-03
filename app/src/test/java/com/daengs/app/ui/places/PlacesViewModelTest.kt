@@ -8,10 +8,14 @@ import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationUpdateConfig
 import com.daengs.app.map.features.places.PlaceSearchState
 import com.daengs.app.place.PlaceFailure
+import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceSearchConditions
 import com.daengs.app.place.PlaceSearchRequest
 import com.daengs.app.place.PlaceSearchResponse
 import com.daengs.app.place.PlaceSearchRepository
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -53,6 +57,23 @@ class PlacesViewModelTest {
         runCurrent()
 
         assertEquals(PlaceSearchState.Idle, viewModel.state.value.discovery.search)
+    }
+
+    @Test
+    fun `returning with revoked permission clears results from the previous activation`() = runTest {
+        val viewModel = viewModelAt(GeoPoint(37.5, 127.0), backgroundScope)
+
+        runCurrent()
+        viewModel.activate(permissionGranted = true)
+        runCurrent()
+        assertEquals(PlaceSearchState.Empty(emptyResponse()), viewModel.state.value.discovery.search)
+
+        viewModel.deactivate()
+        viewModel.activate(permissionGranted = false)
+        runCurrent()
+
+        assertEquals(PlaceSearchState.Idle, viewModel.state.value.discovery.search)
+        assertEquals(PlaceLocationState.PermissionRequired, viewModel.state.value.location)
     }
 
     @Test
@@ -107,6 +128,73 @@ class PlacesViewModelTest {
         )
     }
 
+    @Test
+    fun `a late location fix cannot replace a newer pinned search intent`() = runTest {
+        val source = DelayedLocationSource()
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val viewModel = PlacesViewModel(
+            placeRepository = PlaceSearchRepository { request ->
+                requests += request
+                emptyResponse()
+            },
+            journeyRepository = JourneyRepository { JourneyResponse("dog", emptyList()) },
+            locationSource = source,
+            externalScope = backgroundScope,
+        )
+        val pinned = GeoPoint(37.51, 127.01)
+
+        runCurrent()
+        viewModel.activate(permissionGranted = true)
+        runCurrent()
+        viewModel.searchAt(pinned, PlaceKind.RESTAURANT, preferParking = false)
+        runCurrent()
+
+        source.complete(GeoPoint(37.5, 127.0))
+        runCurrent()
+
+        assertEquals(1, requests.size)
+        assertEquals(pinned, requests.single().origin)
+        assertEquals(listOf(PlaceKind.RESTAURANT), requests.single().kinds)
+        assertEquals(
+            PlaceLocationState.Ready(GeoPoint(37.5, 127.0)),
+            viewModel.state.value.location,
+        )
+    }
+
+    @Test
+    fun `a category change wins over an older recenter request`() = runTest {
+        val initial = GeoPoint(37.5, 127.0)
+        val refreshed = GeoPoint(37.52, 127.02)
+        val source = RefreshingLocationSource(initial)
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val viewModel = PlacesViewModel(
+            placeRepository = PlaceSearchRepository { request ->
+                requests += request
+                emptyResponse()
+            },
+            journeyRepository = JourneyRepository { JourneyResponse("dog", emptyList()) },
+            locationSource = source,
+            externalScope = backgroundScope,
+        )
+
+        runCurrent()
+        viewModel.activate(permissionGranted = true)
+        runCurrent()
+        requests.clear()
+
+        viewModel.locateAndSearch(PlaceKind.CAFE, preferParking = false)
+        runCurrent()
+        viewModel.searchAtCurrentOrigin(PlaceKind.RESTAURANT, preferParking = false)
+        runCurrent()
+        source.completeRefresh(refreshed)
+        runCurrent()
+
+        assertEquals(1, requests.size)
+        assertEquals(initial, requests.single().origin)
+        assertEquals(listOf(PlaceKind.RESTAURANT), requests.single().kinds)
+        assertEquals(PlaceLocationState.Ready(refreshed), viewModel.state.value.location)
+    }
+
     private fun viewModelAt(
         point: GeoPoint,
         scope: CoroutineScope,
@@ -143,6 +231,49 @@ class PlacesViewModelTest {
             point = point,
             capturedAtMillis = 0,
         )
+    }
+
+    private class DelayedLocationSource : LocationSource {
+        private var continuation: Continuation<LocationSample>? = null
+
+        override suspend fun currentLocation(): LocationSample = suspendCoroutine {
+            check(continuation == null)
+            continuation = it
+        }
+
+        override fun locationUpdates(config: LocationUpdateConfig): Flow<LocationSample> =
+            emptyFlow()
+
+        fun complete(point: GeoPoint) {
+            val pending = checkNotNull(continuation)
+            continuation = null
+            pending.resume(LocationSample(point, capturedAtMillis = 0))
+        }
+    }
+
+    private class RefreshingLocationSource(private val initial: GeoPoint) : LocationSource {
+        private var first = true
+        private var refresh: Continuation<LocationSample>? = null
+
+        override suspend fun currentLocation(): LocationSample {
+            if (first) {
+                first = false
+                return LocationSample(initial, capturedAtMillis = 0)
+            }
+            return suspendCoroutine {
+                check(refresh == null)
+                refresh = it
+            }
+        }
+
+        override fun locationUpdates(config: LocationUpdateConfig): Flow<LocationSample> =
+            emptyFlow()
+
+        fun completeRefresh(point: GeoPoint) {
+            val pending = checkNotNull(refresh)
+            refresh = null
+            pending.resume(LocationSample(point, capturedAtMillis = 1))
+        }
     }
 
     companion object {
