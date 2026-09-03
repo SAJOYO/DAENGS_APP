@@ -262,8 +262,13 @@ fun CardDrawScreen(
                 }
             }
 
-            DrawStep.Flip -> won?.let { (template, _) ->
-                FlipToCard(template, shown, dog?.name.orEmpty(), dog?.codeText.orEmpty()) {
+            // **글자는 뽑은 카드에서 읽는다.** 고른 강아지(`dog`)를 보면 둘러보기처럼
+            // 고를 아이가 없을 때 빈 문자열이 되어, 방금 만든 카드가 이름칸도 번호판도
+            // 빈 채로 뒤집힌다 — 도감에 가서야 글자가 나타났다. 저장되는 카드는 그
+            // 순간에 이미 이름과 번호를 들고 있으므로(`MainActivity` 의 `onDrawn` 이
+            // `"우리 아이"`·`birthCode` 로 채운다) 그쪽을 그대로 쓴다.
+            DrawStep.Flip -> won?.let { (template, card) ->
+                FlipToCard(template, shown, card.dogName, card.codeText) {
                     step = DrawStep.Result
                 }
             }
@@ -273,8 +278,6 @@ fun CardDrawScreen(
                     template = template,
                     card = card,
                     face = shown,
-                    dogName = dog?.name.orEmpty(),
-                    codeText = dog?.codeText.orEmpty(),
                     left = left,
                     onAgain = {
                         result = null
@@ -424,8 +427,6 @@ private fun ResultBody(
     template: CardTemplate,
     card: DrawnCard,
     face: CardFace?,
-    dogName: String,
-    codeText: String,
     left: Int,
     onAgain: () -> Unit,
     onOpenDex: () -> Unit,
@@ -433,7 +434,10 @@ private fun ResultBody(
 ) {
     val dex = DEX_CARDS.firstOrNull { it.id == template.id }
     Box(Modifier.fillMaxWidth(0.72f)) {
-        PersonalCard(template, face, dogName, codeText, Modifier.fillMaxWidth())
+        // **이름·번호를 따로 안 받는다.** 받던 시절에 부르는 쪽이 카드가 아니라
+        // 고른 강아지를 넘겨서, 같은 카드가 팝업에서는 비어 있고 도감에서는 이름이
+        // 있었다. 카드를 이미 들고 있으니 여기서 읽으면 둘이 갈릴 수가 없다.
+        PersonalCard(template, face, card.dogName, card.codeText, Modifier.fillMaxWidth())
     }
     Text(dex?.ko ?: template.label, color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
@@ -562,8 +566,6 @@ private fun DrawResultPreview() {
                     core = IntRect.Zero,
                 ),
                 face = null,
-                dogName = "네옹",
-                codeText = birthCode(8, 24),
                 left = 2,
                 onAgain = {},
                 onOpenDex = {},

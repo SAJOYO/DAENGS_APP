@@ -24,6 +24,7 @@ import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.auth.rememberTokenStore
 import com.daengs.app.auth.restoreSession
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
@@ -34,6 +35,7 @@ import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
+import com.daengs.app.dogcard.makeDevCard
 import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
@@ -116,6 +118,16 @@ class MainActivity : ComponentActivity() {
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
                 val cards = remember { CardHolder(cardStore) }
+
+                // 개발자 패널이 고른 대표 견종. **여기서 들고 있는다** — 홈이 들고
+                // 있었더니 홈 밖으로 못 나가서, 챗봇 얼굴을 보려면 로그인해서 강아지를
+                // 등록하는 수밖에 없었다. 릴리스에서는 패널이 빈 껍데기라 늘 null 이다.
+                // 저장하지 않는다 (패널 스위치와 같은 규칙).
+                var devBreed by remember { mutableStateOf<DogBreed?>(null) }
+                // **고른 값이 이긴다.** 홈이 하던 그대로다 — 로그인해서 대표가 있는
+                // 상태에서도 다른 견종을 세워 보려고 고르는 것이라, 대표가 이기면
+                // 고르기가 아무 일도 안 하는 것처럼 보인다.
+                val artBreed = devBreed ?: pets.primary?.breedArt
 
                 // 창밖 날씨. **여기서 들고 있는다** — 화면이 바뀌어도 안 죽는다.
                 // 홈 안에서 부르면 도감·산책을 갔다 올 때마다 폴백(맑은 낮)부터 다시
@@ -489,18 +501,47 @@ class MainActivity : ComponentActivity() {
                         } else {
                             null
                         },
+                        // 야채를 지정해 카드를 만든다. **뽑기와 같은 값을 넣는다** —
+                        // 아래 `onDrawn` 과 이름·번호가 갈리면 지정해서 만든 카드만
+                        // 다른 글자를 달고 나와서, 확인하려던 것이 안 맞는다.
+                        onMakeCard = if (BuildConfig.DEBUG) {
+                            { template ->
+                                val dog = pets.primary
+                                scope.launch {
+                                    makeDevCard(
+                                        context = context,
+                                        cards = cards,
+                                        template = template,
+                                        dogId = dog?.id,
+                                        dogName = dog?.name ?: "우리 아이",
+                                        codeText = dog?.birthDate
+                                            ?.let { birthCode(it.monthValue, it.dayOfMonth) }
+                                            ?: birthCode(8, 24),
+                                        appUserId = session?.appUserId,
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        // 이번 판에 뽑아 둔 카드가 한 장이라도 있나. **파일을 뒤지지
+                        // 않는다** — 얼굴 없는 카드는 위에서 막으므로, 목록에 있으면
+                        // 얼굴도 있다.
+                        canMakeCard = cards.cards.isNotEmpty(),
+                        devBreed = devBreed,
+                        onPickDevBreed = { devBreed = it },
                     )
 
                     Screen.Chat -> ChatScreen(
                         onBack = { screen = Screen.Home },
-                        avatar = pets.primary?.breedArt,
+                        avatar = artBreed,
                         dogId = pets.primary?.id,
                         accessTokenProvider = freshToken,
                     )
 
                     Screen.Places -> PlacesScreen(
                         onBack = { screen = Screen.Home },
-                        avatarBreed = pets.primary?.breedArt,
+                        avatarBreed = artBreed,
                     )
 
                     Screen.WalkHistory -> WalkHistoryScreen(
@@ -528,7 +569,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
                         walkController = walkController,
-                        avatarBreed = pets.primary?.breedArt,
+                        avatarBreed = artBreed,
                         pets = pets.pets.orEmpty(),
                         onFinished = {
                             scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
