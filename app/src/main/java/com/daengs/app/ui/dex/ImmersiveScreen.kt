@@ -350,7 +350,10 @@ private fun DrawScope.drawStage(
         // **창틀에도 우리 글자를 얹는다.** 카드가 녹으면 그 아래가 이 틀인데, 저쪽
         // 글자를 지워 두기만 하고 우리 것을 안 찍으면 이름 자리가 빈 채로 드러난다.
         hero?.let {
-            drawSlotTextAt(measurer, it.name, it.code, scene.frameName, scene.frameCode, fp, fs)
+            drawSlotTextAt(
+                measurer, it.name, it.code,
+                scene.frameName, scene.frameCode, scene.frameChip, fp, fs,
+            )
         }
     }
 

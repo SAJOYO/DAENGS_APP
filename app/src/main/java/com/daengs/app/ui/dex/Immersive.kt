@@ -85,6 +85,11 @@ data class ImmersiveScene(
     val frameName: Slot? = null,
     val frameCode: Slot? = null,
     /**
+     * 창틀의 번호 자리에 어두운 칩을 깔지. [com.daengs.app.ui.dogcard.CardTemplate.codeChip]
+     * 과 같은 뜻이고, 창틀이 있는 셋(배추·고구마·상추)은 전부 홀로그램 위라 켠다.
+     */
+    val frameChip: Boolean = false,
+    /**
      * 배경음. `assets/` 아래 경로이고, null 이면 무음이다.
      *
      * **[DexCard] 가 아니라 여기 있다.** 음악이 필요한 곳이 이머시브뿐이라서다 —
@@ -189,8 +194,9 @@ val CABBAGE_SCENE = ImmersiveScene(
     subject = "neo-hologram/art/cabbage-subject.webp",
     card = "neo-hologram/art/cabbage-card.webp",
     frame = "neo-hologram/art/cabbage-card-frame.webp",
-    frameName = Slot(51.5f, 5.2f, 65.0f, 9.8f),
-    frameCode = Slot(75.0f, 5.2f, 94.5f, 9.8f),
+    frameChip = true,
+    frameName = Slot(18.17f, 3.95f, 71.89f, 9.62f),
+    frameCode = Slot(73.49f, 4.51f, 94.5f, 9.05f),
     bgm = bgmFor("cabbage"),
     window = ImmersiveScene.Win(4.91f, 10.28f, 90.51f, 81.58f),
     fit = ImmersiveScene.Fit(6.06f, 14.15f, 87.43f, 62.70f),
@@ -218,8 +224,9 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
     subject = "neo-hologram/art/sweet-potato-subject.webp",
     card = "neo-hologram/art/sweet-potato-card.webp",
     frame = "neo-hologram/art/sweet-potato-card-frame.webp",
-    frameName = Slot(58.8f, 5.2f, 70.0f, 9.8f),
-    frameCode = Slot(73.5f, 5.2f, 93.0f, 9.8f),
+    frameChip = true,
+    frameName = Slot(19.03f, 4.0f, 72.26f, 10.18f),
+    frameCode = Slot(73.86f, 4.62f, 94.5f, 9.56f),
     bgm = bgmFor("sweet-potato"),
     window = ImmersiveScene.Win(6.28f, 10.85f, 88.57f, 81.61f),
     fit = ImmersiveScene.Fit(11.52f, 14.93f, 80.02f, 62.84f),
@@ -249,8 +256,9 @@ val LETTUCE_SCENE = ImmersiveScene(
     subject = "neo-hologram/art/lettuce-subject.webp",
     card = "neo-hologram/art/lettuce-card.webp",
     frame = "neo-hologram/art/lettuce-card-frame.webp",
-    frameName = Slot(53.8f, 5.4f, 67.0f, 9.4f),
-    frameCode = Slot(75.5f, 5.2f, 95.0f, 9.4f),
+    frameChip = true,
+    frameName = Slot(18.54f, 4.28f, 73.62f, 10.63f),
+    frameCode = Slot(75.22f, 4.91f, 94.5f, 9.99f),
     bgm = bgmFor("lettuce"),
     window = ImmersiveScene.Win(5.17f, 11.55f, 90.46f, 76.39f),
     fit = ImmersiveScene.Fit(11.22f, 15.47f, 80.33f, 62.13f),
