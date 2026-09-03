@@ -2,6 +2,7 @@ package com.daengs.app.ui.chat
 
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 /**
  * 자르는 네모의 셈. **화면과 떼어 둔다** — 손짓은 기기에서 봐야 알지만 좌표는
@@ -109,4 +110,28 @@ fun moveBy(box: CropBox, aspect: Float, dx: Float, dy: Float): CropBox {
 fun centerOffset(box: CropBox, aspect: Float): Float {
     val h = heightOf(box.w, aspect)
     return maxOf(abs(box.x + box.w / 2f - 0.5f), abs(box.y + h / 2f - 0.5f))
+}
+
+/** 그림 안의 픽셀 자리. [pixelBoxOf] 가 만든다. */
+data class PixelBox(val left: Int, val top: Int, val width: Int, val height: Int)
+
+/**
+ * 확정한 네모를 **그림 안 픽셀 자리**로 바꾼다.
+ *
+ * 이 네모는 서버로도 가고([GuideFrameScreen] 의 `onConfirm`), 대화 말풍선에 올릴
+ * 사진을 자르는 데도 쓴다. **잘라서 보냈는데 말풍선에는 사진 전체가 들어가면**
+ * 자른 것이 안 먹은 것으로 읽힌다.
+ *
+ * @param box 정규화된 `[x, y, w, h]`. `GuideFrameScreen` 이 그 순서로 준다
+ * @return 그림 밖으로 안 나가고 가로·세로가 최소 1픽셀인 자리. 그림이 비었으면 null
+ */
+fun pixelBoxOf(box: FloatArray, imageWidth: Int, imageHeight: Int): PixelBox? {
+    if (imageWidth <= 0 || imageHeight <= 0 || box.size < 4) return null
+    // 왼쪽 위는 그림 안으로 당기고, 폭·높이는 거기서 남은 만큼까지만 준다.
+    // 순서가 중요하다 — 폭을 먼저 자르면 왼쪽이 밖에 있을 때 음수가 된다.
+    val left = (box[0] * imageWidth).roundToInt().coerceIn(0, imageWidth - 1)
+    val top = (box[1] * imageHeight).roundToInt().coerceIn(0, imageHeight - 1)
+    val width = (box[2] * imageWidth).roundToInt().coerceIn(1, imageWidth - left)
+    val height = (box[3] * imageHeight).roundToInt().coerceIn(1, imageHeight - top)
+    return PixelBox(left, top, width, height)
 }

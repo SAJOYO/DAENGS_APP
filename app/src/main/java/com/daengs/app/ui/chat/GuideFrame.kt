@@ -67,8 +67,14 @@ fun GuideFrameScreen(
     photo: Bitmap,
     onCancel: () -> Unit,
     onConfirm: (FloatArray) -> Unit,
-    /** 맨 위 제목. 이 네모를 쓰는 곳이 진단만은 아니다. */
-    title: String = "병변이 네모 안에 오도록 맞춰 주세요",
+    /**
+     * 맨 위 제목. 이 네모를 쓰는 곳이 진단만은 아니다.
+     *
+     * **"병변" 이라고 쓰지 않는다.** 반려인이 쓰는 말이 아니라, 무엇을 맞추라는
+     * 것인지가 안 읽힌다. 서버에 물어보는 것은 결국 "이 부위가 어떤지" 라서,
+     * 화면도 그렇게 부른다.
+     */
+    title: String = "진단하고 싶은 부위가 잘 보이게 맞춰 주세요",
     /** 확인 버튼 글자. */
     confirmLabel: String = "이 자리로 진단",
     /**
@@ -304,12 +310,26 @@ internal object Band {
      */
     val CAPTURE_WIDTH = (RECOMMEND.start + RECOMMEND.endInclusive) / 2f
 
+    /**
+     * **사진을 고르기 전에** 보여 주는 안내.
+     *
+     * 갤러리에서 멀리 찍은 사진을 가져오면 네모를 아무리 맞춰도 [ALLOW] 아래라
+     * "너무 작아요" 에 걸려 막다른 길이 된다. 앱만 풀어줘도 소용없다 — 이 밴드는
+     * 서버 판정의 사본이라 서버가 재촬영으로 돌려보낸다. 그래서 **찍는 시점에**
+     * 알려 주는 것이 유일한 길이다. 보행 쪽이 같은 이유로 시트에 안내 줄을 달고 있다.
+     *
+     * 숫자를 문장에 박지 않고 [CAPTURE_WIDTH] 에서 끌어온다 — 저쪽이 밴드를 바꾸면
+     * 이 줄만 안 따라오는 일이 실제로 있었다.
+     */
+    val CAPTURE_HINT: String
+        get() = "💡 물어보고 싶은 곳을 가까이 — 화면 가로의 ${(CAPTURE_WIDTH * 100).toInt()}%쯤"
+
     data class Hint(val text: String, val bad: Boolean)
 
     fun hintFor(w: Float, centerOff: Float): Hint {
         val percent = (w * 100).toInt()
         return when {
-            w < ALLOW.start -> Hint("너무 작아요 — 병변에 더 가까이", true)
+            w < ALLOW.start -> Hint("너무 작아요 — 더 가까이 찍어 주세요", true)
             w > ALLOW.endInclusive -> Hint("너무 커요 — 주변 피부도 보이게", true)
             centerOff > CENTER_MAX -> Hint("가운데에서 벗어났어요", true)
             w !in RECOMMEND -> Hint("괜찮아요 · 가로 $percent%", false)

@@ -235,7 +235,10 @@ fun ChatScreen(
     // 1~3초 걸린다고 저쪽이 적어 뒀고, 첫 요청은 가중치를 올리느라 더 걸린다.
     val send: (PreparedPhoto, FloatArray) -> Unit = { photo, box ->
         scope.launch {
-            entries += ChatEntry.MyPhoto(photo.thumbnail)
+            // **말풍선에는 자른 자리를 올린다.** 잘라서 보냈는데 사진 전체가 뜨면
+            // 자른 것이 안 먹은 것으로 읽힌다. 서버로 가는 `photo.jpeg` 는 그대로
+            // 원본이다 — 저쪽이 `bbox` 로 학습과 같은 함수로 자른다 ([cropForBubble]).
+            entries += ChatEntry.MyPhoto(cropForBubble(photo.thumbnail, box))
             val slot = entries.size
             entries += ChatEntry.Screening
             ScreeningApi.screen(photo.jpeg, box)
@@ -940,7 +943,17 @@ private fun UserBubble(text: String) {
     }
 }
 
-/** 내가 올린 사진. 말풍선 대신 그림 자체가 모서리를 갖는다. */
+/**
+ * 내가 올린 사진. 말풍선 대신 그림 자체가 모서리를 갖는다.
+ *
+ * **폭을 고정한다.** 예전에는 상한만 걸어 두고 그림 크기대로 그렸는데, 말풍선에
+ * 올라가는 것이 통짜 사진에서 **자른 조각**으로 바뀌면서 그 크기가 확 줄었다
+ * ([cropForBubble]). 권장 네모가 사진 가로의 45% 쯤이라 512px 썸네일에서 잘라내면
+ * 200px 남짓이고, 실기기에서 60dp 짜리 말풍선이 됐다 — 무엇을 보냈는지가 안 보인다.
+ *
+ * 높이는 비율대로 두고 상한만 건다. 고정하면 세로로 긴 조각이 잘려서, 자른 자리를
+ * 보여 주려다 또 자르는 셈이 된다.
+ */
 @Composable
 private fun PhotoBubble(image: Bitmap) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -949,12 +962,21 @@ private fun PhotoBubble(image: Bitmap) {
             contentDescription = "보낸 사진",
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .widthIn(max = 200.dp)
+                .width(PHOTO_BUBBLE_WIDTH)
                 .heightIn(max = 240.dp)
                 .clip(RoundedCornerShape(18.dp, 4.dp, 18.dp, 18.dp)),
         )
     }
 }
+
+/**
+ * 내가 올린 사진 말풍선의 폭.
+ *
+ * 화면 폭의 절반쯤이다. [Photo.THUMB_EDGE] 가 "말풍선이 화면 폭의 절반쯤" 이라는
+ * 이유로 512 를 잡고 있으므로, **이 숫자를 키우면 그쪽도 같이 봐야 한다** — 잘린
+ * 조각을 더 크게 늘리면 그만큼 부드러워진다.
+ */
+private val PHOTO_BUBBLE_WIDTH = 200.dp
 
 /**
  * 진단 결과 말풍선.
@@ -1134,6 +1156,19 @@ private fun AiActionDialog(
                             SourceRow(DaengsIcon.Camera, "사진찍기", onCamera)
                             RowSeparator()
                             SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
+                            RowSeparator()
+                            // 어떻게 찍어야 쓸 수 있는 사진이 되는지는 **고르기 전에**
+                            // 알려야 한다. 보행 묶음이 같은 이유로 아래 줄을 달고 있다.
+                            //
+                            // 멀리서 찍은 사진은 네모를 아무리 맞춰도 "너무 작아요" 에
+                            // 걸린다. 그 밴드는 서버 판정의 사본이라 앱만 풀어줘도
+                            // 서버가 재촬영으로 돌려보낸다 ([Band] 참고).
+                            Text(
+                                Band.CAPTURE_HINT,
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
                         }
                         if (!skinOnly) {
                             DashedSeparator()
@@ -1229,6 +1264,13 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.Camera, "사진찍기") {}
                         RowSeparator()
                         SourceRow(DaengsIcon.Gallery, "첨부하기") {}
+                        RowSeparator()
+                        Text(
+                            Band.CAPTURE_HINT,
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
                     }
                     DashedSeparator()
                     SourceGroup("보행 영상 분석하기") {
