@@ -90,6 +90,25 @@ data class ImmersiveScene(
      */
     val frameChip: Boolean = false,
     /**
+     * 창틀의 아바타 원. **저쪽 개가 인쇄된 채로 남아 있는 자리다.**
+     *
+     * 카드가 다 녹으면 그 아래 창틀이 드러나는데, 무대에는 우리 아이가 서 있고
+     * 녹는 카드도 우리 것인데 이 원만 남의 개였다 — 같은 카드가 한 순간에 두 얼굴을
+     * 가졌다. 뚫려 있지 않고 불투명하므로 **위에 덮어 그린다.**
+     *
+     * **카드의 [com.daengs.app.ui.dogcard.CardTemplate.avatar] 를 그대로 쓸 수 없다.**
+     * 창틀은 카드와 같은 사각형에 그려지지만 같은 그림이 아니다 — 이름 바만 해도
+     * 왼쪽 끝이 3.8% 어긋나 있어서([frameName]) 카드 값을 쓰면 얼굴이 테 밖으로
+     * 밀린다. 이름 바의 어긋남으로 환산해 보기도 했는데 그건 더 밀렸다: 바의 왼쪽
+     * 끝은 원을 피해 물러난 자리라 원의 어긋남과 같지 않다.
+     *
+     * 그래서 원화에서 **직접 쟀다** ([frameName]·[frameCode] 와 같은 방식이다).
+     * 개가 원의 가운데·아래를 덮고 있어 초록 원반이 위쪽 초승달로만 남는데, 원의
+     * 좌·우·위 가장자리가 그 초승달에 다 들어 있어 가로 폭이 곧 지름이 된다.
+     * 잰 값에서 반지름을 8% 키웠다 — 딱 맞게 덮으면 개의 귀·턱이 테두리에 남는다.
+     */
+    val frameAvatar: Hole? = null,
+    /**
      * 배경음. `assets/` 아래 경로이고, null 이면 무음이다.
      *
      * **[DexCard] 가 아니라 여기 있다.** 음악이 필요한 곳이 이머시브뿐이라서다 —
@@ -195,6 +214,7 @@ val CABBAGE_SCENE = ImmersiveScene(
     card = "neo-hologram/art/cabbage-card.webp",
     frame = "neo-hologram/art/cabbage-card-frame.webp",
     frameChip = true,
+    frameAvatar = Hole(13.09f, 8.76f, 7.96f, 5.72f),
     frameName = Slot(23.43f, 3.95f, 71.89f, 9.62f),
     frameCode = Slot(73.49f, 4.51f, 94.5f, 9.05f),
     bgm = bgmFor("cabbage"),
@@ -225,6 +245,7 @@ val SWEET_POTATO_SCENE = ImmersiveScene(
     card = "neo-hologram/art/sweet-potato-card.webp",
     frame = "neo-hologram/art/sweet-potato-card-frame.webp",
     frameChip = true,
+    frameAvatar = Hole(14.71f, 8.14f, 6.88f, 4.98f),
     frameName = Slot(23.81f, 4.0f, 72.26f, 10.18f),
     frameCode = Slot(73.86f, 4.62f, 94.5f, 9.56f),
     bgm = bgmFor("sweet-potato"),
@@ -257,6 +278,7 @@ val LETTUCE_SCENE = ImmersiveScene(
     card = "neo-hologram/art/lettuce-card.webp",
     frame = "neo-hologram/art/lettuce-card-frame.webp",
     frameChip = true,
+    frameAvatar = Hole(13.06f, 10.02f, 8.62f, 6.89f),
     frameName = Slot(23.62f, 4.28f, 73.62f, 10.63f),
     frameCode = Slot(75.22f, 4.91f, 94.5f, 9.99f),
     bgm = bgmFor("lettuce"),
@@ -325,12 +347,20 @@ data class SubjectFace(
  *
  * 그래서 무대에 쓸 값이 카드의 값을 따라간다 — 카드 구멍을 고치면 무대도 같이 맞는다.
  */
-fun ImmersiveScene.faceInSubject(template: CardTemplate): Hole = Hole(
+fun ImmersiveScene.faceInSubject(template: CardTemplate): Hole = faceInSubject(fit, template)
+
+/**
+ * [faceInSubject] 의 알맹이. **무대만 쓰는 것이 아니다** — 도감의 팝아웃도 누끼
+ * 한 장을 카드 안 [ImmersiveScene.Fit] 자리에 놓는 같은 모양이라, 같은 나눗셈으로
+ * 얼굴 자리가 나온다 ([CardPop.fit]).
+ */
+fun faceInSubject(fit: ImmersiveScene.Fit, template: CardTemplate): Hole = Hole(
     cx = (template.face.cx - fit.x) / fit.w * 100f,
     cy = (template.face.cy - fit.y) / fit.h * 100f,
     rx = template.face.rx / fit.w * 100f,
     ry = template.face.ry / fit.h * 100f,
 )
+
 
 
 /**

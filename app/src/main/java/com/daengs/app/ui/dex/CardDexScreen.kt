@@ -62,7 +62,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.DrawnCard
+import androidx.compose.ui.geometry.Size
+import com.daengs.app.ui.dogcard.CardFace
+import com.daengs.app.ui.dogcard.Hole
 import com.daengs.app.ui.dogcard.drawCardFace
+import com.daengs.app.ui.dogcard.drawInHoleOf
 import com.daengs.app.ui.dogcard.drawCardText
 import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.ui.theme.CardWhite
@@ -632,7 +636,16 @@ private fun CardViewer(
             // 팝아웃은 카드 **위로 넘어가야** 하므로 카드와 같은 크기의 덧그림 판에서
             // 음수 좌표로 그린다. Compose 는 기본으로 안 자르므로 그대로 보인다.
             if (hero != null && card.pop != null && !slot.locked) {
-                Canvas(Modifier.matchParentSize()) { drawPopOut(hero, card.pop.fit, popped) }
+                // 카드에 얹은 얼굴을 팝아웃에도 그대로 넘긴다. 합쳐지지 않은 카드
+                // (얼굴 파일이 없는 시드 등)면 null 이고, 그때는 저쪽 누끼가 나온다.
+                val popFace = drawn?.takeIf { it.composed }
+                Canvas(Modifier.matchParentSize()) {
+                    drawPopOut(
+                        hero, card.pop.fit, popped,
+                        face = popFace?.face,
+                        hole = popFace?.template?.let { faceInSubject(card.pop.fit, it) },
+                    )
+                }
             }
             if (slot.locked) {
                 Canvas(Modifier.matchParentSize()) { drawLock() }
@@ -771,7 +784,21 @@ private fun CardViewer(
  * 떠오른 동안 카드를 어둡게 죽인다. **안 죽이면 유령이 하나 더 보인다** — 카드
  * 그림에도 같은 주인공이 인쇄돼 있기 때문이다.
  */
-private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: Float) {
+private fun DrawScope.drawPopOut(
+    hero: ImageBitmap,
+    fit: ImmersiveScene.Fit,
+    t: Float,
+    /**
+     * 튀어나온 누끼에 끼울 **우리 아이 얼굴**. null 이면 저쪽 누끼가 그대로 나온다.
+     *
+     * **저쪽 누끼에는 저쪽 강아지가 박혀 있다.** 뚫려 온 셋(배추·고구마·상추)과 달리
+     * `tomato-subject.webp` 만 얼굴이 안 뚫린 채로 왔고, 그래서 카드에는 우리 아이가
+     * 들어가 있는데 짚으면 남의 개가 떠올랐다 — 같은 카드가 한 순간에 두 얼굴을
+     * 가졌다. 불투명하므로 위에 덮어 그리면 가려진다.
+     */
+    face: CardFace? = null,
+    hole: Hole? = null,
+) {
     if (t <= 0.001f) return
     val w = size.width * fit.w / 100f
     val h = size.height * fit.h / 100f
@@ -804,6 +831,12 @@ private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: 
         alpha = t,
         filterQuality = FilterQuality.High,
     )
+
+    // 얼굴은 **누끼와 같은 사각형**에 끼운다. 자리는 재지 않고 카드 값에서 나눠
+    // 얻으므로(`faceInSubject`) 카드 구멍을 고치면 여기도 같이 맞는다.
+    if (face != null && hole != null) {
+        drawInHoleOf(face, hole, Offset(x, y), Size(gw, gh))
+    }
 }
 
 /**
