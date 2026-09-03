@@ -27,7 +27,10 @@ class PlaceDiscoveryPanelTest {
     fun `marker projection preserves server order and stable source ref selection`() {
         val response = response()
         val selected = PlaceKey("kto", "cafe-unknown")
-        val state = PlaceDiscoveryState(response = response, selectedPlaceKey = selected)
+        val state = PlaceDiscoveryState(
+            search = PlaceSearchState.Content(response),
+            selectedPlaceKey = selected,
+        )
 
         val markers = canonicalPlaceMarkers(state)
         val keys = canonicalPlaceKeysByMarker(state)

@@ -80,14 +80,12 @@ data class PlaceJourneyRequest(
     val destinationKey: PlaceKey,
     val destinationName: String,
     val destination: GeoPoint,
-    val dogId: String? = null,
 ) {
-    constructor(origin: GeoPoint, place: PlaceResult, dogId: String? = null) : this(
+    constructor(origin: GeoPoint, place: PlaceResult) : this(
         origin = origin,
         destinationKey = place.key,
         destinationName = place.name,
         destination = place.point,
-        dogId = dogId,
     )
 
     fun toJson(): JsonObject = buildJsonObject {
@@ -103,7 +101,6 @@ data class PlaceJourneyRequest(
             })
         })
         put("companion", "dog")
-        dogId?.trim()?.takeIf(String::isNotEmpty)?.let { put("dog_id", it) }
         // 안드로이드 첫 판은 길 안내를 지도 앱에 넘긴다 — 경로선을 직접 그리지 않는다.
         put("measured", true)
         put("with_polyline", false)

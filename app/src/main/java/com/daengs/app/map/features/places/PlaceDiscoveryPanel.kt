@@ -56,6 +56,7 @@ import com.daengs.app.place.PlaceResult
 import com.daengs.app.place.PlaceSearchGroup
 import com.daengs.app.place.PlaceSearchHit
 import com.daengs.app.place.PlaceSortType
+import com.daengs.app.place.retryable
 import com.daengs.app.place.supportsParkingPreference
 import com.daengs.app.ui.theme.DaengsTheme
 
@@ -262,7 +263,10 @@ fun PlaceDiscoveryPanel(
                                 fontSize = 12.sp,
                                 maxLines = 2,
                             )
-                            DaengsTextAction("다시 시도", onRetry, tint = DaengsColors.Error)
+                            val failure = (state.search as? PlaceSearchState.Failed)?.failure
+                            if (failure?.retryable == true) {
+                                DaengsTextAction("다시 시도", onRetry, tint = DaengsColors.Error)
+                            }
                         }
                     }
                 }
@@ -284,6 +288,8 @@ fun PlaceDiscoveryPanel(
                         Text("${categoryLabel(selectedKind)} 찾는 중", color = TextMuted, fontSize = 13.sp)
                     }
                 }
+            } else if (state.search is PlaceSearchState.Failed) {
+                // 실패 카드는 바로 위에서 그린다. 실패를 정상적인 0건 결과로도 말하지 않는다.
             } else if (group == null && state.requestedKinds.isEmpty()) {
                 item {
                     Text(
