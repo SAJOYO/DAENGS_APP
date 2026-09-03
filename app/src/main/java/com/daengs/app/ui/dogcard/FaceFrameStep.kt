@@ -23,7 +23,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -103,4 +105,42 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawFace(
         alpha = alpha,
         filterQuality = FilterQuality.High,
     )
+}
+
+// -- 프리뷰 ------------------------------------------------------------------
+//
+// 진짜 누끼는 사진과 ML Kit 가 있어야 해서 여기서는 못 만든다. 대신 **원과 글자가
+// 앉는 자리**만 본다 — 원이 가운데인지, 흐린 바깥이 얼마나 남는지.
+
+@Preview(name = "원형 틀 · 가운데", widthDp = 360, heightDp = 380)
+@Composable
+private fun FaceFrameStepPreview() {
+    DaengsTheme {
+        FaceFrameStep(face = previewFace(), frame = FaceFrame.CENTER, onChange = {})
+    }
+}
+
+/** 작게 잡으면 원 밖으로 밀려난 부분이 얼마나 흐린지가 보인다. */
+@Preview(name = "원형 틀 · 작게 잡았을 때", widthDp = 360, heightDp = 380)
+@Composable
+private fun FaceFrameStepSmallPreview() {
+    DaengsTheme {
+        FaceFrameStep(face = previewFace(), frame = FaceFrame(0.6f, 0.5f, 0.42f), onChange = {})
+    }
+}
+
+/** 얼굴 대신 색 덩어리. 자리만 보는 프리뷰라 이것으로 충분하다. */
+private fun previewFace(): Bitmap {
+    val size = 240
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bmp)
+    canvas.drawColor(android.graphics.Color.TRANSPARENT)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    paint.color = android.graphics.Color.rgb(226, 200, 165)
+    canvas.drawOval(android.graphics.RectF(30f, 20f, 210f, 220f), paint)
+    paint.color = android.graphics.Color.rgb(80, 60, 50)
+    canvas.drawCircle(95f, 100f, 12f, paint)
+    canvas.drawCircle(145f, 100f, 12f, paint)
+    canvas.drawOval(android.graphics.RectF(105f, 130f, 135f, 152f), paint)
+    return bmp
 }
