@@ -21,7 +21,6 @@ class JourneyModelsTest {
             destinationKey = PlaceKey("medical", "hospital-7"),
             destinationName = "댕스동물병원",
             destination = GeoPoint(37.5145, 127.0316),
-            dogId = " janggun ",
         ).toJson()
 
         assertEquals(
@@ -32,7 +31,7 @@ class JourneyModelsTest {
         assertFalse(destination.containsKey("id"))
         assertEquals("37.5145", destination.getValue("lat").jsonPrimitive.content)
         assertEquals("127.0316", destination.getValue("lng").jsonPrimitive.content)
-        assertEquals("janggun", request.getValue("dog_id").jsonPrimitive.content)
+        assertFalse(request.containsKey("dog_id"))
         assertTrue(request.getValue("measured").jsonPrimitive.boolean)
         assertFalse(request.getValue("with_polyline").jsonPrimitive.boolean)
     }

@@ -1,6 +1,7 @@
 package com.daengs.app
 
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,8 +23,6 @@ import com.daengs.app.auth.CancelledByUser
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
-import com.daengs.app.auth.rememberTokenStore
-import com.daengs.app.auth.restoreSession
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
@@ -49,9 +48,10 @@ import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
-import com.daengs.app.ui.places.PlacesScreen
+import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
+import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkScreen
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
@@ -88,15 +88,16 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val walkRuntime = (application as DaengsApp).walkRuntime
-        val cardStore = (application as DaengsApp).cardStore
+        val app = application as DaengsApp
+        val walkRuntime = app.walkRuntime
+        val cardStore = app.cardStore
         val walkController = walkRuntime.controller
         setContent {
             DaengsTheme {
                 // 화면이 넷이 됐지만 **네비게이션 라이브러리는 아직 안 넣는다.**
                 // 흐름이 갈래 없이 일직선(랜딩 → 홈 ⇄ 도감)이고, 딥링크도 백스택
                 // 복원도 필요 없다. 산책 게임이 붙어 옆길이 생기면 그때가 맞다.
-                val store = rememberTokenStore()
+                val store = remember { app.tokenStore }
                 // 탈퇴할 때 방까지 지워야 해서 여기서도 잡는다 (홈이 쓰는 것과 같은 저장소).
                 val roomStore = rememberRoomStore()
                 // 방 액자에 건 카드. **방과 도감이 만나는 자리가 여기 하나다** —
@@ -108,8 +109,21 @@ class MainActivity : ComponentActivity() {
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
                 // 번쩍였다가 홈으로 넘어간다.
                 val saved = remember { store.load() }
-                var screen by remember {
+                var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
+                }
+                // 방향은 기록 세션이 아니라 화면 설정이다. 사용자가 산책에서 고른 방향은
+                // 회전 재생성 뒤에도 남고, 다른 화면은 기존 세로 구성을 지킨다.
+                var walkOrientation by rememberSaveable {
+                    mutableStateOf(WalkOrientation.PORTRAIT)
+                }
+                LaunchedEffect(screen, walkOrientation) {
+                    requestedOrientation = when {
+                        screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        walkOrientation == WalkOrientation.PORTRAIT ->
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    }
                 }
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
@@ -141,9 +155,9 @@ class MainActivity : ComponentActivity() {
                 // 서버가 "인증이 만료되었습니다"로 막는다 — 실제로 그렇게 걸렸다.
                 // 재발급이 되면 세션도 같이 갈아 끼워야 다음 호출이 또 만료를 안 만난다.
                 val freshToken: suspend () -> String? = {
-                    val restored = restoreSession(store)
+                    val restored = app.sessionProvider.freshSession()
                     if (restored != null) session = restored
-                    (restored ?: session)?.accessToken
+                    restored?.accessToken
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
@@ -205,7 +219,7 @@ class MainActivity : ComponentActivity() {
 
                 // access 가 만료됐으면 조용히 재발급한다.
                 //
-                // **못 살린 이유를 구분해야 한다.** [restoreSession] 은 두 경우에 null 을
+                // **못 살린 이유를 구분해야 한다.** freshSession은 두 경우에 null 을
                 // 주는데 대응이 정반대다.
                 //
                 //  - 토큰이 죽었다 (refresh 7일이 지났다) → 저장소를 비웠다. 랜딩으로 보낸다
@@ -228,7 +242,9 @@ class MainActivity : ComponentActivity() {
                     // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
                     AuthApi.me(token).onSuccess { roomName = it.roomName }
                     if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
-                    // 로그인 직후. **새 폰이면 여기서 지난 산책이 되돌아온다.**
+                    // 로그인 직후. 끝났지만 전달되지 않은 산책을 durable 작업으로 넘기고,
+                    // 새 폰이면 서버의 지난 산책도 되찾는다.
+                    walkRuntime.delivery.enqueuePending()
                     walkRuntime.sync.syncOnce(token)
 
                     // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
@@ -252,7 +268,7 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     if (saved != null) {
-                        val restored = restoreSession(store)
+                        val restored = app.sessionProvider.freshSession()
                         when {
                             restored != null -> session = restored
                             store.load() == null -> {
@@ -278,7 +294,7 @@ class MainActivity : ComponentActivity() {
                                 busy = false
                                 result
                                     .onSuccess {
-                                        store.save(it)
+                                        app.sessionProvider.save(it)
                                         session = it
                                         screen = Screen.Home
                                     }
@@ -457,7 +473,7 @@ class MainActivity : ComponentActivity() {
                                         // 방은 서버에 사본이 없어 이 기기에만 있다.
                                         // 안 지우면 다음에 로그인한 사람이 남의 방을
                                         // 물려받는다.
-                                        store.clear()
+                                        app.sessionProvider.clear()
                                         roomStore.clear()
                                         frameCardId = null
                                         pets.forget()
@@ -489,7 +505,7 @@ class MainActivity : ComponentActivity() {
                             session = null
                             // 다음 사람이 남의 강아지를 보면 안 된다.
                             pets.forget()
-                            store.clear()
+                            app.sessionProvider.clear()
                             screen = Screen.Landing
                             // 서버 쪽 세션도 지운다. 실패해도 기기에서는 이미 지웠다.
                             if (old != null && AuthApi.configured) {
@@ -539,9 +555,9 @@ class MainActivity : ComponentActivity() {
                         accessTokenProvider = freshToken,
                     )
 
-                    Screen.Places -> PlacesScreen(
+                    Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
-                        avatarBreed = artBreed,
+                        primaryPet = pets.primary,
                     )
 
                     Screen.WalkHistory -> WalkHistoryScreen(
@@ -568,12 +584,12 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
+                        onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
+                        history = walkRuntime.history,
                         avatarBreed = artBreed,
                         pets = pets.pets.orEmpty(),
-                        onFinished = {
-                            scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
-                        },
+                        outside = outside,
                     )
 
                     Screen.Dex -> CardDexScreen(

@@ -3,9 +3,12 @@ package com.daengs.app.walk.store
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.RecordedWalkAction
 import com.daengs.app.walk.RecordedWeather
+import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -200,6 +203,49 @@ class WalkDaoTest {
         assertTrue(log.fixes("s1").isEmpty())
     }
 
+    @Test
+    fun `행동 원본은 시각 순서로 남고 같은 id는 중복되지 않는다`() = runBlocking {
+        log.openSession(session("s1"))
+        log.appendAction(action("a2", WalkMomentType.SOCIAL, 3_000L))
+        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L))
+        log.appendAction(action("a1", WalkMomentType.SPECIAL, 4_000L))
+
+        val stored = log.actions("s1")
+
+        assertEquals(listOf("a1", "a2"), stored.map { it.id })
+        assertEquals(WalkMomentType.EXPLORE, stored.first().type)
+    }
+
+    @Test
+    fun `세션을 지우면 행동 원본도 함께 지워진다`() = runBlocking {
+        log.openSession(session("s1"))
+        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L))
+
+        log.deleteSession("s1")
+
+        assertTrue(log.actions("s1").isEmpty())
+    }
+
+    @Test
+    fun `미래 버전의 모르는 행동 코드는 산책 상세를 막지 않는다`() = runBlocking {
+        log.openSession(session("s1"))
+        db.walkDao().insertAction(
+            WalkActionRow(
+                id = "future",
+                sessionId = "s1",
+                typeCode = "future_behavior",
+                recordedAtMillis = 2_000L,
+                locationCapturedAtMillis = 1_900L,
+                lat = 37.5,
+                lng = 127.0,
+                accuracyM = 5f,
+            ),
+        )
+
+        assertTrue(log.actions("s1").isEmpty())
+        assertEquals("s1", log.session("s1")?.id)
+    }
+
 
     // -- 강아지를 지웠을 때 ------------------------------------------------
 
@@ -212,11 +258,13 @@ class WalkDaoTest {
     fun `그 아이와만 나간 산책은 같이 지운다`() = runBlocking {
         log.openSession(RecordedSession("solo", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
         log.append("solo", fix(0))
+        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L, sessionId = "solo"))
 
         log.forgetDog("dog-1")
 
         assertNull(log.session("solo"))
         assertTrue(log.fixes("solo").isEmpty())
+        assertTrue(log.actions("solo").isEmpty())
     }
 
     /**
@@ -271,5 +319,20 @@ class WalkDaoTest {
         lng = 127.0,
         accuracyM = 5f,
         isMock = isMock,
+    )
+
+    private fun action(
+        id: String,
+        type: WalkMomentType,
+        atMillis: Long,
+        sessionId: String = "s1",
+    ) = RecordedWalkAction(
+        id = id,
+        sessionId = sessionId,
+        type = type,
+        recordedAtMillis = atMillis,
+        locationCapturedAtMillis = atMillis - 100L,
+        point = GeoPoint(37.5, 127.0),
+        accuracyMeters = 5f,
     )
 }

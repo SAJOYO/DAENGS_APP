@@ -70,6 +70,34 @@ class WalkSyncTest {
         assertEquals(WalkSyncState.LOCAL_ONLY, log.sessions.single().syncState)
     }
 
+    @Test
+    fun `worker용 한 건 동기화는 실패를 호출자에게 돌려준다`() = runBlocking {
+        log.sessions += session("done", ended = true)
+        api.uploadFails = true
+
+        val failure = runCatching {
+            sync.syncPendingSession("token", "done")
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertEquals(WalkSyncState.LOCAL_ONLY, log.sessions.single().syncState)
+    }
+
+    @Test
+    fun `worker가 이미 끝난 세션을 다시 받아도 요청하지 않는다`() = runBlocking {
+        log.sessions += session(
+            "done",
+            ended = true,
+            state = WalkSyncState.DERIVED,
+            synced = NOW,
+        )
+
+        sync.syncPendingSession("token", "done")
+
+        assertEquals(0, api.uploadCalls)
+        assertEquals(0, api.finalizeCalls)
+    }
+
     /** 한 건이 막혀도 나머지는 시도한다 — 큰 산책 하나에 다른 기록이 볼모가 되면 안 된다. */
     @Test
     fun `한 건이 실패해도 나머지는 올라간다`() = runBlocking {
@@ -251,6 +279,8 @@ class WalkSyncTest {
             fixes[sessionId] = fixes[sessionId].orEmpty() + fix
         }
 
+        override suspend fun appendAction(action: com.daengs.app.walk.RecordedWalkAction) = Unit
+
         override suspend fun closeSession(sessionId: String, endedAtMillis: Long) = Unit
 
         override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) = Unit
@@ -298,6 +328,10 @@ class WalkSyncTest {
 
         override suspend fun fixes(sessionId: String): List<RecordedFix> =
             fixes[sessionId].orEmpty()
+
+        override suspend fun actions(
+            sessionId: String,
+        ): List<com.daengs.app.walk.RecordedWalkAction> = emptyList()
     }
 
     private class FakeApi : WalkApiClient {

@@ -27,19 +27,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daengs.app.map.layers.trail.TrailLayerState
+import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
+import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.shell.MapHost
-import com.daengs.app.map.shell.MapScene
+import com.daengs.app.map.shell.MapPurpose
+import com.daengs.app.map.shell.MapSceneSources
+import com.daengs.app.map.shell.composeMapScene
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.common.DaengsFloatingButton
 import com.daengs.app.ui.theme.CardWhite
+import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.walk.WalkHistory
+import com.daengs.app.walk.WalkMoment
+import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.WalkSummary
 
 /**
@@ -61,19 +69,30 @@ fun WalkDetailScreen(
     pets: List<Pet> = emptyList(),
 ) {
     val inspectionMode = LocalInspectionMode.current
-    var walk by remember(sessionId) { mutableStateOf<WalkSummary?>(null) }
+    var detail by remember(sessionId) { mutableStateOf<WalkSessionDetail?>(null) }
 
     LaunchedEffect(sessionId, history) {
-        walk = history.detail(sessionId)
+        detail = history.sessionDetail(sessionId)
     }
 
     BackHandler(onBack = onBack)
 
     Box(modifier.fillMaxSize().background(PinkFaint)) {
-        val paths = walk?.segments.orEmpty().map { segment -> segment.map { it.point } }
+        val walk = detail?.summary
+        val route = detail?.route
+        val completedRoute = route?.toCompletedRouteLayerState(formatTime = ::formatWalkClock)
+            ?: CompletedRouteLayerState()
         if (!inspectionMode) {
             MapHost(
-                scene = MapScene(trail = TrailLayerState(paths = paths)),
+                scene = composeMapScene(
+                    purpose = MapPurpose.WALK,
+                    sources = MapSceneSources(
+                        moments = detail?.moments.orEmpty().map { moment ->
+                            MomentMarkerState(moment.id, moment.point, moment.markerLabel)
+                        },
+                        completedRoute = completedRoute,
+                    ),
+                ),
                 searchOrigin = null,
                 followDevice = false,
                 onCameraIdle = {},
@@ -85,7 +104,7 @@ fun WalkDetailScreen(
                 // 그릴 선이 없으면 **그 산책이 있었던 자리**로 간다. 안 그러면 지도가
                 // 네이버 기본 카메라(서울시청)에 앉아, 강남에서 한 산책이 시청에서 한
                 // 것처럼 보인다.
-                fitBounds = paths.flatten().ifEmpty { listOfNotNull(walk?.anchor) }
+                fitBounds = route?.bounds.orEmpty().ifEmpty { listOfNotNull(walk?.anchor) }
                     .takeIf { it.isNotEmpty() },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -98,7 +117,12 @@ fun WalkDetailScreen(
         )
 
         walk?.let {
-            WalkFacts(it, dogNames(it.dogIds, pets), Modifier.align(Alignment.BottomCenter))
+            WalkFacts(
+                walk = it,
+                dogNames = dogNames(it.dogIds, pets),
+                moments = detail?.moments.orEmpty(),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -108,6 +132,7 @@ fun WalkDetailScreen(
 private fun WalkFacts(
     walk: WalkSummary,
     dogNames: List<String> = emptyList(),
+    moments: List<WalkMoment> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -152,6 +177,14 @@ private fun WalkFacts(
                     fontSize = 12.sp,
                 )
             }
+            if (moments.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "남긴 장소 ${moments.size}곳 · 행동 ${moments.sumOf { it.actions.size }}개",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                )
+            }
         }
     }
 }
@@ -162,5 +195,39 @@ private fun Fact(label: String, value: String) {
         Text(label, color = TextMuted, fontSize = 11.sp)
         Spacer(Modifier.height(2.dp))
         Text(value, color = TextDark, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
+@Composable
+private fun WalkFactsPreview() {
+    DaengsTheme {
+        Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.BottomCenter) {
+            WalkFacts(
+                walk = WalkSummary(
+                    sessionId = "preview",
+                    dogIds = emptyList(),
+                    startedAtMillis = 1_788_324_720_000L,
+                    endedAtMillis = 1_788_326_220_000L,
+                    weather = null,
+                    distanceMeters = 1_840.0,
+                    activeDurationMillis = 1_500_000L,
+                    segments = listOf(
+                        listOf(
+                            com.daengs.app.location.LocationSample(
+                                point = GeoPoint(37.5, 127.0),
+                                capturedAtMillis = 1_788_324_720_000L,
+                            ),
+                            com.daengs.app.location.LocationSample(
+                                point = GeoPoint(37.501, 127.0),
+                                capturedAtMillis = 1_788_324_820_000L,
+                            ),
+                        ),
+                    ),
+                    anchor = GeoPoint(37.5, 127.0),
+                ),
+                dogNames = listOf("초코"),
+            )
+        }
     }
 }

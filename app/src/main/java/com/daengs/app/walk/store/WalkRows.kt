@@ -86,3 +86,27 @@ data class WalkFixRow(
     val accuracyM: Float?,
     val isMock: Boolean,
 )
+
+/** 버튼을 누른 사실의 원본. 5m 장소 묶음은 저장하지 않고 읽을 때 다시 계산한다. */
+@Entity(
+    tableName = "walk_action",
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkSessionRow::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sessionId")],
+)
+data class WalkActionRow(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val typeCode: String,
+    val recordedAtMillis: Long,
+    val locationCapturedAtMillis: Long,
+    val lat: Double,
+    val lng: Double,
+    val accuracyM: Float?,
+)

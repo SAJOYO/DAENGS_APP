@@ -1,9 +1,12 @@
 package com.daengs.app.walk.store
 
+import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.RecordedWalkAction
 import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
+import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
 
 class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
@@ -39,6 +42,19 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
             lng = fix.lng,
             accuracyM = fix.accuracyM,
             isMock = fix.isMock,
+        ),
+    )
+
+    override suspend fun appendAction(action: RecordedWalkAction) = dao.insertAction(
+        WalkActionRow(
+            id = action.id,
+            sessionId = action.sessionId,
+            typeCode = action.type.behaviorCode,
+            recordedAtMillis = action.recordedAtMillis,
+            locationCapturedAtMillis = action.locationCapturedAtMillis,
+            lat = action.point.latitude,
+            lng = action.point.longitude,
+            accuracyM = action.accuracyMeters,
         ),
     )
 
@@ -99,6 +115,9 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
 
     override suspend fun fixes(sessionId: String): List<RecordedFix> =
         dao.fixes(sessionId).map(WalkFixRow::toModel)
+
+    override suspend fun actions(sessionId: String): List<RecordedWalkAction> =
+        dao.actions(sessionId).mapNotNull(WalkActionRow::toModel)
 }
 
 fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession = RecordedSession(
@@ -124,3 +143,17 @@ private fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     accuracyM = accuracyM,
     isMock = isMock,
 )
+
+/** 모르는 미래 코드는 버린다. 앱이 오래됐다고 산책 상세 전체가 열리지 않으면 안 된다. */
+private fun WalkActionRow.toModel(): RecordedWalkAction? {
+    val type = WalkMomentType.entries.firstOrNull { it.behaviorCode == typeCode } ?: return null
+    return RecordedWalkAction(
+        id = id,
+        sessionId = sessionId,
+        type = type,
+        recordedAtMillis = recordedAtMillis,
+        locationCapturedAtMillis = locationCapturedAtMillis,
+        point = GeoPoint(lat, lng),
+        accuracyMeters = accuracyM,
+    )
+}

@@ -2,13 +2,17 @@ package com.daengs.app.map.features.places
 
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.place.DogSearchContext
+import com.daengs.app.place.PlaceFailure
 import com.daengs.app.place.PlaceKey
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceSearchRequest
 import com.daengs.app.place.PlaceSearchResponse
 import com.daengs.app.place.PlaceSearchRepository
 import com.daengs.app.place.supportsParkingPreference
+import com.daengs.app.place.toPlaceFailure
+import com.daengs.app.place.userMessage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,16 +22,38 @@ import kotlinx.coroutines.launch
 /** 결과가 어느 지점 기준인지. 화면 문구와 "종류만 바꾸기"가 같은 사실을 봐야 한다. */
 enum class PlaceOriginMode { DEVICE, PINNED }
 
+sealed interface PlaceSearchState {
+    data object Idle : PlaceSearchState
+
+    data object Loading : PlaceSearchState
+
+    data class Content(val response: PlaceSearchResponse) : PlaceSearchState
+
+    data class Empty(val response: PlaceSearchResponse) : PlaceSearchState
+
+    data class Failed(val failure: PlaceFailure) : PlaceSearchState
+}
+
 data class PlaceDiscoveryState(
     val requestedKinds: List<PlaceKind> = emptyList(),
     val origin: GeoPoint? = null,
     val originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
     val preferParking: Boolean = false,
-    val response: PlaceSearchResponse? = null,
     val selectedPlaceKey: PlaceKey? = null,
-    val loading: Boolean = false,
-    val error: String? = null,
-)
+    val search: PlaceSearchState = PlaceSearchState.Idle,
+) {
+    val response: PlaceSearchResponse?
+        get() = when (val current = search) {
+            is PlaceSearchState.Content -> current.response
+            is PlaceSearchState.Empty -> current.response
+            else -> null
+        }
+
+    val loading: Boolean get() = search is PlaceSearchState.Loading
+
+    val error: String?
+        get() = (search as? PlaceSearchState.Failed)?.failure?.userMessage()
+}
 
 /**
  * 장소 검색 요청의 생애를 맡는다.
@@ -38,7 +64,7 @@ data class PlaceDiscoveryState(
 class PlaceDiscoveryController(
     private val repository: PlaceSearchRepository,
     // identity 가 아니라 값이다 — 서버는 dog_id 를 받지 않는다 (결정 #73).
-    private val dogContext: DogSearchContext?,
+    private var dogContext: DogSearchContext?,
     private val scope: CoroutineScope,
 ) {
     private val mutableState = MutableStateFlow(PlaceDiscoveryState())
@@ -47,6 +73,11 @@ class PlaceDiscoveryController(
     private var lastRequest: PlaceSearchRequest? = null
     private var lastOriginMode = PlaceOriginMode.DEVICE
     private var requestGeneration = 0L
+    private var searchJob: Job? = null
+
+    fun updateDogContext(value: DogSearchContext?) {
+        dogContext = value
+    }
 
     fun search(
         origin: GeoPoint,
@@ -54,10 +85,23 @@ class PlaceDiscoveryController(
         preferParking: Boolean = false,
         originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
     ) {
+        if (!PlaceSearchArea.contains(origin)) {
+            cancel()
+            lastRequest = null
+            mutableState.value = PlaceDiscoveryState(
+                requestedKinds = kinds,
+                origin = origin,
+                originMode = originMode,
+                preferParking = preferParking,
+                search = PlaceSearchState.Failed(PlaceFailure.UnsupportedLocation),
+            )
+            return
+        }
         submit(
             PlaceSearchRequest(
                 origin = origin,
                 kinds = kinds,
+                limitPerKind = PLACE_RESULT_LIMIT,
                 dogSize = dogContext?.size,
                 dogWeightKg = dogContext?.weightKg,
                 dogAgeYears = dogContext?.ageYears,
@@ -72,7 +116,9 @@ class PlaceDiscoveryController(
     fun retry() {
         val request = lastRequest
         if (request == null) {
-            mutableState.update { it.copy(error = "다시 실행할 장소 검색이 없습니다.") }
+            mutableState.update {
+                it.copy(search = PlaceSearchState.Failed(PlaceFailure.NothingToRetry))
+            }
             return
         }
         submit(request, lastOriginMode)
@@ -82,27 +128,46 @@ class PlaceDiscoveryController(
         mutableState.update { it.copy(selectedPlaceKey = key) }
     }
 
+    fun cancel() {
+        requestGeneration++
+        searchJob?.cancel()
+        searchJob = null
+        if (mutableState.value.search is PlaceSearchState.Loading) {
+            mutableState.update { it.copy(search = PlaceSearchState.Idle) }
+        }
+    }
+
+    fun clear() {
+        cancel()
+        lastRequest = null
+        mutableState.value = PlaceDiscoveryState()
+    }
+
     private fun submit(request: PlaceSearchRequest, originMode: PlaceOriginMode) {
         lastRequest = request
         lastOriginMode = originMode
         val generation = ++requestGeneration
+        searchJob?.cancel()
         mutableState.value = PlaceDiscoveryState(
             requestedKinds = request.kinds,
             origin = request.origin,
             originMode = originMode,
             preferParking = request.preferParking,
-            loading = true,
+            search = PlaceSearchState.Loading,
         )
-        scope.launch {
+        searchJob = scope.launch {
             runCatching { repository.search(request) }
                 .onSuccess { response ->
                     if (generation != requestGeneration) return@onSuccess
+                    val resultState = if (response.groups.all { it.results.isEmpty() }) {
+                        PlaceSearchState.Empty(response)
+                    } else {
+                        PlaceSearchState.Content(response)
+                    }
                     mutableState.update {
                         it.copy(
-                            response = response,
                             selectedPlaceKey = response.firstPlaceKey(),
-                            loading = false,
-                            error = null,
+                            search = resultState,
                         )
                     }
                 }
@@ -110,8 +175,8 @@ class PlaceDiscoveryController(
                     if (generation == requestGeneration) {
                         mutableState.update {
                             it.copy(
-                                loading = false,
-                                error = error.message ?: "장소 검색을 처리하지 못했습니다.",
+                                selectedPlaceKey = null,
+                                search = PlaceSearchState.Failed(error.toPlaceFailure()),
                             )
                         }
                     }
@@ -125,3 +190,10 @@ private fun PlaceSearchResponse.firstPlaceKey(): PlaceKey? = groups.asSequence()
     .firstOrNull()
     ?.place
     ?.key
+
+object PlaceSearchArea {
+    fun contains(point: GeoPoint): Boolean =
+        point.latitude in 32.0..40.0 && point.longitude in 123.0..133.0
+}
+
+const val PLACE_RESULT_LIMIT = 50

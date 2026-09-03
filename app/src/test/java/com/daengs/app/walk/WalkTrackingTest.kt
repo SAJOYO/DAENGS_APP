@@ -53,5 +53,24 @@ class WalkTrackingTest {
         assertEquals(WalkTrackingService.ACTION_RESUME, shadowOf(application).nextStartedService.action)
         controller.stop()
         assertEquals(WalkTrackingService.ACTION_STOP, shadowOf(application).nextStartedService.action)
+        controller.recordMoment(WalkMomentType.SOCIAL)
+        val momentIntent = shadowOf(application).nextStartedService
+        assertEquals(WalkTrackingService.ACTION_RECORD_MOMENT, momentIntent.action)
+        assertEquals(
+            WalkMomentType.SOCIAL.behaviorCode,
+            momentIntent.getStringExtra(WalkTrackingService.EXTRA_MOMENT_TYPE),
+        )
+    }
+
+    @Test
+    fun `completion is consumed without sending another service command`() {
+        val store = WalkTrackingStore()
+        store.publish(WalkTrackingState(completedSessionId = "walk-1"))
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val controller = ForegroundWalkTrackingController(context, store)
+
+        controller.dismissCompletion()
+
+        assertEquals(WalkTrackingState(), store.state.value)
     }
 }

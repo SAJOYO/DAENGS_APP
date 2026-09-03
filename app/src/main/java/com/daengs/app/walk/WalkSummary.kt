@@ -36,6 +36,14 @@ data class WalkSummary(
      * (서울시청)에 앉아서, 강남에서 한 산책이 시청에서 한 것처럼 보인다.
      */
     val anchor: GeoPoint?,
+    /**
+     * 원본 fix의 시각을 세션 활동 시간축에 대응한 값.
+     *
+     * 지도용 필터가 점을 버리거나 GPS 점프 때문에 선을 끊어도 시간축은 원본 fix와
+     * [RecordedFix.chainIndex]에서 한 번만 계산한다. 완료 경로가 별도로 시간을 다시
+     * 계산해 결과 요약과 다른 숫자를 보여 주지 않게 하는 읽기용 파생값이다.
+     */
+    val activeElapsedAtMillis: Map<Long, Long> = emptyMap(),
 ) {
     val hasRoute: Boolean get() = segments.any { it.size >= 2 }
 }
@@ -110,26 +118,39 @@ const val MIN_WALK_MILLIS = 60_000L
 val WalkSummary.countsAsWalk: Boolean
     get() = distanceMeters >= MIN_WALK_METERS && activeDurationMillis >= MIN_WALK_MILLIS
 
-fun summarize(session: RecordedSession, fixes: List<RecordedFix>): WalkSummary {
-    val recorder = TrailRecorder()
+fun summarize(
+    session: RecordedSession,
+    fixes: List<RecordedFix>,
+    maxRouteSamples: Int = WALK_SUMMARY_ROUTE_SAMPLE_LIMIT,
+): WalkSummary {
+    // 목록·오늘 합계는 경로 전체를 소비하지 않으므로 기본 상한을 지킨다. 한 세션 상세만
+    // Int.MAX_VALUE를 넘겨 실제 출발점을 보존한다. addAll은 중간 화면을 만들지 않아
+    // 원본마다 경로 목록을 다시 복사하던 O(n²) 비용을 피한다.
+    val recorder = TrailRecorder(maxSamples = maxRouteSamples)
     recorder.start()
     var previousChain: Int? = null
     var activeMillis = 0L
     var previousAtMillis: Long? = null
+    val activeElapsedAtMillis = linkedMapOf<Long, Long>()
+    val pendingChainSamples = mutableListOf<LocationSample>()
 
     for (fix in fixes.sortedBy { it.clientSeq }) {
         if (previousChain != null && fix.chainIndex != previousChain) {
+            recorder.addAll(pendingChainSamples)
+            pendingChainSamples.clear()
             // 끊긴 자리. 저장할 때 그랬던 것처럼 여기서도 선을 끊는다.
             recorder.pause()
             recorder.resume()
             previousAtMillis = null
         }
-        recorder.add(fix.toSample())
         // 같은 구간 안에서 흐른 시간만 더한다. 끊긴 구간을 건너뛴 시간은 안 걸은 시간이다.
         previousAtMillis?.let { activeMillis += (fix.atMillis - it).coerceAtLeast(0L) }
+        activeElapsedAtMillis[fix.atMillis] = activeMillis
+        pendingChainSamples += fix.toSample()
         previousAtMillis = fix.atMillis
         previousChain = fix.chainIndex
     }
+    recorder.addAll(pendingChainSamples)
 
     val snapshot = recorder.snapshot()
     // 필터가 다 버렸어도 **원본에는 남아 있다.** 그 첫 점이 산책이 있었던 자리다.
@@ -145,8 +166,12 @@ fun summarize(session: RecordedSession, fixes: List<RecordedFix>): WalkSummary {
         activeDurationMillis = activeMillis,
         segments = snapshot.segments,
         anchor = anchor,
+        activeElapsedAtMillis = activeElapsedAtMillis,
     )
 }
+
+/** 목록·홈 합계가 한 산책의 화면용 점을 무제한으로 들고 있지 않게 하는 상한. */
+const val WALK_SUMMARY_ROUTE_SAMPLE_LIMIT = 5_000
 
 private fun RecordedFix.toSample(): LocationSample = LocationSample(
     point = GeoPoint(latitude = lat, longitude = lng),
