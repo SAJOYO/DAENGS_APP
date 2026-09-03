@@ -63,6 +63,8 @@ import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 /**
  * 사진 한 장으로 카드를 뽑는 화면.
@@ -92,10 +94,8 @@ fun CardDrawScreen(
     var step by remember { mutableStateOf(DrawStep.Intro) }
     var photo by remember { mutableStateOf<Bitmap?>(null) }
     var result by remember { mutableStateOf<Cutout.Result?>(null) }
-    var neck by remember { mutableStateOf(1f) }
-    // 목선까지 반영해 구운 얼굴. **이것을 저장한다** — 민판을 저장하면 목 아래가
-    // 안 지워진 채로 남아서, 다음에 열 때 카드 구멍에 목이 삐져나온다.
-    var baked by remember { mutableStateOf<Cutout.Face?>(null) }
+    // 사용자가 원 안에 맞춘 자리. **이것을 구워서 저장한다.**
+    var frame by remember { mutableStateOf(FaceFrame.CENTER) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var won by remember { mutableStateOf<Pair<CardTemplate, DrawnCard>?>(null) }
@@ -108,28 +108,16 @@ fun CardDrawScreen(
     // 반드시 실패한다** — 실측했다. 사용자의 첫 카드가 가장 나쁜 결과를 받는다.
     LaunchedEffect(Unit) { Cutout.warmUp() }
 
-    // 목선이 멈추면 그때 한 번 굽는다. 키가 바뀔 때마다 앞의 것이 취소되므로 끄는
-    // 동안에는 delay 에서 잘려 나가고, 손을 멈춘 뒤에만 실제로 돈다 — 900px 짜리를
-    // 프레임마다 다시 칠하지 않으려는 것이다.
-    //
     // **구멍에는 민판을 넣는다.** 테두리 두른 판을 넣으면 실루엣이 타원 안으로
     // 파고드는 자리마다 흰 띠가 드러나서 카드가 찢어져 보인다.
     val source = (result as? Cutout.Result.Cut)?.plain ?: result?.bitmap
-    LaunchedEffect(source, neck) {
-        if (source == null) {
-            baked = null
-            return@LaunchedEffect
-        }
-        delay(140)
-        baked = Cutout.faceFor(source, neck)
-    }
 
-    val shown = baked?.let {
-        CardFace(
-            it.bitmap.asImageBitmap(),
-            IntRect(it.core.left, it.core.top, it.core.right, it.core.bottom),
-        )
-    }
+    // 미리 보기는 **굽지 않고 그린다.** 손가락을 따라 900px 짜리를 프레임마다 다시
+    // 칠하면 못 따라온다 — 굽는 것은 확인을 누른 뒤 한 번이다 (`drawNow`).
+
+    // 뒤집기 연출과 결과 화면이 쓰는 얼굴. **뽑은 뒤에만 있다** — 그 전에는 사용자가
+    // 아직 맞추는 중이라 구운 것이 없다.
+    var shown by remember { mutableStateOf<CardFace?>(null) }
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -156,9 +144,13 @@ fun CardDrawScreen(
             runCatching { Cutout.of(shot, box) }
                 .onSuccess {
                     result = it
-                    // 자동으로 찍은 자리에서 시작한다. 맞으면 그대로 두고, 아니면 끈다.
-                    neck = (it as? Cutout.Result.Cut)?.neck ?: 1f
-                    step = DrawStep.Neck
+                    // **앱이 알아서 하던 그 자리에서 시작한다.** 처음부터 다 맞추게 하면
+                    // 대부분은 손도 안 대고 넘긴다. 마음에 안 들 때만 만지면 된다.
+                    val plain = (it as? Cutout.Result.Cut)?.plain ?: it.bitmap
+                    val core = (it as? Cutout.Result.Cut)?.let { c -> Cutout.faceFor(c.plain, 1f).core }
+                        ?: android.graphics.Rect(0, 0, plain.width, plain.height)
+                    frame = initialFrame(plain.width, plain.height, core)
+                    step = DrawStep.Frame
                 }
                 .onFailure { error = it.message ?: "얼굴을 오려내지 못했어요." }
             busy = false
@@ -170,17 +162,17 @@ fun CardDrawScreen(
      * 사이에 프로세스가 죽었을 때 **뽑기 횟수만 쓰고 카드는 없는** 상태가 된다.
      */
     fun drawNow() {
-        val face = baked ?: return
+        val plain = source ?: return
         busy = true
         error = null
         scope.launch {
+            // **맞춘 대로 굽는다.** 여기서 한 번만 굽고, 그리는 쪽은 가운데 정렬
+            // 한 번으로 끝난다 (`drawInHoleOf` 의 `framed` 갈래).
+            val square = withContext(Dispatchers.Default) { bakeFramed(plain, frame) }
+            val core = IntRect(0, 0, square.width, square.height)
+            shown = CardFace(square.asImageBitmap(), core, framed = true)
             val template = drawTemplate()
-            val card = onDrawn(
-                dog,
-                template,
-                face.bitmap,
-                IntRect(face.core.left, face.core.top, face.core.right, face.core.bottom),
-            )
+            val card = onDrawn(dog, template, square, core)
             busy = false
             if (card == null) {
                 error = "카드를 저장하지 못했어요."
@@ -201,7 +193,7 @@ fun CardDrawScreen(
             title = "얼굴만 원 안에 넣어 주세요",
             confirmLabel = "이 얼굴로",
             circle = true,
-            guidance = "목 아래는 빼고 얼굴만 담아 주세요. 모서리를 끌어 크기를 바꿉니다.",
+            guidance = "목 아래는 빼고 얼굴만 담아 주세요. 두 손가락으로 키우거나 모서리를 끌면 됩니다.",
         )
         return
     }
@@ -240,29 +232,33 @@ fun CardDrawScreen(
                 },
             )
 
-            DrawStep.Neck -> {
-                val done = result
-                if (done == null) {
-                    Text("얼굴을 굽는 중이에요…", color = TextMuted, fontSize = 13.sp)
+            DrawStep.Frame -> {
+                val plain = source
+                if (plain == null) {
+                    Text("얼굴을 오려내는 중이에요…", color = TextMuted, fontSize = 13.sp)
                 } else {
                     Text(
-                        "선을 끌어서 얼굴만 남겨 주세요.",
+                        "원 안에 얼굴을 맞춰 주세요. 이대로 카드에 들어가요.",
                         color = TextMuted,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
                     )
-                    NeckPicker(
-                        bitmap = done.bitmap,
-                        neck = neck,
-                        onChange = { neck = it },
-                        lineColor = DaengPink,
-                        background = { Box(Modifier.fillMaxSize().background(PinkFaint)) },
+                    FaceFrameStep(
+                        face = plain,
+                        frame = frame,
+                        onChange = { frame = it },
                     )
                     PinkButton(
                         label = if (busy) "뽑는 중…" else "이 얼굴로 뽑기",
-                        enabled = !busy && baked != null,
+                        enabled = !busy,
                         onClick = { drawNow() },
                     )
+                    // **되돌아갈 길을 둔다.** 없으면 다시 자르려고 사진 고르기부터
+                    // 시작해야 했다.
+                    QuietButton("다시 자르기", enabled = !busy) {
+                        result = null
+                        step = DrawStep.Box
+                    }
                 }
             }
 
@@ -282,7 +278,7 @@ fun CardDrawScreen(
                     left = left,
                     onAgain = {
                         result = null
-                        baked = null
+                        shown = null
                         won = null
                         step = DrawStep.Intro
                     },
@@ -298,7 +294,7 @@ fun CardDrawScreen(
     }
 }
 
-private enum class DrawStep { Intro, Box, Neck, Flip, Result }
+private enum class DrawStep { Intro, Box, Frame, Flip, Result }
 
 /**
  * 뽑기에 쓸 아이 하나.

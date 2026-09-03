@@ -6,7 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,8 +50,6 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.TextDark
-import kotlin.math.abs
-import kotlin.math.hypot
 
 /**
  * 병변에 맞추는 가이드 프레임.
@@ -119,7 +120,7 @@ fun GuideFrameScreen(
     }
     val h = (w * aspect).coerceAtMost(1f)
 
-    val centerOff = maxOf(abs(box.x + w / 2f - 0.5f), abs(box.y + h / 2f - 0.5f))
+    val centerOff = centerOffset(CropBox(box.x, box.y, w), aspect)
     val hint = Band.hintFor(w, centerOff)
 
     Box(
@@ -149,54 +150,62 @@ fun GuideFrameScreen(
                     .aspectRatio(aspect)
                     .clip(RoundedCornerShape(14.dp))
                     .pointerInput(aspect) {
-                        // ⚠️ 바깥의 `h` 를 여기서 쓰면 안 된다. 이 블록은 aspect 가
-                        //    바뀔 때만 다시 만들어지므로, 처음 조합될 때의 h 를
-                        //    끝까지 들고 있게 된다. 크기를 바꾸면 그 값이 어긋나
-                        //    중심이 화면 밖으로 밀리고, 범위가 뒤집혀 던진다.
-                        //    **매번 지금 w 에서 다시 구한다.**
-                        fun heightOf(width: Float) = (width * aspect).coerceAtMost(1f)
-
-                        // 시작점이 오른쪽 아래 모서리 근처면 크기 조절, 아니면 이동.
-                        var sizing = false
-                        detectDragGestures(
-                            onDragStart = { p ->
-                                val nx = p.x / size.width
-                                val ny = p.y / size.height
-                                sizing = hypot(nx - (box.x + w), ny - (box.y + heightOf(w))) < HANDLE_GRAB
-                            },
-                            onDrag = { change, drag ->
-                                change.consume()
-                                val dx = drag.x / size.width
-                                val dy = drag.y / size.height
-                                val curW = w
-                                val curH = heightOf(curW)
-                                if (sizing) {
-                                    // **중심을 고정한 채** 늘린다. 모서리를 기준으로
-                                    // 늘리면 크기를 맞추는 동안 가운데 정렬이 풀려서
-                                    // 밴드에 걸린다 — 저쪽이 겪고 적어 둔 것이다.
-                                    val cx = box.x + curW / 2f
-                                    val cy = box.y + curH / 2f
-                                    val roomX = 2f * minOf(cx, 1f - cx)
-                                    val roomY = 2f * minOf(cy, 1f - cy) / aspect
-                                    // 네모가 가장자리에 붙어 있으면 여유가 최소 폭보다
-                                    // 작을 수 있다. 그때는 더 못 늘리는 것뿐이다 —
-                                    // 위아래가 뒤집힌 범위를 주면 coerceIn 이 던진다.
-                                    val maxW = maxOf(minOf(roomX, roomY, 1f), MIN_WIDTH)
-                                    val k = (curW + 2f * maxOf(dx, dy)).coerceIn(MIN_WIDTH, maxW)
-                                    val nh = heightOf(k)
-                                    w = k
-                                    box = Offset(
-                                        (cx - k / 2f).coerceIn(0f, (1f - k).coerceAtLeast(0f)),
-                                        (cy - nh / 2f).coerceIn(0f, (1f - nh).coerceAtLeast(0f)),
-                                    )
-                                } else {
-                                    box = Offset(
-                                        (box.x + dx).coerceIn(0f, (1f - curW).coerceAtLeast(0f)),
-                                        (box.y + dy).coerceIn(0f, (1f - curH).coerceAtLeast(0f)),
+                        // ⚠️ 바깥의 `w` 와 `box` 를 그대로 읽지 않는다. 이 블록은
+                        //    aspect 가 바뀔 때만 다시 만들어지므로, 처음 조합될 때의
+                        //    값을 끝까지 들고 있게 된다. **매번 지금 값에서 시작한다.**
+                        //
+                        // 손짓이 둘이다.
+                        //   두 손가락  →  핀치로 크기 (zoom)
+                        //   한 손가락  →  **네 모서리 중 아무 곳**이면 크기, 아니면 이동
+                        //
+                        // 예전에는 오른쪽 아래 한 곳만 손잡이였다. 왼쪽 위를 아무리
+                        // 끌어도 네모가 움직이기만 해서, 크기를 바꾸려면 매번 반대편으로
+                        // 손을 옮겨야 했다.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val start = CropBox(box.x, box.y, w)
+                            // 실제 첫 transform 콜백에는 이미 pan 이 생겨 있다. 따라서
+                            // 모서리는 콜백이 아니라 DOWN 좌표에서 한 번만 정한다.
+                            val corner = grabbedCorner(
+                                down.position.x / size.width,
+                                down.position.y / size.height,
+                                start,
+                                aspect,
+                                HANDLE_GRAB,
+                            )
+                            var pinching = false
+                            do {
+                                val event = awaitPointerEvent()
+                                val pan = event.calculatePan()
+                                val zoom = event.calculateZoom()
+                                if (event.changes.count { it.pressed } > 1) pinching = true
+                                val cur = CropBox(box.x, box.y, w)
+                                val next = when {
+                                    // 핀치를 시작했으면 한 손가락이 먼저 떨어져도 그
+                                    // 제스처가 끝날 때까지 이동으로 바꾸지 않는다.
+                                    pinching && zoom != 1f ->
+                                        resizeAroundCenter(cur, aspect, cur.w * zoom)
+                                    pinching -> cur
+                                    corner != null -> {
+                                        val d = cornerResizeDelta(
+                                            corner,
+                                            pan.x / size.width,
+                                            pan.y / size.height,
+                                        )
+                                        resizeAroundCenter(cur, aspect, cur.w + 2f * d)
+                                    }
+                                    else -> moveBy(
+                                        cur,
+                                        aspect,
+                                        pan.x / size.width,
+                                        pan.y / size.height,
                                     )
                                 }
-                            },
-                        )
+                                box = Offset(next.x, next.y)
+                                w = next.w
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        }
                     },
             ) {
                 Image(
@@ -312,5 +321,4 @@ internal object Band {
 /** 손잡이로 인정하는 거리. 저쪽 데모와 같다. */
 private const val HANDLE_GRAB = 0.07f
 
-/** 네모의 최소 가로. 이보다 작으면 잡을 수가 없다. */
-private const val MIN_WIDTH = 0.10f
+
