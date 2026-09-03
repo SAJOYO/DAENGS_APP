@@ -4,7 +4,9 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationUpdateConfig
+import com.daengs.app.map.shell.MapPurpose
 import com.daengs.app.pet.Pet
+import com.daengs.app.territory.NearbyTerritorySitesRequest
 import com.daengs.app.territory.TerritorySitePage
 import com.daengs.app.territory.TerritorySiteRepository
 import com.daengs.app.walk.RecordedFix
@@ -27,10 +29,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.TestScope
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -96,16 +99,102 @@ class WalkViewModelTest {
         assertEquals(0, source.starts)
     }
 
+    @Test
+    fun `leaving while locating cancels loading and allows a fresh request on return`() = runTest {
+        val source = SuspendingLocationSource()
+        val viewModel = viewModel(FakeWalkController(), source)
+
+        viewModel.activate(permissionGranted = true, precisePermission = true)
+        runCurrent()
+        assertEquals(true, viewModel.state.value.location.locating)
+        assertEquals(1, source.currentLocationCalls)
+
+        viewModel.deactivate()
+        runCurrent()
+        assertEquals(false, viewModel.state.value.location.locating)
+        assertEquals(1, source.cancellations)
+
+        viewModel.activate(permissionGranted = true, precisePermission = true)
+        runCurrent()
+        assertEquals(true, viewModel.state.value.location.locating)
+        assertEquals(2, source.currentLocationCalls)
+    }
+
+    @Test
+    fun `service takeover cancels an in flight screen location request`() = runTest {
+        val source = SuspendingLocationSource()
+        val controller = FakeWalkController()
+        val viewModel = viewModel(controller, source)
+
+        viewModel.activate(permissionGranted = true, precisePermission = true)
+        runCurrent()
+        controller.publish(
+            WalkTrackingState(
+                trail = TrailSnapshot(state = TrackingState.RECORDING),
+                lastSample = LocationSample(GeoPoint(37.51, 127.01), capturedAtMillis = 1),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(1, source.cancellations)
+        assertEquals(false, viewModel.state.value.location.locating)
+        assertEquals(WalkLocationOwner.TRACKING_SERVICE, viewModel.state.value.location.owner)
+        assertEquals(GeoPoint(37.51, 127.01), viewModel.state.value.location.currentPosition)
+    }
+
+    @Test
+    fun `revoking permission clears cached location and blocks stale territory reload`() = runTest {
+        val territory = CountingTerritoryRepository()
+        val viewModel = viewModel(
+            controller = FakeWalkController(),
+            source = CountingLocationSource(),
+            territoryRepository = territory,
+        )
+
+        viewModel.activate(permissionGranted = true, precisePermission = true)
+        runCurrent()
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals(1, territory.calls)
+
+        viewModel.updatePermission(granted = false, precise = false)
+        runCurrent()
+        assertEquals(null, viewModel.state.value.location.currentPosition)
+        assertEquals(null, viewModel.state.value.toMapPresentation { "" }.scene.currentPosition)
+
+        viewModel.deactivate()
+        viewModel.activate(permissionGranted = false, precisePermission = false)
+        runCurrent()
+        assertEquals(1, territory.calls)
+    }
+
+    @Test
+    fun `granting permission while visible immediately locates the device`() = runTest {
+        val source = CountingLocationSource()
+        val viewModel = viewModel(FakeWalkController(), source)
+
+        viewModel.activate(permissionGranted = false, precisePermission = false)
+        runCurrent()
+        assertEquals(0, source.currentLocationCalls)
+
+        viewModel.updatePermission(granted = true, precise = true)
+        runCurrent()
+
+        assertEquals(1, source.currentLocationCalls)
+        assertEquals(GeoPoint(37.5, 127.0), viewModel.state.value.location.currentPosition)
+    }
+
     private fun TestScope.viewModel(
         controller: FakeWalkController,
         source: LocationSource,
+        territoryRepository: TerritorySiteRepository = TerritorySiteRepository {
+            TerritorySitePage(count = 0, truncated = false, sites = emptyList())
+        },
     ) = WalkViewModel(
         walkController = controller,
         history = WalkHistory(EmptyWalkFixLog),
         locationSource = source,
-        territoryRepository = TerritorySiteRepository {
-            TerritorySitePage(count = 0, truncated = false, sites = emptyList())
-        },
+        territoryRepository = territoryRepository,
         externalScope = backgroundScope,
     )
 
@@ -129,6 +218,35 @@ class WalkViewModelTest {
             } finally {
                 stops++
             }
+        }
+    }
+
+    private class SuspendingLocationSource : LocationSource {
+        var currentLocationCalls = 0
+        var cancellations = 0
+
+        override suspend fun currentLocation(): LocationSample {
+            currentLocationCalls++
+            try {
+                awaitCancellation()
+            } finally {
+                cancellations++
+            }
+        }
+
+        override fun locationUpdates(
+            config: LocationUpdateConfig,
+        ): Flow<LocationSample> = emptyFlow()
+    }
+
+    private class CountingTerritoryRepository : TerritorySiteRepository {
+        var calls = 0
+
+        override suspend fun nearby(
+            request: NearbyTerritorySitesRequest,
+        ): TerritorySitePage {
+            calls++
+            return TerritorySitePage(count = 0, truncated = false, sites = emptyList())
         }
     }
 

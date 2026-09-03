@@ -29,7 +29,9 @@ internal fun WalkUiState.toMapPresentation(
         scene = composeMapScene(
             purpose = map.purpose,
             sources = MapSceneSources(
-                currentPosition = location.currentPosition.takeIf { summary == null },
+                currentPosition = location.currentPosition.takeIf {
+                    summary == null && location.permissionGranted
+                },
                 territorySites = territory.sites.map { site ->
                     TerritorySiteMarkerState(
                         id = site.id,

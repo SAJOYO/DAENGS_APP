@@ -118,7 +118,13 @@ class WalkViewModel(
     fun activate(permissionGranted: Boolean, precisePermission: Boolean) {
         active = true
         location.activate(permissionGranted, precisePermission)
-        if (presentation.value.map.purpose == MapPurpose.TERRITORY) {
+        walkController.state.value.let { tracking ->
+            location.acceptTrackingState(
+                active = tracking.trail.state != TrackingState.OFF,
+                sample = tracking.lastSample,
+            )
+        }
+        if (permissionGranted && presentation.value.map.purpose == MapPurpose.TERRITORY) {
             territory.activate(location.state.value.currentPosition)
         }
     }
@@ -131,6 +137,22 @@ class WalkViewModel(
 
     fun updatePermission(granted: Boolean, precise: Boolean) {
         location.updatePermission(granted, precise)
+        if (!granted) {
+            territory.deactivate()
+        } else {
+            val tracking = walkController.state.value
+            val trackingActive = tracking.trail.state != TrackingState.OFF
+            location.acceptTrackingState(
+                active = trackingActive,
+                sample = tracking.lastSample,
+            )
+            if (active && !trackingActive && location.state.value.currentPosition == null) {
+                location.locate(recenter = true)
+            }
+            if (active && presentation.value.map.purpose == MapPurpose.TERRITORY) {
+                territory.activate(location.state.value.currentPosition)
+            }
+        }
     }
 
     fun updatePets(pets: List<Pet>) {
@@ -222,7 +244,7 @@ class WalkViewModel(
             it.copy(map = it.map.copy(purpose = purpose))
         }
         territory.clearSelection()
-        if (purpose == MapPurpose.TERRITORY && active) {
+        if (purpose == MapPurpose.TERRITORY && active && location.state.value.permissionGranted) {
             territory.activate(location.state.value.currentPosition)
         } else {
             territory.deactivate()

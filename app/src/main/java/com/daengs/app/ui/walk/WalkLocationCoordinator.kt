@@ -40,6 +40,7 @@ internal class WalkLocationCoordinator(
     private var screenActive = false
     private var trackingActive = false
     private var locateJob: Job? = null
+    private var locateGeneration = 0L
     private var currentOwner = WalkLocationOwner.NONE
     private var latestSample: LocationSample? = null
 
@@ -68,28 +69,31 @@ internal class WalkLocationCoordinator(
 
     fun deactivate() {
         screenActive = false
-        locateJob?.cancel()
-        locateJob = null
+        cancelLocate()
         reconcileOwner()
     }
 
     fun updatePermission(granted: Boolean, precise: Boolean) {
+        if (!granted) {
+            cancelLocate()
+            latestSample = null
+        }
         mutableState.update {
             it.copy(
                 permissionGranted = granted,
                 precisePermission = granted && precise,
+                currentPosition = it.currentPosition.takeIf { granted },
+                centerOn = it.centerOn.takeIf { granted },
+                centerZoom = it.centerZoom.takeIf { granted },
                 errorMessage = if (granted) it.errorMessage else null,
                 locating = if (granted) it.locating else false,
             )
-        }
-        if (!granted) {
-            locateJob?.cancel()
-            locateJob = null
         }
         reconcileOwner()
     }
 
     fun acceptTrackingState(active: Boolean, sample: LocationSample?) {
+        if (active && !trackingActive) cancelLocate()
         trackingActive = active
         sample?.let(::accept)
         reconcileOwner()
@@ -100,7 +104,13 @@ internal class WalkLocationCoordinator(
     }
 
     fun locate(recenter: Boolean) {
-        if (!mutableState.value.permissionGranted || mutableState.value.locating) return
+        if (
+            !screenActive ||
+            !mutableState.value.permissionGranted ||
+            mutableState.value.locating
+        ) {
+            return
+        }
         if (trackingActive) {
             latestSample?.let { sample ->
                 mutableState.update {
@@ -117,11 +127,19 @@ internal class WalkLocationCoordinator(
             }
             return
         }
-        locateJob?.cancel()
+        val generation = ++locateGeneration
         locateJob = scope.launch {
             mutableState.update { it.copy(locating = true, errorMessage = null) }
             try {
                 val sample = source.currentLocation()
+                if (
+                    generation != locateGeneration ||
+                    !screenActive ||
+                    trackingActive ||
+                    !mutableState.value.permissionGranted
+                ) {
+                    return@launch
+                }
                 latestSample = sample
                 mutableState.update {
                     it.accept(sample).copy(
@@ -138,19 +156,31 @@ internal class WalkLocationCoordinator(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                mutableState.update {
-                    it.copy(
-                        locating = false,
-                        errorMessage = error.message ?: "현재 위치를 확인하지 못했습니다.",
-                    )
+                if (generation == locateGeneration && screenActive && !trackingActive) {
+                    mutableState.update {
+                        it.copy(
+                            locating = false,
+                            errorMessage = error.message ?: "현재 위치를 확인하지 못했습니다.",
+                        )
+                    }
                 }
+            } finally {
+                if (generation == locateGeneration) locateJob = null
             }
         }
     }
 
     private fun accept(sample: LocationSample) {
+        if (!mutableState.value.permissionGranted) return
         latestSample = sample
-        mutableState.update { it.accept(sample) }
+        mutableState.update { it.accept(sample).copy(errorMessage = null) }
+    }
+
+    private fun cancelLocate() {
+        locateGeneration++
+        locateJob?.cancel()
+        locateJob = null
+        mutableState.update { it.copy(locating = false) }
     }
 
     private fun reconcileOwner() {
