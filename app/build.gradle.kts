@@ -69,7 +69,11 @@ fun releaseUrl(name: String, release: String, fallback: String): String =
 
 // 네이버 지도 NCP 키. 없어도 앱은 켜진다 — 지도 타일만 인증 실패로 비고,
 // 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
-val naverMapClientId = localSetting("daengs.naverMapClientId")
+val naverMapClientId = localSetting("daengs.naverMapClientId").ifBlank {
+    // 로컬 Android 설정을 따로 복제하지 않아도 팀 공용 `.env`에서 주입해 실험할 수 있다.
+    // 값 자체는 APK BuildConfig에만 들어가며 저장소 파일에는 쓰지 않는다.
+    providers.environmentVariable("DAENGS_NAVER_NCP_KEY_ID").orNull.orEmpty()
+}
 
 // 콘솔 Style Editor 에서 만든 지도 스타일(My Style ID). 지도를 앱 팔레트로 칠한다.
 // **없으면 기본 네이버 지도로 뜬다** — 앱은 정상 동작하고, 스타일만 안 입는다.

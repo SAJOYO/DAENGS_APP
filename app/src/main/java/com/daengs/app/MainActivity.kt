@@ -1,6 +1,7 @@
 package com.daengs.app
 
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -45,6 +46,7 @@ import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesScreen
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
+import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkScreen
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
@@ -95,8 +97,21 @@ class MainActivity : ComponentActivity() {
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
                 // 번쩍였다가 홈으로 넘어간다.
                 val saved = remember { store.load() }
-                var screen by remember {
+                var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Home)
+                }
+                // 방향은 기록 세션이 아니라 화면 설정이다. 사용자가 산책에서 고른 방향은
+                // 회전 재생성 뒤에도 남고, 다른 화면은 기존 세로 구성을 지킨다.
+                var walkOrientation by rememberSaveable {
+                    mutableStateOf(WalkOrientation.PORTRAIT)
+                }
+                LaunchedEffect(screen, walkOrientation) {
+                    requestedOrientation = when {
+                        screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        walkOrientation == WalkOrientation.PORTRAIT ->
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    }
                 }
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
@@ -505,12 +520,12 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Walk -> WalkScreen(
                         onBack = { screen = Screen.Home },
+                        onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
+                        history = walkRuntime.history,
                         avatarBreed = pets.primary?.breedArt,
                         pets = pets.pets.orEmpty(),
-                        onFinished = {
-                            scope.launch { walkRuntime.sync.syncOnce(freshToken()) }
-                        },
+                        outside = outside,
                     )
 
                     Screen.Dex -> CardDexScreen(

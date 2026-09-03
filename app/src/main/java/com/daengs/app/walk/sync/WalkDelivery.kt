@@ -27,6 +27,38 @@ interface WalkDeliveryScheduler {
     suspend fun enqueuePending()
 }
 
+/**
+ * 로컬 완료와 durable 전달 예약의 실패 경계를 나눈다.
+ *
+ * 완료 실패는 결과를 만들 수 없지만, 예약 실패는 이미 저장한 결과를 되돌릴 이유가
+ * 아니다. 후자는 다음 앱 시작의 [WalkDeliveryScheduler.enqueuePending]이 복구한다.
+ */
+internal suspend fun completeAndEnqueueWalk(
+    sessionId: String?,
+    complete: suspend () -> Boolean,
+    enqueue: suspend (String) -> Unit,
+    onCompletionFailure: (Throwable) -> Unit,
+    onEnqueueFailure: (Throwable) -> Unit,
+) {
+    val shouldDeliver = try {
+        complete()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (cause: Throwable) {
+        onCompletionFailure(cause)
+        false
+    }
+    if (sessionId == null || !shouldDeliver) return
+
+    try {
+        enqueue(sessionId)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (cause: Throwable) {
+        onEnqueueFailure(cause)
+    }
+}
+
 class WorkManagerWalkDeliveryScheduler(
     context: Context,
     private val log: WalkFixLog,
