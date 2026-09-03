@@ -36,6 +36,9 @@ import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
+import com.daengs.app.ui.startup.LoadingScreen
+import com.daengs.app.ui.startup.StartupTarget
+import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.ui.pet.PetFormScreen
@@ -55,6 +58,13 @@ import kotlinx.coroutines.launch
 /** 화면들. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
 private enum class Screen {
     Landing,
+    /**
+     * 강아지 목록을 기다리는 동안.
+     *
+     * **저장된 토큰으로 켤 때만 지난다.** 목록 없이 홈을 띄우면 방이 데모로 채워져서
+     * 남의 강아지 넉 마리가 스친다 (`ui/startup/StartupGate.kt`).
+     */
+    Loading,
     /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
     Onboarding,
     Home, Chat, Dex,
@@ -97,7 +107,7 @@ class MainActivity : ComponentActivity() {
                 // 번쩍였다가 홈으로 넘어간다.
                 val saved = remember { store.load() }
                 var screen by remember {
-                    mutableStateOf(if (saved == null) Screen.Landing else Screen.Home)
+                    mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
@@ -217,6 +227,17 @@ class MainActivity : ComponentActivity() {
                     cards.load(session?.appUserId)
                 }
 
+                // **로딩을 떠나는 곳은 여기 하나다.** 갈림길 판정은 순수 함수로 빼서
+                // 테스트가 잠근다 — 서버가 죽었을 때 갇히는 것이 제일 무서운 회귀다.
+                LaunchedEffect(screen, pets.pets, pets.error) {
+                    if (screen != Screen.Loading) return@LaunchedEffect
+                    screen = when (startupTarget(pets.pets, pets.error)) {
+                        StartupTarget.Wait -> return@LaunchedEffect
+                        StartupTarget.Home -> Screen.Home
+                        StartupTarget.Onboarding -> Screen.Onboarding
+                    }
+                }
+
                 LaunchedEffect(Unit) {
                     if (saved != null) {
                         val restored = restoreSession(store)
@@ -231,6 +252,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when (screen) {
+                    Screen.Loading -> LoadingScreen()
+
                     Screen.Landing -> LandingScreen(
                         canLogin = BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank() && AuthApi.configured,
                         busy = busy,
