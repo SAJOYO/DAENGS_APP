@@ -6,10 +6,13 @@ import com.daengs.app.dogcard.CardStore
 import com.daengs.app.dogcard.RoomCardStore
 import com.daengs.app.dogcard.store.CardDatabase
 import com.daengs.app.location.FusedLocationSource
+import com.daengs.app.auth.SessionProvider
+import com.daengs.app.auth.TokenStore
 import com.daengs.app.walk.ForegroundWalkTrackingController
 import com.daengs.app.walk.WalkFixWriter
 import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.sync.WalkSync
+import com.daengs.app.walk.sync.WorkManagerWalkDeliveryScheduler
 import com.daengs.app.walk.WalkRuntime
 import com.daengs.app.walk.WalkTrackingStore
 import com.daengs.app.walk.store.RoomWalkFixLog
@@ -19,6 +22,7 @@ import com.naver.maps.map.NaverMapSdk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 프로세스 공용 SDK와 산책 기록 런타임을 초기화한다.
@@ -33,6 +37,14 @@ import kotlinx.coroutines.SupervisorJob
  * 로그인 버튼만 막히고 "둘러보기" 로 방까지 들어가진다.
  */
 class DaengsApp : Application() {
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    lateinit var tokenStore: TokenStore
+        private set
+
+    lateinit var sessionProvider: SessionProvider
+        private set
+
     lateinit var walkRuntime: WalkRuntime
         private set
 
@@ -54,6 +66,9 @@ class DaengsApp : Application() {
                 NaverMapSdk.NcpKeyClient(BuildConfig.NAVER_MAP_NCP_KEY_ID)
         }
 
+        tokenStore = TokenStore(this)
+        sessionProvider = SessionProvider(tokenStore)
+
         cardStore = RoomCardStore(
             dao = CardDatabase.open(this).cardDao(),
             files = CardFiles(this),
@@ -64,8 +79,9 @@ class DaengsApp : Application() {
         val writer = WalkFixWriter(
             log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            scope = applicationScope,
         )
+        val delivery = WorkManagerWalkDeliveryScheduler(this, log)
         walkRuntime = WalkRuntime(
             locationSource = FusedLocationSource(this),
             store = store,
@@ -74,6 +90,9 @@ class DaengsApp : Application() {
             log = log,
             history = WalkHistory(log),
             sync = WalkSync(log),
+            delivery = delivery,
         )
+        // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
+        applicationScope.launch { delivery.enqueuePending() }
     }
 }

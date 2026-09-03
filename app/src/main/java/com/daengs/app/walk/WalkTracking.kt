@@ -1,5 +1,6 @@
 package com.daengs.app.walk
 
+import com.daengs.app.walk.sync.WalkDeliveryScheduler
 import com.daengs.app.walk.sync.WalkSync
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
@@ -71,4 +72,6 @@ class WalkRuntime internal constructor(
     val history: WalkHistory,
     /** 기기와 서버를 맞추는 자리. 로그인했을 때만 일한다. */
     val sync: WalkSync,
+    /** 끝난 산책의 서버 전달을 Android에 맡기는 자리. */
+    internal val delivery: WalkDeliveryScheduler,
 )
