@@ -286,7 +286,17 @@ val CARD_TEMPLATES = listOf(
  * 카드가 찢어진 자국처럼 보인다.
  */
 @Immutable
-data class CardFace(val image: ImageBitmap, val core: IntRect)
+data class CardFace(
+    val image: ImageBitmap,
+    val core: IntRect,
+    /**
+     * 사용자가 원형 틀에 직접 맞춘 얼굴인가.
+     *
+     * 맞춘 얼굴에는 **[CORE_OVERFILL] 도 턱걸이도 안 건다.** 둘 다 사용자가 못 보고
+     * 맡겼을 때 필요한 보정이라, 직접 맞춘 것에 또 걸면 본 것과 다르게 나온다.
+     */
+    val framed: Boolean = false,
+)
 
 /**
  * 카드 한 장. [face] 가 null 이면 구멍이 빈 채로 그려진다 — 판만 볼 때 쓴다.
@@ -507,20 +517,29 @@ fun DrawScope.drawInHoleOf(face: CardFace, hole: Hole, at: Offset, box: Size) {
     val rx = box.width * hole.rx / 100f * CLIP_BLEED
     val ry = box.height * hole.ry / 100f * CLIP_BLEED
 
+    // 사용자가 맞춘 얼굴은 **키우지 않는다.** 원 안에서 보고 정한 크기라 여기서 또
+    // 1.15배 하면 본 것보다 크게 나온다.
+    val overfill = if (face.framed) 1f else CORE_OVERFILL
     // 또렷한 얼굴이 구멍을 덮을 만큼 키운다. 짧은 쪽이 아니라 **모자란 쪽**에
     // 맞춰야 구멍이 찬다.
-    val scale = maxOf(rx * 2f / core.width, ry * 2f / core.height) * CORE_OVERFILL
+    val scale = maxOf(rx * 2f / core.width, ry * 2f / core.height) * overfill
 
     val clip = Path().apply { addOval(Rect(cx - rx, cy - ry, cx + rx, cy + ry)) }
     clipPath(clip) {
         // 가로는 비트맵 한가운데가 아니라 **또렷한 얼굴의 한가운데**에 맞춘다.
         val left = cx - (core.left + core.width / 2f) * scale
-        // 세로는 한가운데가 아니라 **턱을 구멍 아래에 건다.**
-        //
-        // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
-        // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
-        // 잘리고 이마만 남았다 — 실기기에서 봤다.
-        val top = cy + box.height * hole.ry / 100f - core.bottom * scale
+        val top = if (face.framed) {
+            // **맞춘 얼굴은 가운데다.** 원 안에서 가운데에 놓고 본 것이므로
+            // 카드에서도 가운데여야 같은 그림이 된다.
+            cy - (core.top + core.height / 2f) * scale
+        } else {
+            // 세로는 한가운데가 아니라 **턱을 구멍 아래에 건다.**
+            //
+            // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
+            // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
+            // 잘리고 이마만 남았다 — 실기기에서 봤다.
+            cy + box.height * hole.ry / 100f - core.bottom * scale
+        }
         drawImage(
             image = face.image,
             dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),

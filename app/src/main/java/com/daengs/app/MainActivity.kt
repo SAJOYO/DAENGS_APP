@@ -567,6 +567,9 @@ class MainActivity : ComponentActivity() {
                                         dogName = dog?.name ?: "우리 아이",
                                         codeText = dog?.codeText ?: birthCode(8, 24),
                                         appUserId = session?.appUserId,
+                                        // 이제 뽑기는 사용자가 원 안에 맞춘 얼굴만
+                                        // 넘긴다. 옛 카드와 갈리는 기준이다.
+                                        userFramed = true,
                                     )
                                 },
                                 onOpenDex = done,
