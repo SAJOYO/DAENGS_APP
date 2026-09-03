@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.common.DateWheel
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
+import com.daengs.app.pet.PetWeight
 import com.daengs.app.pet.PetDraft
 import com.daengs.app.ui.DogAvatar
 import androidx.compose.ui.text.style.TextAlign
@@ -120,6 +123,8 @@ fun PetFormScreen(
 
     val parsedDate = day.takeIf { dateOn }
     val dateBad = false
+    // 몸무게는 비워 둘 수 있는 칸이라 "빈 칸"과 "잘못 쓴 값"을 가른다 ([PetWeight]).
+    val weightError = PetWeight.errorOf(weight)
 
     val draft = PetDraft(
         name = name,
@@ -162,7 +167,7 @@ fun PetFormScreen(
 
         Spacer(Modifier.height(22.dp))
         FieldLabel("이름")
-        TextInput(name, { name = it }, "네옹")
+        TextInput(name, { name = it }, "네옹", label = "이름")
 
         Spacer(Modifier.height(18.dp))
         FieldLabel("견종")
@@ -184,7 +189,21 @@ fun PetFormScreen(
 
         Spacer(Modifier.height(18.dp))
         FieldLabel("몸무게 (kg)")
-        TextInput(weight, { weight = it.filter { c -> c.isDigit() || c == '.' } }, "4.2", KeyboardType.Decimal)
+        // **찍히는 것부터 막는다.** 예전에는 숫자와 점만 거르고 길이를 안 봐서 18자리가
+        // 들어갔고, 저장을 누르면 저쪽 검증 오류가 JSON 그대로 화면에 찍혔다.
+        TextInput(
+            weight,
+            { if (PetWeight.accepts(it)) weight = it },
+            "4.2",
+            KeyboardType.Decimal,
+            label = "몸무게 (kg)",
+        )
+        // **이 칸의 잘못은 이 칸 아래에서 말한다.** 화면 맨 아래 서버 오류 줄에 섞으면
+        // 어느 칸 이야기인지가 안 보인다.
+        weightError?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, color = DaengsColors.Error, fontSize = 12.sp)
+        }
 
         Spacer(Modifier.height(18.dp))
         FieldLabel("생일")
@@ -231,7 +250,8 @@ fun PetFormScreen(
         SubmitButton(
             label = if (initial == null) "등록하기" else "저장하기",
             // 날짜를 잘못 적었으면 못 보낸다. 그대로 보내면 날짜만 조용히 빠진다.
-            enabled = draft.valid && !dateBad && !busy,
+            // 몸무게도 같다 — 보내 봐야 서버가 422 로 돌려보낸다.
+            enabled = draft.valid && weightError == null && !dateBad && !busy,
             busy = busy,
         ) { onSubmit(draft) }
 
@@ -285,6 +305,13 @@ private fun TextInput(
     onChange: (String) -> Unit,
     hint: String,
     keyboard: KeyboardType = KeyboardType.Text,
+    /**
+     * 칸의 이름. 위 [FieldLabel] 과 같은 말이다.
+     *
+     * **화면에 두 번 쓰지 않는다** — 읽어 주는 쪽에만 붙는다. 이게 없으면 스크린리더가
+     * 이름 없는 입력 칸을 만나고, 테스트도 자리표시자 글자를 칸으로 착각한다.
+     */
+    label: String? = null,
 ) {
     Box(
         Modifier
@@ -302,7 +329,12 @@ private fun TextInput(
             textStyle = TextStyle(color = TextDark, fontSize = 14.sp),
             cursorBrush = SolidColor(DaengPink),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (label == null) Modifier
+                    else Modifier.semantics { contentDescription = label }
+                ),
         )
     }
 }
