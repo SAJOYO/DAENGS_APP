@@ -152,6 +152,23 @@ class ChatSummaryCoordinatorTest {
         assertTrue(coordinator.state.value.summaries is ChatLoadState.Idle)
     }
 
+    @Test
+    fun `저장소가 닫힌 뒤 늦게 끝난 요약 생성은 선택을 바꾸지 않는다`() = runTest {
+        val pending = CompletableDeferred<Result<ChatSummary>>()
+        val gateway = FakeSummaryGateway().apply { pendingCreate = pending }
+        val coordinator = coordinator(gateway)
+        coordinator.selectPet(PET_A)
+        coordinator.create(TOKEN, source())
+        advanceUntilIdle()
+
+        coordinator.cancelPending()
+        pending.complete(Result.success(summary(SUMMARY_A, PET_A)))
+        advanceUntilIdle()
+
+        assertNull(coordinator.state.value.selectedSummaryId)
+        assertNull(coordinator.state.value.creatingSessionId)
+    }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(gateway: FakeSummaryGateway) =
         ChatSummaryCoordinator(this, gateway, ChatRequestIds(sequenceIds()))
 

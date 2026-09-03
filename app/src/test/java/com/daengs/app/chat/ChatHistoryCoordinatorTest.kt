@@ -201,6 +201,48 @@ class ChatHistoryCoordinatorTest {
         assertEquals(null, coordinator.state.value.lastResponse)
     }
 
+    @Test
+    fun `화면이 닫힌 뒤 늦게 끝난 전송은 상태를 갱신하지 않는다`() = runTest {
+        val pending = CompletableDeferred<Result<AssistantResponse>>()
+        val gateway = FakeHistoryGateway().apply { pendingSend = pending }
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+        coordinator.send(TOKEN, "느린 질문")
+        advanceUntilIdle()
+
+        coordinator.cancelPending()
+        pending.complete(Result.success(RESPONSE))
+        advanceUntilIdle()
+
+        assertFalse(coordinator.state.value.sending)
+        assertEquals(null, coordinator.state.value.lastResponse)
+        assertEquals(SESSION_A, coordinator.state.value.selectedSessionId)
+    }
+
+    @Test
+    fun `화면 재진입 새로고침은 미확정 전송의 재시도 id를 보존한다`() = runTest {
+        val pending = CompletableDeferred<Result<AssistantResponse>>()
+        val gateway = FakeHistoryGateway().apply { pendingSend = pending }
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+        coordinator.send(TOKEN, "같은 질문")
+        advanceUntilIdle()
+
+        coordinator.cancelPending()
+        pending.complete(Result.failure(ChatApiError(502, null, "연결 끊김")))
+        advanceUntilIdle()
+        gateway.pendingSend = null
+        coordinator.refreshCurrent(TOKEN)
+        advanceUntilIdle()
+        coordinator.send(TOKEN, "같은 질문")
+        advanceUntilIdle()
+
+        assertEquals(
+            gateway.sendCalls[0].persistence.clientMessageId,
+            gateway.sendCalls[1].persistence.clientMessageId,
+        )
+    }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(gateway: FakeHistoryGateway) =
         ChatHistoryCoordinator(
             scope = this,

@@ -236,6 +236,36 @@ class ChatHistoryCoordinator(
         return true
     }
 
+    /** 같은 선택을 다시 읽는다. 화면 재진입 복구이므로 전송 재시도 id는 지우지 않는다. */
+    fun refreshCurrent(accessToken: String): Boolean {
+        val before = mutableState.value
+        val petId = before.selectedPetId ?: return false
+        val sessionId = before.selectedSessionId ?: return false
+        val petSnapshot = petGeneration
+        val selectionSnapshot = sessionGeneration
+        sessionJob?.cancel()
+        mutableState.update { it.copy(selectedSession = ChatLoadState.Loading) }
+        sessionJob = scope.launch {
+            val result = gateway.session(accessToken, sessionId)
+            if (!isCurrent(petId, petSnapshot, sessionId, selectionSnapshot)) return@launch
+            mutableState.update {
+                it.copy(
+                    selectedSession = result.fold(
+                        onSuccess = { detail ->
+                            if (detail.session.petId == petId && detail.session.id == sessionId) {
+                                ChatLoadState.Ready(detail)
+                            } else {
+                                ChatLoadState.Failed(petMismatch(detail.session.petId))
+                            }
+                        },
+                        onFailure = { error -> ChatLoadState.Failed(error.asChatError()) },
+                    ),
+                )
+            }
+        }
+        return true
+    }
+
     /**
      * 저장 질문을 한 번만 보낸다. 성공은 커밋된 응답이므로 현재 상세와 최근 목록을
      * 서버에서 모두 다시 받는다. 새 대화의 활성화·제목·최대 5개 정리는 서버 결과다.
@@ -335,6 +365,21 @@ class ChatHistoryCoordinator(
 
     fun clearErrors() {
         mutableState.update { it.copy(sendError = null, deleteError = null) }
+    }
+
+    /** 화면이 사라질 때 진행 중인 I/O를 끊고, 취소에 늦게 협조한 응답도 무효화한다. */
+    fun cancelPending() {
+        cancelAll()
+        petGeneration++
+        sessionGeneration++
+        mutableState.update {
+            it.copy(
+                creatingDraft = false,
+                sending = false,
+                deletingSessionId = null,
+                lastResponse = null,
+            )
+        }
     }
 
     fun forget() = selectPet(null)

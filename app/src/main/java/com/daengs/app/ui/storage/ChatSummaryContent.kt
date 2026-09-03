@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +51,7 @@ fun ChatSummaryContent(
     onDismissDelete: () -> Unit,
     onConfirmDelete: (ChatSummary) -> Unit,
     modifier: Modifier = Modifier,
+    selectedSummaryId: String? = null,
 ) {
     when (state) {
         ChatLoadState.Idle, ChatLoadState.Loading -> ChatSummariesLoading(modifier)
@@ -58,6 +61,7 @@ fun ChatSummaryContent(
         } else {
             ChatSummaryListContent(
                 summaries = state.value.summaries,
+                selectedSummaryId = selectedSummaryId,
                 onOpenSource = onOpenSource,
                 onOpenCitation = onOpenCitation,
                 onDelete = onRequestDelete,
@@ -113,10 +117,22 @@ fun ChatSummaryListContent(
     onOpenCitation: (ChatCitation) -> Unit,
     onDelete: (ChatSummary) -> Unit,
     modifier: Modifier = Modifier,
+    selectedSummaryId: String? = null,
 ) {
-    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(selectedSummaryId, summaries) {
+        val selectedIndex = summaries.indexOfFirst { it.id == selectedSummaryId }
+        if (selectedIndex >= 0) listState.animateScrollToItem(selectedIndex)
+    }
+    LazyColumn(modifier, state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(summaries, key = { it.id }) { summary ->
-            ChatSummaryCard(summary, onOpenSource, onOpenCitation, onDelete)
+            ChatSummaryCard(
+                summary = summary,
+                onOpenSource = onOpenSource,
+                onOpenCitation = onOpenCitation,
+                onDelete = onDelete,
+                selected = summary.id == selectedSummaryId,
+            )
         }
     }
 }
@@ -129,13 +145,18 @@ fun ChatSummaryCard(
     onOpenCitation: (ChatCitation) -> Unit,
     onDelete: (ChatSummary) -> Unit,
     modifier: Modifier = Modifier,
+    selected: Boolean = false,
 ) {
     Column(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(CardWhite)
-            .border(1.dp, DaengsColors.BorderNeutral, RoundedCornerShape(18.dp))
+            .background(if (selected) PinkSoft else CardWhite)
+            .border(
+                1.dp,
+                if (selected) DaengPink.copy(alpha = 0.55f) else DaengsColors.BorderNeutral,
+                RoundedCornerShape(18.dp),
+            )
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {

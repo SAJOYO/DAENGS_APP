@@ -202,6 +202,14 @@ class ChatSummaryCoordinator(
         mutableState.update { it.copy(createError = null, deleteError = null) }
     }
 
+    /** 저장소 화면이 사라질 때 네트워크 작업과 늦은 결과를 함께 무효화한다. */
+    fun cancelPending() {
+        cancelAll()
+        petGeneration++
+        selectionGeneration++
+        mutableState.update { it.copy(creatingSessionId = null, deletingSummaryId = null) }
+    }
+
     fun forget() = selectPet(null)
 
     private suspend fun refreshAfterMutation(accessToken: String, petId: String, generation: Long) {
