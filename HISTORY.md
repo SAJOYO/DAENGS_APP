@@ -1002,6 +1002,22 @@ GPS fix**를 저장한다. 세션을 지우면 외래 키 `CASCADE`로 같이 �
 finalize payload에 몰래 섞으면 서버와 앱 중 한쪽만 이해하는 데이터가 된다. 서버 계약이
 정해지기 전까지 순간 기록은 이 기기의 상세 화면에서만 복원한다.
 
+## 28. 에뮬레이터 산책을 실제 측정과 갈랐다 (09-03)
+
+산책 fix는 처음부터 `isMock`을 Room과 서버 계약까지 운반했지만, 출발점은 Android의
+`LocationCompat.isMock` 하나였다. 일부 Android Studio AVD는 `adb emu geo fix`로 넣은
+좌표에도 이 표식을 붙이지 않는다. 그러면 검증용 경로가 `device` 증거로 서버에 남아
+거리·속도·정지 문턱을 고르는 실측 표본과 섞인다.
+
+플랫폼 표식이 있으면 항상 mock으로 보고, 빠졌을 때만 fingerprint·model·manufacturer·
+device·product의 에뮬레이터 특징을 함께 본다. `Google`이라는 제조사 이름만으로 판단하지
+않는다. 실제 Pixel도 같은 제조사이므로 그것까지 막으면 정상 사용자의 위치가 사라진다.
+
+이 판정은 산책 전용 보정이 아니라 `LocationSample`의 출처 계약이다. 장소 검색 같은 다른
+소비자가 개발 중 mock 좌표를 허용해야 한다면 그 소비자 정책에서 명시적으로 열고, 공용
+위치 표식을 실제 좌표인 것처럼 바꾸지 않는다. 판정 경계는
+`rkbuhtig/DAENGS_geo@2b485ec`에서 가져왔고, App의 마지막 위치 fallback은 유지했다.
+
 ## 지금 남아 있는 것
 
 [STATUS.md 의 "다음 결정"](STATUS.md#다음-결정) 을 보면 된다. 큰 것만 적으면
