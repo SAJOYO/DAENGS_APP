@@ -53,15 +53,32 @@ fun FaceFrameStep(
             .fillMaxWidth()
             .aspectRatio(1f)
             .background(PinkFaint)
-            .pointerInput(Unit) {
+            // **손짓은 이 블록 안에서 쌓는다.**
+            //
+            // 예전에는 `pointerInput(Unit)` 안에서 `frame` 을 그냥 읽었다. 그 블록은
+            // 처음 한 번만 만들어지므로 첫 조합 때의 값이 박제되고, 그러면 손가락을
+            // 움직이는 내내 "처음 값 + 이번 델타"만 계산돼서 누적이 안 된다 — 확대도
+            // 이동도 손을 떼면 제자리라 **"그냥 보여주기만 하는 화면"으로 읽혔다.**
+            // `NeckPicker.kt:53` 이 같은 함정을 적어 둔 그 자리다.
+            //
+            // 거기서 쓴 `rememberUpdatedState` 로는 **모자랐다.** 그 값은 조합될 때만
+            // 갱신되므로, 한 프레임에 포인터 이벤트가 여럿 들어오면 중간 값이 버려진다.
+            // 빠른 핀치가 한 번밖에 안 먹는 것이 그 증상이고, `FaceFrameStepTest` 의
+            // 핀치가 그걸 잡는다 (테스트는 이벤트 사이에 프레임을 안 그린다).
+            //
+            // 그래서 조합을 기다리지 않고 `acc` 에 직접 쌓는다. **키를 `face` 로 두는
+            // 이유**는 새 사진이 오면 그 사진의 첫 틀(`initialFrame`)에서 다시 쌓아야
+            // 하기 때문이다 — 사진과 `frame` 은 같은 자리에서 함께 바뀐다
+            // (`CardDrawScreen` 의 `Cutout.of` 성공 갈래).
+            .pointerInput(face) {
+                var acc = frame
                 detectTransformGestures { _, pan, zoom, _ ->
-                    onChange(
-                        frame.nudged(
-                            dScale = zoom,
-                            dx = pan.x / size.width,
-                            dy = pan.y / size.height,
-                        ),
+                    acc = acc.nudged(
+                        dScale = zoom,
+                        dx = pan.x / size.width,
+                        dy = pan.y / size.height,
                     )
+                    onChange(acc)
                 }
             },
     ) {
