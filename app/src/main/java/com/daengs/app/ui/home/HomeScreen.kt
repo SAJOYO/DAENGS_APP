@@ -215,14 +215,14 @@ fun HomeScreen(
     // **대표 강아지를 따라간다.** 상단바와 챗봇 카드가 이걸 쓰고, 대표는 마이 탭에서
     // 고른다 — 그게 "대표 강아지"라는 말의 뜻이다.
     //
-    // 대표의 견종이 우리 그림에 없으면(믹스 등) 기본 얼굴로 떨어진다. 아무 얼굴이나
-    // 골라 보여 주면 사용자는 자기 개가 아닌 얼굴을 상단바에서 보게 된다.
+    // **대표의 견종이 우리 그림에 없으면(믹스) null 이고, 그러면 발자국이 뜬다.**
+    // 예전에는 데모 강아지 한 마리로 떨어졌는데, 그게 바로 "아무 얼굴이나 골라 보여
+    // 주는" 것이었다 — 믹스를 키우는 사람은 상단바에서 남의 개를 봤다. 마이·산책·장소는
+    // 처음부터 발자국을 세우고 있었고, 홈만 빠져 있었다.
     //
     // 개발자 패널이 바꾼 값은 그 위에 잠깐 덮어쓴다 — 세션 한정이고 저장하지 않는다.
     var devBreed by remember { mutableStateOf<DogBreed?>(null) }
-    val profileBreed = devBreed
-        ?: pets?.firstOrNull { it.isPrimary }?.breedArt
-        ?: HomeDemoData.DOG_BREED
+    val profileBreed = devBreed ?: pets?.firstOrNull { it.isPrimary }?.breedArt
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
     val herd = rememberDogHerd(roomRoster(pets), departedInRoom(pets))
@@ -359,7 +359,9 @@ fun HomeScreen(
                 herd = herd,
                 onOpenDex = onOpenDex,
                 onOpenWalk = onOpenWalk,
-                profileBreed = profileBreed,
+                // 개발자 패널은 **지금 고른 값**이 있어야 하는 고르기다. 발자국을
+                // 고를 수는 없으니 여기서만 데모 견종으로 채운다.
+                profileBreed = profileBreed ?: HomeDemoData.DOG_BREED,
                 onPickProfile = { devBreed = it },
                 onOpenCutoutLab = onOpenCutoutLab,
                 roomName = roomName,

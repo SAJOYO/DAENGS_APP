@@ -1351,12 +1351,17 @@ private fun ChatScreenPreview() {
 }
 
 /**
- * 말하는 쪽 얼굴.
+ * 말하는 쪽 얼굴. 헤더와 말풍선이 다 여기를 지난다.
+ *
+ * **`smart = true` 다.** 여기 뜨는 것은 내 개가 아니라 "댕스 AI" 다. 헤더에 그렇게
+ * 적어 놓고 얼굴만 내 개면 누가 말하는 건지 흐려진다. 견종은 대표 강아지를 따라가므로
+ * 남의 개도 아니다 — 같은 견종의, 학사모 쓴 다른 얼굴이다.
  *
  * **모르는 견종(믹스)이면 발자국이다.** 아무 얼굴이나 골라 쓰면 사용자는 자기 개가
  * 아닌 얼굴과 대화하게 된다 (마이 탭 `PetFace` 와 같은 규칙).
  */
 @Composable
 private fun ChatFace(avatar: DogBreed?, size: Dp) {
-    if (avatar != null) DogAvatar(avatar, Modifier.size(size)) else PawAvatar(size = size)
+    if (avatar != null) DogAvatar(avatar, Modifier.size(size), smart = true)
+    else PawAvatar(size = size)
 }
