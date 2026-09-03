@@ -1,6 +1,7 @@
 package com.daengs.app.map.shell
 
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.places.PlaceMarkerState
 import com.daengs.app.map.layers.trail.TrailLayerState
@@ -11,4 +12,5 @@ data class MapScene(
     val places: List<PlaceMarkerState> = emptyList(),
     val moments: List<MomentMarkerState> = emptyList(),
     val trail: TrailLayerState = TrailLayerState(),
+    val completedRoute: CompletedRouteLayerState = CompletedRouteLayerState(),
 )

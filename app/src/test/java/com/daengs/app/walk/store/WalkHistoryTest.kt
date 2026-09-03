@@ -119,6 +119,18 @@ class WalkHistoryTest {
         assertNotNull(log.session("stub"))
     }
 
+    @Test
+    fun `완료 상세의 경로는 저장된 좌표 원본에서 함께 만들어진다`() = runBlocking {
+        walked("real", startedAt = 1_000L, meters = 400.0, seconds = 600)
+
+        val detail = history.sessionDetail("real")
+
+        assertNotNull(detail)
+        assertEquals(detail?.summary?.segments?.flatten()?.size, detail?.route?.points?.size)
+        assertEquals(detail?.summary?.segments?.first()?.first()?.capturedAtMillis, detail?.route?.start?.capturedAtMillis)
+        assertEquals(detail?.summary?.segments?.last()?.last()?.capturedAtMillis, detail?.route?.end?.capturedAtMillis)
+    }
+
     /**
      * 좌표 둘을 [meters] 만큼 떼어 [seconds] 초에 걸쳐 남긴 산책 하나.
      *

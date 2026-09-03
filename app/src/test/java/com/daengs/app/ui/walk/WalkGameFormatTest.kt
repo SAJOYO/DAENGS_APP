@@ -25,6 +25,13 @@ class WalkGameFormatTest {
         assertEquals("-", formatAverageSpeed(summary.copy(activeDurationMillis = 0L)))
     }
 
+    @Test
+    fun `경로 지점 속도는 초당 미터를 시속 킬로미터로 보여준다`() {
+        assertEquals("3.6 km/h", formatDerivedSpeed(1.0))
+        assertEquals("-", formatDerivedSpeed(null))
+        assertEquals("-", formatDerivedSpeed(Double.NaN))
+    }
+
     private fun previewSummary(distanceMeters: Double, activeDurationMillis: Long) = WalkSummary(
         sessionId = "walk-1",
         dogIds = emptyList(),

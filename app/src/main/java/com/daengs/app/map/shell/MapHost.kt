@@ -20,6 +20,8 @@ fun MapHost(
     onCameraGesture: () -> Unit,
     onSelectPlace: (String) -> Unit,
     onSelectMoment: (String) -> Unit = {},
+    onSelectRouteEndpoint: (String) -> Unit = {},
+    onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     NaverMapSurface(
@@ -35,6 +37,8 @@ fun MapHost(
         onCameraGesture = onCameraGesture,
         onSelectPlace = onSelectPlace,
         onSelectMoment = onSelectMoment,
+        onSelectRouteEndpoint = onSelectRouteEndpoint,
+        onMapTap = onMapTap,
         modifier = modifier,
     )
 }

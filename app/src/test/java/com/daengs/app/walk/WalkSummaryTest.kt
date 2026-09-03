@@ -76,6 +76,42 @@ class WalkSummaryTest {
     }
 
     @Test
+    fun `GPS 점프로 화면 선만 끊겨도 세션 활동 시간축은 끊지 않는다`() {
+        val summary = summarize(
+            session,
+            listOf(
+                fix(0, 0, 1_000L, 37.5000, 127.0000),
+                fix(1, 0, 3_000L, 37.5010, 127.0000),
+                fix(2, 0, 8_000L, 37.5100, 127.0000),
+            ),
+        )
+
+        assertEquals(2, summary.segments.size)
+        assertEquals(7_000L, summary.activeDurationMillis)
+        assertEquals(summary.activeDurationMillis, summary.toSessionRoute().end?.activeElapsedMillis)
+    }
+
+    @Test
+    fun `목록은 오천 점으로 제한하고 한 산책 상세만 실제 출발점을 보존한다`() {
+        val fixes = (0..5_000).map { index ->
+            fix(
+                seq = index,
+                chain = 0,
+                at = 1_000L + index * 1_000L,
+                lat = 37.5 + index * 0.00004,
+                lng = 127.0,
+            )
+        }
+
+        val listSummary = summarize(session, fixes)
+        val detailSummary = summarize(session, fixes, maxRouteSamples = Int.MAX_VALUE)
+
+        assertEquals(WALK_SUMMARY_ROUTE_SAMPLE_LIMIT, listSummary.segments.flatten().size)
+        assertEquals(5_001, detailSummary.segments.flatten().size)
+        assertEquals(1_000L, detailSummary.toSessionRoute().start?.capturedAtMillis)
+    }
+
+    @Test
     fun `좌표가 하나면 거리도 시간도 0 이다`() {
         val summary = summarize(session, listOf(fix(0, 0, 1_000L, 37.5, 127.0)))
         assertEquals(0.0, summary.distanceMeters, 0.001)
