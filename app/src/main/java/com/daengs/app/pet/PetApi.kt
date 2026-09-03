@@ -81,12 +81,30 @@ object PetApi {
         }
     }
 
-    /** 저쪽이 사용자에게 보여 줄 문장으로 `detail` 을 써 놨다 ("강아지는 5마리까지…"). */
+    /**
+     * 저쪽이 사용자에게 보여 줄 문장으로 `detail` 을 써 놨다 ("강아지는 5마리까지…").
+     *
+     * **문장이 아닐 때가 있다.** 저쪽은 FastAPI 라 422 검증 오류의 `detail` 은
+     * **배열**이다. 예전에는 `optString("detail")` 로 꺼냈는데, 그러면 그 배열이
+     * 통째로 문자열이 되어 화면에 이렇게 찍혔다 —
+     * `[{"type":"less_than_equal","loc":["body","weight_kg"], …}]`.
+     * 비공개 테스트에서 몸무게에 큰 수를 넣었을 때 나왔다.
+     *
+     * 그래서 **모양을 보고 가른다.** 모르는 모양이면 상태 코드만 말한다. 날 것을
+     * 보여 주느니 덜 알려 주는 편이 낫다 — `gait/GaitApi.kt` 의 `detailOf` 와
+     * `walk/diary/SpatialDiaryApi.kt` 가 같은 방식이다.
+     */
     private fun HttpURLConnection.fail(): Nothing {
-        val detail = runCatching {
-            JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
+        val body = runCatching {
+            JSONObject(errorStream?.bufferedReader()?.readText().orEmpty())
         }.getOrNull()
-        error(if (detail.isNullOrBlank()) "서버 오류 ($responseCode)" else detail)
+        val detail = when (val raw = body?.opt("detail")) {
+            is String -> raw.takeIf(String::isNotBlank)
+            // 저쪽이 `{"message": …}` 로 감싸 보내는 계약도 있다 (보행·공간 일지).
+            is JSONObject -> raw.optString("message").takeIf(String::isNotBlank)
+            else -> null
+        }
+        error(detail ?: "서버 오류 ($responseCode)")
     }
 
     private inline fun <T> HttpURLConnection.use(body: (HttpURLConnection) -> T): T =
