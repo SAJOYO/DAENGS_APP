@@ -80,6 +80,39 @@ val naverMapClientId = localSetting("daengs.naverMapClientId").ifBlank {
 val naverMapStyleId = localSetting("daengs.naverMapStyleId")
 
 /**
+ * 스토어에 올릴 버전. **인자를 안 주면 지금과 똑같이 `1` · `"1.0"` 이다.**
+ *
+ * Play 는 한 트랙에서 **같은 versionCode 를 두 번 받지 않는다.** 지운 릴리스가 쓴
+ * 번호도 재사용할 수 없다 — 한 번 올린 번호는 그것으로 끝이다. 그래서 올릴 때마다
+ * 번호가 하나씩 올라가야 하는데, 파일에 상수로 박아 두면 업로드마다 코드와 아무
+ * 상관 없는 커밋이 하나씩 붙고, 잊으면 **업로드 단계에서야** 막힌다.
+ *
+ * 그래서 빌드 인자로 받는다. 아래 `defaultConfig` 의 `slimAbi` 와 같은 방식이다.
+ *
+ *     ./gradlew :app:bundleRelease -PversionCode=2 -PversionName=1.0.1
+ *
+ * **2026-09-02 의 `v1` 태그가 versionCode 1 로 나갔으므로 다음 업로드는 2 부터다.**
+ *
+ * 숫자가 아닌 값이 오면 **빌드를 멈춘다.** 조용히 1 로 떨어지면 오타 하나가 그대로
+ * 통과해서, 몇 분 걸려 만든 AAB 를 올리는 자리에서야 중복으로 거부당한다.
+ */
+val versionCodeArg: Int = providers.gradleProperty("versionCode").orNull?.trim().let { given ->
+    when {
+        given.isNullOrBlank() -> 1
+        else -> given.toIntOrNull()
+            ?: throw GradleException("-PversionCode 는 정수여야 합니다. 받은 값: \"$given\"")
+    }
+}
+
+/**
+ * 버전 이름. 사람이 읽는 값이라 versionCode 와 달리 매번 바뀌지 않아도 된다.
+ * 안 주면 `"1.0"` 이다.
+ */
+val versionNameArg: String = providers.gradleProperty("versionName").orNull?.trim()
+    ?.takeIf { it.isNotBlank() }
+    ?: "1.0"
+
+/**
  * 플레이스토어 업로드 키.
  *
  * **Play 앱 서명을 쓰므로 이건 "업로드 키" 다.** 진짜 앱 서명 키는 구글이 만들어
@@ -106,8 +139,9 @@ android {
         applicationId = "com.daengs.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // 위의 versionCodeArg 주석 참고. `-PversionCode=2` 로 준다.
+        versionCode = versionCodeArg
+        versionName = versionNameArg
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
