@@ -1,6 +1,8 @@
 package com.daengs.app.assistant
 
 import com.daengs.app.BuildConfig
+import com.daengs.app.chat.ChatApiError
+import com.daengs.app.chat.ChatPersistence
 import com.daengs.app.location.GeoPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,9 +17,14 @@ import java.net.URL
  * [AuthApi][com.daengs.app.auth.AuthApi] · `WalkApi` 와 같은 이유로 HTTP
  * 라이브러리를 안 쓴다 — 부를 엔드포인트가 하나다.
  *
- * **오케스트레이션 v1 은 상태가 없다.** 대화 기록·강아지 프로필·이전 답변을
- * 안 싣는다. 매 전송이 독립된 질의고, 자연어 해석은 서버의 의미 라우터가
- * 전부 맡는다 — 앱에서 키워드로 먼저 갈래를 나누지 않는다.
+ * **무상태가 기본이다.** 대화 기록·강아지 프로필·이전 답변을 안 싣는다. 매 전송이
+ * 독립된 질의고, 자연어 해석은 서버의 의미 라우터가 전부 맡는다 — 앱에서 키워드로
+ * 먼저 갈래를 나누지 않는다.
+ *
+ * **대화를 남기려면 [ChatPersistence] 를 얹는다** (저쪽 PR #131, D-048). 그러면 같은
+ * 호출이 그 대화의 turn 으로 저장된다 — 저쪽이 `/app/chats/{id}/turns` 같은 두 번째
+ * 실행 경로를 만들지 않아서, 저장하는 질문도 이 엔드포인트 하나로 간다. 안 얹으면
+ * 요청 본문이 v0.0.0 과 **바이트 단위로 같다** (`AssistantApiTest` 가 고정한다).
  */
 object AssistantApi {
 
@@ -27,11 +34,14 @@ object AssistantApi {
     /**
      * @param where 지금 있는 곳. **없어도 된다** — 위치가 필요 없는 질문이 대부분이고,
      *   좌표를 못 구했다고 질문까지 막으면 안 된다.
+     * @param persistence 이 문답을 남길 대화. null 이면 무상태 — 지금까지와 같다.
+     *   실패는 [ChatApiError] 로 온다 (무상태도 마찬가지, 문장은 그대로다).
      */
     suspend fun query(
         accessToken: String,
         text: String,
         where: GeoPoint? = null,
+        persistence: ChatPersistence? = null,
     ): Result<AssistantResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -39,14 +49,14 @@ object AssistantApi {
                 val conn = open()
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
                 conn.use {
-                    it.send(requestBody(text, where))
+                    it.send(requestBody(text, where, persistence))
                     AssistantResponse.parse(it.readJson())
                 }
             }.recoverCatching { cause ->
                 // 서버가 준 문장은 그대로 통과시킨다 (아래 [readJson] 이
                 // IllegalStateException 으로 던진다). 나머지는 연결이 안 된 것이다.
                 if (cause is IllegalStateException) throw cause
-                throw IllegalStateException("AI 서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
+                throw ChatApiError.unreachable("AI 서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
             }
         }
 
@@ -54,17 +64,28 @@ object AssistantApi {
      * 보내는 것은 **질문과 (있으면) 좌표뿐**이다.
      *
      * `requested_capability` 는 넣지 않는다 — 자연어 해석은 서버 의미 라우터에게
-     * 그대로 맡긴다. `active_dog_id` 도 안 넣는다. 서버가 받아 주기는 하지만 아직
-     * 아무 기능도 그 값을 쓰지 않아서, 보내면 쓰이는 줄 알고 나중에 헷갈린다.
+     * 그대로 맡긴다. `active_dog_id` 도 무상태에서는 안 넣는다. 서버가 받아 주기는
+     * 하지만 아무 기능도 그 값을 쓰지 않아서, 보내면 쓰이는 줄 알고 나중에 헷갈린다.
      *
      * ⚠️ **서버 스키마가 `extra="forbid"` 다.** 모르는 칸이 하나라도 있으면 422 로
      * 질문이 통째로 죽는다. 그래서 좌표가 없을 때 `location: null` 을 넣지 않고
      * **칸 자체를 뺀다.**
+     *
+     * [persistence] 가 있으면 세 칸이 더 붙는다 — `chat_session_id` · `client_message_id`
+     * 는 **반드시 같이**(한쪽만 있으면 저쪽이 422), `active_dog_id` 는 고른 강아지가
+     * 있을 때. 이때는 `active_dog_id` 를 싣는 이유가 있다: 대화의 강아지와 다르면
+     * 저쪽이 행을 쓰기 전에 `ACTIVE_DOG_MISMATCH` 로 막아 준다. 고른 강아지와 어긋난
+     * 채 남의 대화에 조용히 쌓이는 것보다 막히는 편이 낫다.
      */
-    internal fun requestBody(text: String, where: GeoPoint?): String =
+    internal fun requestBody(text: String, where: GeoPoint?, persistence: ChatPersistence? = null): String =
         JSONObject().put("query", text).apply {
             where?.takeIf { it.inKorea() }?.let {
                 put("location", JSONObject().put("lat", it.latitude).put("lon", it.longitude))
+            }
+            persistence?.let {
+                put("chat_session_id", it.sessionId)
+                put("client_message_id", it.clientMessageId)
+                it.activeDogId?.let { dog -> put("active_dog_id", dog) }
             }
         }.toString()
 
@@ -101,16 +122,14 @@ object AssistantApi {
             //    (60초)에 걸리면 **HTML 504 페이지**를 준다. 그걸 JSONObject 에
             //    넣으면 파싱이 터지고, 사용자는 "AI 서버에 닿지 못했어요" 라는
             //    엉뚱한 말을 본다 — 실제로는 닿았고 서버가 오래 걸린 것이다.
-            val detail = runCatching {
-                JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
-            }.getOrNull()
-            error(
-                when {
-                    !detail.isNullOrBlank() -> detail
-                    responseCode in 502..504 -> SLOW
-                    else -> "AI 서버 오류 ($responseCode)"
-                },
-            )
+            //
+            // 저장하는 질문은 409 `detail.code` 로 갈래가 여섯이다. 문장으로 접지
+            // 않고 [ChatApiError] 로 상태·코드·동봉 데이터를 그대로 넘긴다 — 무상태
+            // 질문이 받던 문장(서버 `detail` · [SLOW] · 코드 번호)은 그대로다.
+            val body = runCatching { errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull()
+            throw ChatApiError.from(responseCode, body) { status ->
+                if (status in 502..504) SLOW else "AI 서버 오류 ($status)"
+            }
         }
         return JSONObject(inputStream.bufferedReader().use { it.readText() })
     }
