@@ -201,7 +201,7 @@ fun CardDrawScreen(
             title = "얼굴만 원 안에 넣어 주세요",
             confirmLabel = "이 얼굴로",
             circle = true,
-            guidance = "목 아래는 빼고 얼굴만 담아 주세요. 모서리를 끌어 크기를 바꿉니다.",
+            guidance = "목 아래는 빼고 얼굴만 담아 주세요. 두 손가락으로 키우거나 모서리를 끌면 됩니다.",
         )
         return
     }
