@@ -1,0 +1,10 @@
+package com.daengs.app.map.layers.territory
+
+import com.daengs.app.location.GeoPoint
+
+/** 시설 종류와 원본을 모르는, 지도에서 찾아갈 수 있는 중립 점령지 표시 상태. */
+data class TerritorySiteMarkerState(
+    val id: String,
+    val point: GeoPoint,
+    val selected: Boolean = false,
+)

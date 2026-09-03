@@ -71,7 +71,9 @@ import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.trail.TrailLayerState
 import com.daengs.app.map.layers.trail.toTrailLayerState
 import com.daengs.app.map.shell.MapHost
-import com.daengs.app.map.shell.MapScene
+import com.daengs.app.map.shell.MapPurpose
+import com.daengs.app.map.shell.MapSceneSources
+import com.daengs.app.map.shell.composeMapScene
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideWeather
 import com.daengs.app.miniroom.art.DogBreed
@@ -323,25 +325,29 @@ fun WalkScreen(
             Box(Modifier.fillMaxSize().background(PinkFaint))
         } else {
             MapHost(
-                scene = MapScene(
-                    currentPosition = currentPosition.takeIf { completedSummary == null },
-                    moments = displayedMoments.map { moment ->
-                        MomentMarkerState(
-                            id = moment.id,
-                            point = moment.point,
-                            label = moment.markerLabel,
-                            selected = moment.id == selectedMomentId,
-                        )
-                    },
-                    trail = if (completedDetail == null) {
-                        tracking.trail.toTrailLayerState()
-                    } else {
-                        TrailLayerState()
-                    },
-                    completedRoute = completedRoute?.toCompletedRouteLayerState(
-                        selectedPoint = selectedRoutePoint,
-                        formatTime = ::formatClock,
-                    ) ?: CompletedRouteLayerState(),
+                scene = composeMapScene(
+                    purpose = MapPurpose.WALK,
+                    sources = MapSceneSources(
+                        currentPosition = currentPosition.takeIf { completedSummary == null },
+                        moments = displayedMoments.map { moment ->
+                            MomentMarkerState(
+                                id = moment.id,
+                                point = moment.point,
+                                label = moment.markerLabel,
+                                selected = moment.id == selectedMomentId,
+                            )
+                        },
+                        trail = if (completedDetail == null) {
+                            tracking.trail.toTrailLayerState()
+                        } else {
+                            TrailLayerState()
+                        },
+                        completedRoute = completedRoute?.toCompletedRouteLayerState(
+                            selectedPoint = selectedRoutePoint,
+                            formatTime = ::formatClock,
+                        ) ?: CompletedRouteLayerState(),
+                    ),
+                    walkActive = trackingActive,
                 ),
                 searchOrigin = null,
                 followDevice = followDevice,

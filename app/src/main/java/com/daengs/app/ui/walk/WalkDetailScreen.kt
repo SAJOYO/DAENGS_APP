@@ -34,7 +34,9 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.shell.MapHost
-import com.daengs.app.map.shell.MapScene
+import com.daengs.app.map.shell.MapPurpose
+import com.daengs.app.map.shell.MapSceneSources
+import com.daengs.app.map.shell.composeMapScene
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.common.DaengsFloatingButton
 import com.daengs.app.ui.theme.CardWhite
@@ -82,11 +84,14 @@ fun WalkDetailScreen(
             ?: CompletedRouteLayerState()
         if (!inspectionMode) {
             MapHost(
-                scene = MapScene(
-                    moments = detail?.moments.orEmpty().map { moment ->
-                        MomentMarkerState(moment.id, moment.point, moment.markerLabel)
-                    },
-                    completedRoute = completedRoute,
+                scene = composeMapScene(
+                    purpose = MapPurpose.WALK,
+                    sources = MapSceneSources(
+                        moments = detail?.moments.orEmpty().map { moment ->
+                            MomentMarkerState(moment.id, moment.point, moment.markerLabel)
+                        },
+                        completedRoute = completedRoute,
+                    ),
                 ),
                 searchOrigin = null,
                 followDevice = false,
