@@ -3,4 +3,6 @@
      루트를 열면 토큰 저장소까지 남의 앱이 볼 수 있는 자리가 된다. -->
 <paths>
     <cache-path name="camera" path="camera/" />
+    <!-- 공유하는 카드 한 장이 잠깐 머무는 곳. 다음 공유 때 지워진다. -->
+    <cache-path name="cards" path="cards/" />
 </paths>

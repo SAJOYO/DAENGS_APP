@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.daengs.app.dogcard.cardFileName
+import com.daengs.app.ui.dogcard.CardShot
 import com.daengs.app.ui.dogcard.rememberCardSaver
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -772,31 +773,32 @@ private fun CardViewer(
             }
 
             if (showDetail) {
+                // 내보낼 한 장. **그림을 다 읽은 뒤에만 만들어진다** — 아직 안 읽혔는데
+                // 눌리면 빈 카드가 나간다. 저장과 공유가 이 하나를 같이 쓴다.
+                val shot = if (mine != null && art != null) {
+                    CardShot(
+                        fileName = cardFileName(
+                            templateId = mine.templateId,
+                            cardId = mine.id,
+                            at = mine.drawnAtMillis,
+                        ),
+                        art = art,
+                        // 얼굴이 없는 카드(시드 열두 장)는 원화가 곧 그림이라
+                        // 합치지 않고 그대로 내보낸다.
+                        template = if (drawn?.composed == true) drawn.template else null,
+                        face = drawn?.face,
+                        name = mine.dogName,
+                        code = mine.codeText,
+                    )
+                } else {
+                    null
+                }
                 CardDetailSheet(
                     card = card,
                     mine = mine,
-                    // **그림을 다 읽은 뒤에만 저장이 뜬다.** 아직 안 읽혔는데 눌리면
-                    // 빈 카드가 파일로 나간다.
-                    onSave = if (mine != null && art != null) {
-                        {
-                            saver.save(
-                                fileName = cardFileName(
-                                    templateId = mine.templateId,
-                                    cardId = mine.id,
-                                    at = mine.drawnAtMillis,
-                                ),
-                                art = art,
-                                // 얼굴이 없는 카드(시드 열두 장)는 원화가 곧 그림이라
-                                // 합치지 않고 그대로 내보낸다.
-                                template = if (drawn?.composed == true) drawn.template else null,
-                                face = drawn?.face,
-                                name = mine.dogName,
-                                code = mine.codeText,
-                            )
-                        }
-                    } else {
-                        null
-                    },
+                    onSave = shot?.let { { saver.save(it) } },
+                    onShare = shot?.let { { saver.share(it) } },
+                    toGallery = saver.toGallery,
                     saveBusy = saver.busy,
                     saveNote = saver.note,
                     // 이 카드가 지금 액자에 걸려 있나. 걸려 있으면 내리는 자리가 된다.
@@ -983,8 +985,15 @@ private fun CardDetailSheet(
     card: DexCard,
     /** 이 칸에서 지금 보고 있는 내 카드. null 이면 카탈로그 설명만 보여 준다 */
     mine: DrawnCard? = null,
-    /** 이미지로 저장한다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
+    /** 이미지로 내보낸다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
     onSave: (() -> Unit)? = null,
+    /** 다른 앱으로 보낸다. null 이면 그 줄이 안 뜬다 */
+    onShare: (() -> Unit)? = null,
+    /**
+     * 저장이 **사진첩으로 바로** 가는가. 옛 기기(API 28 이하)는 저장할 곳을 묻는
+     * 창이 뜬다 — 하는 일이 다른데 같은 말을 쓰면 거짓말이 되므로 글씨를 가른다
+     */
+    toGallery: Boolean = true,
     saveBusy: Boolean = false,
     /** 저장하고 나서 한 줄. 잠시 뒤 사라진다 */
     saveNote: String? = null,
@@ -1118,15 +1127,30 @@ private fun CardDetailSheet(
                 // 파일이 하나 생기는 동작이라, 같은 줄에 있으면 다음 카드를 누르려다
                 // 저장 창이 뜬다.
                 SheetAction(
-                    if (saveBusy) "저장하는 중…" else "이미지로 저장",
+                    when {
+                        saveBusy -> "저장하는 중…"
+                        toGallery -> "갤러리에 저장"
+                        else -> "이미지로 저장"
+                    },
                     onClick = if (saveBusy) ({}) else onSave,
                 )
-                // 저장은 창이 닫히고 나면 아무 표시가 없다 — 됐는지 안 됐는지를
-                // 여기서 말해 준다.
-                if (saveNote != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(saveNote, color = Color(0xFF9E8B84), fontSize = 12.sp)
-                }
+            }
+
+            if (onShare != null) {
+                Spacer(Modifier.height(6.dp))
+                // **저장과 나란히 두지 않는다.** 하나는 내 폰에 남기는 일이고 하나는
+                // 남에게 보내는 일이라, 같은 줄에 있으면 잘못 눌러 남에게 간다.
+                SheetAction(
+                    if (saveBusy) "준비하는 중…" else "공유하기",
+                    onClick = if (saveBusy) ({}) else onShare,
+                )
+            }
+
+            // 저장은 끝나고 나면 아무 표시가 없다 — 됐는지 안 됐는지를 여기서 말해
+            // 준다. 공유는 시트가 스스로 뜨므로 잘됐을 때 할 말이 없다.
+            if (saveNote != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(saveNote, color = Color(0xFF9E8B84), fontSize = 12.sp)
             }
 
             if (onDelete != null) {
