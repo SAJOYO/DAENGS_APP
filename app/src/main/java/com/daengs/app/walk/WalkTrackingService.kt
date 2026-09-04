@@ -374,6 +374,11 @@ class WalkTrackingService : Service() {
         val summary = summarize(session, log.fixes(sessionId))
         if (!summary.countsAsWalk) {
             log.deleteSession(sessionId)
+            // **잰 값도 같이 지운다.** 안 지우면 방금 걸은 시간이 화면에 그대로 남아,
+            // 지웠다고 말해 놓고 숫자는 계속 보여 주는 꼴이 된다. 거리는 `recorder.stop()`
+            // 이 이미 0 으로 만들지만 시간은 이 서비스가 들고 있다.
+            activeDurationMillis = 0L
+            activeSinceRealtimeMillis = null
             publishCompletionFailure(
                 "이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.",
                 clearMoments = true,

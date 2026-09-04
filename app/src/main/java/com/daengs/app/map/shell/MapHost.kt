@@ -12,6 +12,8 @@ fun MapHost(
     searchOrigin: GeoPoint?,
     followDevice: Boolean,
     @DrawableRes avatarRes: Int? = null,
+    /** 사용자가 올린 프로필 사진. 있으면 [avatarRes] 보다 이쪽이 앞선다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
     bottomPaddingPx: Int = 0,
     centerOn: GeoPoint? = null,
     centerZoom: Double? = null,
@@ -30,6 +32,7 @@ fun MapHost(
         searchOrigin = searchOrigin,
         followDevice = followDevice,
         avatarRes = avatarRes,
+        avatarPhoto = avatarPhoto,
         bottomPaddingPx = bottomPaddingPx,
         centerOn = centerOn,
         centerZoom = centerZoom,

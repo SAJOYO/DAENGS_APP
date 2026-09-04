@@ -116,7 +116,17 @@ const val MIN_WALK_MILLIS = 60_000L
  * 경계값은 **인정한다** — 딱 50m 를 걷고 "왜 기록이 없지" 가 되면 안 된다.
  */
 val WalkSummary.countsAsWalk: Boolean
-    get() = distanceMeters >= MIN_WALK_METERS && activeDurationMillis >= MIN_WALK_MILLIS
+    get() = countsAsWalk(distanceMeters, activeDurationMillis)
+
+/**
+ * 저장하기 **전에도** 같은 규칙으로 잴 수 있게 꺼내 둔다.
+ *
+ * 산책 화면이 멈춤 카드에서 이 값을 미리 본다 — 종료를 누른 뒤에 "너무 짧아서 안
+ * 남겼어요" 라고 하면, 걷고 온 사람이 **기록이 사라진 것을 보고 나서** 이유를 읽는
+ * 순서가 된다. 두 자리가 같은 규칙을 봐야 화면과 저장이 다른 말을 하지 않는다.
+ */
+fun countsAsWalk(distanceMeters: Double, activeDurationMillis: Long): Boolean =
+    distanceMeters >= MIN_WALK_METERS && activeDurationMillis >= MIN_WALK_MILLIS
 
 fun summarize(
     session: RecordedSession,

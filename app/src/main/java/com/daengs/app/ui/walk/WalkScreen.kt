@@ -71,7 +71,10 @@ import com.daengs.app.walk.TrailSnapshot
 import com.daengs.app.walk.WalkMoment
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkRoutePoint
+import com.daengs.app.walk.MIN_WALK_METERS
+import com.daengs.app.walk.MIN_WALK_MILLIS
 import com.daengs.app.walk.WalkSummary
+import com.daengs.app.walk.countsAsWalk
 import com.daengs.app.walk.WalkTrackingState
 import com.daengs.app.walk.isFreshEnoughForMoment
 import java.time.Instant
@@ -88,6 +91,8 @@ fun WalkScreen(
     onAction: (WalkAction) -> Unit,
     modifier: Modifier = Modifier,
     avatarBreed: DogBreed? = null,
+    /** 대표 아이가 올린 프로필 사진. 있으면 지도의 내 위치가 그 얼굴이 된다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
     showMap: Boolean = true,
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
@@ -103,6 +108,7 @@ fun WalkScreen(
                 searchOrigin = null,
                 followDevice = state.location.followDevice,
                 avatarRes = avatarBreed?.portraitRes,
+                avatarPhoto = avatarPhoto,
                 centerOn = state.location.centerOn,
                 centerZoom = state.location.centerZoom,
                 fitBounds = mapPresentation.fitBounds,
@@ -302,34 +308,36 @@ private fun WalkGameOverlay(
                     photoOf = photoOf,
                 )
             } else {
-                Row(
-                    Modifier.fillMaxWidth().align(Alignment.TopStart),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    WalkHomeButton(onHome)
+                // **가운데 버튼은 진짜 가운데여야 한다.** `SpaceBetween` 은 남는 자리를
+                // 똑같이 나눌 뿐이라, 양옆 버튼의 너비가 다르면 가운데 것이 한쪽으로
+                // 밀린다 — 홈은 동그란 44dp 이고 가로보기는 글자 버튼이라 늘 다르다.
+                Box(Modifier.fillMaxWidth().align(Alignment.TopStart)) {
+                    WalkHomeButton(onHome, Modifier.align(Alignment.CenterStart))
                     if (summary == null) {
-                        WalkMapModeButton(mapPurpose, onMapPurposeChange)
-                    }
-                    WalkRotateButton(layoutMode, onRequestOrientation)
-                }
-                Column(
-                    Modifier.align(Alignment.TopCenter).padding(top = 52.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    WalkStatsHud(
-                        elapsedMillis = elapsedMillis,
-                        distanceMeters = distanceMeters,
-                    )
-                    if (summary == null) {
-                        MomentHud(
-                            nowMillis = wallClockMillis,
-                            outside = outside,
-                            gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
+                        WalkMapModeButton(
+                            mapPurpose,
+                            onMapPurposeChange,
+                            Modifier.align(Alignment.Center),
                         )
-                    } else CompletedWalkHud(summary)
+                    }
+                    WalkRotateButton(
+                        layoutMode,
+                        onRequestOrientation,
+                        Modifier.align(Alignment.CenterEnd),
+                    )
                 }
+                // **한 줄이다.** 예전에는 시간·거리 카드와 날씨 카드가 세로로 쌓여
+                // 지도를 크게 가렸고, 너비가 서로 달라 가운데로 놓아도 들쭉날쭉해
+                // 보였다. 시계와 GPS 줄은 버렸다 — 시각은 상태바에 이미 있고, GPS
+                // 상태는 아래 안내줄이 따로 말해 준다.
+                WalkTopHud(
+                    elapsedMillis = elapsedMillis,
+                    distanceMeters = distanceMeters,
+                    outside = outside.takeIf { summary == null },
+                    nowMillis = wallClockMillis,
+                    summary = summary,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 52.dp),
+                )
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -363,25 +371,33 @@ private fun WalkGameOverlay(
                             locationGranted && preciseLocation
                         ) onRetryTerritory else onOpenSettings,
                     )
-                    if (summary == null) {
-                        DaengsFloatingButton(
-                            label = if (locating) "찾는 중" else "◎ 내 위치",
-                            enabled = locationGranted && !locating,
-                            onClick = onLocate,
+                    // **내 위치를 큰 버튼 옆에 붙인다.** 예전에는 제 줄을 차지해서
+                    // 지도 아래가 한 줄 더 길었다. 자주 누르는 것도 아니라 동그란
+                    // 아이콘 하나면 된다.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        if (summary == null) {
+                            WalkLocateButton(
+                                enabled = locationGranted && !locating,
+                                locating = locating,
+                                onClick = onLocate,
+                            )
+                        }
+                        WalkPrimaryControl(
+                            tracking = tracking,
+                            resultExpanded = resultExpanded,
+                            pets = pets,
+                            selectedDogIds = selectedDogIds,
+                            locationReady = locationGranted && preciseLocation,
+                            onToggleDog = onToggleDog,
+                            onStart = onStart,
+                            onPause = onPause,
+                            onShowResult = onShowResult,
+                            photoOf = photoOf,
                         )
                     }
-                    WalkPrimaryControl(
-                        tracking = tracking,
-                        resultExpanded = resultExpanded,
-                        pets = pets,
-                        selectedDogIds = selectedDogIds,
-                        locationReady = locationGranted && preciseLocation,
-                        onToggleDog = onToggleDog,
-                        onStart = onStart,
-                        onPause = onPause,
-                        onShowResult = onShowResult,
-                        photoOf = photoOf,
-                    )
                 }
             }
 
@@ -427,7 +443,13 @@ private fun WalkGameOverlay(
             }
             tracking.finishingSessionId != null -> ModalScrim { SavingCard("산책을 저장하고 있어요") }
             tracking.trail.state == TrackingState.PAUSED -> ModalScrim {
-                PauseCard(onResume = onResume, onStop = onStop)
+                PauseCard(
+                    onResume = onResume,
+                    onStop = onStop,
+                    // 서비스가 저장 뒤에 재는 것과 **같은 규칙**이다. 여기서 미리 재
+                    // 두면 "종료 → 사라짐 → 왜 없지" 가 아니라 누르기 전에 알 수 있다.
+                    tooShort = !countsAsWalk(distanceMeters, elapsedMillis),
+                )
             }
         }
         if (modalVisible) {
@@ -452,12 +474,13 @@ private fun WalkGameOverlay(
 private fun WalkMapModeButton(
     purpose: MapPurpose,
     onChange: (MapPurpose) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val target = if (purpose == MapPurpose.TERRITORY) MapPurpose.WALK else MapPurpose.TERRITORY
     DaengsFloatingButton(
         label = if (purpose == MapPurpose.TERRITORY) "산책 지도" else "점령 지도",
         onClick = { onChange(target) },
-        modifier = Modifier.semantics { contentDescription = "지도 모드 전환" },
+        modifier = modifier.semantics { contentDescription = "지도 모드 전환" },
     )
 }
 
@@ -476,11 +499,12 @@ internal fun territoryStatusLabel(state: TerritoryBoardState): String = when {
 private fun WalkRotateButton(
     layoutMode: WalkLayoutMode,
     onRequestOrientation: (WalkOrientation) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     DaengsFloatingButton(
         label = if (layoutMode == WalkLayoutMode.PORTRAIT) "가로 보기" else "세로 보기",
         onClick = { onRequestOrientation(layoutMode.oppositeOrientation) },
-        modifier = Modifier.semantics { contentDescription = "산책 화면 회전" },
+        modifier = modifier.semantics { contentDescription = "산책 화면 회전" },
     )
 }
 
@@ -526,12 +550,99 @@ private fun WalkPrimaryControl(
     }
 }
 
+/**
+ * 지도 위에 뜨는 **한 줄짜리** 요약.
+ *
+ * 예전에는 시간·거리 카드와 날씨 카드가 세로로 쌓여 있었다. 지도를 크게 가렸고,
+ * **너비가 서로 달라** 둘 다 가운데로 놓아도 들쭉날쭉해 보였다.
+ *
+ * 시계와 GPS 줄은 버렸다 — 시각은 상태바에 이미 있고, GPS 상태는 화면 아래 안내줄이
+ * 따로 말해 준다. 지도를 덜 가리는 편이 그 둘보다 값지다.
+ *
+ * @param outside 날씨. 산책이 끝난 뒤에는 null 이고 [summary] 자리가 대신 온다
+ */
+@Composable
+private fun WalkTopHud(
+    elapsedMillis: Long,
+    distanceMeters: Double,
+    outside: OutsideSnapshot?,
+    nowMillis: Long,
+    summary: WalkSummary?,
+    modifier: Modifier = Modifier,
+) {
+    HudSurface(modifier) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HudMetric("산책 시간", formatDuration(elapsedMillis))
+            HudMetric("이동 거리", formatDistance(distanceMeters))
+            when {
+                summary != null -> {
+                    HudDivider()
+                    Text(
+                        "${formatClock(summary.startedAtMillis)} 시작",
+                        color = TextDark,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                outside != null -> {
+                    HudDivider()
+                    Text(
+                        momentHeadline(nowMillis, outside),
+                        color = TextDark,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 한 줄 안에서 재는 값과 알려 주는 값을 가르는 가는 선. */
+@Composable
+private fun HudDivider() {
+    Box(
+        Modifier
+            .width(1.dp)
+            .height(22.dp)
+            .background(DaengsColors.BorderNeutral),
+    )
+}
+
 @Composable
 private fun WalkStatsHud(elapsedMillis: Long, distanceMeters: Double) {
     HudSurface {
         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             HudMetric("산책 시간", formatDuration(elapsedMillis))
             HudMetric("이동 거리", formatDistance(distanceMeters))
+        }
+    }
+}
+
+/** 지도를 내 자리로 되돌린다. **동그란 아이콘 하나**로 큰 버튼 옆에 붙는다. */
+@Composable
+private fun WalkLocateButton(enabled: Boolean, locating: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(CardWhite.copy(alpha = if (enabled) 0.96f else 0.68f))
+            .border(1.dp, DaengsColors.BorderNeutral, CircleShape)
+            .semantics { contentDescription = "내 위치로" }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (locating) {
+            CircularProgressIndicator(Modifier.size(18.dp), color = DaengPink, strokeWidth = 2.dp)
+        } else {
+            DaengsIconView(
+                DaengsIcon.Pin,
+                Modifier.size(20.dp),
+                tint = if (enabled) DaengPinkDeep else TextMuted,
+            )
         }
     }
 }
@@ -574,13 +685,16 @@ private fun WalkMomentDock(
             }
         }
     } else {
-        Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            WalkMomentType.entries.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { type ->
-                        WalkMomentButton(type = type, enabled = enabled, onClick = { onAddMoment(type) })
-                    }
-                }
+        // **한 줄이다.** 두 줄이면 지도 아래가 덩어리 넷(행동·안내·내 위치·멈춤)으로
+        // 쌓여서 지도를 절반 가까이 덮었다. 줄이 하나 줄면 그만큼 길이 보인다.
+        Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            WalkMomentType.entries.forEach { type ->
+                WalkMomentButton(
+                    type = type,
+                    enabled = enabled,
+                    onClick = { onAddMoment(type) },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -591,11 +705,12 @@ private fun WalkMomentButton(
     type: WalkMomentType,
     enabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val tint = if (enabled) DaengPinkDeep else TextMuted
     Row(
-        Modifier
-            .width(116.dp)
+        modifier
+            .then(if (modifier == Modifier) Modifier.width(116.dp) else Modifier)
             .height(44.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(if (enabled) CardWhite.copy(alpha = 0.96f) else CardWhite.copy(alpha = 0.68f))
@@ -606,9 +721,29 @@ private fun WalkMomentButton(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DaengsIconView(type.walkIcon, Modifier.size(18.dp), tint = tint)
-        Text(type.label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(
+            type.shortLabel,
+            color = tint,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
     }
 }
+
+/**
+ * 한 줄에 넷이 들어가려면 이름이 짧아야 한다.
+ *
+ * **아이콘이 같이 있어서 줄여도 읽힌다.** 긴 이름(`WalkMomentType.label`)은 기록 목록
+ * 처럼 글자만 있는 자리가 그대로 쓴다 — 거기서까지 줄이면 무슨 기록인지 모른다.
+ */
+private val WalkMomentType.shortLabel: String
+    get() = when (this) {
+        WalkMomentType.EXPLORE -> "탐색"
+        WalkMomentType.TOILET_MARKING -> "배변"
+        WalkMomentType.SOCIAL -> "교류"
+        WalkMomentType.SPECIAL -> "순간"
+    }
 
 private val WalkMomentType.walkIcon: DaengsIcon
     get() = when (this) {
@@ -772,12 +907,23 @@ private fun ReadyCard(
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 7.dp,
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // **가운데로 모은다.** 버튼은 가로로 꽉 차는데 글자만 왼쪽에 붙어 있어서,
+        // 카드 안에서 두 축이 따로 놀았다.
+        Column(
+            Modifier.padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Text("산책을 시작할까요?", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             if (pets.isNotEmpty()) {
                 DogPickRow(pets, selectedDogIds, onToggleDog, photoOf = photoOf)
             } else {
-                Text("등록한 강아지가 없어도 산책은 기록할 수 있어요.", color = TextMuted, fontSize = 11.sp)
+                Text(
+                    "등록한 강아지가 없어도 산책은 기록할 수 있어요.",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                )
             }
             WalkWideAction("산책 시작", enabled = enabled, onClick = onStart)
         }
@@ -827,8 +973,15 @@ private fun ModalScrim(content: @Composable () -> Unit) {
     }
 }
 
+/**
+ * 잠시 멈춤. **종료가 여기에만 있다.**
+ *
+ * @param tooShort 지금 끝내면 **산책으로 안 남는다.** 50m·1분을 둘 다 넘어야 기록되는데
+ *   (`countsAsWalk`), 예전에는 그 말을 종료를 누른 **뒤에야** 했다 — 걷고 온 사람이
+ *   기록이 사라진 것을 보고 나서 이유를 읽는 순서였다. 누르기 전에 말해 준다
+ */
 @Composable
-private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit) {
+private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit, tooShort: Boolean) {
     Surface(
         modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(),
         color = CardWhite,
@@ -840,10 +993,31 @@ private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("산책을 잠시 멈췄어요", color = TextDark, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("종료는 이 화면에서만 할 수 있어요.", color = TextMuted, fontSize = 12.sp)
-            WalkWideAction("계속 걷기", onClick = onResume)
-            WalkWideAction("산책 종료", accent = false, onClick = onStop)
+            Text(
+                if (tooShort) "아직 산책으로 기록되기엔 짧아요" else "산책을 잠시 멈췄어요",
+                color = TextDark,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                if (tooShort) {
+                    "${MIN_WALK_METERS.toInt()}m 를 ${MIN_WALK_MILLIS / 60_000}분 넘게 걸어야 남아요. " +
+                        "지금 그만두면 이 기록은 지워져요."
+                } else {
+                    "종료는 이 화면에서만 할 수 있어요."
+                },
+                color = TextMuted,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center,
+            )
+            WalkWideAction(if (tooShort) "이어서 걷기" else "계속 걷기", onClick = onResume)
+            WalkWideAction(
+                if (tooShort) "그만두기" else "산책 종료",
+                accent = false,
+                onClick = onStop,
+            )
         }
     }
 }
