@@ -18,9 +18,10 @@ import kotlin.random.Random
  */
 class CardDrawTest {
 
+    /** 야채 열두 장 + 과일 열세 장. 벌이 늘면 여기서 먼저 알게 된다. */
     @Test
-    fun `템플릿이 열두 장이다`() {
-        assertEquals(12, CARD_TEMPLATES.size)
+    fun `템플릿이 스물다섯 장이다`() {
+        assertEquals(25, CARD_TEMPLATES.size)
     }
 
     /**
@@ -99,8 +100,9 @@ class CardDrawTest {
     @Test
     fun `칩을 까는 카드가 여덟 장이다`() {
         val off = CARD_TEMPLATES.filterNot { it.codeChip }.map { it.id }.sorted()
+        // 과일은 열세 장 다 켠다 — 번호가 홀로그램 바 위에 얹혀 있어 못 지운다.
         assertEquals(listOf("carrot", "danhobak", "eggplant", "pepper"), off)
-        assertEquals(8, CARD_TEMPLATES.count { it.codeChip })
+        assertEquals(CARD_TEMPLATES.size - 4, CARD_TEMPLATES.count { it.codeChip })
     }
 
     /** 구멍이 카드 밖으로 나가면 얼굴이 잘린 채로만 보인다. */
@@ -120,7 +122,7 @@ class CardDrawTest {
     }
 
     @Test
-    fun `열두 종이 고르게 나온다`() {
+    fun `스물다섯 종이 고르게 나온다`() {
         val random = Random(42)
         val rounds = 120_000
         val counts = mutableMapOf<String, Int>()
@@ -129,8 +131,9 @@ class CardDrawTest {
             counts[id] = (counts[id] ?: 0) + 1
         }
 
-        assertEquals("열두 종이 다 나와야 한다", 12, counts.size)
-        val expected = rounds / 12.0
+        // **갈래를 안 가린다.** 야채도 과일도 같은 확률이다 (사용자 결정 2026-09-04).
+        assertEquals("스물다섯 종이 다 나와야 한다", CARD_TEMPLATES.size, counts.size)
+        val expected = rounds.toDouble() / CARD_TEMPLATES.size
         counts.forEach { (id, n) ->
             val off = abs(n - expected) / rounds
             assertTrue("$id 가 $n 번 (기대 ${expected.toInt()}) — 0.5%p 를 벗어났다", off < 0.005)

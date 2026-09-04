@@ -262,17 +262,201 @@ val LETTUCE_CARD = CardTemplate(
     codeChip = true,
 )
 
+// -- 과일 --------------------------------------------------------------------
+//
+// **비율이 카드마다 다르다.** 야채 열두 장은 1080x1440(=`SLOTS_RATIO`) 한 판인데
+// 과일은 0.699~0.804 로 제각각 들어왔다. `CardTemplate.ratio` 가 원래 카드별
+// 필드라 값만 다르게 넣으면 되지만, **폭에서만 반지름을 재던 자리**는 같이 고쳐야
+// 한다 (`ui/dex/FoilQuiet.kt`).
+//
+// 좌표는 `tools/punch_fruit_holes.py`(구멍)와 `tools/card_text_slots.py`(글자칸)가
+// 재서 준 값이다. `docs/card-holes.md` 참고.
+
+val APPLE_CARD = CardTemplate(
+    id = "apple",
+    label = "사과",
+    art = "neo-hologram/art/apple-card-slots.webp",
+    ratio = 0.7064f,
+    face = Hole(51.19f, 43.00f, 14.75f, 10.42f),
+    avatar = Hole(13.05f, 9.45f, 8.21f, 5.76f),
+    name = Slot(17.93f, 4.02f, 72.11f, 9.25f),
+    code = Slot(73.62f, 4.49f, 94.50f, 8.71f),
+    codeChip = true,
+)
+
+val BANANA_CARD = CardTemplate(
+    id = "banana",
+    label = "바나나",
+    art = "neo-hologram/art/banana-card-slots.webp",
+    ratio = 0.7009f,
+    face = Hole(54.05f, 32.94f, 7.57f, 5.31f),
+    avatar = Hole(14.14f, 10.05f, 8.62f, 6.04f),
+    name = Slot(19.05f, 4.54f, 75.14f, 10.08f),
+    code = Slot(76.67f, 5.07f, 94.48f, 9.48f),
+    codeChip = true,
+)
+
+val BLUEBERRY_CARD = CardTemplate(
+    id = "blueberry",
+    label = "블루베리",
+    art = "neo-hologram/art/blueberry-card-slots.webp",
+    ratio = 0.8003f,
+    face = Hole(49.91f, 45.51f, 11.85f, 9.49f),
+    avatar = Hole(13.06f, 10.73f, 8.51f, 6.81f),
+    name = Slot(19.07f, 4.56f, 72.99f, 10.63f),
+    code = Slot(74.51f, 5.14f, 94.47f, 9.99f),
+    codeChip = true,
+)
+
+val CHERRY_CARD = CardTemplate(
+    id = "cherry",
+    label = "체리",
+    art = "neo-hologram/art/cherry-card-slots.webp",
+    ratio = 0.8003f,
+    face = Hole(40.95f, 53.92f, 17.42f, 13.98f),
+    avatar = Hole(13.50f, 11.09f, 7.89f, 6.31f),
+    name = Slot(19.07f, 5.49f, 72.91f, 10.77f),
+    code = Slot(74.42f, 5.99f, 94.47f, 10.20f),
+    codeChip = true,
+)
+
+val KIWI_CARD = CardTemplate(
+    id = "kiwi",
+    label = "키위",
+    art = "neo-hologram/art/kiwi-card-slots.webp",
+    ratio = 0.6987f,
+    face = Hole(34.59f, 45.47f, 11.69f, 8.20f),
+    avatar = Hole(14.17f, 10.20f, 8.92f, 6.27f),
+    name = Slot(19.47f, 4.67f, 74.90f, 10.33f),
+    code = Slot(76.43f, 5.20f, 94.47f, 9.73f),
+    codeChip = true,
+)
+
+val KIWI_SEED_CARD = CardTemplate(
+    id = "kiwi-seed",
+    label = "키위 씨앗",
+    art = "neo-hologram/art/kiwi-seed-card-slots.webp",
+    ratio = 0.7255f,
+    face = Hole(49.95f, 46.43f, 17.84f, 12.94f),
+    avatar = Hole(13.67f, 10.09f, 7.96f, 5.81f),
+    name = Slot(18.91f, 4.42f, 73.13f, 9.92f),
+    code = Slot(74.72f, 4.96f, 94.48f, 9.31f),
+    codeChip = true,
+)
+
+val KIWI_GENTLE_CARD = CardTemplate(
+    id = "kiwi-gentle",
+    label = "젠틀 키위",
+    art = "neo-hologram/art/kiwi-gentle-card-slots.webp",
+    ratio = 0.7222f,
+    face = Hole(49.53f, 40.28f, 15.10f, 9.86f),
+    avatar = Hole(11.68f, 8.40f, 3.33f, 2.44f),
+    name = Slot(23.92f, 4.27f, 64.92f, 8.94f),
+    // **번호판만 손으로 쟀다.** 도구가 낸 값(`4.67..8.47`)은 위로 은테를 물고 아래로
+    // 인쇄된 `KR-0524` 를 반쯤 잘라서, 덮으라고 있는 칩이 글자 아래를 못 가렸다 —
+    // 실기기에서 번호판 밑으로 `KR-0524` 가 그대로 비쳤다. 이 카드는 틀이 달라
+    // (초록 테두리 · 밝은 번호판) 도구가 어두운 바를 기준으로 잡는 앵커가 안 먹는다.
+    // 판에서 글자 화소를 직접 재서 넣는다. 얼굴 구멍을 손으로 잰 것과 같은 이유다.
+    //
+    // 가로도 틀려 있었다. `94.47` 은 판 안쪽(92%)을 넘어 **은테와 바깥 초록 테까지**
+    // 칩이 걸쳤다 — 칩은 슬롯을 6% 넓혀 그리므로 오른쪽 끝이 95.31% 였다.
+    // 인쇄된 글자는 89.77% 에서 끝나므로 `90.5` 면 글자를 덮으면서 판 안에 머문다.
+    // 글자 크기는 슬롯 **높이**가 정하고 가로는 넘칠 때만 줄이므로, 좁혀도 안 작아진다.
+    code = Slot(66.51f, 6.64f, 90.50f, 9.49f),
+    codeChip = true,
+)
+
+val MANGO_CARD = CardTemplate(
+    id = "mango",
+    label = "망고",
+    art = "neo-hologram/art/mango-card-slots.webp",
+    ratio = 0.6987f,
+    face = Hole(55.92f, 43.37f, 11.93f, 8.30f),
+    avatar = Hole(13.65f, 9.97f, 8.40f, 5.90f),
+    name = Slot(18.80f, 4.40f, 73.95f, 10.00f),
+    code = Slot(75.48f, 4.93f, 94.47f, 9.40f),
+    codeChip = true,
+)
+
+val MELON_CARD = CardTemplate(
+    id = "melon",
+    label = "멜론",
+    art = "neo-hologram/art/melon-card-slots.webp",
+    ratio = 0.6996f,
+    face = Hole(49.95f, 42.19f, 11.78f, 8.21f),
+    avatar = Hole(13.88f, 9.91f, 8.25f, 5.77f),
+    name = Slot(19.18f, 4.41f, 74.81f, 10.55f),
+    code = Slot(76.34f, 5.01f, 94.47f, 9.88f),
+    codeChip = true,
+)
+
+val PEACH_CARD = CardTemplate(
+    id = "peach",
+    label = "복숭아",
+    art = "neo-hologram/art/peach-card-slots.webp",
+    ratio = 0.6996f,
+    face = Hole(51.81f, 50.40f, 12.40f, 8.68f),
+    avatar = Hole(14.12f, 10.15f, 8.30f, 5.81f),
+    name = Slot(18.89f, 3.94f, 75.10f, 10.48f),
+    code = Slot(76.62f, 4.54f, 94.47f, 9.81f),
+    codeChip = true,
+)
+
+val PEAR_CARD = CardTemplate(
+    id = "pear",
+    label = "배",
+    art = "neo-hologram/art/pear-card-slots.webp",
+    ratio = 0.8040f,
+    face = Hole(53.96f, 47.89f, 11.52f, 9.26f),
+    avatar = Hole(13.48f, 11.12f, 7.87f, 6.33f),
+    name = Slot(18.24f, 4.86f, 72.60f, 10.94f),
+    code = Slot(74.11f, 5.44f, 94.48f, 10.30f),
+    codeChip = true,
+)
+
+val STRAWBERRY_CARD = CardTemplate(
+    id = "strawberry",
+    label = "딸기",
+    art = "neo-hologram/art/strawberry-card-slots.webp",
+    ratio = 0.7064f,
+    face = Hole(47.06f, 53.49f, 12.05f, 8.51f),
+    avatar = Hole(13.99f, 10.09f, 8.21f, 5.80f),
+    name = Slot(19.35f, 4.36f, 74.67f, 10.05f),
+    code = Slot(76.19f, 4.89f, 94.50f, 9.45f),
+    codeChip = true,
+)
+
+val WATERMELON_CARD = CardTemplate(
+    id = "watermelon",
+    label = "수박",
+    art = "neo-hologram/art/watermelon-card-slots.webp",
+    ratio = 0.8003f,
+    face = Hole(60.38f, 44.04f, 14.39f, 11.52f),
+    avatar = Hole(12.97f, 10.56f, 8.16f, 6.56f),
+    name = Slot(18.54f, 4.64f, 73.08f, 10.91f),
+    code = Slot(74.60f, 5.21f, 94.47f, 10.27f),
+    codeChip = true,
+)
+
+
 /**
- * 도감 순서(No.01~12)와 같다. 뽑기가 이 목록을 **균등**으로 뽑는다.
+ * 도감 순서와 같다 — 야채 열두 장 다음에 과일 열세 장. 뽑기가 이 목록을 **통째로
+ * 균등**으로 뽑으므로, 갈래를 안 가리고 스물다섯 종이 같은 확률이다.
  *
  * id 는 `ui/dex/DexCards.kt` 의 `DEX_CARDS` 와 한 글자도 안 다르다. 그래서 뽑은
  * 카드를 도감 칸에 얹을 때 변환표가 필요 없다 — **우연히 맞은 것이라** 어긋나면
  * 조용히 카드가 사라진다. `CardTemplateTest` 가 그것을 잠근다.
  */
 val CARD_TEMPLATES = listOf(
+    // 야채
     CABBAGE_CARD, PEPPER_CARD, EGGPLANT_CARD, CARROT_CARD,
     DANHOBAK_CARD, MUSHROOM_CARD, BROCCOLI_CARD, CUCUMBER_CARD,
     SPINACH_CARD, SWEET_POTATO_CARD, TOMATO_CARD, LETTUCE_CARD,
+    // 과일
+    APPLE_CARD, BANANA_CARD, BLUEBERRY_CARD, CHERRY_CARD,
+    KIWI_CARD, KIWI_SEED_CARD, KIWI_GENTLE_CARD, MANGO_CARD,
+    MELON_CARD, PEACH_CARD, PEAR_CARD, STRAWBERRY_CARD,
+    WATERMELON_CARD,
 )
 
 /**

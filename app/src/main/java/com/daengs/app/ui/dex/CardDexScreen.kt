@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +64,7 @@ import com.daengs.app.ui.dogcard.CardShot
 import com.daengs.app.ui.dogcard.rememberCardSaver
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.DrawnCard
 import androidx.compose.ui.geometry.Size
@@ -243,7 +245,12 @@ fun CardDexScreen(
             removedNote = "삭제되었습니다"
         }
     }
-    val slots = remember(drawn) { dexSlots(drawn = drawn) }
+    // **탭은 여기서 다룬다.** `slots` 가 그리드와 확대 뷰 **양쪽**에 넘어가고
+    // `opened` 는 그 리스트의 **인덱스**라, 탭을 그리드 안에만 두면 확대 뷰가 엉뚱한
+    // 카드를 연다.
+    var deck by rememberSaveable { mutableStateOf(DexDeck.Veggie) }
+    val all = remember(drawn) { dexSlots(drawn = drawn) }
+    val slots = remember(all, deck) { all.filter { it.card.deck == deck } }
 
     BackHandler {
         when {
@@ -274,6 +281,9 @@ fun CardDexScreen(
     Box(modifier.fillMaxSize().background(DexBg)) {
         DexGrid(
             slots = slots,
+            deck = deck,
+            // 탭이 바뀌면 열려 있던 확대 뷰를 닫는다. 인덱스가 다른 목록을 가리키게 된다.
+            onDeck = { deck = it; opened = null },
             onOpen = { opened = it },
             onClose = onClose,
             onDraw = draw?.let { { drawing = true } },
@@ -342,6 +352,8 @@ private const val REMOVED_NOTE_MS = 2600L
 @Composable
 private fun DexGrid(
     slots: List<DexSlot>,
+    deck: DexDeck,
+    onDeck: (DexDeck) -> Unit,
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
     onImmersive: (Rect, ImmersiveScene, String?, SubjectFace?) -> Unit,
@@ -357,7 +369,11 @@ private fun DexGrid(
     ) {
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
             DexHeader(
+                deck = deck,
+                onDeck = onDeck,
                 kinds = slots.collectedKinds(),
+                // **그 벌의 장수**가 분모다. 탭으로 갈려 있어 전체를 세면 거짓말이 된다.
+                of = slots.size,
                 total = slots.ownedTotal(),
                 onClose = onClose,
                 onDraw = onDraw,
@@ -374,7 +390,7 @@ private fun DexGrid(
                 // 주면 뽑을 이유가 없다.
                 // 이머시브는 v1 에 안 들어간다 (`IMMERSIVE_IN_BUILD` 주석 참고).
                 // null 이면 꾹 누르기도, 캡션 아래 배지도 안 붙는다.
-                onImmersive = IMMERSIVE_SCENES[slot.card.no]
+                onImmersive = IMMERSIVE_SCENES[slot.card.id]
                     ?.takeIf { IMMERSIVE_IN_BUILD && !slot.locked }
                     ?.let { picked ->
                         { at: Rect, hero: SubjectFace? ->
@@ -387,7 +403,15 @@ private fun DexGrid(
 }
 
 @Composable
-private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -> Unit)? = null) {
+private fun DexHeader(
+    deck: DexDeck,
+    onDeck: (DexDeck) -> Unit,
+    kinds: Int,
+    of: Int,
+    total: Int,
+    onClose: () -> Unit,
+    onDraw: (() -> Unit)? = null,
+) {
     Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -401,7 +425,13 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             )
         }
         Spacer(Modifier.height(10.dp))
-        Text("채소가 된 우리 아이", color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(
+            when (deck) {
+                DexDeck.Veggie -> "채소가 된 우리 아이"
+                DexDeck.Fruit -> "과일이 된 우리 아이"
+            },
+            color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+        )
         Spacer(Modifier.height(4.dp))
         Text(
             // **여기가 오래 거짓말을 하던 자리다.** 분자·분모가 둘 다 `DEX_CARDS.size` 라
@@ -409,11 +439,13 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             if (kinds == 0) {
                 "카드를 뽑아 도감을 채워 보세요"
             } else {
-                "$kinds / ${DEX_CARDS.size} 수집 · 내 카드 ${total}장"
+                "$kinds / $of 수집 · 내 카드 ${total}장"
             },
             color = TextMuted,
             fontSize = 12.sp,
         )
+        Spacer(Modifier.height(12.dp))
+        DeckTabs(deck, onDeck)
         onDraw?.let { go ->
             Spacer(Modifier.height(12.dp))
             Text(
@@ -429,6 +461,43 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             )
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * 야채 · 과일 세그먼트.
+ *
+ * **헤더 안에 둔다.** 헤더가 그리드의 첫 아이템이라 목록과 같이 스크롤된다. 위에
+ * 고정하려면 `LazyVerticalGrid` 를 `Column` 으로 감싸야 하고 `systemBarsPadding` ·
+ * `contentPadding` 배치를 다시 잡아야 한다 — 얻는 것에 비해 손이 많이 간다.
+ */
+@Composable
+private fun DeckTabs(deck: DexDeck, onDeck: (DexDeck) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        DexDeck.entries.forEach { one ->
+            val on = one == deck
+            Text(
+                one.label,
+                color = if (on) CardWhite else TextMuted,
+                fontSize = 13.sp,
+                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (on) DaengPink else CardWhite)
+                    .clickable { onDeck(one) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF7EDE8)
+@Composable
+private fun DeckTabsPreview() {
+    Column {
+        DeckTabs(DexDeck.Veggie) {}
+        Spacer(Modifier.height(8.dp))
+        DeckTabs(DexDeck.Fruit) {}
     }
 }
 
@@ -461,7 +530,7 @@ private fun GridCard(
     // 무대 주인공에 끼울 얼굴. **합쳐 놓은 카드가 있을 때만** 넘긴다 — 시드는 얼굴이
     // 없어서 누끼가 뚫린 채로 그려진다. 자리는 카드 구멍에서 계산해 온다.
     val hero = drawn?.takeIf { it.composed }?.let { d ->
-        IMMERSIVE_SCENES[card.no]?.let { sc ->
+        IMMERSIVE_SCENES[card.id]?.let { sc ->
             SubjectFace(
                 face = d.face!!,
                 hole = sc.faceInSubject(d.template!!),
@@ -641,7 +710,7 @@ private fun CardViewer(
     // 무대 주인공에 끼울 얼굴. **고른 그 장**(`mine`)에서 온다 — 그리드가 첫 장을
     // 쓰는 것과 다른 점이 여기다. 합쳐 놓은 카드가 있을 때만 넘긴다.
     val stageHero = drawn?.takeIf { it.composed }?.let { d ->
-        IMMERSIVE_SCENES[card.no]?.let { sc ->
+        IMMERSIVE_SCENES[card.id]?.let { sc ->
             SubjectFace(
                 face = d.face!!,
                 hole = sc.faceInSubject(d.template!!),
@@ -653,7 +722,7 @@ private fun CardViewer(
         }
     }
     // 이머시브인 카드인가. 그리드와 같은 조건을 본다 — 잠긴 칸은 무대까지 안 열어 준다.
-    val stage = IMMERSIVE_SCENES[card.no]?.takeIf {
+    val stage = IMMERSIVE_SCENES[card.id]?.takeIf {
         IMMERSIVE_IN_BUILD && !slot.locked && onImmersive != null
     }
     val enter = stage?.let { picked ->
@@ -797,6 +866,7 @@ private fun CardViewer(
                 }
                 CardDetailSheet(
                     card = card,
+                    of = slots.size,
                     mine = mine,
                     onSave = shot?.let { { saver.save(it) } },
                     onShare = shot?.let { { saver.share(it) } },
@@ -862,7 +932,9 @@ private fun CardViewer(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "${copy + 1} / ${slot.count} · 이 야채로 ${slot.drawnCount}장 뽑았어요",
+                        // 벌 이름은 갈래에서 가져온다. 과일 칸에서 "이 야채로" 라고 하면
+                        // 무엇을 세는 말인지가 흐려진다.
+                        "${copy + 1} / ${slot.count} · 이 ${slot.card.deck.label}로 ${slot.drawnCount}장 뽑았어요",
                         color = Color(0xFF9E8B84),
                         fontSize = 12.sp,
                     )
@@ -985,6 +1057,12 @@ private fun DrawScope.drawPopOut(
 @Composable
 private fun CardDetailSheet(
     card: DexCard,
+    /**
+     * `No.` 줄의 분모. **그 벌의 장수**다.
+     *
+     * 기본값을 쓰면 도감 전체(스물다섯)를 세어, 과일 탭에서 `13 / 25` 라고 말한다.
+     */
+    of: Int = DEX_CARDS.size,
     /** 이 칸에서 지금 보고 있는 내 카드. null 이면 카탈로그 설명만 보여 준다 */
     mine: DrawnCard? = null,
     /** 이미지로 내보낸다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
@@ -1069,7 +1147,7 @@ private fun CardDetailSheet(
             // 인쇄된 값이고, 우리 카드에는 아이 생일에서 만든 번호가 찍혀 있다.
             // 번호판은 **내 카드의 것만** 보여 준다. 카탈로그의 `NEO-0824` 는 저쪽
             // 카드에 인쇄돼 있던 값이라 우리 화면에 나올 이유가 없다.
-            card.detailRows(code = mine?.codeText).forEach { row ->
+            card.detailRows(total = of, code = mine?.codeText).forEach { row ->
                 Row(Modifier.padding(vertical = 3.dp)) {
                     Text(
                         row.label,
@@ -1204,7 +1282,9 @@ private fun DeleteCardDialog(
         text = {
             Text(
                 if (lastCopy) {
-                    "되돌릴 수 없어요. 이 야채의 마지막 한 장이라 도감 칸이 다시 잠겨요."
+                    // **벌 이름을 안 부른다.** 여기까지 갈래를 넘기면 두 겹을 지나야 하는데,
+                    // 무엇의 마지막인지는 지우려는 카드를 보고 있으므로 이미 안다.
+                    "되돌릴 수 없어요. 마지막 한 장이라 도감 칸이 다시 잠겨요."
                 } else {
                     "되돌릴 수 없어요."
                 },

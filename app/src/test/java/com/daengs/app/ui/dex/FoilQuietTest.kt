@@ -76,7 +76,7 @@ class FoilQuietTest {
     // -- 자리 ---------------------------------------------------------------
 
     @Test
-    fun `열두 장 모두 조용한 자리를 갖는다`() {
+    fun `스물다섯 장 모두 조용한 자리를 갖는다`() {
         CARD_TEMPLATES.forEach { t ->
             val q = foilQuietFor(t.id)
             assertNotNull("${t.id}", q)
@@ -90,17 +90,23 @@ class FoilQuietTest {
         assertNull(foilQuietFor("없는카드"))
     }
 
-    /** 반지름을 폭에서만 재는 전제. 깨지면 두 구멍을 타원으로 만들어야 한다. */
+    /**
+     * **구멍이 카드 안에 있어야 한다.** 삐져나오면 그 조각에만 포일이 남아서 얼굴
+     * 한쪽만 누렇게 뜬다.
+     *
+     * 예전에는 "구멍이 화면에서 정원이다" 를 검사했다. 야채 열두 장이 1080×1440 한
+     * 판이라 `1080×rx% == 1440×ry%` 가 성립했기 때문인데, **과일이 들어오면서 그
+     * 전제가 깨졌다** — 비율이 0.699~0.804 로 제각각이고 젠틀 키위는 얼굴창 자체가
+     * 정원이 아니다(322×291px). 마스크를 타원으로 고쳐서 그 전제가 없어졌다.
+     */
     @Test
-    fun `열두 장 모두 구멍이 화면에서 정원이다`() {
+    fun `스물다섯 장 모두 구멍이 카드 안에 있다`() {
         CARD_TEMPLATES.forEach { t ->
             listOf("얼굴" to t.face, "아바타" to t.avatar).forEach { (what, h) ->
-                assertEquals(
-                    "${t.id} 의 $what 이 타원이다",
-                    1080f * h.rx / 100f,
-                    1440f * h.ry / 100f,
-                    1.5f,
-                )
+                assertTrue("${t.id} $what 왼쪽", h.cx - h.rx >= 0f)
+                assertTrue("${t.id} $what 오른쪽", h.cx + h.rx <= 100f)
+                assertTrue("${t.id} $what 위", h.cy - h.ry >= 0f)
+                assertTrue("${t.id} $what 아래", h.cy + h.ry <= 100f)
             }
         }
     }

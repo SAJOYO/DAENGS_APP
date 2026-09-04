@@ -330,7 +330,9 @@ private fun IntroBody(
     Text(
         // **이름을 안 부른다.** 여러 마리를 키우는 사람에게 "네옹 사진으로" 라고 하면
         // 나머지 아이로는 못 뽑는 것처럼 읽힌다. 누구로 뽑을지는 아래에서 고른다.
-        if (left > 0) "내 강아지 사진으로 야채 카드를 뽑아요" else "오늘 뽑기를 다 썼어요",
+        // **한 벌만 부르지 않는다.** 과일이 들어오면서 뽑기는 스물다섯 종 균등이 됐다 —
+        // "야채 카드" 라고만 하면 과일이 나왔을 때 잘못 뽑힌 것으로 읽힌다.
+        if (left > 0) "내 강아지 사진으로 야채·과일 카드를 뽑아요" else "오늘 뽑기를 다 썼어요",
         color = TextDark,
         fontSize = 16.sp,
         textAlign = TextAlign.Center,
@@ -448,7 +450,7 @@ private fun ResultBody(
 
     // **곡이 있는지 미리 말해 준다.** 열두 장 중 여덟 장은 곡도 무대도 없어서,
     // 아무 말이 없으면 "뽑았는데 아무 일도 안 일어난다" 로 읽힌다.
-    val hasTune = dex?.no?.let { IMMERSIVE_SCENES[it]?.bgm } != null
+    val hasTune = dex?.id?.let { IMMERSIVE_SCENES[it]?.bgm } != null
     Text(
         if (hasTune) {
             "♫ 이 카드에는 노래가 있어요 — 턴테이블에서 들을 수 있어요"
