@@ -57,10 +57,14 @@ fun LoadingScreen(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            // **스플래시와 같은 크기로 보여야 한다.** 시스템 스플래시는 아이콘의
+            // 가운데 2/3 만 보여 주므로(적응형 아이콘 규격), 240 을 그려야 그림이
+            // 스플래시와 같은 160 으로 보인다. 160 을 그리면 스플래시에서 넘어오는
+            // 순간 아이콘이 한 번 작아진다.
             Image(
-                painter = painterResource(R.drawable.ic_launcher_foreground),
+                painter = painterResource(R.mipmap.ic_launcher_foreground),
                 contentDescription = null,
-                modifier = Modifier.size(160.dp),
+                modifier = Modifier.size(240.dp),
             )
             Spacer(Modifier.height(8.dp))
             if (slow) {

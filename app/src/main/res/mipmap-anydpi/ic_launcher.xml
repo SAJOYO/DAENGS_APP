@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  런처 아이콘.
+
+  **그림이 마스크를 꽉 채운다.** 적응형 아이콘은 108 판 가운데 72 만 늘 보이고
+  그 안을 런처가 원·스퀘어클·둥근사각형으로 또 자른다. 그래서 전경 그림을 정확히
+  그 72 에 맞춰 두었다 — 줄여서 넣으면 크림색 여백에 뜬 스티커처럼 보인다.
+
+  잘려 나가는 것은 개집 **벽 모서리뿐**이고 강아지·문·꽃은 어느 모양에서도 남는다.
+  배경색이 그 벽과 같은 색이라 잘린 자리가 티나지 않는다.
+
+  [monochrome] 은 따로 그린다. 테마 아이콘은 한 색으로만 그려지는 자리라
+  사진 같은 그림을 그대로 넣으면 통째로 기름 덩어리가 된다.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
