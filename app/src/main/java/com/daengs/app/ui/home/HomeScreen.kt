@@ -192,6 +192,9 @@ fun HomeScreen(
     devPhoto: ImageBitmap? = null,
     onPickDevPhoto: (() -> Unit)? = null,
     onClearDevPhoto: (() -> Unit)? = null,
+    /** 개발자 패널이 넣어 본 가짜 강아지 마릿수. 0 이면 서버가 준 목록 그대로다 */
+    devPetCount: Int = 0,
+    onPickDevPets: ((Int) -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
     /**
@@ -287,7 +290,7 @@ fun HomeScreen(
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
     // **한 번 걸러서 둘 다 그 결과를 본다.** 명부와 배웅 자리는 차례가 같아야 해서,
-    // 거르는 곳이 둘이 되면 무지개가 남의 아이 머리 위에 뜬다.
+    // 거르는 곳이 둘이 되면 배웅한 아이의 하트가 남의 아이 곁에 뜬다.
     val inRoom = roomPets(pets, hiddenRoomPetIds)
     val herd = rememberDogHerd(roomRoster(inRoom), departedInRoom(inRoom))
     val store = rememberRoomStore()
@@ -448,6 +451,8 @@ fun HomeScreen(
                 // 고를 수는 없으니 여기서만 데모 견종으로 채운다.
                 profileBreed = profileBreed ?: HomeDemoData.DOG_BREED,
                 onPickProfile = { onPickDevBreed?.invoke(it) },
+                onPickDevPets = onPickDevPets,
+                devPetCount = devPetCount,
                 onPickDevPhoto = onPickDevPhoto,
                 onClearDevPhoto = onClearDevPhoto,
                 hasDevPhoto = devPhoto != null,
@@ -543,6 +548,8 @@ private fun RoomSection(
     onPickDevPhoto: (() -> Unit)? = null,
     onClearDevPhoto: (() -> Unit)? = null,
     hasDevPhoto: Boolean = false,
+    onPickDevPets: ((Int) -> Unit)? = null,
+    devPetCount: Int = 0,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)?,
     /** 야채를 지정해 카드를 만든다. 개발자 패널에서만 불린다. */
@@ -684,6 +691,8 @@ private fun RoomSection(
                 onPickProfilePhoto = onPickDevPhoto,
                 onClearProfilePhoto = onClearDevPhoto,
                 hasProfilePhoto = hasDevPhoto,
+                onPickDevPets = onPickDevPets,
+                devPetCount = devPetCount,
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,

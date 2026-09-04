@@ -105,8 +105,8 @@ class RoomRosterTest {
  * 방에 세울 아이를 고르는 셈.
  *
  * **차례가 어긋나는 것이 제일 무섭다** — 명부와 배웅 자리가 첨자로 이어져 있어서,
- * 거르는 곳이 둘이 되면 무지개가 남의 아이 머리 위에 뜬다. 화면에서는 "왜 얘가
- * 무지개지" 로만 보인다.
+ * 거르는 곳이 둘이 되면 **배웅한 아이의 하트가 남의 아이 곁에** 뜬다. 화면에서는
+ * "왜 얘한테 하트가 있지" 로만 보인다.
  */
 class RoomPetsTest {
 
@@ -156,14 +156,14 @@ class RoomPetsTest {
         val inRoom = roomPets(listOf(a, gone), emptySet())
 
         assertEquals(listOf(a, gone), inRoom)
-        // **명부와 배웅 자리는 같은 목록에서 나와야 한다.**
+        // **명부와 배웅 자리는 같은 목록에서 나와야 한다.** 이 번호로 하트를 그린다.
         assertEquals(setOf(1), departedInRoom(inRoom))
     }
 
     @Test
-    fun `아이를 빼면 무지개 자리도 같이 밀린다`() {
+    fun `아이를 빼면 하트 자리도 같이 밀린다`() {
         val gone = pet("4", "dog_beagle", farewell = LocalDate.of(2026, 1, 1))
-        // b 를 빼면 배웅한 아이는 둘째가 아니라 첫째 다음이다.
+        // b 를 빼면 배웅한 아이는 둘째가 아니라 첫째 다음이다. 하트도 그리로 밀린다.
         val inRoom = roomPets(listOf(a, b, gone), setOf("2"))
 
         assertEquals(listOf(a, gone), inRoom)

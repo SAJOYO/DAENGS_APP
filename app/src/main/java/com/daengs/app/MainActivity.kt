@@ -52,6 +52,7 @@ import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
+import com.daengs.app.pet.devPets
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
@@ -169,6 +170,11 @@ class MainActivity : ComponentActivity() {
                 // 얼굴만 보는 자리라 걸어 둘 id 가 없다 (견종 갈아끼우기와 같은 결).
                 var devPhoto by remember { mutableStateOf<ImageBitmap?>(null) }
                 var devPhotoPicking by remember { mutableStateOf(false) }
+                // 개발자 패널이 넣어 본 가짜 강아지. **저장도 전송도 안 한다** —
+                // 강아지에 딸린 화면들이 로그인해야만 보여서, 계정을 못 쓰는 기기에서
+                // 그것들을 보는 유일한 길이다 (`pet/DevPets.kt`).
+                var devPetCount by remember { mutableIntStateOf(0) }
+                val shownPets = devPets(devPetCount).ifEmpty { pets.pets.orEmpty() }
 
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
@@ -525,7 +531,7 @@ class MainActivity : ComponentActivity() {
                         onOpenMy = { myOpen = true },
                         onCloseMy = { myOpen = false },
                         outside = outside,
-                        pets = pets.pets.orEmpty(),
+                        pets = shownPets,
                         photoOf = { petPhotos[it] },
                         onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
                         hiddenRoomPetIds = hiddenRoomPetIds,
@@ -540,6 +546,8 @@ class MainActivity : ComponentActivity() {
                         devPhoto = devPhoto,
                         onPickDevPhoto = { devPhotoPicking = true },
                         onClearDevPhoto = { devPhoto = null },
+                        devPetCount = devPetCount,
+                        onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },

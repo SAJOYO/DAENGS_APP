@@ -50,5 +50,7 @@ fun DeveloperPanel(
     onPickProfilePhoto: (() -> Unit)? = null,
     onClearProfilePhoto: (() -> Unit)? = null,
     hasProfilePhoto: Boolean = false,
+    onPickDevPets: ((Int) -> Unit)? = null,
+    devPetCount: Int = 0,
     modifier: Modifier = Modifier,
 ) = Unit
