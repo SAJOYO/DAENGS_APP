@@ -57,8 +57,21 @@ class RoomStore(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    /**
+     * 방 둘러보기를 본 적 있나.
+     *
+     * **기기의 일이지 계정의 일이 아니다.** 서버에 안 올린다 — 같은 사람이 새 폰에서
+     * 처음 방을 열면 다시 보는 것이 맞다.
+     */
+    fun tourSeen(): Boolean = prefs.getBoolean(KEY_TOUR_SEEN, false)
+
+    fun markTourSeen() {
+        prefs.edit().putBoolean(KEY_TOUR_SEEN, true).apply()
+    }
+
     private companion object {
         const val KEY_ITEMS = "items"
+        const val KEY_TOUR_SEEN = "tour_seen"
         const val KEY_THEME = "theme"
         const val KEY_FRAME = "frame_card"
     }

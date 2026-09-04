@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -183,6 +184,17 @@ fun HomeScreen(
     onPickDevBreed: ((DogBreed) -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
+    /**
+     * 방 둘러보기(튜토리얼)를 띄울까.
+     *
+     * **부르는 쪽이 든다.** 봤는지 여부는 기기에 남는 값이라 저장을 아는 쪽이 정해야
+     * 하고, "다시 보기" 도 홈 밖(마이)에서 켠다.
+     */
+    tourOpen: Boolean = false,
+    /** 마이의 "다시 보기". null 이면 그 줄이 안 뜬다. */
+    onReplayTour: (() -> Unit)? = null,
+    /** 다 봤거나 건너뛰었을 때. 부르는 쪽이 본 적 있음으로 남긴다. */
+    onTourClose: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
     pets: List<Pet>? = null,
     canAddMore: Boolean = false,
@@ -287,6 +299,12 @@ fun HomeScreen(
         homeWeatherWords(outside, temperatureC, known)
     }
 
+    // 방 둘러보기가 밝힐 자리. 그리는 쪽이 등록하고 겹이 읽는다.
+    val tourSpots = remember { TourSpots() }
+    // 다시 열 때마다 처음부터. `tourOpen` 이 키라 껐다 켜면 1단계로 돌아온다.
+    var tourStep by remember(tourOpen) { mutableIntStateOf(0) }
+
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = CreamBg,
@@ -305,6 +323,7 @@ fun HomeScreen(
         },
         bottomBar = {
             DaengsBottomBar(
+                tourSpots = tourSpots,
                 selected = tab,
                 // **밀어서 여는 탭은 선택 상태를 안 남긴다.** 남기면 도감에서
                 // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
@@ -327,6 +346,9 @@ fun HomeScreen(
     ) { inner ->
         if (myOpen) {
             MyScreen(
+                // 마이는 홈 위에 덮이는 화면이라, 다시 보기를 누르면 마이를 닫고
+                // 방 위에서 둘러보기가 열려야 한다.
+                onReplayTour = onReplayTour?.let { go -> { onCloseMy?.invoke(); go() } },
                 breed = profileBreed,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
                 pets = pets,
@@ -367,6 +389,7 @@ fun HomeScreen(
                 .fillMaxSize(),
         ) {
             RoomSection(
+                tourSpots = tourSpots,
                 framePicture = framePicture,
                 weatherOpen = weatherOpen,
                 onToggleWeather = onToggleWeather,
@@ -417,7 +440,11 @@ fun HomeScreen(
                     modifier = slot,
                 )
             } else {
-                ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
+                ChatbotCard(
+                    onOpenChat = { onOpenChat?.invoke() },
+                    modifier = slot.tourSpot(tourSpots, TourStop.Chat),
+                    avatar = profileBreed,
+                )
             }
             Spacer(Modifier.height(10.dp))
             WalkSummaryCard(
@@ -429,10 +456,28 @@ fun HomeScreen(
             Spacer(Modifier.height(10.dp))
         }
     }
+
+    // **겹은 Scaffold 위에 있다.** 하단바도 가리켜야 하는데 Scaffold 안에 있으면
+    // 본문 영역에 갇혀서 바를 못 덮는다.
+    if (tourOpen) {
+        RoomTourOverlay(
+            spots = tourSpots,
+            stepIndex = tourStep,
+            // **겹이 실제로 보여 준 번호로 센다.** 자리가 없어 건너뛴 단계가 있으면
+            // 여기 든 값보다 앞서 있다. 그걸 무시하고 +1 하면 같은 단계를 또 그린다.
+            onNext = { shown ->
+                if (shown >= TOUR_STEPS.lastIndex) onTourClose?.invoke() else tourStep = shown + 1
+            },
+            onSkip = { onTourClose?.invoke() },
+        )
+    }
+    }
 }
 
 @Composable
 private fun RoomSection(
+    /** 방 둘러보기가 밝힐 자리를 여기에 등록한다. null 이면 안 한다. */
+    tourSpots: TourSpots?,
     state: MiniRoomState,
     catalog: ItemCatalog,
     dateLabel: String,
@@ -515,6 +560,13 @@ private fun RoomSection(
             // 인벤토리가 열려 있는 동안이 편집 모드. 강아지는 확 숨는다.
             editing = inventoryOpen,
             modifier = Modifier.fillMaxSize(),
+            // **자리를 여기서 다시 계산하지 않는다.** 방이 터치 판정에 쓰는 것과 같은
+            // 셈으로 알려 준다 — 가리키는 곳과 눌리는 곳이 갈라지면 안 된다.
+            onSpots = if (tourSpots == null) null else { spots ->
+                tourSpots.put(TourStop.Door, spots.door)
+                tourSpots.put(TourStop.Frame, spots.frame)
+                spots.turntable?.let { tourSpots.put(TourStop.Turntable, it) }
+            },
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —

@@ -80,8 +80,26 @@ class ChatHistoryCoordinatorTest {
         val call = gateway.sendCalls.single()
         assertEquals(SESSION_A, call.persistence.sessionId)
         assertEquals(ID_1, call.persistence.clientMessageId)
-        assertEquals(PET_A, call.persistence.activeDogId)
+        // 대표 강아지는 저장 id 와 **따로** 실린다. 무상태 질의가 싣는 것과 같은 칸이다.
+        assertEquals(PET_A, call.activeDogId)
         assertEquals("밤에 짖어요", call.text)
+    }
+
+    /**
+     * 저장 경로의 `active_dog_id` 는 **지금 고른 강아지**여야 한다. 대화의 강아지를
+     * 그대로 되쓰면 강아지를 바꾼 직후 어긋난 값이 실려서, 저쪽이 막아 주려던
+     * `ACTIVE_DOG_MISMATCH` 가 도리어 안 걸린다.
+     */
+    @Test
+    fun `저장 질문의 대표 강아지는 지금 고른 강아지다`() = runTest {
+        val gateway = FakeHistoryGateway()
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+
+        coordinator.send(TOKEN, "질문")
+        advanceUntilIdle()
+
+        assertEquals(coordinator.state.value.selectedPetId, gateway.sendCalls.single().activeDogId)
     }
 
     @Test
@@ -261,7 +279,11 @@ class ChatHistoryCoordinatorTest {
         return { values.removeFirst() }
     }
 
-    private data class SendCall(val text: String, val persistence: ChatPersistence)
+    private data class SendCall(
+        val text: String,
+        val activeDogId: String?,
+        val persistence: ChatPersistence,
+    )
 
     private class FakeHistoryGateway : ChatHistoryGateway {
         val createCalls = mutableListOf<String>()
@@ -300,9 +322,10 @@ class ChatHistoryCoordinatorTest {
             accessToken: String,
             text: String,
             where: GeoPoint?,
+            activeDogId: String?,
             persistence: ChatPersistence,
         ): Result<AssistantResponse> {
-            sendCalls += SendCall(text, persistence)
+            sendCalls += SendCall(text, activeDogId, persistence)
             pendingSend?.let { return withContext(NonCancellable) { it.await() } }
             return if (sendResults.isEmpty()) Result.success(RESPONSE) else sendResults.removeFirst()
         }

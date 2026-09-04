@@ -53,10 +53,15 @@ interface ChatHistoryGateway {
     suspend fun listSessions(accessToken: String, petId: String): Result<ChatSessionList>
     suspend fun session(accessToken: String, sessionId: String): Result<ChatSessionDetail>
     suspend fun deleteSession(accessToken: String, sessionId: String): Result<Unit>
+    /**
+     * @param activeDogId 지금 고른 강아지. 저장 경로에서도 [persistence] 와 **따로**
+     *   받는다 — 무상태 질문이 싣는 것과 같은 칸이라 같은 자리에서 싣는다 (PR #112).
+     */
     suspend fun send(
         accessToken: String,
         text: String,
         where: GeoPoint?,
+        activeDogId: String?,
         persistence: ChatPersistence,
     ): Result<AssistantResponse>
 }
@@ -80,8 +85,9 @@ private class RemoteChatHistoryGateway(
         accessToken: String,
         text: String,
         where: GeoPoint?,
+        activeDogId: String?,
         persistence: ChatPersistence,
-    ) = AssistantApi.query(accessToken, text, where, persistence)
+    ) = AssistantApi.query(accessToken, text, where, activeDogId, persistence)
 }
 
 /**
@@ -281,11 +287,11 @@ class ChatHistoryCoordinator(
         val petSnapshot = petGeneration
         val selectionSnapshot = sessionGeneration
         val messageId = requestIds.clientMessageId(sessionId, text)
-        val persistence = ChatPersistence(sessionId, messageId, activeDogId = petId)
+        val persistence = ChatPersistence(sessionId, messageId)
         mutableState.update { it.copy(sending = true, sendError = null, lastResponse = null) }
         sendJob = scope.launch {
             val result = try {
-                gateway.send(accessToken, text, where, persistence)
+                gateway.send(accessToken, text, where, petId, persistence)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {

@@ -15,21 +15,19 @@ import java.util.UUID
  * 둘 다 UUID 여야 한다. 아니면 서버가 422 로 질문을 통째로 버리므로 **보내기 전에**
  * 여기서 막는다 (`PetDraft.valid` 와 같은 자리).
  *
- * @property activeDogId 지금 고른 강아지. 대화의 강아지와 다르면 저쪽이 행을 쓰기 전에
- *   409 `ACTIVE_DOG_MISMATCH` 로 막는다 — **같은 값을 실어야 그 검사가 산다.** 안 실으면
- *   저쪽이 대화의 강아지를 그냥 쓰고, 고른 강아지와 어긋난 채 남의 대화에 쌓여도 모른다.
+ * ⚠️ **`active_dog_id` 는 여기 없다.** 대표 강아지는 저장하든 안 하든 매 질의에 싣는
+ * 값이라(PR #112 — 저쪽이 그 id 로 견종·나이를 읽는다) 저장 전용 id 와 생애가 다르다.
+ * 여기 얹어 두면 무상태 질문은 그 값을 실을 자리가 없어져서, 같은 칸을 두 경로가 서로
+ * 다르게 싣게 된다. 그래서 `AssistantApi.query` 의 `activeDogId` 로 따로 받는다.
  */
 @Immutable
 data class ChatPersistence(
     val sessionId: String,
     val clientMessageId: String,
-    val activeDogId: String?,
 ) {
     init {
         require(sessionId.isUuid()) { "chat_session_id 가 UUID 가 아닙니다" }
         require(clientMessageId.isUuid()) { "client_message_id 가 UUID 가 아닙니다" }
-        // 빈 문자열은 저쪽 `_metadata_not_blank` 가 422 로 막는다. 없으면 칸을 뺀다.
-        require(activeDogId == null || activeDogId.isNotBlank()) { "active_dog_id 가 비어 있습니다" }
     }
 
     private companion object {

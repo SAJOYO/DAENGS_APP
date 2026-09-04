@@ -109,6 +109,9 @@ class MainActivity : ComponentActivity() {
                 // 방 액자에 건 카드. **방과 도감이 만나는 자리가 여기 하나다** —
                 // 고르는 곳은 도감이고 걸리는 곳은 방이라, 둘 다 아는 쪽이 들어야 한다.
                 var frameCardId by remember { mutableStateOf(roomStore.loadFrameCardId()) }
+                // **방 둘러보기.** 처음 방을 열 때 한 번 뜨고, 마이의 "다시 보기" 로
+                // 다시 켠다. 본 적 있음은 기기에 남는다 — 계정이 아니라 이 폰의 일이다.
+                var tourOpen by remember { mutableStateOf(!roomStore.tourSeen()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
@@ -406,6 +409,12 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else HomeScreen(
+                        tourOpen = tourOpen,
+                        onReplayTour = { tourOpen = true },
+                        onTourClose = {
+                            tourOpen = false
+                            roomStore.markTourSeen()
+                        },
                         // 액자 그림. 고른 카드가 지워졌으면 못 찾고, 그때는 발자국이다.
                         framePicture = rememberComposedCard(
                             cards.cards.firstOrNull { it.id == frameCardId },

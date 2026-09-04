@@ -425,8 +425,12 @@ fun ChatScreen(
      *
      * **여기서 답을 지어내지 않는다.** 로그인이 안 됐을 때만 로컬 문구를 쓰고,
      * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
-     * 강아지와 세션이 있으면 저장 계약의 두 id를 조율기에 맡기고, 둘 중 하나가 없는
-     * 기존 호출자는 예전 무상태 요청을 그대로 쓴다.
+     * **[dogId] 는 두 경로가 똑같이 싣는다.** 견종·나이는 앱이 지어 보내는 게 아니라
+     * 저쪽이 그 id 로 `pets` 를 읽는다 (PR #112). 저장하는 질문에서는 조율기가 같은
+     * 값을 실어 준다 — 화면이 고른 강아지 하나가 두 경로의 원본이다.
+     *
+     * 강아지와 세션이 있으면 저장 계약의 두 id 를 조율기에 맡기고, 둘 중 하나가 없는
+     * 기존 호출자는 무상태 요청을 그대로 쓴다. 무상태는 대화 기록을 안 보낸다.
      */
     // 물어보는 중인가. **연타를 막는다** — 한 번이 의미 라우터 + 생성이라 값이 비싸고,
     // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
@@ -500,7 +504,7 @@ fun ChatScreen(
                     asking = false
                 }
             } else {
-                AssistantApi.query(token, text, where)
+                AssistantApi.query(token, text, where, activeDogId = dogId, persistence = null)
                     .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
