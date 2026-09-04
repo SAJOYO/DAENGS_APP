@@ -6,6 +6,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.PlaceSuggestions
 import com.daengs.app.assistant.WalkVerdict
 
 /**
@@ -57,6 +58,64 @@ internal fun walkSentenceOf(grade: WalkVerdict.Grade): String = when (grade) {
     // [walkCard] 가 막아서 여기까지 오지 않는다. 그래도 말할 것은 둔다.
     WalkVerdict.Grade.UNKNOWN -> "지금 자료로는 판단하기 어려워요."
 }
+
+// ── Place 카드 ──────────────────────────────────────────────────────────
+
+/** 대화에 놓을 place 카드가 최대 몇 장인지. **서버 검색 예산이 아니라 앱의 표시 제약이다.** */
+internal const val MAX_PLACE_CARDS = 3
+
+/** [AssistantResponse.placeCards] 가 돌려주는 것 — 실제로 그릴 카드와, 그보다 후보가 더 있었는지. */
+internal data class PlaceCardsPresentation(
+    val candidates: List<PlaceSuggestions.Candidate>,
+    /** 서버가 찾은 전체 후보 수. [candidates] 보다 크면 화면이 자기 표시 제약을 한 줄로 알린다. */
+    val totalCandidateCount: Int,
+    val notices: List<String>,
+)
+
+/**
+ * 말풍선 아래 얹을 place 카드들. 후보가 하나도 없으면(빈 검색·되묻기 필요) null 이고,
+ * 그때는 저쪽 문장([AssistantResponse.bubbleMessage])만으로 충분하다.
+ *
+ * **최대 [MAX_PLACE_CARDS] 장, 그룹을 라운드로빈으로 돈다.** 첫 그룹의 첫 후보만 셋을
+ * 채우면 다른 방향(lens)이 통째로 안 보인다 — 서버가 그룹을 나눠 보낸 뜻이 없어진다.
+ * 그룹 안 순서는 그대로 따른다 — **로컬에서 재정렬하지 않는다.**
+ */
+internal fun AssistantResponse.placeCards(): PlaceCardsPresentation? {
+    val suggestions = places ?: return null
+    val total = suggestions.groups.sumOf { it.candidates.size }
+    if (total == 0) return null
+    return PlaceCardsPresentation(
+        candidates = suggestions.groups.roundRobin(MAX_PLACE_CARDS),
+        totalCandidateCount = total,
+        notices = suggestions.notices,
+    )
+}
+
+private fun List<PlaceSuggestions.Group>.roundRobin(limit: Int): List<PlaceSuggestions.Candidate> {
+    val result = mutableListOf<PlaceSuggestions.Candidate>()
+    var index = 0
+    while (result.size < limit) {
+        val before = result.size
+        for (group in this) {
+            if (result.size >= limit) break
+            group.candidates.getOrNull(index)?.let { result += it }
+        }
+        if (result.size == before) break // 이번 바퀴에 하나도 못 채웠으면 더 없다.
+        index++
+    }
+    return result
+}
+
+/**
+ * CLARIFY 인데 좌표가 없어서 못 찾겠다는 것인가.
+ *
+ * **이 판정도 텍스트를 안 본다** — [AssistantResponse.Clarify.missing] 은 저쪽이 준
+ * 필드 키 목록이다(`location.lat`·`location.lon`). 이게 참이면 화면이 되묻기 질문
+ * 대신 위치 권한을 다시 청하는 액션을 놓는다.
+ */
+internal fun AssistantResponse.isLocationClarify(): Boolean =
+    status == AssistantResponse.Status.CLARIFY &&
+        clarify?.missing.orEmpty().any { it.startsWith("location.") }
 
 /** 화면이 실제로 재사용할 수 있는 handoff 대상. 그 밖의 target 은 서버 메시지만 보여주고 끝난다. */
 internal enum class KnownHandoff { GAIT, SKIN }
