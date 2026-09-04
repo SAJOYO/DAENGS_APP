@@ -38,6 +38,8 @@ fun WalkRoute(
     history: WalkHistory,
     modifier: Modifier = Modifier,
     avatarBreed: DogBreed? = null,
+    /** 대표 아이가 올린 프로필 사진. 있으면 지도의 내 위치가 그 얼굴이 된다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
     pets: List<Pet> = emptyList(),
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
@@ -119,6 +121,7 @@ fun WalkRoute(
         state = state,
         outside = outside,
         avatarBreed = avatarBreed,
+        avatarPhoto = avatarPhoto,
         photoOf = photoOf,
         onAction = viewModel::onAction,
         modifier = modifier,
