@@ -41,6 +41,24 @@ class CardTuneTest {
         }
     }
 
+    /**
+     * **곡이 있는 카드와 무대가 있는 카드는 다르다.**
+     *
+     * 이 둘을 같은 것으로 보면 화면이 갈린다 — 뽑기 화면이 무대에 물어서 당근·시금치를
+     * "이 카드에는 아직 노래가 없어요" 라고 했는데, 턴테이블에는 그 곡이 떠 있었다.
+     * 한 앱이 같은 카드를 두고 두 가지 말을 한 셈이다.
+     *
+     * 그래서 **어긋나는 카드가 실제로 있다는 것**을 여기서 못 박는다. 이 테스트가
+     * 깨지면 둘이 다시 같아진 것이고, 그때는 "무대에 물어도 되겠지" 가 다시 참이 된다.
+     */
+    @Test
+    fun `곡만 있고 무대는 없는 카드가 있다`() {
+        val tuneOnly = DEX_CARDS.filter { bgmFor(it.id) != null && IMMERSIVE_SCENES[it.id] == null }
+
+        assertTrue("곡과 무대가 같아졌다면 이 테스트를 지워도 된다", tuneOnly.isNotEmpty())
+        assertEquals(listOf("carrot", "spinach"), tuneOnly.map { it.id }.sorted())
+    }
+
     @Test
     fun `카드 순서를 그대로 따른다`() {
         // 도감 순서와 다르면 "No.01 다음이 No.10" 이라는 감각이 깨진다.
