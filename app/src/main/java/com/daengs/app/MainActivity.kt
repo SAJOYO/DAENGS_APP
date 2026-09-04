@@ -291,6 +291,18 @@ class MainActivity : ComponentActivity() {
                 // 세션이 생기거나 바뀌면 강아지를 받아 온다. **강아지가 없으면
                 // 온보딩으로 보낸다** — 출시 앱은 로그인이 필수이고, 로그인했는데
                 // 강아지가 없는 상태로 홈에 두면 방에 세울 아이가 없다.
+                // **로그인 여부와 무관하게 한 번 읽는다.**
+                //
+                // 예전에는 읽는 자리가 아래 `LaunchedEffect(session)` 의 토큰 뒤에만
+                // 있어서, 둘러보기로 뽑은 카드가 앱을 껐다 켜면 도감에서 사라졌다 —
+                // DB 에는 그대로 있는데 목록에 안 올라왔다.
+                //
+                // **남의 카드가 새지 않는다.** `CardDao.forUser` 가
+                // `appUserId IS NULL OR appUserId = :id` 라 주인 없는 카드와 내 카드만
+                // 준다 (`CardRows.appUserId` 주석의 설계다). 로그인 뒤에는 아래에서
+                // 도장을 찍고 다시 읽으므로 이 줄이 그 흐름을 앞지르지 않는다.
+                LaunchedEffect(Unit) { cards.load(session?.appUserId) }
+
                 LaunchedEffect(session) {
                     if (session == null) {
                         pets.forget()
