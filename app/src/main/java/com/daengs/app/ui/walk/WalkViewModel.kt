@@ -38,7 +38,23 @@ private data class WalkPresentationState(
     val map: WalkMapUiState = WalkMapUiState(),
     val completion: WalkCompletionUiState = WalkCompletionUiState(),
     val momentNotice: String? = null,
+    /**
+     * 이미 보여 주고 거둔 산책 안내.
+     *
+     * **서비스가 든 값은 안 건드린다.** 기록이 실패한 것은 사실이고 그 사실은 서비스가
+     * 들고 있어야 한다 — 화면만 잠깐 뒤 안 보여 준다.
+     */
+    val dismissedTrackingError: String? = null,
 )
+
+/**
+ * 지금 화면에 띄울 산책 안내.
+ *
+ * 거둔 것과 같은 말이면 안 띄운다. **말이 바뀌면 다시 띄운다** — 다음 산책이 다른
+ * 이유로 실패하면 그건 새 소식이다.
+ */
+internal fun visibleTrackingError(message: String?, dismissed: String?): String? =
+    message?.takeIf { it != dismissed }
 
 /**
  * 산책 화면의 정책과 비동기 상태를 소유한다.
@@ -51,6 +67,7 @@ class WalkViewModel(
     territoryRepository: TerritorySiteRepository,
     externalScope: CoroutineScope? = null,
     private val momentNoticeMillis: Long = MOMENT_NOTICE_MILLIS,
+    private val trackingErrorMillis: Long = TRACKING_ERROR_MILLIS,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
     private val location = WalkLocationCoordinator(locationSource, runtimeScope)
@@ -62,6 +79,7 @@ class WalkViewModel(
     private var active = false
     private var completionJob: Job? = null
     private var noticeJob: Job? = null
+    private var trackingErrorJob: Job? = null
     private var observedCompletedSessionId: String? = null
 
     val state: StateFlow<WalkUiState> = combine(
@@ -71,7 +89,14 @@ class WalkViewModel(
         presentation,
     ) { tracking, locationState, territoryState, presentationState ->
         WalkUiState(
-            tracking = tracking,
+            // 안내는 **잠깐 떴다 사라진다.** 예전에는 지우는 곳이 아예 없어서, 다시
+            // 걸으려고 들어와도 지난 실패가 먼저 붙어 있었다.
+            tracking = tracking.copy(
+                errorMessage = visibleTrackingError(
+                    tracking.errorMessage,
+                    presentationState.dismissedTrackingError,
+                ),
+            ),
             location = locationState,
             selection = presentationState.selection,
             map = presentationState.map,
@@ -97,6 +122,7 @@ class WalkViewModel(
                 val trackingActive = tracking.trail.state != TrackingState.OFF
                 location.acceptTrackingState(trackingActive, tracking.lastSample)
                 observeCompletedSession(tracking.completedSessionId)
+                scheduleTrackingErrorDismiss(tracking.errorMessage)
             }
         }
         runtimeScope.launch {
@@ -310,6 +336,21 @@ class WalkViewModel(
         }
     }
 
+    /**
+     * 산책 안내를 [trackingErrorMillis] 뒤에 거둔다.
+     *
+     * **읽을 시간은 준다.** "너무 짧아서 기록하지 않았어요" 는 걷고 온 사람에게
+     * 산책이 어디 갔는지 설명하는 말이라, 토스트처럼 스쳐 지나가면 안 된다.
+     */
+    private fun scheduleTrackingErrorDismiss(message: String?) {
+        if (message == null || message == presentation.value.dismissedTrackingError) return
+        trackingErrorJob?.cancel()
+        trackingErrorJob = runtimeScope.launch {
+            delay(trackingErrorMillis)
+            presentation.update { it.copy(dismissedTrackingError = message) }
+        }
+    }
+
     private fun showNotice(message: String) {
         noticeJob?.cancel()
         presentation.update { it.copy(momentNotice = message) }
@@ -421,3 +462,11 @@ class WalkViewModel(
 }
 
 private const val MOMENT_NOTICE_MILLIS = 2_200L
+
+/**
+ * 산책 안내가 붙어 있는 시간.
+ *
+ * 순간 기록 알림([MOMENT_NOTICE_MILLIS])보다 길다. 저건 "찍혔어요" 라는 확인이고
+ * 이건 **걷고 온 산책이 왜 없는지**를 설명하는 말이다.
+ */
+private const val TRACKING_ERROR_MILLIS = 5_000L
