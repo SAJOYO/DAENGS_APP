@@ -93,6 +93,8 @@ import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import kotlinx.coroutines.delay
+import com.daengs.app.ui.DogFace
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.camera.CameraPreview
 import com.daengs.app.ui.camera.hasCameraPermission
@@ -594,9 +596,10 @@ fun ChatScreen(
                             avatar,
                             reportable = true,
                         )
-                        ChatEntry.Thinking -> AssistantBubble("생각하는 중이에요…", avatar)
+                        ChatEntry.Thinking -> ThinkingBubble(avatar, "생각 중…")
                         is ChatEntry.MyPhoto -> PhotoBubble(entry.image)
-                        ChatEntry.Screening -> AssistantBubble("사진을 살펴보는 중이에요…", avatar)
+                        // 사진 진단도 몇 초 걸리는 자리라 같은 말풍선을 쓴다.
+                        ChatEntry.Screening -> ThinkingBubble(avatar, "사진 보는 중…")
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
                         is ChatEntry.Report -> ReportBubble(entry.report, avatar)
 
@@ -1166,6 +1169,77 @@ private fun UserBubble(text: String) {
 }
 
 /**
+ * 답을 만드는 동안 뜨는 말풍선.
+ *
+ * **글자 한 줄이면 멈춘 것과 구분이 안 된다.** 서버가 몇 초 걸리는 자리라 그 사이가
+ * 제일 불안하다. 우리 아이 얼굴이 곰곰이 판과 번갈아 바뀌면서 "돌고 있다" 를 글자
+ * 없이도 말한다. 그림 두 장을 오가는 것만으로 모션이 되어서, 프레임 시트를 따로
+ * 받을 필요가 없었다.
+ *
+ * **왼쪽 얼굴은 안 바꾼다.** 거기는 학사모 쓴 똑똑이이고 누가 말하는지를 가리키는
+ * 자리다 (#92 에서 정한 것). 바뀌는 것은 말풍선 **안**이다.
+ *
+ * 그림이 없는 견종(믹스)이면 이 자리도 글자만 남는다 — 아무 얼굴이나 갖다 쓰면
+ * 사용자가 자기 개가 아닌 얼굴을 본다 ([PawAvatar] 와 같은 규칙).
+ */
+@Composable
+private fun ThinkingBubble(avatar: DogBreed?, text: String) {
+    var pondering by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(THINKING_FRAME_MS)
+            pondering = !pondering
+        }
+    }
+    Row(verticalAlignment = Alignment.Top) {
+        ChatFace(avatar, 32.dp)
+        Spacer(Modifier.width(8.dp))
+        Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (avatar != null) {
+                    DogAvatar(
+                        avatar,
+                        Modifier.size(28.dp),
+                        face = if (pondering) DogFace.Thinking else DogFace.Portrait,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp)
+            }
+        }
+    }
+}
+
+/**
+ * 두 얼굴을 오가는 간격.
+ *
+ * 빠르면 깜빡임으로 읽히고, 느리면 멈춘 것으로 읽힌다. 그림이 둘뿐이라 걷는 느낌이
+ * 아니라 **숨 쉬는 느낌**이 되어야 한다.
+ */
+private const val THINKING_FRAME_MS = 700L
+
+/**
+ * 대기 말풍선. **모션은 프리뷰에서 안 돈다** — 여기서 보는 것은 두 얼굴이 앉는
+ * 자리와 크기다. 움직임이 거슬리는지는 실기기에서 본다.
+ *
+ * 그림 없는 견종(믹스)은 얼굴 없이 글자만 남는 것도 같이 본다.
+ */
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun ThinkingBubblePreview() {
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThinkingBubble(DogBreed.BEAGLE, "생각 중…")
+            ThinkingBubble(DogBreed.TOY_POODLE_SILVER, "사진 보는 중…")
+            ThinkingBubble(null, "생각 중…")
+        }
+    }
+}
+
+/**
  * 내가 올린 사진. 말풍선 대신 그림 자체가 모서리를 갖는다.
  *
  * **폭을 고정한다.** 예전에는 상한만 걸어 두고 그림 크기대로 그렸는데, 말풍선에
@@ -1626,6 +1700,6 @@ private fun ChatScreenPreview() {
  */
 @Composable
 private fun ChatFace(avatar: DogBreed?, size: Dp) {
-    if (avatar != null) DogAvatar(avatar, Modifier.size(size), smart = true)
+    if (avatar != null) DogAvatar(avatar, Modifier.size(size), face = DogFace.Smart)
     else PawAvatar(size = size)
 }
