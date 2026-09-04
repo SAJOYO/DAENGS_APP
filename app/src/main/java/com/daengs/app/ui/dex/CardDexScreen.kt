@@ -86,6 +86,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import kotlin.math.roundToInt
 import com.daengs.app.ui.dogcard.rememberComposedCard
+import kotlinx.coroutines.delay
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
@@ -225,6 +226,22 @@ fun CardDexScreen(
     // **화면을 안 늘린다.** 뽑기는 `Screen` 에 새 갈래를 내지 않고 도감 위에 덮인다 —
     // 확대 뷰·이머시브가 이미 그 방식이라 결이 맞고, `MainActivity` 를 안 건드린다.
     var drawing by remember { mutableStateOf(startInDraw && draw != null) }
+    // **지운 뒤에 한 줄 알려 준다.** 확인 창은 뜨지만 지우고 나면 아무 말이 없어서
+    // "지워졌나…?" 로 남는다 — 되돌릴 수 없는 동작이 조용한 것이 제일 나쁘다.
+    // 저장이 쓰는 것과 같은 방식이다 (`CardSaver` 의 `note`).
+    var removedNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(removedNote) {
+        if (removedNote == null) return@LaunchedEffect
+        delay(REMOVED_NOTE_MS)
+        removedNote = null
+    }
+    // 확대 뷰는 지우면 곧 닫히므로, 알림은 **도감 겹**에 둔다.
+    val deleteAndTell: ((DrawnCard) -> Unit)? = onDelete?.let { go ->
+        { card: DrawnCard ->
+            go(card)
+            removedNote = "삭제되었습니다"
+        }
+    }
     val slots = remember(drawn) { dexSlots(drawn = drawn) }
 
     BackHandler {
@@ -279,11 +296,45 @@ fun CardDexScreen(
                 onClose = { opened = null },
                 framedCardId = framedCardId,
                 onFrame = onFrame,
-                onDelete = onDelete,
+                onDelete = deleteAndTell,
+                // **여기서는 고른 그 장으로 들어간다.** 그리드는 고른 장이 없어서
+                // 첫 장을 쓰지만, 확대 뷰에는 `CopyStrip` 으로 고른 한 장이 있다.
+                onImmersive = { at, picked, whose, theirFace ->
+                    from = at
+                    scene = picked
+                    sceneName = whose
+                    sceneFace = theirFace
+                    opened = null
+                },
+            )
+        }
+
+        // **알림은 제일 위 겹이다.** 확대 뷰가 닫히면서 그 아래 도감이 드러나는데,
+        // 알림이 확대 뷰 안에 있으면 같이 사라져서 아무 말도 못 하고 끝난다.
+        removedNote?.let { note ->
+            Text(
+                note,
+                color = CardWhite,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .systemBarsPadding()
+                    .padding(bottom = 28.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xE6241C1A))
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
             )
         }
     }
 }
+
+/**
+ * 지웠다는 알림이 떠 있는 시간.
+ *
+ * 저장 알림(`CardSaver` 의 `NOTE_MS`)과 **같은 길이다.** 두 알림이 다른 속도로
+ * 사라지면 같은 화면에서 어긋나 보인다.
+ */
+private const val REMOVED_NOTE_MS = 2600L
 
 // -- 그리드 -----------------------------------------------------------------
 
@@ -541,6 +592,17 @@ private fun CardViewer(
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
     onDelete: ((DrawnCard) -> Unit)? = null,
+    /**
+     * 꾹 눌러 카드 **안으로** 들어간다.
+     *
+     * 그리드에도 같은 길이 있지만 거기서는 고른 장이 없어 첫 장으로 들어간다.
+     * 여기서는 `CopyStrip` 으로 고른 장이 있고, **무대 주인공이 그 카드의 얼굴이라
+     * 장마다 무대가 실제로 다르다** — 한 칸에 세 장이 모여 있으면 그리드만으로는
+     * 나머지 두 장의 무대에 갈 길이 없다.
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onImmersive: ((Rect, ImmersiveScene, String?, SubjectFace?) -> Unit)? = null,
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
     val slot = slots[index]
@@ -570,7 +632,37 @@ private fun CardViewer(
     // 설명을 보며 넘기는 것이 이 시트의 쓸모다.
     // **잠긴 칸은 설명을 안 연다.** 안 가진 카드의 기술·수치를 다 보여 주면 뽑을
     // 이유가 사라진다.
-    val rub = rememberRubState(onTap = { if (!slot.locked) showDetail = !showDetail })
+    //
+    // 이머시브가 **이 카드 자리에서** 출발하도록 화면 위 사각형을 들고 있는다.
+    // 그리드와 같은 방식이다 (창 위 좌표라 이머시브가 자기 자리를 빼서 쓴다).
+    var at by remember { mutableStateOf(Rect.Zero) }
+    // 무대 주인공에 끼울 얼굴. **고른 그 장**(`mine`)에서 온다 — 그리드가 첫 장을
+    // 쓰는 것과 다른 점이 여기다. 합쳐 놓은 카드가 있을 때만 넘긴다.
+    val stageHero = drawn?.takeIf { it.composed }?.let { d ->
+        IMMERSIVE_SCENES[card.no]?.let { sc ->
+            SubjectFace(
+                face = d.face!!,
+                hole = sc.faceInSubject(d.template!!),
+                entryArt = art,
+                template = d.template,
+                name = d.name,
+                code = d.code,
+            )
+        }
+    }
+    // 이머시브인 카드인가. 그리드와 같은 조건을 본다 — 잠긴 칸은 무대까지 안 열어 준다.
+    val stage = IMMERSIVE_SCENES[card.no]?.takeIf {
+        IMMERSIVE_IN_BUILD && !slot.locked && onImmersive != null
+    }
+    val enter = stage?.let { picked ->
+        { onImmersive!!(at, picked, mine?.dogName, stageHero) }
+    }
+    val rub = rememberRubState(
+        onTap = { if (!slot.locked) showDetail = !showDetail },
+        // **설명이 열려 있으면 안 들어간다.** 글씨를 읽으려고 짚고 있었을 뿐인데
+        // 무대가 열리면 놀란다.
+        onHold = enter?.takeIf { !showDetail },
+    )
 
     // 설명이 열려 있으면 뒤로가기가 그것부터 닫는다. 바깥(도감)의 BackHandler 보다
     // 안쪽이라 저절로 먼저 잡힌다.
@@ -640,6 +732,10 @@ private fun CardViewer(
                 input = input,
                 // 잠긴 카드는 안 기울인다. 포일도 안 도는데 기울면 그냥 흔들리는 검은 판이다.
                 tilt = !slot.locked,
+                // 꾹 누르는 동안 차오르는 테두리. 그리드와 같은 이유로 필요하다 —
+                // 게이지가 없으면 꾹 누르는 길이 있는 줄을 모른다.
+                hold = rub.hold,
+                holdColor = card.accent,
                 veil = if (slot.locked) CardLock else null,
                 beneath = if (drawn?.composed == true) {
                     { drawCardFace(drawn.face!!, drawn.template!!) }
@@ -651,7 +747,10 @@ private fun CardViewer(
                 } else {
                     null
                 },
-                modifier = Modifier.fillMaxWidth().rubbable(rub),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { at = it.boundsInWindow() }
+                    .rubbable(rub),
             )
             // 팝아웃은 카드 **위로 넘어가야** 하므로 카드와 같은 크기의 덧그림 판에서
             // 음수 좌표로 그린다. Compose 는 기본으로 안 자르므로 그대로 보인다.
@@ -766,8 +865,16 @@ private fun CardViewer(
                 }
                 Spacer(Modifier.height(6.dp))
                 // 안 알려 주면 아무도 두 번 안 누른다. 웹판에도 있던 힌트다.
+                //
+                // **꾹 누르기도 여기서 알려 준다.** 그리드에는 캡션 아래 배지가 있지만
+                // 확대 뷰까지 들어온 사람은 그 배지를 이미 지나쳤고, 여기서 탭은
+                // 설명 열기라 꾹 누르기가 있는 줄을 알 길이 없다.
                 if (!slot.locked) {
-                    Text("탭하여 상세보기", color = Color(0xFF9E8B84), fontSize = 12.sp)
+                    Text(
+                        if (stage != null) "탭하여 상세보기 · 꾹 눌러 무대로" else "탭하여 상세보기",
+                        color = Color(0xFF9E8B84),
+                        fontSize = 12.sp,
+                    )
                 }
             }
         }

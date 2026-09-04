@@ -94,6 +94,22 @@ private const val SETTLE_END = 0.44f
 private const val MELT_FROM = 0.30f
 private const val MELT_TO = 0.62f
 
+/** 진입 진행도([enter] 0~1)에서 카드가 얼마나 녹았나. 0 = 그대로, 1 = 다 녹았다. */
+internal fun meltAt(enter: Float): Float =
+    ((enter - MELT_FROM) / (MELT_TO - MELT_FROM)).coerceIn(0f, 1f)
+
+/**
+ * 카드 그림을 그리는 구간인가. 카드는 `alpha = 1f - melt` 로 사그라든다.
+ *
+ * **[frameTextShowsAt] 과 서로 배타여야 한다.** 둘이 겹치면 이름이 크기가 다른 두
+ * 벌로 보인다 — 두 이름칸이 일부러 다른 사각형이기 때문이다
+ * ([ImmersiveScene.frameName]). `ImmersiveEntryTest` 가 그걸 잠근다.
+ */
+internal fun cardShowsAt(melt: Float): Boolean = melt < 1f
+
+/** 창틀에 우리 이름·번호를 찍는 구간인가. [cardShowsAt] 의 여집합이다. */
+internal fun frameTextShowsAt(melt: Float): Boolean = melt >= 1f
+
 /** 창이 벌어지는 구간. */
 private const val OPEN_FROM = 0.62f
 
@@ -293,7 +309,7 @@ private fun DrawScope.drawStage(
     measurer: androidx.compose.ui.text.TextMeasurer,
 ) {
     val settle = (enter / SETTLE_END).coerceIn(0f, 1f)
-    val melt = ((enter - MELT_FROM) / (MELT_TO - MELT_FROM)).coerceIn(0f, 1f)
+    val melt = meltAt(enter)
     val open = ((enter - OPEN_FROM) / (1f - OPEN_FROM)).coerceIn(0f, 1f)
 
     // 틀이 없는 카드는 예전 연출로 돈다 — 카드가 커지면서 통째로 녹는다.
@@ -349,20 +365,35 @@ private fun DrawScope.drawStage(
         )
         // **창틀에도 우리 글자를 얹는다.** 카드가 녹으면 그 아래가 이 틀인데, 저쪽
         // 글자를 지워 두기만 하고 우리 것을 안 찍으면 이름 자리가 빈 채로 드러난다.
-        hero?.let { h ->
-            // **얼굴이 먼저다.** 아바타 원이 이름 바 왼쪽 끝에 걸쳐 있어서, 글자를
-            // 먼저 찍으면 그 위를 얼굴이 덮는다 (`PersonalCard` 도 얼굴 → 글자 순서다).
-            scene.frameAvatar?.let { hole -> drawInHoleOf(h.face, hole, fp, fs) }
-            drawSlotTextAt(
-                measurer, h.name, h.code,
-                scene.frameName, scene.frameCode, scene.frameChip, fp, fs,
-            )
+        //
+        // **카드가 다 녹은 뒤에 찍는다.** 예전에는 처음부터 불투명하게 깔아 뒀는데,
+        // 카드는 `alpha = 1f - melt` 로 사그라들 뿐이라 녹는 중에는 **두 벌이 동시에
+        // 보였다.** 그리고 두 이름칸은 일부러 다른 사각형이다 — 틀의 값은 원화에서
+        // 직접 쟀고 카드 값과 왼쪽 끝이 3.8% 어긋나 있다 ([ImmersiveScene.frameName]).
+        // 그래서 겹치는 동안 글자가 크기가 다른 두 벌로 읽혔다. 실기기 녹화로 재 보니
+        // 진입 시작 `t≈1167ms` 부터 `t≈1367ms` 까지, 즉 카드가 다 녹기 직전
+        // **약 200ms** 동안이었다 (`ENTER_MS` x `MELT_TO` = 1302ms).
+        //
+        // 두 사각형을 맞추는 것은 답이 아니다 — 틀의 값은 그 그림에 맞춰 잰 것이고,
+        // 카드 값을 쓰면 얼굴이 테 밖으로 나간다. 알파를 같이 올리는 크로스페이드도
+        // 답이 아니다 — 중간에서 둘 다 반쯤 보이는 것은 똑같다. **겹치는 구간 자체를
+        // 없앤다.** 카드는 `melt < 1f` 에서만 그려지므로, 여기가 그 바로 뒤다.
+        if (frameTextShowsAt(melt)) {
+            hero?.let { h ->
+                // **얼굴이 먼저다.** 아바타 원이 이름 바 왼쪽 끝에 걸쳐 있어서, 글자를
+                // 먼저 찍으면 그 위를 얼굴이 덮는다 (`PersonalCard` 도 얼굴 → 글자 순서다).
+                scene.frameAvatar?.let { hole -> drawInHoleOf(h.face, hole, fp, fs) }
+                drawSlotTextAt(
+                    measurer, h.name, h.code,
+                    scene.frameName, scene.frameCode, scene.frameChip, fp, fs,
+                )
+            }
         }
     }
 
     // 카드 그림. 틀 위에 같은 자리로 얹혀 있다가 녹는다. 녹고 나면 아래의 틀이 드러나
     // 창틀이 된다 — 그림이 지워진 자리가 곧 창이다.
-    if (melt < 1f) {
+    if (cardShowsAt(melt)) {
         // **녹는 것도 우리 카드다.** 무대에는 우리 아이가 서 있는데 들어가는 카드만
         // 저쪽 것이면 같은 것이 두 얼굴을 갖는다.
         val mine = hero?.takeIf { it.entryArt != null && it.template != null }
