@@ -932,7 +932,9 @@ private fun CardViewer(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "${copy + 1} / ${slot.count} · 이 야채로 ${slot.drawnCount}장 뽑았어요",
+                        // 벌 이름은 갈래에서 가져온다. 과일 칸에서 "이 야채로" 라고 하면
+                        // 무엇을 세는 말인지가 흐려진다.
+                        "${copy + 1} / ${slot.count} · 이 ${slot.card.deck.label}로 ${slot.drawnCount}장 뽑았어요",
                         color = Color(0xFF9E8B84),
                         fontSize = 12.sp,
                     )
@@ -1280,7 +1282,9 @@ private fun DeleteCardDialog(
         text = {
             Text(
                 if (lastCopy) {
-                    "되돌릴 수 없어요. 이 야채의 마지막 한 장이라 도감 칸이 다시 잠겨요."
+                    // **벌 이름을 안 부른다.** 여기까지 갈래를 넘기면 두 겹을 지나야 하는데,
+                    // 무엇의 마지막인지는 지우려는 카드를 보고 있으므로 이미 안다.
+                    "되돌릴 수 없어요. 마지막 한 장이라 도감 칸이 다시 잠겨요."
                 } else {
                     "되돌릴 수 없어요."
                 },
