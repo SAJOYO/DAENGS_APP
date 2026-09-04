@@ -1,5 +1,6 @@
 package com.daengs.app.ui.my
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +45,7 @@ import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.common.DaengsTextAction
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.home.HomeDemoData
@@ -97,6 +99,12 @@ fun MyScreen(
     profilePhoto: ImageBitmap? = null,
     /** 강아지 목록에 걸 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
+    /** 방에서 뺀 아이들. 비어 있으면 등록한 아이가 다 방에 선다 */
+    hiddenRoomPetIds: Set<String> = emptySet(),
+    /** 방에 두기/빼기. null 이면 그 줄이 안 뜬다 */
+    onToggleRoomPet: ((Pet) -> Unit)? = null,
+    /** 이 아이를 지금 뺄 수 있나. **마지막 한 마리는 못 뺀다** */
+    canToggleRoomPet: (Pet) -> Boolean = { true },
     /**
      * 대표 아이의 프로필 사진을 바꾸러 간다. null 이면 얼굴을 눌러도 아무 일이
      * 없다 — `@Preview` 와 테스트가 그렇게 부른다.
@@ -158,9 +166,16 @@ fun MyScreen(
         )
         Spacer(Modifier.height(20.dp))
 
-        if (signedIn) {
+        // **아이가 있으면 보여 준다.** 출시본에서는 로그인해야만 목록이 오므로 이
+        // 조건은 `signedIn` 과 결과가 같다 — 달라지는 곳은 개발자 패널이 가짜 아이를
+        // 넣어 본 디버그 빌드뿐이고, 그때 이 목록이 안 뜨면 넣어 본 보람이 없다
+        // (`pet/DevPets.kt`).
+        if (signedIn || !pets.isNullOrEmpty()) {
             PetSection(
                 photoOf = photoOf,
+                hiddenRoomPetIds = hiddenRoomPetIds,
+                onToggleRoomPet = onToggleRoomPet,
+                canToggleRoomPet = canToggleRoomPet,
                 pets = pets,
                 canAddMore = canAddMore,
                 onAdd = onAddPet,
@@ -335,10 +350,14 @@ private fun DeletePetDialog(
                         )
                     }
                 } else {
+                    // **둘이 같은 글씨여야 한다.** 예전에는 삭제가 보통 굵기, 취소가
+                    // 굵은 글씨라 서로 다른 글씨체처럼 보였다. 앱의 다른 삭제 창들이
+                    // 쓰는 공용 줄로 맞춘다 — 색은 그대로다. 빨강은 "되돌릴 수 없다"
+                    // 는 신호라 지우면 손이 미끄러지기 쉽다.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        DialogAction("삭제", DaengsColors.Error, FontWeight.Normal, onConfirm)
+                        DaengsTextAction("삭제", onConfirm, tint = DaengsColors.Error)
                         Spacer(Modifier.width(6.dp))
-                        DialogAction("취소", DaengPink, FontWeight.Bold, onDismiss)
+                        DaengsTextAction("취소", onDismiss)
                     }
                 }
             }
@@ -384,10 +403,11 @@ private fun WithdrawDialog(
                         CircularProgressIndicator(Modifier.size(20.dp), color = DaengPink, strokeWidth = 2.dp)
                     }
                 } else {
+                    // 삭제 창과 같은 규칙 — 굵기는 같고 색만 다르다.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        DialogAction("탈퇴", DaengsColors.Error, FontWeight.Normal, onConfirm)
+                        DaengsTextAction("탈퇴", onConfirm, tint = DaengsColors.Error)
                         Spacer(Modifier.width(6.dp))
-                        DialogAction("취소", DaengPink, FontWeight.Bold, onDismiss)
+                        DaengsTextAction("취소", onDismiss)
                     }
                 }
             }
@@ -395,17 +415,27 @@ private fun WithdrawDialog(
     }
 }
 
+/**
+ * 방에 세울지.
+ *
+ * **거는 자리와 내리는 자리를 하나로 둔다** — 액자와 같은 결이다. 둘로 나누면 안 서
+ * 있는 아이 옆에도 "빼기" 가 보인다.
+ *
+ * [onToggle] 이 null 이면 **아무것도 안 그린다.** 마지막 한 마리라 못 뺄 때가 그렇다 —
+ * 눌리지 않는 줄을 띄워 두면 왜 안 되는지를 화면이 따로 설명해야 한다.
+ */
 @Composable
-private fun DialogAction(label: String, tint: Color, weight: FontWeight, onClick: () -> Unit) {
+private fun RoomToggle(inRoom: Boolean, onToggle: (() -> Unit)?) {
+    val toggle = onToggle ?: return
     Text(
-        label,
-        color = tint,
-        fontSize = 14.sp,
-        fontWeight = weight,
+        if (inRoom) "방에서 빼기" else "방에 두기",
+        color = if (inRoom) TextMuted else DaengPink,
+        fontSize = 11.sp,
+        fontWeight = if (inRoom) FontWeight.Normal else FontWeight.Bold,
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .clickable(onClick = toggle)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }
 
@@ -468,6 +498,9 @@ private fun ProfileHead(
 @Composable
 private fun PetSection(
     photoOf: (String) -> ImageBitmap?,
+    hiddenRoomPetIds: Set<String>,
+    onToggleRoomPet: ((Pet) -> Unit)?,
+    canToggleRoomPet: (Pet) -> Boolean,
     pets: List<Pet>?,
     canAddMore: Boolean,
     onAdd: () -> Unit,
@@ -495,6 +528,9 @@ private fun PetSection(
             PetCard(
                 pet,
                 photo = photoOf(pet.id),
+                inRoom = pet.id !in hiddenRoomPetIds,
+                onToggleRoom = onToggleRoomPet?.takeIf { canToggleRoomPet(pet) }
+                    ?.let { go -> { go(pet) } },
                 // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
                 // 묻는 화면은 떠난 아이에게 할 말이 아니다.
                 onEdit = {
@@ -523,6 +559,13 @@ private fun PetCard(
     pet: Pet,
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photo: ImageBitmap?,
+    /** 지금 방에 서 있나 */
+    inRoom: Boolean = true,
+    /**
+     * 방에 두기/빼기. **null 이면 그 줄이 안 뜬다** — 마지막 한 마리라 못 뺄 때가
+     * 그렇다. 눌리지 않는 줄을 띄워 두면 왜 안 되는지를 화면이 설명해야 한다.
+     */
+    onToggleRoom: (() -> Unit)? = null,
     onEdit: () -> Unit,
     onPickPrimary: () -> Unit,
     onDelete: () -> Unit,
@@ -530,7 +573,15 @@ private fun PetCard(
     sentOn: java.time.LocalDate? = null,
     onFarewell: (() -> Unit)? = null,
 ) {
-    Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    // **방에 서 있는지는 테두리로 말한다.** 글씨는 누르면 무슨 일이 생기는지를
+    // 말하는 자리라(`방에서 빼기`), 지금 어떤 상태인지를 같은 글씨로 읽게 하면
+    // 매번 한 번 더 생각해야 한다. 테두리는 훑기만 해도 보인다.
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(16.dp),
+        border = if (inRoom) BorderStroke(1.5.dp, DaengPink.copy(alpha = 0.45f)) else null,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
             Modifier.clickable(onClick = onEdit).padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -585,6 +636,9 @@ private fun PetCard(
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
+                // **배웅한 아이도 방에 두고 뺄 수 있다.** 배웅은 지우는 일이 아니라는
+                // 것이 그 화면의 전제라, 방 구성에서만 손을 못 대면 말이 안 맞는다.
+                RoomToggle(inRoom, onToggleRoom)
                 return@Row
             }
             if (pet.isPrimary) {
@@ -600,6 +654,7 @@ private fun PetCard(
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
+            RoomToggle(inRoom, onToggleRoom)
             // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
             // 고치기이고, 지우기는 한 번 더 묻는다.
             Text(

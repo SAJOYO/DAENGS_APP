@@ -52,6 +52,7 @@ import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
+import com.daengs.app.pet.devPets
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
@@ -121,6 +122,9 @@ class MainActivity : ComponentActivity() {
                 // **방 둘러보기.** 처음 방을 열 때 한 번 뜨고, 마이의 "다시 보기" 로
                 // 다시 켠다. 본 적 있음은 기기에 남는다 — 계정이 아니라 이 폰의 일이다.
                 var tourOpen by remember { mutableStateOf(!roomStore.tourSeen()) }
+                // 방에서 뺀 아이들. **뺀 쪽을 적는다** — 새로 등록한 아이는 저절로
+                // 방에 서야 하므로 기본이 "다 들어감" 이다 (`RoomStore.loadHiddenPetIds`).
+                var hiddenRoomPetIds by remember { mutableStateOf(roomStore.loadHiddenPetIds()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
@@ -166,6 +170,11 @@ class MainActivity : ComponentActivity() {
                 // 얼굴만 보는 자리라 걸어 둘 id 가 없다 (견종 갈아끼우기와 같은 결).
                 var devPhoto by remember { mutableStateOf<ImageBitmap?>(null) }
                 var devPhotoPicking by remember { mutableStateOf(false) }
+                // 개발자 패널이 넣어 본 가짜 강아지. **저장도 전송도 안 한다** —
+                // 강아지에 딸린 화면들이 로그인해야만 보여서, 계정을 못 쓰는 기기에서
+                // 그것들을 보는 유일한 길이다 (`pet/DevPets.kt`).
+                var devPetCount by remember { mutableIntStateOf(0) }
+                val shownPets = devPets(devPetCount).ifEmpty { pets.pets.orEmpty() }
 
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
@@ -522,12 +531,23 @@ class MainActivity : ComponentActivity() {
                         onOpenMy = { myOpen = true },
                         onCloseMy = { myOpen = false },
                         outside = outside,
-                        pets = pets.pets.orEmpty(),
+                        pets = shownPets,
                         photoOf = { petPhotos[it] },
                         onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
+                        hiddenRoomPetIds = hiddenRoomPetIds,
+                        onToggleRoomPet = { pet ->
+                            hiddenRoomPetIds = if (pet.id in hiddenRoomPetIds) {
+                                hiddenRoomPetIds - pet.id
+                            } else {
+                                hiddenRoomPetIds + pet.id
+                            }
+                            roomStore.saveHiddenPetIds(hiddenRoomPetIds)
+                        },
                         devPhoto = devPhoto,
                         onPickDevPhoto = { devPhotoPicking = true },
                         onClearDevPhoto = { devPhoto = null },
+                        devPetCount = devPetCount,
+                        onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
@@ -601,6 +621,9 @@ class MainActivity : ComponentActivity() {
                                         // 우리 아이의 진짜 사진이다. 안 지우면 다음에
                                         // 이 폰으로 로그인한 사람이 물려받는다.
                                         petPhotos.forgetEverything()
+                                        // 방 구성도 이 기기의 것이다. `roomStore.clear()`
+                                        // 가 파일을 비우므로 화면이 든 값도 같이 비운다.
+                                        hiddenRoomPetIds = emptySet()
                                         session = null
                                         screen = Screen.Landing
                                     }
