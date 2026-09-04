@@ -47,6 +47,8 @@ fun NaverMapSurface(
     searchOrigin: GeoPoint?,
     followDevice: Boolean,
     @DrawableRes avatarRes: Int? = null,
+    /** 사용자가 올린 프로필 사진. 있으면 [avatarRes] 보다 이쪽이 앞선다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
     /** 아래쪽에서 패널이 가리는 높이(px). 지도의 "가운데"가 그만큼 위로 올라간다. */
     bottomPaddingPx: Int = 0,
     /** 여기로 지도를 옮긴다. **사용자가 카드나 마커를 누른 순간에만** 값이 온다. */
@@ -171,11 +173,13 @@ fun NaverMapSurface(
     }
 
     // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
-    LaunchedEffect(naverMap, avatarRes) {
+    LaunchedEffect(naverMap, avatarRes, avatarPhoto) {
         val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
         overlay.circleColor = LOCATION_CIRCLE
-        val res = avatarRes ?: return@LaunchedEffect
-        val bitmap = circularAvatarBitmap(context, res, AVATAR_PX, AVATAR_RING_PX)
+        // **올린 사진이 앞선다.** 앱의 다른 얼굴이 다 그 규칙이라(`avatarSource`),
+        // 지도만 견종 그림이면 같은 아이가 화면마다 다르게 보인다.
+        val bitmap = avatarPhoto?.let { circularAvatarBitmap(it, AVATAR_PX, AVATAR_RING_PX) }
+            ?: avatarRes?.let { circularAvatarBitmap(context, it, AVATAR_PX, AVATAR_RING_PX) }
             ?: return@LaunchedEffect
         overlay.icon = OverlayImage.fromBitmap(bitmap)
         overlay.iconWidth = AVATAR_PX

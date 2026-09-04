@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.daengs.app.ui.home.BottomTab
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -188,7 +189,12 @@ class MainActivity : ComponentActivity() {
                 // **고른 값이 이긴다.** 홈이 하던 그대로다 — 로그인해서 대표가 있는
                 // 상태에서도 다른 견종을 세워 보려고 고르는 것이라, 대표가 이기면
                 // 고르기가 아무 일도 안 하는 것처럼 보인다.
-                val artBreed = devBreed ?: pets.primary?.breedArt
+                // 대표 아이의 얼굴. 상단바·챗봇·산책 지도의 내 위치 표시가 이걸 쓴다.
+                // **개발자 패널이 넣어 본 아이도 대표가 된다** — 안 그러면 그 상태에서
+                // 산책 지도의 얼굴만 파란 점으로 남는다.
+                val artBreed = devBreed
+                    ?: shownPets.firstOrNull { it.isPrimary }?.breedArt
+                    ?: pets.primary?.breedArt
 
                 // 창밖 날씨. **여기서 들고 있는다** — 화면이 바뀌어도 안 죽는다.
                 // 홈 안에서 부르면 도감·산책을 갔다 올 때마다 폴백(맑은 낮)부터 다시
@@ -728,6 +734,9 @@ class MainActivity : ComponentActivity() {
                         walkController = walkController,
                         history = walkRuntime.history,
                         avatarBreed = artBreed,
+                        // 지도의 내 위치도 올린 사진을 따른다.
+                        avatarPhoto = shownPets.firstOrNull { it.isPrimary }
+                            ?.let { petPhotos[it.id] }?.asAndroidBitmap(),
                         pets = pets.pets.orEmpty(),
                         photoOf = { petPhotos[it] },
                         outside = outside,
