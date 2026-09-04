@@ -3,31 +3,31 @@ package com.daengs.app.ui.dex
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.daengs.app.ui.dogcard.CARD_TEMPLATES
 import com.daengs.app.ui.dogcard.CardTemplate
 import com.daengs.app.ui.dogcard.Hole
-import com.daengs.app.ui.dogcard.Slot
 import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
-// 포일이 닿지 않을 자리
+// 포일이 닿지 않을 자리 — **강아지 얼굴 둘**
 //
-// 포일은 카드 **전체**를 덮었다. 그런데 아트창 배경은 이미 인쇄된 무지개 폭발이라
-// 그 위에 움직이는 포일이 또 얹히면 그림을 읽을 수가 없다 — "홀로그램 때문에
-// 정신없는 카드가 많다".
+// 포일은 카드 전체를 덮었다. 그러면 제일 먼저 망가지는 것이 우리 아이 얼굴이다.
+// `FoilTune.shineOpacity` 주석이 같은 병을 이미 적어 뒀다 — 포일 대부분이
+// `color-dodge` 라 밝은 원화에 얹으면 흰색으로 클리핑되고, **제일 먼저 사라지는 게
+// 흰 강아지 얼굴**이다. 실기기에서 보면 비글이 누렇게 뜨고, 가지 카드에서는 눈이
+// 한쪽은 보라 한쪽은 초록이 된다.
 //
-// `FoilTune.shineOpacity` 주석이 같은 병을 이미 한 번 적어 뒀다. 포일 대부분이
-// `color-dodge` 라 밝은 원화에 얹으면 흰색으로 클리핑되고, **제일 먼저 사라지는 것이
-// 얼굴**이다. 그때는 세기를 통째로 0.30 까지 낮춰 막았는데, 그러면 반짝여야 할 금속
-// 프레임까지 같이 죽는다. **자리를 가르는 편이 맞다.**
+// 그때는 포일 세기를 통째로 0.30 까지 낮춰 막았는데, 그러면 반짝여야 할 금속 프레임까지
+// 같이 죽는다. **세기가 아니라 자리를 가른다.**
 //
 // ## 포일을 건드리지 않는다. 카드를 다시 그린다
 //
@@ -36,66 +36,60 @@ import kotlin.math.roundToInt
 // 감싸면 안쪽 `ColorDodge` 가 카드 그림이 아니라 투명과 섞여서 포일이 통째로 망가진다.**
 // 그런데 `foilLayer` 호출 지점이 서른 곳 가까이 된다.
 //
-// 그래서 반대로 한다. **포일을 다 그린 뒤에, 조용할 자리에만 카드를 다시 그린다.**
+// 그래서 반대로 한다. **포일을 다 그린 뒤에, 얼굴 자리에만 카드를 다시 그린다.**
 // 한 함수로 끝나고 `FoilPainters.kt` 는 한 글자도 안 바뀐다.
 //
-// ⚠️ **얼굴([HoloCard] 의 `beneath`)도 같이 다시 그려야 한다.** 카드 알파가 얼굴
-//    자리에서 0 이라, `art` 만 다시 그리면 그 구멍으로 **얼굴 위 포일이 그대로 남는다.**
-//    실제로 그려 보면 비글이 누렇게 뜨고 눈이 한쪽은 보라, 한쪽은 초록이 된다.
+// ⚠️ **[HoloCard] 가 그리는 세 겹을 그대로 다시 그린다** — 얼굴(`beneath`) · 카드(`art`) ·
+//    글자(`above`). 하나라도 빠지면 그 자리가 덮인다.
+//    - `beneath` 를 빼면: 카드 알파가 얼굴 자리에서 0 이라 그 구멍으로 **얼굴 위 포일이
+//      그대로 남는다.** 걷어내려던 바로 그것이 안 걷힌다
+//    - `above` 를 빼면: 아바타 원이 이름칸과 겹치는 카드에서 **이름 글자가 잘린다.**
+//      아트창 전체를 재우던 판에서 "우리 아이" 가 위 절반만 남는 것으로 실제로 걸렸다
+//      (2026-09-04, 시금치)
 //
-// ## 야채 실루엣이 아니라 아트창인 이유
+// ## 왜 야채도 아니고 아트창도 아닌가
 //
-// 처음 요청은 "야채만 빼 달라" 였다. 열두 장을 실제로 그려 비교하고 아트창으로 바꿨다 —
-// **야채만 빼면 바로 옆 인쇄된 무지개 위에서 포일이 계속 날뛴다.** 야채 경계를 아무리
-// 정확히 따도 그 알갱이는 안 없어진다. 반대로 아트창을 통째로 재우면 은색 프레임·
-// 이름바·별·수치칩에서만 반짝이는데, 그게 실물 홀로 카드가 실제로 반짝이는 자리다.
-// 비교 그림은 `HISTORY.md` 참고.
+// 처음 요청은 "야채만 빼 달라" 였고, 열두 장을 실제로 그려 비교하면서 두 번 좁혔다.
+//
+//   야채 실루엣  마스크 12장을 손으로 튜닝해야 하고, 그러고도 **바로 옆 인쇄된 무지개
+//                위에서 포일이 계속 날뛴다.** 야채 경계를 정확히 따도 그 알갱이는 안 없어진다
+//   아트창 전체  그림은 깨끗해지는데 **덮는 면적이 너무 넓다.** 이름칸이 창 위 끝에
+//                걸치는 카드가 있어 글자가 잘렸고, 카드가 통째로 얌전해져 홀로그램
+//                카드 같지 않아졌다
+//
+// 남은 것이 **얼굴 둘**이다. 지켜야 할 것은 우리 아이 얼굴이고, 야채와 프레임의 반짝임은
+// 원래 이 카드의 재미다. 자리가 작아서 겹칠 것도 없다.
 // ---------------------------------------------------------------------------
 
 /**
  * 포일이 닿지 않을 자리와 얼마나 걷어낼지.
  *
- * 좌표 단위는 [Hole] · [Slot] 과 같은 **카드 크기 대비 %** 다 (0~100).
+ * 좌표 단위는 [Hole] 과 같은 **카드 크기 대비 %** 다 (0~100).
  */
 @Immutable
 data class FoilQuiet(
-    /** 그림창. 이 안에서는 포일이 잦아든다. */
-    val window: Slot,
-    /**
-     * 왼쪽 위 작은 얼굴.
-     *
-     * **창 밖에 있는 카드가 있다.** 아바타는 카드마다 위아래로 3%p 넘게 움직여서
-     * (`cy - ry` 가 3.7% ~ 7.0%), 창 하나로는 어떤 카드는 덮고 어떤 카드는 못 덮는다.
-     * 그러면 같은 강아지 얼굴이 큰 창에서는 멀쩡하고 작은 원에서만 누렇게 뜬다.
-     * 그래서 창과 **따로** 더한다.
-     */
+    /** 그림 한가운데 큰 얼굴창. */
+    val face: Hole,
+    /** 왼쪽 위 작은 아바타 원. **같은 아이 얼굴이라 같이 지킨다** — 한쪽만 지키면 큰 얼굴은 멀쩡한데 작은 원만 누렇게 뜬다. */
     val avatar: Hole,
+    /**
+     * 구멍 반지름의 몇 배까지 잦아들지.
+     *
+     * **구멍보다 넓어야 한다.** 얼굴은 구멍보다 조금 크게 그려서 구멍 테두리가 얼굴
+     * 가장자리를 물게 돼 있다(`CardSlots.kt`). 딱 구멍만큼만 재우면 그 물린 테두리에
+     * 포일이 남아 얼굴에 링이 생긴다.
+     */
+    val spread: Float = 1.45f,
+    /** 이 비율 안쪽은 [strength] 를 그대로 다 쓰고, 그 바깥은 잦아든다. */
+    val core: Float = 0.72f,
     /**
      * 얼마나 걷어낼지. 1 이면 그 자리에서 포일이 완전히 사라진다.
      *
-     * **1 로 두지 않는다.** 포일이 딱 0 이 되면 그 자리만 죽은 판으로 보여서, 반짝이는
-     * 프레임과 나란히 놓였을 때 인쇄 사고처럼 읽힌다. 조금 남겨 두면 "여기는 약하다"
-     * 로 읽힌다.
+     * **1 로 두지 않는다.** 포일이 딱 0 이 되면 얼굴만 죽은 판으로 보여서, 반짝이는
+     * 카드에 얼굴을 오려 붙인 것처럼 읽힌다. 조금 남겨 두면 "여기는 약하다" 가 된다.
      */
-    val strength: Float = 0.9f,
+    val strength: Float = 0.92f,
 )
-
-/**
- * 열두 장이 함께 쓰는 그림창.
- *
- * **잰 값이 아니라 맞춘 값이다.** 프레임 두께가 카드마다 조금씩 달라서 자동으로 찾는
- * 것보다 미리보기를 보고 맞추는 편이 빠르다 — 저쪽 도구(`DAENGS_dev` 의
- * `tools/neo-hologram-layers.py`)도 아트 창 좌표를 같은 이유로 손으로 준다. 실제로
- * 변화량으로 자동 검출을 해 봤는데 피망이 `x0 = 72%` 로 나왔다. 야채 몸통이 매끈해서
- * "그림이 아닌 곳"으로 찍힌다.
- *
- * **열두 장을 다 겹쳐 보고 정했다.** 아래 76% 는 열두 장 모두 이름바 **바로 위**에
- * 떨어진다 (`FoilQuietTest` 가 얼굴 구멍이 이 창 안에 들어오는지로 지킨다).
- * 프레임 띠가 두꺼워서 1~2%p 어긋나도 눈에 안 보인다.
- *
- * 새로 들어온 카드가 이 창에서 벗어나면 [foilQuietFor] 에 그 카드만 예외를 둔다.
- */
-val ART_WINDOW = Slot(x0 = 7f, y0 = 6f, x1 = 93f, y1 = 76f)
 
 /**
  * 도감 카드 id 로 조용한 자리를 찾는다. 모르는 id 면 `null` — 그때는 예전처럼
@@ -108,10 +102,10 @@ fun foilQuietFor(
     cardId: String,
     templates: List<CardTemplate> = CARD_TEMPLATES,
 ): FoilQuiet? = templates.firstOrNull { it.id == cardId }
-    ?.let { FoilQuiet(window = ART_WINDOW, avatar = it.avatar) }
+    ?.let { FoilQuiet(face = it.face, avatar = it.avatar) }
 
 /**
- * 조용할 자리에 카드를 다시 그려 포일을 걷어낸다.
+ * 얼굴 자리에 카드를 다시 그려 포일을 걷어낸다.
  *
  * [drawFoil] **뒤에** 부른다. 앞에서 부르면 그 위에 포일이 다시 덮여 아무 일도 안 한다.
  */
@@ -119,55 +113,64 @@ internal fun DrawScope.drawFoilQuiet(
     quiet: FoilQuiet,
     art: ImageBitmap?,
     beneath: (DrawScope.() -> Unit)?,
+    above: (DrawScope.() -> Unit)? = null,
 ) {
     if (quiet.strength <= 0.001f) return
     val canvas = drawContext.canvas
+    val bounds = Rect(Offset.Zero, size)
 
     // 레이어 투명도가 곧 "얼마나 걷어내나" 다. 다시 그린 카드가 반쯤 비치면 포일도
     // 반쯤 남는다.
-    canvas.saveLayer(
-        Rect(Offset.Zero, size),
-        Paint().apply { alpha = quiet.strength.coerceIn(0f, 1f) },
-    )
-    clipPath(quietPath(quiet)) {
-        // **[HoloCard] 가 처음에 그리는 것과 같은 순서**여야 한다 — 얼굴이 먼저고
-        // 카드가 그 위를 덮는다.
-        beneath?.invoke(this)
-        if (art != null) {
-            drawImage(
-                image = art,
-                dstOffset = IntOffset.Zero,
-                dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-                filterQuality = FilterQuality.High,
-            )
-        }
+    canvas.saveLayer(bounds, Paint().apply { alpha = quiet.strength.coerceIn(0f, 1f) })
+
+    // [HoloCard] 와 **같은 순서**여야 한다 — 얼굴 · 카드 · 글자.
+    beneath?.invoke(this)
+    if (art != null) {
+        drawImage(
+            image = art,
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+            filterQuality = FilterQuality.High,
+        )
     }
+    above?.invoke(this)
+
+    // 방금 다시 그린 카드를 **얼굴 둘만 남기고** 지운다.
+    //
+    // ⚠️ 마스크를 **자기 레이어 안에서** 만들어야 한다. 두 원을 `DstIn` 으로 바로
+    //    그리면 뒤에 그린 원이 앞의 것을 지워서 **한 자리만 남는다.** 레이어에 둘을
+    //    평범하게 겹쳐 그린 뒤, 그 레이어 전체를 `DstIn` 으로 내린다.
+    canvas.saveLayer(bounds, Paint().apply { blendMode = BlendMode.DstIn })
+    softHole(quiet.face, quiet)
+    softHole(quiet.avatar, quiet)
+    canvas.restore()
+
     canvas.restore()
 }
 
 /**
- * 그림창과 아바타 원을 합친 자리.
+ * 가운데가 불투명하고 가장자리로 갈수록 투명해지는 원 하나.
  *
- * 두 조각을 한 [Path] 에 넣으면 합집합이 된다. 따로 두 번 자르면 두 번째가 첫 번째를
- * 대체해서 창이 사라진다.
+ * ⚠️ **화면 전체에 사각형으로 그린다.** `drawCircle` 로 그리면 그 원 바깥이 마스크에서
+ *    빠져서, 두 번째 원을 그릴 때 첫 원까지 같이 살아남지 못한다. 그라디언트 끝 색이
+ *    투명이고 `Clamp` 라 사각형으로 덮어도 바깥은 투명하다.
+ *
+ * ⚠️ **반지름을 폭에서만 잰다.** 구멍은 `rx`(폭 대비)·`ry`(높이 대비) 둘인데, 카드가
+ *    3:4 라 픽셀로 바꾸면 **같은 값이 나온다** — 배추 `1080×0.2023 = 218.5`,
+ *    `1440×0.1517 = 218.4`. 화면에서 정원이라 타원으로 만들 필요가 없다.
+ *    (`FoilQuietTest` 가 열두 장에서 이 관계를 지킨다.)
  */
-private fun DrawScope.quietPath(quiet: FoilQuiet): Path {
-    val w = size.width
-    val h = size.height
-    return Path().apply {
-        addRect(
-            Rect(
-                left = w * quiet.window.x0 / 100f,
-                top = h * quiet.window.y0 / 100f,
-                right = w * quiet.window.x1 / 100f,
-                bottom = h * quiet.window.y1 / 100f,
-            )
-        )
-        val cx = w * quiet.avatar.cx / 100f
-        val cy = h * quiet.avatar.cy / 100f
-        // 반지름은 폭 쪽만 쓴다 — 카드가 3:4 라 rx·ry 를 픽셀로 바꾸면 같은 값이다
-        // (`FoilQuietTest` 가 열두 장에서 지킨다). 구멍보다 조금 크게 잡아 테두리를 문다.
-        val r = w * quiet.avatar.rx / 100f * 1.08f
-        addOval(Rect(cx - r, cy - r, cx + r, cy + r))
-    }
+private fun DrawScope.softHole(hole: Hole, quiet: FoilQuiet) {
+    val center = Offset(size.width * hole.cx / 100f, size.height * hole.cy / 100f)
+    val radius = size.width * hole.rx / 100f * quiet.spread
+    if (radius <= 0f) return
+    drawRect(
+        brush = Brush.radialGradient(
+            0f to Color.White,
+            quiet.core.coerceIn(0f, 0.99f) to Color.White,
+            1f to Color.Transparent,
+            center = center,
+            radius = radius,
+        ),
+    )
 }

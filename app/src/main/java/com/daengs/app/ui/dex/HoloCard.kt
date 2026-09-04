@@ -121,7 +121,7 @@ fun HoloCard(
             // **포일 뒤다.** 앞에서 부르면 그 위에 포일이 다시 덮여 아무 일도 안 한다.
             // 손을 뗀 뒤(intensity 0)에는 포일이 없으니 다시 그릴 것도 없다.
             if (quiet != null && input.intensity > 0.001f) {
-                drawFoilQuiet(quiet, art, beneath)
+                drawFoilQuiet(quiet, art, beneath, above)
             }
         }
         // **카드 안에서 그린다.** 밖에서 그리면 칸 크기를 따라가서 카드보다 넓어진다 —

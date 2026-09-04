@@ -40,8 +40,10 @@ class FoilQuietTest {
 
     private val side = 240
 
-    /** 화면 밖 구석에 둔 아바타. 창만 보고 싶은 시험에서 방해가 안 되게 한다. */
-    private val farAvatar = Hole(cx = -50f, cy = -50f, rx = 1f, ry = 0.75f)
+    /** 화면 밖 구석에 둔 구멍. 하나만 보고 싶은 시험에서 방해가 안 되게 한다. */
+    private val farHole = Hole(cx = -50f, cy = -50f, rx = 1f, ry = 0.75f)
+
+    private val middle = Hole(cx = 50f, cy = 50f, rx = 12f, ry = 9f)
 
     /** 회색 판 위에 포일을 돌린 결과. [quiet] 이 null 이면 예전 그림이다. */
     private fun render(quiet: FoilQuiet?, foil: Foil = Foil.Holo): Bitmap {
@@ -75,7 +77,12 @@ class FoilQuietTest {
 
     @Test
     fun `열두 장 모두 조용한 자리를 갖는다`() {
-        CARD_TEMPLATES.forEach { assertNotNull("${it.id}", foilQuietFor(it.id)) }
+        CARD_TEMPLATES.forEach { t ->
+            val q = foilQuietFor(t.id)
+            assertNotNull("${t.id}", q)
+            assertEquals("${t.id} 큰 얼굴", t.face, q!!.face)
+            assertEquals("${t.id} 아바타", t.avatar, q.avatar)
+        }
     }
 
     @Test
@@ -83,101 +90,97 @@ class FoilQuietTest {
         assertNull(foilQuietFor("없는카드"))
     }
 
-    /**
-     * **얼굴 구멍이 창 안에 들어와야 한다.** 삐져나오면 그 조각에만 포일이 남아서
-     * 강아지 얼굴 한쪽만 누렇게 뜬다 — 화면에서는 "얼굴이 이상하다" 로만 보인다.
-     * [ART_WINDOW] 를 손으로 맞춘 값이라 여기서 지킨다.
-     */
+    /** 반지름을 폭에서만 재는 전제. 깨지면 두 구멍을 타원으로 만들어야 한다. */
     @Test
-    fun `열두 장 모두 얼굴 구멍이 그림창 안에 있다`() {
+    fun `열두 장 모두 구멍이 화면에서 정원이다`() {
         CARD_TEMPLATES.forEach { t ->
-            val f = t.face
-            assertTrue("${t.id} 왼쪽이 샌다", f.cx - f.rx >= ART_WINDOW.x0)
-            assertTrue("${t.id} 오른쪽이 샌다", f.cx + f.rx <= ART_WINDOW.x1)
-            assertTrue("${t.id} 위가 샌다", f.cy - f.ry >= ART_WINDOW.y0)
-            assertTrue("${t.id} 아래가 샌다", f.cy + f.ry <= ART_WINDOW.y1)
+            listOf("얼굴" to t.face, "아바타" to t.avatar).forEach { (what, h) ->
+                assertEquals(
+                    "${t.id} 의 $what 이 타원이다",
+                    1080f * h.rx / 100f,
+                    1440f * h.ry / 100f,
+                    1.5f,
+                )
+            }
         }
     }
 
     /**
-     * 아바타를 창과 **따로** 더하는 이유. 이 폭이 0 에 가까워지면 창 하나로 덮을 수
-     * 있다는 뜻이라 [FoilQuiet.avatar] 를 지워도 된다.
+     * 재우는 원이 **구멍보다 넓어야 한다.** 얼굴은 구멍보다 크게 그려서 테두리가
+     * 얼굴 가장자리를 물게 돼 있어서(`CardSlots.kt`), 딱 구멍만큼만 재우면 그 물린
+     * 자리에 포일이 남아 얼굴에 링이 생긴다.
      */
     @Test
-    fun `아바타는 카드마다 창 안팎으로 갈린다`() {
-        val tops = CARD_TEMPLATES.map { it.avatar.cy - it.avatar.ry }
-        assertTrue("아바타 위치가 고르다 (${tops.min()}~${tops.max()})", tops.max() - tops.min() > 2f)
-    }
-
-    /** 반지름을 폭에서만 재는 전제. 깨지면 아바타 원이 타원이 되어야 한다. */
-    @Test
-    fun `열두 장 모두 아바타 구멍이 화면에서 정원이다`() {
-        CARD_TEMPLATES.forEach { t ->
-            assertEquals(
-                "${t.id} 의 아바타가 타원이다",
-                1080f * t.avatar.rx / 100f,
-                1440f * t.avatar.ry / 100f,
-                1.5f,
-            )
-        }
+    fun `재우는 원이 구멍보다 넓다`() {
+        assertTrue(FoilQuiet(middle, farHole).spread > 1.15f)
     }
 
     // -- 그림 ---------------------------------------------------------------
 
     @Test
-    fun `창 안에서 포일이 약해진다`() {
+    fun `얼굴 자리에서 포일이 약해진다`() {
         val bare = render(null)
-        val quiet = render(FoilQuiet(Slot25to75, farAvatar))
+        val quiet = render(FoilQuiet(middle, farHole))
 
         val before = shift(bare, side / 2, side / 2)
         val after = shift(quiet, side / 2, side / 2)
 
         assertTrue("포일이 애초에 안 보인다 (before=$before)", before > 4)
-        assertTrue("안쪽이 안 약해졌다 (before=$before, after=$after)", after < before / 2)
+        assertTrue("얼굴이 안 약해졌다 (before=$before, after=$after)", after < before / 2)
     }
 
-    /** 창 밖은 그대로여야 한다. 여기까지 죽으면 포일을 끈 것과 같다. */
+    /** 얼굴 밖은 그대로여야 한다. 여기까지 죽으면 포일을 끈 것과 같다. */
     @Test
-    fun `창 밖은 그대로 반짝인다`() {
+    fun `얼굴 밖은 그대로 반짝인다`() {
         val bare = render(null)
-        val quiet = render(FoilQuiet(Slot25to75, farAvatar))
+        val quiet = render(FoilQuiet(middle, farHole))
 
         assertEquals("모서리가 달라졌다", shift(bare, 4, 4), shift(quiet, 4, 4))
     }
 
     /**
-     * ⚠️ 한 번 밟을 뻔한 자리다. 창과 아바타를 **따로 두 번 자르면** 두 번째 자르기가
-     * 첫 번째를 대체해서 창이 통째로 사라진다. 한 [androidx.compose.ui.graphics.Path]
-     * 에 넣어야 합집합이 된다.
+     * ⚠️ 여기서 한 번 틀렸다. 두 원을 `DstIn` 으로 **바로** 그리면 뒤에 그린 원이 앞의
+     * 것을 지워서 **한 자리만 남는다.** 마스크를 자기 레이어 안에서 만들어야 한다.
      */
     @Test
-    fun `아바타 자리도 같이 조용해진다`() {
+    fun `얼굴 둘이 같이 조용해진다`() {
         val bare = render(null)
-        // 창은 오른쪽 아래 구석에 두고, 아바타만 왼쪽 위에 둔다.
-        val quiet = render(
-            FoilQuiet(
-                window = com.daengs.app.ui.dogcard.Slot(80f, 80f, 95f, 95f),
-                avatar = Hole(cx = 20f, cy = 20f, rx = 10f, ry = 7.5f),
-            )
-        )
+        val a = Hole(cx = 25f, cy = 25f, rx = 9f, ry = 6.75f)
+        val b = Hole(cx = 75f, cy = 75f, rx = 9f, ry = 6.75f)
+        val quiet = render(FoilQuiet(face = a, avatar = b))
 
-        val x = (side * 0.20f).toInt()
-        val y = (side * 0.20f).toInt()
-        assertTrue("아바타 자리가 안 약해졌다", shift(quiet, x, y) < shift(bare, x, y) / 2)
-        // 창도 살아 있어야 한다 — 두 번 자르면 여기가 안 죽는다.
-        val wx = (side * 0.87f).toInt()
-        assertTrue("창이 사라졌다", shift(quiet, wx, wx) < shift(bare, wx, wx) / 2)
+        listOf(a, b).forEach { h ->
+            val x = (side * h.cx / 100f).toInt()
+            val y = (side * h.cy / 100f).toInt()
+            assertTrue(
+                "(${h.cx}, ${h.cy}) 가 안 약해졌다 — 하나만 남았다",
+                shift(quiet, x, y) < shift(bare, x, y) / 2,
+            )
+        }
+    }
+
+    /** 경계가 **딱딱하면 안 된다.** 얼굴에 오려 붙인 자국이 생긴다. */
+    @Test
+    fun `가장자리로 갈수록 서서히 돌아온다`() {
+        val bare = render(null)
+        val quiet = render(FoilQuiet(middle, farHole))
+
+        val c = shift(quiet, side / 2, side / 2)
+        // 중심 → 원 끝 → 그 바깥 순으로 포일이 되살아나야 한다.
+        val edgePx = (side * middle.rx / 100f * FoilQuiet(middle, farHole).spread).toInt()
+        val mid = shift(quiet, side / 2 + edgePx * 3 / 4, side / 2)
+        val out = shift(quiet, side / 2 + edgePx + 6, side / 2)
+
+        assertTrue("가운데가 가장자리보다 세다 (c=$c mid=$mid)", c <= mid)
+        assertTrue("바깥이 안 돌아왔다 (mid=$mid out=$out)", mid <= out)
+        assertTrue("바깥이 원래와 다르다", out >= shift(bare, side / 2 + edgePx + 6, side / 2) - 2)
     }
 
     @Test
     fun `세기가 0 이면 아무것도 안 한다`() {
         val bare = render(null)
-        val quiet = render(FoilQuiet(Slot25to75, farAvatar, strength = 0f))
+        val quiet = render(FoilQuiet(middle, farHole, strength = 0f))
 
         assertEquals(shift(bare, side / 2, side / 2), shift(quiet, side / 2, side / 2))
-    }
-
-    private companion object {
-        val Slot25to75 = com.daengs.app.ui.dogcard.Slot(25f, 25f, 75f, 75f)
     }
 }
