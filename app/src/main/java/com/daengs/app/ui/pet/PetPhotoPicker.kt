@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import com.daengs.app.screening.Photo
 import com.daengs.app.ui.common.DaengsTextAction
 import com.daengs.app.ui.common.DaengsWideButton
+import com.daengs.app.ui.dogcard.FRAME_MAX_SCALE
 import com.daengs.app.ui.dogcard.FaceFrame
 import com.daengs.app.ui.dogcard.FaceFrameStep
 import com.daengs.app.ui.dogcard.bakeFramed
@@ -44,6 +45,8 @@ import com.daengs.app.ui.theme.TextMuted
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * 프로필 사진을 고르고 **원 안에 맞춘다.**
@@ -76,7 +79,9 @@ fun PetPhotoPicker(onDone: (Bitmap?) -> Unit) {
             runCatching { Photo.decodeUpright(context, uri, Photo.MAX_EDGE) }
                 .onSuccess {
                     photo = it
-                    frame = FaceFrame.CENTER
+                    // **처음부터 원을 꽉 채우고 시작한다.** 세로 사진을 그냥 가운데
+                    // 두면 좌우가 빈 채로 열려서 "덜 된 화면" 으로 읽힌다.
+                    frame = coverFrame(FaceFrame.CENTER, it.width, it.height)
                     error = null
                 }
                 .onFailure { error = it.message ?: "사진을 읽지 못했어요." }
@@ -120,10 +125,15 @@ fun PetPhotoPicker(onDone: (Bitmap?) -> Unit) {
 
         Text("얼굴만 원 안에 넣어 주세요", color = TextDark, fontSize = 16.sp)
         Spacer(Modifier.height(14.dp))
-        FaceFrameStep(face = shot, frame = frame, onChange = { frame = it })
+        FaceFrameStep(
+            face = shot,
+            frame = frame,
+            // 손짓은 자유롭게 받되 **원을 벗어나는 것만 되돌린다.**
+            onChange = { frame = coverFrame(it, shot.width, shot.height) },
+        )
         Spacer(Modifier.height(10.dp))
         Text(
-            "두 손가락으로 키우거나 끌어서 맞춰 주세요.",
+            "두 손가락으로 키우거나 끌어서 맞춰 주세요. 원은 늘 사진으로 채워져요.",
             color = TextMuted,
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
@@ -151,6 +161,47 @@ fun PetPhotoPicker(onDone: (Bitmap?) -> Unit) {
         DaengsTextAction("그만두기", { onDone(null) }, tint = TextMuted)
     }
 }
+
+/**
+ * 사진이 **원을 늘 덮도록** 가둔다.
+ *
+ * 카드 뽑기의 원형 틀은 자유롭게 놀 수 있다 — 거기 들어가는 것은 누끼라 둘레가
+ * 원래 비어 있고, 비면 카드 그림이 비친다. **프로필은 다르다.** 사진 한 장이 통째로
+ * 들어가는 자리라, 원 밖으로 빠져나가면 그 자리에 아무것도 없다.
+ *
+ * 두 가지를 건다.
+ *
+ * - **더 못 줄인다.** 짧은 변이 원의 지름보다 작아지는 순간 위아래(또는 좌우)가 빈다
+ * - **더 못 민다.** 한쪽 끝이 원 안으로 들어오면 반대쪽이 빈다
+ *
+ * 아주 길쭉한 사진(파노라마)은 [FRAME_MAX_SCALE] 안에서 덮을 수가 없다. 그때는
+ * 최대까지만 키우고 [bakeProfile] 의 바탕색이 남은 자리를 메운다.
+ */
+internal fun coverFrame(frame: FaceFrame, imageWidth: Int, imageHeight: Int): FaceFrame {
+    if (imageWidth <= 0 || imageHeight <= 0) return frame
+    val long = max(imageWidth, imageHeight).toFloat()
+    val short = min(imageWidth, imageHeight).toFloat()
+    // 짧은 변이 딱 원을 채우는 배율. 정사각형이면 1 이고, 4:3 이면 1.33 이다.
+    val cover = (long / short).coerceAtMost(FRAME_MAX_SCALE)
+    val scale = frame.scale.coerceIn(cover, FRAME_MAX_SCALE)
+
+    val w = imageWidth / long * scale
+    val h = imageHeight / long * scale
+    return FaceFrame(
+        scale = scale,
+        cx = clampCenter(frame.cx, w),
+        cy = clampCenter(frame.cy, h),
+    )
+}
+
+/**
+ * 한 변이 원을 덮도록 가운데를 가둔다.
+ *
+ * [size] 가 1 보다 작으면 어차피 덮을 수 없으므로 가운데에 세운다 — 한쪽으로
+ * 치우쳐 놓으면 빈자리가 한쪽에 몰려서 더 이상해 보인다.
+ */
+private fun clampCenter(value: Float, size: Float): Float =
+    if (size < 1f) 0.5f else value.coerceIn(1f - size / 2f, size / 2f)
 
 /**
  * 맞춘 그대로 정사각형 한 장으로.
