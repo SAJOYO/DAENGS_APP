@@ -189,6 +189,12 @@ fun PetFormScreen(
             color = TextMuted,
             fontSize = 13.sp,
         )
+        Spacer(Modifier.height(4.dp))
+        // **별표만 두지 않는다.** 별표가 무슨 뜻인지는 아는 사람만 안다.
+        Row {
+            Text("*", color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(" 는 꼭 넣어야 해요.", color = TextMuted, fontSize = 13.sp)
+        }
 
         Spacer(Modifier.height(20.dp))
         // **사진이 맨 위다.** 이름보다 먼저 얼굴이 보여야 "내 아이를 등록하는 중" 으로
@@ -206,11 +212,11 @@ fun PetFormScreen(
         )
 
         Spacer(Modifier.height(22.dp))
-        FieldLabel("이름")
+        FieldLabel("이름", required = true)
         TextInput(name, { name = it }, "네옹", label = "이름")
 
         Spacer(Modifier.height(18.dp))
-        FieldLabel("견종")
+        FieldLabel("견종", required = true)
         BreedGrid(breed) { breed = it }
 
         Spacer(Modifier.height(18.dp))
@@ -390,10 +396,30 @@ private fun PhotoRow(
     }
 }
 
+/**
+ * 칸 이름.
+ *
+ * @param required 꼭 넣어야 하는 칸. **[PetDraft.valid] 가 정하는 것과 같아야 한다** —
+ *   갈리면 화면은 선택이라 하는데 저장 버튼이 안 눌린다. [REQUIRED_FIELDS] 참고
+ */
 @Composable
-private fun FieldLabel(text: String) {
-    Text(text, color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 7.dp))
+private fun FieldLabel(text: String, required: Boolean = false) {
+    Row(Modifier.padding(bottom = 7.dp)) {
+        Text(text, color = TextMuted, fontSize = 12.sp)
+        if (required) {
+            Text(" *", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 }
+
+/**
+ * 별표가 붙는 칸.
+ *
+ * **[PetDraft.valid] 가 요구하는 것과 같은 목록이다.** 나머지는 안 골라도 되고,
+ * 그건 "모름" 이라는 뜻이다 — 필수로 하면 모르는 사람이 아무 값이나 넣고 그러면
+ * 그 값은 데이터로 못 쓴다 (유기견을 데려온 경우가 그렇다).
+ */
+internal val REQUIRED_FIELDS = setOf("이름", "견종")
 
 @Composable
 private fun TextInput(
