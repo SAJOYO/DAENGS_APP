@@ -122,6 +122,19 @@ fun WalkControlCard(
                     fontSize = 12.sp,
                 )
             }
+            // **버리기만 하고 말을 안 하면 기록이 멈춘 것으로 읽힌다.** 지도에 점이
+            // 안 찍히는데 이유를 모르면 사용자는 앱을 못 믿는다. 한 번 튄 것으로는
+            // 안 띄운다 — 정확도 경고와 같은 이유로 연속으로 걸릴 때만 말한다.
+            if (
+                state.trail.state == TrackingState.RECORDING &&
+                state.trail.skippedTooFast >= TOO_FAST_STREAK_TO_WARN
+            ) {
+                Text(
+                    "걷는 속도보다 빨라서 이 구간은 산책에 안 담고 있어요.",
+                    color = DaengsColors.Warning,
+                    fontSize = 12.sp,
+                )
+            }
             state.errorMessage?.let { message ->
                 Surface(color = DaengsColors.ErrorSoft, shape = RoundedCornerShape(12.dp)) {
                     Text(
@@ -162,6 +175,14 @@ fun formatWalkDistance(meters: Double): String = if (meters >= 1_000.0) {
 
 private const val LOW_ACCURACY_STREAK_TO_WARN = 3
 
+/**
+ * 몇 번 연속으로 빨라야 말해 주나.
+ *
+ * 정확도 경고와 같은 값이다. GPS 가 한 번 튄 것과 탈것에 탄 것을 가르는 것이 이
+ * 숫자다 — 1이면 신호가 한 번 흔들릴 때마다 경고가 깜빡인다.
+ */
+private const val TOO_FAST_STREAK_TO_WARN = 3
+
 @Preview(widthDp = 411, showBackground = true)
 @Composable
 private fun WalkControlCardPreview() {
@@ -173,6 +194,34 @@ private fun WalkControlCardPreview() {
                     distanceMeters = 842.4,
                 ),
                 activeDurationMillis = 754_000L,
+            ),
+            locationGranted = true,
+            onStart = {},
+            onPause = {},
+            onResume = {},
+            onStop = {},
+            modifier = Modifier.padding(12.dp),
+        )
+    }
+}
+
+/**
+ * 탈것에 탔을 때. **버리고 있다는 것을 화면이 말하는지**를 본다.
+ *
+ * 조용히 버리면 사용자는 앱이 멈춘 줄 안다 — 지도에 점이 안 찍히는데 이유를 모른다.
+ */
+@Preview(name = "산책 · 걷는 속도보다 빠를 때", widthDp = 411, showBackground = true)
+@Composable
+private fun WalkControlCardTooFastPreview() {
+    DaengsTheme {
+        WalkControlCard(
+            state = WalkTrackingState(
+                trail = TrailSnapshot(
+                    state = TrackingState.RECORDING,
+                    distanceMeters = 312.0,
+                    skippedTooFast = TOO_FAST_STREAK_TO_WARN,
+                ),
+                activeDurationMillis = 421_000L,
             ),
             locationGranted = true,
             onStart = {},
