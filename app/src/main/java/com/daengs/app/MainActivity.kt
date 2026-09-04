@@ -36,6 +36,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
+import com.daengs.app.dogcard.CardSyncRunner
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
@@ -177,10 +178,6 @@ class MainActivity : ComponentActivity() {
                 var devPetCount by remember { mutableIntStateOf(0) }
                 val shownPets = devPets(devPetCount).ifEmpty { pets.pets.orEmpty() }
 
-                // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
-                // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
-                val cards = remember { CardHolder(cardStore) }
-
                 // 개발자 패널이 고른 대표 견종. **여기서 들고 있는다** — 홈이 들고
                 // 있었더니 홈 밖으로 못 나가서, 챗봇 얼굴을 보려면 로그인해서 강아지를
                 // 등록하는 수밖에 없었다. 릴리스에서는 패널이 빈 껍데기라 늘 null 이다.
@@ -212,6 +209,17 @@ class MainActivity : ComponentActivity() {
                     if (restored != null) session = restored
                     restored?.accessToken
                 }
+
+                // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
+                // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
+                //
+                // **`freshToken` 뒤에 둔다.** 지우기가 서버에도 알려야 하는데, 코틀린은
+                // 앞서 선언된 지역 변수만 잡는다 — 위에 두면 컴파일이 안 된다.
+                val cards = remember { CardHolder(cardStore, freshToken) }
+
+                // 카드를 서버와 맞추는 자리. **claimOrphans 뒤에 돈다** — 순서가
+                // 뒤집히면 방금 로그인한 사람의 둘러보기 카드가 안 올라간다.
+                val cardSync = remember { CardSyncRunner(cardStore, app.cardFiles, freshToken) }
                 LaunchedEffect(session?.appUserId, pets.primary?.id) {
                     val petId = pets.primary?.id.takeIf { session != null }
                     chatHistory.selectPet(petId)
@@ -325,6 +333,10 @@ class MainActivity : ComponentActivity() {
                     session?.appUserId?.let { cards.claimOrphans(it) }
                     // 출시본에서는 아무 일도 안 일어난다 — 디버그 소스셋의 시드다.
                     pets.primary?.let { seedCards(context, cardStore, it.id, it.name, it.birthDate) }
+                    // 서버와 맞춘다. **새 폰이면 여기서 카드가 되돌아오고**, 이 폰에만
+                    // 있던 카드는 여기서 올라간다. **실패해도 조용하다** — 도감은
+                    // 기기 것만으로도 온전히 돈다.
+                    cardSync.syncOnce(session?.appUserId)
                     cards.load(session?.appUserId)
                 }
 
