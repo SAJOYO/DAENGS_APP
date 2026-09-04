@@ -1,6 +1,7 @@
 package com.daengs.app
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.content.pm.ActivityInfo
 import android.content.Intent
 import android.net.Uri
@@ -49,6 +50,7 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.startupTarget
+import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
@@ -67,6 +69,7 @@ import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkRoute
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** 화면들. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
@@ -132,6 +135,9 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
+                // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
+                val loadingSince = remember { SystemClock.elapsedRealtime() }
                 // 방향은 기록 세션이 아니라 화면 설정이다. 사용자가 산책에서 고른 방향은
                 // 회전 재생성 뒤에도 남고, 다른 화면은 기존 세로 구성을 지킨다.
                 var walkOrientation by rememberSaveable {
@@ -297,13 +303,21 @@ class MainActivity : ComponentActivity() {
 
                 // **로딩을 떠나는 곳은 여기 하나다.** 갈림길 판정은 순수 함수로 빼서
                 // 테스트가 잠근다 — 서버가 죽었을 때 갇히는 것이 제일 무서운 회귀다.
+                //
+                // **적어도 [MIN_LOADING_MS] 는 보여 주고 나간다.** 목록이 빨리 오는 날에는
+                // 이 화면이 두어 프레임만 스쳐서, 화면이 바뀐 것이 아니라 끊긴 것으로
+                // 읽혔다. 기다리는 길이는 **로딩이 뜬 시각에서** 잰다 — 이 블록은 목록이
+                // 바뀔 때마다 다시 도는데, 그때마다 새로 700 을 세면 목록이 여러 번
+                // 갱신되는 날에 몇 초씩 잡혀 있는다.
                 LaunchedEffect(screen, pets.pets, pets.error) {
                     if (screen != Screen.Loading) return@LaunchedEffect
-                    screen = when (startupTarget(pets.pets, pets.error)) {
+                    val next = when (startupTarget(pets.pets, pets.error)) {
                         StartupTarget.Wait -> return@LaunchedEffect
                         StartupTarget.Home -> Screen.Home
                         StartupTarget.Onboarding -> Screen.Onboarding
                     }
+                    delay(loadingHoldMs(loadingSince, SystemClock.elapsedRealtime()))
+                    screen = next
                 }
 
                 LaunchedEffect(Unit) {
