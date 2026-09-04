@@ -108,6 +108,18 @@ fun DeveloperPanel(
      * 도감 칸만 차지하고 뽑기 횟수도 안 먹어서 지운 티도 안 난다.
      */
     canMakeCard: Boolean = false,
+    /**
+     * 프로필 사진을 올려 본다.
+     *
+     * **로그인해야만 볼 수 있던 것을 여기서 본다.** 사진은 등록한 강아지에 딸리는데
+     * (`pet-photos/<id>.jpg`), 이 패널은 강아지 없이 얼굴을 보는 자리다 — 견종을
+     * 갈아끼우는 줄이 있는 것과 같은 이유다. **저장하지 않는다.** 앱을 끄면 사라진다.
+     */
+    onPickProfilePhoto: (() -> Unit)? = null,
+    /** 올려 본 사진을 지우고 견종 그림으로 되돌린다. */
+    onClearProfilePhoto: (() -> Unit)? = null,
+    /** 지금 올려 본 사진이 있나. 글씨를 가르는 데만 쓴다. */
+    hasProfilePhoto: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -136,6 +148,32 @@ fun DeveloperPanel(
                         .clickable(onClick = onOpenCutoutLab)
                         .padding(horizontal = 6.dp, vertical = 1.dp),
                 )
+            }
+        }
+
+        if (onPickProfilePhoto != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    if (hasProfilePhoto) "사진 바꿔보기" else "사진 올려보기",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(PanelPick)
+                        .clickable(onClick = onPickProfilePhoto)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+                if (hasProfilePhoto && onClearProfilePhoto != null) {
+                    Text(
+                        "사진 지우기",
+                        color = PanelDim,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(5.dp))
+                            .clickable(onClick = onClearProfilePhoto)
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
             }
         }
 

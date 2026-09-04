@@ -13,6 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import com.daengs.app.ui.home.BottomTab
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +45,7 @@ import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.miniroom.rememberOutsideView
+import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
 import com.daengs.app.ui.pet.PetFormScreen
@@ -142,6 +145,10 @@ class MainActivity : ComponentActivity() {
                 }
                 // 사진을 바꾸는 중인 아이. 홈 위에 덮인다 (배웅 화면과 같은 방식).
                 var photoFor by remember { mutableStateOf<Pet?>(null) }
+                // 개발자 패널로 올려 본 사진. **저장하지 않는다** — 강아지 기록 없이
+                // 얼굴만 보는 자리라 걸어 둘 id 가 없다 (견종 갈아끼우기와 같은 결).
+                var devPhoto by remember { mutableStateOf<ImageBitmap?>(null) }
+                var devPhotoPicking by remember { mutableStateOf(false) }
 
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
@@ -354,9 +361,11 @@ class MainActivity : ComponentActivity() {
                                 }
                                 if (ok) {
                                     if (photo != null) {
-                                        val id = target?.id
-                                            ?: pets.pets.orEmpty().map { it.id }
-                                                .firstOrNull { it !in before }
+                                        val id = photoTargetId(
+                                            editingId = target?.id,
+                                            before = before,
+                                            after = pets.pets.orEmpty().map { it.id },
+                                        )
                                         if (id != null) petPhotos.set(id, photo)
                                     }
                                     editing = null
@@ -369,7 +378,12 @@ class MainActivity : ComponentActivity() {
                     // 배웅과 사진 고르기는 **마이 위에 덮인다.** 화면을 늘리지 않는 것은
                     // 확대 뷰나 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기
                     // 때문이다.
-                    Screen.Home -> if (photoFor != null) {
+                    Screen.Home -> if (devPhotoPicking) {
+                        PetPhotoPicker { made ->
+                            devPhotoPicking = false
+                            if (made != null) devPhoto = made.asImageBitmap()
+                        }
+                    } else if (photoFor != null) {
                         val pet = photoFor!!
                         PetPhotoPicker { made ->
                             photoFor = null
@@ -459,6 +473,9 @@ class MainActivity : ComponentActivity() {
                         pets = pets.pets.orEmpty(),
                         photoOf = { petPhotos[it] },
                         onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
+                        devPhoto = devPhoto,
+                        onPickDevPhoto = { devPhotoPicking = true },
+                        onClearDevPhoto = { devPhoto = null },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },

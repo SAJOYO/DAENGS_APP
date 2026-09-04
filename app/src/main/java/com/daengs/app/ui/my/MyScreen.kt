@@ -90,7 +90,12 @@ fun MyScreen(
     roomLabel: String,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
     pets: List<Pet>?,
-    /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
+    /**
+     * 큰 프로필에 걸 사진. **[breed] 와 짝이다** — 홈이 고른 얼굴을 그대로 받는다.
+     * 여기서 다시 계산하면 상단바와 마이가 다른 얼굴을 보여 준다.
+     */
+    profilePhoto: ImageBitmap? = null,
+    /** 강아지 목록에 걸 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
     /**
      * 대표 아이의 프로필 사진을 바꾸러 간다. null 이면 얼굴을 눌러도 아무 일이
@@ -145,7 +150,7 @@ fun MyScreen(
         val primary = pets?.firstOrNull { it.isPrimary }
         ProfileHead(
             breed = breed,
-            photo = primary?.let { photoOf(it.id) },
+            photo = profilePhoto,
             dogName = primary?.name,
             roomLabel = roomLabel,
             // 대표가 있어야 사진을 걸 자리가 있다.
