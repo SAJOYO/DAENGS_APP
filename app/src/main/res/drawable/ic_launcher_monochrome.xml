@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  테마 아이콘(안드로이드 13+). 바탕화면 색에 맞춰 **한 색으로만** 그려지는 자리라
+  사진 같은 그림은 못 쓴다 — 통째로 단색이 되면 기름 덩어리처럼 보인다.
+
+  그래서 앱이 이미 쓰는 발바닥(`miniroom/art/RoomShellShapes.kt` 의 `drawPawStamp`)을
+  그대로 옮겨 왔다. 값이 그쪽과 같아야 **테마 아이콘과 앱 안 발바닥이 같은 모양**이다.
+
+  108 판의 가운데 72 안에 들어간다 (그 바깥은 런처가 자를 수 있는 자리다).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FF000000" android:pathData="M40.84,65.58 a13.06,10.74 0 1,0 26.11,0 a13.06,10.74 0 1,0 -26.11,0 Z" />
+    <path android:fillColor="#FF000000" android:pathData="M34.52,43.16 a3.90,4.74 0 1,0 7.79,0 a3.90,4.74 0 1,0 -7.79,0 Z" />
+    <path android:fillColor="#FF000000" android:pathData="M44.63,36.42 a3.90,4.74 0 1,0 7.79,0 a3.90,4.74 0 1,0 -7.79,0 Z" />
+    <path android:fillColor="#FF000000" android:pathData="M55.58,36.42 a3.90,4.74 0 1,0 7.79,0 a3.90,4.74 0 1,0 -7.79,0 Z" />
+    <path android:fillColor="#FF000000" android:pathData="M65.69,43.16 a3.90,4.74 0 1,0 7.79,0 a3.90,4.74 0 1,0 -7.79,0 Z" />
+</vector>

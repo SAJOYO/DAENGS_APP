@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -57,6 +58,7 @@ import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
+import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -92,6 +94,8 @@ fun GaitCaptureScreen(
     modifier: Modifier = Modifier,
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
+    /** 올린 프로필 사진. 여기는 **찍히는 그 아이**라 사진이 있으면 사진이 맞다. */
+    photo: ImageBitmap? = null,
     /**
      * 지금 찍는 중인가. 앱 안 카메라로 찍을 때만 뜻이 있다 — 시스템 카메라로 던지면
      * 그쪽 화면이 덮으므로 이 화면은 늘 false 다.
@@ -111,7 +115,7 @@ fun GaitCaptureScreen(
             .background(CreamBg)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
-        CaptureHeader(onBack = onBack, avatar = avatar)
+        CaptureHeader(onBack = onBack, avatar = avatar, photo = photo)
 
         // 프리뷰는 남는 높이를 다 먹는다. 고정 비율(16:9 등)로 두면 기기마다
         // 아래 버튼이 밀려 내려가거나 위로 붕 뜬다.
@@ -168,7 +172,7 @@ fun GaitCaptureScreen(
 }
 
 @Composable
-private fun CaptureHeader(onBack: () -> Unit, avatar: DogBreed?) {
+private fun CaptureHeader(onBack: () -> Unit, avatar: DogBreed?, photo: ImageBitmap?) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -178,7 +182,8 @@ private fun CaptureHeader(onBack: () -> Unit, avatar: DogBreed?) {
             contentAlignment = Alignment.Center,
         ) { Text("‹", color = TextDark, fontSize = 34.sp, lineHeight = 30.sp) }
         // 대화 헤더의 ChatFace 와 같은 물러섬이다 — 견종을 모르면 발바닥을 세운다.
-        if (avatar != null) DogAvatar(avatar, Modifier.size(38.dp)) else PawAvatar(size = 38.dp)
+        // 여기는 챗봇이 아니라 **지금 찍는 그 아이**라 올린 사진이 있으면 그것을 쓴다.
+        PetAvatar(photo, avatar, 38.dp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text("보행 영상 촬영", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)

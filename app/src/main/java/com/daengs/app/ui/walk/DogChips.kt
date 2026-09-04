@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
@@ -46,6 +48,8 @@ fun DogChip(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 사용자가 올린 프로필 사진. 있으면 견종 그림 대신 이게 뜬다. */
+    photo: ImageBitmap? = null,
 ) {
     Row(
         modifier
@@ -55,14 +59,9 @@ fun DogChip(
             .padding(start = 5.dp, end = 13.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 얼굴 그림이 없는 견종(믹스)은 발자국이다. **아무 얼굴이나 갖다 쓰지 않는다** —
-        // 그러면 사용자는 자기 개가 아닌 얼굴을 보게 된다.
-        val breed = pet?.breedArt
-        if (breed != null) {
-            DogAvatar(breed, Modifier.size(28.dp))
-        } else {
-            PawAvatar(size = 28.dp)
-        }
+        // 올린 사진이 있으면 그 사진, 없으면 견종 그림, 견종도 모르면(믹스) 발자국이다.
+        // **아무 얼굴이나 갖다 쓰지 않는다** — 그러면 자기 개가 아닌 얼굴을 보게 된다.
+        PetAvatar(photo, pet?.breedArt, 28.dp)
         Spacer(Modifier.width(7.dp))
         Text(
             name,
@@ -88,6 +87,8 @@ fun DogPickRow(
     selected: Set<String>,
     onToggle: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** 그 아이가 올린 프로필 사진. 기본값은 견종 그림만 쓰는 예전 모습이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
 ) {
     if (pets.isEmpty()) return
     Column(modifier) {
@@ -107,6 +108,7 @@ fun DogPickRow(
                     pet = pet,
                     selected = pet.id in selected,
                     onClick = { onToggle(pet.id) },
+                    photo = photoOf(pet.id),
                 )
             }
         }
@@ -125,6 +127,8 @@ fun DogFilterRow(
     selectedId: String?,
     onSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    /** 그 아이가 올린 프로필 사진. 기본값은 견종 그림만 쓰는 예전 모습이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
 ) {
     if (pets.size < 2) return
     Row(
@@ -149,6 +153,7 @@ fun DogFilterRow(
                 selected = pet.id == selectedId,
                 // 고른 아이를 다시 누르면 전체로 돌아온다. 필터를 푸는 길이 하나 더 있다.
                 onClick = { onSelect(pet.id.takeIf { it != selectedId }) },
+                photo = photoOf(pet.id),
             )
         }
     }

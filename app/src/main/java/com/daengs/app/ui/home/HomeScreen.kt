@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -109,6 +110,8 @@ private object NamePlateSpec {
 fun HomeScreen(
     modifier: Modifier = Modifier,
     frameTimeMs: Long? = null,
+    /** 저장소 탭의 실제 내용. null 은 독립 Preview 와 미연결 호출이 쓰는 안내 화면이다. */
+    storageContent: (@Composable (Modifier) -> Unit)? = null,
     /**
      * 지금 켜져 있는 하단 탭. **밖에서 들고 있는다.**
      *
@@ -179,10 +182,39 @@ fun HomeScreen(
      */
     devBreed: DogBreed? = null,
     onPickDevBreed: ((DogBreed) -> Unit)? = null,
+    /**
+     * 개발자 패널로 올려 본 프로필 사진.
+     *
+     * **강아지 기록 없이 사진을 보는 유일한 길이다** — 진짜 사진은 등록한 아이에게
+     * 딸리는데(`pet-photos/<id>.jpg`), 둘러보기에는 아이가 없다. 견종을 갈아끼우는
+     * 줄이 있는 것과 같은 이유로 둔다. 저장하지 않는다.
+     */
+    devPhoto: ImageBitmap? = null,
+    onPickDevPhoto: (() -> Unit)? = null,
+    onClearDevPhoto: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
+    /**
+     * 방 둘러보기(튜토리얼)를 띄울까.
+     *
+     * **부르는 쪽이 든다.** 봤는지 여부는 기기에 남는 값이라 저장을 아는 쪽이 정해야
+     * 하고, "다시 보기" 도 홈 밖(마이)에서 켠다.
+     */
+    tourOpen: Boolean = false,
+    /** 마이의 "다시 보기". null 이면 그 줄이 안 뜬다. */
+    onReplayTour: (() -> Unit)? = null,
+    /** 다 봤거나 건너뛰었을 때. 부르는 쪽이 본 적 있음으로 남긴다. */
+    onTourClose: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
     pets: List<Pet>? = null,
+    /**
+     * 그 아이가 올린 프로필 사진. 없으면 견종 그림이다.
+     *
+     * **챗봇 얼굴에는 안 쓴다** — 거기는 학사모 쓴 "똑똑이" 자리다.
+     */
+    photoOf: (String) -> ImageBitmap? = { null },
+    /** 대표 아이의 사진을 바꾸러 간다. null 이면 마이에서 그 자리가 안 뜬다 */
+    onEditPhoto: (() -> Unit)? = null,
     canAddMore: Boolean = false,
     onAddPet: (() -> Unit)? = null,
     onEditPet: ((Pet) -> Unit)? = null,
@@ -243,6 +275,11 @@ fun HomeScreen(
     // "대표 견종"을 보는데, 여기서 들고 있으면 홈 밖으로 못 나가서 로그인해야만
     // 챗봇 얼굴을 확인할 수 있었다.
     val profileBreed = devBreed ?: pets?.firstOrNull { it.isPrimary }?.breedArt
+    // 상단바에 걸 사진. **개발자 패널로 견종을 바꿔 보는 중이면 안 쓴다** — 그때는
+    // 그 견종 그림을 보려는 것이지 내 아이 사진을 보려는 것이 아니다.
+    val profilePhoto = devPhoto ?: if (devBreed != null) null else {
+        pets?.firstOrNull { it.isPrimary }?.let { photoOf(it.id) }
+    }
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
     val herd = rememberDogHerd(roomRoster(pets), departedInRoom(pets))
@@ -285,6 +322,12 @@ fun HomeScreen(
         homeWeatherWords(outside, temperatureC, known)
     }
 
+    // 방 둘러보기가 밝힐 자리. 그리는 쪽이 등록하고 겹이 읽는다.
+    val tourSpots = remember { TourSpots() }
+    // 다시 열 때마다 처음부터. `tourOpen` 이 키라 껐다 켜면 1단계로 돌아온다.
+    var tourStep by remember(tourOpen) { mutableIntStateOf(0) }
+
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = CreamBg,
@@ -298,11 +341,13 @@ fun HomeScreen(
                     onBell = {},
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
+                    photo = profilePhoto,
                 )
             }
         },
         bottomBar = {
             DaengsBottomBar(
+                tourSpots = tourSpots,
                 selected = tab,
                 // **밀어서 여는 탭은 선택 상태를 안 남긴다.** 남기면 도감에서
                 // 돌아왔을 때 방이 떠 있는데 바는 도감이 켜져 있다. 마이가 실제
@@ -325,7 +370,15 @@ fun HomeScreen(
     ) { inner ->
         if (myOpen) {
             MyScreen(
+                // 마이는 홈 위에 덮이는 화면이라, 다시 보기를 누르면 마이를 닫고
+                // 방 위에서 둘러보기가 열려야 한다.
+                onReplayTour = onReplayTour?.let { go -> { onCloseMy?.invoke(); go() } },
                 breed = profileBreed,
+                // **홈이 이미 고른 얼굴을 그대로 준다.** 마이가 다시 계산하면 상단바와
+                // 마이가 다른 얼굴을 보여 준다 — `breed = profileBreed` 와 짝이다.
+                profilePhoto = profilePhoto,
+                photoOf = photoOf,
+                onEditPhoto = onEditPhoto,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
                 pets = pets,
                 canAddMore = canAddMore,
@@ -351,7 +404,8 @@ fun HomeScreen(
         }
 
         if (tab == BottomTab.Storage) {
-            StorageComingSoon(Modifier.padding(inner))
+            val storageModifier = Modifier.padding(inner)
+            if (storageContent == null) StorageComingSoon(storageModifier) else storageContent(storageModifier)
             return@Scaffold
         }
 
@@ -364,6 +418,7 @@ fun HomeScreen(
                 .fillMaxSize(),
         ) {
             RoomSection(
+                tourSpots = tourSpots,
                 framePicture = framePicture,
                 weatherOpen = weatherOpen,
                 onToggleWeather = onToggleWeather,
@@ -383,6 +438,9 @@ fun HomeScreen(
                 // 고를 수는 없으니 여기서만 데모 견종으로 채운다.
                 profileBreed = profileBreed ?: HomeDemoData.DOG_BREED,
                 onPickProfile = { onPickDevBreed?.invoke(it) },
+                onPickDevPhoto = onPickDevPhoto,
+                onClearDevPhoto = onClearDevPhoto,
+                hasDevPhoto = devPhoto != null,
                 onOpenCutoutLab = onOpenCutoutLab,
                 onMakeCard = onMakeCard,
                 canMakeCard = canMakeCard,
@@ -414,7 +472,11 @@ fun HomeScreen(
                     modifier = slot,
                 )
             } else {
-                ChatbotCard(onOpenChat = { onOpenChat?.invoke() }, modifier = slot, avatar = profileBreed)
+                ChatbotCard(
+                    onOpenChat = { onOpenChat?.invoke() },
+                    modifier = slot.tourSpot(tourSpots, TourStop.Chat),
+                    avatar = profileBreed,
+                )
             }
             Spacer(Modifier.height(10.dp))
             WalkSummaryCard(
@@ -426,10 +488,28 @@ fun HomeScreen(
             Spacer(Modifier.height(10.dp))
         }
     }
+
+    // **겹은 Scaffold 위에 있다.** 하단바도 가리켜야 하는데 Scaffold 안에 있으면
+    // 본문 영역에 갇혀서 바를 못 덮는다.
+    if (tourOpen) {
+        RoomTourOverlay(
+            spots = tourSpots,
+            stepIndex = tourStep,
+            // **겹이 실제로 보여 준 번호로 센다.** 자리가 없어 건너뛴 단계가 있으면
+            // 여기 든 값보다 앞서 있다. 그걸 무시하고 +1 하면 같은 단계를 또 그린다.
+            onNext = { shown ->
+                if (shown >= TOUR_STEPS.lastIndex) onTourClose?.invoke() else tourStep = shown + 1
+            },
+            onSkip = { onTourClose?.invoke() },
+        )
+    }
+    }
 }
 
 @Composable
 private fun RoomSection(
+    /** 방 둘러보기가 밝힐 자리를 여기에 등록한다. null 이면 안 한다. */
+    tourSpots: TourSpots?,
     state: MiniRoomState,
     catalog: ItemCatalog,
     dateLabel: String,
@@ -449,6 +529,10 @@ private fun RoomSection(
     onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    /** 개발자 패널에서 프로필 사진을 올려 본다. */
+    onPickDevPhoto: (() -> Unit)? = null,
+    onClearDevPhoto: (() -> Unit)? = null,
+    hasDevPhoto: Boolean = false,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)?,
     /** 야채를 지정해 카드를 만든다. 개발자 패널에서만 불린다. */
@@ -512,6 +596,13 @@ private fun RoomSection(
             // 인벤토리가 열려 있는 동안이 편집 모드. 강아지는 확 숨는다.
             editing = inventoryOpen,
             modifier = Modifier.fillMaxSize(),
+            // **자리를 여기서 다시 계산하지 않는다.** 방이 터치 판정에 쓰는 것과 같은
+            // 셈으로 알려 준다 — 가리키는 곳과 눌리는 곳이 갈라지면 안 된다.
+            onSpots = if (tourSpots == null) null else { spots ->
+                tourSpots.put(TourStop.Door, spots.door)
+                tourSpots.put(TourStop.Frame, spots.frame)
+                spots.turntable?.let { tourSpots.put(TourStop.Turntable, it) }
+            },
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —
@@ -580,6 +671,9 @@ private fun RoomSection(
                 },
                 profileBreed = profileBreed,
                 onPickProfile = onPickProfile,
+                onPickProfilePhoto = onPickDevPhoto,
+                onClearProfilePhoto = onClearDevPhoto,
+                hasProfilePhoto = hasDevPhoto,
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,

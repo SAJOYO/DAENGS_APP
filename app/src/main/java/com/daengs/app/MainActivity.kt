@@ -1,18 +1,24 @@
 package com.daengs.app
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.content.pm.ActivityInfo
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import com.daengs.app.ui.home.BottomTab
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -23,6 +29,8 @@ import com.daengs.app.auth.CancelledByUser
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
+import com.daengs.app.chat.ChatHistoryCoordinator
+import com.daengs.app.chat.ChatSummaryCoordinator
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
@@ -31,6 +39,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
+import com.daengs.app.ui.PetAvatar
+import com.daengs.app.ui.pet.PetPhotoPicker
 import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
@@ -40,8 +50,11 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.startupTarget
+import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
+import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.rememberPetPhotoHolder
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
@@ -49,12 +62,14 @@ import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesRoute
+import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkRoute
 import com.daengs.app.walk.WalkDayTotals
 import com.daengs.app.ui.theme.DaengsTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** 화면들. 아직 [Screen] 하나로 충분하다 — 아래 주석 참고. */
@@ -103,8 +118,16 @@ class MainActivity : ComponentActivity() {
                 // 방 액자에 건 카드. **방과 도감이 만나는 자리가 여기 하나다** —
                 // 고르는 곳은 도감이고 걸리는 곳은 방이라, 둘 다 아는 쪽이 들어야 한다.
                 var frameCardId by remember { mutableStateOf(roomStore.loadFrameCardId()) }
+                // **방 둘러보기.** 처음 방을 열 때 한 번 뜨고, 마이의 "다시 보기" 로
+                // 다시 켠다. 본 적 있음은 기기에 남는다 — 계정이 아니라 이 폰의 일이다.
+                var tourOpen by remember { mutableStateOf(!roomStore.tourSeen()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
+                // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
+                // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
+                val chatHistory = remember(scope) { ChatHistoryCoordinator(scope) }
+                val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
+                val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
                 // 번쩍였다가 홈으로 넘어간다.
@@ -112,6 +135,9 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
+                // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
+                val loadingSince = remember { SystemClock.elapsedRealtime() }
                 // 방향은 기록 세션이 아니라 화면 설정이다. 사용자가 산책에서 고른 방향은
                 // 회전 재생성 뒤에도 남고, 다른 화면은 기존 세로 구성을 지킨다.
                 var walkOrientation by rememberSaveable {
@@ -128,6 +154,18 @@ class MainActivity : ComponentActivity() {
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
+                // 프로필 사진. **서버에 자리가 없어 이 기기에만 있다**
+                // (`pet/PetPhotos.kt` — GCP 가 정해지면 그쪽으로 옮긴다).
+                val petPhotos = rememberPetPhotoHolder()
+                LaunchedEffect(pets.pets) {
+                    petPhotos.load(pets.pets.orEmpty().map { it.id })
+                }
+                // 사진을 바꾸는 중인 아이. 홈 위에 덮인다 (배웅 화면과 같은 방식).
+                var photoFor by remember { mutableStateOf<Pet?>(null) }
+                // 개발자 패널로 올려 본 사진. **저장하지 않는다** — 강아지 기록 없이
+                // 얼굴만 보는 자리라 걸어 둘 id 가 없다 (견종 갈아끼우기와 같은 결).
+                var devPhoto by remember { mutableStateOf<ImageBitmap?>(null) }
+                var devPhotoPicking by remember { mutableStateOf(false) }
 
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
@@ -158,6 +196,11 @@ class MainActivity : ComponentActivity() {
                     val restored = app.sessionProvider.freshSession()
                     if (restored != null) session = restored
                     restored?.accessToken
+                }
+                LaunchedEffect(session?.appUserId, pets.primary?.id) {
+                    val petId = pets.primary?.id.takeIf { session != null }
+                    chatHistory.selectPet(petId)
+                    chatSummaries.selectPet(petId)
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
@@ -194,6 +237,9 @@ class MainActivity : ComponentActivity() {
                     scope.launch {
                         val token = freshToken() ?: return@launch
                         if (pets.remove(token, pet.id)) {
+                            // 사진도 같이 지운다. 남으면 다음에 같은 id 를 받은 아이에게
+                            // 남의 얼굴이 붙는다.
+                            petPhotos.clear(pet.id)
                             walkRuntime.history.forgetDog(pet.id)
                             todayWalks = walkRuntime.history.todayTotals()
                         }
@@ -257,13 +303,21 @@ class MainActivity : ComponentActivity() {
 
                 // **로딩을 떠나는 곳은 여기 하나다.** 갈림길 판정은 순수 함수로 빼서
                 // 테스트가 잠근다 — 서버가 죽었을 때 갇히는 것이 제일 무서운 회귀다.
+                //
+                // **적어도 [MIN_LOADING_MS] 는 보여 주고 나간다.** 목록이 빨리 오는 날에는
+                // 이 화면이 두어 프레임만 스쳐서, 화면이 바뀐 것이 아니라 끊긴 것으로
+                // 읽혔다. 기다리는 길이는 **로딩이 뜬 시각에서** 잰다 — 이 블록은 목록이
+                // 바뀔 때마다 다시 도는데, 그때마다 새로 700 을 세면 목록이 여러 번
+                // 갱신되는 날에 몇 초씩 잡혀 있는다.
                 LaunchedEffect(screen, pets.pets, pets.error) {
                     if (screen != Screen.Loading) return@LaunchedEffect
-                    screen = when (startupTarget(pets.pets, pets.error)) {
+                    val next = when (startupTarget(pets.pets, pets.error)) {
                         StartupTarget.Wait -> return@LaunchedEffect
                         StartupTarget.Home -> Screen.Home
                         StartupTarget.Onboarding -> Screen.Onboarding
                     }
+                    delay(loadingHoldMs(loadingSince, SystemClock.elapsedRealtime()))
+                    screen = next
                 }
 
                 LaunchedEffect(Unit) {
@@ -318,16 +372,32 @@ class MainActivity : ComponentActivity() {
                         } else {
                             { pets.clearError(); editing = null; screen = Screen.Home }
                         },
-                        onSubmit = { draft ->
+                        // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
+                        photo = editing?.let { petPhotos[it.id] },
+                        onClearPhoto = editing?.let { pet ->
+                            { scope.launch { petPhotos.clear(pet.id) } }
+                        },
+                        onSubmit = { draft, photo ->
                             scope.launch {
                                 val token = freshToken() ?: return@launch
                                 val target = editing
+                                // 새로 등록하면 id 를 서버가 만든다. 목록을 다시 받은
+                                // 뒤에 **늘어난 하나**를 찾아야 사진을 걸 자리를 안다.
+                                val before = pets.pets.orEmpty().map { it.id }.toSet()
                                 val ok = if (target == null) {
                                     pets.add(token, draft)
                                 } else {
                                     pets.edit(token, target.id, draft)
                                 }
                                 if (ok) {
+                                    if (photo != null) {
+                                        val id = photoTargetId(
+                                            editingId = target?.id,
+                                            before = before,
+                                            after = pets.pets.orEmpty().map { it.id },
+                                        )
+                                        if (id != null) petPhotos.set(id, photo)
+                                    }
                                     editing = null
                                     screen = Screen.Home
                                 }
@@ -335,9 +405,23 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
-                    // 배웅은 **마이 위에 덮인다.** 화면을 늘리지 않는 것은 확대 뷰나
-                    // 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기 때문이다.
-                    Screen.Home -> if (farewell != null) {
+                    // 배웅과 사진 고르기는 **마이 위에 덮인다.** 화면을 늘리지 않는 것은
+                    // 확대 뷰나 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기
+                    // 때문이다.
+                    Screen.Home -> if (devPhotoPicking) {
+                        PetPhotoPicker { made ->
+                            devPhotoPicking = false
+                            if (made != null) devPhoto = made.asImageBitmap()
+                        }
+                    } else if (photoFor != null) {
+                        val pet = photoFor!!
+                        PetPhotoPicker { made ->
+                            photoFor = null
+                            if (made != null) {
+                                scope.launch { petPhotos.set(pet.id, made) }
+                            }
+                        }
+                    } else if (farewell != null) {
                         val pet = farewell!!
                         FarewellScreen(
                             dogName = pet.name,
@@ -358,14 +442,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onClose = { farewell = null },
-                            face = {
-                                val art = pet.breedArt
-                                if (art != null) {
-                                    DogAvatar(art, Modifier.size(120.dp))
-                                } else {
-                                    PawAvatar(size = 120.dp)
-                                }
-                            },
+                            face = { PetAvatar(petPhotos[pet.id], pet.breedArt, 120.dp) },
                             // **읽기만 한다.** 함께 있을 때 적어 둔 것을 보여 주는 것이지
                             // 고치는 자리가 아니다. 모르는 항목은 줄에서 빠진다.
                             profile = buildList {
@@ -390,12 +467,40 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else HomeScreen(
+                        tourOpen = tourOpen,
+                        onReplayTour = { tourOpen = true },
+                        onTourClose = {
+                            tourOpen = false
+                            roomStore.markTourSeen()
+                        },
                         // 액자 그림. 고른 카드가 지워졌으면 못 찾고, 그때는 발자국이다.
                         framePicture = rememberComposedCard(
                             cards.cards.firstOrNull { it.id == frameCardId },
                         ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
+                        storageContent = { storageModifier ->
+                            ChatSummaryRoute(
+                                petId = pets.primary?.id.takeIf { session != null },
+                                historyState = chatHistoryState,
+                                coordinator = chatSummaries,
+                                accessTokenProvider = freshToken,
+                                onOpenSource = { sessionId ->
+                                    scope.launch {
+                                        val token = freshToken() ?: return@launch
+                                        if (chatHistory.openSession(token, sessionId)) screen = Screen.Chat
+                                    }
+                                },
+                                onOpenCitation = { citation ->
+                                    citation.url?.let { url ->
+                                        runCatching {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        }
+                                    }
+                                },
+                                modifier = storageModifier,
+                            )
+                        },
                         onOpenPlaces = { screen = Screen.Places },
                         onOpenWalk = { screen = Screen.Walk },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
@@ -418,6 +523,11 @@ class MainActivity : ComponentActivity() {
                         onCloseMy = { myOpen = false },
                         outside = outside,
                         pets = pets.pets.orEmpty(),
+                        photoOf = { petPhotos[it] },
+                        onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
+                        devPhoto = devPhoto,
+                        onPickDevPhoto = { devPhotoPicking = true },
+                        onClearDevPhoto = { devPhoto = null },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
                         onEditPet = { editing = it; screen = Screen.Onboarding },
@@ -488,6 +598,9 @@ class MainActivity : ComponentActivity() {
                                         // 없으므로 여기서 안 지우면 다음에 로그인한
                                         // 사람이 남의 도감을 물려받는다.
                                         cards.forgetEverything()
+                                        // 우리 아이의 진짜 사진이다. 안 지우면 다음에
+                                        // 이 폰으로 로그인한 사람이 물려받는다.
+                                        petPhotos.forgetEverything()
                                         session = null
                                         screen = Screen.Landing
                                     }
@@ -551,8 +664,11 @@ class MainActivity : ComponentActivity() {
                     Screen.Chat -> ChatScreen(
                         onBack = { screen = Screen.Home },
                         avatar = artBreed,
-                        dogId = pets.primary?.id,
+                        // 말풍선 얼굴은 안 바뀐다. 보행 촬영 화면에서만 쓴다.
+                        avatarPhoto = pets.primary?.let { petPhotos[it.id] },
+                        dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
+                        historyCoordinator = chatHistory,
                     )
 
                     Screen.Places -> PlacesRoute(
@@ -567,6 +683,7 @@ class MainActivity : ComponentActivity() {
                         onSync = { scope.launch { walkRuntime.sync.syncOnce(freshToken()) } },
                         onBack = { screen = Screen.Home },
                         pets = pets.pets.orEmpty(),
+                        photoOf = { petPhotos[it] },
                         onOpen = { id ->
                             openedWalkId = id
                             screen = Screen.WalkDetail
@@ -589,6 +706,7 @@ class MainActivity : ComponentActivity() {
                         history = walkRuntime.history,
                         avatarBreed = artBreed,
                         pets = pets.pets.orEmpty(),
+                        photoOf = { petPhotos[it] },
                         outside = outside,
                     )
 

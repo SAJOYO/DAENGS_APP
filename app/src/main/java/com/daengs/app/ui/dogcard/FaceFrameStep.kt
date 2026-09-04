@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -53,6 +54,10 @@ fun FaceFrameStep(
             .fillMaxWidth()
             .aspectRatio(1f)
             .background(PinkFaint)
+            // **상자 밖으로 안 그린다.** 원을 채우려면 그림이 상자보다 커지는데,
+            // 안 자르면 아래 안내 글씨와 버튼 위에 사진이 덮인다. 누끼는 둘레가
+            // 투명해서 안 보이던 것이 **프로필 사진에서 드러났다.**
+            .clipToBounds()
             // **손짓은 이 블록 안에서 쌓는다.**
             //
             // 예전에는 `pointerInput(Unit)` 안에서 `frame` 을 그냥 읽었다. 그 블록은

@@ -48,7 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.DAILY_DRAWS
 import com.daengs.app.dogcard.DrawnCard
+import com.daengs.app.dogcard.cardFileName
 import com.daengs.app.dogcard.drawTemplate
+import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.screening.Photo
 import com.daengs.app.ui.chat.GuideFrameScreen
 import com.daengs.app.ui.dex.DEX_CARDS
@@ -86,10 +88,12 @@ fun CardDrawScreen(
     onCancel: () -> Unit,
     onDrawn: suspend (dog: DrawDog?, template: CardTemplate, face: Bitmap, core: IntRect) -> DrawnCard?,
     onOpenDex: () -> Unit,
-    onExport: ((DrawnCard) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 뽑은 카드를 사진첩에 넣거나 남에게 보낸다. **도감의 `CardViewer` 와 같은 자리다** —
+    // 부르는 쪽에서 들고 다닐 것이 없어서 화면이 자기 것을 만든다.
+    val saver = rememberCardSaver()
 
     var step by remember { mutableStateOf(DrawStep.Intro) }
     var photo by remember { mutableStateOf<Bitmap?>(null) }
@@ -286,7 +290,7 @@ fun CardDrawScreen(
                         step = DrawStep.Intro
                     },
                     onOpenDex = onOpenDex,
-                    onExport = onExport,
+                    saver = saver,
                 )
             }
         }
@@ -430,7 +434,8 @@ private fun ResultBody(
     left: Int,
     onAgain: () -> Unit,
     onOpenDex: () -> Unit,
-    onExport: ((DrawnCard) -> Unit)?,
+    /** 사진첩에 넣거나 남에게 보낸다. **뽑은 직후가 자랑하고 싶은 순간이다** */
+    saver: CardSaver,
 ) {
     val dex = DEX_CARDS.firstOrNull { it.id == template.id }
     Box(Modifier.fillMaxWidth(0.72f)) {
@@ -458,8 +463,31 @@ private fun ResultBody(
 
     Spacer(Modifier.height(2.dp))
     PinkButton(label = "도감에서 보기", enabled = true, onClick = onOpenDex)
-    onExport?.let { export ->
-        QuietButton(label = "파일로 저장", onClick = { export(card) })
+
+    // 빈 판. 도감이 저장할 때 읽는 것과 같은 그림이다. 아직 안 읽혔으면 저장·공유가
+    // 안 뜬다 — 눌리면 빈 카드가 나간다.
+    val art = rememberAssetImage(template.art)
+    art?.let { plate ->
+        val shot = CardShot(
+            fileName = cardFileName(template.id, card.id, card.drawnAtMillis),
+            art = plate,
+            template = template,
+            face = face,
+            name = card.dogName,
+            code = card.codeText,
+        )
+        QuietButton(
+            label = when {
+                saver.busy -> "저장하는 중…"
+                saver.toGallery -> "갤러리에 저장"
+                else -> "이미지로 저장"
+            },
+            onClick = { saver.save(shot) },
+        )
+        QuietButton(label = "공유하기", onClick = { saver.share(shot) })
+    }
+    saver.note?.let {
+        Text(it, color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
     }
     QuietButton(
         label = if (left > 0) "한 번 더 (${left}번 남음)" else "오늘 뽑기를 다 썼어요",
@@ -569,7 +597,7 @@ private fun DrawResultPreview() {
                 left = 2,
                 onAgain = {},
                 onOpenDex = {},
-                onExport = {},
+                saver = rememberCardSaver(),
             )
         }
     }

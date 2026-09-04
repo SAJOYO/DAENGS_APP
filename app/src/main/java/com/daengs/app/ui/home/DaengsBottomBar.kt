@@ -79,6 +79,8 @@ fun DaengsBottomBar(
     onSelect: (BottomTab) -> Unit,
     onCenter: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 방 둘러보기가 "저장소" 를 밝힐 수 있게 자리를 등록한다. null 이면 안 한다. */
+    tourSpots: TourSpots? = null,
 ) {
     Box(modifier.fillMaxWidth()) {
 
@@ -101,7 +103,12 @@ fun DaengsBottomBar(
                 // 가운데 버튼 자리
                 Spacer(Modifier.weight(1f))
                 BottomItem(BottomTab.Dex, selected, onSelect, Modifier.weight(1f))
-                BottomItem(BottomTab.Storage, selected, onSelect, Modifier.weight(1f))
+                BottomItem(
+                    BottomTab.Storage,
+                    selected,
+                    onSelect,
+                    Modifier.weight(1f).tourSpot(tourSpots, TourStop.Storage),
+                )
             }
         }
 
