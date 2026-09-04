@@ -74,6 +74,13 @@ fun HoloCard(
      * (`RoomShellShapes.drawWindowOutside`).
      */
     veil: Color? = null,
+    /**
+     * 포일이 닿지 않을 자리. null 이면 예전처럼 카드 전체를 덮는다.
+     *
+     * 아트창 배경이 **이미 인쇄된 무지개 폭발**이라 그 위에 움직이는 포일이 또
+     * 얹히면 그림을 못 읽는다. [FoilQuiet] 참고.
+     */
+    quiet: FoilQuiet? = null,
     /** 카드 그림 **아래**에 그릴 것. 내가 뽑은 카드는 얼굴이 여기로 들어간다 */
     beneath: (DrawScope.() -> Unit)? = null,
     /** 카드 그림 **위**에 그릴 것. 이름·번호판이 여기다 */
@@ -111,6 +118,11 @@ fun HoloCard(
         if (veil == null) {
             above?.invoke(this)
             drawFoil(foil, input, tune)
+            // **포일 뒤다.** 앞에서 부르면 그 위에 포일이 다시 덮여 아무 일도 안 한다.
+            // 손을 뗀 뒤(intensity 0)에는 포일이 없으니 다시 그릴 것도 없다.
+            if (quiet != null && input.intensity > 0.001f) {
+                drawFoilQuiet(quiet, art, beneath)
+            }
         }
         // **카드 안에서 그린다.** 밖에서 그리면 칸 크기를 따라가서 카드보다 넓어진다 —
         // 카드는 높이 기준이라 칸보다 좁다.

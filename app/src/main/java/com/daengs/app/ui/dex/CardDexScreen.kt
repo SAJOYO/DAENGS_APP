@@ -493,6 +493,7 @@ private fun GridCard(
                 hold = rub.hold,
                 holdColor = card.accent,
                 veil = if (slot.locked) CardLock else null,
+                quiet = foilQuietFor(card.id),
                 beneath = if (drawn?.composed == true) {
                     { drawCardFace(drawn.face!!, drawn.template!!) }
                 } else {
@@ -738,6 +739,7 @@ private fun CardViewer(
                 hold = rub.hold,
                 holdColor = card.accent,
                 veil = if (slot.locked) CardLock else null,
+                quiet = foilQuietFor(card.id),
                 beneath = if (drawn?.composed == true) {
                     { drawCardFace(drawn.face!!, drawn.template!!) }
                 } else {
