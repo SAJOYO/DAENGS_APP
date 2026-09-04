@@ -195,6 +195,14 @@ fun HomeScreen(
     onTourClose: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
     pets: List<Pet>? = null,
+    /**
+     * 그 아이가 올린 프로필 사진. 없으면 견종 그림이다.
+     *
+     * **챗봇 얼굴에는 안 쓴다** — 거기는 학사모 쓴 "똑똑이" 자리다.
+     */
+    photoOf: (String) -> ImageBitmap? = { null },
+    /** 대표 아이의 사진을 바꾸러 간다. null 이면 마이에서 그 자리가 안 뜬다 */
+    onEditPhoto: (() -> Unit)? = null,
     canAddMore: Boolean = false,
     onAddPet: (() -> Unit)? = null,
     onEditPet: ((Pet) -> Unit)? = null,
@@ -255,6 +263,11 @@ fun HomeScreen(
     // "대표 견종"을 보는데, 여기서 들고 있으면 홈 밖으로 못 나가서 로그인해야만
     // 챗봇 얼굴을 확인할 수 있었다.
     val profileBreed = devBreed ?: pets?.firstOrNull { it.isPrimary }?.breedArt
+    // 상단바에 걸 사진. **개발자 패널로 견종을 바꿔 보는 중이면 안 쓴다** — 그때는
+    // 그 견종 그림을 보려는 것이지 내 아이 사진을 보려는 것이 아니다.
+    val profilePhoto = if (devBreed != null) null else {
+        pets?.firstOrNull { it.isPrimary }?.let { photoOf(it.id) }
+    }
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
     val herd = rememberDogHerd(roomRoster(pets), departedInRoom(pets))
@@ -316,6 +329,7 @@ fun HomeScreen(
                     onBell = {},
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
+                    photo = profilePhoto,
                 )
             }
         },
@@ -348,6 +362,8 @@ fun HomeScreen(
                 // 방 위에서 둘러보기가 열려야 한다.
                 onReplayTour = onReplayTour?.let { go -> { onCloseMy?.invoke(); go() } },
                 breed = profileBreed,
+                photoOf = photoOf,
+                onEditPhoto = onEditPhoto,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
                 pets = pets,
                 canAddMore = canAddMore,

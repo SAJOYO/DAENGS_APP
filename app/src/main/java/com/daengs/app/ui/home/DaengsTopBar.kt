@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -21,6 +22,7 @@ import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DaengsLogo
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
@@ -39,6 +41,8 @@ fun DaengsTopBar(
      * 빠져 있었다.
      */
     avatar: DogBreed? = null,
+    /** 사용자가 올린 프로필 사진. 있으면 견종 그림 대신 이게 뜬다. */
+    photo: ImageBitmap? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -67,8 +71,7 @@ fun DaengsTopBar(
                 .padding(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (avatar != null) DogAvatar(avatar, Modifier.size(34.dp))
-            else PawAvatar(size = 34.dp)
+            PetAvatar(photo, avatar, 34.dp)
             DaengsIconView(DaengsIcon.CaretDown, Modifier.size(15.dp), tint = TextMuted)
         }
     }

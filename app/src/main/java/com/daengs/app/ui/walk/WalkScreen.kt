@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -89,6 +90,8 @@ fun WalkScreen(
     avatarBreed: DogBreed? = null,
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
     showMap: Boolean = true,
+    /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
 ) {
     val mapPresentation = state.toMapPresentation { formatClock(it) }
     val summary = state.completedSummary
@@ -126,6 +129,7 @@ fun WalkScreen(
             locationError = state.location.errorMessage,
             pets = state.selection.pets,
             selectedDogIds = state.selection.selectedDogIds,
+            photoOf = photoOf,
             moments = state.displayedMoments,
             momentNotice = state.momentNotice,
             selectedRoutePoint = state.selectedRoutePoint,
@@ -163,6 +167,8 @@ private fun WalkGameOverlay(
     locationError: String?,
     pets: List<Pet>,
     selectedDogIds: Set<String>,
+    /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
     moments: List<WalkMoment>,
     momentNotice: String?,
     selectedRoutePoint: WalkRoutePoint?,
@@ -293,6 +299,7 @@ private fun WalkGameOverlay(
                     onPause = onPause,
                     onShowResult = onShowResult,
                     modifier = Modifier.align(Alignment.BottomEnd),
+                    photoOf = photoOf,
                 )
             } else {
                 Row(
@@ -373,6 +380,7 @@ private fun WalkGameOverlay(
                         onStart = onStart,
                         onPause = onPause,
                         onShowResult = onShowResult,
+                        photoOf = photoOf,
                     )
                 }
             }
@@ -488,6 +496,7 @@ private fun WalkPrimaryControl(
     onPause: () -> Unit,
     onShowResult: () -> Unit,
     modifier: Modifier = Modifier,
+    photoOf: (String) -> ImageBitmap? = { null },
 ) {
     when {
         tracking.completedSessionId != null && !resultExpanded -> DaengsFloatingButton(
@@ -512,6 +521,7 @@ private fun WalkPrimaryControl(
             enabled = locationReady,
             onStart = onStart,
             modifier = modifier,
+            photoOf = photoOf,
         )
     }
 }
@@ -754,6 +764,7 @@ private fun ReadyCard(
     enabled: Boolean,
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
+    photoOf: (String) -> ImageBitmap? = { null },
 ) {
     Surface(
         modifier.widthIn(max = 300.dp).fillMaxWidth(),
@@ -764,7 +775,7 @@ private fun ReadyCard(
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("산책을 시작할까요?", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             if (pets.isNotEmpty()) {
-                DogPickRow(pets, selectedDogIds, onToggleDog)
+                DogPickRow(pets, selectedDogIds, onToggleDog, photoOf = photoOf)
             } else {
                 Text("등록한 강아지가 없어도 산책은 기록할 수 있어요.", color = TextMuted, fontSize = 11.sp)
             }

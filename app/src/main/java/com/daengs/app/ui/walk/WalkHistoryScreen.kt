@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -71,6 +72,8 @@ fun WalkHistoryScreen(
     onSync: (() -> Unit)? = null,
     /** 이름을 붙이고 거르는 데 쓴다. 기록에는 id 만 있다. */
     pets: List<Pet> = emptyList(),
+    /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
 ) {
     var walks by remember { mutableStateOf<List<WalkSummary>?>(null) }
     var filterDogId by remember { mutableStateOf<String?>(null) }
@@ -112,6 +115,7 @@ fun WalkHistoryScreen(
                 pets = pets,
                 selectedId = filterDogId,
                 onSelect = { filterDogId = it },
+                photoOf = photoOf,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 18.dp, top = 10.dp, end = 18.dp),
