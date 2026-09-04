@@ -131,21 +131,41 @@ fun tourCaptionTop(hole: Rect, screenHeight: Float, captionHeight: Float, gap: F
 }
 
 /**
+ * [from] 부터 세어 **자리가 있는 첫 단계.** 없으면 null.
+ *
+ * 자리가 없는 단계는 건너뛴다. 두 경우가 있다.
+ *
+ * - **아직 안 올라왔다.** 방이 자리를 알려 주는 것은 첫 배치 뒤라, 겹이 먼저 뜨는
+ *   프레임이 실제로 있다 (기기에서 매번 그렇다)
+ * - **그 물건이 방에 없다.** 턴테이블은 치울 수 있다
+ *
+ * 둘 다 **그 단계만 빼고 넘어가야** 한다. 예전에는 여기서 겹을 통째로 안 그렸는데,
+ * 그러면 화면에 아무것도 없으면서 둘러보기는 켜진 상태라 **넘길 방법도 건너뛸 방법도
+ * 없어진다.**
+ */
+fun showableStep(from: Int, hasSpot: (TourStop) -> Boolean): Int? =
+    (from..TOUR_STEPS.lastIndex).firstOrNull { hasSpot(TOUR_STEPS[it].stop) }
+
+/**
  * 어둡게 깔고 한 곳만 밝히는 겹.
  *
- * @param spots 자리 등록부. 아직 안 올라온 자리면 **그 단계를 건너뛴다** — 빈 화면에
- *   대고 "여기를 누르세요" 라고 하면 안 된다
- * @param stepIndex 지금 몇 번째
+ * @param spots 자리 등록부. 아직 안 올라온 자리면 [showableStep] 이 그 단계를 건너뛴다 —
+ *   빈 화면에 대고 "여기를 누르세요" 라고 하면 안 된다
+ * @param stepIndex 지금 몇 번째. 여기서부터 **자리가 있는** 단계를 찾아 그린다
+ * @param onNext 넘길 때. **실제로 보여 준 단계 번호**를 준다 — 건너뛴 단계가 있으면
+ *   부르는 쪽이 센 번호와 다르다
  */
 @Composable
 fun RoomTourOverlay(
     spots: TourSpots,
     stepIndex: Int,
-    onNext: () -> Unit,
+    onNext: (shown: Int) -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val step = TOUR_STEPS.getOrNull(stepIndex) ?: return
+    // 하나도 못 찾으면 이번 프레임은 넘긴다. 방이 자리를 알려 주면 다음 프레임에 뜬다.
+    val at = showableStep(stepIndex) { spots[it] != null } ?: return
+    val step = TOUR_STEPS[at]
     val hole = spots[step.stop] ?: return
     val density = LocalDensity.current
     val gap = with(density) { 16.dp.toPx() }
@@ -161,7 +181,7 @@ fun RoomTourOverlay(
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onClick = onNext,
+                onClick = { onNext(at) },
             ),
     ) {
         Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
@@ -179,8 +199,8 @@ fun RoomTourOverlay(
         val top = tourCaptionTop(hole, screenHeightPx, captionHeight, gap)
         TourCaption(
             step = step,
-            index = stepIndex,
-            onNext = onNext,
+            index = at,
+            onNext = { onNext(at) },
             onSkip = onSkip,
             modifier = Modifier
                 .fillMaxWidth()

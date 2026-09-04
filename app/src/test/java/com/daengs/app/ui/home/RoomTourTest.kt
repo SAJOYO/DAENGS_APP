@@ -67,6 +67,41 @@ class RoomTourTest {
     }
 
     @Test
+    fun `자리가 없는 단계는 건너뛴다`() {
+        // 턴테이블을 치운 방. 2단계를 그릴 수 없으니 3단계(액자)로 넘어가야 한다.
+        val 있는자리 = setOf(TourStop.Door, TourStop.Frame, TourStop.Storage, TourStop.Chat)
+
+        assertEquals(0, showableStep(0) { it in 있는자리 })
+        assertEquals(2, showableStep(1) { it in 있는자리 })
+    }
+
+    @Test
+    fun `자리가 하나도 없으면 아직 그리지 않는다`() {
+        // 방이 자리를 알려 주기 전 프레임. **여기서 닫아 버리면 안 된다** —
+        // 다음 프레임에 자리가 올라오면 그때 뜬다.
+        assertEquals(null, showableStep(0) { false })
+    }
+
+    @Test
+    fun `마지막 뒤로는 없다`() {
+        assertEquals(null, showableStep(TOUR_STEPS.size) { true })
+    }
+
+    @Test
+    fun `건너뛴 단계를 다시 그리지 않는다`() {
+        // 겹이 보여 준 번호로 세야 한다. 부르는 쪽이 센 번호에 +1 하면
+        // 건너뛴 단계를 또 그리게 된다.
+        val 있는자리 = setOf(TourStop.Door, TourStop.Chat)
+
+        val 처음 = showableStep(0) { it in 있는자리 }!!
+        val 다음 = showableStep(처음 + 1) { it in 있는자리 }!!
+
+        assertEquals(0, 처음)
+        assertEquals(TOUR_STEPS.lastIndex, 다음)
+        assertEquals(null, showableStep(다음 + 1) { it in 있는자리 })
+    }
+
+    @Test
     fun `자리를 등록하면 그 자리가 나온다`() {
         val spots = TourSpots()
         assertEquals(null, spots[TourStop.Door])

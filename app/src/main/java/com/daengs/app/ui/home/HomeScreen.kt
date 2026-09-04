@@ -460,8 +460,10 @@ fun HomeScreen(
         RoomTourOverlay(
             spots = tourSpots,
             stepIndex = tourStep,
-            onNext = {
-                if (tourStep >= TOUR_STEPS.lastIndex) onTourClose?.invoke() else tourStep += 1
+            // **겹이 실제로 보여 준 번호로 센다.** 자리가 없어 건너뛴 단계가 있으면
+            // 여기 든 값보다 앞서 있다. 그걸 무시하고 +1 하면 같은 단계를 또 그린다.
+            onNext = { shown ->
+                if (shown >= TOUR_STEPS.lastIndex) onTourClose?.invoke() else tourStep = shown + 1
             },
             onSkip = { onTourClose?.invoke() },
         )
