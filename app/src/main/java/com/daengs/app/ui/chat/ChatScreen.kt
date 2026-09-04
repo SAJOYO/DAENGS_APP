@@ -42,7 +42,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,7 +72,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.daengs.app.assistant.AssistantApi
+import com.daengs.app.assistant.AssistantResponse
 import com.daengs.app.assistant.WalkVerdict
+import com.daengs.app.chat.ChatHistoryCoordinator
+import com.daengs.app.chat.ChatHistoryState
+import com.daengs.app.chat.ChatLoadState
+import com.daengs.app.chat.ChatSession
+import com.daengs.app.chat.ChatTurn
 import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
@@ -120,7 +128,7 @@ import kotlinx.coroutines.launch
  * 예전에는 `List<String>` 이었다. 사진과 진단 결과가 들어오면서 말풍선 종류가
  * 넷이 됐고, 문자열로는 "이건 사진이다"를 표현할 자리가 없다.
  */
-private sealed interface ChatEntry {
+internal sealed interface ChatEntry {
     data class Mine(val text: String) : ChatEntry
 
     data class Theirs(val text: String) : ChatEntry
@@ -165,6 +173,29 @@ private sealed interface ChatEntry {
     data class GaitCompared(val comparison: GaitComparison) : ChatEntry
 }
 
+/** 서버가 준 turn 순서를 그대로 대화 말풍선으로 복원한다. */
+internal fun restoredChatEntries(turns: List<ChatTurn>): List<ChatEntry> = buildList {
+    turns.forEach { turn ->
+        add(ChatEntry.Mine(turn.userContent))
+        when (turn.processingStatus) {
+            ChatTurn.ProcessingStatus.PROCESSING -> add(ChatEntry.Thinking)
+            ChatTurn.ProcessingStatus.FAILED,
+            ChatTurn.ProcessingStatus.UNKNOWN ->
+                add(ChatEntry.Failed("이 답변은 완료되지 않았어요. 다시 질문해 주세요."))
+            ChatTurn.ProcessingStatus.COMPLETED -> {
+                val response = turn.publicResponse
+                if (response == null) {
+                    add(ChatEntry.Theirs(turn.assistantContent.orEmpty()))
+                } else {
+                    add(ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage()))
+                    response.walkCard()?.let { add(ChatEntry.WalkCard(it)) }
+                    if (response.knownHandoff() == KnownHandoff.GAIT) add(ChatEntry.GaitIntro)
+                }
+            }
+        }
+    }
+}
+
 /**
  * 대화 UI 전용 화면. 자유 텍스트는 `POST /assistant/query` 오케스트레이션으로 간다 —
  * 자연어 해석·능력 실행·집계는 전부 저쪽이 하고, 앱은 상태(`status`)와
@@ -199,6 +230,8 @@ fun ChatScreen(
      * 세션을 갱신하지 않는다. null 이면 로그인이 안 된 것이다.
      */
     accessTokenProvider: suspend () -> String? = { null },
+    /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
+    historyCoordinator: ChatHistoryCoordinator? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -219,11 +252,56 @@ fun ChatScreen(
 
     var draft by rememberSaveable { mutableStateOf("") }
     val entries = remember { mutableStateListOf<ChatEntry>() }
+    val historyState = historyCoordinator?.state?.collectAsState()?.value
+        ?: ChatHistoryState(selectedPetId = dogId)
+    var displayedSessionId by remember { mutableStateOf<String?>(null) }
+    var recentOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingDeletion by remember { mutableStateOf<ChatSession?>(null) }
+    var pendingPersistedSlot by remember { mutableStateOf<Int?>(null) }
+    var pendingPersistedSessionId by remember { mutableStateOf<String?>(null) }
+    var queryGeneration by remember { mutableStateOf(0L) }
     val scroll = rememberScrollState()
     // null 이면 닫힘. [ChooserMode.SkinOnly] 는 서버 skin HANDOFF 가 연 것이라
     // 보행 묶음을 감춘다 — 사용자가 그 질문에서 보행을 고를 이유가 없다.
     var chooserMode by remember { mutableStateOf<ChooserMode?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(dogId, historyCoordinator) {
+        queryGeneration++
+        pendingPersistedSlot = null
+        pendingPersistedSessionId = null
+        displayedSessionId = null
+        entries.clear()
+        val coordinator = historyCoordinator ?: return@LaunchedEffect
+        coordinator.selectPet(dogId)
+        if (dogId == null) return@LaunchedEffect
+        val token = accessTokenProvider() ?: return@LaunchedEffect
+        coordinator.loadRecent(token)
+        val selectedSessionId = coordinator.state.value.selectedSessionId
+        if (selectedSessionId == null) coordinator.createOrReuseDraft(token)
+        else coordinator.refreshCurrent(token)
+    }
+    DisposableEffect(historyCoordinator) {
+        onDispose { historyCoordinator?.cancelPending() }
+    }
+
+    LaunchedEffect(historyState.selectedSessionId, historyState.selectedSession) {
+        val detail = (historyState.selectedSession as? ChatLoadState.Ready)?.value
+            ?: return@LaunchedEffect
+        if (detail.session.id != displayedSessionId) {
+            entries.clear()
+            entries.addAll(restoredChatEntries(detail.turns))
+            displayedSessionId = detail.session.id
+            pendingPersistedSlot = null
+            pendingPersistedSessionId = null
+        }
+    }
+    LaunchedEffect(historyState.selectedSessionId) {
+        val coordinator = historyCoordinator ?: return@LaunchedEffect
+        if (dogId == null || historyState.selectedSessionId != null) return@LaunchedEffect
+        val token = accessTokenProvider() ?: return@LaunchedEffect
+        coordinator.createOrReuseDraft(token)
+    }
 
     // 사진을 고르면 **바로 안 보낸다.** 가이드 프레임에서 병변 자리를 받아야
     // 저쪽이 학습과 같은 함수로 자를 수 있다 ([GuideFrameScreen] 참고).
@@ -353,51 +431,94 @@ fun ChatScreen(
      *
      * **여기서 답을 지어내지 않는다.** 로그인이 안 됐을 때만 로컬 문구를 쓰고,
      * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
-     * 대화 기록도 안 보낸다 — v1 오케스트레이션은 상태가 없다.
+     * **[dogId] 는 두 경로가 똑같이 싣는다.** 견종·나이는 앱이 지어 보내는 게 아니라
+     * 저쪽이 그 id 로 `pets` 를 읽는다 (PR #112). 저장하는 질문에서는 조율기가 같은
+     * 값을 실어 준다 — 화면이 고른 강아지 하나가 두 경로의 원본이다.
      *
-     * 같이 싣는 것은 좌표와 **[dogId]** 뿐이다. 견종·나이는 앱이 지어 보내는 게 아니라
-     * 저쪽이 그 id 로 `pets` 를 읽는다.
+     * 강아지와 세션이 있으면 저장 계약의 두 id 를 조율기에 맡기고, 둘 중 하나가 없는
+     * 기존 호출자는 무상태 요청을 그대로 쓴다. 무상태는 대화 기록을 안 보낸다.
      */
     // 물어보는 중인가. **연타를 막는다** — 한 번이 의미 라우터 + 생성이라 값이 비싸고,
     // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
     var asking by remember { mutableStateOf(false) }
+
+    val showResponse: (Int, AssistantResponse) -> Unit = { slot, response ->
+        if (slot in entries.indices) {
+            entries[slot] = ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage())
+            response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
+            when (response.knownHandoff()) {
+                KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
+                KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
+                null -> Unit
+            }
+        }
+    }
+
+    LaunchedEffect(historyState.lastResponse, historyState.sendError) {
+        val slot = pendingPersistedSlot ?: return@LaunchedEffect
+        if (historyState.selectedSessionId != pendingPersistedSessionId) return@LaunchedEffect
+        historyState.lastResponse?.let { response ->
+            showResponse(slot, response)
+            pendingPersistedSlot = null
+            pendingPersistedSessionId = null
+            asking = false
+        } ?: historyState.sendError?.let { error ->
+            if (slot in entries.indices) {
+                entries[slot] = ChatEntry.Failed(error.message ?: "AI 서버에 닿지 못했어요.")
+            }
+            pendingPersistedSlot = null
+            pendingPersistedSessionId = null
+            asking = false
+        }
+    }
 
     val sendQuery: (String) -> Unit = { text ->
         entries += ChatEntry.Mine(text)
         val slot = entries.size
         entries += ChatEntry.Thinking
         asking = true
+        val generation = queryGeneration
+        val selectedSessionId = historyState.selectedSessionId
         scope.launch {
             val token = accessTokenProvider()
-            if (token == null) {
+            if (token == null && generation == queryGeneration) {
                 entries[slot] = ChatEntry.Failed("로그인이 필요해요. 다시 로그인해 주세요.")
                 asking = false
                 return@launch
             }
+            if (token == null) return@launch
             // 지금 있는 곳. **못 구해도 질문은 그냥 보낸다** — 위치가 필요한 질문은
             // 일부고, 좌표 때문에 훈련 질문까지 막으면 안 된다. 서버는 위치가
             // 필요한데 없으면 CLARIFY 로 되묻는데, 이어서 묻는 토큰이 없어서
             // (무상태) 그 되묻기는 사용자에게 막다른 길이다. 그래서 미리 싣는다.
             val where = runCatching { fused.currentLocation().point }.getOrNull()
-            AssistantApi.query(token, text, where, activeDogId = dogId)
-                .onSuccess { response ->
-                    // 대기 자리를 답으로 갈아 끼운다. 산책만 물었으면 저쪽 한 줄
-                    // ("현재 산책 판단: GOOD") 대신 대화체 문장을 쓰고 ([walkSentence]),
-                    // 근거와 시간대는 아래 카드가 맡는다.
-                    entries[slot] = ChatEntry.Theirs(
-                        response.walkSentence() ?: response.bubbleMessage(),
-                    )
-                    response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
-                    when (response.knownHandoff()) {
-                        // 실행하지 않는다 — 기존 흐름을 그대로 연다. 보행은 카드를
-                        // 하나 더 얹고, 피부는 이미 있는 선택 시트를 스킨 전용으로 연다.
-                        KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
-                        KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
-                        null -> Unit
-                    }
+            if (generation != queryGeneration) return@launch
+            val coordinator = historyCoordinator
+            if (coordinator != null && dogId != null) {
+                val current = coordinator.state.value
+                if (current.selectedPetId != dogId || current.selectedSessionId != selectedSessionId) {
+                    if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 바뀌어 질문을 보내지 않았어요.")
+                    asking = false
+                    return@launch
                 }
-                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.") }
-            asking = false
+                pendingPersistedSlot = slot
+                pendingPersistedSessionId = selectedSessionId
+                if (!coordinator.send(token, text, where)) {
+                    pendingPersistedSlot = null
+                    pendingPersistedSessionId = null
+                    if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 준비된 뒤 다시 보내 주세요.")
+                    asking = false
+                }
+            } else {
+                AssistantApi.query(token, text, where, activeDogId = dogId, persistence = null)
+                    .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response) }
+                    .onFailure {
+                        if (generation == queryGeneration && slot in entries.indices) {
+                            entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.")
+                        }
+                    }
+                if (generation == queryGeneration) asking = false
+            }
         }
     }
 
@@ -433,7 +554,15 @@ fun ChatScreen(
             .background(CreamBg)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
-        ChatHeader(onBack = onBack, avatar = avatar)
+        ChatHeader(
+            onBack = onBack,
+            avatar = avatar,
+            onRecent = if (historyCoordinator != null && dogId != null) {
+                { recentOpen = true }
+            } else {
+                null
+            },
+        )
         Column(
             Modifier
                 .weight(1f)
@@ -443,10 +572,31 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (entries.isEmpty()) {
-                AssistantBubble(
-                    "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.",
-                    avatar,
-                )
+                when (val sessionState = historyState.selectedSession) {
+                    ChatLoadState.Loading -> AssistantBubble("대화를 불러오고 있어요…", avatar)
+                    is ChatLoadState.Failed -> {
+                        AssistantBubble(sessionState.error.message ?: "대화를 불러오지 못했어요.", avatar)
+                        Text(
+                            "다시 시도",
+                            color = DaengPinkDeep,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clickable {
+                                val coordinator = historyCoordinator ?: return@clickable
+                                scope.launch {
+                                    val token = accessTokenProvider() ?: return@launch
+                                    val sessionId = historyState.selectedSessionId
+                                    if (sessionId == null) coordinator.createOrReuseDraft(token)
+                                    else coordinator.openSession(token, sessionId)
+                                }
+                            }.padding(horizontal = 40.dp, vertical = 4.dp),
+                        )
+                    }
+                    else -> AssistantBubble(
+                        "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.",
+                        avatar,
+                    )
+                }
             } else {
                 entries.forEach { entry ->
                     when (entry) {
@@ -503,7 +653,8 @@ fun ChatScreen(
         ChatInput(
             value = draft,
             onValueChange = { draft = it },
-            busy = asking,
+            busy = asking || historyState.sending ||
+                (historyCoordinator != null && dogId != null && !historyState.canSend),
             onSend = {
                 val text = draft.trim()
                 // 물어보는 중에는 안 받는다 — 위 [asking] 주석.
@@ -520,6 +671,61 @@ fun ChatScreen(
             // 막으면 보행 쪽까지 같이 닫힌다. 못 하는 이유는 그 줄을 눌렀을 때 말한다.
             onDiagnose = { chooserMode = ChooserMode.Full },
         )
+    }
+
+    if (recentOpen && historyCoordinator != null) {
+        Dialog(onDismissRequest = { recentOpen = false }) {
+            Surface(color = CreamBg, shape = RoundedCornerShape(24.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 560.dp).padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("최근 대화", color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(
+                            "닫기",
+                            color = DaengPinkDeep,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable { recentOpen = false }.padding(8.dp),
+                        )
+                    }
+                    RecentChatsContent(
+                        state = historyState.recentSessions,
+                        selectedSessionId = historyState.selectedSessionId,
+                        pendingDeletion = pendingDeletion,
+                        onRetry = {
+                            scope.launch {
+                                val token = accessTokenProvider() ?: return@launch
+                                historyCoordinator.loadRecent(token)
+                            }
+                        },
+                        onSelect = { session ->
+                            recentOpen = false
+                            queryGeneration++
+                            asking = false
+                            pendingPersistedSlot = null
+                            pendingPersistedSessionId = null
+                            displayedSessionId = null
+                            entries.clear()
+                            scope.launch {
+                                val token = accessTokenProvider() ?: return@launch
+                                historyCoordinator.openSession(token, session.id)
+                            }
+                        },
+                        onRequestDelete = { pendingDeletion = it },
+                        onDismissDelete = { pendingDeletion = null },
+                        onConfirmDelete = { session ->
+                            pendingDeletion = null
+                            scope.launch {
+                                val token = accessTokenProvider() ?: return@launch
+                                historyCoordinator.deleteSession(token, session.id)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
+            }
+        }
     }
 
     chooserMode?.let { mode ->
@@ -745,7 +951,7 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
+private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?, onRecent: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -761,7 +967,24 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
             Text("반려견 생활 도우미", color = TextMuted, fontSize = 12.sp)
         }
         Box(Modifier.size(9.dp).background(DaengPink, RoundedCornerShape(50)))
+        if (onRecent != null) {
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "최근",
+                color = DaengPinkDeep,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onRecent)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+            )
+        }
     }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun ChatHeaderPreview() = DaengsTheme {
+    ChatHeader(onBack = {}, avatar = HomeDemoData.DOG_BREED, onRecent = {})
 }
 
 /**
