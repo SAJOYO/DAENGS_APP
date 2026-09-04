@@ -90,6 +90,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.screening.ScreeningApi
+import com.daengs.app.screening.ScreeningRun
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -248,6 +249,13 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
+    /**
+     * 피부 **변화 기록**으로 가는 길. null 이면 그 줄을 안 보여 준다.
+     *
+     * 기록은 로그인해야 있는 것이라, 로그인 안 한 기기에서는 [MainActivity] 가
+     * null 을 준다 — 눌러 봐야 빈 화면이면 안 누르게 하는 편이 낫다.
+     */
+    onOpenScreeningHistory: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -331,6 +339,9 @@ fun ChatScreen(
         }
     }
 
+    // 진단 한 번. **새 계약이 되면 기록이 남고, 안 되면 옛 경로로 판정만 받는다.**
+    val screeningRun = remember(accessTokenProvider) { ScreeningRun(accessTokenProvider) }
+
     // 프레임까지 맞춘 사진을 대화에 올리고 서버에 물어본다.
     //
     // **말풍선을 먼저 올리고 자리를 잡아 둔다.** 응답을 기다렸다가 한꺼번에 올리면
@@ -344,9 +355,16 @@ fun ChatScreen(
             entries += ChatEntry.MyPhoto(cropForBubble(photo.thumbnail, box))
             val slot = entries.size
             entries += ChatEntry.Screening
-            ScreeningApi.screen(photo.jpeg, box)
-                .onSuccess { entries[slot] = ChatEntry.Report(it) }
-                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "진단 서버에 닿지 못했어요.") }
+            // **기록으로 남기되, 못 남겨도 진단은 한다.** 로그인 안 했거나 저쪽
+            // 저장소가 아직 안 켜졌으면(503) 옛 경로로 물러선다 — 그 갈림은
+            // [ScreeningRun] 이 정한다.
+            //
+            // ⚠️ **box 를 이제 실제로 보낸다.** 전에는 안 보내서 저쪽이 화면 중앙으로
+            //    물러섰고, 1단계는 큰 차이가 없지만 2단계 분포가 학습 크롭과 어긋났다.
+            when (val outcome = screeningRun.run(dogId, photo.jpeg, box)) {
+                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report)
+                is ScreeningRun.Outcome.Failed -> entries[slot] = ChatEntry.Failed(outcome.message)
+            }
         }
     }
 
@@ -792,6 +810,12 @@ fun ChatScreen(
         AiActionDialog(
             skinOnly = mode == ChooserMode.SkinOnly,
             onDismiss = { chooserMode = null },
+            onOpenHistory = onOpenScreeningHistory?.let {
+                {
+                    chooserMode = null
+                    it()
+                }
+            },
             onCamera = {
                 chooserMode = null
                 when {
@@ -1536,6 +1560,8 @@ private fun AiActionDialog(
     onGaitCapture: () -> Unit,
     onGaitPick: () -> Unit,
     skinOnly: Boolean = false,
+    /** 지난 기록으로. null 이면 줄을 안 그린다 (로그인 안 한 기기). */
+    onOpenHistory: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -1553,6 +1579,12 @@ private fun AiActionDialog(
                             SourceRow(DaengsIcon.Camera, "사진찍기", onCamera)
                             RowSeparator()
                             SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
+                            if (onOpenHistory != null) {
+                                RowSeparator()
+                                // 진단은 말풍선으로 지나가고 사라진다. 지난 것을
+                                // 나란히 놓고 보는 자리로 가는 길이다.
+                                SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenHistory)
+                            }
                             RowSeparator()
                             // 어떻게 찍어야 쓸 수 있는 사진이 되는지는 **고르기 전에**
                             // 알려야 한다. 보행 묶음이 같은 이유로 아래 줄을 달고 있다.
