@@ -132,7 +132,14 @@ import kotlinx.coroutines.launch
 internal sealed interface ChatEntry {
     data class Mine(val text: String) : ChatEntry
 
-    data class Theirs(val text: String) : ChatEntry
+    /**
+     * AI 가 준 말풍선.
+     *
+     * @property turnId 서버에 저장된 turn. **null 이면 저장된 답이 아니다** — 무상태
+     *   질문의 답이거나, 앱이 지어낸 안내 문구다. 신고(`POST /app/reports`)가 이 id 를
+     *   요구하므로 없으면 메일 경로로 간다.
+     */
+    data class Theirs(val text: String, val turnId: String? = null) : ChatEntry
 
     /** 오케스트레이션에 물어보는 중. 답이 오면 이 자리가 [Theirs] 나 [Failed] 로 바뀐다. */
     data object Thinking : ChatEntry
@@ -201,9 +208,9 @@ internal fun restoredChatEntries(turns: List<ChatTurn>): List<ChatEntry> = build
             ChatTurn.ProcessingStatus.COMPLETED -> {
                 val response = turn.publicResponse
                 if (response == null) {
-                    add(ChatEntry.Theirs(turn.assistantContent.orEmpty()))
+                    add(ChatEntry.Theirs(turn.assistantContent.orEmpty(), turn.id))
                 } else {
-                    add(ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage()))
+                    add(ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage(), turn.id))
                     response.walkCard()?.let { add(ChatEntry.WalkCard(it)) }
                     if (response.knownHandoff() == KnownHandoff.GAIT) add(ChatEntry.GaitIntro)
                 }
@@ -276,6 +283,8 @@ fun ChatScreen(
     var pendingPersistedSlot by remember { mutableStateOf<Int?>(null) }
     var pendingPersistedSessionId by remember { mutableStateOf<String?>(null) }
     var pendingPersistedQuery by remember { mutableStateOf("") }
+    /** 답이 놓인 자리. 늦게 오는 turn id 를 여기에 채운다. */
+    var answeredSlot by remember { mutableStateOf<Int?>(null) }
     var queryGeneration by remember { mutableStateOf(0L) }
     val scroll = rememberScrollState()
     // null 이면 닫힘. [ChooserMode.SkinOnly] 는 서버 skin HANDOFF 가 연 것이라
@@ -287,6 +296,7 @@ fun ChatScreen(
         queryGeneration++
         pendingPersistedSlot = null
         pendingPersistedSessionId = null
+        answeredSlot = null
         displayedSessionId = null
         entries.clear()
         val coordinator = historyCoordinator ?: return@LaunchedEffect
@@ -311,6 +321,7 @@ fun ChatScreen(
             displayedSessionId = detail.session.id
             pendingPersistedSlot = null
             pendingPersistedSessionId = null
+            answeredSlot = null
         }
     }
     LaunchedEffect(historyState.selectedSessionId) {
@@ -480,6 +491,7 @@ fun ChatScreen(
         if (historyState.selectedSessionId != pendingPersistedSessionId) return@LaunchedEffect
         historyState.lastResponse?.let { response ->
             showResponse(slot, response, pendingPersistedQuery)
+            answeredSlot = slot
             pendingPersistedSlot = null
             pendingPersistedSessionId = null
             asking = false
@@ -491,6 +503,17 @@ fun ChatScreen(
             pendingPersistedSessionId = null
             asking = false
         }
+    }
+
+    // 답이 먼저 오고 turn id 가 나중에 온다 — 조율기가 상세를 다시 받아야 알 수 있는
+    // 값이라서다. 그동안 말풍선은 이미 화면에 있으므로, 늦게 온 id 를 그 자리에 채운다.
+    // 이걸 안 하면 방금 받은 답변은 대화를 다시 열기 전까지 메일로만 신고된다.
+    LaunchedEffect(historyState.lastTurnId) {
+        val slot = answeredSlot ?: return@LaunchedEffect
+        val turnId = historyState.lastTurnId ?: return@LaunchedEffect
+        val shown = entries.getOrNull(slot) as? ChatEntry.Theirs ?: return@LaunchedEffect
+        entries[slot] = shown.copy(turnId = turnId)
+        answeredSlot = null
     }
 
     val sendQuery: (String) -> Unit = { text ->

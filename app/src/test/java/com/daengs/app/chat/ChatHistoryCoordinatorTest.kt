@@ -261,6 +261,49 @@ class ChatHistoryCoordinatorTest {
         )
     }
 
+    /**
+     * 신고(`POST /app/reports`)가 turn id 를 요구하는데 `POST /assistant/query` 응답에는
+     * 그 값이 없다. 성공 뒤 다시 받는 상세에서 **우리가 보낸 키로** 짚어야 한다 —
+     * 순서나 시각으로 짚으면 답이 여럿 쌓인 뒤 엉뚱한 turn 을 신고하게 된다.
+     */
+    @Test
+    fun `방금 답한 turn 을 client message id 로 짚는다`() = runTest {
+        val gateway = FakeHistoryGateway().apply {
+            sessionResults[SESSION_A] = Result.success(
+                ChatSessionDetail(
+                    session(SESSION_A, PET_A, "대화"),
+                    listOf(turn("turn-먼저", ID_2), turn("turn-방금", ID_1)),
+                ),
+            )
+        }
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+
+        coordinator.send(TOKEN, "밤에 짖어요")
+        advanceUntilIdle()
+
+        assertEquals(ID_1, gateway.sendCalls.single().persistence.clientMessageId)
+        assertEquals("turn-방금", coordinator.state.value.lastTurnId)
+    }
+
+    @Test
+    fun `대화를 다시 열면 앞 답변의 turn id 를 잊는다`() = runTest {
+        val gateway = FakeHistoryGateway().apply {
+            sessionResults[SESSION_A] = Result.success(
+                ChatSessionDetail(session(SESSION_A, PET_A, "대화"), listOf(turn("turn-방금", ID_1))),
+            )
+        }
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+        coordinator.send(TOKEN, "질문")
+        advanceUntilIdle()
+        assertEquals("turn-방금", coordinator.state.value.lastTurnId)
+
+        // 남은 값으로 다른 대화의 답변을 신고하면 안 된다.
+        coordinator.openSession(TOKEN, SESSION_A)
+        assertEquals(null, coordinator.state.value.lastTurnId)
+    }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(gateway: FakeHistoryGateway) =
         ChatHistoryCoordinator(
             scope = this,
@@ -354,5 +397,19 @@ class ChatHistoryCoordinatorTest {
         ) = ChatSession(id, petId, title, categories, createdAtMs = 1, lastMessageAtMs = lastMessageAtMs)
 
         fun detail(id: String, petId: String) = ChatSessionDetail(session(id, petId, "대화"), emptyList())
+
+        fun turn(id: String, clientMessageId: String) = ChatTurn(
+            id = id,
+            clientMessageId = clientMessageId,
+            processingStatus = ChatTurn.ProcessingStatus.COMPLETED,
+            userContent = "질문",
+            assistantContent = "답",
+            agentCategories = emptyList(),
+            assistantStatus = "ANSWERED",
+            publicResponse = null,
+            errorCode = null,
+            completedAtMs = 2,
+            createdAtMs = 1,
+        )
     }
 }
