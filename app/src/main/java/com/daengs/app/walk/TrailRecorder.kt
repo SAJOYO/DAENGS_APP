@@ -22,6 +22,13 @@ data class TrailSnapshot(
     val distanceMeters: Double = 0.0,
     /** 정확도가 낮아 연속으로 버린 fix 수. 0이 아니면 기록이 멈춘 것처럼 보일 수 있다. */
     val skippedLowAccuracy: Int = 0,
+    /**
+     * 걷는 속도를 넘어 연속으로 버린 fix 수 ([WalkPace]).
+     *
+     * 0이 아니면 **차나 자전거로 이동 중**일 수 있다. 정확도와 같은 이유로 화면이
+     * 이 값을 봐야 한다 — 버리기만 하고 말을 안 하면 기록이 멈춘 것으로 읽힌다.
+     */
+    val skippedTooFast: Int = 0,
 ) {
     val sampleCount: Int get() = segments.sumOf { it.size }
 
@@ -39,12 +46,15 @@ class TrailRecorder(
     private val maxAccuracyMeters: Float = 50f,
     private val maxJumpMeters: Double = 200.0,
     private val maxSamples: Int = 5_000,
+    /** 걷는 속도로 볼 상한. 넘으면 그 fix 를 안 담는다 ([WalkPace]). */
+    private val maxSpeedMetersPerSecond: Double = WalkPace.MAX_METERS_PER_SECOND,
 ) {
     private var state = TrackingState.OFF
     private val segments = mutableListOf<MutableList<LocationSample>>()
     private var storedSampleCount = 0
     private var distanceMeters = 0.0
     private var skippedLowAccuracy = 0
+    private var skippedTooFast = 0
     private var breakBeforeNext = false
     private var publishedSnapshot = TrailSnapshot()
 
@@ -52,6 +62,7 @@ class TrailRecorder(
         require(minDistanceMeters >= 0.0) { "minDistanceMeters must not be negative" }
         require(maxAccuracyMeters >= 0f) { "maxAccuracyMeters must not be negative" }
         require(maxJumpMeters >= 0.0) { "maxJumpMeters must not be negative" }
+        require(maxSpeedMetersPerSecond > 0.0) { "maxSpeedMetersPerSecond must be positive" }
         require(maxSamples > 0) { "maxSamples must be positive" }
     }
 
@@ -64,6 +75,7 @@ class TrailRecorder(
         storedSampleCount = 0
         distanceMeters = 0.0
         skippedLowAccuracy = 0
+        skippedTooFast = 0
         breakBeforeNext = false
         return publishSnapshot()
     }
@@ -118,10 +130,23 @@ class TrailRecorder(
         }
 
         val previous = segments.lastOrNull()?.lastOrNull()
+
+        // **걷는 속도 밖이면 안 담는다.** 차·버스·기차로 이동한 것이 산책 거리로
+        // 합산되면 "오늘 얼마나 걸었나" 가 뜻을 잃는다.
+        //
+        // 일시정지를 건너온 자리(`breakBeforeNext`)에서는 직전 점을 안 넘긴다 —
+        // 멈춰 있던 시간이 간격에 섞이면 속도가 뜻을 잃는다.
+        val pacePrevious = previous?.takeUnless { breakBeforeNext }
+        if (WalkPace.tooFast(pacePrevious, sample, maxSpeedMetersPerSecond)) {
+            skippedTooFast += 1
+            return true
+        }
+
         val delta = previous?.point?.distanceTo(sample.point) ?: 0.0
         if (previous != null && !breakBeforeNext && delta < minDistanceMeters) {
-            val changed = skippedLowAccuracy != 0
+            val changed = skippedLowAccuracy != 0 || skippedTooFast != 0
             skippedLowAccuracy = 0
+            skippedTooFast = 0
             return changed
         }
 
@@ -135,6 +160,7 @@ class TrailRecorder(
         storedSampleCount += 1
         distanceMeters += if (startsSegment) 0.0 else delta
         skippedLowAccuracy = 0
+        skippedTooFast = 0
         if (trimAfter) trim()
         return true
     }
@@ -161,6 +187,7 @@ class TrailRecorder(
             segments = segments.map { it.toList() },
             distanceMeters = distanceMeters,
             skippedLowAccuracy = skippedLowAccuracy,
+            skippedTooFast = skippedTooFast,
         )
         return publishedSnapshot
     }
