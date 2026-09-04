@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.daengs.app.ui.dogcard.CARD_TEMPLATES
@@ -149,28 +150,40 @@ internal fun DrawScope.drawFoilQuiet(
 }
 
 /**
- * 가운데가 불투명하고 가장자리로 갈수록 투명해지는 원 하나.
+ * 가운데가 불투명하고 가장자리로 갈수록 투명해지는 **타원** 하나.
  *
  * ⚠️ **화면 전체에 사각형으로 그린다.** `drawCircle` 로 그리면 그 원 바깥이 마스크에서
  *    빠져서, 두 번째 원을 그릴 때 첫 원까지 같이 살아남지 못한다. 그라디언트 끝 색이
  *    투명이고 `Clamp` 라 사각형으로 덮어도 바깥은 투명하다.
  *
- * ⚠️ **반지름을 폭에서만 잰다.** 구멍은 `rx`(폭 대비)·`ry`(높이 대비) 둘인데, 카드가
- *    3:4 라 픽셀로 바꾸면 **같은 값이 나온다** — 배추 `1080×0.2023 = 218.5`,
- *    `1440×0.1517 = 218.4`. 화면에서 정원이라 타원으로 만들 필요가 없다.
- *    (`FoilQuietTest` 가 열두 장에서 이 관계를 지킨다.)
+ * ⚠️ **원이 아니라 타원이다.** 처음에는 반지름을 폭에서만 쟀다 — 야채 열두 장이
+ *    1080×1440 한 판이라 `1080×rx% == 1440×ry%` 가 성립했기 때문이다(배추 218.5 vs
+ *    218.4). **과일이 들어오면서 그 전제가 깨졌다.** 비율이 0.699~0.804 로 제각각이고,
+ *    젠틀 키위는 얼굴창 자체가 정원이 아니다(322×291px). 폭으로만 재면 세로가 모자라
+ *    **얼굴 위아래 가장자리에 포일 링이 남는다.**
+ *
+ *    타원 그라디언트는 없으므로 **좌표를 늘려 원으로 만든 뒤 그린다** — `scale` 로
+ *    세로를 `rx/ry` 배 눌러 두면 그 안에서는 정원이고, 화면에 놓일 때 타원이 된다.
  */
 private fun DrawScope.softHole(hole: Hole, quiet: FoilQuiet) {
-    val center = Offset(size.width * hole.cx / 100f, size.height * hole.cy / 100f)
-    val radius = size.width * hole.rx / 100f * quiet.spread
-    if (radius <= 0f) return
-    drawRect(
-        brush = Brush.radialGradient(
-            0f to Color.White,
-            quiet.core.coerceIn(0f, 0.99f) to Color.White,
-            1f to Color.Transparent,
-            center = center,
-            radius = radius,
-        ),
-    )
+    val cx = size.width * hole.cx / 100f
+    val cy = size.height * hole.cy / 100f
+    val rx = size.width * hole.rx / 100f * quiet.spread
+    val ry = size.height * hole.ry / 100f * quiet.spread
+    if (rx <= 0f || ry <= 0f) return
+    withTransform({ scale(scaleX = 1f, scaleY = ry / rx, pivot = Offset(cx, cy)) }) {
+        drawRect(
+            brush = Brush.radialGradient(
+                0f to Color.White,
+                quiet.core.coerceIn(0f, 0.99f) to Color.White,
+                1f to Color.Transparent,
+                center = Offset(cx, cy),
+                radius = rx,
+            ),
+            // `scale` 이 그리는 자리를 눌러 놓으므로, 눌린 만큼 넓게 덮어야 화면
+            // 전체가 마스크에 든다. 안 그러면 위아래가 마스크 밖으로 새어 나간다.
+            topLeft = Offset(0f, cy - (cy + size.height) * rx / ry),
+            size = androidx.compose.ui.geometry.Size(size.width, size.height * rx / ry * 2f),
+        )
+    }
 }

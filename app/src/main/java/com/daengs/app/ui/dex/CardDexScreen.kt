@@ -374,7 +374,7 @@ private fun DexGrid(
                 // 주면 뽑을 이유가 없다.
                 // 이머시브는 v1 에 안 들어간다 (`IMMERSIVE_IN_BUILD` 주석 참고).
                 // null 이면 꾹 누르기도, 캡션 아래 배지도 안 붙는다.
-                onImmersive = IMMERSIVE_SCENES[slot.card.no]
+                onImmersive = IMMERSIVE_SCENES[slot.card.id]
                     ?.takeIf { IMMERSIVE_IN_BUILD && !slot.locked }
                     ?.let { picked ->
                         { at: Rect, hero: SubjectFace? ->
@@ -461,7 +461,7 @@ private fun GridCard(
     // 무대 주인공에 끼울 얼굴. **합쳐 놓은 카드가 있을 때만** 넘긴다 — 시드는 얼굴이
     // 없어서 누끼가 뚫린 채로 그려진다. 자리는 카드 구멍에서 계산해 온다.
     val hero = drawn?.takeIf { it.composed }?.let { d ->
-        IMMERSIVE_SCENES[card.no]?.let { sc ->
+        IMMERSIVE_SCENES[card.id]?.let { sc ->
             SubjectFace(
                 face = d.face!!,
                 hole = sc.faceInSubject(d.template!!),
@@ -641,7 +641,7 @@ private fun CardViewer(
     // 무대 주인공에 끼울 얼굴. **고른 그 장**(`mine`)에서 온다 — 그리드가 첫 장을
     // 쓰는 것과 다른 점이 여기다. 합쳐 놓은 카드가 있을 때만 넘긴다.
     val stageHero = drawn?.takeIf { it.composed }?.let { d ->
-        IMMERSIVE_SCENES[card.no]?.let { sc ->
+        IMMERSIVE_SCENES[card.id]?.let { sc ->
             SubjectFace(
                 face = d.face!!,
                 hole = sc.faceInSubject(d.template!!),
@@ -653,7 +653,7 @@ private fun CardViewer(
         }
     }
     // 이머시브인 카드인가. 그리드와 같은 조건을 본다 — 잠긴 칸은 무대까지 안 열어 준다.
-    val stage = IMMERSIVE_SCENES[card.no]?.takeIf {
+    val stage = IMMERSIVE_SCENES[card.id]?.takeIf {
         IMMERSIVE_IN_BUILD && !slot.locked && onImmersive != null
     }
     val enter = stage?.let { picked ->

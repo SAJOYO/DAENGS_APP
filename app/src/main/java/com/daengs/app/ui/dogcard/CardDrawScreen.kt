@@ -448,7 +448,7 @@ private fun ResultBody(
 
     // **곡이 있는지 미리 말해 준다.** 열두 장 중 여덟 장은 곡도 무대도 없어서,
     // 아무 말이 없으면 "뽑았는데 아무 일도 안 일어난다" 로 읽힌다.
-    val hasTune = dex?.no?.let { IMMERSIVE_SCENES[it]?.bgm } != null
+    val hasTune = dex?.id?.let { IMMERSIVE_SCENES[it]?.bgm } != null
     Text(
         if (hasTune) {
             "♫ 이 카드에는 노래가 있어요 — 턴테이블에서 들을 수 있어요"

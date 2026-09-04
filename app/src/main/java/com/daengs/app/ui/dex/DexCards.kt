@@ -28,6 +28,18 @@ import androidx.compose.ui.graphics.Color
 @Immutable
 data class CardPop(val subject: String, val fit: ImmersiveScene.Fit)
 
+/**
+ * 카드 벌. 도감이 탭으로 가른다.
+ *
+ * **`type` 으로 가르지 않는다.** 그건 설명 시트의 `Type` 줄에 그대로 표시되는 값이라
+ * (`detailRows`), 표시용과 분류용이 엉킨다. 실제로 과일 안에도 `"FRUIT DOG"` 와
+ * `"FRUIT COLLECTION"` 두 가지가 있다.
+ */
+enum class DexDeck(val label: String) {
+    Veggie("야채"),
+    Fruit("과일"),
+}
+
 @Immutable
 data class DexCard(
     val no: Int,
@@ -39,6 +51,8 @@ data class DexCard(
     /** 한 줄 부제. 설명 시트 맨 위. */
     val tagline: String,
     val type: String,
+    /** 어느 벌인가. 도감 탭이 이걸로 가른다 ([DexDeck]). */
+    val deck: DexDeck,
     val move: String,
     /** 기술 부연. **없는 카드가 있다** — 저쪽에서 빈 문자열이면 여기서도 비운다. */
     val moveNote: String = "",
@@ -112,6 +126,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 1, id = "cabbage", name = "Cabbage", ko = "배추",
         tagline = "강아지인지 채소인지 끝내 모를", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "LEAFY LOOK",
         moveNote = "Opponent stunned by awkward cuteness.",
         statLabel = "CRUNCH", stat = 820,
@@ -122,6 +137,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 2, id = "pepper", name = "Pepper", ko = "피망",
         tagline = "노랗고 수상하게 강한", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "YELLOW SHOCK",
         statLabel = "CRISP", stat = 860,
         flavor = "Sweet face. Zero warning. Maximum pepper.",
@@ -131,6 +147,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 3, id = "eggplant", name = "Eggplant", ko = "가지",
         tagline = "보라색으로 반들거리며 아무 생각 없는", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "NIGHT SHADE",
         statLabel = "GLOSS", stat = 900,
         flavor = "Deep purple. Empty thoughts. Unfairly glossy.",
@@ -140,6 +157,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 4, id = "carrot", name = "Carrot", ko = "당근",
         tagline = "흙에서 막 나왔는데 과하게 차려입은", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "ROOT RUSH",
         statLabel = "SNAP", stat = 830,
         flavor = "Straight from the dirt. Still overdressed.",
@@ -149,6 +167,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 5, id = "danhobak", name = "Danhobak", ko = "단호박",
         tagline = "껍질만 단단하고 속은 물렁한", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "SWEET IMPACT",
         statLabel = "CRUNCH", stat = 840,
         flavor = "Hard shell. Soft pup.",
@@ -158,6 +177,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 6, id = "mushroom", name = "Mushroom", ko = "버섯",
         tagline = "나비넥타이까지 맨 포자 살포자", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "FUNGAL FACE",
         moveNote = "Mushroom master of confusing cuteness.",
         statLabel = "MYCELIUM MASH", stat = 820,
@@ -168,6 +188,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 7, id = "broccoli", name = "Broccoli", ko = "브로콜리",
         tagline = "왕관은 큰데 판단력은 작은", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "FLORET FORCE",
         moveNote = "Big crown. Tiny judgment.",
         statLabel = "MYCELIUM MASH", stat = 850,
@@ -178,6 +199,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 8, id = "cucumber", name = "Cucumber", ko = "오이",
         tagline = "거의 물인데 태도만은 확실한", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "COOL CRUNCH",
         moveNote = "Mostly water. Entirely attitude.",
         statLabel = "MYCELIUM MASH", stat = 810,
@@ -188,6 +210,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 9, id = "spinach", name = "Spinach", ko = "시금치",
         tagline = "잎은 부드러운데 힘이 말이 안 되는", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "IRON LEAF",
         moveNote = "Soft leaf. Unreasonable power.",
         statLabel = "MYCELIUM MASH", stat = 860,
@@ -198,6 +221,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 10, id = "sweet-potato", name = "Sweet Potato", ko = "고구마",
         tagline = "깊이 묻혀 있다가 더 깊이 차려입고 나온", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "ROOT RUMBLE",
         moveNote = "Buried deep. Dressed deeper.",
         statLabel = "MYCELIUM MASH", stat = 830,
@@ -208,6 +232,7 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 11, id = "tomato", name = "Tomato", ko = "토마토",
         tagline = "잘 익고 둥글고 준비까지 끝난", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "JUICY BLAST",
         statLabel = "", stat = 840,
         flavor = "Ripe, round, and ready.",
@@ -224,11 +249,148 @@ val DEX_CARDS: List<DexCard> = listOf(
     DexCard(
         no = 12, id = "lettuce", name = "Lettuce", ko = "상추",
         tagline = "잎은 제멋대로인데 웃음만 큰", type = "VEGGIE DOG",
+        deck = DexDeck.Veggie,
         move = "LEAF PARADE",
         moveNote = "Loose leaves strut in a fresh breeze.",
         statLabel = "FRESH FLUTTER", stat = 800,
         flavor = "Loose leaves. Loud smile.",
         edition = "Leaf Parade Edition",
         foil = Foil.Metal, accent = Color(0xFFB2D121),
+    ),
+    DexCard(
+        no = 1, id = "apple", name = "Apple", ko = "사과",
+        tagline = "껍질부터 벗겨 놓고 정작 안 먹는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "PEEL CYCLONE",
+        moveNote = "Spins before the first bite.",
+        statLabel = "CRUNCH", stat = 845,
+        flavor = "Core removed. Chaos retained.",
+        edition = "Peel Cyclone Edition",
+        foil = Foil.Sunburst, accent = Color(0xFFE0483C),
+    ),
+    DexCard(
+        no = 2, id = "banana", name = "Banana", ko = "바나나",
+        tagline = "미끄러질 각오로 태어난", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "CURVE SHOT",
+        statLabel = "BOUNCE", stat = 835,
+        flavor = "Misses every line. Lands every joke. One peel. Three-point chaos.",
+        edition = "Curve Shot Edition",
+        foil = Foil.Cosmos, accent = Color(0xFFF7D83A),
+    ),
+    DexCard(
+        no = 3, id = "blueberry", name = "Blueberry", ko = "블루베리",
+        tagline = "작은 몸에 은하를 넣고 다니는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "BERRY GRAVITY",
+        moveNote = "Tiny orbit. Heavy pull.",
+        statLabel = "POP POWER", stat = 870,
+        flavor = "One berry. Entire galaxy.",
+        edition = "Berry Gravity Edition",
+        foil = Foil.Cosmos, accent = Color(0xFF5B6BE0),
+    ),
+    DexCard(
+        no = 4, id = "cherry", name = "Cherry", ko = "체리",
+        tagline = "둘이 붙어 다니며 사고는 같이 치는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "STEM SWING",
+        moveNote = "One arc. Double trouble.",
+        statLabel = "POP", stat = 835,
+        flavor = "Pit out. Show on.",
+        edition = "Stem Swing Edition",
+        foil = Foil.Prism, accent = Color(0xFFE0345C),
+    ),
+    DexCard(
+        no = 5, id = "kiwi", name = "Kiwi", ko = "키위",
+        tagline = "겉은 까슬한데 속이 형광인", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "FUZZY PORTAL",
+        statLabel = "WARP", stat = 865,
+        flavor = "One slice bends the whole room. Rough outside. Weirdly cosmic.",
+        edition = "Fuzzy Portal Edition",
+        foil = Foil.Aurora, accent = Color(0xFFA8D93A),
+    ),
+    DexCard(
+        no = 6, id = "kiwi-seed", name = "Kiwi Seed", ko = "키위 씨앗",
+        tagline = "씨까지 촘촘하게 성실한", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "SEED SPARK",
+        moveNote = "Fuzzy coat. Bright center.",
+        statLabel = "VITAMIN BURST", stat = 850,
+        flavor = "Peel first. Serve small.",
+        edition = "Seed Spark Edition",
+        foil = Foil.Holo, accent = Color(0xFF9FD437),
+    ),
+    DexCard(
+        no = 7, id = "kiwi-gentle", name = "Gentle Monster", ko = "젠틀 키위",
+        tagline = "순한 얼굴로 간식 시간을 지키는", type = "FRUIT COLLECTION",
+        deck = DexDeck.Fruit,
+        move = "KIWI",
+        moveNote = "Fuzzy outside. Fresh at heart.",
+        statLabel = "PROPERTY", stat = 4,
+        flavor = "The tiny green guardian rolls in when snack time begins.",
+        edition = "Fruit Collection Edition",
+        foil = Foil.Crystal, accent = Color(0xFF8FC93A),
+    ),
+    DexCard(
+        no = 8, id = "mango", name = "Mango", ko = "망고",
+        tagline = "더워도 서두르지 않는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "TROPIC DRIFT",
+        statLabel = "CHILL", stat = 840,
+        flavor = "Curves through heat without hurrying. Soft landing. Loud color.",
+        edition = "Tropic Drift Edition",
+        foil = Foil.Gold, accent = Color(0xFFFF9A2E),
+    ),
+    DexCard(
+        no = 9, id = "melon", name = "Melon", ko = "멜론",
+        tagline = "그물무늬만 봐도 길을 잃는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "NET MAZE",
+        statLabel = "PUZZLE", stat = 880,
+        flavor = "Every line leads back to Neo. Pattern locked. Snack unlocked.",
+        edition = "Net Maze Edition",
+        foil = Foil.Mosaic, accent = Color(0xFFCBE07A),
+    ),
+    DexCard(
+        no = 10, id = "peach", name = "Peach", ko = "복숭아",
+        tagline = "한 번 발그레하면 앙코르를 받는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "VELVET BOW",
+        statLabel = "CHARM", stat = 850,
+        flavor = "One blush earns the encore. Soft skin. Main-character timing.",
+        edition = "Velvet Bow Edition",
+        foil = Foil.Reverse, accent = Color(0xFFFFA98A),
+    ),
+    DexCard(
+        no = 11, id = "pear", name = "Pear", ko = "배",
+        tagline = "한 박자 늦게 지휘하는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "ORCHARD OVERTURE",
+        statLabel = "BALANCE", stat = 825,
+        flavor = "Conducts the orchard one wobble late. Soft step. Sharp entrance.",
+        edition = "Orchard Overture Edition",
+        foil = Foil.Gold, accent = Color(0xFFCBC450),
+    ),
+    DexCard(
+        no = 12, id = "strawberry", name = "Strawberry", ko = "딸기",
+        tagline = "잎을 펴고 천천히 내려앉는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "CALYX GLIDE",
+        moveNote = "Leaf canopy open. Landing optional.",
+        statLabel = "AIRTIME", stat = 855,
+        flavor = "Tiny seeds. Grand entrance.",
+        edition = "Calyx Glide Edition",
+        foil = Foil.Prism, accent = Color(0xFFF0475F),
+    ),
+    DexCard(
+        no = 13, id = "watermelon", name = "Watermelon", ko = "수박",
+        tagline = "소풍 지나서도 안 멈추는", type = "FRUIT DOG",
+        deck = DexDeck.Fruit,
+        move = "RIND ROLLER",
+        statLabel = "SPLASH", stat = 890,
+        flavor = "No brakes past the picnic. Seedless. Speed full.",
+        edition = "Rind Roller Edition",
+        foil = Foil.Metal, accent = Color(0xFF43C46A),
     ),
 )

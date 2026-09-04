@@ -368,15 +368,19 @@ fun faceInSubject(fit: ImmersiveScene.Fit, template: CardTemplate): Hole = Hole(
 
 
 /**
- * 카드 번호 → 이머시브 장면. **여기 없으면 이머시브가 아니다.**
+ * 카드 id → 이머시브 장면. **여기 없으면 이머시브가 아니다.**
  *
  * 카드마다 필요한 것이 레이어 원화 넉 장 · 곡 하나 · 실측값 둘(창 · fit)이라,
  * 저쪽에서 그 한 벌이 오기 전에는 늘릴 수가 없다. 오면 여기 줄 하나를 더한다.
+ *
+ * ⚠️ **키가 `no` 였다가 `id` 로 바뀌었다** (과일 한 벌이 들어오면서).
+ *    `no` 는 이제 **벌마다 1부터** 다 — 야채 01~12, 과일 01~13. 번호를 키로 두면
+ *    과일 1번(사과)에 배추 무대가 붙는다. 곡(`CARD_BGM`)은 처음부터 id 키였다.
  */
-val IMMERSIVE_SCENES: Map<Int, ImmersiveScene> = mapOf(
-    1 to CABBAGE_SCENE,
-    10 to SWEET_POTATO_SCENE,
-    12 to LETTUCE_SCENE,
+val IMMERSIVE_SCENES: Map<String, ImmersiveScene> = mapOf(
+    "cabbage" to CABBAGE_SCENE,
+    "sweet-potato" to SWEET_POTATO_SCENE,
+    "lettuce" to LETTUCE_SCENE,
 )
 
 /**

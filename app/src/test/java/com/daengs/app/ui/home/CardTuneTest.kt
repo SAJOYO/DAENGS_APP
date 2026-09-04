@@ -36,7 +36,7 @@ class CardTuneTest {
     @Test
     fun `무대의 곡도 CARD_BGM 을 따른다`() {
         DEX_CARDS.forEach { card ->
-            val scene = IMMERSIVE_SCENES[card.no] ?: return@forEach
+            val scene = IMMERSIVE_SCENES[card.id] ?: return@forEach
             assertEquals("No.${card.no} ${card.id}", bgmFor(card.id), scene.bgm)
         }
     }
