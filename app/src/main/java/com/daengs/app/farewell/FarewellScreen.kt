@@ -52,6 +52,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.daengs.app.miniroom.art.drawPawStamp
+import com.daengs.app.ui.common.DaengsTextAction
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -253,27 +254,11 @@ private fun ConfirmDelete(dogName: String, onConfirm: () -> Unit, onDismiss: () 
                     lineHeight = 19.sp,
                 )
                 Spacer(Modifier.height(18.dp))
+                // **둘이 같은 글씨여야 한다** — 마이의 삭제 창과 같은 이유다.
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Text(
-                        "지우기",
-                        color = DaengsColors.Error,
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onConfirm)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
+                    DaengsTextAction("지우기", onConfirm, tint = DaengsColors.Error)
                     Spacer(Modifier.width(6.dp))
-                    Text(
-                        "취소",
-                        color = DaengPink,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onDismiss)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
+                    DaengsTextAction("취소", onDismiss)
                 }
             }
         }
