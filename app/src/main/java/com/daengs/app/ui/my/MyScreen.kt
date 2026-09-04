@@ -78,6 +78,11 @@ import com.daengs.app.ui.theme.TextMuted
 fun MyScreen(
     /** 대표 강아지의 견종. **모르면(믹스) null 이고 발자국이 뜬다.** */
     breed: DogBreed?,
+    /**
+     * 방 둘러보기를 다시 연다. null 이면 그 줄이 안 뜬다 — `@Preview` 와 테스트가
+     * 그렇게 부른다.
+     */
+    onReplayTour: (() -> Unit)? = null,
     /** 방 앞 이름표와 **같은 이름**. 두 곳이 다르면 어느 쪽이 내 방인지 헷갈린다. */
     roomLabel: String,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
@@ -146,6 +151,12 @@ fun MyScreen(
 
         // 로그인 여부와 무관하게 앱 안에서 언제든 찾을 수 있어야 합니다.
         Section {
+            // **실수로 건너뛴 사람이 영영 못 보면 안 된다.** 방 둘러보기는 처음
+            // 한 번만 뜨므로 다시 여는 길이 반드시 있어야 한다.
+            if (onReplayTour != null) {
+                SettingRow("방 둘러보기 다시 보기", onClick = onReplayTour)
+                SettingDivider()
+            }
             SettingRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
         }
         Spacer(Modifier.height(14.dp))

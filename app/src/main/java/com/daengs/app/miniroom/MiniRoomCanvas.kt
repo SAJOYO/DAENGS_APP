@@ -13,6 +13,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -75,6 +78,14 @@ fun MiniRoomCanvas(
      * 붙박이라 [pickTopmost] 가 안 잡으므로 [pickFixture] 로 따로 본다.
      */
     onTurntableTap: (() -> Unit)? = null,
+    /**
+     * 누를 수 있는 자리가 **화면 어디인지** 알려 준다 (창 기준 좌표).
+     *
+     * 방 둘러보기가 그 자리를 밝히는 데 쓴다. **자리를 밖에서 다시 계산하지 않는다** —
+     * 여기서 주는 값은 터치 판정이 쓰는 것과 같은 셈에서 나오므로, 방 그림이나 배치가
+     * 바뀌어도 가리키는 곳과 눌리는 곳이 안 갈라진다.
+     */
+    onSpots: ((RoomTouchSpots) -> Unit)? = null,
     /**
      * 액자에 걸 그림. null 이면 발자국이 걸린다.
      *
@@ -146,8 +157,29 @@ fun MiniRoomCanvas(
     // 새 람다) 강아지는 사라지는데 가구는 안 잡히는, 원인이 안 보이는 증상이 된다.
     val editingNow by rememberUpdatedState(editing)
 
+    val spotsCallback by rememberUpdatedState(onSpots)
+
     Spacer(
         modifier
+            .onGloballyPositioned { coords ->
+                val go = spotsCallback ?: return@onGloballyPositioned
+                val w = coords.size.width.toFloat()
+                val h = coords.size.height.toFloat()
+                if (w <= 0f || h <= 0f) return@onGloballyPositioned
+                val g = RoomGeometry.of(w, h)
+                val origin = coords.positionInWindow()
+                fun toWindow(r: Rect) = r.translate(origin.x, origin.y)
+                val turntable = state.items
+                    .firstOrNull { it.itemId == ItemIds.TURNTABLE }
+                    ?.let { g.touchRectOf(it, catalog) }
+                go(
+                    RoomTouchSpots(
+                        door = toWindow(DoorSpec.rectOf(g, DoorSpec.frame)),
+                        frame = toWindow(FrameSpec.bounds(g)),
+                        turntable = turntable?.let(::toWindow),
+                    ),
+                )
+            }
             // 키는 반드시 Unit. state.items 같은 걸 키로 주면 아이템을 놓는 순간
             // 제스처 코루틴이 재시작되면서 드래그가 도중에 죽는다.
             .pointerInput(tapEnabled) {
@@ -357,3 +389,15 @@ fun MiniRoomCanvas(
             }
     )
 }
+
+/**
+ * 방 안에서 **누를 수 있는 자리**의 화면 사각형 (창 기준).
+ *
+ * 방 둘러보기가 쓴다. 턴테이블은 배치에 없을 수 있어서 null 이 가능하다 — 그때는
+ * 그 단계를 건너뛴다. 빈 화면에 대고 "여기를 누르세요" 라고 하면 안 된다.
+ */
+data class RoomTouchSpots(
+    val door: Rect,
+    val frame: Rect,
+    val turntable: Rect?,
+)
