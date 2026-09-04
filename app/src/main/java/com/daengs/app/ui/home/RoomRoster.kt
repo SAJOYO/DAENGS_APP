@@ -52,3 +52,32 @@ fun departedInRoom(pets: List<Pet>?): Set<Int> {
     if (pets.isNullOrEmpty()) return emptySet()
     return pets.indices.filter { pets[it].farewellOn != null }.toSet()
 }
+
+/**
+ * 방에 세울 아이들. **뺀 아이는 빠지고, 다 빼도 한 마리는 남는다.**
+ *
+ * ⚠️ **[roomRoster] 와 [departedInRoom] 이 이 결과를 같이 봐야 한다.** 앞의 것이 낸
+ * 번호가 뒤의 것의 첨자라, 거르는 자리를 둘로 나누면 반드시 어긋난다 — 무지개가 남의
+ * 아이 머리 위에 뜬다.
+ *
+ * **다 빼지는 못한다.** 빈 방은 고장 난 것으로 읽히고, 사용자가 그걸 원해서 다 뺀
+ * 것도 아니다(하나씩 빼다 보면 마지막이 남는다). 화면이 마지막 한 마리를 못 빼게
+ * 막지만, 아이를 지우거나 다른 기기에서 고치면 여기로 흘러들 수 있어서 여기서도 막는다.
+ * 그때 남기는 것은 **대표**다 — 상단바 얼굴과 같은 아이라야 화면이 한 말을 한다.
+ *
+ * @param hidden 방에서 뺀 아이의 id (`RoomStore.loadHiddenPetIds`)
+ */
+fun roomPets(pets: List<Pet>?, hidden: Set<String>): List<Pet>? {
+    if (pets == null) return null
+    if (pets.isEmpty() || hidden.isEmpty()) return pets
+    val kept = pets.filterNot { it.id in hidden }
+    if (kept.isNotEmpty()) return kept
+    val fallback = pets.firstOrNull { it.isPrimary } ?: pets.first()
+    return listOf(fallback)
+}
+
+/** 이 아이를 방에서 뺄 수 있나. **마지막 한 마리는 못 뺀다.** */
+fun canHideFromRoom(pets: List<Pet>?, hidden: Set<String>, petId: String): Boolean {
+    if (petId in hidden) return true          // 이미 빠져 있으면 되돌리는 쪽이다
+    return (roomPets(pets, hidden)?.size ?: 0) > 1
+}

@@ -44,6 +44,7 @@ import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.common.DaengsTextAction
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.home.HomeDemoData
@@ -97,6 +98,12 @@ fun MyScreen(
     profilePhoto: ImageBitmap? = null,
     /** 강아지 목록에 걸 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
+    /** 방에서 뺀 아이들. 비어 있으면 등록한 아이가 다 방에 선다 */
+    hiddenRoomPetIds: Set<String> = emptySet(),
+    /** 방에 두기/빼기. null 이면 그 줄이 안 뜬다 */
+    onToggleRoomPet: ((Pet) -> Unit)? = null,
+    /** 이 아이를 지금 뺄 수 있나. **마지막 한 마리는 못 뺀다** */
+    canToggleRoomPet: (Pet) -> Boolean = { true },
     /**
      * 대표 아이의 프로필 사진을 바꾸러 간다. null 이면 얼굴을 눌러도 아무 일이
      * 없다 — `@Preview` 와 테스트가 그렇게 부른다.
@@ -161,6 +168,9 @@ fun MyScreen(
         if (signedIn) {
             PetSection(
                 photoOf = photoOf,
+                hiddenRoomPetIds = hiddenRoomPetIds,
+                onToggleRoomPet = onToggleRoomPet,
+                canToggleRoomPet = canToggleRoomPet,
                 pets = pets,
                 canAddMore = canAddMore,
                 onAdd = onAddPet,
@@ -335,10 +345,14 @@ private fun DeletePetDialog(
                         )
                     }
                 } else {
+                    // **둘이 같은 글씨여야 한다.** 예전에는 삭제가 보통 굵기, 취소가
+                    // 굵은 글씨라 서로 다른 글씨체처럼 보였다. 앱의 다른 삭제 창들이
+                    // 쓰는 공용 줄로 맞춘다 — 색은 그대로다. 빨강은 "되돌릴 수 없다"
+                    // 는 신호라 지우면 손이 미끄러지기 쉽다.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        DialogAction("삭제", DaengsColors.Error, FontWeight.Normal, onConfirm)
+                        DaengsTextAction("삭제", onConfirm, tint = DaengsColors.Error)
                         Spacer(Modifier.width(6.dp))
-                        DialogAction("취소", DaengPink, FontWeight.Bold, onDismiss)
+                        DaengsTextAction("취소", onDismiss)
                     }
                 }
             }
@@ -384,29 +398,16 @@ private fun WithdrawDialog(
                         CircularProgressIndicator(Modifier.size(20.dp), color = DaengPink, strokeWidth = 2.dp)
                     }
                 } else {
+                    // 삭제 창과 같은 규칙 — 굵기는 같고 색만 다르다.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        DialogAction("탈퇴", DaengsColors.Error, FontWeight.Normal, onConfirm)
+                        DaengsTextAction("탈퇴", onConfirm, tint = DaengsColors.Error)
                         Spacer(Modifier.width(6.dp))
-                        DialogAction("취소", DaengPink, FontWeight.Bold, onDismiss)
+                        DaengsTextAction("취소", onDismiss)
                     }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun DialogAction(label: String, tint: Color, weight: FontWeight, onClick: () -> Unit) {
-    Text(
-        label,
-        color = tint,
-        fontSize = 14.sp,
-        fontWeight = weight,
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    )
 }
 
 /** 줄 사이 가는 선. */
@@ -468,6 +469,9 @@ private fun ProfileHead(
 @Composable
 private fun PetSection(
     photoOf: (String) -> ImageBitmap?,
+    hiddenRoomPetIds: Set<String>,
+    onToggleRoomPet: ((Pet) -> Unit)?,
+    canToggleRoomPet: (Pet) -> Boolean,
     pets: List<Pet>?,
     canAddMore: Boolean,
     onAdd: () -> Unit,
@@ -495,6 +499,9 @@ private fun PetSection(
             PetCard(
                 pet,
                 photo = photoOf(pet.id),
+                inRoom = pet.id !in hiddenRoomPetIds,
+                onToggleRoom = onToggleRoomPet?.takeIf { canToggleRoomPet(pet) }
+                    ?.let { go -> { go(pet) } },
                 // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
                 // 묻는 화면은 떠난 아이에게 할 말이 아니다.
                 onEdit = {
@@ -523,6 +530,13 @@ private fun PetCard(
     pet: Pet,
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photo: ImageBitmap?,
+    /** 지금 방에 서 있나 */
+    inRoom: Boolean = true,
+    /**
+     * 방에 두기/빼기. **null 이면 그 줄이 안 뜬다** — 마지막 한 마리라 못 뺄 때가
+     * 그렇다. 눌리지 않는 줄을 띄워 두면 왜 안 되는지를 화면이 설명해야 한다.
+     */
+    onToggleRoom: (() -> Unit)? = null,
     onEdit: () -> Unit,
     onPickPrimary: () -> Unit,
     onDelete: () -> Unit,
@@ -597,6 +611,22 @@ private fun PetCard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable(onClick = onPickPrimary)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+            // 방에 세울지. **거는 자리와 내리는 자리를 하나로 둔다** — 액자와 같은
+            // 결이다. 둘로 나누면 안 서 있는 아이 옆에도 "빼기" 가 보인다.
+            //
+            // 마지막 한 마리는 부르는 쪽이 null 을 넘겨 이 줄을 아예 안 띄운다.
+            onToggleRoom?.let { toggle ->
+                Text(
+                    if (inRoom) "방에서 빼기" else "방에 두기",
+                    color = if (inRoom) TextMuted else DaengPink,
+                    fontSize = 11.sp,
+                    fontWeight = if (inRoom) FontWeight.Normal else FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = toggle)
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }

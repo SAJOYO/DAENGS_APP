@@ -100,3 +100,85 @@ class RoomRosterTest {
         assertEquals(setOf(0, 2), departedInRoom(pets))
     }
 }
+
+/**
+ * 방에 세울 아이를 고르는 셈.
+ *
+ * **차례가 어긋나는 것이 제일 무섭다** — 명부와 배웅 자리가 첨자로 이어져 있어서,
+ * 거르는 곳이 둘이 되면 무지개가 남의 아이 머리 위에 뜬다. 화면에서는 "왜 얘가
+ * 무지개지" 로만 보인다.
+ */
+class RoomPetsTest {
+
+    private fun pet(id: String, breed: String, primary: Boolean = false, farewell: LocalDate? = null) = Pet(
+        id = id, name = "네옹", breed = breed, sex = null, neutered = null,
+        weightKg = null, birthDate = null, birthDateKind = null, isPrimary = primary,
+        farewellOn = farewell,
+    )
+
+    private val a = pet("1", "dog_beagle", primary = true)
+    private val b = pet("2", "dog_welsh_corgi")
+    private val c = pet("3", "dog_maltese")
+
+    @Test
+    fun `아무도 안 뺐으면 다 선다`() {
+        // 기본이 "다 들어감" 이라야 새로 등록한 아이가 저절로 방에 선다.
+        assertEquals(listOf(a, b, c), roomPets(listOf(a, b, c), emptySet()))
+    }
+
+    @Test
+    fun `뺀 아이만 빠진다`() {
+        assertEquals(listOf(a, c), roomPets(listOf(a, b, c), setOf("2")))
+    }
+
+    @Test
+    fun `모르는 id 는 아무 일도 안 한다`() {
+        // 지운 아이의 id 가 남아 있을 수 있다.
+        assertEquals(listOf(a, b, c), roomPets(listOf(a, b, c), setOf("없는아이")))
+    }
+
+    @Test
+    fun `다 빼면 대표 한 마리는 남는다`() {
+        // 화면이 마지막 한 마리를 못 빼게 막지만, 아이를 지우거나 다른 기기에서
+        // 고치면 이 상태로 흘러들 수 있다. **빈 방은 고장 난 것으로 읽힌다.**
+        assertEquals(listOf(a), roomPets(listOf(a, b, c), setOf("1", "2", "3")))
+    }
+
+    @Test
+    fun `아직 못 받았으면 그대로 모른다`() {
+        assertEquals(null, roomPets(null, setOf("1")))
+    }
+
+    @Test
+    fun `배웅한 아이도 방에 둘 수 있다`() {
+        // 배웅은 지우는 일이 아니라는 것이 그 화면의 전제다.
+        val gone = pet("4", "dog_beagle", farewell = LocalDate.of(2026, 1, 1))
+        val inRoom = roomPets(listOf(a, gone), emptySet())
+
+        assertEquals(listOf(a, gone), inRoom)
+        // **명부와 배웅 자리는 같은 목록에서 나와야 한다.**
+        assertEquals(setOf(1), departedInRoom(inRoom))
+    }
+
+    @Test
+    fun `아이를 빼면 무지개 자리도 같이 밀린다`() {
+        val gone = pet("4", "dog_beagle", farewell = LocalDate.of(2026, 1, 1))
+        // b 를 빼면 배웅한 아이는 둘째가 아니라 첫째 다음이다.
+        val inRoom = roomPets(listOf(a, b, gone), setOf("2"))
+
+        assertEquals(listOf(a, gone), inRoom)
+        assertEquals(setOf(1), departedInRoom(inRoom))
+    }
+
+    @Test
+    fun `마지막 한 마리는 못 뺀다`() {
+        assertTrue(canHideFromRoom(listOf(a, b), emptySet(), "1"))
+        assertFalse("하나만 남았다", canHideFromRoom(listOf(a, b), setOf("2"), "1"))
+    }
+
+    @Test
+    fun `이미 뺀 아이는 언제나 되돌릴 수 있다`() {
+        // 되돌리는 쪽은 막을 이유가 없다.
+        assertTrue(canHideFromRoom(listOf(a, b), setOf("2"), "2"))
+    }
+}

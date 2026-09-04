@@ -121,6 +121,9 @@ class MainActivity : ComponentActivity() {
                 // **방 둘러보기.** 처음 방을 열 때 한 번 뜨고, 마이의 "다시 보기" 로
                 // 다시 켠다. 본 적 있음은 기기에 남는다 — 계정이 아니라 이 폰의 일이다.
                 var tourOpen by remember { mutableStateOf(!roomStore.tourSeen()) }
+                // 방에서 뺀 아이들. **뺀 쪽을 적는다** — 새로 등록한 아이는 저절로
+                // 방에 서야 하므로 기본이 "다 들어감" 이다 (`RoomStore.loadHiddenPetIds`).
+                var hiddenRoomPetIds by remember { mutableStateOf(roomStore.loadHiddenPetIds()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
@@ -525,6 +528,15 @@ class MainActivity : ComponentActivity() {
                         pets = pets.pets.orEmpty(),
                         photoOf = { petPhotos[it] },
                         onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
+                        hiddenRoomPetIds = hiddenRoomPetIds,
+                        onToggleRoomPet = { pet ->
+                            hiddenRoomPetIds = if (pet.id in hiddenRoomPetIds) {
+                                hiddenRoomPetIds - pet.id
+                            } else {
+                                hiddenRoomPetIds + pet.id
+                            }
+                            roomStore.saveHiddenPetIds(hiddenRoomPetIds)
+                        },
                         devPhoto = devPhoto,
                         onPickDevPhoto = { devPhotoPicking = true },
                         onClearDevPhoto = { devPhoto = null },
@@ -601,6 +613,9 @@ class MainActivity : ComponentActivity() {
                                         // 우리 아이의 진짜 사진이다. 안 지우면 다음에
                                         // 이 폰으로 로그인한 사람이 물려받는다.
                                         petPhotos.forgetEverything()
+                                        // 방 구성도 이 기기의 것이다. `roomStore.clear()`
+                                        // 가 파일을 비우므로 화면이 든 값도 같이 비운다.
+                                        hiddenRoomPetIds = emptySet()
                                         session = null
                                         screen = Screen.Landing
                                     }

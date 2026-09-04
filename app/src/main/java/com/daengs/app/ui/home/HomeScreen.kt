@@ -215,6 +215,10 @@ fun HomeScreen(
     photoOf: (String) -> ImageBitmap? = { null },
     /** 대표 아이의 사진을 바꾸러 간다. null 이면 마이에서 그 자리가 안 뜬다 */
     onEditPhoto: (() -> Unit)? = null,
+    /** 방에서 뺀 아이들. 기본은 비어 있고, 그러면 등록한 아이가 다 방에 선다 */
+    hiddenRoomPetIds: Set<String> = emptySet(),
+    /** 방에 두기/빼기를 눌렀다. null 이면 마이에서 그 줄이 안 뜬다 */
+    onToggleRoomPet: ((Pet) -> Unit)? = null,
     canAddMore: Boolean = false,
     onAddPet: (() -> Unit)? = null,
     onEditPet: ((Pet) -> Unit)? = null,
@@ -282,7 +286,10 @@ fun HomeScreen(
     }
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
-    val herd = rememberDogHerd(roomRoster(pets), departedInRoom(pets))
+    // **한 번 걸러서 둘 다 그 결과를 본다.** 명부와 배웅 자리는 차례가 같아야 해서,
+    // 거르는 곳이 둘이 되면 무지개가 남의 아이 머리 위에 뜬다.
+    val inRoom = roomPets(pets, hiddenRoomPetIds)
+    val herd = rememberDogHerd(roomRoster(inRoom), departedInRoom(inRoom))
     val store = rememberRoomStore()
     // 테마는 id 만 저장한다 — 원시값이라 화면 회전에도 그대로 남는다
     var themeId by rememberSaveable { mutableStateOf(store.loadThemeId() ?: RoomTheme.DEFAULT.id) }
@@ -378,6 +385,9 @@ fun HomeScreen(
                 // 마이가 다른 얼굴을 보여 준다 — `breed = profileBreed` 와 짝이다.
                 profilePhoto = profilePhoto,
                 photoOf = photoOf,
+                hiddenRoomPetIds = hiddenRoomPetIds,
+                onToggleRoomPet = onToggleRoomPet,
+                canToggleRoomPet = { canHideFromRoom(pets, hiddenRoomPetIds, it.id) },
                 onEditPhoto = onEditPhoto,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
                 pets = pets,
