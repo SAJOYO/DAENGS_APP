@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +54,7 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.features.places.PlaceDiscoveryState
 import com.daengs.app.map.features.places.PlaceDiscoveryPanel
 import com.daengs.app.map.features.places.PlaceCategoryMenu
+import com.daengs.app.map.features.places.PlaceNameSearchField
 import com.daengs.app.map.features.places.PlaceSearchColors
 import com.daengs.app.map.features.places.PlaceSearchState
 import com.daengs.app.map.features.places.canonicalPlaceKeysByMarker
@@ -66,6 +69,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
 import com.daengs.app.place.PlaceFailure
 import com.daengs.app.place.PlaceKey
+import com.daengs.app.place.isValidPlaceNameQuery
 import com.daengs.app.ui.common.DaengsFloatingButton
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
@@ -151,6 +155,10 @@ fun PlacesScreen(
     showMap: Boolean = true,
 ) {
     val discovery = state.discovery
+    var nameDraft by rememberSaveable { mutableStateOf(discovery.nameQuery) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val validName = isValidPlaceNameQuery(nameDraft)
+    LaunchedEffect(discovery.nameQuery) { nameDraft = discovery.nameQuery }
     var cameraCandidate by remember { mutableStateOf<GeoPoint?>(null) }
     var followDevice by remember { mutableStateOf(true) }
     var panelHeightPx by remember { mutableIntStateOf(0) }
@@ -195,6 +203,48 @@ fun PlacesScreen(
             onSelect = { onAction(PlacesAction.Search(it, discovery.preferParking)) },
             modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 12.dp),
         )
+        PlaceNameSearchField(
+            query = nameDraft,
+            onQueryChange = { nameDraft = it },
+            onSearch = {
+                if (validName && !discovery.loading && permissionAction == null) {
+                    keyboard?.hide()
+                    onAction(PlacesAction.Search(selectedKind, discovery.preferParking, nameDraft.trim()))
+                }
+            },
+            enabled = !discovery.loading && permissionAction == null,
+            canSubmit = validName,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = when {
+                    !validName -> "장소명은 120자까지 입력할 수 있어요"
+                    discovery.nameQuery.isNotEmpty() -> "이름 조건: ${discovery.nameQuery}"
+                    else -> "선택한 카테고리 · 반경 3km 안에서 이름 검색"
+                },
+                color = if (validName) PlaceSearchColors.Ink else DaengsColors.Error,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (nameDraft.isNotEmpty() || discovery.nameQuery.isNotEmpty()) {
+                DaengsFloatingButton(
+                    label = "이름 지우기",
+                    enabled = !discovery.loading && permissionAction == null,
+                    onClick = {
+                        nameDraft = ""
+                        keyboard?.hide()
+                        onAction(PlacesAction.Search(selectedKind, discovery.preferParking, ""))
+                    },
+                )
+            }
+        }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val resultPanelMaxHeight = maxHeight * 0.50f
             if (showMap) {

@@ -5,6 +5,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.daengs.app.place.PlaceKind
+import com.daengs.app.location.GeoPoint
+import com.daengs.app.ui.places.PlaceLocationState
 import com.daengs.app.ui.places.PlacesAction
 import com.daengs.app.ui.places.PlacesScreen
 import com.daengs.app.ui.places.PlacesUiState
@@ -75,15 +77,49 @@ class PlaceSearchUiTest {
         compose.onNodeWithText("질문").assertIsNotEnabled()
     }
 
-    @Test fun `live screen exposes working categories but no unconnected name or AI inputs`() {
+    @Test fun `live screen exposes categories and name input but keeps AI unconnected`() {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme {
             PlacesScreen(PlacesUiState(), {}, {}, {}, { actions += it }, {}, {}, showMap = false)
         } }
         compose.onNodeWithText("펫샵").performClick()
         assertEquals(listOf(PlacesAction.Search(PlaceKind.PET_SHOP, false)), actions)
-        compose.onNodeWithContentDescription("장소명 검색").assertDoesNotExist()
+        compose.onNodeWithContentDescription("장소명 검색").assertExists().assertIsNotEnabled()
         compose.onNodeWithContentDescription("AI에게 질문").assertDoesNotExist()
         compose.onNodeWithText("위치 권한").assertIsDisplayed()
+    }
+
+    @Test fun `typing does not search and submit clear and categories dispatch distinct name intent`() {
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme {
+            PlacesScreen(PlacesUiState(
+                location = PlaceLocationState.Ready(GeoPoint(37.556, 126.923)),
+                discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE), nameQuery = "홍대"),
+            ), {}, {}, {}, { actions += it }, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithContentDescription("장소명 검색").performTextReplacement("  새이름  ")
+        assertTrue(actions.isEmpty())
+        compose.onNodeWithText("이름 조건: 홍대").assertIsDisplayed()
+        compose.onNodeWithText("펫샵").performClick()
+        assertEquals(PlacesAction.Search(PlaceKind.PET_SHOP, false), actions.last())
+        compose.onNodeWithContentDescription("장소명 검색").performImeAction()
+        assertEquals(PlacesAction.Search(PlaceKind.CAFE, false, "새이름"), actions.last())
+        compose.onNodeWithText("이름 지우기").performClick()
+        assertEquals(PlacesAction.Search(PlaceKind.CAFE, false, ""), actions.last())
+    }
+
+    @Test fun `overlong name remains editable but cannot submit`() {
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme {
+            PlacesScreen(PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.556, 126.923))),
+                {}, {}, {}, { actions += it }, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithContentDescription("장소명 검색").performTextInput("가".repeat(121))
+        compose.onNodeWithContentDescription("장소 검색 실행").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("장소명 검색").performImeAction()
+        assertTrue(actions.isEmpty())
+        compose.onNodeWithContentDescription("장소명 검색").performTextReplacement("홍대")
+        compose.onNodeWithContentDescription("장소 검색 실행").assertIsEnabled().performClick()
+        assertEquals("홍대", (actions.single() as PlacesAction.Search).nameQuery)
     }
 }

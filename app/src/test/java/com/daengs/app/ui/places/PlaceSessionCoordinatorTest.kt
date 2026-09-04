@@ -30,6 +30,43 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaceSessionCoordinatorTest {
     @Test
+    fun `name survives category parking pinned device and retry until explicitly cleared`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val session = session(PlaceSearchRepository { requests += it; emptyResponse() })
+        val pinned = GeoPoint(37.556, 126.923)
+        session.searchAt(pinned, PlaceKind.CAFE, false, "  홍대  ")
+        runCurrent()
+        session.searchAtCurrentOrigin(PlaceKind.RESTAURANT, true, GeoPoint(37.5, 127.0))
+        runCurrent()
+        assertEquals(pinned, requests.last().origin)
+        session.retrySearch()
+        runCurrent()
+        val device = session.requestDeviceSearch(PlaceKind.PET_SHOP, false)
+        session.resolveDeviceSearch(device, GeoPoint(37.5, 127.0))
+        runCurrent()
+        assertEquals(List(4) { "홍대" }, requests.map { it.nameQuery })
+        assertEquals("홍대", session.state.value.discovery.nameQuery)
+        session.searchAtCurrentOrigin(PlaceKind.PET_SHOP, false, pinned, "")
+        runCurrent()
+        assertEquals("", requests.last().nameQuery)
+        assertEquals("", session.state.value.discovery.nameQuery)
+    }
+
+    @Test
+    fun `category during GPS wait keeps new name and stale GPS cannot restore old name`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val session = session(PlaceSearchRepository { requests += it; emptyResponse() })
+        val old = session.requestDeviceSearch(PlaceKind.CAFE, false, "옛이름")
+        session.requestDeviceSearch(PlaceKind.CAFE, false, "새이름")
+        val newest = session.searchAtCurrentOrigin(PlaceKind.PET_SHOP, false, null)!!
+        session.resolveDeviceSearch(newest, GeoPoint(37.556, 126.923))
+        session.resolveDeviceSearch(old, GeoPoint(37.5, 127.0))
+        runCurrent()
+        assertEquals("새이름", requests.single().nameQuery)
+        assertEquals(listOf(PlaceKind.PET_SHOP), requests.single().kinds)
+    }
+
+    @Test
     fun `a late device resolution cannot replace a newer pinned intent`() = runTest {
         val requests = mutableListOf<PlaceSearchRequest>()
         val session = session(
