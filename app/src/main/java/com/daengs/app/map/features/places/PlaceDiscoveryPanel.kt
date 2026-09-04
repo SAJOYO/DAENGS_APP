@@ -15,14 +15,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -57,16 +55,9 @@ fun PlaceDiscoveryPanel(
 ) {
     val presentation = state.toPanelPresentation()
     val selectedKind = presentation.selectedKind
-    val categoryState = rememberLazyListState()
-
-    // 선택된 종류가 18개 칩 중 화면 밖에 있으면, 무엇으로 찾은 결과인지 보이지 않는다.
-    LaunchedEffect(selectedKind) {
-        val index = PLACE_CATEGORIES.indexOfFirst { it.kind == selectedKind }
-        if (index >= 0) categoryState.animateScrollToItem(index)
-    }
 
     Surface(
-        modifier = modifier.fillMaxWidth().heightIn(min = 210.dp, max = 430.dp),
+        modifier = modifier.fillMaxWidth().heightIn(max = 430.dp),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         color = CardWhite,
         shadowElevation = 12.dp,
@@ -94,23 +85,6 @@ fun PlaceDiscoveryPanel(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                     )
-                }
-            }
-
-            item {
-                LazyRow(
-                    state = categoryState,
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(PLACE_CATEGORIES, key = { it.kind.wire }) { category ->
-                        DaengsChip(
-                            label = category.label,
-                            selected = category.kind == selectedKind,
-                            enabled = !state.loading,
-                            onClick = { onSearch(category.kind, state.preferParking) },
-                        )
-                    }
                 }
             }
 
