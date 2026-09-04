@@ -102,6 +102,7 @@ import com.daengs.app.ui.camera.hasCameraPermission
 import com.daengs.app.ui.camera.rememberCameraController
 import com.daengs.app.ui.camera.rememberVideoRecorder
 import com.daengs.app.ui.camera.takePicture
+import com.daengs.app.ui.common.DaengsWideButton
 import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
@@ -153,6 +154,21 @@ internal sealed interface ChatEntry {
      * 다른 점은 **누를 것이 없다는 것** — 여기서 시작되는 흐름이 없고 결과만 남는다.
      */
     data class WalkCard(val verdict: WalkVerdict) : ChatEntry
+
+    /**
+     * Place 검색 결과 카드들. [placeCards] 가 고른 후보(최대 [MAX_PLACE_CARDS])를 그대로 그린다.
+     *
+     * 산책 카드와 같은 이유로 말풍선이 아니라 카드다 — 담을 것이 산문이 아니라
+     * 거리·주소·사실 목록이다.
+     */
+    data class PlaceCards(val presentation: PlaceCardsPresentation) : ChatEntry
+
+    /**
+     * 위치가 없어 못 찾겠다는 CLARIFY. 말풍선(저쪽 되묻기 질문)만으로는 사용자가 할 수
+     * 있는 일이 없어서, 위치 권한을 다시 청하고 **같은 질문을 그대로 재전송**하는
+     * 액션을 얹는다. [query] 는 그 재전송에 쓸 원문이다.
+     */
+    data class LocationNeeded(val query: String) : ChatEntry
 
     /** 보행 흐름의 첫 카드. 영상을 어디서 가져올지 고르는 자리다. */
     data object GaitIntro : ChatEntry
@@ -259,6 +275,7 @@ fun ChatScreen(
     var pendingDeletion by remember { mutableStateOf<ChatSession?>(null) }
     var pendingPersistedSlot by remember { mutableStateOf<Int?>(null) }
     var pendingPersistedSessionId by remember { mutableStateOf<String?>(null) }
+    var pendingPersistedQuery by remember { mutableStateOf("") }
     var queryGeneration by remember { mutableStateOf(0L) }
     val scroll = rememberScrollState()
     // null 이면 닫힘. [ChooserMode.SkinOnly] 는 서버 skin HANDOFF 가 연 것이라
@@ -442,10 +459,14 @@ fun ChatScreen(
     // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
     var asking by remember { mutableStateOf(false) }
 
-    val showResponse: (Int, AssistantResponse) -> Unit = { slot, response ->
+    val showResponse: (Int, AssistantResponse, String) -> Unit = { slot, response, asked ->
         if (slot in entries.indices) {
             entries[slot] = ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage())
             response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
+            response.placeCards()?.let { entries += ChatEntry.PlaceCards(it) }
+            // 좌표가 없어 되물은 것이라면 다시 물을 거리를 준다. 무상태 CLARIFY 는
+            // 이어 물을 토큰이 없어서, 문장만 띄우면 사용자에게 막다른 길이다.
+            if (response.isLocationClarify()) entries += ChatEntry.LocationNeeded(asked)
             when (response.knownHandoff()) {
                 KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
                 KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
@@ -458,7 +479,7 @@ fun ChatScreen(
         val slot = pendingPersistedSlot ?: return@LaunchedEffect
         if (historyState.selectedSessionId != pendingPersistedSessionId) return@LaunchedEffect
         historyState.lastResponse?.let { response ->
-            showResponse(slot, response)
+            showResponse(slot, response, pendingPersistedQuery)
             pendingPersistedSlot = null
             pendingPersistedSessionId = null
             asking = false
@@ -503,6 +524,7 @@ fun ChatScreen(
                 }
                 pendingPersistedSlot = slot
                 pendingPersistedSessionId = selectedSessionId
+                pendingPersistedQuery = text
                 if (!coordinator.send(token, text, where)) {
                     pendingPersistedSlot = null
                     pendingPersistedSessionId = null
@@ -511,7 +533,7 @@ fun ChatScreen(
                 }
             } else {
                 AssistantApi.query(token, text, where, activeDogId = dogId, persistence = null)
-                    .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response) }
+                    .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
                             entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.")
@@ -520,6 +542,25 @@ fun ChatScreen(
                 if (generation == queryGeneration) asking = false
             }
         }
+    }
+
+    // ── 위치-CLARIFY ────────────────────────────────────────────────────────
+    //
+    // [ChatEntry.LocationNeeded] 의 액션이 누르는 자리. 권한을 다시 청하고, 받으면
+    // 같은 질문을 그대로 재전송한다 — 사용자가 문장을 다시 칠 이유가 없다.
+    var pendingLocationRetry by remember { mutableStateOf<String?>(null) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val retryText = pendingLocationRetry
+        pendingLocationRetry = null
+        if (granted && retryText != null) sendQuery(retryText)
+    }
+    val retryWithLocation: (String) -> Unit = { query ->
+        pendingLocationRetry = query
+        locationPermissionLauncher.launch(LOCATION_PERMISSIONS)
     }
 
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -619,6 +660,25 @@ fun ChatScreen(
                         // 두어 "AI 가 준 것" 이라는 줄맞춤은 지킨다.
                         is ChatEntry.WalkCard -> BesideAvatar {
                             WalkVerdictCard(entry.verdict)
+                        }
+
+                        is ChatEntry.PlaceCards -> BesideAvatar {
+                            PlaceSuggestionCards(
+                                presentation = entry.presentation,
+                                onOpenMap = { candidate ->
+                                    val intent = placeMapIntent(candidate)
+                                    if (intent == null) {
+                                        notice = "이 장소는 지도에서 열 좌표 정보가 없어요."
+                                    } else {
+                                        runCatching { context.startActivity(intent) }
+                                            .onFailure { notice = "지도 앱을 열지 못했어요." }
+                                    }
+                                },
+                            )
+                        }
+
+                        is ChatEntry.LocationNeeded -> BesideAvatar {
+                            LocationClarifyAction(onRetry = { retryWithLocation(entry.query) })
                         }
 
                         ChatEntry.GaitIntro -> BesideAvatar {
@@ -946,6 +1006,30 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
                 Text("다시 보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(13.dp), tint = DaengPinkDeep)
             }
+        }
+    }
+}
+
+/**
+ * [ChatEntry.LocationNeeded] 가 쓰는 카드. 저쪽 되묻기 질문은 이미 말풍선에 있으니
+ * 여기는 **할 수 있는 일** — 권한을 켜고 같은 질문을 다시 보내는 버튼 — 만 얹는다.
+ */
+@Composable
+private fun LocationClarifyAction(onRetry: () -> Unit) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, PinkSoft),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "위치 권한을 켜면 주변 장소를 찾을 수 있어요.",
+                color = TextDark,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+            DaengsWideButton("위치 켜고 다시 묻기", onRetry, accent = true)
         }
     }
 }
@@ -1397,6 +1481,12 @@ private fun MeterBar(fraction: Float, color: Color, modifier: Modifier = Modifie
 
 /** 소수 첫째 자리. 서버가 이미 반올림해 주지만 Float 를 그냥 찍으면 12.300001 이 된다. */
 private fun Float.percentText(): String = String.format("%.1f%%", this)
+
+/** [ChatScreen] 의 위치-CLARIFY 액션이 청하는 권한. `WalkRoute.kt` 의 것과 같다. */
+private val LOCATION_PERMISSIONS = arrayOf(
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
+)
 
 private const val SCREEN_NOT_SET =
     "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
