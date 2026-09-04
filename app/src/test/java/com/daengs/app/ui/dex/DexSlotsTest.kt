@@ -81,4 +81,30 @@ class DexSlotsTest {
         val slots = dexSlots(drawn = listOf(card("lettuce", 10)))
         assertEquals(DEX_CARDS.map { it.id }, slots.map { it.card.id })
     }
+
+    /**
+     * **마지막 한 장을 지우면 칸이 다시 잠긴다.**
+     *
+     * 지우기를 붙이면서 생긴 갈래다. 확인창이 그렇게 말하고 있으니 실제로도 그래야
+     * 한다 — 말과 다르면 모은 것이 줄어든 이유를 알 수가 없다.
+     */
+    @Test
+    fun `마지막 한 장을 지우면 그 칸이 다시 잠긴다`() {
+        val one = dexSlots(drawn = listOf(card("cabbage", 100)))
+        val cabbage = one.first { it.card.id == "cabbage" }
+        assertFalse(cabbage.locked)
+
+        val none = dexSlots(drawn = emptyList())
+        assertTrue(none.first { it.card.id == "cabbage" }.locked)
+    }
+
+    /** 여러 장 중 하나만 지우면 칸은 열려 있고 장수만 준다. */
+    @Test
+    fun `여러 장 중 하나를 지우면 칸은 열려 있다`() {
+        val two = listOf(card("cabbage", 100), card("cabbage", 200))
+        val after = dexSlots(drawn = two.drop(1))
+        val cabbage = after.first { it.card.id == "cabbage" }
+        assertFalse(cabbage.locked)
+        assertEquals(1, cabbage.count)
+    }
 }

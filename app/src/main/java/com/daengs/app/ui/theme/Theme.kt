@@ -47,7 +47,8 @@ private val DaengsColorScheme = lightColorScheme(
  * 반쪽이다. `dp` 와 `sp` 는 전부 `LocalDensity` 를 거쳐 픽셀이 되므로, 리터럴
  * 천 개를 고치는 대신 **여기서 자를 한 번 바꾼다**:
  *
- *  - 화면 폭을 기준 폭(411dp)과 견주어 전체를 비례로 키우거나 줄인다 ([uiScale]).
+ *  - 화면의 짧은 변을 기준 폭(411dp)과 견주어 전체를 비례로 키우거나 줄인다
+ *    ([uiScaleForWindow]). 가로 산책 화면에서도 긴 변 때문에 UI가 부풀지 않는다
  *    그래야 같은 `16.dp` 가 어느 폰에서나 화면의 **같은 몫**을 차지한다
  *  - `fontScale = 1f` 로 **시스템 글자 크기 설정을 무시한다.** 안 그러면 글자만
  *    커지고 상자는 그대로라 칸을 넘는다 — 하단 바가 `64.dp` 상자에 `10.sp`
@@ -62,7 +63,11 @@ private val DaengsColorScheme = lightColorScheme(
 @Composable
 fun DaengsTheme(content: @Composable () -> Unit) {
     val base = LocalDensity.current
-    val scale = uiScale(LocalConfiguration.current.screenWidthDp)
+    val configuration = LocalConfiguration.current
+    val scale = uiScaleForWindow(
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp,
+    )
     CompositionLocalProvider(
         LocalDensity provides Density(base.density * scale, fontScale = 1f),
     ) {

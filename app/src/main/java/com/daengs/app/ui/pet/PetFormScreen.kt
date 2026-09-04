@@ -2,6 +2,7 @@ package com.daengs.app.ui.pet
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import android.graphics.Bitmap
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -49,6 +52,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.common.DateWheel
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
+import com.daengs.app.pet.PetWeight
 import com.daengs.app.pet.PetDraft
 import com.daengs.app.ui.DogAvatar
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +74,7 @@ import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
@@ -95,13 +102,34 @@ import java.time.format.DateTimeParseException
  */
 @Composable
 fun PetFormScreen(
-    onSubmit: (PetDraft) -> Unit,
+    /**
+     * 보낸다. 사진은 **[PetDraft] 에 안 넣는다** — 그건 서버에 보내는 값이고 서버에는
+     * 아직 사진 자리가 없다. 새로 등록할 때는 id 가 서버에서 오므로, 부르는 쪽이
+     * 등록이 끝난 뒤에 이 비트맵을 파일로 쓴다.
+     */
+    onSubmit: (PetDraft, Bitmap?) -> Unit,
     onCancel: (() -> Unit)?,
     busy: Boolean,
     error: String?,
     initial: Pet? = null,
+    /** 이미 올려 둔 사진. 고치기로 들어왔을 때 보여 준다. */
+    photo: ImageBitmap? = null,
+    /** 사진을 지우고 견종 그림으로 되돌린다. null 이면 그 줄이 안 뜬다. */
+    onClearPhoto: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    // 고른 사진. **아직 파일이 아니다** — 새로 등록할 때는 저장할 id 가 없어서,
+    // 보내고 나서 부르는 쪽이 쓴다.
+    var picked by remember { mutableStateOf<Bitmap?>(null) }
+    var picking by remember { mutableStateOf(false) }
+    if (picking) {
+        // **폼 위에 덮는다.** 화면을 하나 더 만들면 등록 도중에 뒤로 가기가 꼬인다.
+        PetPhotoPicker { made ->
+            picking = false
+            if (made != null) picked = made
+        }
+        return
+    }
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
     var breed by remember { mutableStateOf(initial?.breed ?: DogBreed.ALL.first().id) }
     var sex by remember { mutableStateOf(initial?.sex) }
@@ -120,6 +148,8 @@ fun PetFormScreen(
 
     val parsedDate = day.takeIf { dateOn }
     val dateBad = false
+    // 몸무게는 비워 둘 수 있는 칸이라 "빈 칸"과 "잘못 쓴 값"을 가른다 ([PetWeight]).
+    val weightError = PetWeight.errorOf(weight)
 
     val draft = PetDraft(
         name = name,
@@ -159,13 +189,34 @@ fun PetFormScreen(
             color = TextMuted,
             fontSize = 13.sp,
         )
+        Spacer(Modifier.height(4.dp))
+        // **별표만 두지 않는다.** 별표가 무슨 뜻인지는 아는 사람만 안다.
+        Row {
+            Text("*", color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(" 는 꼭 넣어야 해요.", color = TextMuted, fontSize = 13.sp)
+        }
+
+        Spacer(Modifier.height(20.dp))
+        // **사진이 맨 위다.** 이름보다 먼저 얼굴이 보여야 "내 아이를 등록하는 중" 으로
+        // 읽힌다. 안 넣어도 되고, 안 넣으면 견종 그림이 그대로 쓰인다.
+        PhotoRow(
+            picked = picked,
+            saved = photo,
+            breed = DogBreed.ALL.firstOrNull { it.id == breed },
+            onPick = { picking = true },
+            onClear = if (picked != null) {
+                { picked = null }
+            } else {
+                onClearPhoto
+            },
+        )
 
         Spacer(Modifier.height(22.dp))
-        FieldLabel("이름")
-        TextInput(name, { name = it }, "네옹")
+        FieldLabel("이름", required = true)
+        TextInput(name, { name = it }, "네옹", label = "이름")
 
         Spacer(Modifier.height(18.dp))
-        FieldLabel("견종")
+        FieldLabel("견종", required = true)
         BreedGrid(breed) { breed = it }
 
         Spacer(Modifier.height(18.dp))
@@ -184,7 +235,21 @@ fun PetFormScreen(
 
         Spacer(Modifier.height(18.dp))
         FieldLabel("몸무게 (kg)")
-        TextInput(weight, { weight = it.filter { c -> c.isDigit() || c == '.' } }, "4.2", KeyboardType.Decimal)
+        // **찍히는 것부터 막는다.** 예전에는 숫자와 점만 거르고 길이를 안 봐서 18자리가
+        // 들어갔고, 저장을 누르면 저쪽 검증 오류가 JSON 그대로 화면에 찍혔다.
+        TextInput(
+            weight,
+            { if (PetWeight.accepts(it)) weight = it },
+            "4.2",
+            KeyboardType.Decimal,
+            label = "몸무게 (kg)",
+        )
+        // **이 칸의 잘못은 이 칸 아래에서 말한다.** 화면 맨 아래 서버 오류 줄에 섞으면
+        // 어느 칸 이야기인지가 안 보인다.
+        weightError?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, color = DaengsColors.Error, fontSize = 12.sp)
+        }
 
         Spacer(Modifier.height(18.dp))
         FieldLabel("생일")
@@ -231,9 +296,10 @@ fun PetFormScreen(
         SubmitButton(
             label = if (initial == null) "등록하기" else "저장하기",
             // 날짜를 잘못 적었으면 못 보낸다. 그대로 보내면 날짜만 조용히 빠진다.
-            enabled = draft.valid && !dateBad && !busy,
+            // 몸무게도 같다 — 보내 봐야 서버가 422 로 돌려보낸다.
+            enabled = draft.valid && weightError == null && !dateBad && !busy,
             busy = busy,
-        ) { onSubmit(draft) }
+        ) { onSubmit(draft, picked) }
 
         if (onCancel != null) {
             Spacer(Modifier.height(6.dp))
@@ -274,10 +340,86 @@ private fun parseDate(text: String): LocalDate? =
         null
     }
 
+/**
+ * 사진 자리.
+ *
+ * 사진이 없으면 견종 그림이 미리 보인다 — **안 넣어도 이렇게 나온다**는 것을
+ * 말로 설명하지 않고 보여 준다.
+ */
 @Composable
-private fun FieldLabel(text: String) {
-    Text(text, color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(bottom = 7.dp))
+private fun PhotoRow(
+    picked: Bitmap?,
+    saved: ImageBitmap?,
+    breed: DogBreed?,
+    onPick: () -> Unit,
+    onClear: (() -> Unit)?,
+) {
+    val shown = picked?.asImageBitmap() ?: saved
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        PetAvatar(
+            photo = shown,
+            breed = breed,
+            size = 72.dp,
+            modifier = Modifier.clickable(onClick = onPick),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Text(
+                if (shown == null) "사진 올리기" else "사진 바꾸기",
+                color = DaengPinkDeep,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onPick)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+            if (shown != null && onClear != null) {
+                Text(
+                    "기본 그림으로",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onClear)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            } else {
+                Text(
+                    "안 넣으면 견종 그림으로 나와요",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
 }
+
+/**
+ * 칸 이름.
+ *
+ * @param required 꼭 넣어야 하는 칸. **[PetDraft.valid] 가 정하는 것과 같아야 한다** —
+ *   갈리면 화면은 선택이라 하는데 저장 버튼이 안 눌린다. [REQUIRED_FIELDS] 참고
+ */
+@Composable
+private fun FieldLabel(text: String, required: Boolean = false) {
+    Row(Modifier.padding(bottom = 7.dp)) {
+        Text(text, color = TextMuted, fontSize = 12.sp)
+        if (required) {
+            Text(" *", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/**
+ * 별표가 붙는 칸.
+ *
+ * **[PetDraft.valid] 가 요구하는 것과 같은 목록이다.** 나머지는 안 골라도 되고,
+ * 그건 "모름" 이라는 뜻이다 — 필수로 하면 모르는 사람이 아무 값이나 넣고 그러면
+ * 그 값은 데이터로 못 쓴다 (유기견을 데려온 경우가 그렇다).
+ */
+internal val REQUIRED_FIELDS = setOf("이름", "견종")
 
 @Composable
 private fun TextInput(
@@ -285,6 +427,13 @@ private fun TextInput(
     onChange: (String) -> Unit,
     hint: String,
     keyboard: KeyboardType = KeyboardType.Text,
+    /**
+     * 칸의 이름. 위 [FieldLabel] 과 같은 말이다.
+     *
+     * **화면에 두 번 쓰지 않는다** — 읽어 주는 쪽에만 붙는다. 이게 없으면 스크린리더가
+     * 이름 없는 입력 칸을 만나고, 테스트도 자리표시자 글자를 칸으로 착각한다.
+     */
+    label: String? = null,
 ) {
     Box(
         Modifier
@@ -302,7 +451,12 @@ private fun TextInput(
             textStyle = TextStyle(color = TextDark, fontSize = 14.sp),
             cursorBrush = SolidColor(DaengPink),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (label == null) Modifier
+                    else Modifier.semantics { contentDescription = label }
+                ),
         )
     }
 }
@@ -482,10 +636,22 @@ private fun SubmitButton(label: String, enabled: Boolean, busy: Boolean, onClick
     }
 }
 
+/** 사진 자리. **안 올린 모습과 올린 모습이 나란히** 있어야 줄이 안 흔들리는지 보인다. */
+@Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun PhotoRowPreview() {
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            PhotoRow(picked = null, saved = null, breed = DogBreed.BEAGLE, onPick = {}, onClear = null)
+            PhotoRow(picked = null, saved = null, breed = null, onPick = {}, onClear = null)
+        }
+    }
+}
+
 @Preview(widthDp = 411, heightDp = 900, showBackground = true)
 @Composable
 private fun PetFormNewPreview() {
-    DaengsTheme { PetFormScreen(onSubmit = {}, onCancel = null, busy = false, error = null) }
+    DaengsTheme { PetFormScreen(onSubmit = { _, _ -> }, onCancel = null, busy = false, error = null) }
 }
 
 @Preview(widthDp = 411, heightDp = 900, showBackground = true)
@@ -493,7 +659,7 @@ private fun PetFormNewPreview() {
 private fun PetFormErrorPreview() {
     DaengsTheme {
         PetFormScreen(
-            onSubmit = {}, onCancel = {}, busy = false,
+            onSubmit = { _, _ -> }, onCancel = {}, busy = false,
             error = "강아지는 5마리까지 등록할 수 있습니다.",
         )
     }

@@ -200,14 +200,15 @@ class GaitModelsTest {
         val summary = GaitSummary.parse(
             JSONObject(
                 """
-                {"record_id":"5389c92e7f4b41d8a3c6e0192b7d4f8a","date":"2026-08-31",
-                 "comparable":true,"has_overlay":true,"gait_filter_version":"v5-x"}
+                {"record_id":"5389c92e-7f4b-41d8-a3c6-e0192b7d4f8a","status":"DONE",
+                 "captured_at":"2026-08-31","comparable":true,"has_overlay":true,
+                 "gait_filter_version":"v5-x"}
                 """.trimIndent(),
             ),
         )
         val record = summary.toRecord()
 
-        assertEquals("5389c92e7f4b41d8a3c6e0192b7d4f8a", record.id)
+        assertEquals("5389c92e-7f4b-41d8-a3c6-e0192b7d4f8a", record.id)
         assertEquals(LocalDate.of(2026, 8, 31), record.date)
         assertTrue(record.comparable)
         // 저쪽 목록에 길이가 없다. 0 초라고 단언하지 않는다.
@@ -217,39 +218,156 @@ class GaitModelsTest {
     }
 
     @Test
-    fun `분석 응답의 quality 가 비교 가능 여부를 정한다`() {
+    fun `분석 응답의 quality_status 가 비교 가능 여부를 정한다`() {
+        // 새 계약(D-043): `quality_status` 가 위로 올라왔고, 사유는 `quality` 안에 있다.
         val ok = GaitAnalyzed.parse(
-            JSONObject("""{"record_id":"a1","date":"2026-08-31","quality":{"status":"ok","quality_tier":"low"}}"""),
+            JSONObject(
+                """
+                {"record_id":"a1","status":"DONE","captured_at":"2026-08-31",
+                 "quality_status":"ok","quality_tier":"low"}
+                """.trimIndent(),
+            ),
         )
         val bad = GaitAnalyzed.parse(
-            JSONObject("""{"record_id":"a2","quality":{"status":"unavailable","reason":"프레임을 읽지 못했습니다"}}"""),
+            JSONObject(
+                """
+                {"record_id":"a2","status":"DONE","quality_status":"unavailable",
+                 "quality":{"reason":"프레임을 읽지 못했습니다",
+                            "recommendation":"밝은 곳에서 다시 찍어 주세요"}}
+                """.trimIndent(),
+            ),
         )
 
         assertTrue(ok.qualityOk)
         assertEquals("low", ok.qualityTier)
         assertFalse(bad.qualityOk)
         assertEquals("프레임을 읽지 못했습니다", bad.reason)
+        assertEquals("밝은 곳에서 다시 찍어 주세요", bad.recommendation)
         assertEquals(null, bad.date)
     }
 
     @Test
-    fun `비교 응답의 관절 문구만 옮기고 모르는 값은 측정 부족이다`() {
-        val compared = GaitCompared.parse(
+    fun `업로드 티켓의 주소와 헤더를 해석하지 않고 그대로 옮긴다`() {
+        // 지금은 임시 bridge 주소가 오지만 곧 GCS Signed URL 이 온다. 앱이 뜯어보지
+        // 않아야 저장소가 바뀌어도 앱이 안 바뀐다.
+        val ticket = GaitTicket.parse(
             JSONObject(
                 """
-                {"message_for_ui":"일부 관절에서 차이가 관찰됩니다",
-                 "joint_movement_range_comparison":{"Iliac crest":"차이 관찰됨","Hock":"비슷함","Knee":"???"},
-                 "version_warning":"두 기록의 필터 버전이 다릅니다"}
+                {"record_id":"r1","status":"PENDING",
+                 "upload_url":"https://storage.example/put?sig=abc",
+                 "upload_headers":{"Content-Type":"video/quicktime"},
+                 "expires_in_seconds":900}
                 """.trimIndent(),
             ),
         )
-        val metrics = compared.toMetrics().associate { it.name to it.delta }
 
-        assertEquals(GaitDelta.Slight, metrics["Iliac crest"])
-        assertEquals(GaitDelta.Similar, metrics["Hock"])
-        // 모르는 문자열을 "유사" 로 떨어뜨리면 없는 안심을 준다.
-        assertEquals(GaitDelta.Unknown, metrics["Knee"])
-        assertEquals("두 기록의 필터 버전이 다릅니다", compared.versionWarning)
+        assertEquals("https://storage.example/put?sig=abc", ticket.uploadUrl)
+        assertEquals(mapOf("Content-Type" to "video/quicktime"), ticket.uploadHeaders)
+        assertEquals("PENDING", ticket.status)
+        assertEquals(900, ticket.expiresInSeconds)
+    }
+
+    /**
+     * **실제 서버가 준 응답 그대로다** (2026-09-02, `daengback` 에서 받아 옮김).
+     *
+     * 방금 만든 기록은 **거의 모든 값이 `null`** 인데, 앱은 confirm 직후 바로 이걸
+     * 폴링한다. 여기서 파서가 터지면 분석이 시작도 못 하고 죽는다 — 손으로 지어낸
+     * JSON 으로는 이 조합을 놓치기 쉬워서 실제 응답을 박아 둔다.
+     */
+    @Test
+    fun `갓 만든 기록은 거의 전부 null 인데 그대로 읽힌다`() {
+        val analyzed = GaitAnalyzed.parse(
+            JSONObject(
+                """
+                {"record_id":"0eb458e4-6d57-4a9e-b945-f1873a5dae3b",
+                 "pet_id":"9061a4ed-b7bd-44ce-8dc3-b8eed7456ef1","status":"PENDING",
+                 "quality_status":null,"quality_tier":null,"gait_filter_version":null,
+                 "captured_at":null,"source_file":"IMG_8631.mov","note":null,
+                 "created_at":"2026-09-02T04:49:03.055693Z","comparable":false,
+                 "has_overlay":false,"quality":null,"summary_for_ui":null,
+                 "video_meta":null,"failure_reason":null}
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("PENDING", analyzed.status)
+        // 아직 끝나지 않았다 — 폴링이 계속돼야 한다.
+        assertFalse(analyzed.settled)
+        assertFalse(analyzed.qualityOk)
+        assertEquals(null, analyzed.date)
+        assertEquals(null, analyzed.reason)
+        assertEquals(null, analyzed.qualityTier)
+        assertEquals(null, analyzed.failureReason)
+    }
+
+    /** 목록도 같은 상태를 담아 온다. **아직 안 끝난 기록이 목록에 섞인다.** */
+    @Test
+    fun `목록에 아직 분석 중인 기록이 섞여도 비교 대상으로 세우지 않는다`() {
+        val page = GaitPage.parse(
+            JSONObject(
+                """
+                {"records":[{"record_id":"0eb458e4-6d57-4a9e-b945-f1873a5dae3b",
+                 "pet_id":"9061a4ed-b7bd-44ce-8dc3-b8eed7456ef1","status":"PENDING",
+                 "quality_status":null,"quality_tier":null,"gait_filter_version":null,
+                 "captured_at":null,"source_file":"IMG_8631.mov","note":null,
+                 "created_at":"2026-09-02T04:49:03.055693Z","comparable":false,
+                 "has_overlay":false}],"next_cursor":null}
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(1, page.records.size)
+        assertEquals(null, page.nextCursor)
+        // 서버가 이미 false 로 준다 — 앱이 따로 판단하지 않는다.
+        assertFalse(page.records[0].toRecord().comparable)
+    }
+
+    /** 티켓도 실제 응답 그대로. 임시 bridge 주소지만 앱은 해석하지 않는다. */
+    @Test
+    fun `실제 서버가 준 티켓을 그대로 읽는다`() {
+        val ticket = GaitTicket.parse(
+            JSONObject(
+                """
+                {"record_id":"0eb458e4-6d57-4a9e-b945-f1873a5dae3b","status":"PENDING",
+                 "upload_url":"http://daengback.weareithero.cloud/app/gait/_bridge/upload/gait/9061a4ed-b7bd-44ce-8dc3-b8eed7456ef1/original/cbb2cc7ed79a4bccbd5431234c59ada1.mov",
+                 "upload_headers":{"Content-Type":"video/quicktime"},
+                 "expires_in_seconds":900}
+                """.trimIndent(),
+            ),
+        )
+
+        assertTrue(ticket.uploadUrl.endsWith(".mov"))
+        assertEquals("video/quicktime", ticket.uploadHeaders["Content-Type"])
+        assertEquals(900, ticket.expiresInSeconds)
+    }
+
+    @Test
+    fun `끝난 상태만 폴링을 멈춘다`() {
+        // 폴링이 여기서 끝을 판단한다. PROCESSING 을 끝으로 보면 결과 없는 카드가 뜬다.
+        assertTrue(GaitStatus.settled("DONE"))
+        assertTrue(GaitStatus.settled("FAILED"))
+        assertFalse(GaitStatus.settled("PENDING"))
+        assertFalse(GaitStatus.settled("UPLOADED"))
+        assertFalse(GaitStatus.settled("PROCESSING"))
+    }
+
+    @Test
+    fun `실패 사유는 받아 두되 화면 문장으로 쓰지 않는다`() {
+        // 운영 진단용이라 내부 경로가 들어 있을 수 있다. 모델은 들고만 있고,
+        // 사용자에게 보여 줄 말은 HttpGaitAnalyzer 가 따로 고른다.
+        val failed = GaitAnalyzed.parse(
+            JSONObject(
+                """
+                {"record_id":"a3","status":"FAILED",
+                 "failure_reason":"Traceback ... /app/src/daengs_gait/pipeline.py"}
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("FAILED", failed.status)
+        assertTrue(failed.settled)
+        assertFalse(failed.qualityOk)
+        assertTrue(failed.failureReason!!.contains("pipeline.py"))
     }
 
     @Test

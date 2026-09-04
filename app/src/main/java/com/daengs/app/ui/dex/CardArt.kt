@@ -57,7 +57,14 @@ data class DrawnCardArt(
     val face: CardFace?,
     val name: String,
     val code: String,
-    /** 합칠 수 없을 때 대신 그릴 그림 */
+    /**
+     * 합칠 수 없을 때 대신 그릴 그림.
+     *
+     * **저쪽 완성 카드가 아니라 자리를 비운 판이다.** 예전에는 완성 카드로 물러섰는데,
+     * 그 판에는 `TOMATO NEO` 와 `NEO-0824` 가 인쇄돼 있어서 **얼굴 파일이 없는 카드의
+     * 팝업에 남의 개 이름이 그대로 떴다** (개발 기기의 시드 열두 장이 그랬다).
+     * 비운 판으로 물러서면 이름칸이 비어 있을 뿐 남의 것이 안 보인다.
+     */
     val fallback: CardArt,
 ) {
     val composed: Boolean get() = template != null && face != null
@@ -66,13 +73,16 @@ data class DrawnCardArt(
 @Composable
 fun rememberDrawnCardArt(card: DrawnCard): DrawnCardArt {
     val context = LocalContext.current
-    val fallback = CardArt.Asset(
-        DEX_CARDS.firstOrNull { it.id == card.templateId }?.art
-            ?: "neo-hologram/art/${card.templateId}.webp",
-    )
     val template = remember(card.templateId) {
         CARD_TEMPLATES.firstOrNull { it.id == card.templateId }
     }
+    // 자리를 비운 판이 있으면 그쪽으로 물러선다. 없을 때만 저쪽 완성 카드다 —
+    // 저쪽이 카드를 갈아엎어 판이 사라진 경우이고, 그때는 빈 화면보다 낫다.
+    val fallback = CardArt.Asset(
+        template?.art
+            ?: DEX_CARDS.firstOrNull { it.id == card.templateId }?.art
+            ?: "neo-hologram/art/${card.templateId}.webp",
+    )
     var face by remember(card.id) { mutableStateOf<CardFace?>(null) }
     LaunchedEffect(card.id) {
         face = withContext(Dispatchers.IO) {

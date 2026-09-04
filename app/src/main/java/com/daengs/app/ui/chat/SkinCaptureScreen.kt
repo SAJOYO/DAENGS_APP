@@ -102,7 +102,7 @@ fun SkinCaptureScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                "병변이 네모 안에 오도록 맞춰 주세요",
+                "진단하고 싶은 부위가 잘 보이게 맞춰 주세요",
                 color = CardWhite,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,

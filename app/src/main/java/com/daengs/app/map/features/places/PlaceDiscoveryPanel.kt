@@ -1,8 +1,6 @@
 package com.daengs.app.map.features.places
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,100 +25,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.common.DaengsChip
 import com.daengs.app.ui.common.DaengsTextAction
-import com.daengs.app.ui.common.DaengsWideButton
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
-import com.daengs.app.map.layers.places.PlaceMarkerState
-import com.daengs.app.journey.JourneyItem
-import com.daengs.app.journey.JourneyLeg
-import com.daengs.app.journey.JourneyMode
-import com.daengs.app.journey.JourneyRouteStatus
 import com.daengs.app.map.features.journey.PlaceJourneyState
-import com.daengs.app.place.BooleanFactCoverage
-import com.daengs.app.place.DogAccessState
-import com.daengs.app.place.MedicalFacts
 import com.daengs.app.place.PlaceKey
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceResult
-import com.daengs.app.place.PlaceSearchGroup
-import com.daengs.app.place.PlaceSearchHit
-import com.daengs.app.place.PlaceSortType
-import com.daengs.app.place.supportsParkingPreference
 import com.daengs.app.ui.theme.DaengsTheme
-
-data class PlaceCategory(
-    val kind: PlaceKind,
-    val label: String,
-)
-
-data class DogAccessCoverage(
-    val compatible: Int,
-    val incompatible: Int,
-    val unknown: Int,
-)
-
-/** 서버가 정한 종류 그대로다. 여가/볼일 같은 축을 임의로 만들지 않는다 — **칩 하나가 서버 그룹 하나**다. */
-val PLACE_CATEGORIES = listOf(
-    PlaceCategory(PlaceKind.CAFE, "카페"),
-    PlaceCategory(PlaceKind.RESTAURANT, "음식점"),
-    PlaceCategory(PlaceKind.PET_SHOP, "펫샵"),
-    PlaceCategory(PlaceKind.SHOPPING, "일반 쇼핑"),
-    PlaceCategory(PlaceKind.GROOMING, "미용"),
-    PlaceCategory(PlaceKind.BOARDING, "위탁"),
-    PlaceCategory(PlaceKind.HOSPITAL, "동물병원"),
-    PlaceCategory(PlaceKind.PHARMACY, "약국"),
-    PlaceCategory(PlaceKind.TRAVEL, "여행지"),
-    PlaceCategory(PlaceKind.LEISURE, "레저"),
-    PlaceCategory(PlaceKind.PENSION, "펜션"),
-    PlaceCategory(PlaceKind.HOTEL, "호텔"),
-    PlaceCategory(PlaceKind.STAY, "숙박"),
-    PlaceCategory(PlaceKind.MUSEUM, "박물관"),
-    PlaceCategory(PlaceKind.GALLERY, "미술관"),
-    PlaceCategory(PlaceKind.ARTS_CENTER, "문예회관"),
-    PlaceCategory(PlaceKind.CULTURE, "문화시설"),
-    PlaceCategory(PlaceKind.ETC, "기타"),
-)
-
-val DEFAULT_PLACE_KIND = PlaceKind.CAFE
-
-fun selectedPlaceKind(state: PlaceDiscoveryState): PlaceKind =
-    state.requestedKinds.singleOrNull() ?: DEFAULT_PLACE_KIND
-
-fun canonicalPlaceMarkers(state: PlaceDiscoveryState): List<PlaceMarkerState> =
-    state.response?.groups.orEmpty().flatMap { group ->
-        group.results.map { hit ->
-            PlaceMarkerState(
-                id = placeMarkerId(hit.place.key),
-                point = hit.place.point,
-                label = hit.place.name,
-                selected = hit.place.key == state.selectedPlaceKey,
-                iconGroup = hit.place.iconGroup,
-            )
-        }
-    }
-
-fun canonicalPlaceKeysByMarker(state: PlaceDiscoveryState): Map<String, PlaceKey> =
-    state.response?.groups.orEmpty().flatMap(PlaceSearchGroup::results)
-        .associate { hit -> placeMarkerId(hit.place.key) to hit.place.key }
-
-/**
- * 앞에 길이를 붙여 `(source, ref)` 를 한 문자열로 만든다.
- *
- * 길이를 알면 어디서 끊을지 알 수 있어서, source 안에 무슨 글자가 들어 있든
- * 파싱할 필요가 없고 서로 다른 짝이 같은 id 가 될 일도 없다.
- */
-fun placeMarkerId(key: PlaceKey): String = "place:${key.source.length}:${key.source}${key.ref}"
 
 @Composable
 fun PlaceDiscoveryPanel(
@@ -135,9 +55,8 @@ fun PlaceDiscoveryPanel(
     onCall: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val selectedKind = selectedPlaceKind(state)
-    // 화면은 한 번에 kind 하나만 요청하므로 그룹도 하나다.
-    val group = state.response?.groups?.firstOrNull()
+    val presentation = state.toPanelPresentation()
+    val selectedKind = presentation.selectedKind
     val categoryState = rememberLazyListState()
 
     // 선택된 종류가 18개 칩 중 화면 밖에 있으면, 무엇으로 찾은 결과인지 보이지 않는다.
@@ -165,13 +84,13 @@ fun PlaceDiscoveryPanel(
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        placePanelTitle(selectedKind),
+                        presentation.title,
                         color = TextDark,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "${originLabel(state.originMode)} · 카테고리 하나씩 사실 그대로 검색합니다.",
+                        presentation.originDescription,
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                     )
@@ -201,7 +120,7 @@ fun PlaceDiscoveryPanel(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (selectedKind.supportsParkingPreference()) {
+                    if (presentation.showParkingPreference) {
                         DaengsChip(
                             label = "주차 가능 우선",
                             selected = state.preferParking,
@@ -210,17 +129,17 @@ fun PlaceDiscoveryPanel(
                         )
                     }
                     Text(
-                        group?.let(::sortLabel) ?: "가까운 순",
+                        presentation.sortDescription,
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
                     )
                 }
             }
 
-            if (selectedKind == PlaceKind.SHOPPING) {
+            presentation.shoppingNotice?.let { notice ->
                 item {
                     Text(
-                        "일반 쇼핑은 원천 데이터에 주차·입장 조건 같은 상세 사실이 대부분 없습니다.",
+                        notice,
                         modifier = Modifier.padding(horizontal = 16.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = DaengsColors.Warning,
@@ -228,15 +147,10 @@ fun PlaceDiscoveryPanel(
                 }
             }
 
-            group?.sort?.coverage?.get("parking")?.let { coverage ->
-                item { ParkingCoverage(coverage) }
-            }
-
-            group?.let(::dogAccessCoverage)?.let { coverage ->
+            presentation.parkingCoverage?.let { coverage ->
                 item {
                     Text(
-                        "입장 평가 · 가능 ${coverage.compatible} · 불일치 ${coverage.incompatible} · " +
-                            "미상 ${coverage.unknown}",
+                        coverage,
                         modifier = Modifier.padding(horizontal = 16.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,
@@ -244,7 +158,18 @@ fun PlaceDiscoveryPanel(
                 }
             }
 
-            state.error?.let { error ->
+            presentation.dogAccessCoverage?.let { coverage ->
+                item {
+                    Text(
+                        coverage,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                }
+            }
+
+            presentation.errorMessage?.let { error ->
                 item {
                     Surface(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -262,14 +187,16 @@ fun PlaceDiscoveryPanel(
                                 fontSize = 12.sp,
                                 maxLines = 2,
                             )
-                            DaengsTextAction("다시 시도", onRetry, tint = DaengsColors.Error)
+                            if (presentation.retryable) {
+                                DaengsTextAction("다시 시도", onRetry, tint = DaengsColors.Error)
+                            }
                         }
                     }
                 }
             }
 
-            if (state.loading) {
-                item {
+            when (val results = presentation.results) {
+                is PlaceResultsPresentation.Loading -> item {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(18.dp),
                         horizontalArrangement = Arrangement.Center,
@@ -281,58 +208,48 @@ fun PlaceDiscoveryPanel(
                             strokeWidth = 2.dp,
                         )
                         Spacer(Modifier.width(10.dp))
-                        Text("${categoryLabel(selectedKind)} 찾는 중", color = TextMuted, fontSize = 13.sp)
+                        Text(results.message, color = TextMuted, fontSize = 13.sp)
                     }
                 }
-            } else if (group == null && state.requestedKinds.isEmpty()) {
-                item {
-                    Text(
-                        "현재 위치를 확인하면 주변 ${categoryLabel(selectedKind)}를 보여드릴게요.",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        color = TextMuted,
-                        fontSize = 13.sp,
-                    )
+                PlaceResultsPresentation.Failed -> Unit
+                is PlaceResultsPresentation.Initial -> item {
+                    PlaceResultMessage(results.message)
                 }
-            } else if (group == null || group.results.isEmpty()) {
-                item {
-                    Text(
-                        "이 반경에서 ${categoryLabel(selectedKind)} 결과를 찾지 못했습니다.",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        color = TextMuted,
-                        fontSize = 13.sp,
-                    )
+                is PlaceResultsPresentation.Empty -> item {
+                    PlaceResultMessage(results.message)
                 }
-            } else {
-                item {
-                    Text(
-                        "${group.results.size}곳${if (group.truncated) " · 서버 한도에서 잘림" else ""}",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = TextDark,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                item {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(group.results, key = { placeMarkerId(it.place.key) }) { hit ->
-                            PlaceCard(
-                                hit = hit,
-                                selected = hit.place.key == state.selectedPlaceKey,
-                                journey = journey.takeIf {
-                                    it.destinationKey == hit.place.key
-                                },
-                                onSelect = { onSelect(hit.place.key) },
-                                onJourney = {
-                                    onSelect(hit.place.key)
-                                    onJourney(hit.place)
-                                },
-                                onRetryJourney = onRetryJourney,
-                                onOpenHandoff = onOpenHandoff,
-                                onCall = onCall,
-                            )
+                is PlaceResultsPresentation.Content -> {
+                    item {
+                        Text(
+                            results.countLabel,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = TextDark,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    item {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(results.hits, key = { placeMarkerId(it.place.key) }) { hit ->
+                                PlaceCard(
+                                    presentation = hit.toCardPresentation(),
+                                    selected = hit.place.key == state.selectedPlaceKey,
+                                    journey = journey.takeIf {
+                                        it.destinationKey == hit.place.key
+                                    },
+                                    onSelect = { onSelect(hit.place.key) },
+                                    onJourney = {
+                                        onSelect(hit.place.key)
+                                        onJourney(hit.place)
+                                    },
+                                    onRetryJourney = onRetryJourney,
+                                    onOpenHandoff = onOpenHandoff,
+                                    onCall = onCall,
+                                )
+                            }
                         }
                     }
                 }
@@ -344,319 +261,14 @@ fun PlaceDiscoveryPanel(
 }
 
 @Composable
-private fun ParkingCoverage(coverage: BooleanFactCoverage) {
+private fun PlaceResultMessage(message: String) {
     Text(
-        "반환 결과 주차 정보 · 가능 ${coverage.knownTrue} · 불가 ${coverage.knownFalse} · " +
-            "미상 ${coverage.unknown}",
-        modifier = Modifier.padding(horizontal = 16.dp),
-        style = MaterialTheme.typography.bodySmall,
+        message,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         color = TextMuted,
+        fontSize = 13.sp,
     )
 }
-
-@Composable
-private fun PlaceCard(
-    hit: PlaceSearchHit,
-    selected: Boolean,
-    journey: PlaceJourneyState?,
-    onSelect: () -> Unit,
-    onJourney: () -> Unit,
-    onRetryJourney: () -> Unit,
-    onOpenHandoff: (String) -> Unit,
-    onCall: (String) -> Unit,
-) {
-    val place = hit.place
-    val border = if (selected) DaengPink else DaengsColors.BorderNeutral
-    Surface(
-        modifier = Modifier.width(292.dp).border(1.dp, border, RoundedCornerShape(16.dp))
-            .clickable(onClick = onSelect),
-        shape = RoundedCornerShape(16.dp),
-        color = CardWhite,
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(
-                place.name,
-                color = TextDark,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "${categoryLabel(place.match.kind)} · ${formatPlaceMeters(place.distanceMeters)}",
-                color = TextMuted,
-                fontSize = 13.sp,
-            )
-            if (place.match.kind.supportsParkingPreference()) {
-                Text(
-                    parkingLabel(place.facts.parking),
-                    // **셋을 한 색으로 칠하면 안 된다.** 가능·불가·모름은 다른 사실이고,
-                    // 이 카드에서 사용자가 제일 먼저 찾는 정보다. 예전엔 가능과 불가가
-                    // 똑같은 회색이라 거리("429m")와 구별이 안 됐다.
-                    color = when (place.facts.parking) {
-                        true -> DaengsColors.Success
-                        false -> TextMuted
-                        null -> DaengsColors.Warning
-                    },
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-            hit.evaluations.dogAccess?.let { evaluation ->
-                Text(
-                    "${dogAccessLabel(evaluation.state)} · ${dogAccessReasonLabel(evaluation.reason)}",
-                    color = dogAccessColor(evaluation.state),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (place.match.kind == PlaceKind.HOSPITAL) {
-                val medical = place.facts.medical
-                Text(
-                    hospitalOperationLabel(
-                        medical = medical,
-                        hasPhone = !place.facts.phone.isNullOrBlank(),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (medical?.openNow == null || place.facts.phone.isNullOrBlank()) {
-                        DaengsColors.Warning
-                    } else {
-                        TextMuted
-                    },
-                )
-                todayHoursLabel(medical)?.let { today ->
-                    Text(today, style = MaterialTheme.typography.bodySmall)
-                }
-                hospitalSourceDateLabel(place)?.let { sourceDate ->
-                    Text(
-                        sourceDate,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextMuted,
-                    )
-                }
-            } else {
-                place.facts.medical?.let { medical ->
-                    Text(
-                        openNowLabel(medical.openNow),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextDark,
-                    )
-                }
-            }
-            place.facts.hoursText?.let { hours ->
-                Text(
-                    "영업시간 $hours",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                    maxLines = 2,
-                )
-            }
-            // 주소는 **가게 이름보다 작아야 한다.** 기본 글자(16sp)로 두면 이름과 같은
-            // 크기라 카드에서 무엇이 제목인지 안 보인다.
-            place.facts.address?.let { address ->
-                Text(
-                    address,
-                    color = TextDark,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            JourneyAction(
-                journey = journey,
-                onJourney = onJourney,
-                onRetry = onRetryJourney,
-                onOpenHandoff = onOpenHandoff,
-            )
-            place.facts.phone?.let { phone ->
-                DaengsWideButton(callActionLabel(place.match.kind, phone), { onCall(phone) })
-            }
-        }
-    }
-}
-
-data class PrimaryJourney(
-    val mode: JourneyMode,
-    val leg: JourneyLeg,
-)
-
-@Composable
-private fun JourneyAction(
-    journey: PlaceJourneyState?,
-    onJourney: () -> Unit,
-    onRetry: () -> Unit,
-    onOpenHandoff: (String) -> Unit,
-) {
-    when {
-        journey == null -> {
-            DaengsWideButton("길찾기", onJourney, accent = true)
-        }
-        journey.loading -> {
-            DaengsWideButton("가는 길 확인 중", {}, busy = true)
-        }
-        journey.error != null -> {
-            Text(
-                journey.error,
-                style = MaterialTheme.typography.bodySmall,
-                color = DaengsColors.Error,
-                maxLines = 2,
-            )
-            DaengsWideButton("길찾기 다시 시도", onRetry)
-        }
-        else -> {
-            val primary = journey.item?.let(::primaryJourney)
-            if (primary == null) {
-                Text(
-                    "사용할 수 있는 이동 경로가 없습니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-                DaengsWideButton("다시 계산", onJourney)
-            } else {
-                Text(
-                    journeySummary(primary),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-                DaengsWideButton(
-                    "네이버 지도에서 ${journeyModeLabel(primary.mode)} 길찾기",
-                    { onOpenHandoff(primary.leg.handoff!!.naver) },
-                    accent = true,
-                )
-            }
-        }
-    }
-}
-
-fun primaryJourney(item: JourneyItem): PrimaryJourney? {
-    val ordered = (item.modePriority + JourneyMode.entries).distinct()
-    return ordered.asSequence()
-        .mapNotNull { mode -> item.legs[mode]?.let { leg -> PrimaryJourney(mode, leg) } }
-        .firstOrNull { it.leg.status != JourneyRouteStatus.UNAVAILABLE && it.leg.handoff != null }
-        ?: ordered.asSequence()
-            .mapNotNull { mode -> item.legs[mode]?.let { leg -> PrimaryJourney(mode, leg) } }
-            .firstOrNull { it.leg.handoff != null }
-}
-
-fun journeySummary(journey: PrimaryJourney): String {
-    val mode = journeyModeLabel(journey.mode)
-    val leg = journey.leg
-    if (leg.status == JourneyRouteStatus.UNAVAILABLE) {
-        return "$mode 경로 정보 없음 · 지도앱에서 확인"
-    }
-    val duration = leg.minutes?.let { "약 ${it}분" } ?: "시간 정보 없음"
-    val distance = leg.meters?.let(::formatPlaceMeters) ?: "거리 정보 없음"
-    val status = when (leg.status) {
-        JourneyRouteStatus.MEASURED -> "제공사 실측"
-        JourneyRouteStatus.ESTIMATE -> "추정"
-        JourneyRouteStatus.UNAVAILABLE -> error("handled above")
-    }
-    return "$mode $duration · $distance · $status"
-}
-
-fun journeyModeLabel(mode: JourneyMode): String = when (mode) {
-    JourneyMode.WALK -> "도보"
-    JourneyMode.CAR -> "자동차"
-    JourneyMode.TRANSIT -> "대중교통"
-}
-
-fun categoryLabel(kind: PlaceKind): String =
-    PLACE_CATEGORIES.firstOrNull { it.kind == kind }?.label ?: kind.wire
-
-fun placePanelTitle(kind: PlaceKind): String = when (kind) {
-    PlaceKind.HOSPITAL -> "내 주변 동물병원"
-    else -> "내 주변 장소"
-}
-
-fun originLabel(mode: PlaceOriginMode): String = when (mode) {
-    PlaceOriginMode.DEVICE -> "내 위치 기준"
-    PlaceOriginMode.PINNED -> "지도를 움직인 위치 기준"
-}
-
-fun parkingLabel(value: Boolean?): String = when (value) {
-    true -> "주차 가능"
-    false -> "주차 불가"
-    null -> "주차 정보 없음"
-}
-
-fun dogAccessLabel(state: DogAccessState): String = when (state) {
-    DogAccessState.COMPATIBLE -> "입장 조건상 가능"
-    DogAccessState.INCOMPATIBLE -> "조건 불일치"
-    DogAccessState.UNKNOWN -> "정보 부족 · 확인 필요"
-}
-
-fun dogAccessReasonLabel(reason: String): String = when (reason) {
-    "size_allowed" -> "크기 등급 허용"
-    "size_exceeded" -> "크기 등급 초과"
-    "weight_allowed" -> "무게 제한 허용"
-    "weight_exceeded" -> "무게 제한 초과"
-    "weight_boundary_unknown" -> "미만·이하 경계 확인 필요"
-    "dog_disallowed" -> "개 입장 불가"
-    "missing_dog_size" -> "개 크기 미상"
-    "missing_dog_weight" -> "개 무게 미상"
-    "missing_restriction" -> "시설 제한 정보 없음"
-    else -> reason
-}
-
-fun dogAccessCoverage(group: PlaceSearchGroup): DogAccessCoverage? {
-    val evaluations = group.results.mapNotNull { it.evaluations.dogAccess }
-    if (evaluations.isEmpty()) return null
-    return DogAccessCoverage(
-        compatible = evaluations.count { it.state == DogAccessState.COMPATIBLE },
-        incompatible = evaluations.count { it.state == DogAccessState.INCOMPATIBLE },
-        unknown = evaluations.count { it.state == DogAccessState.UNKNOWN },
-    )
-}
-
-private fun dogAccessColor(state: DogAccessState): Color = when (state) {
-    DogAccessState.COMPATIBLE -> DaengsColors.Success
-    DogAccessState.INCOMPATIBLE -> DaengsColors.Error
-    DogAccessState.UNKNOWN -> DaengsColors.Warning
-}
-
-fun hospitalOperationLabel(medical: MedicalFacts?, hasPhone: Boolean): String {
-    val status = when (medical?.openNow) {
-        true -> "현재 영업으로 계산됨"
-        false -> "현재 영업 종료로 계산됨"
-        null -> "현재 영업 여부 미상"
-    }
-    val action = if (hasPhone) "방문 전 전화 확인" else "전화번호 정보 없음"
-    return "$status · $action"
-}
-
-fun todayHoursLabel(medical: MedicalFacts?): String? = medical?.hoursToday
-    ?.takeIf(List<*>::isNotEmpty)
-    ?.joinToString(prefix = "오늘 ", separator = " · ") { range ->
-        "${range.opensAt}~${range.closesAt}"
-    }
-
-fun hospitalSourceDateLabel(place: PlaceResult): String? = place.classifications
-    .firstOrNull { classification ->
-        classification.source == place.match.source && classification.kind == PlaceKind.HOSPITAL
-    }
-    ?.asOf
-    ?.let { "인허가 정보 기준 $it" }
-
-fun callActionLabel(kind: PlaceKind, phone: String): String = when (kind) {
-    PlaceKind.HOSPITAL -> "병원에 전화해 확인 · $phone"
-    else -> "전화 $phone"
-}
-
-private fun openNowLabel(value: Boolean?): String = when (value) {
-    true -> "현재 영업으로 계산됨"
-    false -> "현재 영업 종료로 계산됨"
-    null -> "현재 영업 여부 미상"
-}
-
-fun sortLabel(group: PlaceSearchGroup): String = when (group.sort.type) {
-    PlaceSortType.DISTANCE -> "가까운 순"
-    PlaceSortType.DISTANCE_PREFERRED -> {
-        val band = group.sort.bandMeters
-        if (band == null) "서버 지정 선호순" else "${band}m 구간 안에서 주차 가능 우선"
-    }
-}
-
-private fun formatPlaceMeters(meters: Int): String =
-    if (meters >= 1_000) "%.1fkm".format(meters / 1_000.0) else "${meters}m"
 
 @Preview(device = "spec:width=411dp,height=891dp", showBackground = true)
 @Composable

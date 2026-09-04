@@ -204,6 +204,28 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Windows 에서는 `gradlew.bat` 을 쓴다.
 
+### 스토어에 올릴 빌드
+
+```bash
+./gradlew :app:bundleRelease -PversionCode=2 -PversionName=1.0.1
+# app/build/outputs/bundle/release/app-release.aab
+```
+
+- **APK 가 아니라 AAB 로 올린다.** 기기마다 필요한 CPU 라이브러리만 내려가서, 130MB
+  짜리 `libnavermap.so` 네 벌이 한 벌이 된다
+- **`-PversionCode` 를 안 주면 `1` 이다.** 평소 빌드가 지금과 똑같아야 해서 그렇게
+  뒀지만, **스토어에 올릴 때는 반드시 준다.** Play 는 한 트랙에서 같은 versionCode 를
+  두 번 받지 않고, **지운 릴리스가 쓴 번호도 재사용할 수 없다**
+- **2026-09-02 의 `v1` 태그가 versionCode 1 로 나갔다. 다음 업로드는 2 부터다**
+- `-PversionName` 은 사람이 읽는 값이라 안 줘도 된다 (없으면 `1.0`)
+- 숫자가 아닌 값을 주면 **빌드가 멈춘다.** 조용히 1 로 떨어지면 오타 하나가 그대로
+  통과해서, 다 만든 AAB 를 올리는 자리에서야 중복으로 거부당한다
+
+⚠️ **카카오 로그인은 키 해시를 하나 더 등록해야 스토어 빌드에서 된다.** Play 앱
+서명을 쓰므로 구글이 앱을 다시 서명하고, 그 키의 해시는 저장소의 debug 키에서 뽑은
+값과 다르다. Play Console → 설정 → 앱 서명 의 SHA-1 을 base64 로 바꿔 카카오 콘솔에
+넣는다 ([카카오 로그인을 켜려면](#카카오-로그인을-켜려면-선택)).
+
 ---
 
 ## 디버그 서명 키가 왜 커밋되어 있나

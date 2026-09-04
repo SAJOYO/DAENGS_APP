@@ -4,6 +4,8 @@ import android.util.Log
 import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -35,6 +37,7 @@ class WalkSync(
         Log.w(TAG, message, cause)
     },
 ) {
+    private val pushMutex = Mutex()
 
     /**
      * 한 번 맞춘다. **실패해도 조용하다.**
@@ -48,9 +51,25 @@ class WalkSync(
     suspend fun syncOnce(accessToken: String?): Unit = withContext(Dispatchers.IO) {
         val token = accessToken ?: return@withContext
         if (!api.configured) return@withContext
-        runCatching { push(token) }.onFailure { it.warn("올리기") }
+        runCatching { pushMutex.withLock { push(token) } }.onFailure { it.warn("올리기") }
         runCatching { pull(token) }.onFailure { it.warn("되찾기") }
     }
+
+    /**
+     * WorkManager가 지정한 한 건을 보낸다. [syncOnce]와 달리 실패를 삼키지 않는다 —
+     * 호출자가 [androidx.work.ListenableWorker.Result.retry]를 선택해야 하기 때문이다.
+     */
+    suspend fun syncPendingSession(accessToken: String, sessionId: String): Unit =
+        withContext(Dispatchers.IO) {
+            if (!api.configured) return@withContext
+            pushMutex.withLock {
+                val session = log.session(sessionId) ?: return@withLock
+                if (session.endedAtMillis == null || session.syncState == WalkSyncState.DERIVED) {
+                    return@withLock
+                }
+                pushOne(accessToken, session)
+            }
+        }
 
     /** 끝났지만 아직 계산 완료되지 않은 것을 현재 단계부터 이어간다. */
     private suspend fun push(token: String) {

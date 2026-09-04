@@ -29,6 +29,9 @@ import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.RoomSpec
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.dogcard.CARD_TEMPLATES
+import com.daengs.app.ui.dogcard.CardTemplate
+import androidx.compose.ui.tooling.preview.Preview
 
 // ---------------------------------------------------------------------------
 // 개발자 패널
@@ -90,6 +93,33 @@ fun DeveloperPanel(
      * 보려면 실기기에서 사진을 넣어 봐야 한다.
      */
     onOpenCutoutLab: (() -> Unit)? = null,
+    /**
+     * 야채를 지정해서 카드를 만든다. **뽑기로는 원하는 것이 안 나온다** — 12종
+     * 균등에 중복도 허용이고 하루 세 번이라, 이머시브가 있는 셋(배추·고구마·상추)이나
+     * 팝아웃이 있는 토마토 한 장을 보려면 며칠이 걸린다.
+     */
+    onMakeCard: ((CardTemplate) -> Unit)? = null,
+    /**
+     * 빌려 쓸 얼굴이 있나. **없으면 만들지 않는다.**
+     *
+     * [onMakeCard] 는 이미 뽑아 둔 카드에서 얼굴을 빌리는데, 한 장도 없으면 얼굴 없는
+     * 카드가 조용히 만들어진다. 그런 카드는 `composed` 가 false 라 무대·창틀에 우리
+     * 것이 하나도 안 얹혀서, 정작 보려던 것을 못 본다 — 실제로 그렇게 헤맸다.
+     * 도감 칸만 차지하고 뽑기 횟수도 안 먹어서 지운 티도 안 난다.
+     */
+    canMakeCard: Boolean = false,
+    /**
+     * 프로필 사진을 올려 본다.
+     *
+     * **로그인해야만 볼 수 있던 것을 여기서 본다.** 사진은 등록한 강아지에 딸리는데
+     * (`pet-photos/<id>.jpg`), 이 패널은 강아지 없이 얼굴을 보는 자리다 — 견종을
+     * 갈아끼우는 줄이 있는 것과 같은 이유다. **저장하지 않는다.** 앱을 끄면 사라진다.
+     */
+    onPickProfilePhoto: (() -> Unit)? = null,
+    /** 올려 본 사진을 지우고 견종 그림으로 되돌린다. */
+    onClearProfilePhoto: (() -> Unit)? = null,
+    /** 지금 올려 본 사진이 있나. 글씨를 가르는 데만 쓴다. */
+    hasProfilePhoto: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -119,6 +149,44 @@ fun DeveloperPanel(
                         .padding(horizontal = 6.dp, vertical = 1.dp),
                 )
             }
+        }
+
+        if (onPickProfilePhoto != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    if (hasProfilePhoto) "사진 바꿔보기" else "사진 올려보기",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(PanelPick)
+                        .clickable(onClick = onPickProfilePhoto)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+                if (hasProfilePhoto && onClearProfilePhoto != null) {
+                    Text(
+                        "사진 지우기",
+                        color = PanelDim,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(5.dp))
+                            .clickable(onClick = onClearProfilePhoto)
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+            }
+        }
+
+        // **맨 아래에 두지 않는다.** 패널 아래쪽은 방 이름표("우리집")가 덮는데,
+        // 열두 개를 다 밀면 토마토가 정확히 그 아래에 서서 누를 수가 없었다.
+        // 위쪽은 비어 있으므로 여기 둔다.
+        if (onMakeCard != null) {
+            Text(
+                if (canMakeCard) "카드 만들기" else "카드 만들기 · 먼저 한 장 뽑기",
+                color = PanelDim,
+                fontSize = 9.sp,
+            )
+            CardMakeRow(onMakeCard, enabled = canMakeCard)
         }
 
         // 소품 목록은 여기 안 넣는다. 좌표는 이미 방 위에 라벨로 그려지고 있어서
@@ -163,6 +231,38 @@ fun DeveloperPanel(
     }
 }
 
+/**
+ * 야채 열두 개. 누르면 그 카드가 한 장 생긴다.
+ *
+ * **고르기가 아니라 누르는 것이다.** 칩에 선택 표시를 안 두는 이유고, 그래서 같은
+ * 야채를 두 번 누르면 두 장이 생긴다 — 도감은 종류별로 한 칸이라 표지만 바뀐다.
+ */
+@Composable
+private fun CardMakeRow(onMakeCard: (CardTemplate) -> Unit, enabled: Boolean) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        CARD_TEMPLATES.forEach { t ->
+            BreedChip(t.label, selected = false, enabled = enabled) { onMakeCard(t) }
+        }
+    }
+}
+
+/** 패널이 어두워서 미리보기도 같은 바탕에 둔다 — 흰 바탕에서는 글자가 안 보인다. */
+@Preview(showBackground = true, backgroundColor = 0xFF101820)
+@Composable
+private fun CardMakeRowPreview() {
+    CardMakeRow(onMakeCard = {}, enabled = true)
+}
+
+/** 빌릴 얼굴이 없을 때. 눌러도 안 되는 것이 보여야 한다. */
+@Preview(showBackground = true, backgroundColor = 0xFF101820)
+@Composable
+private fun CardMakeRowDisabledPreview() {
+    CardMakeRow(onMakeCard = {}, enabled = false)
+}
+
 /** 얼굴 하나. 고른 것은 뒤에 깔린 원이 테를 두른 것처럼 보인다. */
 @Composable
 private fun ProfilePick(breed: DogBreed, selected: Boolean, onClick: () -> Unit) {
@@ -178,15 +278,24 @@ private fun ProfilePick(breed: DogBreed, selected: Boolean, onClick: () -> Unit)
 }
 
 @Composable
-private fun BreedChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun BreedChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     Text(
         label,
-        color = if (selected) Color.Black else PanelText,
+        color = when {
+            selected -> Color.Black
+            enabled -> PanelText
+            else -> PanelDim
+        },
         fontSize = 9.sp,
         modifier = Modifier
             .clip(RoundedCornerShape(5.dp))
             .background(if (selected) PanelPick else Color(0x33FFFFFF))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 3.dp),
     )
 }

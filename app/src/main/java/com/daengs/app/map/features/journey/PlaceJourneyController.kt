@@ -28,7 +28,6 @@ data class PlaceJourneyState(
  */
 class PlaceJourneyController(
     private val repository: JourneyRepository,
-    private val dogId: String,
     private val scope: CoroutineScope,
 ) {
     private val mutableState = MutableStateFlow(PlaceJourneyState())
@@ -38,7 +37,7 @@ class PlaceJourneyController(
     private var requestGeneration = 0L
 
     fun load(origin: GeoPoint, place: PlaceResult) {
-        submit(PlaceJourneyRequest(origin, place, dogId.trim().takeIf(String::isNotEmpty)))
+        submit(PlaceJourneyRequest(origin, place))
     }
 
     fun retry() {

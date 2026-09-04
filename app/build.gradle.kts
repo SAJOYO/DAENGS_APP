@@ -69,11 +69,48 @@ fun releaseUrl(name: String, release: String, fallback: String): String =
 
 // 네이버 지도 NCP 키. 없어도 앱은 켜진다 — 지도 타일만 인증 실패로 비고,
 // 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
-val naverMapClientId = localSetting("daengs.naverMapClientId")
+val naverMapClientId = localSetting("daengs.naverMapClientId").ifBlank {
+    // 로컬 Android 설정을 따로 복제하지 않아도 팀 공용 `.env`에서 주입해 실험할 수 있다.
+    // 값 자체는 APK BuildConfig에만 들어가며 저장소 파일에는 쓰지 않는다.
+    providers.environmentVariable("DAENGS_NAVER_NCP_KEY_ID").orNull.orEmpty()
+}
 
 // 콘솔 Style Editor 에서 만든 지도 스타일(My Style ID). 지도를 앱 팔레트로 칠한다.
 // **없으면 기본 네이버 지도로 뜬다** — 앱은 정상 동작하고, 스타일만 안 입는다.
 val naverMapStyleId = localSetting("daengs.naverMapStyleId")
+
+/**
+ * 스토어에 올릴 버전. **인자를 안 주면 지금과 똑같이 `1` · `"1.0"` 이다.**
+ *
+ * Play 는 한 트랙에서 **같은 versionCode 를 두 번 받지 않는다.** 지운 릴리스가 쓴
+ * 번호도 재사용할 수 없다 — 한 번 올린 번호는 그것으로 끝이다. 그래서 올릴 때마다
+ * 번호가 하나씩 올라가야 하는데, 파일에 상수로 박아 두면 업로드마다 코드와 아무
+ * 상관 없는 커밋이 하나씩 붙고, 잊으면 **업로드 단계에서야** 막힌다.
+ *
+ * 그래서 빌드 인자로 받는다. 아래 `defaultConfig` 의 `slimAbi` 와 같은 방식이다.
+ *
+ *     ./gradlew :app:bundleRelease -PversionCode=2 -PversionName=1.0.1
+ *
+ * **2026-09-02 의 `v1` 태그가 versionCode 1 로 나갔으므로 다음 업로드는 2 부터다.**
+ *
+ * 숫자가 아닌 값이 오면 **빌드를 멈춘다.** 조용히 1 로 떨어지면 오타 하나가 그대로
+ * 통과해서, 몇 분 걸려 만든 AAB 를 올리는 자리에서야 중복으로 거부당한다.
+ */
+val versionCodeArg: Int = providers.gradleProperty("versionCode").orNull?.trim().let { given ->
+    when {
+        given.isNullOrBlank() -> 1
+        else -> given.toIntOrNull()
+            ?: throw GradleException("-PversionCode 는 정수여야 합니다. 받은 값: \"$given\"")
+    }
+}
+
+/**
+ * 버전 이름. 사람이 읽는 값이라 versionCode 와 달리 매번 바뀌지 않아도 된다.
+ * 안 주면 `"1.0"` 이다.
+ */
+val versionNameArg: String = providers.gradleProperty("versionName").orNull?.trim()
+    ?.takeIf { it.isNotBlank() }
+    ?: "1.0"
 
 /**
  * 플레이스토어 업로드 키.
@@ -102,8 +139,9 @@ android {
         applicationId = "com.daengs.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // 위의 versionCodeArg 주석 참고. `-PversionCode=2` 로 준다.
+        versionCode = versionCodeArg
+        versionName = versionNameArg
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -164,6 +202,10 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
             buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
             buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
+            // 보행 기능 스위치. **`daengs.gaitUrl` 을 비우면 꺼진다** (#64 의 완화책).
+            // 주소 자체는 이제 API_BASE_URL 을 쓰지만(보행이 backend 뒤로 들어감),
+            // 껐다 켜는 손잡이는 그대로 이 키에 남겨 둔다.
+            buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
             optimization {
@@ -195,6 +237,10 @@ android {
                 "GAIT_BASE_URL",
                 "\"${releaseUrl("gaitUrl", gaitUrlRelease, gaitUrl)}\"",
             )
+            // ⚠️ **fallback 을 타지 않는다.** releaseUrl 은 비어 있으면 개발 값으로 떨어지는데,
+            //    그러면 "릴리즈에서 보행 끄기"(#64)가 동작하지 않는다. 여기서는 릴리즈 키만 본다 —
+            //    `daengs.gaitUrlRelease` 가 비면 릴리즈 빌드에서 보행이 꺼진다.
+            buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrlRelease.isNotBlank()}")
         }
     }
     compileOptions {
@@ -226,6 +272,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
     implementation(libs.mlkit.subject.segmentation)
@@ -246,6 +293,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -13,6 +13,9 @@ interface WalkFixLog {
 
     suspend fun append(sessionId: String, fix: RecordedFix)
 
+    /** 사용자가 버튼으로 남긴 행동. GPS 자동 판정이나 서버 attestation이 아니다. */
+    suspend fun appendAction(action: RecordedWalkAction)
+
     suspend fun closeSession(sessionId: String, endedAtMillis: Long)
 
     /**
@@ -67,6 +70,8 @@ interface WalkFixLog {
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>
+
+    suspend fun actions(sessionId: String): List<RecordedWalkAction>
 }
 
 data class RecordedSession(

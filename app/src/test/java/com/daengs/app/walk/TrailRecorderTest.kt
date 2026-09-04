@@ -134,6 +134,27 @@ class TrailRecorderTest {
     }
 
     @Test
+    fun `저장 원본 묶음 재생은 한 점씩 넣은 것과 같은 결과를 낸다`() {
+        val samples = listOf(
+            sample(37.0, 127.0, 1L),
+            sample(37.000001, 127.0, 2L),
+            sample(37.001, 127.0, 3L, accuracy = 100f),
+            sample(37.0002, 127.0, 4L),
+            sample(35.1796, 129.0756, 5L),
+        )
+        val oneByOne = TrailRecorder(maxSamples = 3).also { recorder ->
+            recorder.start()
+            samples.forEach(recorder::add)
+        }
+        val batched = TrailRecorder(maxSamples = 3).also { recorder ->
+            recorder.start()
+            recorder.addAll(samples)
+        }
+
+        assertEquals(oneByOne.snapshot(), batched.snapshot())
+    }
+
+    @Test
     fun `invalid thresholds fail at construction instead of corrupting a walk`() {
         assertThrows(IllegalArgumentException::class.java) {
             TrailRecorder(minDistanceMeters = -1.0)
@@ -147,6 +168,84 @@ class TrailRecorderTest {
         assertThrows(IllegalArgumentException::class.java) {
             TrailRecorder(maxSamples = 0)
         }
+    }
+
+    // -- 속도 문턱 ----------------------------------------------------------
+    //
+    // 차·버스·기차로 이동한 것이 산책 거리로 합산되면 "오늘 얼마나 걸었나" 가 뜻을
+    // 잃는다. 판정 자체는 [WalkPaceTest] 가 잡고, 여기서는 **기록기가 그 판정으로
+    // 무엇을 하는지**를 잡는다 — 버리고, 세고, 다음 점에서 그 수를 되돌린다.
+
+    @Test
+    fun `걷는 속도를 넘으면 그 점을 안 담고 센다`() {
+        val recorder = TrailRecorder(minDistanceMeters = 1.0)
+        recorder.start()
+        recorder.add(sample(37.0, 127.0, 0L))
+
+        // 2초에 약 111m = 55 m/s. 지하철이다.
+        val snapshot = recorder.add(sample(37.001, 127.0, 2_000L))
+
+        assertEquals("담기지 않아야 한다", 1, snapshot.sampleCount)
+        assertEquals(0.0, snapshot.distanceMeters, 0.001)
+        assertEquals(1, snapshot.skippedTooFast)
+    }
+
+    @Test
+    fun `연속으로 빠르면 계속 센다`() {
+        val recorder = TrailRecorder(minDistanceMeters = 1.0)
+        recorder.start()
+        recorder.add(sample(37.0, 127.0, 0L))
+
+        var snapshot = recorder.snapshot()
+        repeat(3) { step ->
+            snapshot = recorder.add(sample(37.0 + 0.001 * (step + 1), 127.0, 2_000L * (step + 1)))
+        }
+
+        // 화면은 이 수가 이어질 때만 말한다 — 한 번 튄 것으로는 안 띄운다.
+        assertEquals(3, snapshot.skippedTooFast)
+        assertEquals(1, snapshot.sampleCount)
+    }
+
+    @Test
+    fun `다시 걷기 시작하면 센 수가 돌아온다`() {
+        val recorder = TrailRecorder(minDistanceMeters = 1.0)
+        recorder.start()
+        recorder.add(sample(37.0, 127.0, 0L))
+        recorder.add(sample(37.001, 127.0, 2_000L))
+        assertEquals(1, recorder.snapshot().skippedTooFast)
+
+        // 차에서 내렸다. 앞 점에서 111m 를 80초에 걸었다 = 1.4 m/s.
+        val snapshot = recorder.add(sample(37.001, 127.0, 82_000L))
+
+        assertEquals(0, snapshot.skippedTooFast)
+        assertEquals(2, snapshot.sampleCount)
+    }
+
+    @Test
+    fun `일시정지를 건너온 자리는 빠르다고 보지 않는다`() {
+        val recorder = TrailRecorder(minDistanceMeters = 1.0)
+        recorder.start()
+        recorder.add(sample(37.0, 127.0, 0L))
+        recorder.pause()
+        recorder.resume()
+
+        // 멈춰 있던 30분이 간격에 섞이면 속도가 뜻을 잃는다. 여기서 막으면 쉬었다
+        // 이어 걷는 산책이 다시 시작을 못 한다.
+        val snapshot = recorder.add(sample(37.02, 127.0, 1_800_000L))
+
+        assertEquals(0, snapshot.skippedTooFast)
+        assertEquals(2, snapshot.sampleCount)
+    }
+
+    @Test
+    fun `새 산책은 센 수를 비우고 시작한다`() {
+        val recorder = TrailRecorder(minDistanceMeters = 1.0)
+        recorder.start()
+        recorder.add(sample(37.0, 127.0, 0L))
+        recorder.add(sample(37.001, 127.0, 2_000L))
+        assertEquals(1, recorder.snapshot().skippedTooFast)
+
+        assertEquals(0, recorder.start().skippedTooFast)
     }
 
     private fun sample(

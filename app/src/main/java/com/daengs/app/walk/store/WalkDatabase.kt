@@ -8,10 +8,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
-/** 산책 원본 위치와 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
+/** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class],
-    version = 5,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class],
+    version = 6,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -125,9 +125,39 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 사용자가 산책 중 직접 누른 행동 원본을 세션 아래에 더한다.
+         *
+         * 기존 산책은 행동이 없던 것이 아니라 앱이 저장하지 않았던 것이므로 빈 표에서
+         * 시작한다. 추측으로 과거 행동을 만들지 않는다. 세션을 지우면 외래키가 같이 지운다.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `walk_action` (" +
+                        "`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `typeCode` TEXT NOT NULL, " +
+                        "`recordedAtMillis` INTEGER NOT NULL, " +
+                        "`locationCapturedAtMillis` INTEGER NOT NULL, `lat` REAL NOT NULL, " +
+                        "`lng` REAL NOT NULL, `accuracyM` REAL, PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`sessionId`) REFERENCES `walk_session`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_walk_action_sessionId` " +
+                        "ON `walk_action` (`sessionId`)",
+                )
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                 .build()
     }
 }

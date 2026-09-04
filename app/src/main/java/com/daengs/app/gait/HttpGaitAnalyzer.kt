@@ -1,75 +1,160 @@
 package com.daengs.app.gait
 
 import android.content.Context
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 
 /**
  * 진짜 서버를 부르는 [GaitAnalyzer]. [MockGaitAnalyzer] 자리에 그대로 끼운다.
  *
- * 인터페이스는 하나도 안 바꿨다 — [MockGaitAnalyzer] 는 테스트와 `@Preview` 가
+ * **인터페이스는 하나도 안 바꿨다** — [MockGaitAnalyzer] 는 테스트와 `@Preview` 가
  * 계속 쓴다. 서버가 죽어 있어도 화면을 돌려 볼 수 있어야 하고, 단위 테스트가
- * 네트워크를 타면 안 된다.
+ * 네트워크를 타면 안 된다. 옛 구현과 달라진 것은 [analyze] 의 **속뿐**이다.
  *
- * ### 단계를 지어내지 않는다
+ * ### 한 방 요청이 네 걸음이 됐다 (#64 · D-043)
  *
- * 저쪽 `POST /gait/analyze` 는 **동기 한 방**이다 (API.md "비동기 job/poll 은 이번
- * 범위에 없다"). 그래서 서버가 지금 관절을 뽑는 중인지 보행을 재는 중인지 앱은
- * 알 수 없다. 아는 것은 둘뿐이라 그 둘만 [onStage] 로 올린다 —
- * **업로드가 끝난 시점**과 **응답이 온 시점**.
+ * ```
+ * ① analyze   기록(PENDING) + 업로드 티켓
+ * ② upload    영상 바이트를 티켓이 가리키는 곳으로 (backend 가 아니다)
+ * ③ confirm   서버가 실존을 확인하고 분석 큐에 넣는다
+ * ④ poll      status 가 DONE/FAILED 가 될 때까지 단건 조회
+ * ```
  *
- * 중간 두 줄을 시간에 맞춰 넘기면 화면은 그럴듯해지지만 거짓말이 된다. 폴링이
- * 생기면(`docs/orchestration-contracts.md` 의 `job: {job_id, poll}`) 그때 진짜
- * 단계로 채운다.
+ * 옛 구현은 `POST /gait/analyze` 하나로 끝났고 **인증이 없었다.** 이제 매 걸음에
+ * 토큰이 붙고 소유권을 서버가 본다.
  *
- * ⚠️ **분 단위로 걸린다.** 저쪽 실측이 37초 영상에 CPU 약 2분이다.
+ * ### 단계를 지어내지 않는다 — 이 규칙은 그대로다
+ *
+ * 서버가 알려 주는 것은 `PENDING · UPLOADED · PROCESSING · DONE · FAILED` 뿐이라,
+ * **관절을 뽑는 중인지 보행을 재는 중인지는 여전히 모른다.** 그래서 아는 것만 올린다:
+ *
+ * - 시작 → `0` (영상 확인 진행 중)
+ * - ③이 성공 → `1` **서버가 파일이 있다고 확인해 준 시점**이라 "영상 확인" 은 진짜로
+ *   끝났다. 이어서 워커가 하는 첫 일이 관절 추출이라 그 줄이 진행 중이 된다
+ * - `DONE` → 전부 완료
+ *
+ * 중간 두 줄(`보행 분석`·`결과 정리`)을 시간에 맞춰 넘기면 화면은 그럴듯해지지만
+ * **거짓말이 된다.** 서버가 그 경계를 알려 주면 그때 채운다.
+ *
+ * ⚠️ **분 단위로 걸린다.** 저쪽 실측이 116MB · 37초 영상에 CPU 약 2분이다.
  */
 class HttpGaitAnalyzer(
     private val context: Context,
     /**
-     * 기록을 묶는 열쇠. **없으면 목록으로 다시 못 찾는다** — 저쪽 목록이 `dog_id`
-     * 로만 거른다. 대표 강아지의 id 를 넣는다.
+     * 기록을 묶는 열쇠. **서버가 만든 진짜 `pets.id` UUID 다.**
+     *
+     * 옛 구현의 `dogId` 와 이름만 비슷하고 성격이 다르다 — 저쪽이 이 값으로
+     * `pets.app_user_id` 까지 따라가 **토큰의 주인이 맞는지 확인**한다.
+     * 남의 것을 넣으면 404 다.
      */
-    private val dogId: () -> String?,
+    private val petId: () -> String?,
+    /**
+     * access token. **매 걸음 직전에 새로 받는다** — 분석이 분 단위라 시작할 때 받은
+     * 토큰이 폴링 도중 만료될 수 있다. 이 람다가 재발급까지 맡는다 (`freshToken`).
+     */
+    private val accessToken: suspend () -> String?,
     private val today: () -> LocalDate = LocalDate::now,
 ) : GaitAnalyzer {
 
     override suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
-    ): Result<GaitRecord> {
-        val dog = dogId()
-            ?: return Result.failure(
-                IllegalStateException("어느 강아지의 기록인지 몰라 올릴 수 없어요.\n강아지를 먼저 등록해 주세요."),
-            )
+    ): Result<GaitRecord> = runCatching {
+        val pet = petId() ?: error(
+            "어느 강아지의 기록인지 몰라 올릴 수 없어요.\n강아지를 먼저 등록해 주세요.",
+        )
+        // 올리기 전에 크기부터. 150MB 를 다 보내고 413 을 받으면 데이터도 시간도 버린다.
+        GaitApi.oversizeMessage(context, video.uri)?.let { error(it) }
 
         onStage(GaitProgress.START)
         val date = today()
-        return GaitApi.analyze(context, video.uri, dogId = dog, date = date)
-            .map { analyzed ->
-                onStage(GaitProgress(GaitStage.entries.size))
-                GaitRecord(
-                    id = analyzed.recordId,
-                    date = analyzed.date ?: date,
-                    // 길이는 **기기에서 읽은 값**이다. 저쪽 응답에 없다.
-                    seconds = video.seconds,
-                    video = video.uri,
-                    thumbnail = video.thumbnail,
-                    // **앱이 정하지 않는다.** 저쪽 quality.status 가 그대로 온다 —
-                    // Mock 은 길이로 정했지만 그건 서버가 없을 때의 임시였다.
-                    comparable = analyzed.qualityOk,
-                    // 사유도 같이 나른다. 여기서 버리면 화면에는 불리언만 남아,
-                    // 왜 못 쓰는지를 앱이 지어내게 된다.
-                    qualityReason = analyzed.reason,
-                    qualityAdvice = analyzed.recommendation,
-                    // 화면이 영상 비율대로 자리를 잡는다. 저쪽 응답에 크기가
-                    // 없어서 기기에서 읽은 값이 유일한 근거다.
-                    aspect = video.aspect,
-                )
+
+        // ① 티켓
+        val ticket = GaitApi.startAnalysis(
+            accessToken = token(),
+            petId = pet,
+            sourceFile = GaitApi.displayNameOf(context, video.uri),
+            contentType = GaitApi.contentTypeOf(context, video.uri),
+            capturedAt = date,
+        ).getOrThrow()
+
+        // ② 업로드 — 티켓이 준 주소·헤더 그대로. 우리 토큰을 얹지 않는다.
+        GaitApi.upload(context, ticket, video.uri).getOrThrow()
+
+        // ③ 실존 확인 + 큐 발행
+        GaitApi.confirm(token(), ticket.recordId).getOrThrow()
+        onStage(GaitProgress(1))
+
+        // ④ 끝날 때까지 조회
+        val finished = poll(ticket.recordId)
+        if (finished.status == GaitStatus.FAILED) {
+            // **저쪽 failure_reason 을 그대로 띄우지 않는다** — 운영 진단용이라 내부 경로가
+            // 들어 있을 수 있다. 사용자에게는 다시 해볼 수 있다는 것만 알린다.
+            error("분석을 마치지 못했어요. 잠시 뒤에 다시 시도해 주세요.")
+        }
+        onStage(GaitProgress(GaitStage.entries.size))
+
+        GaitRecord(
+            id = finished.recordId,
+            date = finished.date ?: date,
+            // 길이는 **기기에서 읽은 값**이다. 저쪽 응답에 없다.
+            seconds = video.seconds,
+            video = video.uri,
+            thumbnail = video.thumbnail,
+            // **앱이 정하지 않는다.** 저쪽 quality_status 가 그대로 온다.
+            comparable = finished.qualityOk,
+            // 사유도 같이 나른다. 여기서 버리면 화면에는 불리언만 남아,
+            // 왜 못 쓰는지를 앱이 지어내게 된다.
+            qualityReason = finished.reason,
+            qualityAdvice = finished.recommendation,
+            // 화면이 영상 비율대로 자리를 잡는다. 저쪽 응답에 크기가 없어서
+            // 기기에서 읽은 값이 유일한 근거다.
+            aspect = video.aspect,
+        )
+    }
+
+    /**
+     * 끝날 때까지 단건 조회를 되풀이한다.
+     *
+     * **매번 토큰을 새로 받는다** — access token 이 5분이라 2분짜리 분석 하나에도
+     * 중간에 만료될 수 있다. 시작할 때 받은 것을 들고 있으면 폴링이 401 로 죽는다.
+     *
+     * 조회가 한 번 실패해도 바로 포기하지 않는다. 이동 중에 잠깐 끊기는 것이 흔한데,
+     * 그때마다 분석을 통째로 실패로 만들면 **서버에서는 멀쩡히 끝난 기록**을 사용자가
+     * 못 보게 된다. 연속으로 실패할 때만 손을 든다.
+     */
+    private suspend fun poll(recordId: String): GaitAnalyzed {
+        var misses = 0
+        val deadline = System.currentTimeMillis() + POLL_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            delay(POLL_INTERVAL_MS)
+            val result = GaitApi.record(token(), recordId)
+            val record = result.getOrNull()
+            if (record == null) {
+                if (++misses > MAX_CONSECUTIVE_MISSES) {
+                    throw result.exceptionOrNull()
+                        ?: IllegalStateException("분석 상태를 확인하지 못했어요.")
+                }
+                continue
             }
-            .recoverCatching { cause ->
-                // 저쪽이 왜 못 썼는지 문장으로 준다(`quality.recommendation`). 그건
-                // 사용자에게 보여 줄 말이라 그대로 올린다.
-                throw cause
-            }
+            misses = 0
+            if (record.settled) return record
+        }
+        error("분석이 오래 걸리고 있어요. 잠시 뒤 목록에서 다시 확인해 주세요.")
+    }
+
+    /** 없으면 로그인이 풀린 것이다. 여기서 멈춰야 아래 호출들이 401 로 흩어지지 않는다. */
+    private suspend fun token(): String =
+        accessToken() ?: error("로그인이 필요해요. 다시 로그인해 주세요.")
+
+    private companion object {
+        /** 분석이 분 단위라 촘촘히 물을 이유가 없다. 배터리와 서버 양쪽에 낫다. */
+        const val POLL_INTERVAL_MS = 5_000L
+
+        /** 저쪽 실측이 2분 남짓. 넉넉히 두되 무한정 기다리지는 않는다. */
+        const val POLL_TIMEOUT_MS = 10 * 60 * 1000L
+
+        /** 이동 중 한두 번 끊기는 것은 넘어간다. */
+        const val MAX_CONSECUTIVE_MISSES = 5
     }
 }
