@@ -36,24 +36,48 @@ import com.daengs.app.ui.theme.PinkSoft
  * 원본이 불투명한 정사각형이라 [CircleShape] 로 자르고 테두리를 한 겹 두른다.
  * 안 두르면 크림색 배경이 밝은 카드 위에서 경계 없이 번진다.
  *
- * @param smart 챗봇이 쓰는 "똑똑이" 판(학사모 + 안경)으로 그린다. **함수를 두 벌로
- *   나누지 않는다** — 원으로 자르고 테두리를 두르는 규칙이 갈리면 챗봇 얼굴만 경계가
- *   달라진다. 바뀌는 것은 그림 하나뿐이다
+ * @param face 같은 견종의 **어느 판**으로 그릴지. **함수를 두 벌로 나누지 않는다** —
+ *   원으로 자르고 테두리를 두르는 규칙이 갈리면 얼굴마다 경계가 달라진다.
+ *   바뀌는 것은 그림 하나뿐이다
  */
 @Composable
 fun DogAvatar(
     breed: DogBreed,
     modifier: Modifier = Modifier,
-    smart: Boolean = false,
+    face: DogFace = DogFace.Portrait,
 ) {
     Image(
-        painter = painterResource(if (smart) breed.smartRes else breed.portraitRes),
+        painter = painterResource(face.resOf(breed)),
         contentDescription = breed.label,
         contentScale = ContentScale.Crop,
         modifier = modifier
             .clip(CircleShape)
             .border(1.dp, PinkSoft, CircleShape),
     )
+}
+
+/**
+ * 같은 견종의 어느 얼굴인가.
+ *
+ * 셋 다 256x256 불투명 정사각형이고, 원으로 자르는 규칙도 같다 — **다른 것은 그림뿐**
+ * 이라 값 하나로 고른다. 불리언을 여럿 두면 둘 다 켜진 상태가 생긴다.
+ */
+enum class DogFace {
+    /** 프로필. 상단바·마이·견종 고르기가 쓴다. */
+    Portrait,
+
+    /** 챗봇 얼굴. 학사모 쓴 "똑똑이" 판이라 **내 개는 아니지만 남의 개도 아니다**. */
+    Smart,
+
+    /** 답을 만드는 동안. 앞발을 턱에 댄 "곰곰이" 판이다. */
+    Thinking,
+    ;
+
+    fun resOf(breed: DogBreed): Int = when (this) {
+        Portrait -> breed.portraitRes
+        Smart -> breed.smartRes
+        Thinking -> breed.thinkingRes
+    }
 }
 
 /**
@@ -80,7 +104,7 @@ fun PawAvatar(modifier: Modifier = Modifier, size: Dp) {
 private fun SmartDogAvatarPreview() {
     Row {
         listOf(DogBreed.BEAGLE, DogBreed.SHIBA_INU_BEIGE, DogBreed.BORDER_COLLIE).forEach {
-            DogAvatar(it, Modifier.size(56.dp), smart = true)
+            DogAvatar(it, Modifier.size(56.dp), face = DogFace.Smart)
             Spacer(Modifier.width(6.dp))
         }
     }
@@ -92,7 +116,7 @@ private fun SmartDogAvatarPreview() {
 private fun SmartDogAvatarBubbleSizePreview() {
     Row {
         DogBreed.ALL.take(8).forEach {
-            DogAvatar(it, Modifier.size(32.dp), smart = true)
+            DogAvatar(it, Modifier.size(32.dp), face = DogFace.Smart)
             Spacer(Modifier.width(4.dp))
         }
     }

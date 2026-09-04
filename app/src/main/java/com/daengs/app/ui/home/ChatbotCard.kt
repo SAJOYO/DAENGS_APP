@@ -28,6 +28,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.DogFace
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
@@ -85,7 +86,7 @@ fun ChatbotCard(
             ) {
                 // **똑똑이 판이다.** 이 자리는 내 개가 아니라 챗봇이다
                 // (`ChatScreen.ChatFace` 와 같은 이유).
-                if (avatar != null) DogAvatar(avatar, Modifier.size(40.dp), smart = true)
+                if (avatar != null) DogAvatar(avatar, Modifier.size(40.dp), face = DogFace.Smart)
                 else PawAvatar(size = 40.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(HomeDemoData.CHAT_PLACEHOLDER, color = TextMuted, fontSize = 14.sp, modifier = Modifier.weight(1f))
