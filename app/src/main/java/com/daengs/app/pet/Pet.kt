@@ -37,6 +37,21 @@ data class Pet(
      */
     val farewellOn: LocalDate? = null,
     val isPrimary: Boolean,
+    /**
+     * 서버에 프로필 사진이 있나.
+     *
+     * **주소가 아니라 있다/없다만 온다.** 목록에 주소를 실으면 서버가 아이마다 저장소를
+     * 두드리게 되고, 화면이 안 그리는 아이 것까지 만든다. 주소가 필요하면 그때 따로 받는다.
+     */
+    val hasPhoto: Boolean = false,
+    /**
+     * 서버 사진이 마지막으로 바뀐 시각. **캐시 열쇠다.**
+     *
+     * 기기에 받아 둔 사진 옆에 이 값을 적어 두고(`PetPhotos.stamp`), 같으면 다시 안
+     * 받는다. **시각으로 파싱하지 않는다** — 우리가 계산할 값이 아니라 서버 문자열을
+     * 그대로 비교하는 열쇠라, 파싱하면 형식이 바뀌는 날 조용히 안 맞게 된다.
+     */
+    val photoUpdatedAt: String? = null,
 ) {
     /** 이 견종의 얼굴 그림. 모르는 견종(믹스 등)이면 null 이고, 화면이 대체 얼굴을 쓴다. */
     val breedArt: DogBreed? get() = DogBreed.byId(breed)
@@ -99,6 +114,8 @@ data class Pet(
             },
             farewellOn = json.optStringOrNull("farewell_on")?.let(LocalDate::parse),
             isPrimary = json.optBoolean("is_primary"),
+            hasPhoto = json.optBoolean("has_photo"),
+            photoUpdatedAt = json.optStringOrNull("photo_updated_at"),
         )
 
         /** `optString` 은 JSON null 에도 빈 문자열을 준다. 0 과 "없음"을 구분해야 한다. */
