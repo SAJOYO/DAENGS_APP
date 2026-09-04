@@ -182,6 +182,16 @@ fun HomeScreen(
      */
     devBreed: DogBreed? = null,
     onPickDevBreed: ((DogBreed) -> Unit)? = null,
+    /**
+     * 개발자 패널로 올려 본 프로필 사진.
+     *
+     * **강아지 기록 없이 사진을 보는 유일한 길이다** — 진짜 사진은 등록한 아이에게
+     * 딸리는데(`pet-photos/<id>.jpg`), 둘러보기에는 아이가 없다. 견종을 갈아끼우는
+     * 줄이 있는 것과 같은 이유로 둔다. 저장하지 않는다.
+     */
+    devPhoto: ImageBitmap? = null,
+    onPickDevPhoto: (() -> Unit)? = null,
+    onClearDevPhoto: (() -> Unit)? = null,
     /** 둘러보기 상태에서 로그인하러 갈 때. 랜딩으로 되돌린다. */
     onSignIn: (() -> Unit)? = null,
     /**
@@ -197,6 +207,14 @@ fun HomeScreen(
     onTourClose: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이다. */
     pets: List<Pet>? = null,
+    /**
+     * 그 아이가 올린 프로필 사진. 없으면 견종 그림이다.
+     *
+     * **챗봇 얼굴에는 안 쓴다** — 거기는 학사모 쓴 "똑똑이" 자리다.
+     */
+    photoOf: (String) -> ImageBitmap? = { null },
+    /** 대표 아이의 사진을 바꾸러 간다. null 이면 마이에서 그 자리가 안 뜬다 */
+    onEditPhoto: (() -> Unit)? = null,
     canAddMore: Boolean = false,
     onAddPet: (() -> Unit)? = null,
     onEditPet: ((Pet) -> Unit)? = null,
@@ -257,6 +275,11 @@ fun HomeScreen(
     // "대표 견종"을 보는데, 여기서 들고 있으면 홈 밖으로 못 나가서 로그인해야만
     // 챗봇 얼굴을 확인할 수 있었다.
     val profileBreed = devBreed ?: pets?.firstOrNull { it.isPrimary }?.breedArt
+    // 상단바에 걸 사진. **개발자 패널로 견종을 바꿔 보는 중이면 안 쓴다** — 그때는
+    // 그 견종 그림을 보려는 것이지 내 아이 사진을 보려는 것이 아니다.
+    val profilePhoto = devPhoto ?: if (devBreed != null) null else {
+        pets?.firstOrNull { it.isPrimary }?.let { photoOf(it.id) }
+    }
 
     // 방에 서는 강아지 = 등록한 강아지. 목록이 바뀌면 자리를 지킨 채 갈아끼운다.
     val herd = rememberDogHerd(roomRoster(pets), departedInRoom(pets))
@@ -318,6 +341,7 @@ fun HomeScreen(
                     onBell = {},
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
+                    photo = profilePhoto,
                 )
             }
         },
@@ -350,6 +374,11 @@ fun HomeScreen(
                 // 방 위에서 둘러보기가 열려야 한다.
                 onReplayTour = onReplayTour?.let { go -> { onCloseMy?.invoke(); go() } },
                 breed = profileBreed,
+                // **홈이 이미 고른 얼굴을 그대로 준다.** 마이가 다시 계산하면 상단바와
+                // 마이가 다른 얼굴을 보여 준다 — `breed = profileBreed` 와 짝이다.
+                profilePhoto = profilePhoto,
+                photoOf = photoOf,
+                onEditPhoto = onEditPhoto,
                 roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
                 pets = pets,
                 canAddMore = canAddMore,
@@ -409,6 +438,9 @@ fun HomeScreen(
                 // 고를 수는 없으니 여기서만 데모 견종으로 채운다.
                 profileBreed = profileBreed ?: HomeDemoData.DOG_BREED,
                 onPickProfile = { onPickDevBreed?.invoke(it) },
+                onPickDevPhoto = onPickDevPhoto,
+                onClearDevPhoto = onClearDevPhoto,
+                hasDevPhoto = devPhoto != null,
                 onOpenCutoutLab = onOpenCutoutLab,
                 onMakeCard = onMakeCard,
                 canMakeCard = canMakeCard,
@@ -497,6 +529,10 @@ private fun RoomSection(
     onOpenWalk: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
+    /** 개발자 패널에서 프로필 사진을 올려 본다. */
+    onPickDevPhoto: (() -> Unit)? = null,
+    onClearDevPhoto: (() -> Unit)? = null,
+    hasDevPhoto: Boolean = false,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)?,
     /** 야채를 지정해 카드를 만든다. 개발자 패널에서만 불린다. */
@@ -635,6 +671,9 @@ private fun RoomSection(
                 },
                 profileBreed = profileBreed,
                 onPickProfile = onPickProfile,
+                onPickProfilePhoto = onPickDevPhoto,
+                onClearProfilePhoto = onClearDevPhoto,
+                hasProfilePhoto = hasDevPhoto,
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,

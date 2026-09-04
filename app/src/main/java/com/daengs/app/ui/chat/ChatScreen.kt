@@ -54,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -209,6 +210,11 @@ fun ChatScreen(
     onBack: () -> Unit,
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
+    /**
+     * 올린 프로필 사진. **말풍선 얼굴에는 안 쓴다** — 거기는 학사모 쓴 "똑똑이"와
+     * 앞발 괸 "곰곰이" 자리다. 보행 촬영 화면에서만 쓴다 (거기는 찍히는 그 아이다).
+     */
+    avatarPhoto: ImageBitmap? = null,
     /**
      * 대표 강아지의 id. **서버가 만든 `pets.id` UUID 다** — `MainActivity` 가
      * `pets.primary?.id` 를 그대로 넘긴다.
@@ -832,6 +838,7 @@ fun ChatScreen(
                 onRecord = recorder::toggle,
                 onPick = startGaitPicking,
                 avatar = avatar,
+                photo = avatarPhoto,
                 recording = recorder.recording,
                 preview = { CameraPreview(controller, Modifier.fillMaxSize()) },
             )

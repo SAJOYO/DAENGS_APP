@@ -33,7 +33,7 @@ class PetFormScreenTest {
     @Test
     fun `initial registration shows the privacy policy link and opens the deployed page`() {
         compose.setContent {
-            PetFormScreen(onSubmit = {}, onCancel = null, busy = false, error = null, initial = null)
+            PetFormScreen(onSubmit = { _, _ -> }, onCancel = null, busy = false, error = null, initial = null)
         }
 
         compose.onNodeWithText(PRIVACY_POLICY_LABEL)
@@ -61,7 +61,7 @@ class PetFormScreenTest {
             isPrimary = true,
         )
         compose.setContent {
-            PetFormScreen(onSubmit = {}, onCancel = {}, busy = false, error = null, initial = existing)
+            PetFormScreen(onSubmit = { _, _ -> }, onCancel = {}, busy = false, error = null, initial = existing)
         }
 
         compose.onNodeWithText(PRIVACY_POLICY_LABEL).assertDoesNotExist()

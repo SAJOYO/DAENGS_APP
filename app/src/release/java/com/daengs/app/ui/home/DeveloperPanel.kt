@@ -47,5 +47,8 @@ fun DeveloperPanel(
     onOpenCutoutLab: (() -> Unit)? = null,
     onMakeCard: ((CardTemplate) -> Unit)? = null,
     canMakeCard: Boolean = false,
+    onPickProfilePhoto: (() -> Unit)? = null,
+    onClearProfilePhoto: (() -> Unit)? = null,
+    hasProfilePhoto: Boolean = false,
     modifier: Modifier = Modifier,
 ) = Unit

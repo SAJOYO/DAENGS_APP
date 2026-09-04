@@ -31,7 +31,12 @@ class PetFormWeightTest {
 
     private fun form(onSubmit: (PetDraft) -> Unit = {}) {
         compose.setContent {
-            PetFormScreen(onSubmit = onSubmit, onCancel = null, busy = false, error = null)
+            PetFormScreen(
+                onSubmit = { draft, _ -> onSubmit(draft) },
+                onCancel = null,
+                busy = false,
+                error = null,
+            )
         }
     }
 

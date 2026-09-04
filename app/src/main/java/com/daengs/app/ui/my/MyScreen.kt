@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +45,7 @@ import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
+import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.home.HomeDemoData
 import com.daengs.app.ui.common.SettingDivider
 import com.daengs.app.ui.common.SettingRow
@@ -51,6 +53,7 @@ import com.daengs.app.ui.common.SettingSection
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextDark
@@ -87,6 +90,18 @@ fun MyScreen(
     roomLabel: String,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
     pets: List<Pet>?,
+    /**
+     * 큰 프로필에 걸 사진. **[breed] 와 짝이다** — 홈이 고른 얼굴을 그대로 받는다.
+     * 여기서 다시 계산하면 상단바와 마이가 다른 얼굴을 보여 준다.
+     */
+    profilePhoto: ImageBitmap? = null,
+    /** 강아지 목록에 걸 사진. 없으면 견종 그림이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
+    /**
+     * 대표 아이의 프로필 사진을 바꾸러 간다. null 이면 얼굴을 눌러도 아무 일이
+     * 없다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onEditPhoto: (() -> Unit)? = null,
     canAddMore: Boolean,
     onAddPet: () -> Unit,
     onEditPet: (Pet) -> Unit,
@@ -132,11 +147,20 @@ fun MyScreen(
             .padding(horizontal = 14.dp),
     ) {
         Spacer(Modifier.height(18.dp))
-        ProfileHead(breed, pets?.firstOrNull { it.isPrimary }?.name, roomLabel)
+        val primary = pets?.firstOrNull { it.isPrimary }
+        ProfileHead(
+            breed = breed,
+            photo = profilePhoto,
+            dogName = primary?.name,
+            roomLabel = roomLabel,
+            // 대표가 있어야 사진을 걸 자리가 있다.
+            onEditPhoto = onEditPhoto?.takeIf { primary != null },
+        )
         Spacer(Modifier.height(20.dp))
 
         if (signedIn) {
             PetSection(
+                photoOf = photoOf,
                 pets = pets,
                 canAddMore = canAddMore,
                 onAdd = onAddPet,
@@ -388,14 +412,39 @@ private fun DialogAction(label: String, tint: Color, weight: FontWeight, onClick
 /** 줄 사이 가는 선. */
 
 @Composable
-private fun ProfileHead(breed: DogBreed?, dogName: String?, roomLabel: String) {
+private fun ProfileHead(
+    breed: DogBreed?,
+    photo: ImageBitmap?,
+    dogName: String?,
+    roomLabel: String,
+    onEditPhoto: (() -> Unit)?,
+) {
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // **모르면 발자국이다.** 바로 아래 이름 줄과 같은 규칙이다 — 모르는 것을
-        // 아무 것으로나 채우면 남의 강아지가 내 프로필에 앉는다.
-        if (breed != null) DogAvatar(breed, Modifier.size(88.dp)) else PawAvatar(size = 88.dp)
+        // 아무 것으로나 채우면 남의 강아지가 내 프로필에 앉는다. 올린 사진이 있으면
+        // 견종을 몰라도 그 사진이 앞선다.
+        PetAvatar(
+            photo = photo,
+            breed = breed,
+            size = 88.dp,
+            modifier = if (onEditPhoto == null) Modifier else Modifier.clickable(onClick = onEditPhoto),
+        )
+        if (onEditPhoto != null) {
+            Spacer(Modifier.height(6.dp))
+            // **누를 수 있다는 것을 글로 말한다.** 얼굴은 버튼처럼 안 생겼다.
+            Text(
+                if (photo == null) "사진 올리기" else "사진 바꾸기",
+                color = DaengPinkDeep,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onEditPhoto)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
         Spacer(Modifier.height(10.dp))
         // **모르면 비운다.** 여기 남의 강아지 이름이 박혀 있었다 — 로그인 전이거나
         // 등록한 아이가 없으면 이름 줄이 통째로 빠진다.
@@ -418,6 +467,7 @@ private fun ProfileHead(breed: DogBreed?, dogName: String?, roomLabel: String) {
  */
 @Composable
 private fun PetSection(
+    photoOf: (String) -> ImageBitmap?,
     pets: List<Pet>?,
     canAddMore: Boolean,
     onAdd: () -> Unit,
@@ -444,6 +494,7 @@ private fun PetSection(
         pets.forEach { pet ->
             PetCard(
                 pet,
+                photo = photoOf(pet.id),
                 // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
                 // 묻는 화면은 떠난 아이에게 할 말이 아니다.
                 onEdit = {
@@ -470,6 +521,8 @@ private fun PetSection(
 @Composable
 private fun PetCard(
     pet: Pet,
+    /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
+    photo: ImageBitmap?,
     onEdit: () -> Unit,
     onPickPrimary: () -> Unit,
     onDelete: () -> Unit,
@@ -482,7 +535,7 @@ private fun PetCard(
             Modifier.clickable(onClick = onEdit).padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PetFace(pet, 46.dp)
+            PetFace(pet, 46.dp, photo)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -569,9 +622,8 @@ private fun PetCard(
  * 아무 얼굴이나 골라 보여 주면 사용자는 자기 개가 아닌 얼굴을 보게 된다.
  */
 @Composable
-private fun PetFace(pet: Pet, size: androidx.compose.ui.unit.Dp) {
-    val art = pet.breedArt
-    if (art != null) DogAvatar(art, Modifier.size(size)) else PawAvatar(size = size)
+private fun PetFace(pet: Pet, size: androidx.compose.ui.unit.Dp, photo: ImageBitmap? = null) {
+    PetAvatar(photo, pet.breedArt, size)
 }
 
 /** 아는 것만 적는다. 모르는 항목은 줄에서 빠진다 — 빈 자리를 "-" 로 채우지 않는다. */

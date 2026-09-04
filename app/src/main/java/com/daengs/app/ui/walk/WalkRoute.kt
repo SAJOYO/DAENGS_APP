@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -38,6 +39,8 @@ fun WalkRoute(
     modifier: Modifier = Modifier,
     avatarBreed: DogBreed? = null,
     pets: List<Pet> = emptyList(),
+    /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
+    photoOf: (String) -> ImageBitmap? = { null },
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
     viewModel: WalkViewModel = viewModel(
         factory = WalkViewModel.factory(LocalContext.current, walkController, history),
@@ -116,6 +119,7 @@ fun WalkRoute(
         state = state,
         outside = outside,
         avatarBreed = avatarBreed,
+        photoOf = photoOf,
         onAction = viewModel::onAction,
         modifier = modifier,
     )
