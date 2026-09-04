@@ -15,9 +15,12 @@ import java.net.URL
  * [AuthApi][com.daengs.app.auth.AuthApi] · `WalkApi` 와 같은 이유로 HTTP
  * 라이브러리를 안 쓴다 — 부를 엔드포인트가 하나다.
  *
- * **오케스트레이션 v1 은 상태가 없다.** 대화 기록·강아지 프로필·이전 답변을
- * 안 싣는다. 매 전송이 독립된 질의고, 자연어 해석은 서버의 의미 라우터가
- * 전부 맡는다 — 앱에서 키워드로 먼저 갈래를 나누지 않는다.
+ * **오케스트레이션 v1 은 상태가 없다.** 대화 기록·이전 답변을 안 싣는다. 매 전송이
+ * 독립된 질의고, 자연어 해석은 서버의 의미 라우터가 전부 맡는다 — 앱에서 키워드로
+ * 먼저 갈래를 나누지 않는다.
+ *
+ * 다만 **대표 강아지 id 는 싣는다** ([query] 의 `activeDogId`). 프로필을 앱이 지어
+ * 보내는 게 아니라 **id 만 주고 저쪽이 `pets` 에서 읽는 것**이라 무상태는 그대로다.
  */
 object AssistantApi {
 
@@ -27,11 +30,15 @@ object AssistantApi {
     /**
      * @param where 지금 있는 곳. **없어도 된다** — 위치가 필요 없는 질문이 대부분이고,
      *   좌표를 못 구했다고 질문까지 막으면 안 된다.
+     * @param activeDogId 대표 강아지의 `pets.id`. **없어도 된다** — 아직 한 마리도
+     *   등록하지 않았으면 없고, 그때는 견종·나이 없이 답이 온다. **기본값을 두지
+     *   않는다** — 안 넘기면 조용히 예전 동작으로 돌아가서, 부르는 쪽이 매번 정하게 한다.
      */
     suspend fun query(
         accessToken: String,
         text: String,
         where: GeoPoint? = null,
+        activeDogId: String?,
     ): Result<AssistantResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -39,7 +46,7 @@ object AssistantApi {
                 val conn = open()
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
                 conn.use {
-                    it.send(requestBody(text, where))
+                    it.send(requestBody(text, where, activeDogId))
                     AssistantResponse.parse(it.readJson())
                 }
             }.recoverCatching { cause ->
@@ -51,21 +58,27 @@ object AssistantApi {
         }
 
     /**
-     * 보내는 것은 **질문과 (있으면) 좌표뿐**이다.
+     * 보내는 것은 **질문과 (있으면) 좌표·대표 강아지 id** 다.
      *
      * `requested_capability` 는 넣지 않는다 — 자연어 해석은 서버 의미 라우터에게
-     * 그대로 맡긴다. `active_dog_id` 도 안 넣는다. 서버가 받아 주기는 하지만 아직
-     * 아무 기능도 그 값을 쓰지 않아서, 보내면 쓰이는 줄 알고 나중에 헷갈린다.
+     * 그대로 맡긴다.
+     *
+     * `active_dog_id` 는 저쪽이 **그 id 로 `pets` 를 읽어 견종·나이를 Life 프롬프트에
+     * 얹는 데 쓴다** (`SAJOYO/DAENGS_dev#202`). 예전에는 서버가 받기만 하고 아무 기능도
+     * 안 써서 일부러 뺐었다. 틀린 값이어도 **질문은 안 죽는다** — 남의 강아지거나 없는
+     * id 면 저쪽이 조용히 무시하고 프로필 없이 답한다 (소유권이 쿼리 조건으로 묶여 있어
+     * 남의 프로필은 못 읽는다).
      *
      * ⚠️ **서버 스키마가 `extra="forbid"` 다.** 모르는 칸이 하나라도 있으면 422 로
-     * 질문이 통째로 죽는다. 그래서 좌표가 없을 때 `location: null` 을 넣지 않고
+     * 질문이 통째로 죽는다. 그래서 좌표나 대표 강아지가 없을 때 `null` 을 넣지 않고
      * **칸 자체를 뺀다.**
      */
-    internal fun requestBody(text: String, where: GeoPoint?): String =
+    internal fun requestBody(text: String, where: GeoPoint?, activeDogId: String?): String =
         JSONObject().put("query", text).apply {
             where?.takeIf { it.inKorea() }?.let {
                 put("location", JSONObject().put("lat", it.latitude).put("lon", it.longitude))
             }
+            activeDogId?.takeIf { it.isNotBlank() }?.let { put("active_dog_id", it) }
         }.toString()
 
     /**
