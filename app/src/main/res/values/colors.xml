@@ -5,4 +5,10 @@
       이 값은 그 파일의 CreamBg 와 **같아야 한다** — 다르면 앱이 켜질 때 바탕이 바뀐다.
     -->
     <color name="cream_bg">#FDF1EC</color>
+    <!--
+      런처 아이콘 뒤에 깔리는 색. **아이콘 그림 속 개집 벽과 같은 색이다**
+      (`#FDE9D7`) — 런처가 원으로 자르든 사각형으로 자르든 이음매가 안 보여야 한다.
+      화면 배경(cream_bg)과는 한 끗 다르다. 그림에서 뽑은 값이라 바꾸지 않는다.
+    -->
+    <color name="ic_launcher_background">#FDE9D7</color>
 </resources>
