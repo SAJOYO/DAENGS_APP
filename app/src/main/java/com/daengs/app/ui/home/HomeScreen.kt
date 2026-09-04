@@ -110,6 +110,8 @@ private object NamePlateSpec {
 fun HomeScreen(
     modifier: Modifier = Modifier,
     frameTimeMs: Long? = null,
+    /** 저장소 탭의 실제 내용. null 은 독립 Preview 와 미연결 호출이 쓰는 안내 화면이다. */
+    storageContent: (@Composable (Modifier) -> Unit)? = null,
     /**
      * 지금 켜져 있는 하단 탭. **밖에서 들고 있는다.**
      *
@@ -373,7 +375,8 @@ fun HomeScreen(
         }
 
         if (tab == BottomTab.Storage) {
-            StorageComingSoon(Modifier.padding(inner))
+            val storageModifier = Modifier.padding(inner)
+            if (storageContent == null) StorageComingSoon(storageModifier) else storageContent(storageModifier)
             return@Scaffold
         }
 

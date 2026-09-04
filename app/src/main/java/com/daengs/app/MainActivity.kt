@@ -2,11 +2,14 @@ package com.daengs.app
 
 import android.os.Bundle
 import android.content.pm.ActivityInfo
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +26,8 @@ import com.daengs.app.auth.CancelledByUser
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
+import com.daengs.app.chat.ChatHistoryCoordinator
+import com.daengs.app.chat.ChatSummaryCoordinator
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
@@ -49,6 +54,7 @@ import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.places.PlacesRoute
+import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
 import com.daengs.app.ui.walk.WalkOrientation
@@ -108,6 +114,11 @@ class MainActivity : ComponentActivity() {
                 var tourOpen by remember { mutableStateOf(!roomStore.tourSeen()) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
+                // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
+                // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
+                val chatHistory = remember(scope) { ChatHistoryCoordinator(scope) }
+                val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
+                val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
                 // 번쩍였다가 홈으로 넘어간다.
@@ -161,6 +172,11 @@ class MainActivity : ComponentActivity() {
                     val restored = app.sessionProvider.freshSession()
                     if (restored != null) session = restored
                     restored?.accessToken
+                }
+                LaunchedEffect(session?.appUserId, pets.primary?.id) {
+                    val petId = pets.primary?.id.takeIf { session != null }
+                    chatHistory.selectPet(petId)
+                    chatSummaries.selectPet(petId)
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
@@ -405,6 +421,28 @@ class MainActivity : ComponentActivity() {
                         ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { screen = Screen.Chat },
+                        storageContent = { storageModifier ->
+                            ChatSummaryRoute(
+                                petId = pets.primary?.id.takeIf { session != null },
+                                historyState = chatHistoryState,
+                                coordinator = chatSummaries,
+                                accessTokenProvider = freshToken,
+                                onOpenSource = { sessionId ->
+                                    scope.launch {
+                                        val token = freshToken() ?: return@launch
+                                        if (chatHistory.openSession(token, sessionId)) screen = Screen.Chat
+                                    }
+                                },
+                                onOpenCitation = { citation ->
+                                    citation.url?.let { url ->
+                                        runCatching {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        }
+                                    }
+                                },
+                                modifier = storageModifier,
+                            )
+                        },
                         onOpenPlaces = { screen = Screen.Places },
                         onOpenWalk = { screen = Screen.Walk },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
@@ -560,8 +598,9 @@ class MainActivity : ComponentActivity() {
                     Screen.Chat -> ChatScreen(
                         onBack = { screen = Screen.Home },
                         avatar = artBreed,
-                        dogId = pets.primary?.id,
+                        dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
+                        historyCoordinator = chatHistory,
                     )
 
                     Screen.Places -> PlacesRoute(
