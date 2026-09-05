@@ -70,14 +70,22 @@ internal class PlaceSessionCoordinator(
         scope = scope,
     )
     private val latestIntent = MutableStateFlow<PlaceSearchIntent?>(null)
+    // Radius is a user preference even before a location or search exists.
+    private val selectedRadius = MutableStateFlow(3_000)
     private var intentGeneration = 0L
 
     val state: StateFlow<PlaceSessionState> = combine(
         latestIntent,
         discovery.state,
         journey.state,
-        ::PlaceSessionState,
-    ).stateIn(
+        selectedRadius,
+    ) { intent, discovery, journey, radius ->
+        PlaceSessionState(
+            intent,
+            if (discovery.origin == null) discovery.copy(radiusMeters = radius) else discovery,
+            journey,
+        )
+    }.stateIn(
         scope = scope,
         started = SharingStarted.Eagerly,
         initialValue = PlaceSessionState(),
@@ -102,6 +110,7 @@ internal class PlaceSessionCoordinator(
                     origin = PlaceSearchOrigin.DeviceSnapshot(devicePosition),
                     kinds = listOf(DEFAULT_PLACE_KIND),
                     preferParking = false,
+                    radiusMeters = selectedRadius.value,
                 ),
             )
             null
@@ -118,7 +127,7 @@ internal class PlaceSessionCoordinator(
             kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
             preferParking = preferParking,
             nameQuery = resolvedNameQuery(nameQuery),
-            radiusMeters = latestIntent.value?.radiusMeters ?: discovery.state.value.radiusMeters,
+            radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
         )
         latestIntent.value = intent
         return PendingDevicePlaceSearch(
@@ -154,7 +163,7 @@ internal class PlaceSessionCoordinator(
                         kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
                         preferParking = preferParking,
                         nameQuery = resolvedNameQuery(nameQuery),
-                        radiusMeters = latestIntent.value?.radiusMeters ?: discovery.state.value.radiusMeters,
+                        radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
                     ),
                 )
                 null
@@ -170,13 +179,14 @@ internal class PlaceSessionCoordinator(
                 kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
                 preferParking = preferParking,
                 nameQuery = resolvedNameQuery(nameQuery),
-                radiusMeters = latestIntent.value?.radiusMeters ?: discovery.state.value.radiusMeters,
+                radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
             ),
         )
     }
 
     fun radius(meters: Int): PendingDevicePlaceSearch? {
         require(meters in 100..20_000)
+        selectedRadius.value = meters
         val previous = latestIntent.value ?: currentResolvedIntent() ?: return null
         val next = previous.copy(radiusMeters = meters)
         if (next.origin == PlaceSearchOrigin.CurrentDevice) {

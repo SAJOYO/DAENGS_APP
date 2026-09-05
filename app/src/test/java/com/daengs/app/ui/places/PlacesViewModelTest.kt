@@ -29,6 +29,26 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlacesViewModelTest {
     @Test
+    fun `radius selected before permission is visible and used by first search`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val vm = viewModelAt(GeoPoint(37.54, 127.05), backgroundScope,
+            PlaceSearchRepository { requests += it; emptyResponse() })
+        vm.activate(false)
+        runCurrent()
+        vm.onAction(PlacesAction.SetRadius(1000))
+        runCurrent()
+        assertEquals(1000, vm.state.value.toConnectedSearchState("", false, null, null).applied.radiusMeters)
+        assertEquals(0, requests.size)
+        vm.updatePermission(false, true)
+        runCurrent()
+        assertEquals(1000, vm.state.value.discovery.radiusMeters)
+        vm.updatePermission(true, false)
+        runCurrent()
+        assertEquals(1000, requests.single().radiusMeters)
+        assertEquals(1000, vm.state.value.discovery.radiusMeters)
+    }
+
+    @Test
     fun `name actions reach repository through all view model entrypoints`() = runTest {
         val requests = mutableListOf<PlaceSearchRequest>()
         val point = GeoPoint(37.556, 126.923)
