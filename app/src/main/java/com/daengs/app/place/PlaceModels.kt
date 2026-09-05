@@ -183,7 +183,10 @@ data class DogAccessEvaluation(
 data class PlaceEvaluations(
     val dogAccess: DogAccessEvaluation?,
     val restrictions: JsonObject? = null,
+    val dogs: List<PerDogEvaluation> = emptyList(),
 )
+
+data class PerDogEvaluation(val ref: String, val dogAccess: DogAccessEvaluation?, val restrictions: JsonObject?)
 
 data class PlaceSearchHit(
     val place: PlaceResult,
@@ -224,11 +227,17 @@ data class PlaceSearchResponse(
     val conditions: PlaceSearchConditions?,
     /** 서버가 요청한 종류 순서를 지켜서 준다. 앱도 그룹 순서를 흐트러뜨리면 안 된다. */
     val groups: List<PlaceSearchGroup>,
+    val dogs: List<PlaceDogSnapshot> = emptyList(),
 )
 
 fun JsonObject.toPlaceSearchResponse(): PlaceSearchResponse = PlaceSearchResponse(
     conditions = objectOrNull("conditions")?.toConditions(),
     groups = getValue("groups").jsonArray.map { it.jsonObject.toPlaceSearchGroup() },
+    dogs = arrayOrEmpty("dogs").map { value -> value.jsonObject.let {
+        PlaceDogSnapshot(it.requiredString("ref"), it.stringOrNull("revision"),
+            it.stringOrNull("dog_size")?.let { wire -> DogSize.entries.first { size -> size.wire == wire } },
+            it.doubleOrNull("dog_weight_kg"), it.doubleOrNull("dog_age_years"))
+    } },
 )
 
 private fun JsonObject.toConditions(): PlaceSearchConditions =
@@ -269,6 +278,12 @@ private fun JsonObject.toPlaceSearchHit(): PlaceSearchHit = PlaceSearchHit(
 )
 
 private fun JsonObject.toPlaceEvaluations(): PlaceEvaluations = PlaceEvaluations(
+    dogs = arrayOrEmpty("dogs").map { value -> value.jsonObject.let {
+        val access = it.objectOrNull("dog_access")
+        PerDogEvaluation(it.requiredString("ref"), access?.let { a ->
+            DogAccessEvaluation(DogAccessState.fromWire(a.requiredString("state")), a.requiredString("reason"))
+        }, it.objectOrNull("restrictions"))
+    } },
     restrictions = objectOrNull("restrictions"),
     dogAccess = objectOrNull("dog_access")?.let { value ->
         DogAccessEvaluation(

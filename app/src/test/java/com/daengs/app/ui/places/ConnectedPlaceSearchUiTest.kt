@@ -21,6 +21,26 @@ class ConnectedPlaceSearchUiTest {
     @get:Rule val compose = createComposeRule()
     private fun ready() = PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.54,127.05)),
         discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE)))
+    @Test fun realProfileNamesDispatchIndependentDogSelection() {
+        val dog = com.daengs.app.pet.Pet("real-id", "콩이", "mix", null, null, 9f, null, null, isPrimary = true)
+        val state = ready().copy(profiles = PlaceProfiles().receive("owner", listOf(dog), false, null))
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
+        compose.onNodeWithText("🐾 반려견 ▾").performClick()
+        compose.onNodeWithText("콩이").assertExists()
+        compose.onNodeWithContentDescription("콩이 선택").performClick()
+        assertEquals(PlacesAction.ToggleDog("real-id"), actions.single())
+    }
+
+    @Test fun changedProfilesHidePreviousEvaluationBeforeNewResponse() {
+        val response = javaClass.getResourceAsStream("/place_search_lab_sample.json")!!.bufferedReader().use {
+            Json.parseToJsonElement(it.readText()).jsonObject.toPlaceSearchResponse()
+        }
+        val dog = com.daengs.app.pet.Pet("a", "콩이", "mix", null, null, 9f, null, null, isPrimary = false)
+        val state = ready().copy(profiles = PlaceProfiles().receive("owner", listOf(dog), false, null).toggle("a"),
+            discovery = ready().discovery.copy(search = PlaceSearchState.Content(response)))
+        assertTrue(state.toConnectedSearchState("", false, null, null).hits.isEmpty())
+    }
     @Test fun submitDispatchesNameButTypingAndAiDoNotSearch() {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, {}, {}, {}, {}, {}, showMap = false) } }

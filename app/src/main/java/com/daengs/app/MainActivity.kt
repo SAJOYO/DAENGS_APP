@@ -831,6 +831,12 @@ class MainActivity : ComponentActivity() {
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
                         primaryPet = pets.primary,
+                        useConnectedSearch = BuildConfig.DEBUG,
+                        profileOwnerId = session?.appUserId,
+                        profilePets = pets.pets,
+                        profilesBusy = pets.busy,
+                        profilesError = pets.error,
+                        onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
                     Screen.WalkHistory -> WalkHistoryScreen(

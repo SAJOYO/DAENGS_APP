@@ -37,6 +37,7 @@ data class Pet(
      */
     val farewellOn: LocalDate? = null,
     val isPrimary: Boolean,
+    val updatedAt: String? = null,
 ) {
     /** 이 견종의 얼굴 그림. 모르는 견종(믹스 등)이면 null 이고, 화면이 대체 얼굴을 쓴다. */
     val breedArt: DogBreed? get() = DogBreed.byId(breed)
@@ -99,6 +100,7 @@ data class Pet(
             },
             farewellOn = json.optStringOrNull("farewell_on")?.let(LocalDate::parse),
             isPrimary = json.optBoolean("is_primary"),
+            updatedAt = json.optStringOrNull("updated_at"),
         )
 
         /** `optString` 은 JSON null 에도 빈 문자열을 준다. 0 과 "없음"을 구분해야 한다. */

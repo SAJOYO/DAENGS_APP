@@ -44,7 +44,7 @@ class PlaceApi(
                 if (nameQuery.isNotEmpty() && response["name_query"] != JsonPrimitive(nameQuery)) {
                     throw SerializationException("Server did not confirm the requested name filter")
                 }
-                response.toPlaceSearchResponse()
+                response.toPlaceSearchResponse().also { it.requireDogEcho(request) }
             } finally {
                 connection.disconnect()
             }

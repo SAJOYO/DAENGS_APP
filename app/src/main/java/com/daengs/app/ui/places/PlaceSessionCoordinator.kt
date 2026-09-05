@@ -87,6 +87,11 @@ internal class PlaceSessionCoordinator(
         discovery.updateDogContext(context)
     }
 
+    fun updateDogs(dogs: List<com.daengs.app.place.PlaceDogSnapshot>) {
+        journey.clear()
+        discovery.updateDogs(dogs)
+    }
+
     fun startDefaultSearchIfNeeded(devicePosition: GeoPoint?): PendingDevicePlaceSearch? {
         if (discovery.state.value.search !is PlaceSearchState.Idle) return null
         return if (devicePosition == null) {

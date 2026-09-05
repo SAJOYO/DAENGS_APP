@@ -9,6 +9,16 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaceSearchBatchTest {
+    @Test fun differentProfileVersionsCannotBeMergedAcrossCategories() = runTest {
+        val requests = requests().mapIndexed { index, request ->
+            request.copy(dogs = listOf(PlaceDogSnapshot("a", "v$index")))
+        }
+        val repository = PlaceSearchRepository { request ->
+            response(request).copy(dogs = request.dogs, groups = response(request).groups.map { it.copy(results = emptyList()) })
+        }
+        try { searchPlaceBatches(repository, requests); fail("must reject mixed snapshots") }
+        catch (_: kotlinx.serialization.SerializationException) { }
+    }
     private fun sample() = javaClass.getResourceAsStream("/place_search_lab_sample.json")!!.bufferedReader().use {
         Json.parseToJsonElement(it.readText()).jsonObject.toPlaceSearchResponse()
     }
