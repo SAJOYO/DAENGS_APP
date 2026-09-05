@@ -55,7 +55,7 @@ internal fun TerritoryActionCard(
                             }
                         }
                     }
-                    Text(game.guidance, color = TextMuted, fontSize = 11.sp)
+                    TerritoryFeedbackLine(game)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (game.canMark) Button(onClick = { onMark(target.site.id) }, modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = TextDark)) { Text("영역표시", fontSize = 12.sp) }

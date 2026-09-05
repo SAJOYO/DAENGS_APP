@@ -95,6 +95,7 @@ class WalkViewModel(
     private var noticeJob: Job? = null
     private var trackingErrorJob: Job? = null
     private var observedCompletedSessionId: String? = null
+    private val territoryFeedback = com.daengs.app.map.features.territory.TerritoryFeedbackTracker()
 
     val state: StateFlow<WalkUiState> = combine(
         walkController.state,
@@ -102,6 +103,9 @@ class WalkViewModel(
         territory.state,
         presentation,
     ) { tracking, locationState, territoryState, presentationState ->
+        val game = territoryGame?.snapshot(territoryState, tracking,
+            locationState.permissionGranted && locationState.precisePermission,
+            presentationState.selection.pets.associate { it.id to it.name }, nowNanos()) ?: TerritoryGameState()
         WalkUiState(
             // 안내는 **잠깐 떴다 사라진다.** 예전에는 지우는 곳이 아예 없어서, 다시
             // 걸으려고 들어와도 지난 실패가 먼저 붙어 있었다.
@@ -115,11 +119,8 @@ class WalkViewModel(
             selection = presentationState.selection,
             map = presentationState.map,
             territory = territoryState,
-            territoryGame = territoryGame?.snapshot(
-                territoryState, tracking,
-                locationState.permissionGranted && locationState.precisePermission,
-                presentationState.selection.pets.associate { it.id to it.name }, nowNanos(),
-            ) ?: TerritoryGameState(),
+            territoryGame = game.copy(feedback = territoryFeedback.update(game, tracking.activeSessionId,
+                presentationState.map.purpose == MapPurpose.TERRITORY, nowNanos())),
             completion = presentationState.completion,
             momentNotice = presentationState.momentNotice,
         )
