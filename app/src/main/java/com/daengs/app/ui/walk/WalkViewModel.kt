@@ -362,14 +362,19 @@ class WalkViewModel(
     private fun markTerritory(siteId: String) {
         val game = territoryGame ?: return
         if (presentation.value.map.purpose != MapPurpose.TERRITORY || territory.state.value.selectedSiteId != siteId) return
-        val message = game.mark(
-            siteId, territory.state.value, walkController.state.value,
-            location.state.value.permissionGranted && location.state.value.precisePermission,
-            presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(), nowMillis(),
-        )
-        territory.select(siteId)
-        presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
-        showNotice(message)
+        val board = territory.state.value
+        val tracking = walkController.state.value
+        val permitted = location.state.value.permissionGranted && location.state.value.precisePermission
+        val pets = presentation.value.selection.pets.associate { it.id to it.name }
+        val observedNanos = nowNanos()
+        val observedMillis = nowMillis()
+        runtimeScope.launch {
+            val message = game.submitMark(siteId, board, tracking, permitted, pets, observedNanos, observedMillis)
+            presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
+            if (walkController.state.value.activeSessionId == tracking.activeSessionId &&
+                territory.state.value.selectedSiteId == siteId && presentation.value.map.purpose == MapPurpose.TERRITORY)
+                showNotice(message)
+        }
     }
 
     fun beginTerritoryCapture(target: TerritoryCaptureTarget): String? {
@@ -591,16 +596,19 @@ class WalkViewModel(
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass.isAssignableFrom(WalkViewModel::class.java))
-                val mode = territoryGameMode(BuildConfig.DEBUG, BuildConfig.TERRITORY_SERVER_READ)
+                val mode = territoryGameMode(BuildConfig.DEBUG, BuildConfig.TERRITORY_SERVER_READ, BuildConfig.TERRITORY_SERVER_ACTIONS)
                 val game = when (mode) {
                     TerritoryGameMode.DISABLED -> null
                     TerritoryGameMode.LOCAL -> TerritoryGameController(localTerritoryClaims)
-                    TerritoryGameMode.SERVER_READ -> {
+                    TerritoryGameMode.SERVER_READ, TerritoryGameMode.SERVER_ACTIONS -> {
                         val app = context.applicationContext as com.daengs.app.DaengsApp
                         ServerTerritoryGameProvider(
                             com.daengs.app.territory.TerritoryOccupancyApi { BuildConfig.API_BASE_URL },
                             app.sessionProvider::freshSession,
                             { app.tokenStore.load()?.appUserId },
+                            if (mode == TerritoryGameMode.SERVER_ACTIONS) app.territoryActions else null,
+                            { if (mode == TerritoryGameMode.SERVER_ACTIONS)
+                                com.daengs.app.territory.enqueueTerritoryActions(app, append = false) },
                         )
                     }
                 }

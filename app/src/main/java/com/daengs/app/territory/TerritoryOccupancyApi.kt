@@ -27,7 +27,7 @@ fun interface TerritoryOccupancyClient {
 
 class TerritoryOccupancyApiException(val status: Int) : Exception("점유 조회 응답 오류 ($status)")
 
-/** Only GET /occupancies. Server actions are added in the next delivery. */
+/** GET /occupancies stays independent from the durable action API. */
 class TerritoryOccupancyApi(private val baseUrl: () -> String) : TerritoryOccupancyClient {
     override suspend fun fetch(accessToken: String, siteIds: List<String>): List<SharedTerritorySite> =
         withContext(Dispatchers.IO) {

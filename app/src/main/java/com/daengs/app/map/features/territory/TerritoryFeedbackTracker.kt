@@ -13,12 +13,16 @@ internal class TerritoryFeedbackTracker {
     private var event: TerritoryFeedback? = null
     private var sequence = 0L
     private var observedTarget: String? = null
+    private val serverMarksSeen = mutableSetOf<String>()
+    private var initialized = false
 
     fun update(game: TerritoryGameState, sessionId: String?, visible: Boolean, nowNanos: Long): TerritoryFeedback? {
         if (session != sessionId) {
             session = sessionId; previous.clear(); readySeen.clear(); event = null; observedTarget = null
         }
         val target = game.target
+        val newServerMark = game.confirmedMarkId?.let { serverMarksSeen.add(it) } == true && initialized
+        initialized = true
         val before = target?.let { previous[it.site.id] }
         // 보이지 않거나 일시정지 중에 들어온 결과도 관찰한다. 나중에 성공으로 재생하지 않는다.
         game.sites.forEach { previous[it.site.id] = it.claim }
@@ -33,6 +37,7 @@ internal class TerritoryFeedbackTracker {
             occupancy?.sourceSessionId == sessionId
         observedTarget = target.site.id
         val kind = when {
+            newServerMark && game.confirmedMarkSiteId == target.site.id -> TerritoryFeedbackKind.MARKED
             settled && occupancy?.certification == ClaimCertification.VERIFIED -> TerritoryFeedbackKind.VERIFIED
             settled && occupancy?.certification == ClaimCertification.UNVERIFIED -> TerritoryFeedbackKind.MARKED
             (game.canMark || game.canPhotograph) && readySeen.add(target.site.id) -> TerritoryFeedbackKind.READY

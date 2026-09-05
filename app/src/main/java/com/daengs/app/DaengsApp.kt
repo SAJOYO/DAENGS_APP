@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import com.daengs.app.territory.*
 
 /**
  * 프로세스 공용 SDK와 산책 기록 런타임을 초기화한다.
@@ -47,6 +49,9 @@ class DaengsApp : Application() {
         private set
 
     lateinit var walkRuntime: WalkRuntime
+        private set
+
+    var territoryActions: TerritoryActionSync? = null
         private set
 
     /**
@@ -121,5 +126,17 @@ class DaengsApp : Application() {
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
         applicationScope.launch { delivery.enqueuePending() }
+        if (BuildConfig.DEBUG && BuildConfig.TERRITORY_SERVER_ACTIONS) {
+            val actions = TerritoryActionSync(TerritoryActionDatabase.open(this).actions(),
+                TerritoryActionApi { BuildConfig.API_BASE_URL }, sessionProvider::freshSession,
+                { tokenStore.load()?.appUserId }, { store.state.value }, applicationScope,
+                { enqueueTerritoryActions(this) })
+            territoryActions = actions
+            applicationScope.launch {
+                actions.recover()
+                store.state.distinctUntilChangedBy { Triple(it.ownerId, it.activeSessionId, it.trail.state) }
+                    .collect { actions.syncTracking() }
+            }
+        }
     }
 }

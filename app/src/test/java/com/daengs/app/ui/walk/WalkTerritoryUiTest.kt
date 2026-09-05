@@ -24,6 +24,29 @@ import org.robolectric.annotation.Config
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp")
 class WalkTerritoryUiTest {
+    @Test fun pendingServerMarkLocksDogAndKeepsDiaryCameraSeparate() {
+        val base = screen(TerritoryWalkPhase.WALKING)
+        val pending = base.territoryGame.copy(canMark = false, canPhotograph = false, petLocked = true,
+            guidance = "영역표시 확인 중 · 산책을 계속해도 돼요")
+        val state = mutableStateOf(base.copy(territoryGame = pending))
+        compose.setContent { DaengsTheme { WalkScreen(state.value, {}, showMap = false) } }
+        compose.onNodeWithText("영역표시 확인 중 · 산책을 계속해도 돼요").assertIsDisplayed()
+        compose.onNodeWithText("보리").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled()
+        compose.onNodeWithContentDescription("영역표시 인증 촬영").assertDoesNotExist()
+        screenshot("server-mark-pending")
+        compose.runOnIdle {
+            val target = pending.target!!
+            state.value = base.copy(territoryGame = pending.copy(
+                sites = listOf(target.copy(ownerLabel = "보리", claim = target.claim.copy(version = 1,
+                    occupancy = TerritoryOccupancy("p1", null, null, ClaimCertification.UNVERIFIED, 1000)))),
+                guidance = "영역표시가 접수됐어요 · 현재 점유는 지도에서 확인해요"))
+        }
+        compose.onNodeWithText("보리 · 미인증").assertIsDisplayed()
+        compose.onNodeWithText("영역표시").assertDoesNotExist()
+        screenshot("server-mark-confirmed")
+    }
+
     @Test fun sharedOccupancyShowsOtherDogWithoutGameActionsAndFailureIsNotNeutral() {
         val session = com.daengs.app.auth.Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
         var failing = false

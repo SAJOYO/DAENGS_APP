@@ -7,6 +7,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TerritoryFeedbackTrackerTest {
+    @Test fun `server receipts animate once only when delivered on the visible selected site`() {
+        val confirmed = state().copy(confirmedMarkId = "claim", confirmedMarkSiteId = "A")
+        update(state())
+        assertEquals(TerritoryFeedbackKind.MARKED, update(confirmed, 1)!!.kind)
+        assertNull(update(confirmed, 2_000_000_001))
+        val hidden = confirmed.copy(confirmedMarkId = "hidden")
+        assertNull(update(hidden, 3_000_000_000, visible = false))
+        assertNull(update(hidden, 3_000_000_001))
+        val other = confirmed.copy(confirmedMarkId = "other", confirmedMarkSiteId = "B")
+        assertNull(update(other, 4_000_000_000))
+        assertNull(update(other.copy(sites = listOf(site("B")), targetId = "B"), 4_000_000_001))
+    }
+
+    @Test fun `a new screen never celebrates an initial cached server receipt`() {
+        assertNull(update(state().copy(confirmedMarkId = "old", confirmedMarkSiteId = "A")))
+    }
     private val tracker = TerritoryFeedbackTracker()
     private fun site(id: String = "A", occupancy: TerritoryOccupancy? = null) = TerritoryGameSite(
         TerritorySite(id, GeoPoint(37.5, 127.0), 0.0), TerritoryClaimSite(id, occupancy), "보리", null, 5.0, occupancy != null)
