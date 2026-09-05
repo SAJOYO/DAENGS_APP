@@ -11,6 +11,10 @@ import com.daengs.app.location.LocationSource
 import com.daengs.app.map.features.territory.TerritoryBoardController
 import com.daengs.app.map.features.territory.TerritoryGameController
 import com.daengs.app.map.features.territory.TerritoryGameState
+import com.daengs.app.map.features.territory.TerritoryGameProvider
+import com.daengs.app.map.features.territory.ServerTerritoryGameProvider
+import com.daengs.app.map.features.territory.TerritoryGameMode
+import com.daengs.app.map.features.territory.territoryGameMode
 import com.daengs.app.territory.InMemoryTerritoryClaimRepository
 import com.daengs.app.territory.TerritoryPhotoQueue
 import com.daengs.app.territory.PhotoSimulation
@@ -35,6 +39,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -77,7 +84,7 @@ class WalkViewModel(
     externalScope: CoroutineScope? = null,
     private val momentNoticeMillis: Long = MOMENT_NOTICE_MILLIS,
     private val trackingErrorMillis: Long = TRACKING_ERROR_MILLIS,
-    private val territoryGame: TerritoryGameController? = null,
+    private val territoryGame: TerritoryGameProvider? = null,
     private val nowNanos: () -> Long = System::nanoTime,
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val photoQueue: TerritoryPhotoQueue? = null,
@@ -91,6 +98,8 @@ class WalkViewModel(
     val territoryPhotos: StateFlow<List<TerritoryPhotoJob>> = photoQueue?.jobs ?: MutableStateFlow(emptyList())
 
     private var active = false
+    private val sharedReadsActive = MutableStateFlow(false)
+    private val sharedReadsForeground = MutableStateFlow(true)
     private var completionJob: Job? = null
     private var noticeJob: Job? = null
     private var trackingErrorJob: Job? = null
@@ -132,6 +141,26 @@ class WalkViewModel(
 
     init {
         runtimeScope.launch {
+            territoryGame?.changes?.collect {
+                presentation.update { p -> p.copy(claimRevision = p.claimRevision + 1) }
+            }
+        }
+        if (territoryGame?.refreshesFromServer == true) runtimeScope.launch {
+            combine(
+                territory.state.map { it.sites }.distinctUntilChanged(),
+                presentation.map { it.map.purpose }.distinctUntilChanged(),
+                sharedReadsActive,
+                sharedReadsForeground,
+            ) { sites, purpose, visible, foreground -> sites to (visible && foreground && purpose == MapPurpose.TERRITORY) }
+                .collectLatest { (sites, visible) ->
+                    if (!visible || sites.isEmpty()) territoryGame.invalidate()
+                    else while (true) {
+                        territoryGame.refresh(sites)
+                        delay(15_000)
+                    }
+                }
+        }
+        runtimeScope.launch {
             territoryPhotos.collect { presentation.update { p -> p.copy(claimRevision = p.claimRevision + 1) } }
         }
         walkController.state.value.let { tracking ->
@@ -166,6 +195,7 @@ class WalkViewModel(
 
     fun activate(permissionGranted: Boolean, precisePermission: Boolean) {
         active = true
+        sharedReadsActive.value = true
         location.activate(permissionGranted, precisePermission)
         walkController.state.value.let { tracking ->
             location.acceptTrackingState(
@@ -180,8 +210,16 @@ class WalkViewModel(
 
     fun deactivate() {
         active = false
+        sharedReadsActive.value = false
+        territoryGame?.invalidate()
         location.deactivate()
         territory.deactivate()
+    }
+
+    /** Only server browsing follows Activity visibility; foreground walking keeps recording. */
+    fun updateSharedReadsForeground(foreground: Boolean) {
+        sharedReadsForeground.value = foreground
+        if (!foreground) territoryGame?.invalidate()
     }
 
     fun updatePermission(granted: Boolean, precise: Boolean) {
@@ -553,6 +591,19 @@ class WalkViewModel(
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass.isAssignableFrom(WalkViewModel::class.java))
+                val mode = territoryGameMode(BuildConfig.DEBUG, BuildConfig.TERRITORY_SERVER_READ)
+                val game = when (mode) {
+                    TerritoryGameMode.DISABLED -> null
+                    TerritoryGameMode.LOCAL -> TerritoryGameController(localTerritoryClaims)
+                    TerritoryGameMode.SERVER_READ -> {
+                        val app = context.applicationContext as com.daengs.app.DaengsApp
+                        ServerTerritoryGameProvider(
+                            com.daengs.app.territory.TerritoryOccupancyApi { BuildConfig.API_BASE_URL },
+                            app.sessionProvider::freshSession,
+                            { app.tokenStore.load()?.appUserId },
+                        )
+                    }
+                }
                 return WalkViewModel(
                     walkController = walkController,
                     history = history,
@@ -560,9 +611,9 @@ class WalkViewModel(
                     territoryRepository = HttpTerritorySiteRepository(
                         TerritorySiteApi(baseUrl = { BuildConfig.API_BASE_URL }),
                     ),
-                    territoryGame = if (BuildConfig.DEBUG) TerritoryGameController(localTerritoryClaims) else null,
+                    territoryGame = game,
                     nowNanos = SystemClock::elapsedRealtimeNanos,
-                    photoQueue = if (BuildConfig.DEBUG) localTerritoryPhotos else null,
+                    photoQueue = if (mode == TerritoryGameMode.LOCAL) localTerritoryPhotos else null,
                 ) as T
             }
         }

@@ -177,6 +177,19 @@ fun WalkRoute(
         onDispose(viewModel::deactivate)
     }
 
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(viewModel, lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            viewModel.updateSharedReadsForeground(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+        }
+        lifecycle.addObserver(observer)
+        viewModel.updateSharedReadsForeground(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+        onDispose {
+            lifecycle.removeObserver(observer)
+            viewModel.updateSharedReadsForeground(false)
+        }
+    }
+
     BackHandler { viewModel.onAction(WalkAction.Back) }
 
     Column(modifier) {
