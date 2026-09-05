@@ -69,6 +69,10 @@ fun ConnectedPlaceSearchScreen(
     var follow by remember { mutableStateOf(true) }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
+    LaunchedEffect(state.discovery.response) {
+        // A loading frame has no response; only completed results can remove an expanded card.
+        if (state.discovery.response != null) expanded = ui.expanded
+    }
     val kind = ui.applied.kind
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
@@ -108,7 +112,7 @@ fun ConnectedPlaceSearchScreen(
             PlaceJourneyAction(
                 state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
                 onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
-                onRetry = { onAction(PlacesAction.RetryJourney) }, onOpenHandoff = onOpenHandoff,
+                onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
             )
         },
         map = {
