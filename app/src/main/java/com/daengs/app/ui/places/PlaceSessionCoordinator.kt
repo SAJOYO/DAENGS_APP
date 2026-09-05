@@ -34,6 +34,7 @@ internal data class PlaceSearchIntent(
     val kinds: List<PlaceKind>,
     val preferParking: Boolean,
     val nameQuery: String = "",
+    val radiusMeters: Int = 3_000,
 )
 
 /** 위치 확인이 끝나기 전에도 어느 사용자 검색 명령이 최신인지 식별한다. */
@@ -103,15 +104,16 @@ internal class PlaceSessionCoordinator(
     }
 
     fun requestDeviceSearch(
-        kind: PlaceKind,
+        kind: PlaceKind?,
         preferParking: Boolean,
         nameQuery: String? = null,
     ): PendingDevicePlaceSearch {
         val intent = PlaceSearchIntent(
             origin = PlaceSearchOrigin.CurrentDevice,
-            kinds = listOf(kind),
+            kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
             preferParking = preferParking,
             nameQuery = resolvedNameQuery(nameQuery),
+            radiusMeters = latestIntent.value?.radiusMeters ?: discovery.state.value.radiusMeters,
         )
         latestIntent.value = intent
         return PendingDevicePlaceSearch(
@@ -128,7 +130,7 @@ internal class PlaceSessionCoordinator(
     }
 
     fun searchAtCurrentOrigin(
-        kind: PlaceKind,
+        kind: PlaceKind?,
         preferParking: Boolean,
         devicePosition: GeoPoint?,
         nameQuery: String? = null,
@@ -144,9 +146,10 @@ internal class PlaceSessionCoordinator(
                 startResolvedSearch(
                     PlaceSearchIntent(
                         origin = PlaceSearchOrigin.DeviceSnapshot(devicePosition),
-                        kinds = listOf(kind),
+                        kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
                         preferParking = preferParking,
                         nameQuery = resolvedNameQuery(nameQuery),
+                        radiusMeters = latestIntent.value?.radiusMeters ?: discovery.state.value.radiusMeters,
                     ),
                 )
                 null
@@ -155,15 +158,28 @@ internal class PlaceSessionCoordinator(
         }
     }
 
-    fun searchAt(point: GeoPoint, kind: PlaceKind, preferParking: Boolean, nameQuery: String? = null) {
+    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         startResolvedSearch(
             PlaceSearchIntent(
                 origin = PlaceSearchOrigin.PinnedMap(point),
-                kinds = listOf(kind),
+                kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
                 preferParking = preferParking,
                 nameQuery = resolvedNameQuery(nameQuery),
+                radiusMeters = latestIntent.value?.radiusMeters ?: discovery.state.value.radiusMeters,
             ),
         )
+    }
+
+    fun radius(meters: Int): PendingDevicePlaceSearch? {
+        require(meters in 100..20_000)
+        val previous = latestIntent.value ?: currentResolvedIntent() ?: return null
+        val next = previous.copy(radiusMeters = meters)
+        if (next.origin == PlaceSearchOrigin.CurrentDevice) {
+            latestIntent.value = next
+            return PendingDevicePlaceSearch(++intentGeneration, next)
+        }
+        startResolvedSearch(next)
+        return null
     }
 
     fun retrySearch() {
@@ -182,6 +198,7 @@ internal class PlaceSessionCoordinator(
                 kinds = current.requestedKinds.ifEmpty { listOf(DEFAULT_PLACE_KIND) },
                 preferParking = current.preferParking,
                 nameQuery = current.nameQuery,
+                radiusMeters = current.radiusMeters,
             ),
         )
     }
@@ -230,7 +247,7 @@ internal class PlaceSessionCoordinator(
             PlaceSearchOrigin.CurrentDevice -> error("장치 위치를 확인한 뒤 검색해야 합니다.")
         }
         journey.clear()
-        discovery.search(point, intent.kinds, intent.preferParking, mode, intent.nameQuery)
+        discovery.search(point, intent.kinds, intent.preferParking, mode, intent.nameQuery, intent.radiusMeters)
     }
 
     private fun invalidatePendingDeviceSearch() {
@@ -248,7 +265,7 @@ internal class PlaceSessionCoordinator(
             PlaceOriginMode.DEVICE -> PlaceSearchOrigin.DeviceSnapshot(point)
             PlaceOriginMode.PINNED -> PlaceSearchOrigin.PinnedMap(point)
         }
-        return PlaceSearchIntent(origin, current.requestedKinds, current.preferParking, current.nameQuery)
+        return PlaceSearchIntent(origin, current.requestedKinds, current.preferParking, current.nameQuery, current.radiusMeters)
     }
 
     // null은 기존 조건 유지, 빈 문자열은 사용자가 이름 조건을 지운 새 검색이다.

@@ -21,7 +21,8 @@ import com.daengs.app.ui.theme.DaengsTheme
 /** 운영 coordinator의 결과를 새 화면에 투영한다. 네트워크·위치의 별도 상태 소유자는 없다. */
 fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: PlaceKey?, notice: String?): PlaceSearchLabState {
     val response = discovery.response
-    val hits = response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
+    val all = discovery.requestedKinds.size > 6
+    val hits = if (all) response?.overviewHits(discovery.preferParking).orEmpty() else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
         discovery.loading || location.locating -> LabPhase.LOADING
@@ -31,11 +32,11 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
     }
     return PlaceSearchLabState(
         draft = draft, aiMode = ai,
-        applied = LabCriteria(query = discovery.nameQuery, kind = selectedPlaceKind(discovery), parkingFirst = discovery.preferParking),
+        applied = LabCriteria(query = discovery.nameQuery, kind = if (all) null else selectedPlaceKind(discovery), parkingFirst = discovery.preferParking, radiusMeters = discovery.radiusMeters),
         hits = if (phase == LabPhase.RESULTS) hits else emptyList(), phase = phase,
         selected = discovery.selectedPlaceKey,
         expanded = expanded?.takeIf { key -> hits.any { it.place.key == key } },
-        notice = notice ?: location.userMessage(), errorText = discovery.error,
+        notice = notice ?: location.userMessage(), errorText = discovery.error?.let { if (all) "전체 업종을 불러오지 못했어요. $it" else it },
         truncated = response?.groups?.any { it.truncated } == true,
     )
 }
@@ -59,10 +60,10 @@ fun ConnectedPlaceSearchScreen(
     var follow by remember { mutableStateOf(true) }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
-    val kind = selectedPlaceKind(state.discovery)
+    val kind = ui.applied.kind
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
-    fun search(selected: PlaceKind = kind, parking: Boolean = state.discovery.preferParking, query: String? = null) {
+    fun search(selected: PlaceKind? = kind, parking: Boolean = state.discovery.preferParking, query: String? = null) {
         if (permission) { requestPermission(); return }
         notice = null
         onAction(PlacesAction.Search(selected, parking, query))
@@ -79,13 +80,13 @@ fun ConnectedPlaceSearchScreen(
             }
         },
         onCategory = { selected ->
-            if (selected == null) notice = "전체 업종 검색은 다음 연결 단계에서 제공됩니다. 업종을 선택해 주세요."
-            else search(selected = selected)
+            search(selected = selected)
         },
         onParking = { value ->
-            if (kind.supportsParkingPreference()) search(parking = value)
+            if (kind == null || kind.supportsParkingPreference()) search(parking = value)
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
         },
+        onRadius = { meters -> onAction(PlacesAction.SetRadius(meters)) },
         onToggle = { key ->
             expanded = key.takeUnless { it == expanded }
             onAction(PlacesAction.Select(key))

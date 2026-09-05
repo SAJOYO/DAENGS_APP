@@ -33,12 +33,14 @@ class ConnectedPlaceSearchUiTest {
         compose.onNodeWithContentDescription("검색 실행").performClick()
         assertEquals(PlacesAction.Search(PlaceKind.CAFE, false, "구욱희씨"), actions.single())
     }
-    @Test fun allIsNotMisrepresentedAsCafeSearch() {
+    @Test fun allDispatchesAllScopeAndRadiusCanBeSelected() {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNodeWithText("전체보기").performClick()
-        assertTrue(actions.isEmpty())
-        compose.onNodeWithText("전체 업종 검색은 다음 연결 단계에서 제공됩니다. 업종을 선택해 주세요.").assertExists()
+        assertEquals(PlacesAction.Search(null, false, null), actions.single())
+        compose.onNodeWithText("3km ▾").performClick()
+        compose.onNodeWithText("5km").performClick()
+        assertEquals(PlacesAction.SetRadius(5000), actions.last())
     }
     @Test fun projectionPreservesTruncationAndDoesNotExposeStaleCardsWhileLoading() {
         val response = javaClass.getResourceAsStream("/place_search_lab_sample.json")!!.bufferedReader().use {
