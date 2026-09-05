@@ -47,6 +47,7 @@ import androidx.compose.ui.zIndex
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.map.features.territory.TerritoryBoardState
+import com.daengs.app.map.features.territory.TerritoryGameState
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapPurpose
 import com.daengs.app.miniroom.OutsideSnapshot
@@ -142,6 +143,9 @@ fun WalkScreen(
             resultExpanded = state.completion.resultExpanded,
             mapPurpose = state.map.purpose,
             territory = state.territory,
+            territoryGame = state.territoryGame,
+            onMarkTerritory = { onAction(WalkAction.MarkTerritory(it)) },
+            onRefreshClaimAccess = { onAction(WalkAction.RefreshClaimAccess) },
             onToggleDog = { onAction(WalkAction.ToggleDog(it)) },
             onHome = { onAction(WalkAction.Home) },
             onMapPurposeChange = { onAction(WalkAction.ChangeMapPurpose(it)) },
@@ -181,6 +185,9 @@ private fun WalkGameOverlay(
     resultExpanded: Boolean,
     mapPurpose: MapPurpose = MapPurpose.WALK,
     territory: TerritoryBoardState = TerritoryBoardState(),
+    territoryGame: TerritoryGameState = TerritoryGameState(),
+    onMarkTerritory: (String) -> Unit = {},
+    onRefreshClaimAccess: () -> Unit = {},
     onToggleDog: (String) -> Unit,
     onHome: () -> Unit,
     onMapPurposeChange: (MapPurpose) -> Unit = {},
@@ -200,11 +207,12 @@ private fun WalkGameOverlay(
 ) {
     var wallClockMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var realtimeMillis by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(territoryGame.enabled, mapPurpose) {
         while (true) {
             wallClockMillis = System.currentTimeMillis()
             realtimeMillis = SystemClock.elapsedRealtime()
             delay(1_000L)
+            if (territoryGame.enabled && mapPurpose == MapPurpose.TERRITORY) onRefreshClaimAccess()
         }
     }
 
@@ -307,6 +315,9 @@ private fun WalkGameOverlay(
                     modifier = Modifier.align(Alignment.BottomEnd),
                     photoOf = photoOf,
                 )
+                if (summary == null && mapPurpose == MapPurpose.TERRITORY && territoryGame.enabled) {
+                    TerritoryActionCard(territoryGame, onMarkTerritory, Modifier.align(Alignment.CenterEnd))
+                }
             } else {
                 // **가운데 버튼은 진짜 가운데여야 한다.** `SpaceBetween` 은 남는 자리를
                 // 똑같이 나눌 뿐이라, 양옆 버튼의 너비가 다르면 가운데 것이 한쪽으로
@@ -355,6 +366,9 @@ private fun WalkGameOverlay(
                             enabled = momentEnabled,
                             onAddMoment = onAddMoment,
                         )
+                    }
+                    if (summary == null && mapPurpose == MapPurpose.TERRITORY && territoryGame.enabled) {
+                        TerritoryActionCard(territoryGame, onMarkTerritory)
                     }
                     StatusPill(
                         label = notice,
@@ -478,9 +492,9 @@ private fun WalkMapModeButton(
 ) {
     val target = if (purpose == MapPurpose.TERRITORY) MapPurpose.WALK else MapPurpose.TERRITORY
     DaengsFloatingButton(
-        label = if (purpose == MapPurpose.TERRITORY) "산책 지도" else "점령 지도",
+        label = if (purpose == MapPurpose.TERRITORY) "점령지 숨기기" else "점령지 보기",
         onClick = { onChange(target) },
-        modifier = modifier.semantics { contentDescription = "지도 모드 전환" },
+        modifier = modifier.semantics { contentDescription = "점령지 표시 전환" },
     )
 }
 

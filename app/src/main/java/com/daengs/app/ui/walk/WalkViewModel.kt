@@ -1,6 +1,7 @@
 package com.daengs.app.ui.walk
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,9 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.LocationSource
 import com.daengs.app.map.features.territory.TerritoryBoardController
+import com.daengs.app.map.features.territory.TerritoryGameController
+import com.daengs.app.map.features.territory.TerritoryGameState
+import com.daengs.app.territory.InMemoryTerritoryClaimRepository
 import com.daengs.app.map.shell.MapPurpose
 import com.daengs.app.pet.Pet
 import com.daengs.app.territory.HttpTerritorySiteRepository
@@ -33,6 +37,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private data class WalkPresentationState(
+    val claimRevision: Long = 0,
     val selection: WalkSelectionState = WalkSelectionState(),
     val knownPetIds: Set<String> = emptySet(),
     val map: WalkMapUiState = WalkMapUiState(),
@@ -68,6 +73,9 @@ class WalkViewModel(
     externalScope: CoroutineScope? = null,
     private val momentNoticeMillis: Long = MOMENT_NOTICE_MILLIS,
     private val trackingErrorMillis: Long = TRACKING_ERROR_MILLIS,
+    private val territoryGame: TerritoryGameController? = null,
+    private val nowNanos: () -> Long = System::nanoTime,
+    private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
     private val location = WalkLocationCoordinator(locationSource, runtimeScope)
@@ -101,6 +109,11 @@ class WalkViewModel(
             selection = presentationState.selection,
             map = presentationState.map,
             territory = territoryState,
+            territoryGame = territoryGame?.snapshot(
+                territoryState, tracking,
+                locationState.permissionGranted && locationState.precisePermission,
+                presentationState.selection.pets.associate { it.id to it.name }, nowNanos(),
+            ) ?: TerritoryGameState(),
             completion = presentationState.completion,
             momentNotice = presentationState.momentNotice,
         )
@@ -215,6 +228,10 @@ class WalkViewModel(
             WalkAction.Locate -> location.locate(recenter = true)
             WalkAction.OpenAppSettings -> emit(WalkEffect.OpenAppSettings)
             WalkAction.RetryTerritory -> territory.retry()
+            WalkAction.RefreshClaimAccess -> if (territoryGame != null) {
+                presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
+            }
+            is WalkAction.MarkTerritory -> markTerritory(action.siteId)
             WalkAction.ClearRoutePoint -> selectRoutePoint(null)
             WalkAction.ReviewMap -> presentation.update {
                 it.copy(completion = it.completion.copy(resultExpanded = false))
@@ -251,6 +268,19 @@ class WalkViewModel(
             )
         }
         walkController.start(presentation.value.selection.selectedDogIds.toList())
+    }
+
+    private fun markTerritory(siteId: String) {
+        val game = territoryGame ?: return
+        if (presentation.value.map.purpose != MapPurpose.TERRITORY) return
+        val message = game.mark(
+            siteId, territory.state.value, walkController.state.value,
+            location.state.value.permissionGranted && location.state.value.precisePermission,
+            presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(), nowMillis(),
+        )
+        territory.select(siteId)
+        presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
+        showNotice(message)
     }
 
     private fun toggleDog(id: String) {
@@ -440,6 +470,8 @@ class WalkViewModel(
     }
 
     companion object {
+        // Debug play persists across screen recreation/map toggles, until process exit.
+        private val localTerritoryClaims = InMemoryTerritoryClaimRepository(emptyList())
         fun factory(
             context: Context,
             walkController: WalkTrackingController,
@@ -455,6 +487,8 @@ class WalkViewModel(
                     territoryRepository = HttpTerritorySiteRepository(
                         TerritorySiteApi(baseUrl = { BuildConfig.API_BASE_URL }),
                     ),
+                    territoryGame = if (BuildConfig.DEBUG) TerritoryGameController(localTerritoryClaims) else null,
+                    nowNanos = SystemClock::elapsedRealtimeNanos,
                 ) as T
             }
         }

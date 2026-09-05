@@ -3,6 +3,7 @@ package com.daengs.app.ui.walk
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.map.features.territory.TerritoryBoardState
+import com.daengs.app.map.features.territory.TerritoryGameState
 import com.daengs.app.map.shell.MapPurpose
 import com.daengs.app.pet.Pet
 import com.daengs.app.walk.TrackingState
@@ -54,6 +55,7 @@ data class WalkUiState(
     val selection: WalkSelectionState = WalkSelectionState(),
     val map: WalkMapUiState = WalkMapUiState(),
     val territory: TerritoryBoardState = TerritoryBoardState(),
+    val territoryGame: TerritoryGameState = TerritoryGameState(),
     val completion: WalkCompletionUiState = WalkCompletionUiState(),
     val momentNotice: String? = null,
 )
@@ -85,6 +87,8 @@ sealed interface WalkAction {
     data object Locate : WalkAction
     data object OpenAppSettings : WalkAction
     data object RetryTerritory : WalkAction
+    data object RefreshClaimAccess : WalkAction
+    data class MarkTerritory(val siteId: String) : WalkAction
     data object ClearRoutePoint : WalkAction
     data object ReviewMap : WalkAction
     data object ShowResult : WalkAction

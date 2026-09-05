@@ -3,6 +3,9 @@
 [Geo 제작 계획](https://github.com/rkbuhtig/DAENGS_geo/pull/230)의 1단계다.
 지도·카메라 연결 전, 화면 없이 점령과 인증 진행을 실행할 수 있는 기반을 추가한다.
 
+이 기반을 실제 산책 지도에 연결하는 작업은 [2단계 지도·영역표시](territory-map-actions.md)와
+[APP #140](https://github.com/SAJOYO/DAENGS_APP/pull/140)에서 이어간다.
+
 ## 구성과 기존 코드의 연결 지점
 
 - `TerritorySite`/`TerritorySiteRepository`: 기존 중립 장소 조회·좌표 계약을 유지한다.

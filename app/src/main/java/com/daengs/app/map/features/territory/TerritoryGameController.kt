@@ -1,0 +1,135 @@
+package com.daengs.app.map.features.territory
+
+import com.daengs.app.territory.ClaimAccess
+import com.daengs.app.territory.ClaimCertification
+import com.daengs.app.territory.ClaimDisposition
+import com.daengs.app.territory.ClaimSession
+import com.daengs.app.territory.InMemoryTerritoryClaimRepository
+import com.daengs.app.territory.SiteInteraction
+import com.daengs.app.territory.TerritoryClaimSite
+import com.daengs.app.territory.TerritorySite
+import com.daengs.app.territory.evaluateClaimAccess
+import com.daengs.app.walk.TrackingState
+import com.daengs.app.walk.WalkTrackingState
+import kotlin.math.roundToInt
+
+/** Local play tuning, not the online capture contract. Inject when field-testing distances. */
+data class TerritoryGamePolicy(val radiusMeters: Double = 20.0, val maxFixAgeNanos: Long = 10_000_000_000L)
+
+data class TerritoryGameSite(
+    val site: TerritorySite,
+    val claim: TerritoryClaimSite,
+    val ownerLabel: String,
+    val interaction: SiteInteraction?,
+    val distanceMeters: Double?,
+    val attempted: Boolean,
+) {
+    val occupancyLabel: String get() = when (claim.occupancy?.certification) {
+        null -> "미점유"
+        ClaimCertification.UNVERIFIED -> "$ownerLabel · 미인증"
+        ClaimCertification.VERIFIED -> "$ownerLabel · 인증"
+    }
+}
+
+data class TerritoryGameState(
+    val enabled: Boolean = false,
+    val sites: List<TerritoryGameSite> = emptyList(),
+    val targetId: String? = null,
+    val representativeLabel: String? = null,
+    val radiusMeters: Double = 20.0,
+    val canMark: Boolean = false,
+    val actionLabel: String = "영역표시",
+    val guidance: String = "점령지를 선택해 주세요",
+) {
+    val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
+}
+
+/** Map/UI adapter for the step-1 fake. Does not write behavior Pins or call the online API. */
+class TerritoryGameController(
+    private val repository: InMemoryTerritoryClaimRepository,
+    private val policy: TerritoryGamePolicy = TerritoryGamePolicy(),
+) {
+    fun snapshot(
+        board: TerritoryBoardState,
+        tracking: WalkTrackingState,
+        permitted: Boolean,
+        petNames: Map<String, String>,
+        nowNanos: Long,
+    ): TerritoryGameState {
+        repository.registerSites(board.sites.map { TerritoryClaimSite(it.id) })
+        val session = session(tracking)
+        val fix = tracking.latestMomentFix
+        val age = fix?.elapsedRealtimeNanos?.let { nowNanos - it }
+        val trusted = permitted && fix != null && !fix.isMock && tracking.lastSample?.isMock != true && age != null &&
+            age in 0..policy.maxFixAgeNanos && tracking.trail.skippedTooFast == 0 &&
+            tracking.trail.skippedLowAccuracy == 0 && tracking.errorMessage == null
+        val sites = board.sites.map { site ->
+            val claim = repository.site(site.id)
+            val distance = fix?.point?.distanceMetersTo(site.point)
+            TerritoryGameSite(
+                site, claim,
+                claim.occupancy?.ownerPetId?.let { petNames[it] ?: "다른 강아지" }.orEmpty(),
+                session?.let {
+                    evaluateClaimAccess(
+                        it.clientSessionId, site.id, tracking.trail.state == TrackingState.RECORDING,
+                        trusted, distance ?: Double.NaN, fix?.accuracyMeters?.toDouble() ?: Double.NaN,
+                        policy.radiusMeters,
+                    )
+                },
+                distance,
+                session?.let { repository.attempt(it.clientSessionId, site.id) != null } ?: false,
+            )
+        }
+        val target = sites.firstOrNull { it.site.id == board.selectedSiteId }
+            ?: sites.filter { it.distanceMeters?.isFinite() == true }.minByOrNull { it.distanceMeters!! }
+        val disposition = target?.let {
+            com.daengs.app.territory.unverifiedClaimDisposition(it.claim, session?.claimingPetId.orEmpty())
+        }
+        val guidance = when {
+            tracking.trail.state != TrackingState.RECORDING -> "산책을 시작하거나 재개해 주세요"
+            session == null -> "함께 걷는 강아지를 선택해 산책을 시작해 주세요"
+            !trusted -> "정확한 현재 위치를 확인하고 있어요"
+            target == null -> "지도에서 점령지를 찾아 주세요"
+            target.attempted -> "이번 산책에서 이미 영역표시한 장소예요"
+            target.interaction?.access == ClaimAccess.APPROACHING -> "${target.distanceMeters!!.roundToInt()}m · 가까이 가면 영역표시할 수 있어요"
+            target.interaction?.access != ClaimAccess.READY -> "GPS 오차가 줄어들면 영역표시할 수 있어요"
+            disposition == ClaimDisposition.PHOTO_REQUIRED -> "인증된 영역이에요 · 탈취에는 사진 인증이 필요해요"
+            disposition == ClaimDisposition.POLICY_UNDECIDED -> "이미 다른 강아지가 표시한 영역이에요"
+            disposition == ClaimDisposition.ALREADY_OWNED -> "이미 우리 강아지의 영역이에요"
+            else -> "점령 준비 · 영역표시할 수 있어요"
+        }
+        return TerritoryGameState(
+            enabled = true, sites = sites, targetId = target?.site?.id,
+            representativeLabel = session?.claimingPetId?.let { petNames[it] ?: "대표 강아지" },
+            radiusMeters = policy.radiusMeters,
+            canMark = target?.interaction?.access == ClaimAccess.READY && !target.attempted &&
+                disposition == ClaimDisposition.GRANTED,
+            actionLabel = if (target?.attempted == true) "영역표시 완료" else "영역표시",
+            guidance = guidance,
+        )
+    }
+
+    fun mark(
+        siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
+        permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long,
+    ): String {
+        // Pin passes its displayed target ID; revalidate that exact target at tap time.
+        if (board.sites.none { it.id == siteId }) return "점령지를 다시 선택해 주세요"
+        val current = snapshot(board.copy(selectedSiteId = siteId), tracking, permitted, petNames, nowNanos)
+        if (!current.canMark) return current.guidance
+        val target = checkNotNull(current.target)
+        val session = checkNotNull(session(tracking))
+        repository.mark(
+            session, checkNotNull(target.interaction),
+            "local:${session.clientSessionId}:$siteId:${tracking.latestMomentFix?.elapsedRealtimeNanos}", atMillis,
+        )
+        return "${current.representativeLabel}의 영역으로 표시했어요"
+    }
+
+    private fun session(tracking: WalkTrackingState): ClaimSession? {
+        val id = tracking.activeSessionId ?: return null
+        val pet = tracking.activeDogIds.firstOrNull() ?: return null
+        // Local-only actor. Never forward this identity as an authenticated server account.
+        return ClaimSession(id, "local-territory-preview", pet)
+    }
+}
