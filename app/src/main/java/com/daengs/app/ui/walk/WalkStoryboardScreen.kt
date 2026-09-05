@@ -26,6 +26,9 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
     val scope = rememberCoroutineScope()
     val entryFlow = remember(sessionId) { app.walkEntries.observe(sessionId) }
     val entries by entryFlow.collectAsState(initial = null)
+    val analysis by remember(sessionId) { app.walkEntryDao.observeSceneAnalysis(sessionId) }.collectAsState(initial = null)
+    val rawEntries by remember(sessionId) { app.walkEntryDao.observeEntries(sessionId) }.collectAsState(initial = emptyList())
+    var analyzing by remember { mutableStateOf(false) }
     var walk by remember(sessionId) { mutableStateOf<WalkSummary?>(null) }
     var draft by remember(sessionId) { mutableStateOf<StoryboardDraft?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -56,6 +59,26 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
             error = e.message
         }
     }
+    fun analyze(refresh: Boolean = false) {
+        analyzing = true
+        scope.launch {
+            try {
+                requireOwner()
+                val auth = app.sessionProvider.freshSession() ?: error("로그인 후 분석할 수 있어요.")
+                app.walkRuntime.sync.syncPendingSession(auth.accessToken, sessionId)
+                if (refresh) app.walkEntryDao.session(sessionId)?.serverWalkId?.let {
+                    app.walkStoryboardSync.sync(auth.accessToken, sessionId, it, refresh = true)
+                }
+                error = null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                error = "분석을 완료하지 못했어요. 기록 동기화 상태를 확인하고 다시 시도해 주세요."
+            } finally { analyzing = false }
+        }
+    }
+    LaunchedEffect(sessionId) {
+        if (owner.isNotEmpty()) app.walkRuntime.delivery.enqueue(sessionId)
+    }
     fun save(next: StoryboardDraft) {
         busy = true
         scope.launch {
@@ -79,18 +102,37 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         }
         return
     }
-    val scenes = storyboardScenes(summary, entries.orEmpty(), current)
+    val ready = analysis?.status == "ready" && rawEntries.none { it.dirty || it.syncError != null } &&
+        analysis?.entryStamp == com.daengs.app.walk.sync.storyboardEntryStamp(rawEntries)
+    val bundle = if (ready) runCatching { GeoStoryboardBundle.parse(analysis!!.bundle!!) }.getOrNull() else null
+    val sources = bundle?.scenes?.map { scene ->
+        val id = scene.id.removePrefix("geo:")
+        if (id == "start" || id == "end" || id.startsWith("entry:")) scene.copy(id = id) else scene
+    }
+    val scenes = if (sources != null) applyStoryboardEdits(sources, current)
+        else storyboardScenes(summary, entries.orEmpty(), current).map { scene ->
+            if (scene.id.startsWith("geo:")) scene.copy(evidence = "최신 분석을 기다리는 장면이에요. 작성한 문구는 보관돼요.")
+            else scene
+        }
+    val notice = when {
+        analyzing || analysis?.status == "running" -> "산책 장면을 분석하고 있어요."
+        bundle != null -> "주변 자료와 이동 관측을 연결했어요. 자료는 산책 당시 상황이나 행동 원인을 뜻하지 않아요."
+        rawEntries.any { it.dirty || it.syncError != null } -> "기록 동기화 후 장면을 다시 분석해요."
+        analysis?.status == "failed" -> "장면 분석에 실패했어요. 다시 시도할 수 있어요."
+        else -> "환경·이동 장면을 준비할 수 있어요. 현재는 직접 남긴 기록을 보여줘요."
+    }
     val snapshot = storyboardSnapshot(sessionId, scenes)
     val unresolved = scenes.any { it.available && !it.hidden && it.needsReview }
     StoryboardContent(scenes, busy, error,
         reviewed = current.reviewed == snapshot,
         changed = current.reviewed != null && current.reviewed != snapshot,
-        canReview = !unresolved && scenes.any { it.available && !it.hidden },
+        canReview = !analyzing && (owner.isEmpty() || bundle != null) && !unresolved && scenes.any { it.available && !it.hidden },
         onBack = onBack, onEdit = { editing = it },
         onToggle = { save(current.edit(it, hidden = !it.hidden)) },
         onAcknowledge = { save(current.edit(it, acknowledge = true)) },
         onOriginal = { scene -> original = entries.orEmpty().firstOrNull { "entry:${it.id}" == scene.id } },
-        onReview = { save(current.copy(reviewed = snapshot)) })
+        onReview = { save(current.copy(reviewed = snapshot)) }, connectionNotice = notice,
+        onAnalyze = { analyze(refresh = bundle != null) }, analyzing = analyzing)
     editing?.let { scene ->
         var title by remember(scene.id) { mutableStateOf(scene.title) }
         var body by remember(scene.id) { mutableStateOf(scene.body) }
@@ -144,6 +186,8 @@ internal fun StoryboardContent(
     onToggle: (StoryboardScene) -> Unit, onAcknowledge: (StoryboardScene) -> Unit,
     onOriginal: (StoryboardScene) -> Unit, onReview: () -> Unit,
     connectionNotice: String = "이 기기에 저장돼요. 환경·이동 분석 장면과 AI 일기 생성은 아직 연결되지 않았어요.",
+    onAnalyze: (() -> Unit)? = null,
+    analyzing: Boolean = false,
 ) {
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
@@ -153,6 +197,9 @@ internal fun StoryboardContent(
             Text("시간순 장면을 확인하고 일기에 남길 내용을 골라보세요.")
             Text(connectionNotice,
                 style = MaterialTheme.typography.bodySmall)
+            onAnalyze?.let { action ->
+                TextButton(enabled = !busy && !analyzing, onClick = action) { Text(if (analyzing) "분석 중" else "장면 분석 · 다시 시도") }
+            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
         items(scenes, key = { it.id }) { scene ->
