@@ -18,6 +18,7 @@ data class LabCriteria(
     val kind: PlaceKind? = PlaceKind.CAFE,
     val parkingFirst: Boolean = false,
     val region: String = "seongsu",
+    val radiusMeters: Int = 3_000,
 )
 
 data class PlaceSearchLabState(

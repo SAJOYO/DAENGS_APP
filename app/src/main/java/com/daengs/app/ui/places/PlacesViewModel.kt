@@ -35,18 +35,20 @@ data class PlacesUiState(
     val journey: PlaceJourneyState = PlaceJourneyState(),
 )
 
-/** 화면에서 발생할 수 있는 시설 기능 입력을 하나의 닫힌 계약으로 둔다. */
+/** 화면 입력 계약. kind=null은 전체보기이며 HTTP 요청에서는 실제 kind 목록으로 분할한다. */
 sealed interface PlacesAction {
-    data class Locate(val kind: PlaceKind, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
+    data class Locate(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
 
-    data class Search(val kind: PlaceKind, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
+    data class Search(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
 
     data class SearchAt(
         val point: GeoPoint,
-        val kind: PlaceKind,
+        val kind: PlaceKind?,
         val preferParking: Boolean,
         val nameQuery: String? = null,
     ) : PlacesAction
+
+    data class SetRadius(val meters: Int) : PlacesAction
 
     data object RetrySearch : PlacesAction
 
@@ -130,6 +132,7 @@ class PlacesViewModel(
                 action.preferParking,
                 action.nameQuery,
             )
+            is PlacesAction.SetRadius -> session.radius(action.meters)?.let(::locate)
             PlacesAction.RetrySearch -> retrySearch()
             is PlacesAction.Select -> selectPlace(action.key)
             is PlacesAction.LoadJourney -> loadJourney(action.place)
@@ -137,7 +140,7 @@ class PlacesViewModel(
         }
     }
 
-    fun locateAndSearch(kind: PlaceKind, preferParking: Boolean, nameQuery: String? = null) {
+    fun locateAndSearch(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         if (location.state.value is PlaceLocationState.PermissionRequired ||
             location.state.value is PlaceLocationState.PermissionPermanentlyDenied
         ) {
@@ -146,7 +149,7 @@ class PlacesViewModel(
         locate(session.requestDeviceSearch(kind, preferParking, nameQuery))
     }
 
-    fun searchAtCurrentOrigin(kind: PlaceKind, preferParking: Boolean, nameQuery: String? = null) {
+    fun searchAtCurrentOrigin(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         session.searchAtCurrentOrigin(
             kind = kind,
             preferParking = preferParking,
@@ -155,7 +158,7 @@ class PlacesViewModel(
         )?.let(::locate)
     }
 
-    fun searchAt(point: GeoPoint, kind: PlaceKind, preferParking: Boolean, nameQuery: String? = null) {
+    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         session.searchAt(point, kind, preferParking, nameQuery)
     }
 

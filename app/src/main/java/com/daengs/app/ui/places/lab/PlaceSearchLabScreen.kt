@@ -40,6 +40,7 @@ fun PlaceSearchLabScreen(
     onDog: (String) -> Unit = {}, onToggle: (PlaceKey) -> Unit = {}, onRetry: () -> Unit = {},
     onAction: (String) -> Unit = {},
     live: Boolean = false,
+    onRadius: (Int) -> Unit = {},
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
 ) {
@@ -85,7 +86,7 @@ fun PlaceSearchLabScreen(
                 TextButton(onClick = { profiles = true }, modifier = Modifier.weight(1f)) {
                     Text("🐾 " + state.selectedDogIds.joinToString("·") { if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견" } + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text("3km", fontSize = 11.sp)
+                TextButton(onClick = { filters = true }) { Text("${state.applied.radiusMeters / 1000}km ▾", fontSize = 11.sp) }
                 TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 11.sp) }
                 IconButton(onClick = { filters = true }, modifier = Modifier.semantics { contentDescription = "검색 조건" }) { Text("⚙") }
             }
@@ -100,7 +101,8 @@ fun PlaceSearchLabScreen(
                     Text("${state.applied.kind?.let(::categoryLabel) ?: "전체"} $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
                     TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ▾" else "가까운 순 ▾", fontSize = 11.sp) }
                 }
-                if (state.applied.kind == null) Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
+                if (state.truncated) Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
+                if (state.applied.kind == null && !live) Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
                 if (state.phase == LabPhase.RESULTS) {
                     val list = rememberLazyListState()
                     LaunchedEffect(state.selected, state.hits) {
@@ -136,7 +138,12 @@ fun PlaceSearchLabScreen(
         }
     }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("완료") } })
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text("검색 조건") }, text = {
-        Text(if (live) "반경 3km · 주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 카드를 펼쳐 확인하세요.")
+        Column {
+        if (live) listOf(1000, 3000, 5000, 10000, 20000).forEach { meters ->
+            TextButton(onClick = { onRadius(meters); filters = false }) { Text("${meters / 1000}km${if (state.applied.radiusMeters == meters) " ✓" else ""}") }
+        }
+        Text(if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 카드를 펼쳐 확인하세요.")
+        }
     }, confirmButton = { TextButton(onClick = { filters = false }) { Text("완료") } })
 }
 
