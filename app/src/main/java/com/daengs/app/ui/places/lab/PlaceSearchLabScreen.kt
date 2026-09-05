@@ -172,8 +172,10 @@ private fun categorySymbol(kind: PlaceKind?): String = when (kind) {
 fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, onToggle: () -> Unit, onAction: (String) -> Unit = {}, actions: (@Composable (PlaceSearchHit) -> Unit)? = null, dogNames: Map<String, String> = emptyMap()) {
     val p = hit.place
     val presentation = hit.toCardPresentation()
-    val registration = when (p.facts.petAccess?.allowed) { true -> "동반 가능 등록"; false -> "동반 불가 등록"; null -> "동반 여부 확인 필요" }
-    val mark = when (p.facts.petAccess?.allowed) { true -> "✓"; false -> "×"; null -> "?" }
+    val access = p.facts.petAccess
+    val allowed = if (access?.dogOk == false) false else access?.allowed
+    val registration = when (allowed) { true -> "동반 가능 등록"; false -> "동반 불가 등록"; null -> "동반 여부 확인 필요" }
+    val mark = when (allowed) { true -> "✓"; false -> "×"; null -> "?" }
     Surface(modifier = Modifier.width(292.dp), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral)) {
         Column(Modifier.padding(14.dp)) {
             Column(Modifier.fillMaxWidth().clickable(onClick = onToggle).semantics { stateDescription = if (expanded) "펼침" else "접힘" }) {
