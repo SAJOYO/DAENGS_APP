@@ -27,16 +27,16 @@ class MapScenePolicyTest {
     )
 
     @Test
-    fun `territory receives only neutral sites and an active walk trail`() {
+    fun `territory adds sites while preserving walk records and map style`() {
         val scene = composeMapScene(MapPurpose.TERRITORY, sources, walkActive = true)
 
         assertEquals(point, scene.currentPosition)
         assertEquals(listOf("site"), scene.territorySites.map { it.id })
         assertTrue(scene.places.isEmpty())
-        assertTrue(scene.moments.isEmpty())
+        assertEquals(listOf("moment"), scene.moments.map { it.id })
         assertNull(scene.completedRoute.start)
         assertTrue(scene.trail.paths.isNotEmpty())
-        assertEquals(BaseMapStyle.TERRITORY_FOCUSED, scene.baseMapStyle)
+        assertEquals(BaseMapStyle.WALK_CONTEXT, scene.baseMapStyle)
     }
 
     @Test

@@ -24,6 +24,7 @@ data class WalkLocationUiState(
     val permissionGranted: Boolean = false,
     val precisePermission: Boolean = false,
     val currentPosition: GeoPoint? = null,
+    val sample: LocationSample? = null,
     val followDevice: Boolean = true,
     val errorMessage: String? = null,
     val locating: Boolean = false,
@@ -40,6 +41,7 @@ data class WalkSelectionState(
 data class WalkMapUiState(
     val purpose: MapPurpose = MapPurpose.WALK,
     val selectedMomentId: String? = null,
+    val frameSelectedTerritory: Boolean = false,
     val selectedRoutePointKey: String? = null,
     val selectedRouteSessionId: String? = null,
 )
@@ -86,6 +88,9 @@ sealed interface WalkAction {
     data object Stop : WalkAction
     data object Locate : WalkAction
     data object OpenAppSettings : WalkAction
+    data object ClearTerritory : WalkAction
+    data object OpenEntries : WalkAction
+    data class SelectClaimingPet(val siteId: String, val petId: String) : WalkAction
     data object RetryTerritory : WalkAction
     data object RefreshClaimAccess : WalkAction
     data class MarkTerritory(val siteId: String) : WalkAction
@@ -116,4 +121,4 @@ sealed interface WalkEffect {
 }
 
 internal fun WalkLocationUiState.accept(sample: LocationSample): WalkLocationUiState =
-    copy(currentPosition = sample.point)
+    copy(currentPosition = sample.point, sample = sample)

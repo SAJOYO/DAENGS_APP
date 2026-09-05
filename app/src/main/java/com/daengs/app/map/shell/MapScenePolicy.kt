@@ -81,10 +81,10 @@ fun mapDisplayPolicy(purpose: MapPurpose, walkActive: Boolean): MapDisplayPolicy
         showCompletedRoute = true,
     )
     MapPurpose.TERRITORY -> MapDisplayPolicy(
-        baseMapStyle = BaseMapStyle.TERRITORY_FOCUSED,
+        baseMapStyle = BaseMapStyle.WALK_CONTEXT,
         showPlaces = false,
         showTerritorySites = true,
-        showMoments = false,
+        showMoments = true,
         showLiveTrail = walkActive,
         showCompletedRoute = false,
     )

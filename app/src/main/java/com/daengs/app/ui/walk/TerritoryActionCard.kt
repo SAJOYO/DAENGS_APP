@@ -1,62 +1,73 @@
 package com.daengs.app.ui.walk
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daengs.app.map.features.territory.TerritoryGameState
-import com.daengs.app.territory.ClaimAccess
-import com.daengs.app.ui.DaengsIcon
-import com.daengs.app.ui.DaengsIconView
-import com.daengs.app.ui.theme.CardWhite
-import com.daengs.app.ui.theme.DaengsTheme
-import com.daengs.app.ui.theme.TextDark
-import com.daengs.app.ui.theme.TextMuted
+import com.daengs.app.map.features.territory.*
+import com.daengs.app.territory.ClaimPhotoStatus
+import com.daengs.app.ui.theme.*
 
+/** Occupancy is readable without a walk; only the action section needs a session. */
 @Composable
 internal fun TerritoryActionCard(
     game: TerritoryGameState,
     onMark: (String) -> Unit,
     modifier: Modifier = Modifier,
     onPhotograph: (String) -> Unit = {},
+    onClose: () -> Unit = {},
+    onSelectPet: (String, String) -> Unit = { _, _ -> },
 ) {
-    val haptics = LocalHapticFeedback.current
-    val ready = game.target?.interaction?.access == ClaimAccess.READY
-    LaunchedEffect(game.targetId, ready) {
-        if (ready) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-    }
-    Surface(modifier.widthIn(max = 320.dp), shape = RoundedCornerShape(18.dp), color = CardWhite) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text("점령 연습 · 임시 영역표시", color = TextMuted, fontSize = 11.sp)
-            Text(game.target?.occupancyLabel ?: "점령지를 선택해 주세요", color = TextDark)
-            game.representativeLabel?.let { Text("영역표시 주체 · $it", color = TextMuted, fontSize = 12.sp) }
-            Text(game.guidance, color = TextDark, fontSize = 12.sp)
-            Button(
-                onClick = { game.targetId?.let(onMark) },
-                enabled = game.canMark,
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DaengsIconView(DaengsIcon.Pin, Modifier.size(18.dp), tint = LocalContentColor.current)
-                    Text(game.actionLabel)
-                }
+    val target = game.target ?: return
+    var choosingPet by remember(game.targetId) { mutableStateOf(false) }
+    Surface(modifier.widthIn(max = 360.dp), shape = RoundedCornerShape(20.dp), color = CardWhite) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("전봇대", Modifier.weight(1f), color = TextDark, fontSize = 13.sp)
+                Text(target.occupancyLabel, color = TextMuted, fontSize = 11.sp)
+                WalkToolButton(WalkTool.CLOSE, "점령지 선택 닫기", onClose)
             }
-            Button(onClick = { game.targetId?.let(onPhotograph) }, enabled = game.canPhotograph) {
-                Text(if (game.photoStatus == com.daengs.app.territory.ClaimPhotoStatus.REJECTED) "다시 촬영" else "영역표시 인증 촬영")
+            when (game.phase) {
+                TerritoryWalkPhase.BROWSING -> Text(
+                    "점령 연습 · 점유 정보", color = TextMuted, fontSize = 11.sp,
+                )
+                TerritoryWalkPhase.PAUSED -> Text(
+                    "산책을 재개하면 영역표시할 수 있어요", color = TextMuted, fontSize = 11.sp,
+                )
+                TerritoryWalkPhase.WALKING -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("영역표시할 강아지", Modifier.weight(1f), color = TextMuted, fontSize = 11.sp)
+                        Box {
+                            TextButton(onClick = { choosingPet = true }, enabled = !game.petLocked && game.eligiblePets.isNotEmpty()) {
+                                Text(game.representativeLabel ?: "참여견 없음", fontSize = 12.sp)
+                            }
+                            DropdownMenu(expanded = choosingPet, onDismissRequest = { choosingPet = false }) {
+                                game.eligiblePets.forEach { (id, name) ->
+                                    DropdownMenuItem(text = { Text(name) }, onClick = {
+                                        choosingPet = false; onSelectPet(target.site.id, id)
+                                    })
+                                }
+                            }
+                        }
+                    }
+                    Text(game.guidance, color = TextMuted, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (game.canMark) Button(onClick = { onMark(target.site.id) }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = TextDark)) { Text("영역표시", fontSize = 12.sp) }
+                        if (game.canPhotograph) {
+                            if (game.canMark) WalkToolButton(WalkTool.CAMERA, "영역표시 인증 촬영", { onPhotograph(target.site.id) })
+                            else Button(onClick = { onPhotograph(target.site.id) }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
+                                Text(if (game.photoStatus == ClaimPhotoStatus.REJECTED) "다시 촬영" else "영역표시 인증 촬영", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -65,10 +76,14 @@ internal fun TerritoryActionCard(
 @Preview(showBackground = true)
 @Composable
 private fun TerritoryActionCardPreview() {
+    val site = com.daengs.app.territory.TerritorySite("A", com.daengs.app.location.GeoPoint(37.5, 127.0), 0.0)
+    val target = TerritoryGameSite(site, com.daengs.app.territory.TerritoryClaimSite("A"), "", null, null, false)
     DaengsTheme {
-        TerritoryActionCard(
-            TerritoryGameState(enabled = true, representativeLabel = "보리", guidance = "점령 준비 · 영역표시할 수 있어요", canMark = true),
-            onMark = {},
-        )
+        Column {
+            TerritoryWalkPhase.entries.forEach { phase ->
+                TerritoryActionCard(TerritoryGameState(enabled = true, phase = phase, sites = listOf(target), targetId = "A",
+                    representativeLabel = "보리", eligiblePets = mapOf("p1" to "보리"), canMark = true, canPhotograph = true), {})
+            }
+        }
     }
 }

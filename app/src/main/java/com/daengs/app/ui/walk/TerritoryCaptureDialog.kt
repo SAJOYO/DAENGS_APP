@@ -95,24 +95,34 @@ internal fun TerritoryCaptureDialog(
 @Composable
 internal fun TerritoryPhotoStatus(jobs: List<TerritoryPhotoJob>, onRetry: (String) -> Unit, modifier: Modifier = Modifier) {
     if (jobs.isEmpty()) return
-    Surface(modifier, tonalElevation = 4.dp) {
-        Column(Modifier.padding(8.dp).heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
-            Text("사진 인증 연습 · ${jobs.count { it.status == ClaimPhotoStatus.PENDING && !it.conflict }}건 확인 중")
-            jobs.asReversed().forEach { job ->
-                val label = when {
-                    job.conflict -> "점유가 변경돼 확정 보류 · 온라인 충돌 정책 미정"
-                    job.status == ClaimPhotoStatus.VERIFIED -> "인증 완료"
-                    job.status == ClaimPhotoStatus.REJECTED -> "부적합 · 현장에서 다시 촬영"
-                    job.status == ClaimPhotoStatus.RETRY_PENDING -> "통신 장애 · 저장한 사진으로 재시도"
-                    else -> "확인 중 · 산책을 계속해도 돼요"
-                }
-                Text("${job.siteId} · $label", style = MaterialTheme.typography.bodySmall)
-                if (job.status == ClaimPhotoStatus.RETRY_PENDING && !job.conflict) {
-                    TextButton(onClick = { onRetry(job.attemptId) }) { Text("판정 재시도 (페이크 성공)") }
-                }
-            }
+    var expanded by remember { mutableStateOf(false) }
+    val pending = jobs.count { it.status == ClaimPhotoStatus.PENDING && !it.conflict }
+    Surface(modifier, tonalElevation = 2.dp) {
+        TextButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (pending > 0) "사진 인증 연습 · ${pending}건 확인 중 ›" else "사진 인증 연습 · 결과 보기 ›",
+                style = MaterialTheme.typography.bodySmall)
         }
     }
+    if (expanded) AlertDialog(onDismissRequest = { expanded = false },
+        title = { Text("사진 인증 연습") },
+        confirmButton = { TextButton(onClick = { expanded = false }) { Text("닫기") } },
+        text = {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                jobs.asReversed().forEach { job ->
+                    val label = when {
+                        job.conflict -> "점유가 변경돼 확정 보류"
+                        job.status == ClaimPhotoStatus.VERIFIED -> "인증 완료"
+                        job.status == ClaimPhotoStatus.REJECTED -> "부적합 · 현장에서 다시 촬영"
+                        job.status == ClaimPhotoStatus.RETRY_PENDING -> "통신 장애 · 저장한 사진으로 재시도"
+                        else -> "확인 중 · 산책을 계속해도 돼요"
+                    }
+                    Text("${job.siteId} · $label", style = MaterialTheme.typography.bodySmall)
+                    if (job.status == ClaimPhotoStatus.RETRY_PENDING && !job.conflict) {
+                        TextButton(onClick = { onRetry(job.attemptId) }) { Text("판정 재시도 (페이크 성공)") }
+                    }
+                }
+            }
+        })
 }
 
 @Preview(showBackground = true)
