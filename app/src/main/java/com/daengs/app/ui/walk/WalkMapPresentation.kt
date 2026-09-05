@@ -25,9 +25,9 @@ internal fun WalkUiState.toMapPresentation(
     val route = completion.detail?.route
     val summary = completedSummary
     val gameSites = territoryGame.sites.associateBy { it.site.id }
-    val fitBounds = route?.bounds.orEmpty().ifEmpty {
+    val fitBounds = (route?.bounds.orEmpty().ifEmpty {
         listOfNotNull(summary?.anchor)
-    }.takeIf { summary != null && it.isNotEmpty() }
+    } + diaryPhotos.map { it.point }).takeIf { summary != null && it.isNotEmpty() }
 
     return WalkMapPresentation(
         scene = composeMapScene(
@@ -61,7 +61,7 @@ internal fun WalkUiState.toMapPresentation(
                         label = moment.markerLabel,
                         selected = moment.id == map.selectedMomentId,
                     )
-                },
+                } + diaryPhotos.photoMarkers(),
                 trail = if (completion.detail == null) {
                     tracking.trail.toTrailLayerState()
                 } else {
@@ -78,4 +78,8 @@ internal fun WalkUiState.toMapPresentation(
             map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory
         }?.let { listOfNotNull(it.site.point, location.currentPosition) },
     )
+}
+
+internal fun List<com.daengs.app.walk.WalkPhoto>.photoMarkers(): List<MomentMarkerState> = map {
+    MomentMarkerState("photo-${it.id}", it.point, "사진", photoFile = it.file)
 }

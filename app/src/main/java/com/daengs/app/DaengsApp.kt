@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 
 /**
  * 프로세스 공용 SDK와 산책 기록 런타임을 초기화한다.
@@ -57,8 +58,18 @@ class DaengsApp : Application() {
 
     lateinit var walkEntries: com.daengs.app.walk.store.WalkEntryStore
         private set
+    lateinit var walkPhotos: com.daengs.app.walk.store.WalkPhotoStore
+        private set
     lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
         private set
+
+    /** CameraX 완료 뒤 저장은 화면 회전/이탈보다 오래 살아야 한다. */
+    fun saveWalkPhoto(capture: com.daengs.app.walk.WalkPhotoCapture, file: java.io.File) = applicationScope.async {
+        try {
+            walkRuntime.writer.flush()
+            walkPhotos.save(capture, file)
+        } finally { file.delete() }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -81,7 +92,11 @@ class DaengsApp : Application() {
 
         val store = WalkTrackingStore()
         val dao = WalkDatabase.open(this).walkDao()
-        val log = RoomWalkFixLog(dao) { tokenStore.load()?.appUserId.orEmpty() }
+        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos")) {
+            tokenStore.load()?.appUserId.orEmpty()
+        }
+        val log = RoomWalkFixLog(dao, prunePhotos = walkPhotos::prune) { tokenStore.load()?.appUserId.orEmpty() }
+        applicationScope.launch { walkPhotos.prune() }
         walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
         walkEntryDao = dao
         val writer = WalkFixWriter(

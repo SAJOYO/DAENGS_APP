@@ -29,6 +29,8 @@ fun WalkEntryEditor(
     onSave: (WalkEntry) -> Unit,
     onDelete: (WalkEntry) -> Unit,
     onDismiss: () -> Unit,
+    diaryPhotos: List<com.daengs.app.walk.WalkPhoto> = emptyList(),
+    onOpenPhoto: (com.daengs.app.walk.WalkPhoto) -> Unit = {},
 ) {
     var selected by remember(initial?.id) { mutableStateOf(initial) }
     var text by remember(selected?.id) { mutableStateOf(selected?.note.orEmpty()) }
@@ -39,12 +41,19 @@ fun WalkEntryEditor(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (current == null) {
-                    if (entries.isEmpty()) Text("아직 남긴 기록이 없어요.")
+                    if (entries.isEmpty() && diaryPhotos.isEmpty()) Text("아직 남긴 기록이 없어요.")
                     LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                        items(entries, key = { it.id }) { entry ->
-                            Text("${entry.type.label} · ${entryClock(entry.recordedAtMillis)}" +
-                                (entry.note?.let { "\n$it" } ?: ""),
-                                Modifier.fillMaxWidth().clickable { selected = entry }.padding(vertical = 12.dp))
+                        val timeline = (entries.map { DiaryRow(it.recordedAtMillis, entry = it) } +
+                            diaryPhotos.map { DiaryRow(it.capturedAtMillis, photo = it) }).sortedBy { it.at }
+                        items(timeline, key = { it.key }) { row ->
+                            val entry = row.entry
+                            val photo = row.photo
+                            Text(if (photo != null) "사진 · ${entryClock(photo.capturedAtMillis)}" else
+                                "${entry!!.type.label} · ${entryClock(entry.recordedAtMillis)}" +
+                                    (entry.note?.let { "\n$it" } ?: ""),
+                                Modifier.fillMaxWidth().clickable {
+                                    if (photo != null) onOpenPhoto(photo) else selected = entry
+                                }.padding(vertical = 12.dp))
                         }
                     }
                 } else {
@@ -91,6 +100,11 @@ fun WalkEntryEditor(
 }
 
 private fun entryClock(at: Long) = SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(at))
+
+private data class DiaryRow(val at: Long, val entry: WalkEntry? = null,
+    val photo: com.daengs.app.walk.WalkPhoto? = null) {
+    val key: String get() = photo?.let { "photo-${it.id}" } ?: "entry-${entry!!.id}"
+}
 
 /** 같은 위치여도 ID가 다른 기록을 원본 단계에서 합치지 않는다. */
 internal fun List<WalkEntry>.entryMoments(): List<WalkMoment> = mapNotNull { entry ->

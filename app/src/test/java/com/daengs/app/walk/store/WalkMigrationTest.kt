@@ -38,6 +38,47 @@ class WalkMigrationTest {
     }
 
     @Test
+    fun `7의 경로와 메모를 9에서도 보존한다`() = verifyPhotoUpgrade(7)
+
+    @Test
+    fun `8의 스토리보드와 경로와 메모를 보존하며 사진 표만 추가한다`() = verifyPhotoUpgrade(8)
+
+    private fun verifyPhotoUpgrade(version: Int) = runBlocking {
+        val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
+            .getJSONObject("database").getJSONArray("entities")
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(NAME), null).use { old ->
+            for (index in 0 until schema.length()) {
+                val entity = schema.getJSONObject(index)
+                val name = entity.getString("tableName")
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", name))
+                val indices = entity.optJSONArray("indices") ?: org.json.JSONArray()
+                for (i in 0 until indices.length()) {
+                    old.execSQL(indices.getJSONObject(i).getString("createSql").replace("\${TABLE_NAME}", name))
+                }
+            }
+            old.execSQL("INSERT INTO walk_session (id, ownerId, startedAtMillis, endedAtMillis, syncState) VALUES ('s1','owner',1000,2000,'derived')")
+            old.execSQL("INSERT INTO walk_fix VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
+            old.execSQL("INSERT INTO walk_session_dog VALUES ('s1','dog')")
+            old.execSQL("INSERT INTO walk_entry VALUES ('e','s1','kept',3,'mutation',1,NULL)")
+            if (version == 8) old.execSQL("INSERT INTO walk_storyboard VALUES ('s1','reviewed-story')")
+            old.version = version
+        }
+        val db = openLatest()
+        try {
+            val dao = db.walkDao()
+            assertEquals("owner", dao.session("s1")!!.ownerId)
+            assertEquals("derived", dao.session("s1")!!.syncState)
+            assertEquals(1, dao.fixes("s1").size)
+            assertEquals("dog", dao.sessionDogs("s1").single().dogId)
+            assertEquals("kept", dao.entry("e")!!.payload)
+            assertEquals(3, dao.entry("e")!!.revision)
+            assertEquals(true, dao.entry("e")!!.dirty)
+            assertEquals(emptyList<String>(), dao.photoIds())
+            assertEquals(if (version == 8) "reviewed-story" else null, dao.storyboard("s1")?.payload)
+        } finally { db.close() }
+    }
+
+    @Test
     fun `6의 옛 행동은 비우지만 산책 경로는 7에 남는다`() = runBlocking {
         legacyV5 {
             execSQL("INSERT INTO walk_session (id, startedAtMillis, endedAtMillis, syncState) VALUES ('s1',1000,2000,'local_only')")
@@ -242,6 +283,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_5_6,
                 WalkDatabase.MIGRATION_6_7,
                 WalkDatabase.MIGRATION_7_8,
+                WalkDatabase.MIGRATION_8_9,
             )
             .build()
 
