@@ -17,7 +17,9 @@ class TerritoryActionWorker(context: Context, parameters: WorkerParameters) : Co
     override suspend fun doWork(): Result {
         val sync = (applicationContext as? DaengsApp)?.territoryActions ?: return Result.success()
         return try {
-            if (sync.deliver()) Result.success() else Result.retry()
+            val actionsDone = sync.deliver()
+            val photosDone = sync.photos?.deliverBound() ?: true
+            if (actionsDone && photosDone) Result.success() else Result.retry()
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { Result.retry() }
     }

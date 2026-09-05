@@ -1,5 +1,8 @@
 # 서버 게임 세션·영역표시 — APP 연결 2단계
 
+후속 [사진 인증 연결 #165](territory-server-photos.md)에서 같은 서버 액션 설정에 인증 촬영을 추가했다.
+아래는 #164 당시의 구현 범위와 복구 계약이다.
+
 [APP #164](https://github.com/SAJOYO/DAENGS_APP/pull/164)는 [점유 조회 #161](territory-server-browsing.md)에
 게임 세션과 미인증 영역표시를 연결한다. 서버 계약은 [Dev #260](https://github.com/SAJOYO/DAENGS_dev/pull/260)이다.
 운영 DB 마이그레이션·서버 배포는 실행하지 않는다.

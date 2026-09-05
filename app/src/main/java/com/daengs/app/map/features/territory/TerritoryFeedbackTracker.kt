@@ -37,7 +37,8 @@ internal class TerritoryFeedbackTracker {
             occupancy?.sourceSessionId == sessionId
         observedTarget = target.site.id
         val kind = when {
-            newServerMark && game.confirmedMarkSiteId == target.site.id -> TerritoryFeedbackKind.MARKED
+            newServerMark && game.confirmedMarkSiteId == target.site.id ->
+                if (game.confirmedMarkVerified) TerritoryFeedbackKind.VERIFIED else TerritoryFeedbackKind.MARKED
             settled && occupancy?.certification == ClaimCertification.VERIFIED -> TerritoryFeedbackKind.VERIFIED
             settled && occupancy?.certification == ClaimCertification.UNVERIFIED -> TerritoryFeedbackKind.MARKED
             (game.canMark || game.canPhotograph) && readySeen.add(target.site.id) -> TerritoryFeedbackKind.READY

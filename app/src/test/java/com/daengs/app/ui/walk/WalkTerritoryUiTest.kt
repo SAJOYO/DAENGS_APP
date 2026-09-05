@@ -24,6 +24,34 @@ import org.robolectric.annotation.Config
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp")
 class WalkTerritoryUiTest {
+    @Test fun onlineCameraExplainsRealPhotoAndHidesSimulationControls() {
+        compose.setContent { DaengsTheme { TerritoryCaptureDialog("internal-site-id", { null },
+            { _, _, _ -> kotlinx.coroutines.CompletableDeferred(false) }, {}, online = true) } }
+        compose.onNodeWithText("강아지와 전봇대 주변 모습이 함께 나오게 찍어 주세요").assertIsDisplayed()
+        compose.onNodeWithText("사진은 현재 위치에서 촬영하고 서버에서 확인해요 · 인증 범위 10m").assertIsDisplayed()
+        compose.onNodeWithText("테스트 판정 선택").assertDoesNotExist()
+        compose.onNodeWithText("internal-site-id", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun finalServerPhotoFailureOffersNewCaptureOnTheSiteCard() {
+        val base = screen(TerritoryWalkPhase.WALKING)
+        val state = base.copy(territoryGame = base.territoryGame.copy(canMark = false, canPhotograph = true,
+            petLocked = true, photoStatus = ClaimPhotoStatus.RETRY_PENDING, onlinePhotos = true,
+            guidance = "사진 판정을 마치지 못했어요 · 현장에서 새 사진을 찍어 주세요"))
+        compose.setContent { DaengsTheme { WalkScreen(state, {}, showMap = false) } }
+        compose.onNodeWithText("다시 촬영").assertIsEnabled()
+        compose.onNodeWithText("사진 판정을 마치지 못했어요 · 현장에서 새 사진을 찍어 주세요").assertIsDisplayed()
+        compose.onNodeWithText("판정 재시도 (페이크 성공)").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled()
+        screenshot("server-photo-recapture")
+    }
+
+    @Test fun verifiedPhotoWithSiteConflictKeepsConflictGuidance() {
+        val game = TerritoryGameState(onlinePhotos = true, photoStatus = ClaimPhotoStatus.VERIFIED,
+            guidance = "점유가 바뀌었어요 · 새 산책에서 다시 방문해 주세요")
+        assertEquals(game.guidance, territoryFeedbackLabel(game, null))
+    }
+
     @Test fun pendingServerMarkLocksDogAndKeepsDiaryCameraSeparate() {
         val base = screen(TerritoryWalkPhase.WALKING)
         val pending = base.territoryGame.copy(canMark = false, canPhotograph = false, petLocked = true,

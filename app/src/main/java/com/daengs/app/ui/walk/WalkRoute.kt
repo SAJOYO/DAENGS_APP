@@ -256,8 +256,10 @@ fun WalkRoute(
     captureTarget?.let { target ->
         TerritoryCaptureDialog(
             siteId = target.siteId,
-            beginCapture = { viewModel.beginTerritoryCapture(target) },
-            onSaved = viewModel::submitTerritoryPhoto,
+            beginCapture = { viewModel.startTerritoryCapture(target) },
+            onSaved = viewModel::saveTerritoryCapture,
+            onCaptureFailed = viewModel::cancelTerritoryCapture,
+            online = viewModel.onlineTerritoryPhotos,
             onDismiss = { captureTarget = null },
         )
     }

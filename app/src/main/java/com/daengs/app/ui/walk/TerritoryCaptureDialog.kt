@@ -26,19 +26,29 @@ import com.daengs.app.ui.camera.takePicture
 import com.daengs.app.ui.theme.DaengsTheme
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun TerritoryCaptureDialog(
     siteId: String,
-    beginCapture: () -> String?,
-    onSaved: (String, File, PhotoSimulation) -> Unit,
+    beginCapture: suspend () -> String?,
+    onSaved: (String, File, PhotoSimulation) -> Deferred<Boolean>,
     onDismiss: () -> Unit,
+    onCaptureFailed: (String) -> Unit = {},
+    online: Boolean = false,
 ) {
     val context = LocalContext.current
     var permission by remember { mutableStateOf(hasCameraPermission(context)) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var simulation by remember { mutableStateOf(PhotoSimulation.ACCEPT) }
+    val scope = rememberCoroutineScope()
+    var capturing by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val cancel by rememberUpdatedState(onCaptureFailed)
+    DisposableEffect(Unit) { onDispose { if (!saving) capturing?.let(cancel) } }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         permission = it
         if (!it) message = "카메라 권한이 필요해요. 거절했다면 앱 설정에서 허용해 주세요."
@@ -46,44 +56,66 @@ internal fun TerritoryCaptureDialog(
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().padding(16.dp).verticalScroll(rememberScrollState())) {
             Text("영역표시 인증", style = MaterialTheme.typography.titleLarge)
-            Text("$siteId · 강아지와 현장 모습이 함께 나오게 찍어 주세요")
-            Text("점령 연습 · 사진 내용은 검사하지 않는 페이크 판정입니다")
+            Text(if (online) "강아지와 전봇대 주변 모습이 함께 나오게 찍어 주세요" else "$siteId · 강아지와 현장 모습이 함께 나오게 찍어 주세요")
+            Text(if (online) "사진은 현재 위치에서 촬영하고 서버에서 확인해요 · 인증 범위 10m" else "점령 연습 · 사진 내용은 검사하지 않는 페이크 판정입니다")
             if (permission) {
                 val camera = rememberCameraController(videoEnabled = false)
                 CameraPreview(camera, Modifier.fillMaxWidth().aspectRatio(3f / 4f))
                 Button(enabled = !busy, onClick = {
-                    val attempt = beginCapture()
-                    if (attempt == null) {
-                        message = "촬영할 수 없어요 · 같은 산책에서 해당 장소에 다시 접근해 주세요"
-                    } else {
-                        val file = runCatching {
-                            val directory = File(context.cacheDir, "territory-photos")
-                            check(directory.isDirectory || directory.mkdirs())
-                            File(directory, "${UUID.randomUUID()}.jpg")
-                        }.getOrNull()
-                        if (file == null) message = "사진 저장 공간을 준비하지 못했어요"
-                        else {
-                            busy = true
-                            val selectedSimulation = simulation
-                            takePicture(context, camera, file, onSaved = {
-                                onSaved(attempt, file, selectedSimulation)
-                                busy = false
-                                onDismiss()
-                            }, onError = {
-                                file.delete()
-                                busy = false
-                                message = "촬영에 실패했어요 · 다시 찍어 주세요"
-                            })
+                    busy = true
+                    scope.launch {
+                        val attempt = try { beginCapture() }
+                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                            catch (_: Exception) { null }
+                        if (attempt == null) {
+                            busy = false
+                            message = "촬영할 수 없어요 · 같은 산책에서 해당 장소에 다시 접근해 주세요"
+                        } else {
+                            capturing = attempt
+                            val file = runCatching {
+                                val directory = File(context.cacheDir, "territory-photos")
+                                check(directory.isDirectory || directory.mkdirs())
+                                File(directory, "${UUID.randomUUID()}.jpg")
+                            }.getOrNull()
+                            if (file == null) {
+                                onCaptureFailed(attempt); capturing = null; busy = false
+                                message = "사진 저장 공간을 준비하지 못했어요"
+                            }
+                            else {
+                                busy = true
+                                val selectedSimulation = simulation
+                                takePicture(context, camera, file, onSaved = {
+                                    saving = true
+                                    val saved = onSaved(attempt, file, selectedSimulation)
+                                    scope.launch {
+                                        val success = try { saved.await() }
+                                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                            catch (_: Exception) { false }
+                                        capturing = null; saving = false; busy = false
+                                        if (success) onDismiss() else {
+                                            file.delete()
+                                            message = "사진을 저장하지 못했어요 · 다시 촬영해 주세요"
+                                        }
+                                    }
+                                }, onError = {
+                                    file.delete()
+                                    onCaptureFailed(attempt); capturing = null
+                                    busy = false
+                                    message = "촬영에 실패했어요 · 다시 찍어 주세요"
+                                })
+                            }
                         }
                     }
                 }) { Text(if (busy) "사진 저장 중…" else "촬영하고 산책 계속") }
             } else {
                 Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) { Text("카메라 권한 허용") }
             }
-            Text("테스트 판정 선택")
-            PhotoSimulation.entries.forEach { choice ->
-                TextButton(enabled = !busy, onClick = { simulation = choice }) {
-                    Text("${if (simulation == choice) "●" else "○"} ${choice.label}")
+            if (!online) {
+                Text("테스트 판정 선택")
+                PhotoSimulation.entries.forEach { choice ->
+                    TextButton(enabled = !busy, onClick = { simulation = choice }) {
+                        Text("${if (simulation == choice) "●" else "○"} ${choice.label}")
+                    }
                 }
             }
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -134,5 +166,11 @@ private fun TerritoryPhotoStatusPreview() {
 @Preview(showBackground = true)
 @Composable
 private fun TerritoryCaptureDialogPreview() {
-    DaengsTheme { TerritoryCaptureDialog("전봇대 A", { null }, { _, _, _ -> }, {}) }
+    DaengsTheme { TerritoryCaptureDialog("전봇대 A", { null }, { _, _, _ -> CompletableDeferred(false) }, {}) }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun OnlineTerritoryCapturePreview() {
+    DaengsTheme { TerritoryCaptureDialog("전봇대 A", { null }, { _, _, _ -> CompletableDeferred(false) }, {}, online = true) }
 }
