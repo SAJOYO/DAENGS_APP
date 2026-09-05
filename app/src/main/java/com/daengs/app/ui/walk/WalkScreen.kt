@@ -40,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -105,6 +106,15 @@ fun WalkScreen(
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
 ) {
+    // **이번 산책에 데려가는 아이의 얼굴.** 대표를 데려가면 null 이라 아래에서 원래
+    // 값을 그대로 쓴다 — 지금 동작이 안 바뀌고, 바깥에서 정해 넘기는 값(개발자 패널의
+    // 견종 고르기)도 계속 이긴다. 대표를 빼고 나갔을 때만 그 아이로 바꾼다.
+    val face = walkFaceOverride(state.selection.pets, state.selection.selectedDogIds)
+    // **사진과 견종을 같이 옮긴다.** 사진만 바꾸면, 그 아이가 사진을 안 올렸을 때
+    // 대표의 견종 그림이 남아서 반쯤 다른 아이가 된다.
+    val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
+    val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
+
     val mapPresentation = state.toMapPresentation { formatClock(it) }
     val summary = state.completedSummary
     var bottomInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -119,8 +129,8 @@ fun WalkScreen(
                 searchOrigin = null,
                 followDevice = state.location.followDevice && mapPresentation.fitBounds == null,
                 bottomPaddingPx = bottomInset, leftPaddingPx = leftInset, rightPaddingPx = rightInset, topPaddingPx = topInset,
-                avatarRes = avatarBreed?.portraitRes,
-                avatarPhoto = avatarPhoto,
+                avatarRes = faceRes,
+                avatarPhoto = facePhoto,
                 centerOn = state.location.centerOn,
                 centerZoom = state.location.centerZoom,
                 fitBounds = mapPresentation.fitBounds,

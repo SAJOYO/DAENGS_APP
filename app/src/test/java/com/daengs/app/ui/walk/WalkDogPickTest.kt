@@ -145,4 +145,57 @@ class WalkDogPickTest {
             assertTrue(walkDogPickLabel(pets, it).isNotBlank())
         }
     }
+
+    // -- 지도에 세울 얼굴 --------------------------------------------------------
+    //
+    // 대표가 `네옹` 인데 오늘 `댕댕` 이랑만 나가면, 기록에는 댕댕이 남는데 걷는 내내
+    // 지도에는 네옹 얼굴이 떠 있었다. 화면과 기록이 다른 말을 하는 자리다.
+
+    private fun pet(id: String, primary: Boolean) = Pet(
+        id = id, name = id, breed = "dog_beagle", sex = null, neutered = null,
+        weightKg = null, birthDate = null, birthDateKind = null, isPrimary = primary,
+        farewellOn = null,
+    )
+
+    /** 대표를 데려가면 지금 쓰던 얼굴이 이미 맞다. 바꾸지 않는다(= null). */
+    @Test
+    fun `대표를 데려가면 안 바꾼다`() {
+        val pets = listOf(pet("네옹", true), pet("댕댕", false))
+        assertNull(walkFaceOverride(pets, setOf("네옹")))
+        assertNull(walkFaceOverride(pets, setOf("네옹", "댕댕")))
+    }
+
+    /** **이 카드가 고치는 경우다.** */
+    @Test
+    fun `대표를 빼고 나가면 그 아이 얼굴이다`() {
+        val pets = listOf(pet("네옹", true), pet("댕댕", false))
+        assertEquals("댕댕", walkFaceOverride(pets, setOf("댕댕"))?.id)
+    }
+
+    /** 셋 중 둘을 데려갔고 대표가 없으면, 적어도 **데려간 아이 중 하나**여야 한다. */
+    @Test
+    fun `대표 없이 여럿이면 고른 첫 아이다`() {
+        val pets = listOf(pet("네옹", true), pet("댕댕", false), pet("초코", false))
+        assertEquals("댕댕", walkFaceOverride(pets, setOf("댕댕", "초코"))?.id)
+    }
+
+    /** 아무도 안 골랐으면(둘러보기) 바깥에서 넘긴 얼굴을 그대로 쓴다. */
+    @Test
+    fun `아무도 안 골랐으면 안 바꾼다`() {
+        assertNull(walkFaceOverride(listOf(pet("네옹", true)), emptySet()))
+        assertNull(walkFaceOverride(emptyList(), emptySet()))
+    }
+
+    /** 목록에 없는 id 는 얼굴이 될 수 없다. 지운 아이가 선택에 남아 있을 수 있다. */
+    @Test
+    fun `모르는 id 만 골랐으면 안 바꾼다`() {
+        assertNull(walkFaceOverride(listOf(pet("네옹", true)), setOf("없는아이")))
+    }
+
+    /** 대표가 아예 없는 계정(대표가 지워진 직후)에서도 데려간 아이를 세운다. */
+    @Test
+    fun `대표가 없으면 고른 첫 아이다`() {
+        val pets = listOf(pet("댕댕", false), pet("초코", false))
+        assertEquals("댕댕", walkFaceOverride(pets, setOf("댕댕", "초코"))?.id)
+    }
 }

@@ -74,3 +74,35 @@ fun walkDogPickLabel(pets: List<Pet>, selected: Set<String>): String {
  */
 fun walkStartBlockedReason(pets: List<Pet>, selected: Set<String>): String? =
     if (canStartWalk(pets, selected)) null else "함께 나갈 아이를 한 마리는 골라 주세요."
+
+/**
+ * 지도의 내 위치에 **기본 얼굴 대신 세울 아이.** 그대로 둘 때는 `null`.
+ *
+ * ## 왜 필요한가
+ *
+ * 지도 얼굴은 늘 **대표 아이**였다 (`WalkRoute` 의 `avatarPhoto` 주석). 앱의 다른
+ * 얼굴이 다 그렇기 때문이고, 그건 맞다 — 상단바도 챗봇도 대표를 따른다.
+ *
+ * 그런데 산책은 **이번에 누구와 나가는지**를 고르고 시작한다. 대표가 `네옹` 인데
+ * 오늘 `댕댕` 이랑만 나가면, 기록에는 댕댕이 남는데 **걷는 내내 지도에는 네옹 얼굴**이
+ * 떠 있었다. 화면과 기록이 다른 말을 하는 자리다.
+ *
+ * ## 대표가 끼어 있으면 안 바꾼다
+ *
+ * `null` 을 돌려주어 **부르는 쪽이 원래 쓰던 값을 그대로 쓰게** 한다. 그래야 지금
+ * 동작이 하나도 안 바뀌고, 개발자 패널의 견종 고르기(`devBreed`)처럼 바깥에서
+ * 정해 넘기는 것들도 계속 이긴다. 바꾸는 것은 **대표를 빼고 나간 경우 하나**다.
+ *
+ * 여럿을 골랐고 그중 대표가 없으면 **고른 아이 중 첫 번째**다. 셋을 데리고 나갈 때
+ * 누구 얼굴이어야 하는지에 정답은 없고, 적어도 **데려간 아이 중 하나**이기는 하다.
+ *
+ * @param pets 등록한 아이들. 차례가 곧 "첫 번째" 의 기준이다
+ * @param selected 이번 산책에 고른 아이들
+ */
+fun walkFaceOverride(pets: List<Pet>, selected: Set<String>): Pet? {
+    val picked = pets.filter { it.id in selected }
+    if (picked.isEmpty()) return null
+    // 대표를 데리고 나간다 — 지금 쓰던 얼굴이 이미 맞다.
+    if (picked.any { it.isPrimary }) return null
+    return picked.first()
+}
