@@ -236,13 +236,21 @@ class WalkViewModel(
             WalkAction.Stop -> walkController.stop()
             WalkAction.Locate -> location.locate(recenter = true)
             WalkAction.OpenAppSettings -> emit(WalkEffect.OpenAppSettings)
+            WalkAction.ClearTerritory -> territory.clearSelection()
+            WalkAction.OpenEntries -> Unit // Route owns the existing Room-backed editor.
+            is WalkAction.SelectClaimingPet -> {
+                if (territory.state.value.selectedSiteId == action.siteId) {
+                    territoryGame?.selectPet(action.petId, action.siteId, walkController.state.value)
+                    presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
+                }
+            }
             WalkAction.RetryTerritory -> territory.retry()
             WalkAction.RefreshClaimAccess -> if (territoryGame != null) {
                 presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
             }
             is WalkAction.MarkTerritory -> markTerritory(action.siteId)
             is WalkAction.PhotographTerritory -> {
-                if (presentation.value.map.purpose == MapPurpose.TERRITORY) {
+                if (presentation.value.map.purpose == MapPurpose.TERRITORY && territory.state.value.selectedSiteId == action.siteId) {
                     val target = territoryGame?.captureTarget(
                         action.siteId, territory.state.value, walkController.state.value,
                         location.state.value.permissionGranted && location.state.value.precisePermission,
@@ -264,7 +272,7 @@ class WalkViewModel(
             is WalkAction.RequestOrientation -> emit(WalkEffect.ChangeOrientation(action.orientation))
             is WalkAction.AddMoment -> walkController.recordMoment(action.type)
             is WalkAction.SelectMoment -> selectMoment(action.id)
-            is WalkAction.SelectTerritorySite -> territory.select(action.id)
+            is WalkAction.SelectTerritorySite -> { territory.select(action.id); location.setFollowDevice(true) }
             is WalkAction.SelectRouteEndpoint -> selectRouteEndpoint(action.id)
             is WalkAction.CameraSettled -> if (presentation.value.map.purpose == MapPurpose.TERRITORY) {
                 territory.onCameraSettled(action.point)
@@ -292,7 +300,7 @@ class WalkViewModel(
 
     private fun markTerritory(siteId: String) {
         val game = territoryGame ?: return
-        if (presentation.value.map.purpose != MapPurpose.TERRITORY) return
+        if (presentation.value.map.purpose != MapPurpose.TERRITORY || territory.state.value.selectedSiteId != siteId) return
         val message = game.mark(
             siteId, territory.state.value, walkController.state.value,
             location.state.value.permissionGranted && location.state.value.precisePermission,

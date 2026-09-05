@@ -86,6 +86,9 @@ sealed interface WalkAction {
     data object Stop : WalkAction
     data object Locate : WalkAction
     data object OpenAppSettings : WalkAction
+    data object ClearTerritory : WalkAction
+    data object OpenEntries : WalkAction
+    data class SelectClaimingPet(val siteId: String, val petId: String) : WalkAction
     data object RetryTerritory : WalkAction
     data object RefreshClaimAccess : WalkAction
     data class MarkTerritory(val siteId: String) : WalkAction

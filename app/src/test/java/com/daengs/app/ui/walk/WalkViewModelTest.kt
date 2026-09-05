@@ -101,6 +101,12 @@ class WalkViewModelTest {
         viewModel.activate(true, true)
         viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
         runCurrent()
+        assertEquals(null, viewModel.state.value.territoryGame.target)
+        viewModel.onAction(WalkAction.MarkTerritory("A"))
+        runCurrent()
+        assertEquals(null, viewModel.state.value.territoryGame.sites.single().claim.occupancy)
+        viewModel.onAction(WalkAction.SelectTerritorySite("A"))
+        runCurrent()
         assertEquals(true, viewModel.state.value.territoryGame.canMark)
         viewModel.onAction(WalkAction.MarkTerritory("A"))
         runCurrent()
@@ -115,7 +121,7 @@ class WalkViewModelTest {
         assertEquals(TrackingState.RECORDING, controller.state.value.trail.state)
         viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
         runCurrent()
-        assertEquals("dog-1", viewModel.state.value.territoryGame.target!!.claim.occupancy!!.ownerPetId)
+        assertEquals("dog-1", viewModel.state.value.territoryGame.sites.single().claim.occupancy!!.ownerPetId)
         assertEquals(emptyList<Any>(), controller.state.value.momentGroups)
     }
 

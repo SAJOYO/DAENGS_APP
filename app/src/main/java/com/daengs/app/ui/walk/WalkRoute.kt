@@ -183,7 +183,9 @@ fun WalkRoute(
         avatarPhoto = avatarPhoto,
         photoOf = photoOf,
         onAction = { action ->
-            if (action is WalkAction.AddMoment && action.type == com.daengs.app.walk.WalkMomentType.NOTE) {
+            if (action == WalkAction.OpenEntries) {
+                initialEntry = null; entryError = null; editorOpen = true
+            } else if (action is WalkAction.AddMoment && action.type == com.daengs.app.walk.WalkMomentType.NOTE) {
                 entrySessionId?.let { sessionId ->
                     val sample = state.tracking.latestMomentFix?.takeIf {
                         it.isFreshEnoughForMoment(android.os.SystemClock.elapsedRealtimeNanos())
@@ -201,14 +203,6 @@ fun WalkRoute(
         },
         modifier = Modifier.fillMaxSize(),
     )
-    if (entrySessionId != null) androidx.compose.foundation.layout.Box(
-        Modifier.fillMaxSize().statusBarsPadding().padding(top = 56.dp, end = 12.dp),
-        contentAlignment = androidx.compose.ui.Alignment.TopEnd,
-    ) {
-        com.daengs.app.ui.common.DaengsFloatingButton("기록 ${entries.size}", {
-            initialEntry = null; entryError = null; editorOpen = true
-        })
-    }
     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(bottom = 170.dp),
         contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
         androidx.compose.material3.SnackbarHost(snackbar)
