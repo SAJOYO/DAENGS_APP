@@ -75,6 +75,83 @@ internal class ClaimServer : TerritoryActionClient {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerritoryActionSyncTest {
+    @Test fun `settling B retains verified A across restart without replaying success or crossing accounts`() = runTest {
+        val dao = MemoryActions(); val server = ClaimServer(); val state = walking(); var owner = "owner"
+        val second = "territory-site:hex-v1:140:2:2"
+        val board = TerritoryBoardState(sites = listOf(SITE, second).map { TerritorySite(it, fix().point, 0.0) }, selectedSiteId = SITE)
+        var readVersion = 0L
+        fun createSync() = TerritoryActionSync(dao, server, { auth(owner) }, { owner }, { state }, backgroundScope, {})
+        fun createProvider(sync: TerritoryActionSync) = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, ids ->
+            ids.map { SharedTerritorySite(it, readVersion, null) }
+        }, { auth(owner) }, { owner }, sync)
+        var sync = createSync()
+        var provider = createProvider(sync)
+        fun view() = provider.snapshot(board, state, true, emptyMap(), 2_000_000_000)
+        provider.refresh(board.sites)
+        sync.submit(state, SITE, DOG, markBody(WALK, SITE, DOG, fix()))
+        sync.submit(state, second, DOG, markBody(WALK, second, DOG, fix()))
+        runCurrent()
+        // Photo settlement persists the MARK response before publishing its one-shot receipt.
+        suspend fun settle(site: String) {
+            val mark = dao.all().first { it.kind == "MARK" && JSONObject(it.body).getString("site_id") == site }
+            val response = JSONObject(mark.response!!).apply {
+                getJSONObject("site").put("version", 2).getJSONObject("occupancy").put("certification", "VERIFIED")
+            }.toString()
+            dao.update(mark.copy(response = response))
+            sync.publishPhotoReceipt(TerritoryMarkReceipt(mark, parseTerritoryClaim(response, mark.body), "photo:$site"))
+            runCurrent()
+        }
+        settle(SITE)
+        assertEquals(2L, view().sites.first().claim.version)
+        settle(second)
+        assertTrue(view().sites.all { it.claim.version == 2L && it.claim.occupancy?.certification == ClaimCertification.VERIFIED })
+        // Recreate both consumers using only the persisted responses, with no receipt event.
+        sync = createSync(); provider = createProvider(sync)
+        provider.refresh(board.sites); runCurrent()
+        assertTrue(view().sites.all { it.claim.version == 2L })
+        assertNull(view().confirmedMarkId)
+        // An authoritative newer read supersedes historical grants, including a neutral result.
+        readVersion = 3
+        provider.refresh(board.sites)
+        assertTrue(view().sites.all { it.claim.version == 3L && it.claim.occupancy == null })
+        owner = "other"; readVersion = 0
+        provider.refresh(board.sites)
+        assertTrue(view().sites.all { it.claim.version == 0L && it.claim.occupancy == null })
+        provider.invalidate()
+        assertTrue(view().sites.none { it.occupancyKnown })
+    }
+
+    @Test fun `fresh mark sends before scheduler returns and survives caller cancellation`() = runTest {
+        val dao = MemoryActions(); val server = ClaimServer(); val state = walking()
+        val scheduling = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<Unit>()
+        val sync = TerritoryActionSync(dao, TerritoryActionClient { token, method, path, body ->
+            server.request(token, method, path, body).also { if (method == "POST") response.await() }
+        }, { auth() }, { "owner" }, { state },
+            backgroundScope, { scheduling.await() })
+        val original = markBody(WALK, SITE, DOG, fix())
+        val caller = launch { sync.submit(state, SITE, DOG, original) }
+        runCurrent()
+        assertFalse(caller.isCompleted)
+        assertEquals(original, server.committed[SITE]!!.first)
+        assertEquals(listOf("PUT", "POST"), server.calls.map { it.first })
+        caller.cancelAndJoin()
+        response.complete(Unit); runCurrent()
+        assertTrue(dao.all().all { it.state == "CONFIRMED" })
+    }
+
+    @Test fun `automatic delivery preserves pending body when account switches before sending`() = runTest {
+        val dao = MemoryActions(); val server = ClaimServer(); val state = walking(); var owner = "owner"
+        val sync = TerritoryActionSync(dao, server, { auth(owner) }, { owner }, { state }, backgroundScope, {})
+        val original = markBody(WALK, SITE, DOG, fix())
+        sync.submit(state, SITE, DOG, original)
+        owner = "other"
+        runCurrent()
+        assertTrue(server.calls.isEmpty())
+        assertEquals(original, dao.all().last().body)
+        assertEquals("PENDING", dao.all().last().state)
+    }
+
     @Test fun `server writes require an explicit debug flag and release remains disabled`() {
         assertEquals(TerritoryGameMode.LOCAL, territoryGameMode(true, false, false))
         assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true, true, false))
@@ -210,7 +287,8 @@ class TerritoryActionSyncTest {
         state = walking(); provider.selectPet(DOG2, SITE, state)
         provider.submitMark(SITE, board, state, true, emptyMap(), 2_000_000_000, 2000); runCurrent()
         assertFalse(view().canMark); assertTrue(view().petLocked)
-        assertEquals("미점유", view().target!!.occupancyLabel)
+        // submitMark now starts delivery in application scope, without a Worker tick.
+        assertEquals("보리 · 미인증", view().target!!.occupancyLabel)
         sync.deliver(); runCurrent()
         assertEquals("보리 · 미인증", view().target!!.occupancyLabel)
         assertEquals(CLAIM, view().confirmedMarkId)

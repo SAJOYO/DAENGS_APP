@@ -20,7 +20,7 @@ class TerritoryActionSync(
     private val freshSession: suspend () -> Session?,
     private val currentOwner: () -> String?,
     private val tracking: () -> WalkTrackingState,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private val enqueue: suspend () -> Unit,
 ) {
     private val writes = Mutex()
@@ -96,7 +96,7 @@ class TerritoryActionSync(
         TerritoryOperation(identity = UUID.randomUUID().toString(), ownerId = owner, sessionId = session,
             kind = "PHASE", body = JSONObject().put("phase", phase).toString()))
 
-    /** Returns after local commit. WorkManager owns network retries even if this caller disappears. */
+    /** Commit first, then send in app scope; WorkManager recovers failures and process death. */
     suspend fun submit(expected: WalkTrackingState, siteId: String, petId: String, body: String): String {
         val message = try {
             writes.withLock {
@@ -122,6 +122,13 @@ class TerritoryActionSync(
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { _storageFailed.value = true; "영역표시를 저장하지 못했어요 · 다시 시도해 주세요" }
+        // Launch before scheduling: neither a backed-off Worker nor a slow scheduler may hold
+        // fresh location evidence. deliver() keeps the same mutex and per-session ordering.
+        scope.launch {
+            try { deliver() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* The committed outbox is recovered by WorkManager. */ }
+        }
         schedule()
         return message
     }
