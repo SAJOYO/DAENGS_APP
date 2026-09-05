@@ -9,9 +9,11 @@ import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
 
-class RoomWalkFixLog(private val dao: WalkDao, private val owner: () -> String = { "" }) : WalkFixLog {
+class RoomWalkFixLog(private val dao: WalkDao,
+    private val prunePhotos: suspend () -> Unit = {},
+    private val owner: () -> String = { "" }) : WalkFixLog {
     override val ownerId: String get() = owner()
-    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions()) { _, _ -> Unit }
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds()) { _, _, _ -> Unit }
 
     override suspend fun restoreSession(session: RecordedSession) {
         val verifiedOwner = requireNotNull(session.ownerId)
@@ -71,7 +73,7 @@ class RoomWalkFixLog(private val dao: WalkDao, private val owner: () -> String =
     }
 
     override suspend fun hasEntries(sessionId: String): Boolean =
-        dao.entries(sessionId).any { it.payload != null }
+        dao.entries(sessionId).any { it.payload != null } || dao.hasPhotos(sessionId)
 
     override suspend fun closeSession(sessionId: String, endedAtMillis: Long) =
         dao.closeSession(sessionId, endedAtMillis)
@@ -84,16 +86,23 @@ class RoomWalkFixLog(private val dao: WalkDao, private val owner: () -> String =
             temperatureC = weather.temperatureC,
         )
 
-    override suspend fun deleteSession(sessionId: String) = dao.deleteSession(sessionId)
+    override suspend fun deleteSession(sessionId: String) {
+        dao.deleteSession(sessionId)
+        prunePhotos()
+    }
 
     override suspend fun forgetDog(dogId: String) {
         // **순서가 중요하다.** 연결을 먼저 떼면 "그 아이와만 나간 산책" 을 찾을 근거가
         // 사라져서, 아무도 안 붙은 산책이 되어 그대로 남는다.
         dao.deleteSessionsOnlyWith(dogId)
         dao.unlinkDog(dogId)
+        prunePhotos()
     }
 
-    override suspend fun forgetEverything() = dao.deleteOwnerSessions(owner())
+    override suspend fun forgetEverything() {
+        dao.deleteOwnerSessions(owner())
+        prunePhotos()
+    }
 
     override suspend fun unfinishedSessions(): List<RecordedSession> =
         dao.unfinishedSessions().withDogs()

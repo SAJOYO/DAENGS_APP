@@ -243,7 +243,7 @@ class WalkViewModel(
                 territory.clearSelection()
                 presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
             }
-            WalkAction.OpenEntries -> Unit // Route owns the existing Room-backed editor.
+            WalkAction.OpenEntries, WalkAction.PhotographWalk -> Unit // Route owns diary storage/camera.
             is WalkAction.SelectClaimingPet -> {
                 if (territory.state.value.selectedSiteId == action.siteId) {
                     territoryGame?.selectPet(action.petId, action.siteId, walkController.state.value)

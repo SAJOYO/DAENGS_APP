@@ -78,6 +78,7 @@ fun NaverMapSurface(
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
     val latestRouteEndpointCallback by rememberUpdatedState(onSelectRouteEndpoint)
+    val latestMomentCallback by rememberUpdatedState(onSelectMoment)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
@@ -313,7 +314,33 @@ fun NaverMapSurface(
 
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
-    DisposableEffect(naverMap, scene.moments) {
+    val photoFiles = scene.moments.mapNotNull { it.photoFile }.distinct()
+    val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
+        val loaded = mutableMapOf<java.io.File, OverlayImage>()
+        for (file in photoFiles) {
+            try {
+                val photo = com.daengs.app.screening.Photo.decodeUpright(context, android.net.Uri.fromFile(file), 96)
+                val pin = android.graphics.Bitmap.createBitmap(104, 112, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(pin)
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                paint.color = Color.WHITE
+                canvas.drawRoundRect(0f, 0f, 104f, 104f, 14f, 14f, paint)
+                val tail = android.graphics.Path().apply { moveTo(42f, 102f); lineTo(52f, 112f); lineTo(62f, 102f); close() }
+                canvas.drawPath(tail, paint)
+                val edge = minOf(photo.width, photo.height)
+                val x = (photo.width - edge) / 2; val y = (photo.height - edge) / 2
+                canvas.drawBitmap(photo, android.graphics.Rect(x, y, x + edge, y + edge),
+                    android.graphics.RectF(6f, 6f, 98f, 98f), paint)
+                photo.recycle()
+                loaded[file] = OverlayImage.fromBitmap(pin)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // 원본 파일을 잃었어도 Pin을 눌러 확인·삭제할 수 있다.
+            }
+        }
+        value = loaded
+    }
+    DisposableEffect(naverMap, scene.moments, photoIcons) {
         val map = naverMap
         val markers = if (map == null) emptyList() else scene.moments.map { moment ->
             Marker().apply {
@@ -323,11 +350,11 @@ fun NaverMapSurface(
                 width = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
                 height = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
                 anchor = MARKER_ANCHOR
-                icon = OverlayImage.fromResource(R.drawable.ic_walk_moment)
+                icon = photoIcons[moment.photoFile] ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
                 zIndex = if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
                 isHideCollidedMarkers = false
                 setOnClickListener {
-                    onSelectMoment(moment.id)
+                    latestMomentCallback(moment.id)
                     true
                 }
                 this.map = map
