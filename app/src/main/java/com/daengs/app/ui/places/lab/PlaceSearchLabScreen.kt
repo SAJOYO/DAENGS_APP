@@ -39,6 +39,8 @@ fun PlaceSearchLabScreen(
     onCategory: (PlaceKind?) -> Unit = {}, onParking: (Boolean) -> Unit = {},
     onDog: (String) -> Unit = {}, onToggle: (PlaceKey) -> Unit = {}, onRetry: () -> Unit = {},
     onAction: (String) -> Unit = {},
+    live: Boolean = false,
+    cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
 ) {
     var profiles by remember { mutableStateOf(false) }
@@ -49,7 +51,7 @@ fun PlaceSearchLabScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = state.draft, onValueChange = onEdit, modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (state.aiMode) "원하는 동반 조건" else "장소명·주소 검색", fontSize = 12.sp) },
+                    placeholder = { Text(if (state.aiMode) "원하는 동반 조건" else if (live) "장소명 검색" else "장소명·주소 검색", fontSize = 12.sp) },
                     singleLine = true, shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
@@ -94,7 +96,7 @@ fun PlaceSearchLabScreen(
             Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).verticalScroll(rememberScrollState()).padding(vertical = 10.dp)) {
                 Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
+                    val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
                     Text("${state.applied.kind?.let(::categoryLabel) ?: "전체"} $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
                     TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ▾" else "가까운 순 ▾", fontSize = 11.sp) }
                 }
@@ -107,14 +109,14 @@ fun PlaceSearchLabScreen(
                     }
                     LazyRow(state = list, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(state.hits, key = { placeMarkerId(it.place.key) }) { hit ->
-                            PlaceDrawerCard(hit, state.expanded == hit.place.key, state.selected == hit.place.key, { onToggle(hit.place.key) }, onAction)
+                            PlaceDrawerCard(hit, state.expanded == hit.place.key, state.selected == hit.place.key, { onToggle(hit.place.key) }, onAction, cardActions)
                         }
                     }
                 } else {
                     Text(when (state.phase) {
                         LabPhase.LOADING -> "찾는 중…"
                         LabPhase.EMPTY -> "검색 결과가 없어요."
-                        LabPhase.ERROR -> "검토 데이터를 읽지 못했어요."
+                        LabPhase.ERROR -> state.errorText ?: "검토 데이터를 읽지 못했어요."
                         LabPhase.PERMISSION -> "위치 권한이 필요해요."
                         LabPhase.UNSAMPLED -> "이 종류는 검토판에 수집하지 않았어요."
                         else -> ""
@@ -124,7 +126,8 @@ fun PlaceSearchLabScreen(
             }
         }
     }
-    if (profiles) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("함께 갈 반려견") }, text = {
+    if (profiles && live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("반려견 선택") }, text = { Text("다견 프로필 연결을 준비하고 있어요. 현재는 앱에서 전달한 기본 반려견 조건을 사용합니다.") }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("확인") } })
+    if (profiles && !live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("함께 갈 반려견") }, text = {
         Column {
             Text("가상 프로필 · 검색 미연동", fontSize = 12.sp)
             listOf("demo-bori" to "보리", "demo-choco" to "초코").forEach { (id, name) ->
@@ -133,7 +136,7 @@ fun PlaceSearchLabScreen(
         }
     }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("완료") } })
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text("검색 조건") }, text = {
-        Text("반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 카드를 펼쳐 확인하세요.")
+        Text(if (live) "반경 3km · 주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 카드를 펼쳐 확인하세요.")
     }, confirmButton = { TextButton(onClick = { filters = false }) { Text("완료") } })
 }
 
@@ -144,7 +147,7 @@ private fun categorySymbol(kind: PlaceKind?): String = when (kind) {
 }
 
 @Composable
-fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, onToggle: () -> Unit, onAction: (String) -> Unit = {}) {
+fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, onToggle: () -> Unit, onAction: (String) -> Unit = {}, actions: (@Composable (PlaceSearchHit) -> Unit)? = null) {
     val p = hit.place
     val presentation = hit.toCardPresentation()
     val registration = when (p.facts.petAccess?.allowed) { true -> "동반 가능 등록"; false -> "동반 불가 등록"; null -> "동반 여부 확인 필요" }
@@ -177,8 +180,10 @@ fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, o
                 presentation.parking?.let { Text(it.text, fontSize = 12.sp) }
                 p.facts.hoursText?.let { Text(it, fontSize = 12.sp) }
                 p.facts.address?.let { Text(it, fontSize = 12.sp) }
+                if (actions != null) actions(hit) else {
                 p.facts.phone?.let { TextButton(onClick = { onAction("전화는 실제 앱 연결 단계에서 확인합니다.") }) { Text("전화로 확인") } }
                 TextButton(onClick = { onAction("길찾기는 실제 앱 연결 단계에서 확인합니다.") }) { Text("길찾기") }
+                }
             }
         }
     }
