@@ -133,6 +133,19 @@ fun DeveloperPanel(
     onPickDevPets: ((Int) -> Unit)? = null,
     /** 지금 넣어 둔 마릿수. `0` 이면 원래대로다 */
     devPetCount: Int = 0,
+    /**
+     * **빈 방으로 보기.** 로그인한 사람에게 강아지가 한 마리도 없는 상태를 흉내 낸다.
+     *
+     * **이 폰의 디버그 빌드로는 카카오 로그인이 안 돼서, 그 상태에 닿을 길이 여기밖에
+     * 없다.** 둘러보기는 로그인 전이라 방에 데모가 서고(`roomRoster` ②), 로그인해야만
+     * 나오는 빈 방(③)과 「강아지 데려오기」와 기능 앞의 문(`PetGate.kt`)을 그대로 지나친다.
+     * 없으면 그것들을 **릴리스를 뽑아야 처음 본다.**
+     *
+     * **저장하지 않는다.** 앱을 끄면 사라진다 (패널의 다른 스위치와 같은 규칙).
+     */
+    onToggleEmptyRoom: (() -> Unit)? = null,
+    /** 지금 빈 방으로 보고 있나 */
+    emptyRoom: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -179,6 +192,22 @@ fun DeveloperPanel(
                             .padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                 }
+            }
+        }
+
+        if (onToggleEmptyRoom != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("방", color = PanelDim, fontSize = 9.sp, modifier = Modifier.padding(end = 2.dp))
+                Text(
+                    if (emptyRoom) "빈 방으로 보는 중" else "빈 방으로 보기",
+                    color = if (emptyRoom) Color.Black else PanelText,
+                    fontSize = 9.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(if (emptyRoom) PanelPick else Color.Transparent)
+                        .clickable(onClick = onToggleEmptyRoom)
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
             }
         }
 

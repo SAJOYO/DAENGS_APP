@@ -29,6 +29,30 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlacesViewModelTest {
     @Test
+    fun `name actions reach repository through all view model entrypoints`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val point = GeoPoint(37.556, 126.923)
+        val vm = viewModelAt(point, backgroundScope,
+            PlaceSearchRepository { requests += it; emptyResponse() })
+        runCurrent()
+        vm.activate(true)
+        runCurrent()
+        requests.clear()
+        vm.onAction(PlacesAction.Search(PlaceKind.CAFE, false, "홍대"))
+        runCurrent()
+        vm.onAction(PlacesAction.SearchAt(point, PlaceKind.PET_SHOP, false))
+        runCurrent()
+        vm.onAction(PlacesAction.Locate(PlaceKind.PET_SHOP, false))
+        runCurrent()
+        vm.onAction(PlacesAction.RetrySearch)
+        runCurrent()
+        assertEquals(List(4) { "홍대" }, requests.map { it.nameQuery })
+        vm.onAction(PlacesAction.Search(PlaceKind.CAFE, false, ""))
+        runCurrent()
+        assertEquals("", requests.last().nameQuery)
+    }
+
+    @Test
     fun `permission denial has distinct request and settings recovery states`() = runTest {
         val viewModel = viewModelAt(GeoPoint(37.5, 127.0), backgroundScope)
 

@@ -11,6 +11,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaceSearchRequestTest {
+    @Test fun `name is trimmed literal and blank is omitted`() {
+        val base = PlaceSearchRequest(GeoPoint(37.556, 126.923), kinds = listOf(PlaceKind.CAFE))
+        assertFalse(base.toJson().containsKey("name_query"))
+        assertFalse(base.copy(nameQuery = "  ").toJson().containsKey("name_query"))
+        assertEquals("%_ 홍대", base.copy(nameQuery = "  %_ 홍대  ")
+            .toJson().getValue("name_query").jsonPrimitive.content)
+        assertTrue(isValidPlaceNameQuery("🐕".repeat(120)))
+        assertThrows(IllegalArgumentException::class.java) { base.copy(nameQuery = "가".repeat(121)) }
+        assertFalse(isValidPlaceNameQuery("🐕".repeat(121)))
+    }
+
     @Test
     fun `emits canonical kinds conditions and explicit preference`() {
         // 장군의 값. 서버는 identity(dog_id)를 받지 않는다 — 결정 #73.
