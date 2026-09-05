@@ -75,6 +75,7 @@ fun WalkHistoryScreen(
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var walks by remember { mutableStateOf<List<WalkSummary>?>(null) }
     var filterDogId by remember { mutableStateOf<String?>(null) }
 
@@ -104,6 +105,13 @@ fun WalkHistoryScreen(
             DaengsTextAction("← 뒤로", onBack)
             Spacer(Modifier.width(4.dp))
             Text("지난 산책", color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+
+        if (com.daengs.app.BuildConfig.DEBUG) {
+            DaengsTextAction("geo 스토리보드 실험", {
+                context.startActivity(android.content.Intent().setClassName(
+                    context.packageName, "com.daengs.app.ui.walk.GeoStoryboardLabActivity"))
+            })
         }
 
         if (pets.size >= 2) {

@@ -16,6 +16,21 @@ import org.robolectric.annotation.Config
 class WalkStoryboardScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `geo 환경 근거를 기존 검토 화면에서 열고 숨길 수 있다`() {
+        val bundle = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(
+            javaClass.getResource("/storyboard/pinless.json")!!.readText())
+        val source = bundle.scenes.first { it.evidence.contains("commerce") }
+        compose.setContent {
+            var scene by remember { mutableStateOf(source) }
+            StoryboardContent(listOf(scene), false, null, false, false, true,
+                {}, {}, { scene = it.copy(hidden = !it.hidden) }, {}, {}, {})
+        }
+        compose.onNodeWithText("근거").performScrollTo().performClick()
+        compose.onNodeWithText(source.evidence).assertExists()
+        compose.onNodeWithText("숨기기").performScrollTo().performClick()
+        compose.onNodeWithText("이번 구성에서 숨긴 장면").assertExists()
+    }
+
     @Test fun `장면을 숨기고 복원하며 근거를 열 수 있다`() {
         compose.setContent {
             var scene by remember { mutableStateOf(StoryboardScene("entry:a", 0,

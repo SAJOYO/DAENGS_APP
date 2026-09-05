@@ -10,6 +10,7 @@ data class StoryboardScene(
     val id: String, val atMillis: Long, val title: String, val body: String,
     val evidence: String, val fingerprint: String, val available: Boolean = true,
     val hidden: Boolean = false, val needsReview: Boolean = false,
+    val sourcePayload: String? = null,
 )
 
 data class SceneEdit(val id: String, val title: String, val body: String, val hidden: Boolean,
@@ -62,6 +63,10 @@ fun storyboardScenes(walk: WalkSummary, entries: List<WalkEntry>, draft: Storybo
     if (walk.endedAtMillis != null) sources += StoryboardScene("end", walk.endedAtMillis,
         "산책 마무리", "이동거리 ${walk.distanceMeters.toInt()}m · 활동 시간 ${walk.activeDurationMillis / 60000}분",
         "저장된 산책 요약에서 계산", storyboardHash("${walk.endedAtMillis}:${walk.distanceMeters}:${walk.activeDurationMillis}"))
+    return applyStoryboardEdits(sources, draft)
+}
+
+fun applyStoryboardEdits(sources: List<StoryboardScene>, draft: StoryboardDraft): List<StoryboardScene> {
     val byId = sources.associateBy { it.id }
     val scenes = sources.map { source ->
         draft.edits.firstOrNull { it.id == source.id }?.let { edit ->
@@ -81,9 +86,10 @@ fun storyboardSnapshot(sessionId: String, scenes: List<StoryboardScene>): String
     JSONObject().put("version", 1).put("session_id", sessionId).put("scenes", JSONArray().apply {
         scenes.filter { it.available && !it.hidden }.forEach { scene ->
             put(JSONObject().put("id", scene.id).put("at", scene.atMillis).put("title", scene.title)
-                .put("body", scene.body).put("evidence", scene.evidence).put("source", scene.fingerprint))
+                .put("body", scene.body).put("evidence", scene.evidence).put("source", scene.fingerprint)
+                .put("source_payload", scene.sourcePayload?.let { JSONObject(it) } ?: JSONObject.NULL))
         }
     }).toString()
 
-private fun storyboardHash(text: String): String = MessageDigest.getInstance("SHA-256")
+internal fun storyboardHash(text: String): String = MessageDigest.getInstance("SHA-256")
     .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
