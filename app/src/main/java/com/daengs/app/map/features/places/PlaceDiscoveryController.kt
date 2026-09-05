@@ -41,6 +41,7 @@ data class PlaceDiscoveryState(
     val preferParking: Boolean = false,
     val selectedPlaceKey: PlaceKey? = null,
     val search: PlaceSearchState = PlaceSearchState.Idle,
+    val nameQuery: String = "",
 ) {
     val response: PlaceSearchResponse?
         get() = when (val current = search) {
@@ -84,6 +85,7 @@ class PlaceDiscoveryController(
         kinds: List<PlaceKind>,
         preferParking: Boolean = false,
         originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
+        nameQuery: String = "",
     ) {
         if (!PlaceSearchArea.contains(origin)) {
             cancel()
@@ -93,6 +95,7 @@ class PlaceDiscoveryController(
                 origin = origin,
                 originMode = originMode,
                 preferParking = preferParking,
+                nameQuery = nameQuery.trim(),
                 search = PlaceSearchState.Failed(PlaceFailure.UnsupportedLocation),
             )
             return
@@ -101,6 +104,7 @@ class PlaceDiscoveryController(
             PlaceSearchRequest(
                 origin = origin,
                 kinds = kinds,
+                nameQuery = nameQuery.trim(),
                 limitPerKind = PLACE_RESULT_LIMIT,
                 dogSize = dogContext?.size,
                 dogWeightKg = dogContext?.weightKg,
@@ -153,6 +157,7 @@ class PlaceDiscoveryController(
             origin = request.origin,
             originMode = originMode,
             preferParking = request.preferParking,
+            nameQuery = request.nameQuery,
             search = PlaceSearchState.Loading,
         )
         searchJob = scope.launch {

@@ -24,11 +24,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** 상태와 이벤트만 받는다. PR1의 실제 PlacesRoute에는 미연결 입력을 노출하지 않는다. */
+/** 상태와 이벤트만 받는다. 이름 검색과 AI 입력은 별도 이벤트 계약이다. */
 @Composable
 fun PlaceNameSearchField(
     query: String, onQueryChange: (String) -> Unit, onSearch: () -> Unit,
     modifier: Modifier = Modifier, enabled: Boolean = true,
+    canSubmit: Boolean = true,
 ) {
     Surface(modifier, shape = RoundedCornerShape(19.dp), color = PlaceSearchColors.Field) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
@@ -39,13 +40,13 @@ fun PlaceNameSearchField(
                 textStyle = TextStyle(fontSize = 16.sp, color = PlaceSearchColors.Ink),
                 cursorBrush = SolidColor(PlaceSearchColors.Accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { if (enabled) onSearch() }),
+                keyboardActions = KeyboardActions(onSearch = { if (enabled && canSubmit) onSearch() }),
                 decorationBox = { field ->
                     Box { if (query.isEmpty()) Text("어디를 찾으세요?", color = PlaceSearchColors.Muted,
                         fontSize = 16.sp); field() }
                 },
             )
-            Surface(onClick = onSearch, enabled = enabled, shape = RoundedCornerShape(14.dp),
+            Surface(onClick = onSearch, enabled = enabled && canSubmit, shape = RoundedCornerShape(14.dp),
                 color = PlaceSearchColors.Accent,
                 modifier = Modifier.size(48.dp).semantics { contentDescription = "장소 검색 실행" }) {
                 Canvas(Modifier.padding(14.dp)) {
