@@ -241,6 +241,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_4_5,
                 WalkDatabase.MIGRATION_5_6,
                 WalkDatabase.MIGRATION_6_7,
+                WalkDatabase.MIGRATION_7_8,
             )
             .build()
 

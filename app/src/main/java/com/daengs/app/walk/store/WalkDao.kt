@@ -7,6 +7,12 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
+    suspend fun storyboard(sessionId: String): WalkStoryboardRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveStoryboard(row: WalkStoryboardRow)
+
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
     fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
 
