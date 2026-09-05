@@ -53,12 +53,13 @@ internal fun TerritoryFeedbackLine(game: TerritoryGameState, nowNanos: () -> Lon
     val progress = rememberTerritoryFeedbackProgress(game.feedback, nowNanos)
     val feedback = game.feedback?.takeIf { progress < 1f }
     val frame = territoryFeedbackFrame(feedback?.kind, progress)
+    val success = feedback?.takeIf { it.kind != TerritoryFeedbackKind.READY }
     Row(verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
-        if (feedback != null) Icon(painterResource(R.drawable.ic_territory_paw), contentDescription = null,
-            tint = if (feedback.kind == TerritoryFeedbackKind.MARKED) Color(0xffb67c2e) else Color(0xff3c9673),
+        if (success != null) Icon(painterResource(R.drawable.ic_territory_paw), contentDescription = null,
+            tint = if (success.kind == TerritoryFeedbackKind.MARKED) Color(0xffb67c2e) else Color(0xff3c9673),
             modifier = Modifier.size(16.dp).graphicsLayer { scaleX = frame.markerScale; scaleY = frame.markerScale })
-        if (feedback != null) Spacer(Modifier.width(5.dp))
+        if (success != null) Spacer(Modifier.width(5.dp))
         Text(territoryFeedbackLabel(game, feedback), color = TextMuted, fontSize = 11.sp)
     }
 }
