@@ -24,6 +24,7 @@ import com.daengs.app.place.PlaceResult
 import com.daengs.app.place.PlaceSearchRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -33,10 +34,12 @@ data class PlacesUiState(
     val location: PlaceLocationState = PlaceLocationState.PermissionRequired,
     val discovery: PlaceDiscoveryState = PlaceDiscoveryState(),
     val journey: PlaceJourneyState = PlaceJourneyState(),
+    val profiles: PlaceProfiles = PlaceProfiles(),
 )
 
 /** 화면 입력 계약. kind=null은 전체보기이며 HTTP 요청에서는 실제 kind 목록으로 분할한다. */
 sealed interface PlacesAction {
+    data class ToggleDog(val id: String) : PlacesAction
     data class Locate(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
 
     data class Search(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
@@ -67,6 +70,8 @@ class PlacesViewModel(
     externalScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
+    private val profiles = MutableStateFlow(PlaceProfiles())
+    private var appliedDogs = emptyList<com.daengs.app.place.PlaceDogSnapshot>()
     private val location = PlaceLocationCoordinator(
         source = locationSource,
         scope = runtimeScope,
@@ -80,8 +85,9 @@ class PlacesViewModel(
     val state: StateFlow<PlacesUiState> = combine(
         location.state,
         session.state,
-    ) { location, session ->
-        PlacesUiState(location, session.discovery, session.journey)
+        profiles,
+    ) { location, session, profiles ->
+        PlacesUiState(location, session.discovery, session.journey, profiles)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -122,8 +128,22 @@ class PlacesViewModel(
         session.updateDogContext(context)
     }
 
+    fun updateProfiles(owner: String?, pets: List<com.daengs.app.pet.Pet>?, busy: Boolean, error: String?) {
+        applyProfiles(profiles.value.receive(owner, pets, busy, error))
+    }
+
+    private fun applyProfiles(value: PlaceProfiles) {
+        profiles.value = value
+        val snapshots = value.snapshots()
+        if (snapshots != appliedDogs) {
+            appliedDogs = snapshots
+            session.updateDogs(snapshots)
+        }
+    }
+
     fun onAction(action: PlacesAction) {
         when (action) {
+            is PlacesAction.ToggleDog -> applyProfiles(profiles.value.toggle(action.id))
             is PlacesAction.Locate -> locateAndSearch(action.kind, action.preferParking, action.nameQuery)
             is PlacesAction.Search -> searchAtCurrentOrigin(action.kind, action.preferParking, action.nameQuery)
             is PlacesAction.SearchAt -> searchAt(

@@ -33,6 +33,9 @@ data class PlaceSearchLabState(
     val notice: String? = null,
     val errorText: String? = null,
     val truncated: Boolean = false,
+    val profileNames: Map<String, String> = emptyMap(),
+    val profilesReady: Boolean = false,
+    val profileMessage: String? = null,
 ) {
     fun select(key: PlaceKey) = if (hits.any { it.place.key == key }) copy(selected = key) else this
     fun toggle(key: PlaceKey) = select(key).let {

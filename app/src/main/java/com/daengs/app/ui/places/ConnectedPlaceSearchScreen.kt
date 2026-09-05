@@ -21,11 +21,12 @@ import com.daengs.app.ui.theme.DaengsTheme
 /** 운영 coordinator의 결과를 새 화면에 투영한다. 네트워크·위치의 별도 상태 소유자는 없다. */
 fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: PlaceKey?, notice: String?): PlaceSearchLabState {
     val response = discovery.response
+    val profileMismatch = response != null && response.dogs != profiles.snapshots()
     val all = discovery.requestedKinds.size > 6
     val hits = if (all) response?.overviewHits(discovery.preferParking).orEmpty() else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
-        discovery.loading || location.locating -> LabPhase.LOADING
+        discovery.loading || location.locating || profileMismatch -> LabPhase.LOADING
         discovery.search is PlaceSearchState.Failed -> LabPhase.ERROR
         hits.isNotEmpty() -> LabPhase.RESULTS
         else -> LabPhase.EMPTY
@@ -38,6 +39,10 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
         expanded = expanded?.takeIf { key -> hits.any { it.place.key == key } },
         notice = notice ?: location.userMessage(), errorText = discovery.error?.let { if (all) "전체 업종을 불러오지 못했어요. $it" else it },
         truncated = response?.groups?.any { it.truncated } == true,
+        selectedDogIds = profiles.selectedIds,
+        profileNames = profiles.pets.associate { it.id to it.name },
+        profilesReady = profiles.ready,
+        profileMessage = profiles.message,
     )
 }
 
@@ -51,6 +56,7 @@ fun ConnectedPlaceSearchScreen(
     onCall: (String) -> Unit,
     onOpenHandoff: (String) -> Unit,
     showMap: Boolean = true,
+    onRefreshProfiles: () -> Unit = {},
 ) {
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     var ai by rememberSaveable { mutableStateOf(false) }
@@ -87,6 +93,8 @@ fun ConnectedPlaceSearchScreen(
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
         },
         onRadius = { meters -> onAction(PlacesAction.SetRadius(meters)) },
+        onDog = { id -> onAction(PlacesAction.ToggleDog(id)) },
+        onRefreshProfiles = onRefreshProfiles,
         onToggle = { key ->
             expanded = key.takeUnless { it == expanded }
             onAction(PlacesAction.Select(key))

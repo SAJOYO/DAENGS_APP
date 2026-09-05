@@ -41,6 +41,7 @@ fun PlaceSearchLabScreen(
     onAction: (String) -> Unit = {},
     live: Boolean = false,
     onRadius: (Int) -> Unit = {},
+    onRefreshProfiles: () -> Unit = {},
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
 ) {
@@ -83,14 +84,15 @@ fun PlaceSearchLabScreen(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { profiles = true }, modifier = Modifier.weight(1f)) {
-                    Text("🐾 " + state.selectedDogIds.joinToString("·") { if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견" } + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextButton(onClick = { profiles = true; if (live) onRefreshProfiles() }, modifier = Modifier.weight(1f)) {
+                    Text("🐾 " + state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견" } + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 TextButton(onClick = { filters = true }) { Text("${state.applied.radiusMeters / 1000}km ▾", fontSize = 11.sp) }
                 TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 11.sp) }
                 IconButton(onClick = { filters = true }, modifier = Modifier.semantics { contentDescription = "검색 조건" }) { Text("⚙") }
             }
             state.notice?.let { Text(it, fontSize = 11.sp, maxLines = 3) }
+            if (live) state.profileMessage?.let { Text(it, fontSize = 11.sp) }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) { map() }
         Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.Surface) {
@@ -111,7 +113,7 @@ fun PlaceSearchLabScreen(
                     }
                     LazyRow(state = list, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(state.hits, key = { placeMarkerId(it.place.key) }) { hit ->
-                            PlaceDrawerCard(hit, state.expanded == hit.place.key, state.selected == hit.place.key, { onToggle(hit.place.key) }, onAction, cardActions)
+                            PlaceDrawerCard(hit, state.expanded == hit.place.key, state.selected == hit.place.key, { onToggle(hit.place.key) }, onAction, cardActions, state.profileNames)
                         }
                     }
                 } else {
@@ -128,7 +130,20 @@ fun PlaceSearchLabScreen(
             }
         }
     }
-    if (profiles && live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("반려견 선택") }, text = { Text("다견 프로필 연결을 준비하고 있어요. 현재는 앱에서 전달한 기본 반려견 조건을 사용합니다.") }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("확인") } })
+    if (profiles && live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("함께 갈 반려견") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text("선택하지 않으면 반려견 조건을 적용하지 않아요.", fontSize = 12.sp)
+            state.profileMessage?.let { Text(it, fontSize = 12.sp) }
+            state.profileNames.forEach { (id, name) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(id in state.selectedDogIds, { onDog(id) }, enabled = state.profilesReady,
+                        modifier = Modifier.semantics { contentDescription = "$name 선택" })
+                    Text(if (state.profileNames.values.count { it == name } > 1) "$name · ${id.takeLast(4)}" else name)
+                }
+            }
+            TextButton(onClick = onRefreshProfiles) { Text("목록 새로고침") }
+        }
+    }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("완료") } })
     if (profiles && !live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("함께 갈 반려견") }, text = {
         Column {
             Text("가상 프로필 · 검색 미연동", fontSize = 12.sp)
@@ -154,7 +169,7 @@ private fun categorySymbol(kind: PlaceKind?): String = when (kind) {
 }
 
 @Composable
-fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, onToggle: () -> Unit, onAction: (String) -> Unit = {}, actions: (@Composable (PlaceSearchHit) -> Unit)? = null) {
+fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, onToggle: () -> Unit, onAction: (String) -> Unit = {}, actions: (@Composable (PlaceSearchHit) -> Unit)? = null, dogNames: Map<String, String> = emptyMap()) {
     val p = hit.place
     val presentation = hit.toCardPresentation()
     val registration = when (p.facts.petAccess?.allowed) { true -> "동반 가능 등록"; false -> "동반 불가 등록"; null -> "동반 여부 확인 필요" }
@@ -168,7 +183,13 @@ fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, o
             }
             if (expanded) {
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                Text("동반 조건", fontSize = 13.sp)
+                if (hit.evaluations.dogs.isNotEmpty()) {
+                    Text("선택한 반려견 기준", fontSize = 13.sp)
+                    hit.evaluations.dogs.forEach { evaluation ->
+                        Text("${dogNames[evaluation.ref] ?: "반려견"} · ${com.daengs.app.ui.places.dogEvaluationLabel(evaluation)}", fontSize = 12.sp)
+                    }
+                }
+                Text("추가 동반 조건", Modifier.padding(top = 8.dp), fontSize = 13.sp)
                 val raw = p.facts.restrictions?.get("raw")?.jsonPrimitive?.contentOrNull
                     ?: p.facts.petAccess?.raw?.get("restrictions")?.jsonPrimitive?.contentOrNull
                 val restrictionEvaluation = hit.evaluations.restrictions
@@ -180,10 +201,13 @@ fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, o
                 restrictionEvaluation?.get("state")?.jsonPrimitive?.contentOrNull?.let { status ->
                     if (status != "compatible") Text(if (status == "incompatible") "추가 동반 조건 불일치" else "추가 동반 조건 확인 필요", fontSize = 12.sp)
                 }
-                Text(raw?.takeIf { it.isNotBlank() } ?: "제한 정보 없음 · 확인 필요", fontSize = 12.sp)
+                Text(raw?.takeIf { it.isNotBlank() } ?: if (p.facts.restrictions?.get("state")?.jsonPrimitive?.contentOrNull == "none_confirmed") "추가 제한 없음으로 등록" else "제한 정보 없음 · 확인 필요", fontSize = 12.sp)
                 Text("허용 크기: ${p.facts.petAccess?.raw?.get("size")?.jsonPrimitive?.contentOrNull ?: "정보 없음"}", fontSize = 12.sp)
                 hit.evaluations.dogAccess?.let { Text(when (it.state) { DogAccessState.COMPATIBLE -> "크기·체중 조건상 가능"; DogAccessState.INCOMPATIBLE -> "크기·체중 조건 불일치"; DogAccessState.UNKNOWN -> "크기·체중 조건 확인 필요" }, fontSize = 12.sp) }
                 Text("${p.key.source} · ${p.classifications.firstOrNull()?.asOf ?: "날짜 미상"}\n현재 동반 정책은 방문 전 확인해 주세요.", Modifier.padding(vertical = 10.dp), fontSize = 10.sp, color = DaengsColors.TextSecondary)
+                p.fieldSources["facts.restrictions"]?.let { source ->
+                    Text("추가 조건 출처: ${source.source.source} · ${source.asOf ?: "날짜 미상"}", fontSize = 10.sp)
+                }
                 presentation.parking?.let { Text(it.text, fontSize = 12.sp) }
                 p.facts.hoursText?.let { Text(it, fontSize = 12.sp) }
                 p.facts.address?.let { Text(it, fontSize = 12.sp) }

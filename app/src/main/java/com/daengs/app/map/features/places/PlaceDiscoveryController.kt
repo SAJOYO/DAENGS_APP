@@ -77,6 +77,14 @@ class PlaceDiscoveryController(
     private var lastOriginMode = PlaceOriginMode.DEVICE
     private var requestGeneration = 0L
     private var searchJob: Job? = null
+    private var dogs: List<com.daengs.app.place.PlaceDogSnapshot> = emptyList()
+
+    fun updateDogs(value: List<com.daengs.app.place.PlaceDogSnapshot>) {
+        dogs = value.toList()
+        dogContext = null
+        lastRequest = lastRequest?.map { it.copy(dogs = dogs, dogSize = null, dogWeightKg = null, dogAgeYears = null) }
+        lastRequest?.let { submit(it, lastOriginMode) }
+    }
 
     fun updateDogContext(value: DogSearchContext?) {
         dogContext = value
@@ -112,6 +120,7 @@ class PlaceDiscoveryController(
                 radiusMeters = radiusMeters,
                 nameQuery = nameQuery.trim(),
                 limitPerKind = PLACE_RESULT_LIMIT,
+                dogs = dogs,
                 dogSize = dogContext?.size,
                 dogWeightKg = dogContext?.weightKg,
                 dogAgeYears = dogContext?.ageYears,
