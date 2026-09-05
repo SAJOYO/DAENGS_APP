@@ -129,6 +129,7 @@ class WalkStoryboardSyncTest {
             val sync = WalkStoryboardSync(dao, { owner }) { _, path, body ->
                 assertEquals("/remote/storyboard", path)
                 assertEquals(0, body.getJSONObject("expected_entries").length())
+                assertEquals("walk-storyboard-candidates-v2", body.getString("bundle_format"))
                 response()
             }
             sync.sync(token, "s", "remote")

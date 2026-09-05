@@ -125,7 +125,8 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         onAcknowledge = { save(current.edit(it, acknowledge = true)) },
         onOriginal = { scene -> original = entries.orEmpty().firstOrNull { "entry:${it.id}" == scene.id } },
         onReview = { save(current.copy(reviewed = snapshot)) }, connectionNotice = notice,
-        onAnalyze = { analyze(refresh = analysisView.canReview) }, analyzing = analyzing)
+        onAnalyze = { analyze(refresh = analysisView.canReview) }, analyzing = analyzing,
+        selectionNotice = bundle?.selection?.description(), petNames = pets.associate { it.id to it.name })
     editing?.let { scene ->
         var title by remember(scene.id) { mutableStateOf(scene.title) }
         var body by remember(scene.id) { mutableStateOf(scene.body) }
@@ -181,6 +182,8 @@ internal fun StoryboardContent(
     connectionNotice: String = "이 기기에 저장돼요. 환경·이동 분석 장면과 AI 일기 생성은 아직 연결되지 않았어요.",
     onAnalyze: (() -> Unit)? = null,
     analyzing: Boolean = false,
+    selectionNotice: String? = null,
+    petNames: Map<String, String> = emptyMap(),
 ) {
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
@@ -190,6 +193,7 @@ internal fun StoryboardContent(
             Text("시간순 장면을 확인하고 일기에 남길 내용을 골라보세요.")
             Text(connectionNotice,
                 style = MaterialTheme.typography.bodySmall)
+            selectionNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             onAnalyze?.let { action ->
                 TextButton(enabled = !busy && !analyzing, onClick = action) { Text(if (analyzing) "분석 중" else "장면 분석 · 다시 시도") }
             }
@@ -201,6 +205,11 @@ internal fun StoryboardContent(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(formatWalkClock(scene.atMillis), style = MaterialTheme.typography.labelMedium)
                     Text(scene.title, style = MaterialTheme.typography.titleMedium)
+                    scene.entryReference?.let { entry ->
+                        Text(if (entry.isNote) "산책 전체 메모" else "대상 강아지: " +
+                            if (entry.petId == null) "미지정" else petNames[entry.petId] ?: "이름 확인 필요",
+                            style = MaterialTheme.typography.labelMedium)
+                    }
                     if (scene.body.isNotBlank()) Text(scene.body)
                     if (!scene.available) Text(scene.evidence, color = MaterialTheme.colorScheme.error)
                     else if (scene.needsReview) Text("원본이 바뀌었어요. 문구와 근거를 확인해 주세요.",
