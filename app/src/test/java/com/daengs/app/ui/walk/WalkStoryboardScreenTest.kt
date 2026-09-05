@@ -16,6 +16,20 @@ import org.robolectric.annotation.Config
 class WalkStoryboardScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `분석 실패 후 이전 장면은 읽을 수 있지만 검토 완료는 막힌다`() {
+        val payload = javaClass.getResource("/storyboard/pinless.json")!!.readText()
+        val stamp = com.daengs.app.walk.sync.storyboardEntryStamp(emptyList())
+        val source = com.daengs.app.walk.store.WalkSceneAnalysisRow("s", 2, stamp, "input", "failed", payload, "error", stamp)
+        val view = com.daengs.app.walk.diary.storyboardAnalysisView(source, emptyList())
+        compose.setContent {
+            StoryboardContent(view.bundle!!.scenes.take(1), false, null, false, false, view.canReview,
+                {}, {}, {}, {}, {}, {}, connectionNotice = view.notice)
+        }
+        compose.onNodeWithText(view.notice).assertExists()
+        compose.onNodeWithText(view.bundle!!.scenes.first().title).assertExists()
+        compose.onNodeWithText("이 구성 검토 완료").performScrollTo().assertIsNotEnabled()
+    }
+
     @Test fun `geo 환경 근거를 기존 검토 화면에서 열고 숨길 수 있다`() {
         val bundle = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(
             javaClass.getResource("/storyboard/pinless.json")!!.readText())

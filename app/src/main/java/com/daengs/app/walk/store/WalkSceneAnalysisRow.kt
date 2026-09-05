@@ -17,4 +17,6 @@ data class WalkSceneAnalysisRow(
     val status: String,
     val bundle: String?,
     val error: String?,
+    /** Source stamp of the last successful bundle; status/entryStamp describe the latest attempt. */
+    val bundleEntryStamp: String? = null,
 )

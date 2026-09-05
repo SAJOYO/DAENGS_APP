@@ -11,7 +11,7 @@ import androidx.sqlite.execSQL
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
     entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -190,6 +190,14 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_scene_analysis ADD COLUMN bundleEntryStamp TEXT")
+                connection.execSQL("UPDATE walk_scene_analysis SET bundleEntryStamp = entryStamp " +
+                    "WHERE status = 'ready' AND bundle IS NOT NULL")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -202,6 +210,7 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
                 )
                 .build()
     }
