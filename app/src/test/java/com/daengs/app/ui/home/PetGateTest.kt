@@ -79,6 +79,62 @@ class PetGateTest {
         assertTrue(roomRoster(null, needsPet(true, null)).isEmpty())
     }
 
+    // -- 빈 방 초대를 언제 그리나 --------------------------------------------
+
+    @Test
+    fun `기다리는 중이면 그린다`() {
+        assertTrue(
+            showsEmptyRoomInvite(
+                waitsForPet = true, dogsLoading = false, inventoryOpen = false, tourOpen = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `기다리는 중이 아니면 안 그린다`() {
+        assertFalse(
+            showsEmptyRoomInvite(
+                waitsForPet = false, dogsLoading = false, inventoryOpen = false, tourOpen = false,
+            ),
+        )
+    }
+
+    /**
+     * **방 둘러보기 중에는 가린다.**
+     *
+     * 겹이 이 카드 **위로** 스포트라이트를 뚫는다. 실기기에서 2단계 "턴테이블을 눌러
+     * 노래를 들어요" 가 턴테이블이 아니라 **이 카드의 분홍 버튼**을 비췄다 — 겹은
+     * 자리만 알고 그 자리에 무엇이 얹혀 있는지는 모른다.
+     */
+    @Test
+    fun `방 둘러보기 중에는 안 그린다`() {
+        assertFalse(
+            showsEmptyRoomInvite(
+                waitsForPet = true, dogsLoading = false, inventoryOpen = false, tourOpen = true,
+            ),
+        )
+    }
+
+    /** 불러오는 중이라는 문구와 겹치면 두 말이 한 자리에 뜬다. */
+    @Test
+    fun `불러오는 중에는 안 그린다`() {
+        assertFalse(
+            showsEmptyRoomInvite(
+                waitsForPet = true, dogsLoading = true, inventoryOpen = false, tourOpen = false,
+            ),
+        )
+    }
+
+    /** 소품을 옮기는 중에는 방 바닥이 보여야 한다. */
+    @Test
+    fun `소품 편집 중에는 안 그린다`() {
+        assertFalse(
+            showsEmptyRoomInvite(
+                waitsForPet = true, dogsLoading = false, inventoryOpen = true, tourOpen = false,
+            ),
+        )
+    }
+
     // -- 문구 ----------------------------------------------------------------
     //
     // 자리마다 다른 말을 하되 **같은 것을 청해야** 한다. 하나는 등록하라 하고 하나는

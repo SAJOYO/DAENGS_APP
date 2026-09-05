@@ -483,6 +483,7 @@ fun HomeScreen(
                 waitsForPet = waitsForPet,
                 onAddPet = onAddPet,
                 onToggleEmptyRoom = onToggleEmptyRoom,
+                tourOpen = tourOpen,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -604,6 +605,12 @@ private fun RoomSection(
     onAddPet: (() -> Unit)?,
     /** 개발자 패널의 "빈 방으로 보기". 릴리스에서는 패널이 빈 껍데기라 안 쓰인다 */
     onToggleEmptyRoom: (() -> Unit)?,
+    /**
+     * 방 둘러보기가 떠 있나. **떠 있으면 빈 방 초대를 가린다** —
+     * 겹이 이 카드 위로 스포트라이트를 뚫어서 엉뚱한 것을 가리킨다
+     * ([showsEmptyRoomInvite]).
+     */
+    tourOpen: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -682,7 +689,9 @@ private fun RoomSection(
         }
         // **빈 방은 이것과 함께여야 한다.** [roomPets] 주석대로 빈 방은 그 자체로는
         // "고장 난 것" 으로 읽힌다 — 여기가 그것을 "아직 아무도 안 왔다" 로 바꾼다.
-        if (waitsForPet && !showDogsLoading && !inventoryOpen && onAddPet != null) {
+        if (onAddPet != null &&
+            showsEmptyRoomInvite(waitsForPet, showDogsLoading, inventoryOpen, tourOpen)
+        ) {
             EmptyRoomInvite(onAddPet, Modifier.align(Alignment.Center))
         }
         TodayCard(

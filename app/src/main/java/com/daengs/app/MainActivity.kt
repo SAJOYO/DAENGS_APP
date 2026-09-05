@@ -795,6 +795,13 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        // **도감 보기는 열어 두고 뽑기만 막는다.** 이미 뽑아 둔 카드를
+                        // 못 보게 하면 그게 더 이상하다.
+                        onDrawBlocked = if (waitsForPet) {
+                            { petNeed = PetNeed.Card }
+                        } else {
+                            null
+                        },
                         startInDraw = dexOpensDraw.also { dexOpensDraw = false },
                         drawn = cards.cards,
                         framedCardId = frameCardId,

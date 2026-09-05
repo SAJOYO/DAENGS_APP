@@ -161,6 +161,28 @@ private fun GateButton(
 }
 
 /**
+ * 지금 [EmptyRoomInvite] 를 그릴 때인가.
+ *
+ * 조건이 넷이라 자리에서 바로 쓰면 나중에 하나가 빠진다. **특히 [tourOpen] 이 그렇다** —
+ * 방 둘러보기가 이 카드 위로 스포트라이트를 뚫어서, 2단계 "턴테이블을 눌러 노래를
+ * 들어요" 가 턴테이블이 아니라 **이 카드의 버튼을 비춘다.** 실기기에서 그렇게 나왔다.
+ *
+ * 방을 비우는 것 자체는 그대로 둔다 — 튜토리얼 중에 강아지가 갑자기 나타나면 그게 더
+ * 이상하다. 가리는 것은 이 카드 하나다.
+ *
+ * @param waitsForPet 로그인했는데 아직 강아지가 없나 ([needsPet])
+ * @param dogsLoading 목록을 불러오는 중이라 그 문구가 이미 떠 있나. 둘이 겹치면 안 된다
+ * @param inventoryOpen 소품 편집 중인가. 그때는 방 바닥이 보여야 한다
+ * @param tourOpen 방 둘러보기가 떠 있나
+ */
+fun showsEmptyRoomInvite(
+    waitsForPet: Boolean,
+    dogsLoading: Boolean,
+    inventoryOpen: Boolean,
+    tourOpen: Boolean,
+): Boolean = waitsForPet && !dogsLoading && !inventoryOpen && !tourOpen
+
+/**
  * **빈 방 한가운데의 초대.**
  *
  * 방을 비우기로 한 것과 **한 벌이다.** `RoomRoster.roomPets` 가 적어 둔 대로 빈 방은
