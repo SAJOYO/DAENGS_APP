@@ -24,7 +24,6 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.RouteEndpointKind
-import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
 import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
@@ -256,53 +255,7 @@ fun NaverMapSurface(
 
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
     // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.
-    DisposableEffect(naverMap, scene.territorySites) {
-        val map = naverMap
-        val markers = if (map == null) emptyList() else scene.territorySites.map { site ->
-            Marker().apply {
-                position = site.point.toLatLng()
-                captionText = if (site.selected) site.label else when (site.occupancy) {
-                    TerritoryMarkerOccupancy.NEUTRAL -> ""
-                    TerritoryMarkerOccupancy.UNVERIFIED -> "미인증"
-                    TerritoryMarkerOccupancy.VERIFIED -> "인증"
-                }
-                captionMinZoom = 0.0
-                width = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
-                height = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
-                anchor = TERRITORY_MARKER_ANCHOR
-                icon = OverlayImage.fromResource(R.drawable.ic_territory_site)
-                iconTintColor = when (site.occupancy) {
-                    TerritoryMarkerOccupancy.NEUTRAL -> Color.rgb(115, 125, 135)
-                    TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(227, 145, 45)
-                    TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(60, 150, 115)
-                }
-                zIndex = if (site.selected) SELECTED_MARKER_Z else TERRITORY_MARKER_Z
-                isHideCollidedMarkers = true
-                isHideCollidedSymbols = true
-                setOnClickListener {
-                    onSelectTerritorySite(site.id)
-                    true
-                }
-                this.map = map
-            }
-        }
-        val ranges = if (map == null) emptyList() else scene.territorySites.mapNotNull { site ->
-            site.radiusMeters?.let { meters ->
-                CircleOverlay().apply {
-                    center = site.point.toLatLng()
-                    radius = meters
-                    color = if (site.ready) Color.argb(40, 60, 150, 115) else Color.argb(20, 115, 125, 135)
-                    outlineColor = if (site.ready) Color.rgb(60, 150, 115) else Color.rgb(115, 125, 135)
-                    outlineWidth = if (site.ready) 4 else 2
-                    this.map = map
-                }
-            }
-        }
-        onDispose {
-            markers.forEach { it.map = null }
-            ranges.forEach { it.map = null }
-        }
-    }
+    NaverTerritoryLayer(naverMap, scene.territorySites, onSelectTerritorySite)
 
     DisposableEffect(naverMap) {
         val map = naverMap
@@ -608,20 +561,11 @@ private const val ROUTE_SELECTED_OUTLINE_WIDTH = 4
 
 private const val MOMENT_MARKER_PX_SELECTED = 82
 
-private const val TERRITORY_MARKER_PX = 60
-
-private const val TERRITORY_MARKER_PX_SELECTED = 76
-
-private const val TERRITORY_MARKER_Z = 30
-
 /** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
 private const val MOMENT_MARKER_Z = 50
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
-
-/** 전봇대 표시는 핀이 아니라 위치 중심 위에 서는 원형 표식이다. */
-private val TERRITORY_MARKER_ANCHOR = PointF(0.5f, 0.5f)
 
 /** 내 위치 얼굴의 한 변(px)과 흰 테두리 두께. */
 private const val AVATAR_PX = 96
