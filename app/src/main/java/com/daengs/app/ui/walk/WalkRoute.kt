@@ -292,4 +292,3 @@ private fun hasLocationPermission(context: Context): Boolean =
     hasPreciseLocation(context) ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
-

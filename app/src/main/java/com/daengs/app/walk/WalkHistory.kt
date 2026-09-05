@@ -120,4 +120,3 @@ class WalkHistory(private val log: WalkFixLog) {
         )
     }
 }
-

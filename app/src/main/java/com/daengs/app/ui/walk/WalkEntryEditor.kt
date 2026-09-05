@@ -140,4 +140,3 @@ private fun WalkEntryEditorPreview() {
             recordedAtMillis = 0, note = "오늘 처음 걸어본 길"), emptyList(), null, false, {}, {}, {})
     }
 }
-

@@ -966,4 +966,3 @@ private suspend fun signIn(context: android.content.Context): Result<Session> =
         logIdTokenShape(kakao.idToken, kakao.nonce)
         AuthApi.loginWithKakao(kakao.idToken, kakao.nonce).getOrThrow()
     }
-

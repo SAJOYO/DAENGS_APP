@@ -249,4 +249,3 @@ interface WalkDao {
     )
     suspend fun actions(sessionId: String): List<WalkActionRow>
 }
-

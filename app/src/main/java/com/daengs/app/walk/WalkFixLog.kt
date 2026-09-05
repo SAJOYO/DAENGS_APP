@@ -141,4 +141,3 @@ data class RecordedFix(
     val accuracyM: Float?,
     val isMock: Boolean,
 )
-
