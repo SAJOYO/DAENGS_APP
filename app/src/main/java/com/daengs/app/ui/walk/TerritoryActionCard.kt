@@ -32,7 +32,9 @@ internal fun TerritoryActionCard(
                 Text(target.occupancyLabel, color = TextMuted, fontSize = 11.sp)
                 WalkToolButton(WalkTool.CLOSE, "점령지 선택 닫기", onClose)
             }
-            when (game.phase) {
+            if (game.readOnly) {
+                Text(game.guidance, color = TextMuted, fontSize = 11.sp)
+            } else when (game.phase) {
                 TerritoryWalkPhase.BROWSING -> Text(
                     "점령 연습 · 점유 정보", color = TextMuted, fontSize = 11.sp,
                 )
@@ -86,4 +88,16 @@ private fun TerritoryActionCardPreview() {
             }
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun SharedTerritoryCardPreview() {
+    val site = com.daengs.app.territory.TerritorySite("A", com.daengs.app.location.GeoPoint(37.5, 127.0), 0.0)
+    val owner = com.daengs.app.territory.TerritoryOccupancy("p", null, null,
+        com.daengs.app.territory.ClaimCertification.VERIFIED, 0)
+    DaengsTheme { TerritoryActionCard(TerritoryGameState(enabled = true, readOnly = true,
+        targetId = "A", guidance = "점유 정보 · 둘러보기",
+        sites = listOf(TerritoryGameSite(site, com.daengs.app.territory.TerritoryClaimSite("A", owner),
+            "두부", null, null, false))), {}) }
 }

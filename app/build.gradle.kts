@@ -197,6 +197,9 @@ android {
 
     buildTypes {
         debug {
+            // Explicit test build only; ordinary debug stays local, release stays disabled.
+            buildConfigField("Boolean", "TERRITORY_SERVER_READ",
+                (providers.gradleProperty("territoryServerRead").orNull == "true").toString())
             // 개발 서버. `http://` 라서 디버그 소스셋의 usesCleartextTraffic 이 필요하다
             // (`app/src/debug/AndroidManifest.xml`).
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
@@ -208,6 +211,7 @@ android {
             buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
+            buildConfigField("Boolean", "TERRITORY_SERVER_READ", "false")
             optimization {
                 enable = false
             }

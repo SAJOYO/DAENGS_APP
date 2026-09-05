@@ -24,6 +24,43 @@ import org.robolectric.annotation.Config
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp")
 class WalkTerritoryUiTest {
+    @Test fun sharedOccupancyShowsOtherDogWithoutGameActionsAndFailureIsNotNeutral() {
+        val session = com.daengs.app.auth.Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+        var failing = false
+        val provider = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, _ ->
+            if (failing) throw java.io.IOException("offline")
+            listOf(SharedTerritorySite("A", 1,
+                SharedTerritoryOccupancy("dog", "두부", false, ClaimCertification.VERIFIED, 1000)))
+        }, { session }, { "user" })
+        val base = screen(TerritoryWalkPhase.BROWSING)
+        fun snapshot() = base.copy(territoryGame = provider.snapshot(base.territory,
+            base.tracking, true, emptyMap(), 0))
+        val state = mutableStateOf(snapshot())
+        compose.setContent { DaengsTheme { WalkScreen(state.value, {}, showMap = false) } }
+        compose.onNodeWithText("점유 확인 전").assertExists()
+        compose.onNodeWithText("미점유").assertDoesNotExist()
+        kotlinx.coroutines.runBlocking { provider.refresh(listOf(site)) }
+        compose.runOnIdle { state.value = snapshot() }
+        compose.onNodeWithText("두부 · 인증").assertIsDisplayed()
+        compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
+        compose.onNodeWithText("점령 연습 · 점유 정보").assertDoesNotExist()
+        screenshot("server-browsing")
+        compose.runOnIdle {
+            state.value = screen(TerritoryWalkPhase.WALKING).copy(territoryGame = state.value.territoryGame.copy(phase = TerritoryWalkPhase.WALKING))
+        }
+        compose.onNodeWithContentDescription("영역표시 인증 촬영").assertDoesNotExist()
+        compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled()
+        failing = true
+        kotlinx.coroutines.runBlocking { provider.refresh(listOf(site)) }
+        compose.runOnIdle { state.value = snapshot() }
+        compose.onNodeWithText("점유 확인 전").assertIsDisplayed()
+        compose.onNodeWithText("미점유").assertDoesNotExist()
+        compose.onNodeWithText("두부 · 인증").assertDoesNotExist()
+        compose.onNodeWithText("점유 정보를 불러오지 못했어요 · 잠시 후 다시 확인해요").assertIsDisplayed()
+        screenshot("server-error")
+    }
+
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
     private val site = TerritorySite("A", GeoPoint(37.5,127.0),0.0)
     private fun game(phase: TerritoryWalkPhase) = TerritoryGameState(
