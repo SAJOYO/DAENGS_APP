@@ -52,7 +52,7 @@ internal fun WalkUiState.toMapPresentation(
                         ready = target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING &&
                             (territoryGame.canMark || territoryGame.canPhotograph),
                         feedback = territoryGame.feedback?.takeIf { target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
-                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
+                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && !territoryGame.readOnly && target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
                     )
                 },
                 moments = displayedMoments.map { moment ->

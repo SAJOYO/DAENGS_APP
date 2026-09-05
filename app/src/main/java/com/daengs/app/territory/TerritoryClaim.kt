@@ -15,8 +15,9 @@ enum class ClaimCertification { UNVERIFIED, VERIFIED }
 
 data class TerritoryOccupancy(
     val ownerPetId: String,
-    val sourceSessionId: String,
-    val sourceAttemptId: String,
+    /** Shared reads omit these private source IDs; local claims retain their real identities. */
+    val sourceSessionId: String?,
+    val sourceAttemptId: String?,
     val certification: ClaimCertification,
     val occupiedAtMillis: Long,
 )

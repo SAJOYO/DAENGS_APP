@@ -45,6 +45,52 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
     @Test
+    fun `server occupancy reaches map before walking and refresh stops when hidden`() = runTest {
+        val site = TerritorySite("A", GeoPoint(37.5, 127.0), 0.0)
+        var calls = 0
+        val session = com.daengs.app.auth.Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+        val shared = com.daengs.app.map.features.territory.ServerTerritoryGameProvider(
+            com.daengs.app.territory.TerritoryOccupancyClient { _, _ ->
+                calls++
+                listOf(com.daengs.app.territory.SharedTerritorySite("A", 2,
+                    com.daengs.app.territory.SharedTerritoryOccupancy("dog", "두부", false,
+                        com.daengs.app.territory.ClaimCertification.VERIFIED, 1000)))
+            }, { session }, { "user" },
+        )
+        val controller = FakeWalkController()
+        val vm = viewModel(controller, CountingLocationSource(),
+            TerritorySiteRepository { TerritorySitePage(1, false, listOf(site)) }, shared)
+        vm.activate(true, true)
+        runCurrent()
+        assertEquals(0, calls)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        vm.onAction(WalkAction.SelectTerritorySite("A"))
+        runCurrent()
+        assertEquals(1, calls)
+        assertEquals("두부 · 인증", vm.state.value.territoryGame.target!!.occupancyLabel)
+        val marker = vm.state.value.toMapPresentation { "" }.scene.territorySites.single()
+        assertEquals(TerritoryMarkerOccupancy.VERIFIED, marker.occupancy)
+        assertEquals(null, marker.radiusMeters)
+        assertEquals(null, marker.feedback)
+        assertEquals(null, controller.state.value.activeSessionId)
+        advanceTimeBy(15_000); runCurrent()
+        assertEquals(2, calls)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK))
+        runCurrent(); advanceTimeBy(30_000); runCurrent()
+        assertEquals(2, calls)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals(3, calls)
+        vm.updateSharedReadsForeground(false); runCurrent(); advanceTimeBy(30_000); runCurrent()
+        assertEquals(3, calls)
+        vm.updateSharedReadsForeground(true); runCurrent()
+        assertEquals(4, calls)
+        vm.deactivate(); runCurrent(); advanceTimeBy(30_000); runCurrent()
+        assertEquals(4, calls)
+    }
+
+    @Test
     fun `saved photo settles after map is hidden and walk ends then appears certified`() = runTest {
         val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
         val controller = FakeWalkController().apply {
@@ -367,7 +413,7 @@ class WalkViewModelTest {
         territoryRepository: TerritorySiteRepository = TerritorySiteRepository {
             TerritorySitePage(count = 0, truncated = false, sites = emptyList())
         },
-        game: TerritoryGameController? = null,
+        game: com.daengs.app.map.features.territory.TerritoryGameProvider? = null,
         photoQueue: com.daengs.app.territory.TerritoryPhotoQueue? = null,
     ) = WalkViewModel(
         walkController = controller,

@@ -26,8 +26,9 @@ data class TerritoryGameSite(
     val interaction: SiteInteraction?,
     val distanceMeters: Double?,
     val attempted: Boolean,
+    val occupancyKnown: Boolean = true,
 ) {
-    val occupancyLabel: String get() = when (claim.occupancy?.certification) {
+    val occupancyLabel: String get() = if (!occupancyKnown) "점유 확인 전" else when (claim.occupancy?.certification) {
         null -> "미점유"
         ClaimCertification.UNVERIFIED -> "$ownerLabel · 미인증"
         ClaimCertification.VERIFIED -> "$ownerLabel · 인증"
@@ -52,6 +53,7 @@ data class TerritoryGameState(
     val canPhotograph: Boolean = false,
     val photoStatus: ClaimPhotoStatus? = null,
     val feedback: com.daengs.app.map.layers.territory.TerritoryFeedback? = null,
+    val readOnly: Boolean = false,
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
 }
@@ -60,16 +62,16 @@ data class TerritoryGameState(
 class TerritoryGameController(
     private val repository: InMemoryTerritoryClaimRepository,
     private val policy: TerritoryGamePolicy = TerritoryGamePolicy(),
-) {
+) : TerritoryGameProvider {
     private var preferredPetId: String? = null
 
-    fun selectPet(petId: String, siteId: String, tracking: WalkTrackingState) {
+    override fun selectPet(petId: String, siteId: String, tracking: WalkTrackingState) {
         val sessionId = tracking.activeSessionId ?: return
         if (tracking.trail.state != TrackingState.RECORDING || petId !in tracking.activeDogIds) return
         if (repository.attempt(sessionId, siteId) == null) preferredPetId = petId
     }
 
-    fun snapshot(
+    override fun snapshot(
         board: TerritoryBoardState,
         tracking: WalkTrackingState,
         permitted: Boolean,
@@ -149,7 +151,7 @@ class TerritoryGameController(
         )
     }
 
-    fun mark(
+    override fun mark(
         siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
         permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long,
     ): String {
@@ -166,7 +168,7 @@ class TerritoryGameController(
         return "${current.representativeLabel}의 영역으로 표시했어요"
     }
 
-    fun captureTarget(
+    override fun captureTarget(
         siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
         permitted: Boolean, petNames: Map<String, String>, nowNanos: Long,
     ): TerritoryCaptureTarget? {
@@ -176,7 +178,7 @@ class TerritoryGameController(
     }
 
     /** Called at shutter time, not when opening the camera. Cancellation before shutter consumes nothing. */
-    fun captureAttempt(
+    override fun captureAttempt(
         target: TerritoryCaptureTarget, board: TerritoryBoardState, tracking: WalkTrackingState,
         permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long,
     ): String? {
