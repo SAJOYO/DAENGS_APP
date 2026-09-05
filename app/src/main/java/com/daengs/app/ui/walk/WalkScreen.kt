@@ -476,7 +476,10 @@ private fun WalkPrimaryControl(
             pets = pets,
             selectedDogIds = selectedDogIds,
             onToggleDog = onToggleDog,
-            enabled = locationReady,
+            // **위치만 준비돼서는 부족하다.** 강아지 앱이라 아이 없이는 안 나간다
+            // (`WalkDogPick.canStartWalk`). 둘러보기(목록이 빔)는 예외다.
+            enabled = locationReady && canStartWalk(pets, selectedDogIds),
+            blockedReason = walkStartBlockedReason(pets, selectedDogIds),
             onStart = onStart,
             modifier = modifier,
             photoOf = photoOf,
@@ -832,6 +835,8 @@ private fun ReadyCard(
     selectedDogIds: Set<String>,
     onToggleDog: (String) -> Unit,
     enabled: Boolean,
+    /** 못 누르는 이유. null 이면 막힌 게 아니다 (위치를 기다리는 중일 수 있다) */
+    blockedReason: String? = null,
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
     photoOf: (String) -> ImageBitmap? = { null },
@@ -861,6 +866,10 @@ private fun ReadyCard(
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,
                 )
+            }
+            // **왜 안 눌리는지 말해 준다.** 흐린 버튼만 두면 고장으로 읽힌다.
+            blockedReason?.let {
+                Text(it, color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)
             }
             WalkWideAction("산책 시작", enabled = enabled, onClick = onStart)
         }

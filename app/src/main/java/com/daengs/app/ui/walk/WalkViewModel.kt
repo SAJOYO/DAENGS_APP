@@ -213,7 +213,15 @@ class WalkViewModel(
             current.copy(
                 selection = current.selection.copy(
                     pets = pets,
-                    selectedDogIds = if (mayReset) petIds else current.selection.selectedDogIds,
+                    // **전부 고르지 않는다.** 예전에는 여기서 `petIds` 를 통째로 넣었는데,
+                    // 화면은 "누구와 나갈까요?" 라고 묻고 골라진 표시는 연분홍/흰색
+                    // 차이뿐이라, 데려갈 아이를 "고르려고" 누른 것이 빼는 동작이 되어
+                    // 나머지 아이들과 다녀온 것으로 기록됐다 (`WalkDogPick.kt`).
+                    selectedDogIds = if (mayReset) {
+                        defaultWalkDogs(pets)
+                    } else {
+                        current.selection.selectedDogIds
+                    },
                 ),
                 knownPetIds = if (mayReset) petIds else current.knownPetIds,
             )
