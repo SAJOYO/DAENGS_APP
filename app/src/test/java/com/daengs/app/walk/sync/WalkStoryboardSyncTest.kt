@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.store.*
+import com.daengs.app.walk.diary.storyboardAnalysisView
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -23,6 +24,100 @@ class WalkStoryboardSyncTest {
             .put("session_id", "s").put("synthetic", false)
         return JSONObject().put("session_id", "s").put("generation", generation).put("input_revision", "revision")
             .put("status", "ready").put("entry_revisions", JSONObject()).put("bundle", bundle)
+    }
+
+    @Test fun `network failure preserves readable source and retry restores review eligibility`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        try {
+            val dao = db.walkDao()
+            dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
+            dao.saveStoryboard(WalkStoryboardRow("s", "user edits and reviewed snapshot"))
+            var fail = false
+            val sync = WalkStoryboardSync(dao, { owner }) { _, _, _ ->
+                if (fail) {
+                    val during = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+                    assertNotNull(during.bundle)
+                    assertFalse(during.canReview)
+                    throw java.io.IOException("connection lost")
+                }
+                response()
+            }
+            sync.sync(token, "s", "remote")
+            val original = dao.sceneAnalysis("s")!!.bundle
+            fail = true
+            assertTrue(runCatching { sync.sync(token, "s", "remote") }.isFailure)
+            assertEquals(original, dao.sceneAnalysis("s")!!.bundle)
+            val cached = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+            assertNotNull(cached.bundle)
+            assertFalse(cached.canReview)
+            assertTrue(cached.notice.contains("이전에 저장한 장면"))
+            assertEquals("user edits and reviewed snapshot", dao.storyboard("s")!!.payload)
+            fail = false
+            sync.sync(token, "s", "remote")
+            assertTrue(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+        } finally { db.close() }
+    }
+
+    @Test fun `cancelled refresh keeps source available until a new sync completes`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        try {
+            val dao = db.walkDao()
+            dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
+            WalkStoryboardSync(dao, { owner }) { _, _, _ -> response() }.sync(token, "s", "remote")
+            val original = dao.sceneAnalysis("s")!!.bundle
+            val interrupted = WalkStoryboardSync(dao, { owner }) { _, _, _ -> throw kotlinx.coroutines.CancellationException() }
+            val failure = runCatching { interrupted.sync(token, "s", "remote", refresh = true) }.exceptionOrNull()
+            assertTrue(failure is kotlinx.coroutines.CancellationException)
+            assertEquals(original, dao.sceneAnalysis("s")!!.bundle)
+            assertFalse(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+            WalkStoryboardSync(dao, { owner }) { _, _, _ -> response(2) }.sync(token, "s", "remote")
+            assertTrue(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+        } finally { db.close() }
+    }
+
+    @Test fun `nonready malformed and obsolete responses cannot erase last successful bundle`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        try {
+            val dao = db.walkDao()
+            dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
+            var remote = response(5)
+            val sync = WalkStoryboardSync(dao, { owner }) { _, _, _ -> remote }
+            sync.sync(token, "s", "remote")
+            val saved = dao.sceneAnalysis("s")!!.bundle
+            val badResponses = listOf("pending", "running", "failed", "stale").map {
+                response(6).put("status", it).put("bundle", JSONObject.NULL)
+            } + listOf(response(4), response(7).also { it.getJSONObject("bundle").put("synthetic", true) })
+            for (bad in badResponses) {
+                remote = bad
+                assertTrue(runCatching { sync.sync(token, "s", "remote") }.isFailure)
+                assertEquals(saved, dao.sceneAnalysis("s")!!.bundle)
+                assertFalse(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+            }
+            remote = response(8)
+            sync.sync(token, "s", "remote")
+            assertEquals(8L, dao.sceneAnalysis("s")!!.generation)
+            assertTrue(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+        } finally { db.close() }
+    }
+
+    @Test fun `changed or deleted inputs never relabel old cache as their own source`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        try {
+            val dao = db.walkDao()
+            dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
+            val sync = WalkStoryboardSync(dao, { owner }) { _, _, _ -> response() }
+            sync.sync(token, "s", "remote")
+            val original = dao.sceneAnalysis("s")!!
+            dao.insertEntry(WalkEntryRow("deleted", "s", null, 2, "deletion", false))
+            val changedStamp = storyboardEntryStamp(dao.entries("s"))
+            assertTrue(dao.acceptSceneAnalysis(original.copy(entryStamp = changedStamp, status = "running", bundle = null), owner))
+            assertEquals(original.bundleEntryStamp, dao.sceneAnalysis("s")!!.bundleEntryStamp)
+            assertEquals(original.bundle, dao.sceneAnalysis("s")!!.bundle)
+            val stale = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+            assertNull(stale.bundle)
+            assertFalse(stale.canReview)
+            assertFalse(dao.acceptSceneAnalysis(original.copy(generation = 20), owner))
+        } finally { db.close() }
     }
 
     @Test fun `real response persists separately from edits and survives reading again`() = runBlocking {

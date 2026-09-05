@@ -21,7 +21,10 @@ interface WalkDao {
         if (com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId)) != row.entryStamp) return false
         val current = sceneAnalysis(row.sessionId)
         if (current != null && current.generation > row.generation) return false
-        saveSceneAnalysis(row)
+        // A pending/failed/stale response must not erase the last successful source or relabel it
+        // as belonging to the new input. Acceptance of that input is still checked above.
+        saveSceneAnalysis(if (row.status == "ready") row.copy(bundleEntryStamp = row.entryStamp)
+            else row.copy(bundle = current?.bundle, bundleEntryStamp = current?.bundleEntryStamp))
         return true
     }
 

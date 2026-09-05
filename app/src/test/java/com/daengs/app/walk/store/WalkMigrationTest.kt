@@ -46,6 +46,9 @@ class WalkMigrationTest {
     @Test
     fun `9의 사진과 검토본을 보존하고 분석 표를 추가한다`() = verifyPhotoUpgrade(9)
 
+    @Test
+    fun `10의 정상 분석과 검토본을 보존하고 원본 stamp를 이관한다`() = verifyPhotoUpgrade(10)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -63,7 +66,13 @@ class WalkMigrationTest {
             old.execSQL("INSERT INTO walk_fix VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
             old.execSQL("INSERT INTO walk_session_dog VALUES ('s1','dog')")
             old.execSQL("INSERT INTO walk_entry VALUES ('e','s1','kept',3,'mutation',1,NULL)")
-            if (version == 8) old.execSQL("INSERT INTO walk_storyboard VALUES ('s1','reviewed-story')")
+            if (version >= 8) old.execSQL("INSERT INTO walk_storyboard VALUES ('s1','reviewed-story')")
+            if (version >= 9) old.execSQL("INSERT INTO walk_photo VALUES ('p','s1','owner',1500,1400,37.5,127.0,5.0)")
+            if (version == 10) {
+                old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL)")
+                old.execSQL("INSERT INTO walk_session (id, ownerId, startedAtMillis, endedAtMillis, syncState) VALUES ('s2','owner',1000,2000,'derived')")
+                old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s2',2,'failed-stamp','input','failed',NULL,'failure')")
+            }
             old.version = version
         }
         val db = openLatest()
@@ -76,8 +85,18 @@ class WalkMigrationTest {
             assertEquals("kept", dao.entry("e")!!.payload)
             assertEquals(3, dao.entry("e")!!.revision)
             assertEquals(true, dao.entry("e")!!.dirty)
-            assertEquals(emptyList<String>(), dao.photoIds())
-            assertEquals(if (version == 8) "reviewed-story" else null, dao.storyboard("s1")?.payload)
+            assertEquals(if (version >= 9) listOf("p") else emptyList<String>(), dao.photoIds())
+            assertEquals(if (version >= 8) "reviewed-story" else null, dao.storyboard("s1")?.payload)
+            if (version == 10) {
+                assertEquals("saved-bundle", dao.sceneAnalysis("s1")!!.bundle)
+                assertEquals("original-stamp", dao.sceneAnalysis("s1")!!.bundleEntryStamp)
+                assertEquals(null, dao.sceneAnalysis("s2")!!.bundleEntryStamp)
+                assertEquals("failed", dao.sceneAnalysis("s2")!!.status)
+                dao.deleteSession("s1")
+                assertEquals(null, dao.sceneAnalysis("s1"))
+                assertEquals(null, dao.storyboard("s1"))
+                assertEquals(emptyList<String>(), dao.photoIds())
+            }
         } finally { db.close() }
     }
 
@@ -288,6 +307,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_7_8,
                 WalkDatabase.MIGRATION_8_9,
                 WalkDatabase.MIGRATION_9_10,
+                WalkDatabase.MIGRATION_10_11,
             )
             .build()
 
