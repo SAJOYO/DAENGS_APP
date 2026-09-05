@@ -163,6 +163,10 @@ fun HomeScreen(
     onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
+    /** 사람 이름. 「마이」 프로필 머리에 걸린다. null 이면 그 줄이 빠진다 */
+    nickname: String? = null,
+    /** 이름을 고치러 간다. null 이면 「마이」에 그 자리가 안 뜬다 */
+    onEditNickname: (() -> Unit)? = null,
     /**
      * 로그인했는데 **아직 강아지가 없나.** 그때 방이 비고 「강아지 데려오기」가 뜬다.
      *
@@ -403,7 +407,8 @@ fun HomeScreen(
                 onToggleRoomPet = onToggleRoomPet,
                 canToggleRoomPet = { canHideFromRoom(pets, hiddenRoomPetIds, it.id) },
                 onEditPhoto = onEditPhoto,
-                roomLabel = roomLabel(roomName, pets?.firstOrNull { it.isPrimary }?.name),
+                nickname = nickname,
+                onEditNickname = onEditNickname,
                 pets = pets,
                 canAddMore = canAddMore,
                 onAddPet = { onAddPet?.invoke() },

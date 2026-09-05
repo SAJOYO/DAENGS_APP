@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.daengs.app.auth.AuthApi
 import com.daengs.app.auth.CancelledByUser
+import com.daengs.app.auth.NicknameTakenException
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
@@ -66,6 +67,7 @@ import com.daengs.app.ui.home.PetNeed
 import com.daengs.app.ui.home.PetNeededDialog
 import com.daengs.app.ui.home.needsPet
 import com.daengs.app.ui.landing.LandingScreen
+import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
@@ -87,7 +89,14 @@ private enum class Screen {
      * 남의 강아지 넉 마리가 스친다 (`ui/startup/StartupGate.kt`).
      */
     Loading,
-    /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
+    /**
+     * 이름 확인. **카카오 로그인이 막 끝났을 때만** 지난다.
+     *
+     * 저장된 토큰으로 켤 때는 안 지난다 — 그래서 "본 적 있음" 을 기기에 안 남긴다
+     * (`ui/nickname/NicknameScreen.kt`).
+     */
+    Nickname,
+    /** 강아지 등록. 예전에는 로그인 직후 여기로 끌고 왔지만 지금은 아니다. */
     Onboarding,
     Home, Chat, Dex,
     /** 내 주변 장소. 하단 탭에서 들어온다. */
@@ -258,6 +267,12 @@ class MainActivity : ComponentActivity() {
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
+                /** 서버가 지어 준 사람 이름. null 이면 아직 못 받았거나 옛 서버다. */
+                var nickname by remember { mutableStateOf<String?>(null) }
+                var nicknameBusy by remember { mutableStateOf(false) }
+                var nicknameError by remember { mutableStateOf<String?>(null) }
+                /** 「마이」의 "고치기" 로 들어왔나. 인사말을 건너뛸지 정한다. */
+                var editingNickname by remember { mutableStateOf(false) }
                 // 개발자 패널의 "빈 방으로 보기". **디버그에서 이 상태를 볼 유일한 길이다** —
                 // 여기서는 카카오 로그인이 안 돼서 `로그인함 + 강아지 0마리` 에 닿을 수가
                 // 없고, 둘러보기는 로그인 전이라 데모가 선다. 릴리스에서는 패널이 빈
@@ -347,7 +362,11 @@ class MainActivity : ComponentActivity() {
                     val token = freshToken() ?: return@LaunchedEffect
                     pets.refresh(token)
                     // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
-                    AuthApi.me(token).onSuccess { roomName = it.roomName }
+                    AuthApi.me(token).onSuccess { roomName = it.roomName; nickname = it.nickname }
+                    // **확인 화면에 잡아 두지 않는다.** 옛 서버라 칸이 없거나 `me` 가
+                    // 실패하면 보여 줄 이름이 없다. 그때는 그냥 방으로 보낸다 —
+                    // 이름은 다음 로그인에 서버가 채운다.
+                    if (screen == Screen.Nickname && nickname == null) screen = Screen.Home
                     // **강아지가 없어도 여기서 끌고 가지 않는다.** 예전에는 로그인하자마자
                     // 등록 화면으로 보냈는데, 방을 보기도 전에 정보를 채우게 만드는 자리라
                     // 거기서 이탈했다. 빈 방으로 들여보내고([EmptyRoomInvite]), 강아지가
@@ -413,7 +432,11 @@ class MainActivity : ComponentActivity() {
                                     .onSuccess {
                                         app.sessionProvider.save(it)
                                         session = it
-                                        screen = Screen.Home
+                                        // 이름을 한 번 보여 준다. 아직 못 받았으므로
+                                        // 화면이 잠깐 비는데, 위 `me` 갈래가 곧 채우거나
+                                        // 홈으로 넘긴다.
+                                        editingNickname = false
+                                        screen = Screen.Nickname
                                     }
                                     .onFailure { e ->
                                         // 사용자가 취소한 것은 오류가 아니다.
@@ -423,6 +446,53 @@ class MainActivity : ComponentActivity() {
                         },
                         onSkip = { screen = Screen.Home },
                     )
+
+                    Screen.Nickname -> nickname?.let { issued ->
+                        NicknameScreen(
+                            issued = issued,
+                            onStart = { editingNickname = false; screen = Screen.Home },
+                            onSave = { picked ->
+                                scope.launch {
+                                    nicknameBusy = true
+                                    nicknameError = null
+                                    val token = freshToken()
+                                    if (token == null) {
+                                        nicknameBusy = false
+                                        nicknameError = "다시 로그인해 주세요."
+                                        return@launch
+                                    }
+                                    AuthApi.setNickname(token, picked)
+                                        .onSuccess {
+                                            nickname = it.nickname
+                                            editingNickname = false
+                                            screen = Screen.Home
+                                        }
+                                        .onFailure { e ->
+                                            // **미리 물어봤을 때는 비어 있었을 수 있다.**
+                                            // 그래서 "쓰고 있어요" 가 아니라 "방금
+                                            // 가져갔어요" 로 말한다.
+                                            nicknameError = if (e is NicknameTakenException) {
+                                                "방금 다른 분이 가져갔어요. 다른 이름을 골라 주세요."
+                                            } else {
+                                                e.message
+                                            }
+                                        }
+                                    nicknameBusy = false
+                                }
+                            },
+                            busy = nicknameBusy,
+                            error = nicknameError,
+                            startEditing = editingNickname,
+                            ask = { value ->
+                                val token = freshToken()
+                                if (token == null) {
+                                    Result.failure(IllegalStateException("토큰 없음"))
+                                } else {
+                                    AuthApi.nicknameAvailable(token, value)
+                                }
+                            },
+                        )
+                    }
 
                     Screen.Onboarding -> PetFormScreen(
                         initial = editing,
@@ -566,6 +636,12 @@ class MainActivity : ComponentActivity() {
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
                         todayWalks = todayWalks,
                         signedIn = session != null,
+                        nickname = nickname,
+                        // 「마이」의 "고치기". 이름 확인 화면과 **같은 칸**을 띄운다 —
+                        // 두 벌이 되면 문구와 기다리는 시간이 갈린다.
+                        onEditNickname = nickname?.let {
+                            { editingNickname = true; screen = Screen.Nickname }
+                        },
                         waitsForPet = waitsForPet,
                         onToggleEmptyRoom = { devEmptyRoom = !devEmptyRoom },
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
