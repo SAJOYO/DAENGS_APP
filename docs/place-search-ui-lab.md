@@ -51,3 +51,28 @@ PR에 기록하며 실제 지도 렌더링, 작은 화면·큰 글자, 키보드
 Windows에서 저장소 외부 `.tooling` 폴더의 JDK 25와 Android SDK를 사용했다.
 재부팅·Docker·Android Studio 설치 없이 debug APK 빌드와 전체 단위 테스트를 실행했다.
 최종 결과와 커밋은 PR #143에 기록한다. 앱 표시 검증을 완료했다는 뜻은 아니다.
+## 실제 API 연결 검토 (2단계 첫 연결)
+
+```powershell
+adb shell am start -n com.daengs.app/.ui.places.lab.PlaceSearchLiveActivity
+```
+
+`PlaceSearchLiveActivity`는 debug 전용이며 **실제 개발 서버**
+`http://daengback.weareithero.cloud`를 사용한다. 자동 최초 검색이 발생한다.
+중심은 성수 고정 좌표이고 프로필 조건은 없다. 고정 좌표를 기기 GPS 측정값으로 표시하지 않는다.
+지도 버튼으로 Naver 지도를 켜면 이동한 중심의 '이 지역 검색'을 사용할 수 있다.
+
+새 `ConnectedPlaceSearchScreen`은 기존 PlacesViewModel → PlaceSessionCoordinator →
+PlaceDiscoveryController → PlaceRepository/PlaceApi의 상태·액션을 그대로 사용한다.
+별도의 LabViewModel로 실제 검색하지 않는다. 기존 PlacesRoute도
+`useConnectedSearch=true`로 같은 화면을 쓸 수 있으며 기본 운영 화면 선택은 유지한다.
+이름 입력·AI 전환은 요청하지 않고, 제출 시 실제 이름 검색을 실행한다.
+주차 변경·지도 재검색은 기존 적용 이름을 유지하며 결과의 truncated는 개수의 +로 표시한다.
+전화는 ACTION_DIAL, 길찾기는 기존 Journey·handoff 흐름에 연결된다.
+
+이번 범위는 단일 업종·3km 검색이다. 전체보기는 아직 요청하지 않고 안내하며,
+AI와 다견 선택도 아직 실제 요청에 연결하지 않는다. 주소/지역명 검색을 지원한다고 표시하지 않는다.
+출시 서버의 이름 echo 검증을 제거하지 않았으며 출시 배포·DB 변경은 하지 않았다.
+
+검증은 새 Compose 화면 이벤트, 운영 ViewModel/Coordinator, HTTP echo 계약 테스트를 포함한다.
+실기기 GPS·지도·전화·외부 앱 handoff는 별도 검증 대상이다.

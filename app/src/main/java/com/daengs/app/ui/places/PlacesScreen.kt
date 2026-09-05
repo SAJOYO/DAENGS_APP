@@ -83,6 +83,7 @@ fun PlacesRoute(
     primaryPet: Pet?,
     modifier: Modifier = Modifier,
     viewModel: PlacesViewModel = viewModel(factory = PlacesViewModel.factory(LocalContext.current)),
+    useConnectedSearch: Boolean = false,
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
@@ -124,6 +125,16 @@ fun PlacesRoute(
         onDispose(viewModel::deactivate)
     }
 
+    if (useConnectedSearch) {
+        ConnectedPlaceSearchScreen(
+            state, viewModel::onAction, onBack,
+            onRequestPermission = { permissionLauncher.launch(LOCATION_PERMISSIONS) },
+            onOpenSettings = { settingsLauncher.launch(appSettingsIntent(context)) },
+            onCall = { dial(context, it) },
+            onOpenHandoff = { openNaverHandoff(context, it) },
+        )
+        return
+    }
     PlacesScreen(
         state = state,
         avatarBreed = primaryPet?.breedArt,

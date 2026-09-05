@@ -30,6 +30,8 @@ data class PlaceSearchLabState(
     val selected: PlaceKey? = null,
     val expanded: PlaceKey? = null,
     val notice: String? = null,
+    val errorText: String? = null,
+    val truncated: Boolean = false,
 ) {
     fun select(key: PlaceKey) = if (hits.any { it.place.key == key }) copy(selected = key) else this
     fun toggle(key: PlaceKey) = select(key).let {
