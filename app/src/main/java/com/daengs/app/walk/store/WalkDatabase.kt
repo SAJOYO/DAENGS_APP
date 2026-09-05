@@ -10,8 +10,8 @@ import androidx.sqlite.execSQL
 
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class],
-    version = 9,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class],
+    version = 10,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -181,6 +181,15 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_scene_analysis (sessionId TEXT NOT NULL, " +
+                    "generation INTEGER NOT NULL, entryStamp TEXT NOT NULL, inputRevision TEXT NOT NULL, " +
+                    "status TEXT NOT NULL, bundle TEXT, error TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -192,6 +201,7 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_6_7,
                     MIGRATION_7_8,
                     MIGRATION_8_9,
+                    MIGRATION_9_10,
                 )
                 .build()
     }

@@ -43,6 +43,9 @@ class WalkMigrationTest {
     @Test
     fun `8의 스토리보드와 경로와 메모를 보존하며 사진 표만 추가한다`() = verifyPhotoUpgrade(8)
 
+    @Test
+    fun `9의 사진과 검토본을 보존하고 분석 표를 추가한다`() = verifyPhotoUpgrade(9)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -284,6 +287,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_6_7,
                 WalkDatabase.MIGRATION_7_8,
                 WalkDatabase.MIGRATION_8_9,
+                WalkDatabase.MIGRATION_9_10,
             )
             .build()
 

@@ -7,6 +7,24 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT * FROM walk_scene_analysis WHERE sessionId = :sessionId")
+    fun observeSceneAnalysis(sessionId: String): kotlinx.coroutines.flow.Flow<WalkSceneAnalysisRow?>
+    @Query("SELECT * FROM walk_scene_analysis WHERE sessionId = :sessionId")
+    suspend fun sceneAnalysis(sessionId: String): WalkSceneAnalysisRow?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveSceneAnalysis(row: WalkSceneAnalysisRow)
+    @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
+    suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
+    @androidx.room.Transaction
+    suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String): Boolean {
+        if (session(row.sessionId)?.ownerId != ownerId) return false
+        if (com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId)) != row.entryStamp) return false
+        val current = sceneAnalysis(row.sessionId)
+        if (current != null && current.generation > row.generation) return false
+        saveSceneAnalysis(row)
+        return true
+    }
+
     @Query("SELECT * FROM walk_photo WHERE sessionId = :sessionId ORDER BY capturedAtMillis, id")
     fun observePhotos(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkPhotoRow>>
     @Query("SELECT * FROM walk_photo WHERE id = :id")
