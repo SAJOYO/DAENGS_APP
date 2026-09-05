@@ -65,7 +65,7 @@ internal fun TerritoryActionCard(
                             if (game.canMark) WalkToolButton(WalkTool.CAMERA, "영역표시 인증 촬영", { onPhotograph(target.site.id) })
                             else Button(onClick = { onPhotograph(target.site.id) }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
-                                Text(if (game.photoStatus == ClaimPhotoStatus.REJECTED) "다시 촬영" else "영역표시 인증 촬영", fontSize = 12.sp)
+                                Text(if (game.photoStatus in setOf(ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) "다시 촬영" else "영역표시 인증 촬영", fontSize = 12.sp)
                             }
                         }
                     }

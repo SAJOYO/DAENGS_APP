@@ -72,7 +72,7 @@ class WalkEntryStoreTest {
             if (method == "GET") JSONObject().put("entries", JSONArray())
             else {
                 calls++
-                if (calls == 1) store.save(behavior("a").copy(type = WalkMomentType.BARKING))
+                if (calls == 1) store.save(dao.entry("a")!!.entry()!!.copy(type = WalkMomentType.BARKING))
                 JSONObject().put("revision", calls).put("mutation_id", body!!.getString("mutation_id"))
             }
         }
@@ -95,4 +95,102 @@ class WalkEntryStoreTest {
         assertTrue(store.observe("s").first().isEmpty())
         assertFalse(dao.entry("a")!!.dirty)
     }
+    @Test fun `열어 둔 편집창은 다른 기기의 대상 정정을 덮어쓰지 않는다`() = runBlocking {
+        store.save(behavior("a").copy(petId = "dog-a"))
+        dao.acknowledgeEntry("a", 1, dao.entry("a")!!.mutationId)
+        val draft = store.observe("s").first().single()
+        val remote = draft.copy(petId = "dog-b")
+        dao.acceptEntry("a", remote.toJson().toString(), 2, "remote-edit")
+
+        assertTrue(runCatching { store.save(draft.copy(type = WalkMomentType.BARKING)) }.isFailure)
+        assertEquals("dog-b", dao.entry("a")!!.entry()!!.petId)
+        assertFalse(dao.entry("a")!!.dirty)
+        // 사용자 확인 후에만 최신 버전으로 자신의 초안을 다시 제출한다.
+        store.save(draft.copy(type = WalkMomentType.BARKING, baseVersion = dao.entry("a")!!.entry()!!.baseVersion))
+        assertEquals(WalkMomentType.BARKING, dao.entry("a")!!.entry()!!.type)
+        assertTrue(dao.entry("a")!!.dirty)
+    }
+
+    @Test fun `같은 revision에서 다른 로컬 편집이 먼저 저장돼도 오래된 초안은 거부한다`() = runBlocking {
+        store.save(behavior("a"))
+        val draft = dao.entry("a")!!.entry()!!
+        store.save(draft.copy(petId = "dog-b"))
+        assertTrue(runCatching { store.save(draft.copy(type = WalkMomentType.BARKING)) }.isFailure)
+        assertEquals("dog-b", dao.entry("a")!!.entry()!!.petId)
+    }
+
+    @Test fun `편집 중 세션이 삭제되면 초안으로 기록을 새로 만들지 않는다`() = runBlocking {
+        store.save(behavior("a"))
+        val draft = dao.entry("a")!!.entry()!!
+        dao.deleteSession("s")
+        dao.insertSession(WalkSessionRow("s", startedAtMillis = 0))
+        assertTrue(runCatching { store.save(draft) }.isFailure)
+        assertNull(dao.entry("a"))
+    }
+
+    @Test fun `충돌로 전송에서 제외된 기록도 GET의 삭제 표식으로 지운다`() = runBlocking {
+        store.save(behavior("a"))
+        dao.conflictEntry("a", 2, dao.entry("a")!!.mutationId, "conflict")
+        val sync = WalkEntrySync(dao) { _, _, method, _ ->
+            assertEquals("GET", method)
+            JSONObject().put("entries", JSONArray().put(JSONObject().put("id", "a")
+                .put("revision", 3).put("mutation_id", "delete").put("content", JSONObject.NULL)))
+        }
+        repeat(3) { sync.sync("token", "s", "remote") }
+        assertTrue(store.observe("s").first().isEmpty())
+        assertNull(dao.entry("a")!!.syncError)
+        assertFalse(dao.entry("a")!!.dirty)
+    }
+
+    @Test fun `취소는 삭제가 저장된 세션을 예약하고 진행 중 전송의 ACK도 삭제를 지우지 않는다`() = runBlocking {
+        store.save(behavior("a"))
+        val sent = dao.entry("a")!!
+        val queued = mutableListOf<String>()
+        store.deleteAndEnqueue("a") { session ->
+            assertNull(dao.entry("a")!!.payload)
+            queued.add(session)
+        }
+        dao.acknowledgeEntry("a", 1, sent.mutationId)
+        assertEquals(listOf("s"), queued)
+        assertNull(dao.entry("a")!!.payload)
+        assertTrue(dao.entry("a")!!.dirty)
+        var deletes = 0
+        WalkEntrySync(dao) { _, _, method, _ ->
+            if (method == "GET") JSONObject().put("entries", JSONArray())
+            else { assertEquals("DELETE", method); deletes++; JSONObject().put("revision", 2) }
+        }.sync("token", "s", "remote")
+        assertEquals(1, deletes)
+        assertFalse(dao.entry("a")!!.dirty)
+    }
+
+    @Test fun `탈퇴는 토큰 삭제 뒤에도 해당 계정만 지우고 늦은 생성과 복원을 막는다`() = runBlocking {
+        var owner = "a"
+        val log = RoomWalkFixLog(dao) { owner }
+        for (account in listOf("a", "b", "")) {
+            log.openSession(RecordedSession("owner-$account", ownerId = account, startedAtMillis = 0))
+            store.save(behavior("entry-$account").copy(sessionId = "owner-$account"))
+            log.append("owner-$account", RecordedFix(0, 0, 1, 37.5, 127.0, 5f, false))
+        }
+        owner = ""
+        WalkHistory(log).forgetOwner("a")
+        assertNull(dao.session("owner-a"))
+        assertNull(dao.entry("entry-a"))
+        assertTrue(dao.fixes("owner-a").isEmpty())
+        for (account in listOf("b", "")) {
+            assertNotNull(dao.session("owner-$account"))
+            assertNotNull(dao.entry("entry-$account"))
+            assertEquals(1, dao.fixes("owner-$account").size)
+        }
+        assertTrue(runCatching {
+            log.openSession(RecordedSession("late-write", ownerId = "a", startedAtMillis = 0))
+        }.isFailure)
+        assertTrue(runCatching {
+            log.restoreSession(RecordedSession("owner-a", ownerId = "a", startedAtMillis = 0,
+                serverWalkId = "remote-a"))
+        }.isFailure)
+        assertNull(dao.session("late-write"))
+        assertNull(dao.session("owner-a"))
+    }
+
 }
+

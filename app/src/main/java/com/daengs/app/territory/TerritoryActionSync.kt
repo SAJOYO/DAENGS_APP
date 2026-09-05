@@ -10,7 +10,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-data class TerritoryMarkReceipt(val operation: TerritoryOperation, val claim: RemoteTerritoryClaim)
+data class TerritoryMarkReceipt(val operation: TerritoryOperation, val claim: RemoteTerritoryClaim,
+    val eventId: String = claim.claimId, val animate: Boolean = true)
 
 /** App-owned durable journal, separate from both the ViewModel and completed-walk upload. */
 class TerritoryActionSync(
@@ -29,10 +30,16 @@ class TerritoryActionSync(
     val receipt = _receipt.asStateFlow()
     private val _storageFailed = MutableStateFlow(false)
     val storageFailed = _storageFailed.asStateFlow()
+    var photos: ServerTerritoryPhotos? = null
+        internal set
+    internal suspend fun rows() = dao.all()
+    internal suspend fun <T> mutate(block: suspend (TerritoryActionDao) -> T): T = writes.withLock { block(dao) }
+    internal fun publishPhotoReceipt(receipt: TerritoryMarkReceipt) { _receipt.value = receipt }
 
     /** START_NOT_STICKY walks are not resumed by a new process. Close abandoned game sessions. */
     suspend fun recover() {
         try {
+            photos?.recover()
             writes.withLock {
                 val active = tracking().activeSessionId
                 dao.all().groupBy { it.ownerId to it.sessionId }.values.forEach { rows ->
@@ -131,8 +138,9 @@ class TerritoryActionSync(
         repeat(100) {
             if (currentOwner() != owner) return@withLock true
             val all = dao.all().filter { it.ownerId == owner }
-            val row = all.firstOrNull { it.state == "PENDING" && it.sessionId !in blocked }
-                ?: return@withLock all.none { it.state == "PENDING" }
+            val row = all.firstOrNull { it.state in setOf("PENDING", "CAPTURING") && it.sessionId !in blocked }
+                ?: return@withLock all.none { it.state in setOf("PENDING", "CAPTURING") }
+            if (row.state == "CAPTURING") { blocked += row.sessionId; return@repeat }
             val registration = all.first { it.sessionId == row.sessionId && it.kind == "REGISTER" }
             if (registration.state == "REJECTED") {
                 writes.withLock { dao.update(row.copy(state = "REJECTED", failure = "session_unavailable")) }
@@ -158,6 +166,11 @@ class TerritoryActionSync(
                 // Commit before HTTP. Crash at either side of this line replays the same operation.
                 writes.withLock { dao.update(sentRow.copy(sent = true, failure = null)) }
                 if (currentOwner() != owner) return@withLock true
+                if (row.kind == "PHOTO") {
+                    val progress = checkNotNull(photos).bind(sentRow, auth.accessToken)
+                    writes.withLock { dao.update(sentRow.copy(sent = true, state = "CONFIRMED", response = progress)) }
+                    return@repeat
+                }
                 val response = api.request(auth.accessToken, when (row.kind) {
                     "REGISTER" -> "PUT"; "PHASE" -> "PATCH"; else -> "POST"
                 }, if (row.kind == "MARK") "/claims" else path, sentRow.body)

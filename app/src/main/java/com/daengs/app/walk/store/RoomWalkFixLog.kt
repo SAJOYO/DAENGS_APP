@@ -8,28 +8,43 @@ import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class RoomWalkFixLog(private val dao: WalkDao,
     private val prunePhotos: suspend () -> Unit = {},
     private val owner: () -> String = { "" }) : WalkFixLog {
+    // 세션 생성/복원과 탈퇴 삭제를 직렬화한다. 이미 실행 중인 작업의 늦은 응답도 막는다.
+    private val sessionMutex = Mutex()
+    private val forgottenOwners = mutableSetOf<String>()
+
     override val ownerId: String get() = owner()
     override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds()) { _, _, _ -> Unit }
 
-    override suspend fun restoreSession(session: RecordedSession) {
+    override suspend fun restoreSession(session: RecordedSession) = sessionMutex.withLock {
         val verifiedOwner = requireNotNull(session.ownerId)
+        check(verifiedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
         val existing = dao.session(session.id)
         require(existing == null || existing.ownerId.isEmpty() || existing.ownerId == verifiedOwner)
         if (existing != null && existing.ownerId.isEmpty()) {
             dao.restoreOwner(session.id, verifiedOwner, requireNotNull(session.serverWalkId))
         }
-        openSession(session)
+        openSessionLocked(session)
     }
 
-    override suspend fun openSession(session: RecordedSession) {
+    override suspend fun openSession(session: RecordedSession) = sessionMutex.withLock {
+        openSessionLocked(session)
+    }
+
+    private suspend fun openSessionLocked(session: RecordedSession) {
+        val capturedOwner = session.ownerId ?: owner()
+        check(capturedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
         val inserted = dao.insertSession(
             WalkSessionRow(
                 id = session.id,
-                ownerId = session.ownerId ?: owner(),
+                ownerId = capturedOwner,
                 startedAtMillis = session.startedAtMillis,
                 endedAtMillis = session.endedAtMillis,
                 weatherCode = session.weather?.weatherCode,
@@ -101,6 +116,16 @@ class RoomWalkFixLog(private val dao: WalkDao,
 
     override suspend fun forgetEverything() {
         dao.deleteOwnerSessions(owner())
+        prunePhotos()
+    }
+
+    override suspend fun forgetOwner(ownerId: String) = withContext(NonCancellable) {
+        require(ownerId.isNotBlank())
+        sessionMutex.withLock {
+            forgottenOwners.add(ownerId)
+            dao.deleteOwnerSessions(ownerId)
+        }
+        // 삭제와 경합하던 사진 저장까지 끝낸 뒤 고아 파일을 회수한다.
         prunePhotos()
     }
 
@@ -187,3 +212,4 @@ private fun WalkActionRow.toModel(): RecordedWalkAction? {
         accuracyMeters = accuracyM,
     )
 }
+

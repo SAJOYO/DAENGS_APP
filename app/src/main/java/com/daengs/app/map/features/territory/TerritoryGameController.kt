@@ -17,7 +17,7 @@ import kotlin.math.roundToInt
 /** Local play tuning, not the online capture contract. Inject when field-testing distances. */
 data class TerritoryGamePolicy(val radiusMeters: Double = 20.0, val maxFixAgeNanos: Long = 10_000_000_000L)
 
-data class TerritoryCaptureTarget(val session: ClaimSession, val siteId: String)
+data class TerritoryCaptureTarget(val session: ClaimSession, val siteId: String, val serverClaimId: String? = null)
 
 data class TerritoryGameSite(
     val site: TerritorySite,
@@ -56,6 +56,8 @@ data class TerritoryGameState(
     val readOnly: Boolean = false,
     val confirmedMarkId: String? = null,
     val confirmedMarkSiteId: String? = null,
+    val confirmedMarkVerified: Boolean = false,
+    val onlinePhotos: Boolean = false,
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
 }

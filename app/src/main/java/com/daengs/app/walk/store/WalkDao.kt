@@ -64,6 +64,30 @@ interface WalkDao {
     @Query("UPDATE walk_entry SET payload = :payload, mutationId = :mutationId, dirty = 1, syncError = NULL WHERE id = :id AND payload IS NOT NULL")
     suspend fun editEntry(id: String, payload: String?, mutationId: String): Int
 
+    @Query("UPDATE walk_entry SET payload = :payload, mutationId = :mutationId, dirty = 1, syncError = NULL WHERE id = :id AND sessionId = :sessionId AND payload IS NOT NULL AND revision = :baseRevision AND mutationId = :baseMutationId")
+    suspend fun editEntryIfUnchanged(id: String, sessionId: String, payload: String, mutationId: String,
+        baseRevision: Int?, baseMutationId: String?): Int
+
+    /** 검사와 쓰기를 한 트랜잭션으로 묶어 그 사이의 GET/ACK/삭제도 막는다. */
+    @androidx.room.Transaction
+    suspend fun saveEntryChecked(id: String, sessionId: String, payload: String, mutationId: String,
+        baseRevision: Int?, baseMutationId: String?, ownerId: String?) {
+        val session = session(sessionId)
+        check(session != null && (ownerId == null || session.ownerId == ownerId)) {
+            "현재 계정의 산책 기록이 아닙니다."
+        }
+        val existing = entry(id)
+        if (existing == null) {
+            check(baseRevision == null && baseMutationId == null) { "이미 삭제된 기록입니다." }
+            insertEntry(WalkEntryRow(id, sessionId, payload, 0, mutationId, true))
+        } else {
+            check(existing.sessionId == sessionId && existing.payload != null) { "이미 삭제된 기록입니다." }
+            check(editEntryIfUnchanged(id, sessionId, payload, mutationId, baseRevision, baseMutationId) == 1) {
+                "편집 중 기록이 변경됐어요. 최신 내용을 확인해 주세요. 작성 중인 내용은 유지돼요."
+            }
+        }
+    }
+
     @Query("UPDATE walk_entry SET revision = :revision, dirty = CASE WHEN mutationId = :mutationId THEN 0 ELSE 1 END WHERE id = :id")
     suspend fun acknowledgeEntry(id: String, revision: Int, mutationId: String)
 
@@ -225,3 +249,4 @@ interface WalkDao {
     )
     suspend fun actions(sessionId: String): List<WalkActionRow>
 }
+

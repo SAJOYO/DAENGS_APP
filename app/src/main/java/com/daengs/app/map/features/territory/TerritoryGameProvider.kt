@@ -7,6 +7,15 @@ import kotlinx.coroutines.flow.emptyFlow
 
 /** Screen boundary: local actions and asynchronous shared reads use the same map presentation. */
 interface TerritoryGameProvider {
+    val onlinePhotos: Boolean get() = false
+    suspend fun prepareCapture(siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
+        permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long): TerritoryCaptureTarget? =
+        captureTarget(siteId, board, tracking, permitted, petNames, nowNanos)
+    suspend fun beginCapture(target: TerritoryCaptureTarget, board: TerritoryBoardState, tracking: WalkTrackingState,
+        permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long): String? =
+        captureAttempt(target, board, tracking, permitted, petNames, nowNanos, atMillis)
+    fun saveCapture(captureId: String, file: java.io.File): kotlinx.coroutines.Deferred<Boolean>? = null
+    fun cancelCapture(captureId: String) {}
     val refreshesFromServer: Boolean get() = false
     val changes: Flow<Unit> get() = emptyFlow()
     suspend fun refresh(sites: List<TerritorySite>) {}

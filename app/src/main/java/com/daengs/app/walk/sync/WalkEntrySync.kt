@@ -53,7 +53,10 @@ class WalkEntrySync(
                 entry.optJSONObject("content")?.toString(), entry.getInt("revision"),
                 entry.getString("mutation_id"), false)
             dao.insertEntry(row)
-            dao.acceptEntry(row.id, row.payload, row.revision, row.mutationId)
+            // 확정 삭제는 로컬 충돌/미전송 수정으로 되살릴 수 없다.
+            if (row.payload == null) dao.acceptDeletedEntry(row.id, row.revision)
+            else dao.acceptEntry(row.id, row.payload, row.revision, row.mutationId)
         }
     }
 }
+

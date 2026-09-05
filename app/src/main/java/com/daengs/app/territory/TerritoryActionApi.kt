@@ -21,7 +21,7 @@ class TerritoryActionException(val status: Int, val code: String?) : Exception("
 
 class TerritoryActionApi(private val baseUrl: () -> String) : TerritoryActionClient {
     override suspend fun request(token: String, method: String, path: String, body: String?): String = withContext(Dispatchers.IO) {
-        require(token.isNotBlank() && path.startsWith("/claim"))
+        require(token.isNotBlank() && (path.startsWith("/claim") || path.startsWith("/attempts")))
         val connection = URL(baseUrl().trimEnd('/') + "/app/territory" + path).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
@@ -96,15 +96,19 @@ internal fun parseClaimSession(body: String, sessionId: String, registration: St
 }
 
 data class RemoteTerritoryClaim(val claimId: String, val disposition: ClaimDisposition,
-    val photoStatus: ClaimPhotoStatus, val site: SharedTerritorySite)
+    val photoStatus: ClaimPhotoStatus, val site: SharedTerritorySite,
+    val currentPhotoId: String? = null, val resolutionCode: String? = null)
 
 internal fun parseTerritoryClaim(body: String, request: String): RemoteTerritoryClaim {
     val value = JSONObject(body)
+    require(value.has("current_photo_id") && value.has("resolution_code"))
     val original = JSONObject(request)
     require(value.getString("client_session_id") == original.getString("client_session_id"))
     require(value.getString("claiming_pet_id") == original.getString("claiming_pet_id"))
     val site = parseSharedTerritories(JSONArray().put(value.getJSONObject("site")).toString(),
         listOf(original.getString("site_id"))).single()
     return RemoteTerritoryClaim(canonicalUuid(value.getString("claim_id")),
-        ClaimDisposition.valueOf(value.getString("disposition")), ClaimPhotoStatus.valueOf(value.getString("photo_status")), site)
+        ClaimDisposition.valueOf(value.getString("disposition")), ClaimPhotoStatus.valueOf(value.getString("photo_status")), site,
+        if (value.isNull("current_photo_id")) null else canonicalUuid(value.getString("current_photo_id")),
+        if (value.isNull("resolution_code")) null else value.getString("resolution_code"))
 }

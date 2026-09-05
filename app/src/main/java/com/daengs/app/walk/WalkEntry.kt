@@ -17,6 +17,8 @@ data class WalkEntry(
     val note: String? = null,
     val petId: String? = null,
     val syncError: String? = null,
+    /** 로컬 편집 시작 버전. 서버 content에는 직렬화하지 않는다. */
+    val baseVersion: WalkEntryVersion? = null,
 ) {
     fun validate(): WalkEntry {
         require(type != WalkMomentType.NOTE || (!note.isNullOrBlank() && note.length <= 2000))
@@ -56,3 +58,7 @@ data class WalkEntry(
         ).validate()
     }
 }
+
+
+/** ACK, 원격 정정, 다른 로컬 편집 모두 열린 편집창과 대조한다. */
+data class WalkEntryVersion(val revision: Int, val mutationId: String)

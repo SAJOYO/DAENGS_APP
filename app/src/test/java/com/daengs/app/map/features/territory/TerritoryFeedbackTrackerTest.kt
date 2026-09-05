@@ -23,6 +23,13 @@ class TerritoryFeedbackTrackerTest {
     @Test fun `a new screen never celebrates an initial cached server receipt`() {
         assertNull(update(state().copy(confirmedMarkId = "old", confirmedMarkSiteId = "A")))
     }
+
+    @Test fun `server photo receipt produces verified effect once for its own event identity`() {
+        update(state())
+        val photo = state().copy(confirmedMarkId = "claim:photo", confirmedMarkSiteId = "A", confirmedMarkVerified = true)
+        assertEquals(TerritoryFeedbackKind.VERIFIED, update(photo, 1)!!.kind)
+        assertNull(update(photo, 2_000_000_001))
+    }
     private val tracker = TerritoryFeedbackTracker()
     private fun site(id: String = "A", occupancy: TerritoryOccupancy? = null) = TerritoryGameSite(
         TerritorySite(id, GeoPoint(37.5, 127.0), 0.0), TerritoryClaimSite(id, occupancy), "보리", null, 5.0, occupancy != null)

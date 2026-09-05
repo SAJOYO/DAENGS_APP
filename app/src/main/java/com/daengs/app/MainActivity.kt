@@ -733,19 +733,14 @@ class MainActivity : ComponentActivity() {
                                 withdrawBusy = false
                                 result
                                     .onSuccess {
-                                        // 방은 서버에 사본이 없어 이 기기에만 있다.
-                                        // 안 지우면 다음에 로그인한 사람이 남의 방을
-                                        // 물려받는다.
+                                        // 탈퇴 요청 시작 때의 계정을 고정한다. 토큰을 지운 뒤 owner()는 빈 값이다.
+                                        walkController.stop()
                                         app.sessionProvider.clear()
+                                        walkRuntime.history.forgetOwner(old.appUserId)
+                                        // 방은 서버에 사본이 없어 이 기기에서도 지운다.
                                         roomStore.clear()
                                         frameCardId = null
                                         pets.forget()
-                                        // **산책 좌표도 지운다.** 서버는 탈퇴에서
-                                        // 산책까지 지우는데 폰의 Room 에는 원본이
-                                        // 남아 있었다 — 경로는 집과 생활권을 그대로
-                                        // 드러내는 값이라, 그걸 두고 "계정을 지우면
-                                        // 데이터도 지운다" 고 할 수 없다.
-                                        walkRuntime.history.forgetEverything()
                                         todayWalks = walkRuntime.history.todayTotals()
                                         // 뽑은 카드도 이 기기에만 있다. 서버에 사본이
                                         // 없으므로 여기서 안 지우면 다음에 로그인한
@@ -971,3 +966,4 @@ private suspend fun signIn(context: android.content.Context): Result<Session> =
         logIdTokenShape(kakao.idToken, kakao.nonce)
         AuthApi.loginWithKakao(kakao.idToken, kakao.nonce).getOrThrow()
     }
+
