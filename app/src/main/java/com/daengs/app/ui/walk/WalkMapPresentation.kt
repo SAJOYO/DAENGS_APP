@@ -51,7 +51,7 @@ internal fun WalkUiState.toMapPresentation(
                         },
                         label = gameSite?.occupancyLabel ?: "미점유",
                         ready = gameSite?.interaction?.access == ClaimAccess.READY,
-                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && target },
+                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
                     )
                 },
                 moments = displayedMoments.map { moment ->
@@ -74,6 +74,8 @@ internal fun WalkUiState.toMapPresentation(
             ),
             walkActive = trackingActive,
         ),
-        fitBounds = fitBounds,
+        fitBounds = fitBounds ?: territoryGame.target?.takeIf {
+            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory
+        }?.let { listOfNotNull(it.site.point, location.currentPosition) },
     )
 }

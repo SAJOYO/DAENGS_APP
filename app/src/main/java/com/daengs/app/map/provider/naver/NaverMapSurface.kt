@@ -52,6 +52,9 @@ fun NaverMapSurface(
     avatarPhoto: android.graphics.Bitmap? = null,
     /** 아래쪽에서 패널이 가리는 높이(px). 지도의 "가운데"가 그만큼 위로 올라간다. */
     bottomPaddingPx: Int = 0,
+    leftPaddingPx: Int = 0,
+    topPaddingPx: Int = 0,
+    rightPaddingPx: Int = 0,
     /** 여기로 지도를 옮긴다. **사용자가 카드나 마커를 누른 순간에만** 값이 온다. */
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
@@ -169,8 +172,8 @@ fun NaverMapSurface(
 
     // 화면 아래를 패널이 덮고 있다. 그걸 알려주지 않으면 지도가 **패널 뒤를 가운데로**
     // 삼아서, 고른 장소로 움직여도 그 장소가 패널에 가려 안 보인다.
-    LaunchedEffect(naverMap, bottomPaddingPx) {
-        naverMap?.setContentPadding(0, 0, 0, bottomPaddingPx)
+    LaunchedEffect(naverMap, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
+        naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx)
     }
 
     // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
@@ -189,7 +192,7 @@ fun NaverMapSurface(
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
     // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
-    LaunchedEffect(naverMap, fitBounds) {
+    LaunchedEffect(naverMap, fitBounds, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
         val bounds = LatLngBounds.Builder().apply {

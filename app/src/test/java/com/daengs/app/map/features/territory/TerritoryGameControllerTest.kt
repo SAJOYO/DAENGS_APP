@@ -18,7 +18,7 @@ class TerritoryGameControllerTest {
     private val here = GeoPoint(37.5, 127.0)
     private val near = TerritorySite("A", here, 999.0) // query distance must not drive proximity
     private val far = TerritorySite("B", GeoPoint(37.502, 127.0), 0.0)
-    private val board = TerritoryBoardState(sites = listOf(near, far))
+    private val board = TerritoryBoardState(sites = listOf(near, far), selectedSiteId = "A")
     private val fix = LocationSample(here, 1000, elapsedRealtimeNanos = 1_000_000_000L, accuracyMeters = 3f)
     private val tracking = WalkTrackingState(
         activeSessionId = "walk-1", activeDogIds = listOf("dog-1", "dog-2"),
@@ -31,11 +31,43 @@ class TerritoryGameControllerTest {
         game.snapshot(board, state, true, names, now)
 
     @Test
-    fun `nearest target uses walk fix rather than camera query distance`() {
+    fun `selected target uses walk fix rather than camera query distance`() {
         val state = snapshot(game())
         assertEquals("A", state.targetId)
         assertTrue(state.canMark)
         assertEquals("보리", state.representativeLabel)
+    }
+
+    @Test
+    fun `browsing does not select nearest or enable actions`() {
+        val game = game()
+        val unselected = game.snapshot(board.copy(selectedSiteId = null), tracking, true, names, 2_000_000_000L)
+        assertNull(unselected.target)
+        assertFalse(unselected.canMark)
+        val browsing = snapshot(game, WalkTrackingState())
+        assertEquals(TerritoryWalkPhase.BROWSING, browsing.phase)
+        assertEquals("A", browsing.targetId)
+        assertFalse(browsing.canPhotograph)
+        assertTrue(browsing.eligiblePets.isEmpty())
+    }
+
+    @Test
+    fun `different sites allow different dogs but existing attempt stays pinned`() {
+        val repo = InMemoryTerritoryClaimRepository(emptyList())
+        val game = game(repo)
+        game.selectPet("dog-2", "A", tracking)
+        game.mark("A", board, tracking, true, names, 2_000_000_000L, 2000)
+        game.selectPet("dog-1", "A", tracking)
+        assertEquals("dog-2", snapshot(game).claimingPetId)
+        assertTrue(snapshot(game).petLocked)
+        game.selectPet("dog-1", "B", tracking)
+        val moved = fix.copy(point = far.point)
+        game.mark("B", board, tracking.copy(lastSample = moved, latestMomentFix = moved), true, names, 2_000_000_000L, 2000)
+        assertEquals("dog-1", repo.site("B").occupancy!!.ownerPetId)
+        val target = game.captureTarget("A", board, tracking, true, names, 2_000_000_000L)!!
+        assertEquals("dog-2", target.session.claimingPetId)
+        assertEquals(repo.attempt("walk-1", "A")!!.attemptId,
+            game.captureAttempt(target, board, tracking, true, names, 2_000_000_000L, 2000))
     }
 
     @Test

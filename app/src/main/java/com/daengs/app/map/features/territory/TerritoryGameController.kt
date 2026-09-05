@@ -34,8 +34,14 @@ data class TerritoryGameSite(
     }
 }
 
+enum class TerritoryWalkPhase { BROWSING, WALKING, PAUSED }
+
 data class TerritoryGameState(
     val enabled: Boolean = false,
+    val phase: TerritoryWalkPhase = TerritoryWalkPhase.BROWSING,
+    val claimingPetId: String? = null,
+    val eligiblePets: Map<String, String> = emptyMap(),
+    val petLocked: Boolean = false,
     val sites: List<TerritoryGameSite> = emptyList(),
     val targetId: String? = null,
     val representativeLabel: String? = null,
@@ -54,6 +60,14 @@ class TerritoryGameController(
     private val repository: InMemoryTerritoryClaimRepository,
     private val policy: TerritoryGamePolicy = TerritoryGamePolicy(),
 ) {
+    private var preferredPetId: String? = null
+
+    fun selectPet(petId: String, siteId: String, tracking: WalkTrackingState) {
+        val sessionId = tracking.activeSessionId ?: return
+        if (tracking.trail.state != TrackingState.RECORDING || petId !in tracking.activeDogIds) return
+        if (repository.attempt(sessionId, siteId) == null) preferredPetId = petId
+    }
+
     fun snapshot(
         board: TerritoryBoardState,
         tracking: WalkTrackingState,
@@ -62,7 +76,7 @@ class TerritoryGameController(
         nowNanos: Long,
     ): TerritoryGameState {
         repository.registerSites(board.sites.map { TerritoryClaimSite(it.id) })
-        val session = session(tracking)
+        val session = session(tracking, board.selectedSiteId)
         val fix = tracking.latestMomentFix
         val age = fix?.elapsedRealtimeNanos?.let { nowNanos - it }
         val trusted = permitted && fix != null && !fix.isMock && tracking.lastSample?.isMock != true && age != null &&
@@ -86,7 +100,7 @@ class TerritoryGameController(
             )
         }
         val target = sites.firstOrNull { it.site.id == board.selectedSiteId }
-            ?: sites.filter { it.distanceMeters?.isFinite() == true }.minByOrNull { it.distanceMeters!! }
+
         val disposition = target?.let {
             com.daengs.app.territory.unverifiedClaimDisposition(it.claim, session?.claimingPetId.orEmpty())
         }
@@ -115,6 +129,14 @@ class TerritoryGameController(
         }
         return TerritoryGameState(
             enabled = true, sites = sites, targetId = target?.site?.id,
+            phase = when {
+                tracking.activeSessionId == null || tracking.trail.state == TrackingState.OFF -> TerritoryWalkPhase.BROWSING
+                tracking.trail.state == TrackingState.PAUSED -> TerritoryWalkPhase.PAUSED
+                else -> TerritoryWalkPhase.WALKING
+            },
+            claimingPetId = session?.claimingPetId,
+            eligiblePets = tracking.activeDogIds.associateWith { petNames[it] ?: "강아지" },
+            petLocked = attempt != null,
             representativeLabel = session?.claimingPetId?.let { petNames[it] ?: "대표 강아지" },
             radiusMeters = policy.radiusMeters,
             canMark = target?.interaction?.access == ClaimAccess.READY && !target.attempted &&
@@ -135,7 +157,7 @@ class TerritoryGameController(
         val current = snapshot(board.copy(selectedSiteId = siteId), tracking, permitted, petNames, nowNanos)
         if (!current.canMark) return current.guidance
         val target = checkNotNull(current.target)
-        val session = checkNotNull(session(tracking))
+        val session = checkNotNull(session(tracking, siteId))
         repository.mark(
             session, checkNotNull(target.interaction),
             "local:${session.clientSessionId}:$siteId:${tracking.latestMomentFix?.elapsedRealtimeNanos}", atMillis,
@@ -149,7 +171,7 @@ class TerritoryGameController(
     ): TerritoryCaptureTarget? {
         if (board.sites.none { it.id == siteId }) return null
         val current = snapshot(board.copy(selectedSiteId = siteId), tracking, permitted, petNames, nowNanos)
-        return if (current.canPhotograph) session(tracking)?.let { TerritoryCaptureTarget(it, siteId) } else null
+        return if (current.canPhotograph) session(tracking, siteId)?.let { TerritoryCaptureTarget(it, siteId) } else null
     }
 
     /** Called at shutter time, not when opening the camera. Cancellation before shutter consumes nothing. */
@@ -165,9 +187,13 @@ class TerritoryGameController(
         ).attemptId
     }
 
-    private fun session(tracking: WalkTrackingState): ClaimSession? {
+    private fun session(tracking: WalkTrackingState, siteId: String?): ClaimSession? {
         val id = tracking.activeSessionId ?: return null
-        val pet = tracking.activeDogIds.firstOrNull() ?: return null
+        val pinned = siteId?.let { repository.attempt(id, it)?.session?.claimingPetId }
+        val pet = pinned?.takeIf { it in tracking.activeDogIds }
+            ?: preferredPetId?.takeIf { it in tracking.activeDogIds }
+            ?: tracking.activeDogIds.firstOrNull() ?: return null
+        if (pinned != null && pinned != pet) return null
         // Local-only actor. Never forward this identity as an authenticated server account.
         return ClaimSession(id, "local-territory-preview", pet)
     }
