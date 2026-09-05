@@ -24,6 +24,7 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.RouteEndpointKind
+import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
 import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
@@ -256,12 +257,21 @@ fun NaverMapSurface(
         val markers = if (map == null) emptyList() else scene.territorySites.map { site ->
             Marker().apply {
                 position = site.point.toLatLng()
-                captionText = if (site.selected) "점령지" else ""
+                captionText = if (site.selected) site.label else when (site.occupancy) {
+                    TerritoryMarkerOccupancy.NEUTRAL -> ""
+                    TerritoryMarkerOccupancy.UNVERIFIED -> "미인증"
+                    TerritoryMarkerOccupancy.VERIFIED -> "인증"
+                }
                 captionMinZoom = 0.0
                 width = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
                 height = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
                 anchor = TERRITORY_MARKER_ANCHOR
                 icon = OverlayImage.fromResource(R.drawable.ic_territory_site)
+                iconTintColor = when (site.occupancy) {
+                    TerritoryMarkerOccupancy.NEUTRAL -> Color.rgb(115, 125, 135)
+                    TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(227, 145, 45)
+                    TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(60, 150, 115)
+                }
                 zIndex = if (site.selected) SELECTED_MARKER_Z else TERRITORY_MARKER_Z
                 isHideCollidedMarkers = true
                 isHideCollidedSymbols = true
@@ -272,7 +282,22 @@ fun NaverMapSurface(
                 this.map = map
             }
         }
-        onDispose { markers.forEach { it.map = null } }
+        val ranges = if (map == null) emptyList() else scene.territorySites.mapNotNull { site ->
+            site.radiusMeters?.let { meters ->
+                CircleOverlay().apply {
+                    center = site.point.toLatLng()
+                    radius = meters
+                    color = if (site.ready) Color.argb(40, 60, 150, 115) else Color.argb(20, 115, 125, 135)
+                    outlineColor = if (site.ready) Color.rgb(60, 150, 115) else Color.rgb(115, 125, 135)
+                    outlineWidth = if (site.ready) 4 else 2
+                    this.map = map
+                }
+            }
+        }
+        onDispose {
+            markers.forEach { it.map = null }
+            ranges.forEach { it.map = null }
+        }
     }
 
     DisposableEffect(naverMap) {

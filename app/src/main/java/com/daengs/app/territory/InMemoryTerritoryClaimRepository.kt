@@ -20,6 +20,15 @@ class InMemoryTerritoryClaimRepository(
     }
 
     @Synchronized
+    fun registerSites(newSites: List<TerritoryClaimSite>) {
+        newSites.forEach { sites.putIfAbsent(it.siteId, it) }
+    }
+
+    @Synchronized
+    fun attempt(sessionId: String, siteId: String): ClaimAttempt? =
+        bySessionSite[sessionId to siteId]?.let(attempts::getValue)
+
+    @Synchronized
     override fun site(siteId: String): TerritoryClaimSite = sites.getValue(siteId)
 
     @Synchronized

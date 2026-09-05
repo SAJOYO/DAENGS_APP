@@ -4,6 +4,9 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.territory.TerritorySiteMarkerState
+import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
+import com.daengs.app.territory.ClaimAccess
+import com.daengs.app.territory.ClaimCertification
 import com.daengs.app.map.layers.trail.TrailLayerState
 import com.daengs.app.map.layers.trail.toTrailLayerState
 import com.daengs.app.map.shell.MapScene
@@ -21,6 +24,7 @@ internal fun WalkUiState.toMapPresentation(
 ): WalkMapPresentation {
     val route = completion.detail?.route
     val summary = completedSummary
+    val gameSites = territoryGame.sites.associateBy { it.site.id }
     val fitBounds = route?.bounds.orEmpty().ifEmpty {
         listOfNotNull(summary?.anchor)
     }.takeIf { summary != null && it.isNotEmpty() }
@@ -33,10 +37,21 @@ internal fun WalkUiState.toMapPresentation(
                     summary == null && location.permissionGranted
                 },
                 territorySites = territory.sites.map { site ->
+                    val gameSite = gameSites[site.id]
+                    val target = if (territoryGame.enabled) site.id == territoryGame.targetId
+                        else site.id == territory.selectedSiteId
                     TerritorySiteMarkerState(
                         id = site.id,
                         point = site.point,
-                        selected = site.id == territory.selectedSiteId,
+                        selected = target,
+                        occupancy = when (gameSite?.claim?.occupancy?.certification) {
+                            null -> TerritoryMarkerOccupancy.NEUTRAL
+                            ClaimCertification.UNVERIFIED -> TerritoryMarkerOccupancy.UNVERIFIED
+                            ClaimCertification.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
+                        },
+                        label = gameSite?.occupancyLabel ?: "미점유",
+                        ready = gameSite?.interaction?.access == ClaimAccess.READY,
+                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && target },
                     )
                 },
                 moments = displayedMoments.map { moment ->

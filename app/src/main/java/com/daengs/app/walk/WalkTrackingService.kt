@@ -57,6 +57,7 @@ class WalkTrackingService : Service() {
 
     private val sessionLock = Any()
     private var sessionId: String? = null
+    private var sessionDogIds: List<String> = emptyList()
     private var nextClientSeq = 0
     private var chainIndex = 0
     private var activeDurationMillis = 0L
@@ -317,6 +318,7 @@ class WalkTrackingService : Service() {
         val id = UUID.randomUUID().toString()
         synchronized(sessionLock) {
             sessionId = id
+            sessionDogIds = dogIds.toList()
             nextClientSeq = 0
             chainIndex = 0
             writer.openSession(
@@ -417,6 +419,7 @@ class WalkTrackingService : Service() {
     private fun closeSession() = synchronized(sessionLock) {
         sessionId?.let { writer.closeSession(it, System.currentTimeMillis()) }
         sessionId = null
+        sessionDogIds = emptyList()
     }
 
     private fun acceptFeedStatus(status: FeedStatus) {
@@ -463,6 +466,8 @@ class WalkTrackingService : Service() {
         finishingSessionId: String? = null,
         completedSessionId: String? = null,
     ): WalkTrackingState = WalkTrackingState(
+        activeSessionId = sessionId,
+        activeDogIds = sessionDogIds,
         trail = trail,
         lastSample = lastSample,
         latestMomentFix = latestMomentFix,

@@ -5,6 +5,10 @@ import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationUpdateConfig
 import com.daengs.app.map.shell.MapPurpose
+import com.daengs.app.map.features.territory.TerritoryGameController
+import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
+import com.daengs.app.territory.InMemoryTerritoryClaimRepository
+import com.daengs.app.territory.TerritorySite
 import com.daengs.app.pet.Pet
 import com.daengs.app.territory.NearbyTerritorySitesRequest
 import com.daengs.app.territory.TerritorySitePage
@@ -39,6 +43,42 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test
+    fun `territory action updates scene and map toggle preserves recording and ownership`() = runTest {
+        val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val controller = FakeWalkController().apply {
+            publish(WalkTrackingState(
+                activeSessionId = "walk-id", activeDogIds = listOf("dog-1"),
+                trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix,
+            ))
+        }
+        val repo = TerritorySiteRepository {
+            TerritorySitePage(1, false, listOf(TerritorySite("A", fix.point, 999.0)))
+        }
+        val viewModel = viewModel(controller, CountingLocationSource(), repo,
+            TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList())))
+        viewModel.updatePets(listOf(pet("dog-1")))
+        viewModel.activate(true, true)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals(true, viewModel.state.value.territoryGame.canMark)
+        viewModel.onAction(WalkAction.MarkTerritory("A"))
+        runCurrent()
+        val marker = viewModel.state.value.toMapPresentation { "" }.scene.territorySites.single()
+        assertEquals(TerritoryMarkerOccupancy.UNVERIFIED, marker.occupancy)
+        assertEquals(true, marker.selected)
+        assertEquals(20.0, marker.radiusMeters!!, 0.0)
+        assertEquals(false, viewModel.state.value.territoryGame.canMark)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK))
+        runCurrent()
+        assertEquals(0, viewModel.state.value.toMapPresentation { "" }.scene.territorySites.size)
+        assertEquals(TrackingState.RECORDING, controller.state.value.trail.state)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals("dog-1", viewModel.state.value.territoryGame.target!!.claim.occupancy!!.ownerPetId)
+        assertEquals(emptyList<Any>(), controller.state.value.momentGroups)
+    }
+
     @Test
     fun `screen location feed stops while tracking service owns the walk`() = runTest {
         val source = CountingLocationSource()
@@ -190,12 +230,15 @@ class WalkViewModelTest {
         territoryRepository: TerritorySiteRepository = TerritorySiteRepository {
             TerritorySitePage(count = 0, truncated = false, sites = emptyList())
         },
+        game: TerritoryGameController? = null,
     ) = WalkViewModel(
         walkController = controller,
         history = WalkHistory(EmptyWalkFixLog),
         locationSource = source,
         territoryRepository = territoryRepository,
         externalScope = backgroundScope,
+        territoryGame = game,
+        nowNanos = { 2_000_000_000L },
     )
 
     private class CountingLocationSource : LocationSource {
