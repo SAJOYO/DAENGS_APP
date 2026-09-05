@@ -9,11 +9,25 @@ import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
 
-class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
+class RoomWalkFixLog(private val dao: WalkDao, private val owner: () -> String = { "" }) : WalkFixLog {
+    override val ownerId: String get() = owner()
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions()) { _, _ -> Unit }
+
+    override suspend fun restoreSession(session: RecordedSession) {
+        val verifiedOwner = requireNotNull(session.ownerId)
+        val existing = dao.session(session.id)
+        require(existing == null || existing.ownerId.isEmpty() || existing.ownerId == verifiedOwner)
+        if (existing != null && existing.ownerId.isEmpty()) {
+            dao.restoreOwner(session.id, verifiedOwner, requireNotNull(session.serverWalkId))
+        }
+        openSession(session)
+    }
+
     override suspend fun openSession(session: RecordedSession) {
         val inserted = dao.insertSession(
             WalkSessionRow(
                 id = session.id,
+                ownerId = session.ownerId ?: owner(),
                 startedAtMillis = session.startedAtMillis,
                 endedAtMillis = session.endedAtMillis,
                 weatherCode = session.weather?.weatherCode,
@@ -45,18 +59,19 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         ),
     )
 
-    override suspend fun appendAction(action: RecordedWalkAction) = dao.insertAction(
-        WalkActionRow(
-            id = action.id,
-            sessionId = action.sessionId,
-            typeCode = action.type.behaviorCode,
-            recordedAtMillis = action.recordedAtMillis,
+    override suspend fun appendAction(action: RecordedWalkAction) {
+        if (dao.entry(action.id) != null) return
+        val dog = dao.sessionDogs(action.sessionId).singleOrNull()?.dogId
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry(
+            id = action.id, sessionId = action.sessionId, type = action.type,
+            recordedAtMillis = action.recordedAtMillis, point = action.point,
             locationCapturedAtMillis = action.locationCapturedAtMillis,
-            lat = action.point.latitude,
-            lng = action.point.longitude,
-            accuracyM = action.accuracyMeters,
-        ),
-    )
+            accuracyMeters = action.accuracyMeters, petId = dog,
+        ))
+    }
+
+    override suspend fun hasEntries(sessionId: String): Boolean =
+        dao.entries(sessionId).any { it.payload != null }
 
     override suspend fun closeSession(sessionId: String, endedAtMillis: Long) =
         dao.closeSession(sessionId, endedAtMillis)
@@ -78,7 +93,7 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         dao.unlinkDog(dogId)
     }
 
-    override suspend fun forgetEverything() = dao.deleteAllSessions()
+    override suspend fun forgetEverything() = dao.deleteOwnerSessions(owner())
 
     override suspend fun unfinishedSessions(): List<RecordedSession> =
         dao.unfinishedSessions().withDogs()
@@ -87,7 +102,8 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         dao.finishedSessions().withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        dao.sessionsPendingAnalysis().withDogs()
+        (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }
+            .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**
      * 아이들을 **한 번에** 붙인다.
@@ -98,7 +114,7 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
     private suspend fun List<WalkSessionRow>.withDogs(): List<RecordedSession> {
         if (isEmpty()) return emptyList()
         val dogs = dao.sessionDogs(map { it.id }).groupBy({ it.sessionId }, { it.dogId })
-        return map { row -> row.toModel(dogs[row.id].orEmpty()) }
+        return filter { it.ownerId == owner() }.map { row -> row.toModel(dogs[row.id].orEmpty()) }
     }
 
     override suspend fun markRawUploaded(
@@ -111,18 +127,23 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         dao.markDerived(sessionId, changedAtMillis)
 
     override suspend fun session(sessionId: String): RecordedSession? =
-        dao.session(sessionId)?.toModel(dao.sessionDogs(sessionId).map { it.dogId })
+        dao.session(sessionId)?.takeIf { it.ownerId == owner() }?.toModel(dao.sessionDogs(sessionId).map { it.dogId })
 
     override suspend fun fixes(sessionId: String): List<RecordedFix> =
         dao.fixes(sessionId).map(WalkFixRow::toModel)
 
     override suspend fun actions(sessionId: String): List<RecordedWalkAction> =
-        dao.actions(sessionId).mapNotNull(WalkActionRow::toModel)
+        dao.entries(sessionId).mapNotNull { it.entry() }.sortedBy { it.recordedAtMillis }.filter {
+            it.type != WalkMomentType.NOTE && it.point != null
+        }.map { entry -> RecordedWalkAction(entry.id, entry.sessionId, entry.type,
+            entry.recordedAtMillis, requireNotNull(entry.locationCapturedAtMillis),
+            requireNotNull(entry.point), entry.accuracyMeters) }
 }
 
 fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession = RecordedSession(
     id = id,
     dogIds = dogIds,
+    ownerId = ownerId,
     startedAtMillis = startedAtMillis,
     endedAtMillis = endedAtMillis,
     // 셋 중 하나라도 없으면 날씨를 못 받은 것으로 본다 — 코드가 곧 있고 없고다.

@@ -38,6 +38,30 @@ class WalkMigrationTest {
     }
 
     @Test
+    fun `6의 옛 행동은 비우지만 산책 경로는 7에 남는다`() = runBlocking {
+        legacyV5 {
+            execSQL("INSERT INTO walk_session (id, startedAtMillis, endedAtMillis, syncState) VALUES ('s1',1000,2000,'local_only')")
+            execSQL("INSERT INTO walk_fix VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
+        }
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(NAME), null).use { old ->
+            old.execSQL("CREATE TABLE walk_action (id TEXT NOT NULL, sessionId TEXT NOT NULL, typeCode TEXT NOT NULL, " +
+                "recordedAtMillis INTEGER NOT NULL, locationCapturedAtMillis INTEGER NOT NULL, lat REAL NOT NULL, " +
+                "lng REAL NOT NULL, accuracyM REAL, PRIMARY KEY(id), FOREIGN KEY(sessionId) REFERENCES walk_session(id) " +
+                "ON UPDATE NO ACTION ON DELETE CASCADE)")
+            old.execSQL("CREATE INDEX index_walk_action_sessionId ON walk_action(sessionId)")
+            old.execSQL("INSERT INTO walk_action VALUES ('old','s1','explore',1500,1400,37.5,127.0,5.0)")
+            old.version = 6
+        }
+        val db = openLatest()
+        try {
+            val log = RoomWalkFixLog(db.walkDao())
+            assertEquals(1, log.fixes("s1").size)
+            assertEquals(0, log.actions("s1").size)
+            assertEquals(0, db.walkDao().actions("s1").size)
+        } finally { db.close() }
+    }
+
+    @Test
     fun `3에서 6으로 올라가도 세션과 좌표와 강아지가 남는다`() = runBlocking {
         legacyV3 {
             execSQL(
@@ -97,7 +121,7 @@ class WalkMigrationTest {
             RecordedWalkAction(
                 id = "a1",
                 sessionId = "s1",
-                type = WalkMomentType.EXPLORE,
+                type = WalkMomentType.SNIFFING,
                 recordedAtMillis = 1_500L,
                 locationCapturedAtMillis = 1_400L,
                 point = GeoPoint(37.5, 127.0),
@@ -216,6 +240,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_3_4,
                 WalkDatabase.MIGRATION_4_5,
                 WalkDatabase.MIGRATION_5_6,
+                WalkDatabase.MIGRATION_6_7,
             )
             .build()
 

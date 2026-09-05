@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
  * 여기에 원본이 그대로 있으므로 이 클래스 안만 바뀐다.
  */
 class WalkHistory(private val log: WalkFixLog) {
+    val changes get() = log.historyChanges
 
     /**
      * 끝난 산책, 최근 것부터.
@@ -33,7 +34,7 @@ class WalkHistory(private val log: WalkFixLog) {
             // 요약을 저장하지 않는 것과 같은 원칙이다 — 규칙이 바뀌면 지난 기록도
             // 같이 바뀌는 것이 맞다. **지우지는 않는다.** 원본은 그대로 있어서
             // 문턱값을 낮추면 다시 보인다.
-            .filter { it.countsAsWalk }
+            .filter { it.countsAsWalk || log.hasEntries(it.sessionId) }
     }
 
     /**
@@ -63,7 +64,7 @@ class WalkHistory(private val log: WalkFixLog) {
      */
     suspend fun keepIfWalk(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         val summary = detail(sessionId) ?: return@withContext false
-        if (summary.countsAsWalk) return@withContext true
+        if (summary.countsAsWalk || log.hasEntries(sessionId)) return@withContext true
         log.deleteSession(sessionId)
         false
     }

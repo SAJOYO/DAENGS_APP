@@ -55,6 +55,11 @@ class DaengsApp : Application() {
     lateinit var cardStore: CardStore
         private set
 
+    lateinit var walkEntries: com.daengs.app.walk.store.WalkEntryStore
+        private set
+    lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
+        private set
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank()) {
@@ -75,7 +80,10 @@ class DaengsApp : Application() {
         )
 
         val store = WalkTrackingStore()
-        val log = RoomWalkFixLog(WalkDatabase.open(this).walkDao())
+        val dao = WalkDatabase.open(this).walkDao()
+        val log = RoomWalkFixLog(dao) { tokenStore.load()?.appUserId.orEmpty() }
+        walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
+        walkEntryDao = dao
         val writer = WalkFixWriter(
             log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
@@ -89,7 +97,7 @@ class DaengsApp : Application() {
             writer = writer,
             log = log,
             history = WalkHistory(log),
-            sync = WalkSync(log),
+            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao)),
             delivery = delivery,
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.

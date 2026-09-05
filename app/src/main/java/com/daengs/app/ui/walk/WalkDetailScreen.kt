@@ -1,5 +1,8 @@
 package com.daengs.app.ui.walk
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -69,9 +72,31 @@ fun WalkDetailScreen(
     pets: List<Pet> = emptyList(),
 ) {
     val inspectionMode = LocalInspectionMode.current
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.daengs.app.DaengsApp
+    val entryFlow = remember(sessionId) { app.walkEntries.observe(sessionId) }
+    val observedEntries by entryFlow.collectAsState(initial = emptyList())
+    val entries = observedEntries.filter { it.sessionId == sessionId }
+    val scope = rememberCoroutineScope()
+    var editorOpen by remember { mutableStateOf(false) }
+    var initialEntry by remember { mutableStateOf<com.daengs.app.walk.WalkEntry?>(null) }
+    var entryError by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    fun change(entry: com.daengs.app.walk.WalkEntry, delete: Boolean) {
+        busy = true
+        scope.launch {
+            try {
+                if (delete) app.walkEntries.delete(entry.id) else app.walkEntries.save(entry)
+                app.walkRuntime.delivery.enqueue(entry.sessionId)
+                editorOpen = false
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                entryError = e.message ?: "저장하지 못했어요."
+            } finally { busy = false }
+        }
+    }
     var detail by remember(sessionId) { mutableStateOf<WalkSessionDetail?>(null) }
 
-    LaunchedEffect(sessionId, history) {
+    LaunchedEffect(sessionId, history, entries) {
         detail = history.sessionDetail(sessionId)
     }
 
@@ -87,7 +112,7 @@ fun WalkDetailScreen(
                 scene = composeMapScene(
                     purpose = MapPurpose.WALK,
                     sources = MapSceneSources(
-                        moments = detail?.moments.orEmpty().map { moment ->
+                        moments = entries.entryMoments().map { moment ->
                             MomentMarkerState(moment.id, moment.point, moment.markerLabel)
                         },
                         completedRoute = completedRoute,
@@ -98,6 +123,10 @@ fun WalkDetailScreen(
                 onCameraIdle = {},
                 onCameraGesture = {},
                 onSelectPlace = {},
+                onSelectMoment = { id ->
+                    initialEntry = entries.firstOrNull { "moment-${it.id}" == id }
+                    entryError = null; editorOpen = true
+                },
                 // 경로 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과는 다르다 —
                 // 한 시간 걸은 산책은 첫 좌표만 보면 어디를 돌았는지 알 수 없다.
                 //
@@ -116,6 +145,14 @@ fun WalkDetailScreen(
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
         )
 
+        DaengsFloatingButton(
+            label = "기록 ${entries.size}", onClick = {
+                initialEntry = null; entryError = null; editorOpen = true
+            }, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp),
+        )
+        if (editorOpen) WalkEntryEditor(entries, initialEntry,
+            pets.filter { it.id in walk?.dogIds.orEmpty() }, entryError, busy,
+            { change(it, false) }, { change(it, true) }, { editorOpen = false })
         walk?.let {
             WalkFacts(
                 walk = it,
