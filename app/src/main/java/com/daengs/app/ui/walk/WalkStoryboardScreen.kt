@@ -143,6 +143,7 @@ internal fun StoryboardContent(
     canReview: Boolean, onBack: () -> Unit, onEdit: (StoryboardScene) -> Unit,
     onToggle: (StoryboardScene) -> Unit, onAcknowledge: (StoryboardScene) -> Unit,
     onOriginal: (StoryboardScene) -> Unit, onReview: () -> Unit,
+    connectionNotice: String = "이 기기에 저장돼요. 환경·이동 분석 장면과 AI 일기 생성은 아직 연결되지 않았어요.",
 ) {
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
@@ -150,7 +151,7 @@ internal fun StoryboardContent(
             TextButton(enabled = !busy, onClick = onBack) { Text("← 산책 상세") }
             Text("스토리보드 검토", style = MaterialTheme.typography.headlineSmall)
             Text("시간순 장면을 확인하고 일기에 남길 내용을 골라보세요.")
-            Text("이 기기에 저장돼요. 환경·이동 분석 장면과 AI 일기 생성은 아직 연결되지 않았어요.",
+            Text(connectionNotice,
                 style = MaterialTheme.typography.bodySmall)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
