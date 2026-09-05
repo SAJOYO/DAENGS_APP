@@ -11,6 +11,8 @@ data class PlaceProfiles(
     val selectedIds: Set<String> = emptySet(),
     val ready: Boolean = false,
     val message: String? = "반려견을 불러와 주세요.",
+    /** Keep age stable for this profile snapshot, including when the screen redraws after midnight. */
+    val snapshotDate: LocalDate = LocalDate.now(),
 ) {
     fun receive(owner: String?, items: List<Pet>?, busy: Boolean, error: String?): PlaceProfiles {
         val sameOwner = owner == ownerId
@@ -32,7 +34,7 @@ data class PlaceProfiles(
     fun toggle(id: String): PlaceProfiles = if (!ready || pets.none { it.id == id }) this else
         copy(selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id)
 
-    fun snapshots(today: LocalDate = LocalDate.now()): List<PlaceDogSnapshot> =
+    fun snapshots(today: LocalDate = snapshotDate): List<PlaceDogSnapshot> =
         if (!ready) emptyList() else pets.filter { it.id in selectedIds }.map { pet ->
             val values = pet.toPlaceDogContext(today)
             PlaceDogSnapshot(pet.id, pet.updatedAt, values?.size, values?.weightKg, values?.ageYears)
