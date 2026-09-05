@@ -73,6 +73,7 @@ internal class PlaceSessionCoordinator(
     // Radius is a user preference even before a location or search exists.
     private val selectedRadius = MutableStateFlow(3_000)
     private var intentGeneration = 0L
+    private var resumeIntent: PlaceSearchIntent? = null
 
     val state: StateFlow<PlaceSessionState> = combine(
         latestIntent,
@@ -101,7 +102,24 @@ internal class PlaceSessionCoordinator(
     }
 
     fun startDefaultSearchIfNeeded(devicePosition: GeoPoint?): PendingDevicePlaceSearch? {
+        resumeIntent?.let { intent ->
+            resumeIntent = null
+            if (intent.origin == PlaceSearchOrigin.CurrentDevice) {
+                latestIntent.value = intent
+                return PendingDevicePlaceSearch(++intentGeneration, intent)
+            }
+            startResolvedSearch(intent)
+            return null
+        }
+        val previous = latestIntent.value
+        if (previous?.origin == PlaceSearchOrigin.CurrentDevice) {
+            return PendingDevicePlaceSearch(++intentGeneration, previous)
+        }
         if (discovery.state.value.search !is PlaceSearchState.Idle) return null
+        if (previous != null) {
+            startResolvedSearch(previous)
+            return null
+        }
         return if (devicePosition == null) {
             requestDeviceSearch(DEFAULT_PLACE_KIND, preferParking = false)
         } else {
@@ -122,6 +140,7 @@ internal class PlaceSessionCoordinator(
         preferParking: Boolean,
         nameQuery: String? = null,
     ): PendingDevicePlaceSearch {
+        resumeIntent = null
         val intent = PlaceSearchIntent(
             origin = PlaceSearchOrigin.CurrentDevice,
             kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
@@ -130,6 +149,7 @@ internal class PlaceSessionCoordinator(
             radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
         )
         latestIntent.value = intent
+        discovery.cancel()
         return PendingDevicePlaceSearch(
             generation = ++intentGeneration,
             intent = intent,
@@ -197,10 +217,13 @@ internal class PlaceSessionCoordinator(
         return null
     }
 
-    fun retrySearch() {
+    fun retrySearch(): PendingDevicePlaceSearch? {
+        val pending = latestIntent.value?.takeIf { it.origin == PlaceSearchOrigin.CurrentDevice }
+        if (pending != null) return PendingDevicePlaceSearch(++intentGeneration, pending)
         invalidatePendingDeviceSearch()
         journey.clear()
         discovery.retry()
+        return null
     }
 
     fun replaceUnsupportedDeviceOrigin(point: GeoPoint) {
@@ -237,12 +260,17 @@ internal class PlaceSessionCoordinator(
     }
 
     fun deactivate() {
+        // Retain unfinished work separately; late location events must still be invalidated.
+        if (latestIntent.value?.origin == PlaceSearchOrigin.CurrentDevice || discovery.state.value.loading) {
+            resumeIntent = latestIntent.value
+        }
         invalidatePendingDeviceSearch()
         discovery.cancel()
         journey.clear()
     }
 
     fun clear() {
+        resumeIntent = null
         invalidatePendingDeviceSearch()
         latestIntent.value = null
         discovery.clear()
@@ -250,6 +278,7 @@ internal class PlaceSessionCoordinator(
     }
 
     private fun startResolvedSearch(intent: PlaceSearchIntent) {
+        resumeIntent = null
         intentGeneration++
         latestIntent.value = intent
         submitResolvedSearch(intent)

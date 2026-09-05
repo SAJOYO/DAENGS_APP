@@ -35,6 +35,7 @@ data class PlacesUiState(
     val discovery: PlaceDiscoveryState = PlaceDiscoveryState(),
     val journey: PlaceJourneyState = PlaceJourneyState(),
     val profiles: PlaceProfiles = PlaceProfiles(),
+    val waitingForSearchLocation: Boolean = false,
 )
 
 /** 화면 입력 계약. kind=null은 전체보기이며 HTTP 요청에서는 실제 kind 목록으로 분할한다. */
@@ -87,7 +88,8 @@ class PlacesViewModel(
         session.state,
         profiles,
     ) { location, session, profiles ->
-        PlacesUiState(location, session.discovery, session.journey, profiles)
+        PlacesUiState(location, session.discovery, session.journey, profiles,
+            waitingForSearchLocation = session.latestIntent?.origin == PlaceSearchOrigin.CurrentDevice)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -183,7 +185,7 @@ class PlacesViewModel(
     }
 
     fun retrySearch() {
-        session.retrySearch()
+        session.retrySearch()?.let(::locate)
     }
 
     fun selectPlace(key: PlaceKey) {
