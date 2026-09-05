@@ -160,6 +160,7 @@ fun WalkScreen(
             onCloseTerritory = { onAction(WalkAction.ClearTerritory) },
             onSelectClaimingPet = { site, pet -> onAction(WalkAction.SelectClaimingPet(site, pet)) },
             onOpenEntries = { onAction(WalkAction.OpenEntries) },
+            onPhotographWalk = { onAction(WalkAction.PhotographWalk) },
             onMarkTerritory = { onAction(WalkAction.MarkTerritory(it)) },
             onPhotographTerritory = { onAction(WalkAction.PhotographTerritory(it)) },
             onRefreshClaimAccess = { onAction(WalkAction.RefreshClaimAccess) },
@@ -208,6 +209,7 @@ private fun WalkGameOverlay(
     onCloseTerritory: () -> Unit = {},
     onSelectClaimingPet: (String, String) -> Unit = { _, _ -> },
     onOpenEntries: () -> Unit = {},
+    onPhotographWalk: () -> Unit = {},
     onMarkTerritory: (String) -> Unit = {},
     onPhotographTerritory: (String) -> Unit = {},
     onRefreshClaimAccess: () -> Unit = {},
@@ -297,6 +299,8 @@ private fun WalkGameOverlay(
             val dock: @Composable () -> Unit = {
                 Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
                     Row(Modifier.padding(4.dp).onSizeChanged { dockWidth = it.width }) {
+                        WalkToolButton(WalkTool.CAMERA, "산책 사진 촬영", onPhotographWalk,
+                            enabled = tracking.trail.state == TrackingState.RECORDING && tracking.finishingSessionId == null, caption = "사진")
                         WalkToolButton(WalkTool.RECORD, "행동 기록", {
                             momentsOpen = !momentsOpen; onCloseTerritory()
                         }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen, caption = "기록")
@@ -330,7 +334,7 @@ private fun WalkGameOverlay(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
                     onToggleDog, onStart, onPause, onShowResult, photoOf = photoOf)
                 else if (!landscape) dock()
-                if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${moments.size}") }
+                if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
             }
             if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
                 Box(Modifier.align(Alignment.BottomEnd)) { dock() }

@@ -6,6 +6,7 @@
   안 된다. allowBackup 이 켜져 있어서 안 적으면 기본으로 포함된다.
 -->
 <full-backup-content>
+    <exclude domain="file" path="walk-photos/" />
     <exclude domain="sharedpref" path="daengs_session.xml" />
     <exclude domain="database" path="daengs_walk.db" />
     <exclude domain="database" path="daengs_walk.db-journal" />

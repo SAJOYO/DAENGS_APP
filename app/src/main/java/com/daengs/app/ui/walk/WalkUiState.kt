@@ -60,6 +60,7 @@ data class WalkUiState(
     val territoryGame: TerritoryGameState = TerritoryGameState(),
     val completion: WalkCompletionUiState = WalkCompletionUiState(),
     val momentNotice: String? = null,
+    val diaryPhotos: List<com.daengs.app.walk.WalkPhoto> = emptyList(),
 )
 
 val WalkUiState.trackingActive: Boolean
@@ -90,6 +91,7 @@ sealed interface WalkAction {
     data object OpenAppSettings : WalkAction
     data object ClearTerritory : WalkAction
     data object OpenEntries : WalkAction
+    data object PhotographWalk : WalkAction
     data class SelectClaimingPet(val siteId: String, val petId: String) : WalkAction
     data object RetryTerritory : WalkAction
     data object RefreshClaimAccess : WalkAction

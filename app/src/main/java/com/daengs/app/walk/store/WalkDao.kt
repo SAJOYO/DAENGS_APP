@@ -7,6 +7,21 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT * FROM walk_photo WHERE sessionId = :sessionId ORDER BY capturedAtMillis, id")
+    fun observePhotos(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkPhotoRow>>
+    @Query("SELECT * FROM walk_photo WHERE id = :id")
+    suspend fun photo(id: String): WalkPhotoRow?
+    @Query("SELECT id FROM walk_photo")
+    suspend fun photoIds(): List<String>
+    @Query("SELECT id FROM walk_photo ORDER BY id")
+    fun observePhotoIds(): kotlinx.coroutines.flow.Flow<List<String>>
+    @Query("SELECT EXISTS(SELECT 1 FROM walk_photo WHERE sessionId = :sessionId)")
+    suspend fun hasPhotos(sessionId: String): Boolean
+    @Insert
+    suspend fun insertPhoto(row: WalkPhotoRow)
+    @Query("DELETE FROM walk_photo WHERE id = :id")
+    suspend fun deletePhoto(id: String)
+
     @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
     suspend fun storyboard(sessionId: String): WalkStoryboardRow?
 

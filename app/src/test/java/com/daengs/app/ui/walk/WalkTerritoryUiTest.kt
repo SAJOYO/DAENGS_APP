@@ -64,10 +64,15 @@ class WalkTerritoryUiTest {
         compose.onNodeWithText("미점유").assertExists()
         compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
         compose.onNodeWithContentDescription("영역표시 인증 촬영").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertDoesNotExist()
         compose.onNodeWithText("산책 시작").assertExists()
         screenshot("browsing")
         compose.runOnIdle { state.value = screen(TerritoryWalkPhase.WALKING) }
         compose.onNodeWithText("영역표시할 강아지").assertExists()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled().performClick()
+        assertEquals(WalkAction.PhotographWalk, actions.last())
+        compose.onNodeWithContentDescription("영역표시 인증 촬영").performClick()
+        assertEquals(WalkAction.PhotographTerritory("A"), actions.last())
         screenshot("walking")
         compose.onNodeWithText("보리").performClick()
         compose.onNodeWithText("두부").performClick()
@@ -78,6 +83,7 @@ class WalkTerritoryUiTest {
         compose.onNodeWithText("지도 둘러보기").performClick()
         compose.onNodeWithText("산책을 재개하면 영역표시할 수 있어요").assertIsDisplayed()
         compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertIsNotEnabled()
         screenshot("paused")
         compose.onNodeWithContentDescription("산책 재개 메뉴").performClick()
         compose.onNodeWithText("지도 둘러보기").assertIsDisplayed()
@@ -115,6 +121,7 @@ class WalkTerritoryUiTest {
         screenshot("narrow")
         compose.onNodeWithContentDescription("영역표시 인증 촬영").assertIsDisplayed()
         compose.onNodeWithContentDescription("내 위치").assertIsDisplayed()
+        compose.onNodeWithContentDescription("산책 사진 촬영").assertIsDisplayed()
     }
 
     @Test @Config(qualifiers = "w844dp-h390dp")

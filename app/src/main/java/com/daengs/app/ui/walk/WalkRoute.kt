@@ -73,8 +73,14 @@ fun WalkRoute(
     val entryFlow = remember(entrySessionId) { app.walkEntries.observe(entrySessionId.orEmpty()) }
     val observedEntries by entryFlow.collectAsState(initial = emptyList())
     val entries = observedEntries.filter { it.sessionId == entrySessionId }
+    val photoFlow = remember(entrySessionId) { app.walkPhotos.observe(entrySessionId.orEmpty()) }
+    val observedDiaryPhotos by photoFlow.collectAsState(initial = emptyList())
+    val diaryPhotos = observedDiaryPhotos.filter { it.sessionId == entrySessionId }
+    var diaryCaptureSession by remember { mutableStateOf<String?>(null) }
+    var selectedPhotoId by remember { mutableStateOf<String?>(null) }
     val renderedState = state.copy(
-        tracking = state.tracking.copy(momentGroups = entries.entryMoments(), savedEntryCount = entries.size),
+        diaryPhotos = diaryPhotos,
+        tracking = state.tracking.copy(momentGroups = entries.entryMoments(), savedEntryCount = entries.size + diaryPhotos.size),
         completion = state.completion.copy(detail = state.completion.detail?.copy(moments = entries.entryMoments())),
     )
     fun saveEntry(entry: com.daengs.app.walk.WalkEntry?, delete: Boolean = false) {
@@ -183,7 +189,9 @@ fun WalkRoute(
         avatarPhoto = avatarPhoto,
         photoOf = photoOf,
         onAction = { action ->
-            if (action == WalkAction.OpenEntries) {
+            if (action == WalkAction.PhotographWalk) {
+                diaryCaptureSession = state.tracking.activeSessionId
+            } else if (action == WalkAction.OpenEntries) {
                 initialEntry = null; entryError = null; editorOpen = true
             } else if (action is WalkAction.AddMoment && action.type == com.daengs.app.walk.WalkMomentType.NOTE) {
                 entrySessionId?.let { sessionId ->
@@ -197,8 +205,11 @@ fun WalkRoute(
                     entryError = null; editorOpen = true
                 }
             } else if (action is WalkAction.SelectMoment) {
-                initialEntry = entries.firstOrNull { "moment-${it.id}" == action.id }
-                entryError = null; editorOpen = true
+                val photo = diaryPhotos.firstOrNull { "photo-${it.id}" == action.id }
+                if (photo != null) selectedPhotoId = photo.id else {
+                    initialEntry = entries.firstOrNull { "moment-${it.id}" == action.id }
+                    entryError = null; editorOpen = true
+                }
             } else viewModel.onAction(action)
         },
         modifier = Modifier.fillMaxSize(),
@@ -209,8 +220,25 @@ fun WalkRoute(
     }
     if (editorOpen) WalkEntryEditor(entries, initialEntry,
         pets.filter { it.id in state.tracking.activeDogIds || it.id in state.completedSummary?.dogIds.orEmpty() },
-        entryError, entryBusy, { saveEntry(it) }, { saveEntry(it, true) }, { editorOpen = false })
+        entryError, entryBusy, { saveEntry(it) }, { saveEntry(it, true) }, { editorOpen = false },
+        diaryPhotos = diaryPhotos, onOpenPhoto = { editorOpen = false; selectedPhotoId = it.id })
       }
+    }
+    diaryPhotos.firstOrNull { it.id == selectedPhotoId }?.let { photo ->
+        WalkPhotoDialog(photo, app.walkPhotos::delete, { selectedPhotoId = null })
+    }
+    diaryCaptureSession?.let { sessionId ->
+        WalkPhotoCaptureDialog(
+            beginCapture = {
+                val current = viewModel.state.value
+                if (current.tracking.activeSessionId != sessionId || !hasPreciseLocation(context)) null else
+                    com.daengs.app.walk.beginWalkPhotoCapture(current.tracking,
+                        app.tokenStore.load()?.appUserId.orEmpty(), System.currentTimeMillis(),
+                        android.os.SystemClock.elapsedRealtimeNanos())
+            },
+            onSave = app::saveWalkPhoto,
+            onDismiss = { diaryCaptureSession = null },
+        )
     }
     captureTarget?.let { target ->
         TerritoryCaptureDialog(

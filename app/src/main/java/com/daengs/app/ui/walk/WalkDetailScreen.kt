@@ -76,6 +76,10 @@ fun WalkDetailScreen(
     val entryFlow = remember(sessionId) { app.walkEntries.observe(sessionId) }
     val observedEntries by entryFlow.collectAsState(initial = emptyList())
     val entries = observedEntries.filter { it.sessionId == sessionId }
+    val photoFlow = remember(sessionId) { app.walkPhotos.observe(sessionId) }
+    val observedPhotos by photoFlow.collectAsState(initial = emptyList())
+    val diaryPhotos = observedPhotos.filter { it.sessionId == sessionId }
+    var selectedPhotoId by remember(sessionId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var editorOpen by remember { mutableStateOf(false) }
     var storyboardOpen by remember(sessionId) { mutableStateOf(false) }
@@ -119,7 +123,7 @@ fun WalkDetailScreen(
                     sources = MapSceneSources(
                         moments = entries.entryMoments().map { moment ->
                             MomentMarkerState(moment.id, moment.point, moment.markerLabel)
-                        },
+                        } + diaryPhotos.photoMarkers(),
                         completedRoute = completedRoute,
                     ),
                 ),
@@ -129,8 +133,11 @@ fun WalkDetailScreen(
                 onCameraGesture = {},
                 onSelectPlace = {},
                 onSelectMoment = { id ->
-                    initialEntry = entries.firstOrNull { "moment-${it.id}" == id }
-                    entryError = null; editorOpen = true
+                    val photo = diaryPhotos.firstOrNull { "photo-${it.id}" == id }
+                    if (photo != null) selectedPhotoId = photo.id else {
+                        initialEntry = entries.firstOrNull { "moment-${it.id}" == id }
+                        entryError = null; editorOpen = true
+                    }
                 },
                 // 경로 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과는 다르다 —
                 // 한 시간 걸은 산책은 첫 좌표만 보면 어디를 돌았는지 알 수 없다.
@@ -138,7 +145,7 @@ fun WalkDetailScreen(
                 // 그릴 선이 없으면 **그 산책이 있었던 자리**로 간다. 안 그러면 지도가
                 // 네이버 기본 카메라(서울시청)에 앉아, 강남에서 한 산책이 시청에서 한
                 // 것처럼 보인다.
-                fitBounds = route?.bounds.orEmpty().ifEmpty { listOfNotNull(walk?.anchor) }
+                fitBounds = (route?.bounds.orEmpty().ifEmpty { listOfNotNull(walk?.anchor) } + diaryPhotos.map { it.point })
                     .takeIf { it.isNotEmpty() },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -151,13 +158,17 @@ fun WalkDetailScreen(
         )
 
         DaengsFloatingButton(
-            label = "기록 ${entries.size}", onClick = {
+            label = "기록 ${entries.size + diaryPhotos.size}", onClick = {
                 initialEntry = null; entryError = null; editorOpen = true
             }, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp),
         )
         if (editorOpen) WalkEntryEditor(entries, initialEntry,
             pets.filter { it.id in walk?.dogIds.orEmpty() }, entryError, busy,
-            { change(it, false) }, { change(it, true) }, { editorOpen = false })
+            { change(it, false) }, { change(it, true) }, { editorOpen = false },
+            diaryPhotos = diaryPhotos, onOpenPhoto = { editorOpen = false; selectedPhotoId = it.id })
+        diaryPhotos.firstOrNull { it.id == selectedPhotoId }?.let {
+            WalkPhotoDialog(it, app.walkPhotos::delete, { selectedPhotoId = null })
+        }
         walk?.let {
             Column(Modifier.align(Alignment.BottomCenter)) {
                 androidx.compose.material3.Button(
