@@ -16,6 +16,18 @@ import org.robolectric.annotation.Config
 class WalkStoryboardScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `대상 강아지 이름과 조회 부족 이유를 검토 화면에 표시한다`() {
+        val before = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(javaClass.getResource("/storyboard/v2-before.json")!!.readText())
+        val short = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(javaClass.getResource("/storyboard/v2-short.json")!!.readText())
+        val scene = before.scenes.first { it.entryReference != null }
+        compose.setContent {
+            StoryboardContent(listOf(scene), false, null, false, false, true,
+                {}, {}, {}, {}, {}, {}, selectionNotice = short.selection!!.description(), petNames = mapOf("pet-a" to "두부"))
+        }
+        compose.onNodeWithText("대상 강아지: 두부").assertExists()
+        compose.onNodeWithText(short.selection!!.description()).assertExists()
+    }
+
     @Test fun `분석 실패 후 이전 장면은 읽을 수 있지만 검토 완료는 막힌다`() {
         val payload = javaClass.getResource("/storyboard/pinless.json")!!.readText()
         val stamp = com.daengs.app.walk.sync.storyboardEntryStamp(emptyList())

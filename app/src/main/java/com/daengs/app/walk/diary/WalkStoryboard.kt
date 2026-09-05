@@ -11,7 +11,10 @@ data class StoryboardScene(
     val evidence: String, val fingerprint: String, val available: Boolean = true,
     val hidden: Boolean = false, val needsReview: Boolean = false,
     val sourcePayload: String? = null,
+    val entryReference: StoryboardEntryReference? = null,
 )
+
+data class StoryboardEntryReference(val entryId: String, val revision: Long?, val petId: String?, val isNote: Boolean = false)
 
 data class SceneEdit(val id: String, val title: String, val body: String, val hidden: Boolean,
                      val sourceFingerprint: String, val atMillis: Long) {
