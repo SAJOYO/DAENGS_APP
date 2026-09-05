@@ -39,7 +39,8 @@ class WalkStoryboardSync(
         try {
             val expected = JSONObject().apply { rows.forEach { put(it.id, it.revision) } }
             val response = request(token, "/$walkId/storyboard", JSONObject()
-                .put("expected_entries", expected).put("refresh", refresh))
+                .put("expected_entries", expected).put("refresh", refresh)
+                .put("bundle_format", GeoStoryboardBundle.FORMAT_V2))
             require(response.getString("session_id") == sessionId)
             val remoteEntries = response.getJSONObject("entry_revisions")
             require(remoteEntries.keys().asSequence().toSet() == rows.map { it.id }.toSet() &&
