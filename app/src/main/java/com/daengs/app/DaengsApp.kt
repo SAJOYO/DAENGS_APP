@@ -132,6 +132,10 @@ class DaengsApp : Application() {
                 { tokenStore.load()?.appUserId }, { store.state.value }, applicationScope,
                 { enqueueTerritoryActions(this) })
             territoryActions = actions
+            actions.photos = ServerTerritoryPhotos(actions, TerritoryActionApi { BuildConfig.API_BASE_URL },
+                HttpTerritoryPhotoUploader(), java.io.File(noBackupFilesDir, "territory-photos"),
+                sessionProvider::freshSession, { tokenStore.load()?.appUserId }, { store.state.value },
+                applicationScope, { enqueueTerritoryActions(this) })
             applicationScope.launch {
                 actions.recover()
                 store.state.distinctUntilChangedBy { Triple(it.ownerId, it.activeSessionId, it.trail.state) }

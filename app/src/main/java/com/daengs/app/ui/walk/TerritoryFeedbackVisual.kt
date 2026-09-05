@@ -39,7 +39,8 @@ internal fun rememberTerritoryFeedbackProgress(feedback: TerritoryFeedback?, now
     return progress.value
 }
 
-internal fun territoryFeedbackLabel(game: TerritoryGameState, feedback: TerritoryFeedback?): String = when (game.photoStatus) {
+internal fun territoryFeedbackLabel(game: TerritoryGameState, feedback: TerritoryFeedback?): String =
+    if (game.onlinePhotos) game.guidance else when (game.photoStatus) {
     ClaimPhotoStatus.PENDING -> "사진 확인 중 · 산책을 계속해도 돼요"
     ClaimPhotoStatus.RETRY_PENDING -> "사진 보관 중 · 판정을 다시 시도해 주세요"
     ClaimPhotoStatus.REJECTED -> "인증되지 않았어요 · 현장에서 다시 촬영해 주세요"
@@ -66,5 +67,9 @@ internal fun TerritoryFeedbackLine(game: TerritoryGameState, nowNanos: () -> Lon
 
 @Preview(showBackground = true) @Composable
 private fun TerritoryFeedbackLinePreview() { MaterialTheme {
-    Column { ClaimPhotoStatus.entries.forEach { TerritoryFeedbackLine(TerritoryGameState(photoStatus = it)) } }
+    Column {
+        ClaimPhotoStatus.entries.forEach { TerritoryFeedbackLine(TerritoryGameState(photoStatus = it)) }
+        TerritoryFeedbackLine(TerritoryGameState(onlinePhotos = true, photoStatus = ClaimPhotoStatus.RETRY_PENDING,
+            guidance = "사진 판정을 마치지 못했어요 · 현장에서 새 사진을 찍어 주세요"))
+    }
 } }

@@ -96,6 +96,8 @@ class WalkViewModel(
     private val effectChannel = Channel<WalkEffect>(Channel.BUFFERED)
     val effects = effectChannel.receiveAsFlow()
     val territoryPhotos: StateFlow<List<TerritoryPhotoJob>> = photoQueue?.jobs ?: MutableStateFlow(emptyList())
+    val onlineTerritoryPhotos: Boolean get() = territoryGame?.onlinePhotos == true
+    private var preparingTerritoryCapture = false
 
     private var active = false
     private val sharedReadsActive = MutableStateFlow(false)
@@ -303,14 +305,26 @@ class WalkViewModel(
             }
             is WalkAction.MarkTerritory -> markTerritory(action.siteId)
             is WalkAction.PhotographTerritory -> {
-                if (presentation.value.map.purpose == MapPurpose.TERRITORY && territory.state.value.selectedSiteId == action.siteId) {
-                    val target = territoryGame?.captureTarget(
-                        action.siteId, territory.state.value, walkController.state.value,
-                        location.state.value.permissionGranted && location.state.value.precisePermission,
-                        presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(),
-                    )
-                    if (target != null && photoQueue != null) emit(WalkEffect.CaptureTerritory(target))
-                    else showNotice("현재 위치와 산책 상태를 확인해 주세요")
+                if (!preparingTerritoryCapture && presentation.value.map.purpose == MapPurpose.TERRITORY && territory.state.value.selectedSiteId == action.siteId) {
+                    preparingTerritoryCapture = true
+                    val tracking = walkController.state.value
+                    runtimeScope.launch {
+                        try {
+                            if (onlineTerritoryPhotos) showNotice("사진 인증을 준비하고 있어요")
+                            val target = territoryGame?.prepareCapture(
+                                action.siteId, territory.state.value, walkController.state.value,
+                                location.state.value.permissionGranted && location.state.value.precisePermission,
+                                presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(), nowMillis(),
+                            )
+                            if (!active || territory.state.value.selectedSiteId != action.siteId || presentation.value.map.purpose != MapPurpose.TERRITORY ||
+                                walkController.state.value.activeSessionId != tracking.activeSessionId ||
+                                walkController.state.value.trail.state != TrackingState.RECORDING) return@launch
+                            if (target != null && (photoQueue != null || onlineTerritoryPhotos)) emit(WalkEffect.CaptureTerritory(target))
+                            else showNotice("현재 위치와 산책 상태를 확인해 주세요")
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: Exception) { showNotice("사진 인증을 준비하지 못했어요 · 연결 상태를 확인해 주세요") }
+                        finally { preparingTerritoryCapture = false }
+                    }
                 }
             }
             WalkAction.ClearRoutePoint -> selectRoutePoint(null)
@@ -393,6 +407,20 @@ class WalkViewModel(
     }
 
     fun retryTerritoryPhoto(attemptId: String) { photoQueue?.retry(attemptId) }
+
+    suspend fun startTerritoryCapture(target: TerritoryCaptureTarget): String? = territoryGame?.beginCapture(
+        target, territory.state.value, walkController.state.value,
+        location.state.value.permissionGranted && location.state.value.precisePermission,
+        presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(), nowMillis())
+
+    fun saveTerritoryCapture(id: String, file: java.io.File, simulation: PhotoSimulation): kotlinx.coroutines.Deferred<Boolean> {
+        if (onlineTerritoryPhotos) return territoryGame?.saveCapture(id, file) ?: kotlinx.coroutines.CompletableDeferred(false)
+        val saved = runCatching { checkNotNull(photoQueue).submit(id, file, simulation) }.isSuccess
+        if (!saved) file.delete()
+        return kotlinx.coroutines.CompletableDeferred(saved)
+    }
+
+    fun cancelTerritoryCapture(id: String) { territoryGame?.cancelCapture(id) }
 
     private fun toggleDog(id: String) {
         presentation.update { current ->
