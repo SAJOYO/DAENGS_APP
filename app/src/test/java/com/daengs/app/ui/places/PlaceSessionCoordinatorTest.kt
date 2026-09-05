@@ -30,6 +30,20 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaceSessionCoordinatorTest {
     @Test
+    fun `first search with a known position uses latest radius chosen without a search`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val session = session(PlaceSearchRepository { requests += it; emptyResponse() })
+        assertNull(session.radius(1000))
+        assertNull(session.radius(5000))
+        runCurrent()
+        assertEquals(5000, session.state.value.discovery.radiusMeters)
+        assertEquals(0, requests.size)
+        session.startDefaultSearchIfNeeded(GeoPoint(37.54, 127.05))
+        runCurrent()
+        assertEquals(5000, requests.single().radiusMeters)
+    }
+
+    @Test
     fun `name survives category parking pinned device and retry until explicitly cleared`() = runTest {
         val requests = mutableListOf<PlaceSearchRequest>()
         val session = session(PlaceSearchRepository { requests += it; emptyResponse() })
