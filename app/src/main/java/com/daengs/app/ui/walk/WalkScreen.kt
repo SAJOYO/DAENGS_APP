@@ -144,6 +144,7 @@ fun WalkScreen(
             locationGranted = state.location.permissionGranted,
             preciseLocation = state.location.precisePermission,
             locating = state.location.locating,
+            locationSample = state.location.sample,
             locationError = state.location.errorMessage,
             pets = state.selection.pets,
             selectedDogIds = state.selection.selectedDogIds,
@@ -191,6 +192,7 @@ private fun WalkGameOverlay(
     preciseLocation: Boolean,
     locating: Boolean,
     locationError: String?,
+    locationSample: LocationSample? = null,
     pets: List<Pet>,
     selectedDogIds: Set<String>,
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
@@ -287,15 +289,9 @@ private fun WalkGameOverlay(
                 .onSizeChanged { hudHeight = it.height }
                 .padding(top = if (landscape) 0.dp else 52.dp), verticalAlignment = Alignment.CenterVertically) {
                 WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary, gpsContent = {
-                    WalkGpsDot(momentEnabled && preciseLocation && tracking.lastSample?.isMock != true,
-                        !locationGranted || !preciseLocation || locationError != null,
-                        when {
-                            !locationGranted || !preciseLocation -> "정확한 위치 권한을 허용해 주세요"
-                            locationError != null -> locationError
-                            tracking.lastSample?.isMock == true -> "모의 위치에서는 현장 인증을 할 수 없어요"
-                            momentEnabled -> "현재 위치를 확인했어요"
-                            else -> "정확한 새 위치를 기다리고 있어요"
-                        }, onOpenSettings)
+                    val gps = walkGpsPresentation(locationGranted, preciseLocation, locationError,
+                        locationSample, realtimeMillis * 1_000_000L)
+                    WalkGpsDot(gps.good, gps.unavailable, gps.detail, onOpenSettings)
                 })
             }
             val dock: @Composable () -> Unit = {

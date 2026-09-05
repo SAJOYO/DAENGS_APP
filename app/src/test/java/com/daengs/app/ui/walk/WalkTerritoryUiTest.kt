@@ -125,4 +125,22 @@ class WalkTerritoryUiTest {
         assertTrue(card.right <= dock.left)
         screenshot("landscape")
     }
+    @Test fun freshScreenFixShowsGoodGpsBeforeWalkStarts() {
+        compose.setContent {
+            val sample = androidx.compose.runtime.remember {
+                com.daengs.app.location.LocationSample(GeoPoint(37.5,127.0), System.currentTimeMillis(),
+                    android.os.SystemClock.elapsedRealtimeNanos(), 3f)
+            }
+            val state = screen(TerritoryWalkPhase.BROWSING).copy(location = WalkLocationUiState(
+                permissionGranted = true, precisePermission = true, currentPosition = sample.point,
+                sample = sample, owner = WalkLocationOwner.SCREEN))
+            DaengsTheme { WalkScreen(state, {}, showMap = false) }
+        }
+        compose.onNodeWithContentDescription("GPS 양호").assertIsDisplayed().performClick()
+        compose.onNodeWithText("현재 위치를 확인했어요").assertIsDisplayed()
+        compose.onNodeWithText("닫기").performClick()
+        compose.onNodeWithText("산책 시작").assertIsDisplayed()
+        screenshot("browsing-good-gps")
+    }
+
 }

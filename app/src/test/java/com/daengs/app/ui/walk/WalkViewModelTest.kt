@@ -270,6 +270,62 @@ class WalkViewModelTest {
         assertEquals(GeoPoint(37.5, 127.0), viewModel.state.value.location.currentPosition)
     }
 
+    @Test
+    fun `remote selection preserves queried neighbourhood and pan stops framing`() = runTest {
+        val remote = GeoPoint(37.55, 127.0)
+        val queries = mutableListOf<GeoPoint>()
+        val repo = TerritorySiteRepository { request ->
+            queries.add(request.origin)
+            val id = if (request.origin == remote) "remote" else "home"
+            TerritorySitePage(1, false, listOf(TerritorySite(id, request.origin, 0.0)))
+        }
+        val vm = viewModel(FakeWalkController(), CountingLocationSource(), repo,
+            TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList())))
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        vm.onAction(WalkAction.CameraMoved)
+        vm.onAction(WalkAction.CameraSettled(remote))
+        advanceTimeBy(400); runCurrent()
+        val queryCount = queries.size
+        vm.onAction(WalkAction.SelectTerritorySite("remote"))
+        runCurrent()
+        assertEquals("remote", vm.state.value.territory.selectedSiteId)
+        assertEquals(remote, vm.state.value.territory.loadedOrigin)
+        assertEquals(queryCount, queries.size)
+        assertEquals(false, vm.state.value.location.followDevice)
+        assertEquals(listOf(remote, GeoPoint(37.5, 127.0)), vm.state.value.toMapPresentation { "" }.fitBounds)
+        vm.onAction(WalkAction.CameraMoved)
+        runCurrent()
+        assertEquals(null, vm.state.value.toMapPresentation { "" }.fitBounds)
+        assertEquals("remote", vm.state.value.territory.selectedSiteId)
+        vm.onAction(WalkAction.SelectTerritorySite("remote"))
+        runCurrent()
+        vm.onAction(WalkAction.Locate)
+        runCurrent()
+        assertEquals(false, vm.state.value.map.frameSelectedTerritory)
+        assertEquals(true, vm.state.value.location.followDevice)
+        assertEquals(GeoPoint(37.5, 127.0), vm.state.value.territory.loadedOrigin)
+    }
+
+    @Test
+    fun `screen location quality reaches UI before walking and clears with permission`() = runTest {
+        val sample = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val source = object : LocationSource {
+            override suspend fun currentLocation() = sample
+            override fun locationUpdates(config: LocationUpdateConfig): Flow<LocationSample> = emptyFlow()
+        }
+        val vm = viewModel(FakeWalkController(), source)
+        vm.activate(true, true)
+        runCurrent()
+        assertEquals(null, vm.state.value.tracking.latestMomentFix)
+        assertEquals(sample, vm.state.value.location.sample)
+        assertEquals(true, walkGpsPresentation(true, true, null, vm.state.value.location.sample, 2_000_000_000L).good)
+        vm.updatePermission(false, false)
+        runCurrent()
+        assertEquals(null, vm.state.value.location.sample)
+    }
+
     private fun TestScope.viewModel(
         controller: FakeWalkController,
         source: LocationSource,

@@ -234,9 +234,15 @@ class WalkViewModel(
                 walkController.resume()
             }
             WalkAction.Stop -> walkController.stop()
-            WalkAction.Locate -> location.locate(recenter = true)
+            WalkAction.Locate -> {
+                presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
+                location.locate(recenter = true)
+            }
             WalkAction.OpenAppSettings -> emit(WalkEffect.OpenAppSettings)
-            WalkAction.ClearTerritory -> territory.clearSelection()
+            WalkAction.ClearTerritory -> {
+                territory.clearSelection()
+                presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
+            }
             WalkAction.OpenEntries -> Unit // Route owns the existing Room-backed editor.
             is WalkAction.SelectClaimingPet -> {
                 if (territory.state.value.selectedSiteId == action.siteId) {
@@ -272,12 +278,20 @@ class WalkViewModel(
             is WalkAction.RequestOrientation -> emit(WalkEffect.ChangeOrientation(action.orientation))
             is WalkAction.AddMoment -> walkController.recordMoment(action.type)
             is WalkAction.SelectMoment -> selectMoment(action.id)
-            is WalkAction.SelectTerritorySite -> { territory.select(action.id); location.setFollowDevice(true) }
+            is WalkAction.SelectTerritorySite -> {
+                territory.select(action.id)
+                presentation.update { it.copy(map = it.map.copy(
+                    frameSelectedTerritory = territory.state.value.selectedSiteId == action.id,
+                )) }
+            }
             is WalkAction.SelectRouteEndpoint -> selectRouteEndpoint(action.id)
             is WalkAction.CameraSettled -> if (presentation.value.map.purpose == MapPurpose.TERRITORY) {
                 territory.onCameraSettled(action.point)
             }
-            WalkAction.CameraMoved -> location.setFollowDevice(false)
+            WalkAction.CameraMoved -> {
+                location.setFollowDevice(false)
+                presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
+            }
             is WalkAction.MapTapped -> onMapTapped(action)
         }
     }
@@ -342,7 +356,7 @@ class WalkViewModel(
 
     private fun changeMapPurpose(purpose: MapPurpose) {
         presentation.update {
-            it.copy(map = it.map.copy(purpose = purpose))
+            it.copy(map = it.map.copy(purpose = purpose, frameSelectedTerritory = false))
         }
         territory.clearSelection()
         if (purpose == MapPurpose.TERRITORY && active && location.state.value.permissionGranted) {
@@ -466,6 +480,7 @@ class WalkViewModel(
     private fun onMapTapped(action: WalkAction.MapTapped) {
         if (presentation.value.map.purpose == MapPurpose.TERRITORY) {
             territory.clearSelection()
+            presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
         } else {
             val point = presentation.value.completion.detail?.route
                 ?.nearestPointTo(action.point, ROUTE_POINT_TAP_RADIUS_METERS)

@@ -75,7 +75,7 @@ internal fun WalkUiState.toMapPresentation(
             walkActive = trackingActive,
         ),
         fitBounds = fitBounds ?: territoryGame.target?.takeIf {
-            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && location.followDevice
+            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory
         }?.let { listOfNotNull(it.site.point, location.currentPosition) },
     )
 }
