@@ -54,6 +54,8 @@ data class TerritoryGameState(
     val photoStatus: ClaimPhotoStatus? = null,
     val feedback: com.daengs.app.map.layers.territory.TerritoryFeedback? = null,
     val readOnly: Boolean = false,
+    val confirmedMarkId: String? = null,
+    val confirmedMarkSiteId: String? = null,
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
 }

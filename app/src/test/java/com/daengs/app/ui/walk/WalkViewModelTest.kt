@@ -44,6 +44,26 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test fun `async territory submission never reopens a card closed while saving`() = runTest {
+        val stored = kotlinx.coroutines.CompletableDeferred<String>()
+        val local = TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList()))
+        val provider = object : com.daengs.app.map.features.territory.TerritoryGameProvider by local {
+            override suspend fun submitMark(siteId: String, board: com.daengs.app.map.features.territory.TerritoryBoardState,
+                tracking: WalkTrackingState, permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long): String = stored.await()
+        }
+        val controller = FakeWalkController()
+        val vm = viewModel(controller, CountingLocationSource(), TerritorySiteRepository {
+            TerritorySitePage(1, false, listOf(TerritorySite("A", GeoPoint(37.5, 127.0), 0.0)))
+        }, provider)
+        vm.activate(true, true); vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        vm.onAction(WalkAction.SelectTerritorySite("A")); runCurrent()
+        vm.onAction(WalkAction.MarkTerritory("A")); runCurrent()
+        vm.onAction(WalkAction.ClearTerritory); runCurrent()
+        stored.complete("saved"); runCurrent()
+        assertEquals(null, vm.state.value.territory.selectedSiteId)
+        assertEquals(null, vm.state.value.momentNotice)
+    }
+
     @Test
     fun `server occupancy reaches map before walking and refresh stops when hidden`() = runTest {
         val site = TerritorySite("A", GeoPoint(37.5, 127.0), 0.0)

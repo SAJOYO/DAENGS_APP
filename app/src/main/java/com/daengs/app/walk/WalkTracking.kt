@@ -16,6 +16,7 @@ data class WalkTrackingState(
     val ownerId: String? = null,
     /** Service-owned identity and participants; survives screen recreation and map toggles. */
     val activeSessionId: String? = null,
+    val activeSessionStartedAtMillis: Long? = null,
     val activeDogIds: List<String> = emptyList(),
     val trail: TrailSnapshot = TrailSnapshot(),
     /** 화면 표시용 최신 원본 fix. 경로 및 행동 좌표의 품질 계약과는 다르다. */
