@@ -25,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Column
+import com.daengs.app.map.features.territory.TerritoryCaptureTarget
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +92,8 @@ fun WalkRoute(
             } finally { entryBusy = false }
         }
     }
+    val photos by viewModel.territoryPhotos.collectAsState()
+    var captureTarget by remember { mutableStateOf<TerritoryCaptureTarget?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -148,6 +152,7 @@ fun WalkRoute(
                     }
                 }
                 is WalkEffect.ChangeOrientation -> onRequestOrientation(effect.orientation)
+                is WalkEffect.CaptureTerritory -> captureTarget = effect.target
             }
         }
     }
@@ -162,13 +167,16 @@ fun WalkRoute(
             }
         }
     }
-        DisposableEffect(viewModel) {
+    DisposableEffect(viewModel) {
         onDispose(viewModel::deactivate)
     }
 
     BackHandler { viewModel.onAction(WalkAction.Back) }
 
-    WalkScreen(
+    Column(modifier) {
+      TerritoryPhotoStatus(photos, viewModel::retryTerritoryPhoto, Modifier.statusBarsPadding())
+      androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+        WalkScreen(
         state = renderedState,
         outside = outside,
         avatarBreed = avatarBreed,
@@ -191,7 +199,7 @@ fun WalkRoute(
                 entryError = null; editorOpen = true
             } else viewModel.onAction(action)
         },
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
     )
     if (entrySessionId != null) androidx.compose.foundation.layout.Box(
         Modifier.fillMaxSize().statusBarsPadding().padding(top = 56.dp, end = 12.dp),
@@ -208,6 +216,16 @@ fun WalkRoute(
     if (editorOpen) WalkEntryEditor(entries, initialEntry,
         pets.filter { it.id in state.tracking.activeDogIds || it.id in state.completedSummary?.dogIds.orEmpty() },
         entryError, entryBusy, { saveEntry(it) }, { saveEntry(it, true) }, { editorOpen = false })
+      }
+    }
+    captureTarget?.let { target ->
+        TerritoryCaptureDialog(
+            siteId = target.siteId,
+            beginCapture = { viewModel.beginTerritoryCapture(target) },
+            onSaved = viewModel::submitTerritoryPhoto,
+            onDismiss = { captureTarget = null },
+        )
+    }
 }
 
 private val LOCATION_PERMISSIONS = arrayOf(

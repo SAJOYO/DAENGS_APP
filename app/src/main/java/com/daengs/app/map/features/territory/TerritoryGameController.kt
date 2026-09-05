@@ -4,6 +4,7 @@ import com.daengs.app.territory.ClaimAccess
 import com.daengs.app.territory.ClaimCertification
 import com.daengs.app.territory.ClaimDisposition
 import com.daengs.app.territory.ClaimSession
+import com.daengs.app.territory.ClaimPhotoStatus
 import com.daengs.app.territory.InMemoryTerritoryClaimRepository
 import com.daengs.app.territory.SiteInteraction
 import com.daengs.app.territory.TerritoryClaimSite
@@ -15,6 +16,8 @@ import kotlin.math.roundToInt
 
 /** Local play tuning, not the online capture contract. Inject when field-testing distances. */
 data class TerritoryGamePolicy(val radiusMeters: Double = 20.0, val maxFixAgeNanos: Long = 10_000_000_000L)
+
+data class TerritoryCaptureTarget(val session: ClaimSession, val siteId: String)
 
 data class TerritoryGameSite(
     val site: TerritorySite,
@@ -40,6 +43,8 @@ data class TerritoryGameState(
     val canMark: Boolean = false,
     val actionLabel: String = "영역표시",
     val guidance: String = "점령지를 선택해 주세요",
+    val canPhotograph: Boolean = false,
+    val photoStatus: ClaimPhotoStatus? = null,
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
 }
@@ -85,11 +90,21 @@ class TerritoryGameController(
         val disposition = target?.let {
             com.daengs.app.territory.unverifiedClaimDisposition(it.claim, session?.claimingPetId.orEmpty())
         }
+        val attempt = session?.let { s -> target?.let { repository.attempt(s.clientSessionId, it.site.id) } }
+        val photoStatus = attempt?.photoStatus
+        val canPhotograph = target?.interaction?.access == ClaimAccess.READY &&
+            (photoStatus == null || photoStatus == ClaimPhotoStatus.NOT_SUBMITTED || photoStatus == ClaimPhotoStatus.REJECTED) &&
+            (attempt != null || disposition != ClaimDisposition.ALREADY_OWNED ||
+                target.claim.occupancy?.certification == ClaimCertification.UNVERIFIED)
         val guidance = when {
             tracking.trail.state != TrackingState.RECORDING -> "산책을 시작하거나 재개해 주세요"
             session == null -> "함께 걷는 강아지를 선택해 산책을 시작해 주세요"
             !trusted -> "정확한 현재 위치를 확인하고 있어요"
             target == null -> "지도에서 점령지를 찾아 주세요"
+            photoStatus == ClaimPhotoStatus.PENDING -> "사진 확인 중 · 산책을 계속해도 돼요"
+            photoStatus == ClaimPhotoStatus.RETRY_PENDING -> "사진은 보관 중이에요 · 판정을 다시 시도해 주세요"
+            photoStatus == ClaimPhotoStatus.REJECTED -> "사진이 부적합해요 · 같은 장소에서 다시 촬영해 주세요"
+            photoStatus == ClaimPhotoStatus.NOT_SUBMITTED && canPhotograph -> "사진을 찍어 영역표시를 인증할 수 있어요"
             target.attempted -> "이번 산책에서 이미 영역표시한 장소예요"
             target.interaction?.access == ClaimAccess.APPROACHING -> "${target.distanceMeters!!.roundToInt()}m · 가까이 가면 영역표시할 수 있어요"
             target.interaction?.access != ClaimAccess.READY -> "GPS 오차가 줄어들면 영역표시할 수 있어요"
@@ -106,6 +121,8 @@ class TerritoryGameController(
                 disposition == ClaimDisposition.GRANTED,
             actionLabel = if (target?.attempted == true) "영역표시 완료" else "영역표시",
             guidance = guidance,
+            canPhotograph = canPhotograph,
+            photoStatus = photoStatus,
         )
     }
 
@@ -124,6 +141,28 @@ class TerritoryGameController(
             "local:${session.clientSessionId}:$siteId:${tracking.latestMomentFix?.elapsedRealtimeNanos}", atMillis,
         )
         return "${current.representativeLabel}의 영역으로 표시했어요"
+    }
+
+    fun captureTarget(
+        siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
+        permitted: Boolean, petNames: Map<String, String>, nowNanos: Long,
+    ): TerritoryCaptureTarget? {
+        if (board.sites.none { it.id == siteId }) return null
+        val current = snapshot(board.copy(selectedSiteId = siteId), tracking, permitted, petNames, nowNanos)
+        return if (current.canPhotograph) session(tracking)?.let { TerritoryCaptureTarget(it, siteId) } else null
+    }
+
+    /** Called at shutter time, not when opening the camera. Cancellation before shutter consumes nothing. */
+    fun captureAttempt(
+        target: TerritoryCaptureTarget, board: TerritoryBoardState, tracking: WalkTrackingState,
+        permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long,
+    ): String? {
+        if (captureTarget(target.siteId, board, tracking, permitted, petNames, nowNanos) != target) return null
+        val current = snapshot(board.copy(selectedSiteId = target.siteId), tracking, permitted, petNames, nowNanos)
+        return repository.mark(
+            target.session, checkNotNull(current.target?.interaction),
+            "local:${target.session.clientSessionId}:${target.siteId}:${tracking.latestMomentFix?.elapsedRealtimeNanos}", atMillis,
+        ).attemptId
     }
 
     private fun session(tracking: WalkTrackingState): ClaimSession? {

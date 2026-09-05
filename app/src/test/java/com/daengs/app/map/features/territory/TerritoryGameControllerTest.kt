@@ -93,6 +93,41 @@ class TerritoryGameControllerTest {
     }
 
     @Test
+    fun `camera opening consumes nothing and shutter pins session pet and site`() {
+        val repo = InMemoryTerritoryClaimRepository(emptyList())
+        val game = game(repo)
+        val target = game.captureTarget("A", board, tracking, true, names, 2_000_000_000L)!!
+        assertNull(repo.attempt("walk-1", "A"))
+        assertNull(game.captureAttempt(target, board, tracking.copy(activeSessionId = "walk-2"), true, names, 2_000_000_000L, 2000))
+        assertNull(game.captureAttempt(target, board, tracking.copy(activeDogIds = listOf("dog-2")), true, names, 2_000_000_000L, 2000))
+        assertNull(game.captureAttempt(target, board, tracking, true, names, 30_000_000_000L, 30000))
+        assertNull(game.captureAttempt(target, board, tracking, false, names, 2_000_000_000L, 2000))
+        assertNull(game.captureAttempt(target, board.copy(sites = listOf(far)), tracking, true, names, 2_000_000_000L, 2000))
+        assertNull(repo.attempt("walk-1", "A"))
+        val id = game.captureAttempt(target, board, tracking, true, names, 2_000_000_000L, 2000)
+        assertEquals(id, game.captureAttempt(target, board, tracking, true, names, 3_000_000_000L, 3000))
+        assertEquals(1L, repo.site("A").version)
+        assertEquals("dog-1", repo.site("A").occupancy!!.ownerPetId)
+    }
+
+    @Test
+    fun `photo strengthens same attempt and pending or verified disables another capture`() {
+        val repo = InMemoryTerritoryClaimRepository(emptyList())
+        val game = game(repo)
+        game.mark("A", board, tracking, true, names, 2_000_000_000L, 2000)
+        val attempt = repo.attempt("walk-1", "A")!!
+        assertTrue(snapshot(game).canPhotograph)
+        repo.submitPhoto(attempt.attemptId, "photo")
+        assertFalse(snapshot(game).canPhotograph)
+        repo.resolvePhoto(attempt.attemptId, "photo", com.daengs.app.territory.ClaimPhotoOutcome.REJECTED, 3000)
+        assertTrue(snapshot(game).canPhotograph)
+        repo.submitPhoto(attempt.attemptId, "reshoot")
+        repo.resolvePhoto(attempt.attemptId, "reshoot", com.daengs.app.territory.ClaimPhotoOutcome.ACCEPTED, 4000)
+        assertFalse(snapshot(game).canPhotograph)
+        assertFalse(snapshot(game).canMark)
+    }
+
+    @Test
     fun `certified rival is displayed but cannot be taken without a camera`() {
         val repo = InMemoryTerritoryClaimRepository(listOf(TerritoryClaimSite(
             "A", TerritoryOccupancy("dog-2", "other-walk", "other-attempt", ClaimCertification.VERIFIED, 0), 1,
@@ -101,6 +136,7 @@ class TerritoryGameControllerTest {
         assertEquals("두리 · 인증", state.target!!.occupancyLabel)
         assertEquals(ClaimAccess.READY, state.target!!.interaction!!.access)
         assertFalse(state.canMark)
+        assertTrue(state.canPhotograph)
         assertTrue(state.guidance.contains("사진 인증"))
     }
 }

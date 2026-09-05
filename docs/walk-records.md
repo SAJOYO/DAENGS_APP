@@ -1,6 +1,6 @@
 # 산책 기록 입력과 보관
 
-2026-09-05, [#141](https://github.com/SAJOYO/DAENGS_APP/pull/141). 서버 계약: [DAENGS_dev#251](https://github.com/SAJOYO/DAENGS_dev/pull/251).
+2026-09-05, [#144](https://github.com/SAJOYO/DAENGS_APP/pull/144). 서버 계약: [DAENGS_dev#251](https://github.com/SAJOYO/DAENGS_dev/pull/251).
 
 ## 사용자 흐름
 

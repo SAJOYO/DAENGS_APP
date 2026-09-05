@@ -12,6 +12,10 @@ import com.daengs.app.map.features.territory.TerritoryBoardController
 import com.daengs.app.map.features.territory.TerritoryGameController
 import com.daengs.app.map.features.territory.TerritoryGameState
 import com.daengs.app.territory.InMemoryTerritoryClaimRepository
+import com.daengs.app.territory.TerritoryPhotoQueue
+import com.daengs.app.territory.PhotoSimulation
+import com.daengs.app.territory.TerritoryPhotoJob
+import com.daengs.app.map.features.territory.TerritoryCaptureTarget
 import com.daengs.app.map.shell.MapPurpose
 import com.daengs.app.pet.Pet
 import com.daengs.app.territory.HttpTerritorySiteRepository
@@ -76,6 +80,7 @@ class WalkViewModel(
     private val territoryGame: TerritoryGameController? = null,
     private val nowNanos: () -> Long = System::nanoTime,
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val photoQueue: TerritoryPhotoQueue? = null,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
     private val location = WalkLocationCoordinator(locationSource, runtimeScope)
@@ -83,6 +88,7 @@ class WalkViewModel(
     private val presentation = MutableStateFlow(WalkPresentationState())
     private val effectChannel = Channel<WalkEffect>(Channel.BUFFERED)
     val effects = effectChannel.receiveAsFlow()
+    val territoryPhotos: StateFlow<List<TerritoryPhotoJob>> = photoQueue?.jobs ?: MutableStateFlow(emptyList())
 
     private var active = false
     private var completionJob: Job? = null
@@ -124,6 +130,9 @@ class WalkViewModel(
     )
 
     init {
+        runtimeScope.launch {
+            territoryPhotos.collect { presentation.update { p -> p.copy(claimRevision = p.claimRevision + 1) } }
+        }
         walkController.state.value.let { tracking ->
             location.acceptTrackingState(
                 active = tracking.trail.state != TrackingState.OFF,
@@ -232,6 +241,17 @@ class WalkViewModel(
                 presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
             }
             is WalkAction.MarkTerritory -> markTerritory(action.siteId)
+            is WalkAction.PhotographTerritory -> {
+                if (presentation.value.map.purpose == MapPurpose.TERRITORY) {
+                    val target = territoryGame?.captureTarget(
+                        action.siteId, territory.state.value, walkController.state.value,
+                        location.state.value.permissionGranted && location.state.value.precisePermission,
+                        presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(),
+                    )
+                    if (target != null && photoQueue != null) emit(WalkEffect.CaptureTerritory(target))
+                    else showNotice("현재 위치와 산책 상태를 확인해 주세요")
+                }
+            }
             WalkAction.ClearRoutePoint -> selectRoutePoint(null)
             WalkAction.ReviewMap -> presentation.update {
                 it.copy(completion = it.completion.copy(resultExpanded = false))
@@ -282,6 +302,23 @@ class WalkViewModel(
         presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
         showNotice(message)
     }
+
+    fun beginTerritoryCapture(target: TerritoryCaptureTarget): String? {
+        val attempt = territoryGame?.captureAttempt(
+            target, territory.state.value, walkController.state.value,
+            location.state.value.permissionGranted && location.state.value.precisePermission,
+            presentation.value.selection.pets.associate { it.id to it.name }, nowNanos(), nowMillis(),
+        )
+        presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
+        return attempt
+    }
+
+    fun submitTerritoryPhoto(attemptId: String, file: java.io.File, simulation: PhotoSimulation) {
+        runCatching { checkNotNull(photoQueue).submit(attemptId, file, simulation) }
+            .onFailure { file.delete(); showNotice("사진을 접수하지 못했어요 · 다시 촬영해 주세요") }
+    }
+
+    fun retryTerritoryPhoto(attemptId: String) { photoQueue?.retry(attemptId) }
 
     private fun toggleDog(id: String) {
         presentation.update { current ->
@@ -472,6 +509,10 @@ class WalkViewModel(
     companion object {
         // Debug play persists across screen recreation/map toggles, until process exit.
         private val localTerritoryClaims = InMemoryTerritoryClaimRepository(emptyList())
+        private val localTerritoryPhotos = TerritoryPhotoQueue(
+            localTerritoryClaims,
+            CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate),
+        )
         fun factory(
             context: Context,
             walkController: WalkTrackingController,
@@ -489,6 +530,7 @@ class WalkViewModel(
                     ),
                     territoryGame = if (BuildConfig.DEBUG) TerritoryGameController(localTerritoryClaims) else null,
                     nowNanos = SystemClock::elapsedRealtimeNanos,
+                    photoQueue = if (BuildConfig.DEBUG) localTerritoryPhotos else null,
                 ) as T
             }
         }

@@ -89,6 +89,7 @@ sealed interface WalkAction {
     data object RetryTerritory : WalkAction
     data object RefreshClaimAccess : WalkAction
     data class MarkTerritory(val siteId: String) : WalkAction
+    data class PhotographTerritory(val siteId: String) : WalkAction
     data object ClearRoutePoint : WalkAction
     data object ReviewMap : WalkAction
     data object ShowResult : WalkAction
@@ -111,6 +112,7 @@ sealed interface WalkEffect {
     data object RequestNotificationPermission : WalkEffect
     data object OpenAppSettings : WalkEffect
     data class ChangeOrientation(val orientation: WalkOrientation) : WalkEffect
+    data class CaptureTerritory(val target: com.daengs.app.map.features.territory.TerritoryCaptureTarget) : WalkEffect
 }
 
 internal fun WalkLocationUiState.accept(sample: LocationSample): WalkLocationUiState =
