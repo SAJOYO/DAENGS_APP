@@ -31,12 +31,16 @@ class StartupGateTest {
     }
 
     /**
-     * **빈 목록과 `null` 은 다르다.** 둘을 같이 다루면 목록을 기다리는 사이에
-     * 온보딩이 떠서, 이미 강아지가 있는 사람에게 등록 화면이 스친다.
+     * **강아지가 없어도 홈이다.** 예전에는 여기서 등록 화면으로 보냈다 — 로그인하자마자
+     * 남의 정보를 채우게 만드는 자리였고, 빠져나갈 수도 없었다. 이제 빈 방으로 들어가고
+     * ([com.daengs.app.ui.home.roomRoster]) 기능을 누를 때 청한다.
+     *
+     * **그래도 빈 목록과 `null` 은 여전히 다르다** — 위 `아직 못 받았으면 기다린다` 가
+     * 그것을 잡는다. 못 받아 온 사이에 빈 방을 보여 주면 그것도 거짓말이다.
      */
     @Test
-    fun `강아지가 없으면 온보딩으로`() {
-        assertEquals(StartupTarget.Onboarding, startupTarget(emptyList(), null))
+    fun `강아지가 없어도 홈으로`() {
+        assertEquals(StartupTarget.Home, startupTarget(emptyList(), null))
     }
 
     /**
@@ -52,7 +56,7 @@ class StartupGateTest {
     @Test
     fun `목록이 있으면 지난 실패는 무시한다`() {
         assertEquals(StartupTarget.Home, startupTarget(listOf(pet("a")), "지난 실패"))
-        assertEquals(StartupTarget.Onboarding, startupTarget(emptyList(), "지난 실패"))
+        assertEquals(StartupTarget.Home, startupTarget(emptyList(), "지난 실패"))
     }
 }
 
