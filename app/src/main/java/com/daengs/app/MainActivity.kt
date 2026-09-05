@@ -770,6 +770,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onSignOut = {
+                            walkController.stop()
                             val old = session
                             session = null
                             // 다음 사람이 남의 강아지를 보면 안 된다.

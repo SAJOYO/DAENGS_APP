@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class WalkTrackingState(
+    val savedEntryCount: Int = 0,
+    val ownerId: String? = null,
     /** Service-owned identity and participants; survives screen recreation and map toggles. */
     val activeSessionId: String? = null,
     val activeDogIds: List<String> = emptyList(),

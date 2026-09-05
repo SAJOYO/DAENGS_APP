@@ -1,5 +1,11 @@
 package com.daengs.app.ui.walk
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import com.daengs.app.walk.isFreshEnoughForMoment
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -10,6 +16,7 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -49,7 +56,40 @@ fun WalkRoute(
     ),
 ) {
     val context = LocalContext.current
-    val state by viewModel.state.collectAsState()
+    val app = context.applicationContext as com.daengs.app.DaengsApp
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val editScope = androidx.compose.runtime.rememberCoroutineScope()
+    var editorOpen by remember { mutableStateOf(false) }
+    var initialEntry by remember { mutableStateOf<com.daengs.app.walk.WalkEntry?>(null) }
+    var entryError by remember { mutableStateOf<String?>(null) }
+    var entryBusy by remember { mutableStateOf(false) }
+    val observedState by viewModel.state.collectAsState()
+    val state = if (observedState.tracking.ownerId != null &&
+        observedState.tracking.ownerId != app.tokenStore.load()?.appUserId.orEmpty())
+        WalkUiState(selection = WalkSelectionState(pets = pets)) else observedState
+    val entrySessionId = state.tracking.activeSessionId ?: state.tracking.completedSessionId
+    val entryFlow = remember(entrySessionId) { app.walkEntries.observe(entrySessionId.orEmpty()) }
+    val observedEntries by entryFlow.collectAsState(initial = emptyList())
+    val entries = observedEntries.filter { it.sessionId == entrySessionId }
+    val renderedState = state.copy(
+        tracking = state.tracking.copy(momentGroups = entries.entryMoments(), savedEntryCount = entries.size),
+        completion = state.completion.copy(detail = state.completion.detail?.copy(moments = entries.entryMoments())),
+    )
+    fun saveEntry(entry: com.daengs.app.walk.WalkEntry?, delete: Boolean = false) {
+        entry ?: return
+        entryBusy = true
+        editScope.launch {
+            try {
+                app.walkRuntime.writer.flush()
+                if (delete) app.walkEntries.delete(entry.id) else app.walkEntries.save(entry)
+                app.walkRuntime.delivery.enqueue(entry.sessionId)
+                editorOpen = false
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                entryError = e.message ?: "기록을 저장하지 못했어요."
+            } finally { entryBusy = false }
+        }
+    }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -111,21 +151,63 @@ fun WalkRoute(
             }
         }
     }
-    DisposableEffect(viewModel) {
+    LaunchedEffect(walkController) {
+        walkController.events.collect { event ->
+            if (event is com.daengs.app.walk.WalkEvent.MomentRecorded) {
+                val result = snackbar.showSnackbar("${event.type.label} 기록을 남겼어요", actionLabel = "취소",
+                    duration = androidx.compose.material3.SnackbarDuration.Short)
+                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    app.walkEntries.delete(event.momentId.removePrefix("moment-"))
+                }
+            }
+        }
+    }
+        DisposableEffect(viewModel) {
         onDispose(viewModel::deactivate)
     }
 
     BackHandler { viewModel.onAction(WalkAction.Back) }
 
     WalkScreen(
-        state = state,
+        state = renderedState,
         outside = outside,
         avatarBreed = avatarBreed,
         avatarPhoto = avatarPhoto,
         photoOf = photoOf,
-        onAction = viewModel::onAction,
+        onAction = { action ->
+            if (action is WalkAction.AddMoment && action.type == com.daengs.app.walk.WalkMomentType.NOTE) {
+                entrySessionId?.let { sessionId ->
+                    val sample = state.tracking.latestMomentFix?.takeIf {
+                        it.isFreshEnoughForMoment(android.os.SystemClock.elapsedRealtimeNanos())
+                    }
+                    initialEntry = com.daengs.app.walk.WalkEntry(sessionId = sessionId,
+                        type = com.daengs.app.walk.WalkMomentType.NOTE,
+                        recordedAtMillis = System.currentTimeMillis(), point = sample?.point,
+                        locationCapturedAtMillis = sample?.capturedAtMillis, accuracyMeters = sample?.accuracyMeters)
+                    entryError = null; editorOpen = true
+                }
+            } else if (action is WalkAction.SelectMoment) {
+                initialEntry = entries.firstOrNull { "moment-${it.id}" == action.id }
+                entryError = null; editorOpen = true
+            } else viewModel.onAction(action)
+        },
         modifier = modifier,
     )
+    if (entrySessionId != null) androidx.compose.foundation.layout.Box(
+        Modifier.fillMaxSize().statusBarsPadding().padding(top = 56.dp, end = 12.dp),
+        contentAlignment = androidx.compose.ui.Alignment.TopEnd,
+    ) {
+        com.daengs.app.ui.common.DaengsFloatingButton("기록 ${entries.size}", {
+            initialEntry = null; entryError = null; editorOpen = true
+        })
+    }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(bottom = 170.dp),
+        contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+        androidx.compose.material3.SnackbarHost(snackbar)
+    }
+    if (editorOpen) WalkEntryEditor(entries, initialEntry,
+        pets.filter { it.id in state.tracking.activeDogIds || it.id in state.completedSummary?.dogIds.orEmpty() },
+        entryError, entryBusy, { saveEntry(it) }, { saveEntry(it, true) }, { editorOpen = false })
 }
 
 private val LOCATION_PERMISSIONS = arrayOf(

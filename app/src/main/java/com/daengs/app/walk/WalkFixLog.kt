@@ -8,6 +8,11 @@ package com.daengs.app.walk
  * 저장하고, 표시용 동선과 복구 가능한 증거를 서로 다른 층으로 둔다.
  */
 interface WalkFixLog {
+    val ownerId: String? get() = null
+    val historyChanges: kotlinx.coroutines.flow.Flow<Unit> get() = kotlinx.coroutines.flow.flowOf(Unit)
+    suspend fun restoreSession(session: RecordedSession) = openSession(session)
+    suspend fun hasEntries(sessionId: String): Boolean = actions(sessionId).isNotEmpty()
+
     /** 이미 알려진 ID를 다시 열어도 최초 시작 정보는 바꾸지 않는다. */
     suspend fun openSession(session: RecordedSession)
 
@@ -76,6 +81,7 @@ interface WalkFixLog {
 
 data class RecordedSession(
     val id: String,
+    val ownerId: String? = null,
     /**
      * 데리고 나간 아이들. **여러 마리다.**
      *

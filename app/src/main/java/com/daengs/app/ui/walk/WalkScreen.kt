@@ -462,7 +462,7 @@ private fun WalkGameOverlay(
                     onStop = onStop,
                     // 서비스가 저장 뒤에 재는 것과 **같은 규칙**이다. 여기서 미리 재
                     // 두면 "종료 → 사라짐 → 왜 없지" 가 아니라 누르기 전에 알 수 있다.
-                    tooShort = !countsAsWalk(distanceMeters, elapsedMillis),
+                    tooShort = !countsAsWalk(distanceMeters, elapsedMillis) && tracking.savedEntryCount == 0,
                 )
             }
         }
@@ -695,7 +695,7 @@ private fun WalkMomentDock(
     if (layoutMode == WalkLayoutMode.LANDSCAPE) {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             WalkMomentType.entries.forEach { type ->
-                WalkMomentButton(type = type, enabled = enabled, onClick = { onAddMoment(type) })
+                WalkMomentButton(type = type, enabled = enabled || type == WalkMomentType.NOTE, onClick = { onAddMoment(type) })
             }
         }
     } else {
@@ -705,7 +705,7 @@ private fun WalkMomentDock(
             WalkMomentType.entries.forEach { type ->
                 WalkMomentButton(
                     type = type,
-                    enabled = enabled,
+                    enabled = enabled || type == WalkMomentType.NOTE,
                     onClick = { onAddMoment(type) },
                     modifier = Modifier.weight(1f),
                 )
@@ -753,18 +753,18 @@ private fun WalkMomentButton(
  */
 private val WalkMomentType.shortLabel: String
     get() = when (this) {
-        WalkMomentType.EXPLORE -> "탐색"
-        WalkMomentType.TOILET_MARKING -> "배변"
-        WalkMomentType.SOCIAL -> "교류"
-        WalkMomentType.SPECIAL -> "순간"
+        WalkMomentType.SNIFFING -> "킁킁"
+        WalkMomentType.EXCRETION -> "배설"
+        WalkMomentType.BARKING -> "짖기"
+        WalkMomentType.NOTE -> "순간"
     }
 
 private val WalkMomentType.walkIcon: DaengsIcon
     get() = when (this) {
-        WalkMomentType.EXPLORE -> DaengsIcon.Pin
-        WalkMomentType.TOILET_MARKING -> DaengsIcon.Paw
-        WalkMomentType.SOCIAL -> DaengsIcon.Heart
-        WalkMomentType.SPECIAL -> DaengsIcon.Book
+        WalkMomentType.SNIFFING -> DaengsIcon.Pin
+        WalkMomentType.EXCRETION -> DaengsIcon.Paw
+        WalkMomentType.BARKING -> DaengsIcon.Sound
+        WalkMomentType.NOTE -> DaengsIcon.Book
     }
 
 @Composable

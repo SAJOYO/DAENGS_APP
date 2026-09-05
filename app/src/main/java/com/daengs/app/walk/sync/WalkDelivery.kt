@@ -68,7 +68,7 @@ class WorkManagerWalkDeliveryScheduler(
     override suspend fun enqueue(sessionId: String) {
         workManager.enqueueUniqueWork(
             walkDeliveryWorkName(sessionId),
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             walkDeliveryRequest(sessionId),
         ).await()
     }

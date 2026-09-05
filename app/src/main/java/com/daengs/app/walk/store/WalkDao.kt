@@ -7,6 +7,48 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
+    fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
+
+    @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
+    suspend fun entries(sessionId: String): List<WalkEntryRow>
+
+    @Query("SELECT * FROM walk_entry WHERE id = :id")
+    suspend fun entry(id: String): WalkEntryRow?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEntry(row: WalkEntryRow)
+
+    @Query("UPDATE walk_entry SET payload = :payload, mutationId = :mutationId, dirty = 1, syncError = NULL WHERE id = :id AND payload IS NOT NULL")
+    suspend fun editEntry(id: String, payload: String?, mutationId: String): Int
+
+    @Query("UPDATE walk_entry SET revision = :revision, dirty = CASE WHEN mutationId = :mutationId THEN 0 ELSE 1 END WHERE id = :id")
+    suspend fun acknowledgeEntry(id: String, revision: Int, mutationId: String)
+
+    @Query("UPDATE walk_entry SET payload = :payload, revision = :revision, mutationId = :mutationId WHERE id = :id AND dirty = 0")
+    suspend fun acceptEntry(id: String, payload: String?, revision: Int, mutationId: String)
+
+    @Query("SELECT DISTINCT sessionId FROM walk_entry WHERE dirty = 1")
+    suspend fun dirtyEntrySessions(): List<String>
+
+    @Query("UPDATE walk_entry SET revision = :revision, syncError = :message WHERE id = :id AND mutationId = :mutationId")
+    suspend fun conflictEntry(id: String, revision: Int, mutationId: String, message: String)
+
+    @Query("UPDATE walk_entry SET payload = NULL, revision = :revision, dirty = 0, syncError = NULL WHERE id = :id")
+    suspend fun acceptDeletedEntry(id: String, revision: Int)
+
+    @Query("SELECT * FROM walk_session ORDER BY startedAtMillis DESC")
+    fun observeSessions(): kotlinx.coroutines.flow.Flow<List<WalkSessionRow>>
+
+    @Query("SELECT mutationId FROM walk_entry ORDER BY id")
+    fun observeEntryRevisions(): kotlinx.coroutines.flow.Flow<List<String>>
+
+    @Query("DELETE FROM walk_session WHERE ownerId = :ownerId")
+    suspend fun deleteOwnerSessions(ownerId: String)
+
+    @Query("UPDATE walk_session SET ownerId = :ownerId, serverWalkId = :serverWalkId WHERE id = :id AND ownerId = ''")
+    suspend fun restoreOwner(id: String, ownerId: String, serverWalkId: String)
+
     /**
      * IGNORE: 같은 세션 시작을 재전송해도 최초 시작 시각을 덮어쓰지 않는다.
      *

@@ -79,12 +79,8 @@ fun WalkHistoryScreen(
     var filterDogId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(history) {
-        walks = history.finished()
         onSync?.invoke()
-        // 동기화가 로컬을 채울 시간을 준 뒤 한 번 더 읽는다. 새 폰에서 처음 열면
-        // 이 두 번째 읽기에 지난 산책이 들어온다.
-        kotlinx.coroutines.delay(SYNC_SETTLE_MS)
-        walks = history.finished()
+        history.changes.collect { walks = history.finished() }
     }
 
     // 아이가 지워지면 그 아이로 건 필터도 풀어야 한다. 안 그러면 아무것도 없는 목록
@@ -248,11 +244,3 @@ private fun WalkHistoryRowPreview() {
         }
     }
 }
-
-/**
- * 동기화가 로컬을 채울 때까지 기다리는 시간.
- *
- * 목록을 붙잡아 두는 시간이 아니다 — 먼저 뜨고, 이만큼 뒤에 **한 번 더 읽을 뿐**이다.
- * 서버 왕복이 이보다 오래 걸리면 다음에 열 때 보인다.
- */
-private const val SYNC_SETTLE_MS = 1_500L

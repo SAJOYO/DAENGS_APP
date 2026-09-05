@@ -53,11 +53,11 @@ class WalkTrackingTest {
         assertEquals(WalkTrackingService.ACTION_RESUME, shadowOf(application).nextStartedService.action)
         controller.stop()
         assertEquals(WalkTrackingService.ACTION_STOP, shadowOf(application).nextStartedService.action)
-        controller.recordMoment(WalkMomentType.SOCIAL)
+        controller.recordMoment(WalkMomentType.BARKING)
         val momentIntent = shadowOf(application).nextStartedService
         assertEquals(WalkTrackingService.ACTION_RECORD_MOMENT, momentIntent.action)
         assertEquals(
-            WalkMomentType.SOCIAL.behaviorCode,
+            WalkMomentType.BARKING.behaviorCode,
             momentIntent.getStringExtra(WalkTrackingService.EXTRA_MOMENT_TYPE),
         )
     }
