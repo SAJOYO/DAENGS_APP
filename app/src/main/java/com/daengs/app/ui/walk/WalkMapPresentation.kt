@@ -5,7 +5,6 @@ import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.territory.TerritorySiteMarkerState
 import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
-import com.daengs.app.territory.ClaimAccess
 import com.daengs.app.territory.ClaimCertification
 import com.daengs.app.map.layers.trail.TrailLayerState
 import com.daengs.app.map.layers.trail.toTrailLayerState
@@ -50,7 +49,9 @@ internal fun WalkUiState.toMapPresentation(
                             ClaimCertification.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
                         },
                         label = gameSite?.occupancyLabel ?: "미점유",
-                        ready = gameSite?.interaction?.access == ClaimAccess.READY,
+                        ready = target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING &&
+                            (territoryGame.canMark || territoryGame.canPhotograph),
+                        feedback = territoryGame.feedback?.takeIf { target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
                         radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
                     )
                 },

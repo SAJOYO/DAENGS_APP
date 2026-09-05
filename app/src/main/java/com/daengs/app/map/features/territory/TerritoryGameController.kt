@@ -51,6 +51,7 @@ data class TerritoryGameState(
     val guidance: String = "점령지를 선택해 주세요",
     val canPhotograph: Boolean = false,
     val photoStatus: ClaimPhotoStatus? = null,
+    val feedback: com.daengs.app.map.layers.territory.TerritoryFeedback? = null,
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
 }

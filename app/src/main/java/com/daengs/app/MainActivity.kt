@@ -869,8 +869,14 @@ class MainActivity : ComponentActivity() {
                         history = walkRuntime.history,
                         avatarBreed = artBreed,
                         // 지도의 내 위치도 올린 사진을 따른다.
-                        avatarPhoto = shownPets.firstOrNull { it.isPrimary }
-                            ?.let { petPhotos[it.id] }?.asAndroidBitmap(),
+                        //
+                        // **고르는 줄과 같은 목록을 본다.** 아래 `pets` 가 서버 목록인데
+                        // 여기만 `shownPets`(개발자 패널의 가짜 아이가 이기는 목록)를
+                        // 보고 있었다. 그래서 디버그에서 가짜 강아지를 켜면, 고르는 줄엔
+                        // 진짜 아이들이 그대로인데 **지도 위 사진만 사라졌다** — 가짜 아이의
+                        // id 는 `petPhotos` 에 없기 때문이다. 챗봇 화면은 원래
+                        // `pets.primary` 를 쓰고 있어서 거기에 맞춘다.
+                        avatarPhoto = pets.primary?.let { petPhotos[it.id] }?.asAndroidBitmap(),
                         pets = pets.pets.orEmpty(),
                         photoOf = { petPhotos[it] },
                         outside = outside,
