@@ -145,6 +145,7 @@ fun WalkScreen(
             territory = state.territory,
             territoryGame = state.territoryGame,
             onMarkTerritory = { onAction(WalkAction.MarkTerritory(it)) },
+            onPhotographTerritory = { onAction(WalkAction.PhotographTerritory(it)) },
             onRefreshClaimAccess = { onAction(WalkAction.RefreshClaimAccess) },
             onToggleDog = { onAction(WalkAction.ToggleDog(it)) },
             onHome = { onAction(WalkAction.Home) },
@@ -187,6 +188,7 @@ private fun WalkGameOverlay(
     territory: TerritoryBoardState = TerritoryBoardState(),
     territoryGame: TerritoryGameState = TerritoryGameState(),
     onMarkTerritory: (String) -> Unit = {},
+    onPhotographTerritory: (String) -> Unit = {},
     onRefreshClaimAccess: () -> Unit = {},
     onToggleDog: (String) -> Unit,
     onHome: () -> Unit,
@@ -316,7 +318,7 @@ private fun WalkGameOverlay(
                     photoOf = photoOf,
                 )
                 if (summary == null && mapPurpose == MapPurpose.TERRITORY && territoryGame.enabled) {
-                    TerritoryActionCard(territoryGame, onMarkTerritory, Modifier.align(Alignment.CenterEnd))
+                    TerritoryActionCard(territoryGame, onMarkTerritory, Modifier.align(Alignment.CenterEnd), onPhotographTerritory)
                 }
             } else {
                 // **가운데 버튼은 진짜 가운데여야 한다.** `SpaceBetween` 은 남는 자리를
@@ -368,7 +370,7 @@ private fun WalkGameOverlay(
                         )
                     }
                     if (summary == null && mapPurpose == MapPurpose.TERRITORY && territoryGame.enabled) {
-                        TerritoryActionCard(territoryGame, onMarkTerritory)
+                        TerritoryActionCard(territoryGame, onMarkTerritory, onPhotograph = onPhotographTerritory)
                     }
                     StatusPill(
                         label = notice,

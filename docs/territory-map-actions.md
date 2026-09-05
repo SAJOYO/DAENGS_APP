@@ -4,6 +4,8 @@
 기반 모델: [APP #139](https://github.com/SAJOYO/DAENGS_APP/pull/139).
 지도 연결: [APP #140](https://github.com/SAJOYO/DAENGS_APP/pull/140).
 
+이 문서는 2단계 구현 당시의 범위다. 촬영·사진 판정은 [3단계 연결](territory-photo-preview.md)을 본다.
+
 ## 체험 흐름
 
 1. 기존 README대로 지도 키·API 주소를 설정한 debug 앱에서 참여견을 골라 산책을 시작한다.

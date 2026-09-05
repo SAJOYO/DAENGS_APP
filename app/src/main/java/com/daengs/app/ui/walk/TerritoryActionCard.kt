@@ -33,6 +33,7 @@ internal fun TerritoryActionCard(
     game: TerritoryGameState,
     onMark: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onPhotograph: (String) -> Unit = {},
 ) {
     val haptics = LocalHapticFeedback.current
     val ready = game.target?.interaction?.access == ClaimAccess.READY
@@ -53,6 +54,9 @@ internal fun TerritoryActionCard(
                     DaengsIconView(DaengsIcon.Pin, Modifier.size(18.dp), tint = LocalContentColor.current)
                     Text(game.actionLabel)
                 }
+            }
+            Button(onClick = { game.targetId?.let(onPhotograph) }, enabled = game.canPhotograph) {
+                Text(if (game.photoStatus == com.daengs.app.territory.ClaimPhotoStatus.REJECTED) "다시 촬영" else "영역표시 인증 촬영")
             }
         }
     }
