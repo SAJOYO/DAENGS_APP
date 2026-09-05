@@ -97,6 +97,11 @@ class WalkHistory(private val log: WalkFixLog) {
         log.forgetEverything()
     }
 
+    suspend fun forgetOwner(ownerId: String) = withContext(Dispatchers.IO) {
+        require(ownerId.isNotBlank())
+        log.forgetOwner(ownerId)
+    }
+
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {
         val session = log.session(sessionId) ?: return@withContext null
         summarize(session, log.fixes(sessionId))

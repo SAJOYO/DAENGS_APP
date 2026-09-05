@@ -35,6 +35,8 @@ fun WalkEntryEditor(
     var selected by remember(initial?.id) { mutableStateOf(initial) }
     var text by remember(selected?.id) { mutableStateOf(selected?.note.orEmpty()) }
     val current = selected
+    val latest = entries.firstOrNull { it.id == current?.id }
+    val changed = current?.baseVersion != null && current.baseVersion != latest?.baseVersion
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(current?.type?.label ?: "산책 기록") },
@@ -58,6 +60,21 @@ fun WalkEntryEditor(
                     }
                 } else {
                     Text(entryClock(current.recordedAtMillis))
+                    if (changed) {
+                        Text(if (latest == null) "이 기록은 삭제됐어요. 작성 중인 내용은 아래에 남겨 두었어요."
+                            else "편집 중 기록이 변경됐어요. 최신 내용을 확인해 주세요.",
+                            color = MaterialTheme.colorScheme.error)
+                        if (latest != null) {
+                            val petName = pets.firstOrNull { it.id == latest.petId }?.name
+                                ?: latest.petId ?: "미지정"
+                            Text("최신 기록: ${latest.note ?: latest.type.label}" +
+                                if (latest.type == WalkMomentType.NOTE) "" else " · 대상: $petName")
+                            TextButton(enabled = !busy, onClick = {
+                                // 내용은 유지하고 사용자가 확인한 버전만 갱신한다. 이후 또 바뀌면 다시 막는다.
+                                selected = current.copy(baseVersion = latest.baseVersion, syncError = latest.syncError)
+                            }) { Text("확인했어요 · 작성 중인 내용으로 계속") }
+                        }
+                    }
                     current.syncError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     Text(current.point?.let { "위치와 함께 남긴 기록" } ?: "위치 없이 남긴 메모")
                     if (current.type == WalkMomentType.NOTE) {
@@ -91,7 +108,7 @@ fun WalkEntryEditor(
         },
         confirmButton = {
             if (current != null) TextButton(
-                enabled = !busy && (current.type != WalkMomentType.NOTE || text.isNotBlank()),
+                enabled = !busy && !changed && (current.type != WalkMomentType.NOTE || text.isNotBlank()),
                 onClick = { onSave(if (current.type == WalkMomentType.NOTE) current.copy(note = text.trim()) else current) },
             ) { Text(if (busy) "저장 중" else "저장") }
         },

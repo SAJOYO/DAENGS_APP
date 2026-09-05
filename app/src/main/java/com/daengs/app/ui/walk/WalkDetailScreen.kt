@@ -90,8 +90,11 @@ fun WalkDetailScreen(
         busy = true
         scope.launch {
             try {
-                if (delete) app.walkEntries.delete(entry.id) else app.walkEntries.save(entry)
-                app.walkRuntime.delivery.enqueue(entry.sessionId)
+                if (delete) app.walkEntries.deleteAndEnqueue(entry.id, app.walkRuntime.delivery::enqueue)
+                else {
+                    app.walkEntries.save(entry)
+                    app.walkRuntime.delivery.enqueue(entry.sessionId)
+                }
                 editorOpen = false
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

@@ -72,6 +72,11 @@ interface WalkFixLog {
      */
     suspend fun forgetEverything()
 
+    /** 탈퇴 요청 시작 때 고정한 계정만 삭제한다. 현재 로그인 상태를 다시 읽지 않는다. */
+    suspend fun forgetOwner(ownerId: String) {
+        error("계정별 산책 삭제를 지원하지 않는 저장소입니다.")
+    }
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>

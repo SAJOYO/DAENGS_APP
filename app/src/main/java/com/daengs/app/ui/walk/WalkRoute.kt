@@ -89,8 +89,11 @@ fun WalkRoute(
         editScope.launch {
             try {
                 app.walkRuntime.writer.flush()
-                if (delete) app.walkEntries.delete(entry.id) else app.walkEntries.save(entry)
-                app.walkRuntime.delivery.enqueue(entry.sessionId)
+                if (delete) app.walkEntries.deleteAndEnqueue(entry.id, app.walkRuntime.delivery::enqueue)
+                else {
+                    app.walkEntries.save(entry)
+                    app.walkRuntime.delivery.enqueue(entry.sessionId)
+                }
                 editorOpen = false
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -168,7 +171,13 @@ fun WalkRoute(
                 val result = snackbar.showSnackbar("${event.type.label} 기록을 남겼어요", actionLabel = "취소",
                     duration = androidx.compose.material3.SnackbarDuration.Short)
                 if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                    app.walkEntries.delete(event.momentId.removePrefix("moment-"))
+                    try {
+                        app.walkEntries.deleteAndEnqueue(event.momentId.removePrefix("moment-"),
+                            app.walkRuntime.delivery::enqueue)
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        snackbar.showSnackbar(e.message ?: "기록 취소를 완료하지 못했어요.")
+                    }
                 }
             }
         }

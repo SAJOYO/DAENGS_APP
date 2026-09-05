@@ -22,7 +22,8 @@ data class WalkEntryRow(
     val dirty: Boolean,
     val syncError: String? = null,
 ) {
-    fun entry(): WalkEntry? = payload?.let { WalkEntry.parse(id, sessionId, JSONObject(it)).copy(syncError = syncError) }
+    fun entry(): WalkEntry? = payload?.let { WalkEntry.parse(id, sessionId, JSONObject(it)).copy(
+        syncError = syncError, baseVersion = com.daengs.app.walk.WalkEntryVersion(revision, mutationId)) }
 }
 
 class WalkEntryStore(private val dao: WalkDao, private val owner: (() -> String)? = null) {
@@ -36,21 +37,18 @@ class WalkEntryStore(private val dao: WalkDao, private val owner: (() -> String)
             "현재 계정의 산책 기록이 아닙니다."
         }
         val content = entry.validate().toJson().toString()
-        val existing = dao.entry(entry.id)
-        if (existing == null) {
-            dao.insertEntry(WalkEntryRow(entry.id, entry.sessionId, content, 0,
-                UUID.randomUUID().toString(), true))
-        } else {
-            require(existing.sessionId == entry.sessionId && existing.payload != null)
-            check(dao.editEntry(entry.id, content, UUID.randomUUID().toString()) == 1) {
-                "이미 삭제된 기록입니다."
-            }
-        }
+        dao.saveEntryChecked(entry.id, entry.sessionId, content, UUID.randomUUID().toString(),
+            entry.baseVersion?.revision, entry.baseVersion?.mutationId, owner?.invoke())
     }
 
-    suspend fun delete(id: String) {
-        val row = dao.entry(id) ?: return
+    suspend fun delete(id: String): String? {
+        val row = dao.entry(id) ?: return null
         require(owner == null || dao.session(row.sessionId)?.ownerId == owner.invoke())
         dao.editEntry(id, null, UUID.randomUUID().toString())
+        return row.sessionId
+    }
+    /** 편집창과 Snackbar 모두 같은 삭제/전달 경계를 사용한다. */
+    suspend fun deleteAndEnqueue(id: String, enqueue: suspend (String) -> Unit) {
+        delete(id)?.let { enqueue(it) }
     }
 }
