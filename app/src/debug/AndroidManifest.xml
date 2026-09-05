@@ -18,6 +18,8 @@
 
     <application
         android:usesCleartextTraffic="true"
-        tools:targetApi="28" />
+        tools:targetApi="28">
+        <activity android:name=".ui.places.lab.PlaceSearchLabActivity" android:exported="true" android:label="시설 검색 UI 검토" />
+    </application>
 
 </manifest>

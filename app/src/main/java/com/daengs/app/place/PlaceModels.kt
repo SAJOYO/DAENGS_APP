@@ -158,6 +158,7 @@ data class PlaceFacts(
     val outdoor: Boolean?,
     val petAccess: PetAccessFacts?,
     val medical: MedicalFacts?,
+    val restrictions: JsonObject? = null,
 )
 
 data class PlaceResult(
@@ -181,6 +182,7 @@ data class DogAccessEvaluation(
 
 data class PlaceEvaluations(
     val dogAccess: DogAccessEvaluation?,
+    val restrictions: JsonObject? = null,
 )
 
 data class PlaceSearchHit(
@@ -267,6 +269,7 @@ private fun JsonObject.toPlaceSearchHit(): PlaceSearchHit = PlaceSearchHit(
 )
 
 private fun JsonObject.toPlaceEvaluations(): PlaceEvaluations = PlaceEvaluations(
+    restrictions = objectOrNull("restrictions"),
     dogAccess = objectOrNull("dog_access")?.let { value ->
         DogAccessEvaluation(
             state = DogAccessState.fromWire(value.requiredString("state")),
@@ -319,6 +322,7 @@ private fun JsonObject.toFieldProvenance(): FieldProvenance = FieldProvenance(
 )
 
 private fun JsonObject.toPlaceFacts(): PlaceFacts = PlaceFacts(
+    restrictions = objectOrNull("restrictions"),
     address = stringOrNull("address"),
     phone = stringOrNull("phone"),
     homepage = stringOrNull("homepage"),
