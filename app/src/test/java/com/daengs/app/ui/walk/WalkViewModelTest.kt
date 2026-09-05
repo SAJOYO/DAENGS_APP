@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -43,6 +44,45 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test
+    fun `saved photo settles after map is hidden and walk ends then appears certified`() = runTest {
+        val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val controller = FakeWalkController().apply {
+            publish(WalkTrackingState(
+                activeSessionId = "walk-id", activeDogIds = listOf("dog-1"),
+                trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix,
+            ))
+        }
+        val board = TerritorySiteRepository { TerritorySitePage(1, false, listOf(TerritorySite("A", fix.point, 0.0))) }
+        val claims = InMemoryTerritoryClaimRepository(emptyList())
+        val queue = com.daengs.app.territory.TerritoryPhotoQueue(claims, backgroundScope)
+        val viewModel = viewModel(controller, CountingLocationSource(), board, TerritoryGameController(claims), queue)
+        viewModel.updatePets(listOf(pet("dog-1")))
+        viewModel.activate(true, true)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        val target = com.daengs.app.map.features.territory.TerritoryCaptureTarget(
+            com.daengs.app.territory.ClaimSession("walk-id", "local-territory-preview", "dog-1"), "A",
+        )
+        val attempt = checkNotNull(viewModel.beginTerritoryCapture(target))
+        val file = java.io.File.createTempFile("territory-capture", ".jpg").apply { writeBytes(byteArrayOf(1)) }
+        try {
+            viewModel.submitTerritoryPhoto(attempt, file, com.daengs.app.territory.PhotoSimulation.ACCEPT)
+            viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK))
+            controller.publish(WalkTrackingState())
+            viewModel.deactivate()
+            runCurrent()
+            advanceTimeBy(2000)
+            runCurrent()
+            assertEquals(com.daengs.app.territory.ClaimPhotoStatus.VERIFIED, viewModel.territoryPhotos.value.single().status)
+            viewModel.activate(true, true)
+            viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+            runCurrent()
+            assertEquals(TerritoryMarkerOccupancy.VERIFIED, viewModel.state.value.toMapPresentation { "" }.scene.territorySites.single().occupancy)
+            assertEquals(false, file.exists())
+        } finally { file.delete() }
+    }
+
     @Test
     fun `territory action updates scene and map toggle preserves recording and ownership`() = runTest {
         val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
@@ -231,6 +271,7 @@ class WalkViewModelTest {
             TerritorySitePage(count = 0, truncated = false, sites = emptyList())
         },
         game: TerritoryGameController? = null,
+        photoQueue: com.daengs.app.territory.TerritoryPhotoQueue? = null,
     ) = WalkViewModel(
         walkController = controller,
         history = WalkHistory(EmptyWalkFixLog),
@@ -239,6 +280,7 @@ class WalkViewModelTest {
         externalScope = backgroundScope,
         territoryGame = game,
         nowNanos = { 2_000_000_000L },
+        photoQueue = photoQueue,
     )
 
     private class CountingLocationSource : LocationSource {

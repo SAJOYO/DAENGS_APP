@@ -18,6 +18,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.statusBarsPadding
+import com.daengs.app.map.features.territory.TerritoryCaptureTarget
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +54,8 @@ fun WalkRoute(
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
+    val photos by viewModel.territoryPhotos.collectAsState()
+    var captureTarget by remember { mutableStateOf<TerritoryCaptureTarget?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -108,6 +114,7 @@ fun WalkRoute(
                     }
                 }
                 is WalkEffect.ChangeOrientation -> onRequestOrientation(effect.orientation)
+                is WalkEffect.CaptureTerritory -> captureTarget = effect.target
             }
         }
     }
@@ -117,15 +124,26 @@ fun WalkRoute(
 
     BackHandler { viewModel.onAction(WalkAction.Back) }
 
-    WalkScreen(
+    Column(modifier) {
+      TerritoryPhotoStatus(photos, viewModel::retryTerritoryPhoto, Modifier.statusBarsPadding())
+      WalkScreen(
         state = state,
         outside = outside,
         avatarBreed = avatarBreed,
         avatarPhoto = avatarPhoto,
         photoOf = photoOf,
         onAction = viewModel::onAction,
-        modifier = modifier,
-    )
+        modifier = Modifier.weight(1f),
+      )
+    }
+    captureTarget?.let { target ->
+        TerritoryCaptureDialog(
+            siteId = target.siteId,
+            beginCapture = { viewModel.beginTerritoryCapture(target) },
+            onSaved = viewModel::submitTerritoryPhoto,
+            onDismiss = { captureTarget = null },
+        )
+    }
 }
 
 private val LOCATION_PERMISSIONS = arrayOf(
