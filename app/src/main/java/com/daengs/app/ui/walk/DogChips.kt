@@ -1,6 +1,7 @@
 package com.daengs.app.ui.walk
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,8 @@ import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkSoft
 import com.daengs.app.ui.theme.TextDark
@@ -55,6 +58,15 @@ fun DogChip(
         modifier
             .clip(RoundedCornerShape(20.dp))
             .background(if (selected) PinkSoft else CardWhite)
+            // **테두리와 체크를 따로 둔다.** 예전에는 바탕색만 달랐는데
+            // 연분홍(PinkSoft)과 흰색(CardWhite)이라 밝은 곳에서 거의 같아 보였다.
+            // 그래서 "골라져 있다" 를 못 읽고 데려갈 아이를 눌러 **빼 버린** 사고가
+            // 났다 (`WalkDogPick.kt`). 색 하나에 기대지 않는다.
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) DaengPink else DaengsColors.BorderNeutral,
+                shape = RoundedCornerShape(20.dp),
+            )
             .clickable(onClick = onClick)
             .padding(start = 5.dp, end = 13.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -69,11 +81,18 @@ fun DogChip(
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         )
+        if (selected) {
+            Spacer(Modifier.width(6.dp))
+            // 글자로 그린다. 이 저장소는 아이콘 세트를 안 쓰고 상단바의 "＋" 도
+            // 같은 방식이다 — 그림 하나를 더 들이지 않는다.
+            Text("✓", color = DaengPink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 /**
- * 데리고 나갈 아이 고르기. **여러 마리를 고를 수 있고 기본은 전부**다.
+ * 데리고 나갈 아이 고르기. **여러 마리를 고를 수 있고, 기본은 마릿수로 갈린다**
+ * ([walkDogPickLabel] 과 `WalkDogPick.kt`).
  *
  * 한 마리만 기르는 사람에게는 그 아이가 이미 골라진 채로 보인다 — 매번 누르게 하면
  * 문을 열 때마다 한 번씩 더 눌러야 한다.
@@ -92,8 +111,10 @@ fun DogPickRow(
 ) {
     if (pets.isEmpty()) return
     Column(modifier) {
+        // **묻지 않고 상태를 말한다.** 예전에는 늘 "누구와 나갈까요?" 였는데, 전부
+        // 골라진 채로 그렇게 물으니 아직 아무도 안 골라진 줄로 읽혔다.
         Text(
-            "누구와 나갈까요?",
+            walkDogPickLabel(pets, selected),
             color = TextMuted,
             fontSize = 12.sp,
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
@@ -143,6 +164,13 @@ fun DogFilterRow(
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
                 .background(if (selectedId == null) PinkSoft else CardWhite)
+                // 옆의 [DogChip] 과 **같은 표시 규칙**을 쓴다. 한 줄에 나란히 서는데
+                // 하나만 테두리가 없으면 고른 것이 무엇인지 더 헷갈린다.
+                .border(
+                    width = if (selectedId == null) 2.dp else 1.dp,
+                    color = if (selectedId == null) DaengPink else DaengsColors.BorderNeutral,
+                    shape = RoundedCornerShape(20.dp),
+                )
                 .clickable { onSelect(null) }
                 .padding(horizontal = 16.dp, vertical = 11.dp),
         )
@@ -189,6 +217,11 @@ fun dogNames(dogIds: List<String>, pets: List<Pet>): List<String> {
 private fun DogPickRowPreview() {
     DaengsTheme {
         Column(Modifier.background(CreamBg).padding(14.dp)) {
+            // **두 마리 이상일 때의 새 기본값이다** — 아무도 안 골라져 있다.
+            // 여기서 볼 것: 고른 것과 안 고른 것이 한눈에 갈리는가. 예전에는 바탕색만
+            // 달라서(연분홍/흰색) 안 갈렸고, 그래서 사고가 났다 (`WalkDogPick.kt`).
+            DogPickRow(pets = previewPets(), selected = emptySet(), onToggle = {})
+            Spacer(Modifier.padding(6.dp))
             DogPickRow(
                 pets = previewPets(),
                 selected = previewPets().map { it.id }.toSet(),

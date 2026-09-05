@@ -70,12 +70,43 @@ class WalkViewModelTest {
         val first = pet("dog-1")
         val second = pet("dog-2")
 
+        // 두 마리면 **아무도 안 골라진 채로 시작한다** (`WalkDogPick.defaultWalkDogs`).
+        // 그래서 여기서 누른 한 마리만 명령에 실린다.
         viewModel.updatePets(listOf(first, second))
         runCurrent()
         viewModel.onAction(WalkAction.ToggleDog(second.id))
         viewModel.onAction(WalkAction.StartConfirmed)
 
-        assertEquals(listOf(first.id), controller.startedDogIds)
+        assertEquals(listOf(second.id), controller.startedDogIds)
+    }
+
+    /**
+     * **두 마리 이상이면 아무도 안 골라져 있어야 한다.**
+     *
+     * 예전에는 전부 골라진 채로 시작했다. 화면은 "누구와 나갈까요?" 라고 묻고 골라진
+     * 표시는 연분홍/흰색 차이뿐이라, 데려갈 아이를 고르려고 누른 것이 **빼는 동작**이
+     * 되어 나머지 아이들과 다녀온 것으로 기록됐다 (비공개 테스트에서 실제로 났다).
+     */
+    @Test
+    fun `two dogs start with nothing selected`() = runTest {
+        val viewModel = viewModel(FakeWalkController(), CountingLocationSource())
+
+        viewModel.updatePets(listOf(pet("dog-1"), pet("dog-2")))
+        runCurrent()
+
+        assertEquals(emptySet<String>(), viewModel.state.value.selection.selectedDogIds)
+    }
+
+    /** 한 마리면 고를 것이 없다. 매번 누르게 하면 탭만 는다. */
+    @Test
+    fun `one dog is selected for you`() = runTest {
+        val viewModel = viewModel(FakeWalkController(), CountingLocationSource())
+        val only = pet("dog-1")
+
+        viewModel.updatePets(listOf(only))
+        runCurrent()
+
+        assertEquals(setOf(only.id), viewModel.state.value.selection.selectedDogIds)
     }
 
     @Test
