@@ -1,6 +1,6 @@
 # 산책 사진과 촬영 위치 Pin
 
-APP [PR #151](https://github.com/SAJOYO/DAENGS_APP/pull/151), 2026-09-05.
+APP [PR #151](https://github.com/SAJOYO/DAENGS_APP/pull/151), 2026-09-05. 스토리보드 검토 PR #153을 포함한 최신 dev(f485dd6)를 반영한다.
 
 ## 사용자 흐름
 
@@ -25,7 +25,7 @@ APP [PR #151](https://github.com/SAJOYO/DAENGS_APP/pull/151), 2026-09-05.
 
 ## 저장과 복구
 
-- Room v8의 `walk_photo`: 사진 ID, 세션, 소유 계정, 촬영/위치 시각, 좌표, 정확도. v7→v8은 새 표와 인덱스만 추가하며 기존 세션·강아지·경로·메모·동기화 상태를 보존한다.
+- Room v9의 `walk_photo`: 사진 ID, 세션, 소유 계정, 촬영/위치 시각, 좌표, 정확도. v8→v9는 새 표와 인덱스만 추가하며 기존 세션·강아지·경로·메모·스토리보드·동기화 상태를 보존한다. dev의 v7→v8 스토리보드 마이그레이션은 그대로 유지한다.
 - 일반 촬영 임시는 `cache/walk-photo-capture`, 영구 파일은 `files/walk-photos/<UUID>.jpg`. 인증의 `cache/territory-photos`와 겹치지 않는다.
 - CameraX 완료 뒤 파일 저장은 Application coroutine에서 수행해 화면 이탈/회전으로 DB 저장이 취소되지 않게 한다. 저장 오류에는 복사 중 파일과 촬영 임시 파일을 회수한다. 프로세스가 죽어 남은 영구 고아 파일은 다음 시작에서 정리한다.
 - 사진 조회/저장은 세션 소유자를 확인한다. 로그아웃에는 보관하고, 세션·해당 강아지만의 산책·탈퇴 계정 삭제 뒤에는 cascade된 사진 파일도 정리한다. 다견 산책은 남은 강아지의 기록으로 유지한다.
@@ -33,12 +33,14 @@ APP [PR #151](https://github.com/SAJOYO/DAENGS_APP/pull/151), 2026-09-05.
 
 최신 확인한 백엔드 `dev` **d279cdc**의 `schemas/walk_entry.py`는 `kind=behavior|note`만 허용한다. 산책 사진 업로드/첨부/복원 계약은 없으므로 이 PR에서 서버 전송을 만들지 않았다. 현재 UI에도 **이 기기에 저장**을 표시한다. 서버의 산책 기록 프로필에는 사진 수를 합산하지 않는다.
 
+스토리보드 검토 기능은 유지하며, 사진을 스토리보드의 자동 장면으로 만드는 연결은 아직 없다. 사진은 지도 Pin과 일기 목록에서 연다.
+
 ## 확인과 남은 기기 검사
 
-타겟 검사: 실제 Room 파일을 닫고 다시 연 사진 복원, 사진만 있는 짧은 산책 보관, 계정 변경, 저장 실패 정리, 개별/세션/탈퇴 삭제, 다견 보존, v7 경로·메모 마이그레이션, 셔터 시각/좌표 고정, GPS/일시정지 제한, 일반·인증 촬영 액션 분리, 두 지도 표시의 사진 Pin 투영, 사진 목록 진입·JPEG 상세 표시·삭제 확인. 기존 산책 UI와 기록 저장 회귀 검사 및 debug APK 빌드도 수행한다.
+타겟 검사: 실제 Room 파일을 닫고 다시 연 사진 복원, 사진만 있는 짧은 산책 보관, 계정 변경, 저장 실패 정리, 개별/세션/탈퇴 삭제, 다견 보존, v7/v8 경로·메모·스토리보드 마이그레이션, 셔터 시각/좌표 고정, GPS/일시정지 제한, 일반·인증 촬영 액션 분리, 두 지도 표시의 사진 Pin 투영, 사진 목록 진입·JPEG 상세 표시·삭제 확인. 기존 산책 UI와 기록 저장 회귀 검사 및 debug APK 빌드도 수행한다.
 
 ```powershell
-./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.store.*' --tests 'com.daengs.app.walk.WalkPhotoCaptureTest' --tests 'com.daengs.app.ui.walk.*' :app:assembleDebug --console=plain
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.store.*' --tests 'com.daengs.app.walk.WalkPhotoCaptureTest' --tests 'com.daengs.app.walk.diary.*' --tests 'com.daengs.app.ui.walk.*' :app:assembleDebug --console=plain
 ```
 
 320dp 세로와 가로 도크/점령 카드 배치는 실제 Kotlin Compose를 Robolectric으로 렌더링해 확인했다. `app/build/reports/walk-territory/*.png`는 `showMap=false`이며 Naver SDK 타일이나 실기기 촬영을 검증한 이미지는 아니다.

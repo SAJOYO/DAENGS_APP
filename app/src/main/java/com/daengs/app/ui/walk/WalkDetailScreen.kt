@@ -82,6 +82,7 @@ fun WalkDetailScreen(
     var selectedPhotoId by remember(sessionId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var editorOpen by remember { mutableStateOf(false) }
+    var storyboardOpen by remember(sessionId) { mutableStateOf(false) }
     var initialEntry by remember { mutableStateOf<com.daengs.app.walk.WalkEntry?>(null) }
     var entryError by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -104,6 +105,10 @@ fun WalkDetailScreen(
         detail = history.sessionDetail(sessionId)
     }
 
+    if (storyboardOpen) {
+        WalkStoryboardScreen(sessionId, history, pets) { storyboardOpen = false }
+        return
+    }
     BackHandler(onBack = onBack)
 
     Box(modifier.fillMaxSize().background(PinkFaint)) {
@@ -165,12 +170,18 @@ fun WalkDetailScreen(
             WalkPhotoDialog(it, app.walkPhotos::delete, { selectedPhotoId = null })
         }
         walk?.let {
-            WalkFacts(
-                walk = it,
-                dogNames = dogNames(it.dogIds, pets),
-                moments = detail?.moments.orEmpty(),
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+            Column(Modifier.align(Alignment.BottomCenter)) {
+                androidx.compose.material3.Button(
+                    onClick = { storyboardOpen = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                ) { Text("스토리보드 검토") }
+                WalkFacts(
+                    walk = it,
+                    dogNames = dogNames(it.dogIds, pets),
+                    moments = detail?.moments.orEmpty(),
+                    modifier = Modifier,
+                )
+            }
         }
     }
 }

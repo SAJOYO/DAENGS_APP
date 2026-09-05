@@ -22,6 +22,12 @@ interface WalkDao {
     @Query("DELETE FROM walk_photo WHERE id = :id")
     suspend fun deletePhoto(id: String)
 
+    @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
+    suspend fun storyboard(sessionId: String): WalkStoryboardRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveStoryboard(row: WalkStoryboardRow)
+
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
     fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
 

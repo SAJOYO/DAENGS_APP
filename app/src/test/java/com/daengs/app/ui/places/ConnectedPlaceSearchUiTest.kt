@@ -21,6 +21,17 @@ class ConnectedPlaceSearchUiTest {
     @get:Rule val compose = createComposeRule()
     private fun ready() = PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.54,127.05)),
         discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE)))
+    @Test fun failedGpsOffersRetryInsteadOfEmptyResults() {
+        val state = ready().copy(
+            location = PlaceLocationState.Failed(PlaceLocationFailure.UNAVAILABLE, null),
+            waitingForSearchLocation = true,
+        )
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
+        compose.onNodeWithText("검색 결과가 없어요.").assertDoesNotExist()
+        compose.onNodeWithText("다시 확인").performClick()
+        assertEquals(PlacesAction.RetrySearch, actions.single())
+    }
     @Test fun realProfileNamesDispatchIndependentDogSelection() {
         val dog = com.daengs.app.pet.Pet("real-id", "콩이", "mix", null, null, 9f, null, null, isPrimary = true)
         val state = ready().copy(profiles = PlaceProfiles().receive("owner", listOf(dog), false, null))

@@ -22,11 +22,13 @@ import com.daengs.app.ui.theme.DaengsTheme
 fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: PlaceKey?, notice: String?): PlaceSearchLabState {
     val response = discovery.response
     val profileMismatch = response != null && response.dogs != profiles.snapshots()
+    val locationFailed = waitingForSearchLocation && location is PlaceLocationState.Failed
     val all = discovery.requestedKinds.size > 6
     val hits = if (all) response?.overviewHits(discovery.preferParking).orEmpty() else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
-        discovery.loading || location.locating || profileMismatch -> LabPhase.LOADING
+        locationFailed -> LabPhase.ERROR
+        discovery.loading || waitingForSearchLocation || profileMismatch -> LabPhase.LOADING
         discovery.search is PlaceSearchState.Failed -> LabPhase.ERROR
         hits.isNotEmpty() -> LabPhase.RESULTS
         else -> LabPhase.EMPTY
@@ -37,7 +39,8 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
         hits = if (phase == LabPhase.RESULTS) hits else emptyList(), phase = phase,
         selected = discovery.selectedPlaceKey,
         expanded = expanded?.takeIf { key -> hits.any { it.place.key == key } },
-        notice = notice ?: location.userMessage(), errorText = discovery.error?.let { if (all) "전체 업종을 불러오지 못했어요. $it" else it },
+        notice = notice ?: location.userMessage(), errorText = if (locationFailed) location.userMessage()
+            else discovery.error?.let { if (all) "전체 업종을 불러오지 못했어요. $it" else it },
         truncated = response?.groups?.any { it.truncated } == true,
         selectedDogIds = profiles.selectedIds,
         profileNames = profiles.pets.associate { it.id to it.name },
@@ -66,6 +69,10 @@ fun ConnectedPlaceSearchScreen(
     var follow by remember { mutableStateOf(true) }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
+    LaunchedEffect(state.discovery.response) {
+        // A loading frame has no response; only completed results can remove an expanded card.
+        if (state.discovery.response != null) expanded = ui.expanded
+    }
     val kind = ui.applied.kind
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
@@ -105,7 +112,7 @@ fun ConnectedPlaceSearchScreen(
             PlaceJourneyAction(
                 state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
                 onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
-                onRetry = { onAction(PlacesAction.RetryJourney) }, onOpenHandoff = onOpenHandoff,
+                onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
             )
         },
         map = {
