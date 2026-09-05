@@ -163,6 +163,17 @@ fun HomeScreen(
     onCloseMy: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
+    /**
+     * 로그인했는데 **아직 강아지가 없나.** 그때 방이 비고 「강아지 데려오기」가 뜬다.
+     *
+     * **여기서 계산하지 않고 받는다.** 이 화면의 [pets] 는 개발자 패널이 넣어 본 가짜
+     * 아이까지 섞인 **null 이 아닌** 목록이라, "아직 못 받아 왔다" 와 "한 마리도 없다"
+     * 가 여기서는 갈리지 않는다. 그 둘을 아는 것은 부르는 쪽이다
+     * ([com.daengs.app.ui.home.needsPet]).
+     */
+    waitsForPet: Boolean = false,
+    /** 개발자 패널의 "빈 방으로 보기". 릴리스에서는 패널이 빈 껍데기라 안 쓰인다 */
+    onToggleEmptyRoom: (() -> Unit)? = null,
     onSignOut: (() -> Unit)? = null,
     /** 카드 실험실. 개발자 패널에서만 열린다. */
     onOpenCutoutLab: (() -> Unit)? = null,
@@ -292,7 +303,7 @@ fun HomeScreen(
     // **한 번 걸러서 둘 다 그 결과를 본다.** 명부와 배웅 자리는 차례가 같아야 해서,
     // 거르는 곳이 둘이 되면 배웅한 아이의 하트가 남의 아이 곁에 뜬다.
     val inRoom = roomPets(pets, hiddenRoomPetIds)
-    val herd = rememberDogHerd(roomRoster(inRoom), departedInRoom(inRoom))
+    val herd = rememberDogHerd(roomRoster(inRoom, waitsForPet), departedInRoom(inRoom))
     val store = rememberRoomStore()
     // 테마는 id 만 저장한다 — 원시값이라 화면 회전에도 그대로 남는다
     var themeId by rememberSaveable { mutableStateOf(store.loadThemeId() ?: RoomTheme.DEFAULT.id) }
@@ -469,6 +480,10 @@ fun HomeScreen(
                 onPickOutside = { outsideOverride = it },
                 todayNote = words.today,
                 dogsLoading = pets == null,
+                waitsForPet = waitsForPet,
+                onAddPet = onAddPet,
+                onToggleEmptyRoom = onToggleEmptyRoom,
+                tourOpen = tourOpen,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
@@ -579,6 +594,23 @@ private fun RoomSection(
      * 사라지는 표시는 데모 강아지가 사라지던 것과 똑같이 깜빡임이다.
      */
     dogsLoading: Boolean,
+    /**
+     * 로그인했는데 **아직 강아지가 없나.** 그때 방이 진짜로 빈다.
+     *
+     * ⚠️ **[dogsLoading] 과 다른 상태다.** 저건 "곧 올 것"이고 이건 "아직 없는 것"이다.
+     * 둘을 같은 문구로 덮으면 영영 안 오는 강아지를 기다리는 화면이 된다.
+     */
+    waitsForPet: Boolean,
+    /** 강아지 등록으로. null 이면 빈 방에 아무 자리도 안 뜬다 */
+    onAddPet: (() -> Unit)?,
+    /** 개발자 패널의 "빈 방으로 보기". 릴리스에서는 패널이 빈 껍데기라 안 쓰인다 */
+    onToggleEmptyRoom: (() -> Unit)?,
+    /**
+     * 방 둘러보기가 떠 있나. **떠 있으면 빈 방 초대를 가린다** —
+     * 겹이 이 카드 위로 스포트라이트를 뚫어서 엉뚱한 것을 가리킨다
+     * ([showsEmptyRoomInvite]).
+     */
+    tourOpen: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -655,6 +687,13 @@ private fun RoomSection(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
+        // **빈 방은 이것과 함께여야 한다.** [roomPets] 주석대로 빈 방은 그 자체로는
+        // "고장 난 것" 으로 읽힌다 — 여기가 그것을 "아직 아무도 안 왔다" 로 바꾼다.
+        if (onAddPet != null &&
+            showsEmptyRoomInvite(waitsForPet, showDogsLoading, inventoryOpen, tourOpen)
+        ) {
+            EmptyRoomInvite(onAddPet, Modifier.align(Alignment.Center))
+        }
         TodayCard(
             dateLabel = dateLabel,
             note = todayNote,
@@ -693,6 +732,8 @@ private fun RoomSection(
                 hasProfilePhoto = hasDevPhoto,
                 onPickDevPets = onPickDevPets,
                 devPetCount = devPetCount,
+                onToggleEmptyRoom = onToggleEmptyRoom,
+                emptyRoom = waitsForPet,
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,
