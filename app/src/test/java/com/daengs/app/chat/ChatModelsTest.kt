@@ -17,10 +17,11 @@ class ChatModelsTest {
     // ── 능력 라벨 ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `training 은 훈련, life 는 제도, walk 는 산책이다`() {
+    fun `training 은 훈련, life 는 제도, walk 는 산책, place 는 장소다`() {
         assertEquals("훈련", ChatCapability.label("training"))
         assertEquals("제도", ChatCapability.label("life"))
         assertEquals("산책", ChatCapability.label("walk"))
+        assertEquals("장소", ChatCapability.label("place"))
     }
 
     /** `walk` 를 `생활` 로 읽는 실수를 여기서 막는다. 산책 판정은 생활 비서와 별개 능력이다. */

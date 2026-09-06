@@ -219,7 +219,7 @@ private fun RecentSessionListPreview() = DaengsTheme {
 @Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun ChatCapabilityBadgesPreview() = DaengsTheme {
-    ChatCapabilityBadges(listOf("training", "life", "walk"), Modifier.padding(12.dp))
+    ChatCapabilityBadges(listOf("training", "life", "walk", "place"), Modifier.padding(12.dp))
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
