@@ -19,11 +19,12 @@ import org.json.JSONObject
  * 만들면 같은 버그를 두 군데서 고치게 된다.
  */
 
-/** 저쪽 `AgentCategory` — `training` · `life` · `walk`. 값은 문자열 그대로 든다. */
+/** 저쪽 `AgentCategory` — `training` · `life` · `walk` · `place`. 값은 문자열 그대로 든다. */
 object ChatCapability {
     const val TRAINING = "training"
     const val LIFE = "life"
     const val WALK = "walk"
+    const val PLACE = "place"
 
     /**
      * 화면에 붙일 라벨. **모르는 값은 null** 이다 — 저쪽이 능력을 하나 더 만드는 날
@@ -35,11 +36,15 @@ object ChatCapability {
      *
      * 피부·보행 진단은 여기 없다. 그건 Chat 능력이 아니라 `HANDOFF` 로 넘어가는 별도
      * 흐름(`ScreeningApi` · `GaitApi`)이라, 저쪽 `AgentCategory` 에도 없다.
+     *
+     * `place` 는 **장소**다. 답변 본문이 이미 `[장소]` 라는 머리말로 나가고 있어서,
+     * 배지를 `갈 곳` 이나 `주변` 으로 쓰면 같은 것을 두 이름으로 부르게 된다.
      */
     fun label(raw: String): String? = when (raw) {
         TRAINING -> "훈련"
         LIFE -> "제도"
         WALK -> "산책"
+        PLACE -> "장소"
         else -> null
     }
 }

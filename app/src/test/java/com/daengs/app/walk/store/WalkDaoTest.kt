@@ -206,20 +206,20 @@ class WalkDaoTest {
     @Test
     fun `행동 원본은 시각 순서로 남고 같은 id는 중복되지 않는다`() = runBlocking {
         log.openSession(session("s1"))
-        log.appendAction(action("a2", WalkMomentType.SOCIAL, 3_000L))
-        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L))
-        log.appendAction(action("a1", WalkMomentType.SPECIAL, 4_000L))
+        log.appendAction(action("a2", WalkMomentType.BARKING, 3_000L))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L))
+        log.appendAction(action("a1", WalkMomentType.NOTE, 4_000L))
 
         val stored = log.actions("s1")
 
         assertEquals(listOf("a1", "a2"), stored.map { it.id })
-        assertEquals(WalkMomentType.EXPLORE, stored.first().type)
+        assertEquals(WalkMomentType.SNIFFING, stored.first().type)
     }
 
     @Test
     fun `세션을 지우면 행동 원본도 함께 지워진다`() = runBlocking {
         log.openSession(session("s1"))
-        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L))
 
         log.deleteSession("s1")
 
@@ -258,7 +258,7 @@ class WalkDaoTest {
     fun `그 아이와만 나간 산책은 같이 지운다`() = runBlocking {
         log.openSession(RecordedSession("solo", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
         log.append("solo", fix(0))
-        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L, sessionId = "solo"))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L, sessionId = "solo"))
 
         log.forgetDog("dog-1")
 

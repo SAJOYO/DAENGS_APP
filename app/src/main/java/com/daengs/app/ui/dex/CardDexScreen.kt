@@ -200,6 +200,18 @@ fun CardDexScreen(
      * `@Preview` 와 테스트가 그렇게 부른다.
      */
     draw: (@Composable (onDone: () -> Unit) -> Unit)? = null,
+    /**
+     * 뽑기를 **막고 대신 부를 것.** null 이면 그냥 뽑기 화면이 뜬다.
+     *
+     * 강아지가 아직 없는 사람이 여기를 누르면 **이름도 얼굴도 없는 카드**가 만들어진다
+     * (`CardDrawScreen` 의 `dogs` 가 비면 이름 없이 뽑는다). 그건 도감 칸만 차지하고
+     * 무대·창틀에 우리 것이 하나도 안 얹힌다.
+     *
+     * **자리를 없애지 않고 막는 이유**는, 사라진 버튼은 안내가 아니라서다 — 왜 없는지
+     * 알 길이 없다. `MainActivity` 가 여기에 문을 물린다
+     * ([com.daengs.app.ui.home.PetNeed]).
+     */
+    onDrawBlocked: (() -> Unit)? = null,
     startInDraw: Boolean = false,
     /** 지금 방 액자에 걸려 있는 카드. null 이면 발자국이 걸려 있다 */
     framedCardId: String? = null,
@@ -228,7 +240,12 @@ fun CardDexScreen(
     var sceneFace by remember { mutableStateOf<SubjectFace?>(null) }
     // **화면을 안 늘린다.** 뽑기는 `Screen` 에 새 갈래를 내지 않고 도감 위에 덮인다 —
     // 확대 뷰·이머시브가 이미 그 방식이라 결이 맞고, `MainActivity` 를 안 건드린다.
-    var drawing by remember { mutableStateOf(startInDraw && draw != null) }
+    // **막혀 있으면 곧장 열리는 길도 막는다.** 턴테이블의 "뽑으러 가기" 는 이미
+    // `MainActivity` 가 걸러서 오지만, 여기서 한 번 더 안 막으면 부르는 자리가 늘 때
+    // 조용히 새어 나간다.
+    var drawing by remember {
+        mutableStateOf(startInDraw && draw != null && onDrawBlocked == null)
+    }
     // **지운 뒤에 한 줄 알려 준다.** 확인 창은 뜨지만 지우고 나면 아무 말이 없어서
     // "지워졌나…?" 로 남는다 — 되돌릴 수 없는 동작이 조용한 것이 제일 나쁘다.
     // 저장이 쓰는 것과 같은 방식이다 (`CardSaver` 의 `note`).
@@ -286,7 +303,7 @@ fun CardDexScreen(
             onDeck = { deck = it; opened = null },
             onOpen = { opened = it },
             onClose = onClose,
-            onDraw = draw?.let { { drawing = true } },
+            onDraw = draw?.let { { onDrawBlocked?.invoke() ?: run { drawing = true } } },
             onImmersive = { at, picked, whose, theirFace ->
                 from = at
                 scene = picked

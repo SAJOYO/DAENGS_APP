@@ -158,7 +158,7 @@ class WalkFixWriterTest {
     private fun action(id: String) = RecordedWalkAction(
         id = id,
         sessionId = "s1",
-        type = WalkMomentType.EXPLORE,
+        type = WalkMomentType.SNIFFING,
         recordedAtMillis = 10L,
         locationCapturedAtMillis = 9L,
         point = com.daengs.app.location.GeoPoint(37.0, 127.0),

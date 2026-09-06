@@ -1,5 +1,8 @@
 package com.daengs.app.ui.walk
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -69,12 +72,46 @@ fun WalkDetailScreen(
     pets: List<Pet> = emptyList(),
 ) {
     val inspectionMode = LocalInspectionMode.current
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.daengs.app.DaengsApp
+    val entryFlow = remember(sessionId) { app.walkEntries.observe(sessionId) }
+    val observedEntries by entryFlow.collectAsState(initial = emptyList())
+    val entries = observedEntries.filter { it.sessionId == sessionId }
+    val photoFlow = remember(sessionId) { app.walkPhotos.observe(sessionId) }
+    val observedPhotos by photoFlow.collectAsState(initial = emptyList())
+    val diaryPhotos = observedPhotos.filter { it.sessionId == sessionId }
+    var selectedPhotoId by remember(sessionId) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    var editorOpen by remember { mutableStateOf(false) }
+    var storyboardOpen by remember(sessionId) { mutableStateOf(false) }
+    var initialEntry by remember { mutableStateOf<com.daengs.app.walk.WalkEntry?>(null) }
+    var entryError by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    fun change(entry: com.daengs.app.walk.WalkEntry, delete: Boolean) {
+        busy = true
+        scope.launch {
+            try {
+                if (delete) app.walkEntries.deleteAndEnqueue(entry.id, app.walkRuntime.delivery::enqueue)
+                else {
+                    app.walkEntries.save(entry)
+                    app.walkRuntime.delivery.enqueue(entry.sessionId)
+                }
+                editorOpen = false
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                entryError = e.message ?: "저장하지 못했어요."
+            } finally { busy = false }
+        }
+    }
     var detail by remember(sessionId) { mutableStateOf<WalkSessionDetail?>(null) }
 
-    LaunchedEffect(sessionId, history) {
+    LaunchedEffect(sessionId, history, entries) {
         detail = history.sessionDetail(sessionId)
     }
 
+    if (storyboardOpen) {
+        WalkStoryboardScreen(sessionId, history, pets) { storyboardOpen = false }
+        return
+    }
     BackHandler(onBack = onBack)
 
     Box(modifier.fillMaxSize().background(PinkFaint)) {
@@ -87,9 +124,9 @@ fun WalkDetailScreen(
                 scene = composeMapScene(
                     purpose = MapPurpose.WALK,
                     sources = MapSceneSources(
-                        moments = detail?.moments.orEmpty().map { moment ->
+                        moments = entries.entryMoments().map { moment ->
                             MomentMarkerState(moment.id, moment.point, moment.markerLabel)
-                        },
+                        } + diaryPhotos.photoMarkers(),
                         completedRoute = completedRoute,
                     ),
                 ),
@@ -98,13 +135,20 @@ fun WalkDetailScreen(
                 onCameraIdle = {},
                 onCameraGesture = {},
                 onSelectPlace = {},
+                onSelectMoment = { id ->
+                    val photo = diaryPhotos.firstOrNull { "photo-${it.id}" == id }
+                    if (photo != null) selectedPhotoId = photo.id else {
+                        initialEntry = entries.firstOrNull { "moment-${it.id}" == id }
+                        entryError = null; editorOpen = true
+                    }
+                },
                 // 경로 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과는 다르다 —
                 // 한 시간 걸은 산책은 첫 좌표만 보면 어디를 돌았는지 알 수 없다.
                 //
                 // 그릴 선이 없으면 **그 산책이 있었던 자리**로 간다. 안 그러면 지도가
                 // 네이버 기본 카메라(서울시청)에 앉아, 강남에서 한 산책이 시청에서 한
                 // 것처럼 보인다.
-                fitBounds = route?.bounds.orEmpty().ifEmpty { listOfNotNull(walk?.anchor) }
+                fitBounds = (route?.bounds.orEmpty().ifEmpty { listOfNotNull(walk?.anchor) } + diaryPhotos.map { it.point })
                     .takeIf { it.isNotEmpty() },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -116,13 +160,31 @@ fun WalkDetailScreen(
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
         )
 
+        DaengsFloatingButton(
+            label = "기록 ${entries.size + diaryPhotos.size}", onClick = {
+                initialEntry = null; entryError = null; editorOpen = true
+            }, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp),
+        )
+        if (editorOpen) WalkEntryEditor(entries, initialEntry,
+            pets.filter { it.id in walk?.dogIds.orEmpty() }, entryError, busy,
+            { change(it, false) }, { change(it, true) }, { editorOpen = false },
+            diaryPhotos = diaryPhotos, onOpenPhoto = { editorOpen = false; selectedPhotoId = it.id })
+        diaryPhotos.firstOrNull { it.id == selectedPhotoId }?.let {
+            WalkPhotoDialog(it, app.walkPhotos::delete, { selectedPhotoId = null })
+        }
         walk?.let {
-            WalkFacts(
-                walk = it,
-                dogNames = dogNames(it.dogIds, pets),
-                moments = detail?.moments.orEmpty(),
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+            Column(Modifier.align(Alignment.BottomCenter)) {
+                androidx.compose.material3.Button(
+                    onClick = { storyboardOpen = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                ) { Text("스토리보드 검토") }
+                WalkFacts(
+                    walk = it,
+                    dogNames = dogNames(it.dogIds, pets),
+                    moments = detail?.moments.orEmpty(),
+                    modifier = Modifier,
+                )
+            }
         }
     }
 }

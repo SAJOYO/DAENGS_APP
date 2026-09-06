@@ -111,7 +111,12 @@ fun LandingScreen(
                     CircularProgressIndicator(Modifier.size(20.dp), color = KakaoLabel, strokeWidth = 2.dp)
                 } else {
                     Text(
-                        "카카오로 시작하기",
+                        // **"3초" 를 넣은 것은 약속이다.** 이 뒤로 사용자가 채워야 하는
+                        // 칸이 하나도 없어야 한다 — 이름은 서버가 지어 주고
+                        // (`ui/nickname/`), 강아지 등록은 기능을 누를 때 청한다
+                        // (`ui/home/PetGate.kt`). 둘 중 하나라도 되돌리면 이 문구가
+                        // 거짓말이 된다.
+                        "카카오로 3초 만에 시작하기",
                         color = if (canLogin) KakaoLabel else KakaoLabel.copy(alpha = 0.4f),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,

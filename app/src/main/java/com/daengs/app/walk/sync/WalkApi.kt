@@ -137,7 +137,7 @@ object WalkApi {
         }
     }
 
-    private suspend fun <T> call(
+    internal suspend fun <T> call(
         accessToken: String,
         path: String,
         method: String,

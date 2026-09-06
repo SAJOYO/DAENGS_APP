@@ -83,6 +83,7 @@ internal class WalkLocationCoordinator(
                 permissionGranted = granted,
                 precisePermission = granted && precise,
                 currentPosition = it.currentPosition.takeIf { granted },
+                sample = it.sample.takeIf { granted },
                 centerOn = it.centerOn.takeIf { granted },
                 centerZoom = it.centerZoom.takeIf { granted },
                 errorMessage = if (granted) it.errorMessage else null,

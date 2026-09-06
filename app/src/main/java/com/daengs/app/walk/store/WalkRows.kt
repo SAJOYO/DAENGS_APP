@@ -11,6 +11,7 @@ import com.daengs.app.walk.WalkSyncState
 data class WalkSessionRow(
     @PrimaryKey val id: String,
     val startedAtMillis: Long,
+    @ColumnInfo(defaultValue = "''") val ownerId: String = "",
     /** null이면 아직 진행 중이거나 명시적인 종료 전에 프로세스가 끝난 세션이다. */
     val endedAtMillis: Long?,
     /**

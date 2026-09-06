@@ -57,10 +57,10 @@ enum class WalkMomentType(
     val behaviorCode: String,
     val label: String,
 ) {
-    EXPLORE("explore", "탐색"),
-    TOILET_MARKING("toilet_marking", "배변·마킹"),
-    SOCIAL("social", "교류"),
-    SPECIAL("special_response", "특별한 순간"),
+    SNIFFING("sniffing", "킁킁"),
+    EXCRETION("excretion", "배설"),
+    BARKING("barking", "짖기"),
+    NOTE("note", "특별한 순간"),
 }
 
 enum class WalkMomentOutcome { CREATED, MERGED, ALREADY_EXISTS }

@@ -137,16 +137,16 @@ class WalkHistoryTest {
     @Test
     fun `저장된 상세는 행동 원본을 현재 반경으로 다시 묶는다`() = runBlocking {
         walked("real", startedAt = 1_000L, meters = 400.0, seconds = 600)
-        log.appendAction(action("a1", WalkMomentType.EXPLORE, 2_000L, 37.50000))
-        log.appendAction(action("a2", WalkMomentType.SOCIAL, 3_000L, 37.50001))
-        log.appendAction(action("a3", WalkMomentType.SPECIAL, 4_000L, 37.50100))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L, 37.50000))
+        log.appendAction(action("a2", WalkMomentType.BARKING, 3_000L, 37.50001))
+        log.appendAction(action("a3", WalkMomentType.EXCRETION, 4_000L, 37.50100))
 
         val detail = history.sessionDetail("real")
 
         assertEquals(2, detail?.moments?.size)
         assertEquals(2, detail?.moments?.first()?.actions?.size)
         assertEquals(
-            setOf(WalkMomentType.EXPLORE, WalkMomentType.SOCIAL),
+            setOf(WalkMomentType.SNIFFING, WalkMomentType.BARKING),
             detail?.moments?.first()?.types,
         )
     }
@@ -170,8 +170,8 @@ class WalkHistoryTest {
     fun `전부 잊으면 좌표와 행동까지 사라진다`() = runBlocking {
         walked("a", startedAt = todayAt(9), meters = 400.0, seconds = 600)
         walked("b", startedAt = todayAt(19), meters = 600.0, seconds = 900)
-        log.appendAction(action("a1", WalkMomentType.EXPLORE, todayAt(9), 37.5, sessionId = "a"))
-        log.appendAction(action("b1", WalkMomentType.SOCIAL, todayAt(19), 37.6, sessionId = "b"))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, todayAt(9), 37.5, sessionId = "a"))
+        log.appendAction(action("b1", WalkMomentType.BARKING, todayAt(19), 37.6, sessionId = "b"))
         assertEquals(2, history.finished().size)
 
         history.forgetEverything()

@@ -19,6 +19,24 @@ import org.junit.Test
  */
 class WalkSyncTest {
 
+    @Test fun `worker analyzes scenes only after GPS finalization and retries without reupload`() = runBlocking {
+        val log = FakeLog()
+        val api = FakeApi()
+        log.sessions += session("done", ended = true)
+        var attempts = 0
+        val sync = WalkSync(log, api, { NOW }, storyboardSync = { _, id, remote ->
+            assertEquals(WalkSyncState.DERIVED, log.session(id)!!.syncState)
+            assertEquals("server-done", remote)
+            attempts++
+            if (attempts == 1) throw java.io.IOException("analysis offline")
+        }, warn = { _, _ -> })
+        assertTrue(runCatching { sync.syncPendingSession("token", "done") }.isFailure)
+        sync.syncPendingSession("token", "done")
+        assertEquals(2, attempts)
+        assertEquals(1, api.uploadCalls)
+        assertEquals(1, api.finalizeCalls)
+    }
+
     private val log = FakeLog()
     private val api = FakeApi()
     private val warnings = mutableListOf<String>()

@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -21,6 +22,17 @@ import java.time.ZoneOffset
  *
  * 계약은 저쪽 `SAJOYO/DAENGS_dev` 의 `routers/app_auth.py` · `schemas/app_auth.py` 다.
  */
+/**
+ * 저장하려는 순간 **남이 그 이름을 쓰고 있었다** (서버 409).
+ *
+ * 미리 물어봤을 때는 비어 있었을 수 있다 — 그 사이에 채갔다는 뜻이라, 화면은
+ * "다른 분이 쓰고 있어요" 가 아니라 **"방금 다른 분이 가져갔어요"** 로 말해야 한다.
+ * `IllegalStateException` 을 물려받는 것은 이 저장소가 서버 문장을 그것으로 나르기
+ * 때문이다 — 기존 `recoverCatching` 갈래가 그대로 통과시킨다.
+ */
+class NicknameTakenException : IllegalStateException("다른 분이 쓰고 있는 이름이에요.")
+
+
 object AuthApi {
 
     /** 설정이 없으면 아무것도 못 부른다. 랜딩 화면이 이걸 보고 버튼을 막는다. */
@@ -99,6 +111,62 @@ object AuthApi {
         }
 
     /**
+     * 사람 이름을 바꾼다.
+     *
+     * ⚠️ **[setRoomName] 과 달리 비울 수 없다.** 비우면 그 회원을 가리킬 말이 없어진다
+     * — 서버도 422 로 막는다. 그래서 인자가 `String` 이고 `String?` 이 아니다.
+     *
+     * ⚠️ **`nickname` 칸만 보낸다.** 서버가 보낸 칸만 고치므로(`model_fields_set`)
+     * 이름표는 그대로 남는다. 예전 서버는 안 보낸 칸도 null 로 덮었는데, 그때 이 함수는
+     * **이름표를 같이 지웠다.** 서버를 고쳤지만 여기서도 필요한 것만 보낸다.
+     *
+     * @return 남이 채간 이름이면 [NicknameTakenException]. 그 경우 사용자에게
+     *   "방금 다른 분이 가져갔어요" 로 말해 줘야 한다 — 미리 물어봤을 때는 비어
+     *   있었을 수 있어서다.
+     */
+    suspend fun setNickname(accessToken: String, nickname: String): Result<AppMe> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject().apply { put("nickname", nickname.trim()) }.toString()
+                val conn = open("/auth/app/me", "PATCH")
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                conn.use {
+                    it.send(body)
+                    // **읽기 전에 코드를 본다.** readJson 은 409 를 그냥 문장으로
+                    // 바꿔서, 부르는 쪽이 "남이 채갔다" 를 구분할 수 없게 된다.
+                    if (it.responseCode == HTTP_CONFLICT) throw NicknameTakenException()
+                    it.readJson()
+                }.toAppMe()
+            }.recoverCatching { cause ->
+                if (cause is IllegalStateException) throw cause
+                throw IllegalStateException("서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
+            }
+        }
+
+    /**
+     * 이 이름을 쓸 수 있나. **입력하는 동안 부른다.**
+     *
+     * ⚠️ **답은 참고용이다.** `true` 를 받아도 저장할 때 [NicknameTakenException] 이
+     * 날 수 있다 — 물어본 뒤 저장 전에 남이 채갈 수 있어서다. 진짜 방어는 서버의
+     * `lower(nickname)` UNIQUE 인덱스다.
+     *
+     * 자기가 지금 쓰는 이름에는 서버가 `true` 를 준다. 그래도 부르는 쪽이 미리
+     * 거른다 ([com.daengs.app.ui.nickname.shouldAskAvailability]) — 왕복이 아깝다.
+     *
+     * **실패를 조용히 `true` 로 바꾸지 않는다.** 통신이 안 될 때 초록불이 켜지면
+     * 사용자는 되는 줄 알고 저장을 눌렀다가 거절당한다.
+     */
+    suspend fun nicknameAvailable(accessToken: String, value: String): Result<Boolean> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val query = URLEncoder.encode(value.trim(), "UTF-8")
+                val conn = open("/auth/app/nickname/available?value=$query", "GET")
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                conn.use { it.readJson() }.getBoolean("available")
+            }
+        }
+
+    /**
      * 회원 탈퇴. **되돌릴 수 없다.**
      *
      * ⚠️ **[readJson] 을 쓰면 안 된다.** 서버가 204 로 답해서 본문이 비어 있는데,
@@ -132,6 +200,10 @@ object AuthApi {
         appUserId = getString("app_user_id"),
         // 없으면 아직 안 정한 것이다. 서버가 대신 지어 주지 않는다.
         roomName = if (isNull("room_name")) null else optString("room_name").takeIf { it.isNotBlank() },
+        // **칸이 아예 없어도 안 깨져야 한다.** `optString` 은 없는 키에 빈 문자열을
+        // 주므로 아래 `takeIf` 가 null 로 만든다 — 닉네임을 모르는 옛 서버에 붙어도
+        // 로그인이 실패하지 않는다.
+        nickname = if (isNull("nickname")) null else optString("nickname").takeIf { it.isNotBlank() },
     )
 
     // -- 아래는 배관 -------------------------------------------------------
@@ -212,4 +284,7 @@ object AuthApi {
     }
 
     private const val TIMEOUT_MS = 10_000
+
+    /** `HttpURLConnection` 에 상수가 없다. 서버가 중복 닉네임에 주는 코드다. */
+    private const val HTTP_CONFLICT = 409
 }

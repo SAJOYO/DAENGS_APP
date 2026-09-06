@@ -57,6 +57,9 @@ class WalkTrackingService : Service() {
 
     private val sessionLock = Any()
     private var sessionId: String? = null
+    private var sessionStartedAtMillis: Long? = null
+    private var sessionOwnerId: String? = null
+    private var sessionDogIds: List<String> = emptyList()
     private var nextClientSeq = 0
     private var chainIndex = 0
     private var activeDurationMillis = 0L
@@ -119,6 +122,7 @@ class WalkTrackingService : Service() {
             promote(recorder.snapshot(), store.state.value.errorMessage)
             return
         }
+        sessionOwnerId = log.ownerId
         writer.clearFailure()
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
@@ -243,7 +247,7 @@ class WalkTrackingService : Service() {
         )
         // 마커는 즉시 반응시키되, 성공 문구는 아래 Room 완료 신호 뒤에만 보낸다.
         store.publish(current.copy(momentGroups = update.moments))
-        if (update.actionAdded) {
+        if (type != WalkMomentType.NOTE) {
             // 같은 writer 큐에서 fix와 close 사이에 넣는다. 종료 시 flush가 이 행동까지
             // 끝낸 뒤 완료 상세를 되읽으므로, 완료 직후와 재실행 뒤가 같은 원본을 본다.
             val stored = writer.appendAction(
@@ -260,7 +264,9 @@ class WalkTrackingService : Service() {
             serviceScope.launch {
                 try {
                     stored.await()
-                    store.publish(update.recordedEvent(type))
+                    store.publish(update.recordedEvent(type).copy(
+                        momentId = "moment-$actionId", outcome = WalkMomentOutcome.CREATED,
+                    ))
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -268,7 +274,7 @@ class WalkTrackingService : Service() {
                 }
             }
         } else {
-            store.publish(update.recordedEvent(type))
+            store.publish(update.recordedEvent(type).copy(momentId = "moment-$actionId"))
         }
     }
 
@@ -317,13 +323,15 @@ class WalkTrackingService : Service() {
         val id = UUID.randomUUID().toString()
         synchronized(sessionLock) {
             sessionId = id
+            sessionStartedAtMillis = System.currentTimeMillis()
+            sessionDogIds = dogIds.toList()
             nextClientSeq = 0
             chainIndex = 0
             writer.openSession(
                 RecordedSession(
                     id = id,
                     dogIds = dogIds,
-                    startedAtMillis = System.currentTimeMillis(),
+                    startedAtMillis = checkNotNull(sessionStartedAtMillis),
                 ),
             )
         }
@@ -372,7 +380,7 @@ class WalkTrackingService : Service() {
             return false
         }
         val summary = summarize(session, log.fixes(sessionId))
-        if (!summary.countsAsWalk) {
+        if (!summary.countsAsWalk && !log.hasEntries(sessionId)) {
             log.deleteSession(sessionId)
             // **잰 값도 같이 지운다.** 안 지우면 방금 걸은 시간이 화면에 그대로 남아,
             // 지웠다고 말해 놓고 숫자는 계속 보여 주는 꼴이 된다. 거리는 `recorder.stop()`
@@ -417,6 +425,7 @@ class WalkTrackingService : Service() {
     private fun closeSession() = synchronized(sessionLock) {
         sessionId?.let { writer.closeSession(it, System.currentTimeMillis()) }
         sessionId = null
+        sessionDogIds = emptyList()
     }
 
     private fun acceptFeedStatus(status: FeedStatus) {
@@ -463,6 +472,10 @@ class WalkTrackingService : Service() {
         finishingSessionId: String? = null,
         completedSessionId: String? = null,
     ): WalkTrackingState = WalkTrackingState(
+        activeSessionId = sessionId,
+        activeSessionStartedAtMillis = sessionStartedAtMillis.takeIf { sessionId != null },
+        ownerId = sessionOwnerId,
+        activeDogIds = sessionDogIds,
         trail = trail,
         lastSample = lastSample,
         latestMomentFix = latestMomentFix,
