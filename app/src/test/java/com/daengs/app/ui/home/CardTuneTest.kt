@@ -6,6 +6,7 @@ import com.daengs.app.ui.dex.DexDeck
 import com.daengs.app.ui.dex.IMMERSIVE_SCENES
 import com.daengs.app.ui.dex.bgmFor
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -124,13 +125,13 @@ class CardTuneTest {
 
     // -- 턴테이블이 보여 주는 것 --------------------------------------------
 
-    private fun drawn(templateId: String) = com.daengs.app.dogcard.DrawnCard(
-        id = templateId,
+    private fun drawn(templateId: String, at: Long = 0L) = com.daengs.app.dogcard.DrawnCard(
+        id = "$templateId-$at",
         appUserId = null,
         templateId = templateId,
         dogId = null,
         dogName = "네옹",
-        drawnAtMillis = 0L,
+        drawnAtMillis = at,
         codeText = "DG-0824",
         core = androidx.compose.ui.unit.IntRect(0, 0, 10, 10),
     )
@@ -168,7 +169,37 @@ class CardTuneTest {
     @Test
     fun `카탈로그 순서를 따른다`() {
         val mine = ownedTunes(listOf(drawn("lettuce"), drawn("cabbage")))
-        assertEquals(CARD_TUNES.filter { it.card.id in setOf("cabbage", "lettuce") }, mine)
+        assertEquals(listOf("cabbage", "lettuce"), mine.map { it.card.id })
+    }
+
+    // -- 목록에 그릴 그림 --------------------------------------------------
+    //
+    // 목록은 **내가 뽑은 카드**를 그린다. 카탈로그 원화를 그리다가 곡이 과일까지
+    // 늘면서 드러났다 — 야채 원화에는 저쪽이 그린 네오 강아지가 구워져 있는데
+    // 과일 원화는 구멍만 뚫린 판이라, 목록에 얼굴 없는 빈 구멍 카드가 떴다.
+
+    @Test
+    fun `내가 뽑은 카드를 달고 나온다`() {
+        val mine = ownedTunes(listOf(drawn("apple")))
+        assertEquals("apple-0", mine.single().mine?.id)
+    }
+
+    /** 카탈로그 목록은 누구의 것도 아니다. 여기에 카드가 붙으면 남의 얼굴이 뜬다. */
+    @Test
+    fun `카탈로그 목록에는 내 카드가 없다`() {
+        CARD_TUNES.forEach { assertNull(it.mine) }
+    }
+
+    /**
+     * 같은 종류를 여러 장 뽑았으면 **가장 최근 것**이다.
+     *
+     * 도감이 칸 안에서 최근을 앞에 두는 것과 같은 규칙이다(`dexSlots`). 갈리면
+     * 도감에서 보던 얼굴과 턴테이블의 얼굴이 다른 장이 된다.
+     */
+    @Test
+    fun `같은 종류는 가장 최근 장을 싣는다`() {
+        val mine = ownedTunes(listOf(drawn("cabbage", at = 10), drawn("cabbage", at = 30)))
+        assertEquals("cabbage-30", mine.single().mine?.id)
     }
 
     @Test
