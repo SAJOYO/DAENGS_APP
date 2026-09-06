@@ -18,7 +18,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 지도/완료/지난 기록에서 같은 원본을 편집한다. 입력 중 위치는 entry에 고정된다. */
+/**
+ * 지도/완료/지난 기록에서 같은 원본을 편집한다. 입력 중 위치는 entry에 고정된다.
+ *
+ * 껍데기만 여기 있고 알맹이는 [WalkEntryEditorContent] 다. 나눈 이유는 테스트다 —
+ * `AlertDialog` 안에 텍스트필드가 있으면 Robolectric 에서 영영 idle 이 안 돼
+ * `setContent` 가 `AppNotIdleException` 으로 죽는다. 다이얼로그만·텍스트필드만이면
+ * 멀쩡하고 둘이 만나야 터진다. 화면 버그가 아니라 테스트 환경 문제라, 알맹이를
+ * 다이얼로그 없이도 그릴 수 있게 두고 테스트는 그쪽을 본다 (`WalkEntryEditorTest`).
+ */
 @Composable
 fun WalkEntryEditor(
     entries: List<WalkEntry>,
@@ -32,15 +40,60 @@ fun WalkEntryEditor(
     diaryPhotos: List<com.daengs.app.walk.WalkPhoto> = emptyList(),
     onOpenPhoto: (com.daengs.app.walk.WalkPhoto) -> Unit = {},
 ) {
+    WalkEntryEditorContent(
+        entries,
+        initial,
+        pets,
+        error,
+        busy,
+        onSave,
+        onDelete,
+        onDismiss,
+        diaryPhotos,
+        onOpenPhoto,
+    ) { title, body, confirm, dismiss ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) onDismiss() },
+            title = title, text = body, confirmButton = confirm, dismissButton = dismiss,
+        )
+    }
+}
+
+/**
+ * 편집기의 알맹이. 상태를 여기서 들고, 조각 넷을 [container] 에 넘긴다.
+ *
+ * [container] 를 밖에서 받는 이유는 **같은 상태를 다이얼로그의 슬롯 넷에 나눠 넣어야
+ * 하기 때문**이다. 조각별로 함수를 쪼개면 `selected`·`text` 를 셋 이상으로 끌어올려야
+ * 하고, 그러면 저장 버튼의 활성 조건이 상태와 떨어진다. 테스트는 다이얼로그 대신
+ * 평범한 `Column` 을 넘겨 같은 알맹이를 창 없이 그린다.
+ */
+@Composable
+internal fun WalkEntryEditorContent(
+    entries: List<WalkEntry>,
+    initial: WalkEntry?,
+    pets: List<Pet>,
+    error: String?,
+    busy: Boolean,
+    onSave: (WalkEntry) -> Unit,
+    onDelete: (WalkEntry) -> Unit,
+    onDismiss: () -> Unit,
+    diaryPhotos: List<com.daengs.app.walk.WalkPhoto> = emptyList(),
+    onOpenPhoto: (com.daengs.app.walk.WalkPhoto) -> Unit = {},
+    container: @Composable (
+        title: @Composable () -> Unit,
+        body: @Composable () -> Unit,
+        confirm: @Composable () -> Unit,
+        dismiss: @Composable () -> Unit,
+    ) -> Unit,
+) {
     var selected by remember(initial?.id) { mutableStateOf(initial) }
     var text by remember(selected?.id) { mutableStateOf(selected?.note.orEmpty()) }
     val current = selected
     val latest = entries.firstOrNull { it.id == current?.id }
     val changed = current?.baseVersion != null && current.baseVersion != latest?.baseVersion
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(current?.type?.label ?: "산책 기록") },
-        text = {
+    container(
+        { Text(current?.type?.label ?: "산책 기록") },
+        {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (current == null) {
                     if (entries.isEmpty() && diaryPhotos.isEmpty()) Text("아직 남긴 기록이 없어요.")
@@ -106,13 +159,13 @@ fun WalkEntryEditor(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = {
+        {
             if (current != null) TextButton(
                 enabled = !busy && !changed && (current.type != WalkMomentType.NOTE || text.isNotBlank()),
                 onClick = { onSave(if (current.type == WalkMomentType.NOTE) current.copy(note = text.trim()) else current) },
             ) { Text(if (busy) "저장 중" else "저장") }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("닫기") } },
+        { TextButton(enabled = !busy, onClick = onDismiss) { Text("닫기") } },
     )
 }
 
