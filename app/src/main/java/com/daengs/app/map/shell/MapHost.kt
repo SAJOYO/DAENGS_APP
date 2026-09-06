@@ -15,6 +15,9 @@ fun MapHost(
     /** 사용자가 올린 프로필 사진. 있으면 [avatarRes] 보다 이쪽이 앞선다. */
     avatarPhoto: android.graphics.Bitmap? = null,
     bottomPaddingPx: Int = 0,
+    leftPaddingPx: Int = 0,
+    topPaddingPx: Int = 0,
+    rightPaddingPx: Int = 0,
     centerOn: GeoPoint? = null,
     centerZoom: Double? = null,
     fitBounds: List<GeoPoint>? = null,
@@ -34,6 +37,7 @@ fun MapHost(
         avatarRes = avatarRes,
         avatarPhoto = avatarPhoto,
         bottomPaddingPx = bottomPaddingPx,
+        leftPaddingPx = leftPaddingPx, topPaddingPx = topPaddingPx, rightPaddingPx = rightPaddingPx,
         centerOn = centerOn,
         centerZoom = centerZoom,
         fitBounds = fitBounds,

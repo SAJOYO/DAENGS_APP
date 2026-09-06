@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.daengs.app.auth.AuthApi
 import com.daengs.app.auth.CancelledByUser
+import com.daengs.app.auth.NicknameTakenException
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.logIdTokenShape
 import com.daengs.app.auth.loginWithKakao
@@ -57,12 +58,18 @@ import com.daengs.app.pet.devPets
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
+import com.daengs.app.screening.rememberScreeningHolder
+import com.daengs.app.ui.screening.ScreeningHistoryScreen
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
+import com.daengs.app.ui.home.PetNeed
+import com.daengs.app.ui.home.PetNeededDialog
+import com.daengs.app.ui.home.needsPet
 import com.daengs.app.ui.landing.LandingScreen
+import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
@@ -84,7 +91,14 @@ private enum class Screen {
      * 남의 강아지 넉 마리가 스친다 (`ui/startup/StartupGate.kt`).
      */
     Loading,
-    /** 강아지 등록. **로그인했는데 강아지가 없으면** 여기로 온다. */
+    /**
+     * 이름 확인. **카카오 로그인이 막 끝났을 때만** 지난다.
+     *
+     * 저장된 토큰으로 켤 때는 안 지난다 — 그래서 "본 적 있음" 을 기기에 안 남긴다
+     * (`ui/nickname/NicknameScreen.kt`).
+     */
+    Nickname,
+    /** 강아지 등록. 예전에는 로그인 직후 여기로 끌고 왔지만 지금은 아니다. */
     Onboarding,
     Home, Chat, Dex,
     /** 내 주변 장소. 하단 탭에서 들어온다. */
@@ -95,6 +109,8 @@ private enum class Screen {
     WalkHistory,
     /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
     WalkDetail,
+    /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
+    ScreeningHistory,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -178,7 +194,14 @@ class MainActivity : ComponentActivity() {
                 // 강아지에 딸린 화면들이 로그인해야만 보여서, 계정을 못 쓰는 기기에서
                 // 그것들을 보는 유일한 길이다 (`pet/DevPets.kt`).
                 var devPetCount by remember { mutableIntStateOf(0) }
-                val shownPets = devPets(devPetCount).ifEmpty { pets.pets.orEmpty() }
+                // **null 을 살려 둔 짝이 하나 더 있다.** 아래 `shownPets` 는 화면에 넘기기
+                // 편하게 빈 목록으로 눌러 놓은 것이라, 거기서는 "아직 못 받아 왔다" 와
+                // "한 마리도 없다" 가 갈리지 않는다. 빈 방을 띄울지는 그 둘을 갈라야
+                // 정할 수 있어서(`needsPet`), 눌러 놓기 전의 값을 같이 둔다.
+                val devHerd = devPets(devPetCount)
+                val shownPetsOrNull: List<Pet>? =
+                    if (devHerd.isNotEmpty()) devHerd else pets.pets
+                val shownPets = shownPetsOrNull.orEmpty()
 
                 // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
                 // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
@@ -215,6 +238,9 @@ class MainActivity : ComponentActivity() {
                     if (restored != null) session = restored
                     restored?.accessToken
                 }
+                // 피부 변화 기록. **서버가 진짜라 기기에 안 둔다** (`ScreeningHolder`).
+                val screenings = rememberScreeningHolder(freshToken)
+
                 LaunchedEffect(session?.appUserId, pets.primary?.id) {
                     val petId = pets.primary?.id.takeIf { session != null }
                     chatHistory.selectPet(petId)
@@ -248,6 +274,36 @@ class MainActivity : ComponentActivity() {
                 // 배웅한 날은 **서버가 갖고 있다**(`pets.farewell_on`). 기기에 적어 두던
                 // 것을 옮긴 것이라, 기기를 바꿔도 그 기록이 남는다.
                 var farewell by remember { mutableStateOf<Pet?>(null) }
+                // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
+                // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
+                var petNeed by remember { mutableStateOf<PetNeed?>(null) }
+                /** 서버가 지어 준 사람 이름. null 이면 아직 못 받았거나 옛 서버다. */
+                var nickname by remember { mutableStateOf<String?>(null) }
+                var nicknameBusy by remember { mutableStateOf(false) }
+                var nicknameError by remember { mutableStateOf<String?>(null) }
+                /** 「마이」의 "고치기" 로 들어왔나. 인사말을 건너뛸지 정한다. */
+                var editingNickname by remember { mutableStateOf(false) }
+                // 개발자 패널의 "빈 방으로 보기". **디버그에서 이 상태를 볼 유일한 길이다** —
+                // 여기서는 카카오 로그인이 안 돼서 `로그인함 + 강아지 0마리` 에 닿을 수가
+                // 없고, 둘러보기는 로그인 전이라 데모가 선다. 릴리스에서는 패널이 빈
+                // 껍데기라 늘 false 다. 저장하지 않는다 (패널 스위치와 같은 규칙).
+                var devEmptyRoom by remember { mutableStateOf(false) }
+
+                /**
+                 * 로그인했는데 아직 강아지가 없나. 빈 방과 문이 **같은 값을 본다** —
+                 * 갈라지면 "방은 비었는데 산책은 그냥 되는" 화면이 생긴다.
+                 */
+                val waitsForPet = devEmptyRoom || needsPet(session != null, shownPetsOrNull)
+
+                /**
+                 * 강아지가 필요한 자리로 가기 전. 없으면 [go] 대신 문을 띄운다.
+                 *
+                 * **부르는 자리를 한 군데로 모은 것이 요점이다.** 화면을 옮기는 줄이
+                 * 여기저기 있어서, 자리마다 조건을 적으면 새 화면이 생길 때 빠뜨린다.
+                 */
+                fun askPetThen(need: PetNeed, go: () -> Unit) {
+                    if (waitsForPet) petNeed = need else go()
+                }
                 // 지우기는 두 군데서 부른다 — 목록의 삭제와 배웅한 아이의 자리.
                 // **서버가 먼저다.** 실패했는데 기기에서만 지우면 그 아이의 산책이
                 // 다음 동기화 때 되돌아온다.
@@ -316,8 +372,15 @@ class MainActivity : ComponentActivity() {
                     val token = freshToken() ?: return@LaunchedEffect
                     pets.refresh(token)
                     // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
-                    AuthApi.me(token).onSuccess { roomName = it.roomName }
-                    if (pets.isEmpty == true && screen == Screen.Home) screen = Screen.Onboarding
+                    AuthApi.me(token).onSuccess { roomName = it.roomName; nickname = it.nickname }
+                    // **확인 화면에 잡아 두지 않는다.** 옛 서버라 칸이 없거나 `me` 가
+                    // 실패하면 보여 줄 이름이 없다. 그때는 그냥 방으로 보낸다 —
+                    // 이름은 다음 로그인에 서버가 채운다.
+                    if (screen == Screen.Nickname && nickname == null) screen = Screen.Home
+                    // **강아지가 없어도 여기서 끌고 가지 않는다.** 예전에는 로그인하자마자
+                    // 등록 화면으로 보냈는데, 방을 보기도 전에 정보를 채우게 만드는 자리라
+                    // 거기서 이탈했다. 빈 방으로 들여보내고([EmptyRoomInvite]), 강아지가
+                    // 있어야 하는 기능을 누를 때 청한다([PetNeed]).
                     // 로그인 직후. 끝났지만 전달되지 않은 산책을 durable 작업으로 넘기고,
                     // 새 폰이면 서버의 지난 산책도 되찾는다.
                     walkRuntime.delivery.enqueuePending()
@@ -350,7 +413,6 @@ class MainActivity : ComponentActivity() {
                     val next = when (startupTarget(pets.pets, pets.error)) {
                         StartupTarget.Wait -> return@LaunchedEffect
                         StartupTarget.Home -> Screen.Home
-                        StartupTarget.Onboarding -> Screen.Onboarding
                     }
                     delay(loadingHoldMs(loadingSince, SystemClock.elapsedRealtime()))
                     screen = next
@@ -386,7 +448,11 @@ class MainActivity : ComponentActivity() {
                                     .onSuccess {
                                         app.sessionProvider.save(it)
                                         session = it
-                                        screen = Screen.Home
+                                        // 이름을 한 번 보여 준다. 아직 못 받았으므로
+                                        // 화면이 잠깐 비는데, 위 `me` 갈래가 곧 채우거나
+                                        // 홈으로 넘긴다.
+                                        editingNickname = false
+                                        screen = Screen.Nickname
                                     }
                                     .onFailure { e ->
                                         // 사용자가 취소한 것은 오류가 아니다.
@@ -397,17 +463,61 @@ class MainActivity : ComponentActivity() {
                         onSkip = { screen = Screen.Home },
                     )
 
+                    Screen.Nickname -> nickname?.let { issued ->
+                        NicknameScreen(
+                            issued = issued,
+                            onStart = { editingNickname = false; screen = Screen.Home },
+                            onSave = { picked ->
+                                scope.launch {
+                                    nicknameBusy = true
+                                    nicknameError = null
+                                    val token = freshToken()
+                                    if (token == null) {
+                                        nicknameBusy = false
+                                        nicknameError = "다시 로그인해 주세요."
+                                        return@launch
+                                    }
+                                    AuthApi.setNickname(token, picked)
+                                        .onSuccess {
+                                            nickname = it.nickname
+                                            editingNickname = false
+                                            screen = Screen.Home
+                                        }
+                                        .onFailure { e ->
+                                            // **미리 물어봤을 때는 비어 있었을 수 있다.**
+                                            // 그래서 "쓰고 있어요" 가 아니라 "방금
+                                            // 가져갔어요" 로 말한다.
+                                            nicknameError = if (e is NicknameTakenException) {
+                                                "방금 다른 분이 가져갔어요. 다른 이름을 골라 주세요."
+                                            } else {
+                                                e.message
+                                            }
+                                        }
+                                    nicknameBusy = false
+                                }
+                            },
+                            busy = nicknameBusy,
+                            error = nicknameError,
+                            startEditing = editingNickname,
+                            ask = { value ->
+                                val token = freshToken()
+                                if (token == null) {
+                                    Result.failure(IllegalStateException("토큰 없음"))
+                                } else {
+                                    AuthApi.nicknameAvailable(token, value)
+                                }
+                            },
+                        )
+                    }
+
                     Screen.Onboarding -> PetFormScreen(
                         initial = editing,
                         busy = pets.busy,
                         error = pets.error,
-                        // 첫 등록에는 취소가 없다 — 강아지 없이 갈 곳이 없다.
-                        // 나중에 마이에서 들어온 것(추가·고치기)만 되돌아간다.
-                        onCancel = if (pets.isEmpty == true && editing == null) {
-                            null
-                        } else {
-                            { pets.clearError(); editing = null; screen = Screen.Home }
-                        },
+                        // **첫 등록에도 취소가 있다.** 예전에는 강아지가 없으면 이 손잡이를
+                        // 없앴다 — "강아지 없이 갈 곳이 없다" 는 이유였는데, 이제 빈 방이
+                        // 갈 곳이다. 빠져나갈 수 없는 화면이 첫 진입 이탈의 큰 몫이었다.
+                        onCancel = { pets.clearError(); editing = null; screen = Screen.Home },
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
                         onClearPhoto = editing?.let { pet ->
@@ -514,7 +624,7 @@ class MainActivity : ComponentActivity() {
                             cards.cards.firstOrNull { it.id == frameCardId },
                         ),
                         onOpenDex = { screen = Screen.Dex },
-                        onOpenChat = { screen = Screen.Chat },
+                        onOpenChat = { askPetThen(PetNeed.Chat) { screen = Screen.Chat } },
                         storageContent = { storageModifier ->
                             ChatSummaryRoute(
                                 petId = pets.primary?.id.takeIf { session != null },
@@ -538,10 +648,18 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },
-                        onOpenWalk = { screen = Screen.Walk },
+                        onOpenWalk = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
                         todayWalks = todayWalks,
                         signedIn = session != null,
+                        nickname = nickname,
+                        // 「마이」의 "고치기". 이름 확인 화면과 **같은 칸**을 띄운다 —
+                        // 두 벌이 되면 문구와 기다리는 시간이 갈린다.
+                        onEditNickname = nickname?.let {
+                            { editingNickname = true; screen = Screen.Nickname }
+                        },
+                        waitsForPet = waitsForPet,
+                        onToggleEmptyRoom = { devEmptyRoom = !devEmptyRoom },
                         // 둘러보기로 들어온 사람이 다시 로그인할 길. 랜딩으로
                         // 되돌리면 기존 카카오 경로를 그대로 쓴다.
                         onSignIn = { screen = Screen.Landing },
@@ -550,9 +668,13 @@ class MainActivity : ComponentActivity() {
                         myOpen = myOpen,
                         weatherOpen = weatherOpen,
                         drawnCards = cards.cards,
+                        // **도감 보기는 안 막는다** (`onOpenDex`). 뽑기만 막는다 —
+                        // 이미 뽑아 둔 카드를 못 보게 하면 그게 더 이상하다.
                         onOpenDraw = {
-                            dexOpensDraw = true
-                            screen = Screen.Dex
+                            askPetThen(PetNeed.Card) {
+                                dexOpensDraw = true
+                                screen = Screen.Dex
+                            }
                         },
                         onToggleWeather = { weatherOpen = !weatherOpen },
                         onOpenMy = { myOpen = true },
@@ -627,19 +749,14 @@ class MainActivity : ComponentActivity() {
                                 withdrawBusy = false
                                 result
                                     .onSuccess {
-                                        // 방은 서버에 사본이 없어 이 기기에만 있다.
-                                        // 안 지우면 다음에 로그인한 사람이 남의 방을
-                                        // 물려받는다.
+                                        // 탈퇴 요청 시작 때의 계정을 고정한다. 토큰을 지운 뒤 owner()는 빈 값이다.
+                                        walkController.stop()
                                         app.sessionProvider.clear()
+                                        walkRuntime.history.forgetOwner(old.appUserId)
+                                        // 방은 서버에 사본이 없어 이 기기에서도 지운다.
                                         roomStore.clear()
                                         frameCardId = null
                                         pets.forget()
-                                        // **산책 좌표도 지운다.** 서버는 탈퇴에서
-                                        // 산책까지 지우는데 폰의 Room 에는 원본이
-                                        // 남아 있었다 — 경로는 집과 생활권을 그대로
-                                        // 드러내는 값이라, 그걸 두고 "계정을 지우면
-                                        // 데이터도 지운다" 고 할 수 없다.
-                                        walkRuntime.history.forgetEverything()
                                         todayWalks = walkRuntime.history.todayTotals()
                                         // 뽑은 카드도 이 기기에만 있다. 서버에 사본이
                                         // 없으므로 여기서 안 지우면 다음에 로그인한
@@ -648,6 +765,8 @@ class MainActivity : ComponentActivity() {
                                         // 우리 아이의 진짜 사진이다. 안 지우면 다음에
                                         // 이 폰으로 로그인한 사람이 물려받는다.
                                         petPhotos.forgetEverything()
+                                        // 다음 사람이 남의 피부 사진을 보면 안 된다.
+                                        screenings.forget()
                                         // 방 구성도 이 기기의 것이다. `roomStore.clear()`
                                         // 가 파일을 비우므로 화면이 든 값도 같이 비운다.
                                         hiddenRoomPetIds = emptySet()
@@ -664,6 +783,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onSignOut = {
+                            walkController.stop()
                             val old = session
                             session = null
                             // 다음 사람이 남의 강아지를 보면 안 된다.
@@ -719,11 +839,28 @@ class MainActivity : ComponentActivity() {
                         dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
                         historyCoordinator = chatHistory,
+                        // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.
+                        onOpenScreeningHistory = { screen = Screen.ScreeningHistory }
+                            .takeIf { session != null },
+                    )
+
+                    Screen.ScreeningHistory -> ScreeningHistoryScreen(
+                        holder = screenings,
+                        onBack = { screen = Screen.Chat },
+                        // 대표 아이의 것만 본다. 없으면 전부 — 아이를 아직 등록 안
+                        // 했어도 진단은 할 수 있어서 그 기록이 남아 있다.
+                        petId = pets.primary?.id,
                     )
 
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
                         primaryPet = pets.primary,
+                        useConnectedSearch = BuildConfig.DEBUG,
+                        profileOwnerId = session?.appUserId,
+                        profilePets = pets.pets,
+                        profilesBusy = pets.busy,
+                        profilesError = pets.error,
+                        onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
                     Screen.WalkHistory -> WalkHistoryScreen(
@@ -756,8 +893,14 @@ class MainActivity : ComponentActivity() {
                         history = walkRuntime.history,
                         avatarBreed = artBreed,
                         // 지도의 내 위치도 올린 사진을 따른다.
-                        avatarPhoto = shownPets.firstOrNull { it.isPrimary }
-                            ?.let { petPhotos[it.id] }?.asAndroidBitmap(),
+                        //
+                        // **고르는 줄과 같은 목록을 본다.** 아래 `pets` 가 서버 목록인데
+                        // 여기만 `shownPets`(개발자 패널의 가짜 아이가 이기는 목록)를
+                        // 보고 있었다. 그래서 디버그에서 가짜 강아지를 켜면, 고르는 줄엔
+                        // 진짜 아이들이 그대로인데 **지도 위 사진만 사라졌다** — 가짜 아이의
+                        // id 는 `petPhotos` 에 없기 때문이다. 챗봇 화면은 원래
+                        // `pets.primary` 를 쓰고 있어서 거기에 맞춘다.
+                        avatarPhoto = pets.primary?.let { petPhotos[it.id] }?.asAndroidBitmap(),
                         pets = pets.pets.orEmpty(),
                         photoOf = { petPhotos[it] },
                         outside = outside,
@@ -765,6 +908,13 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        // **도감 보기는 열어 두고 뽑기만 막는다.** 이미 뽑아 둔 카드를
+                        // 못 보게 하면 그게 더 이상하다.
+                        onDrawBlocked = if (waitsForPet) {
+                            { petNeed = PetNeed.Card }
+                        } else {
+                            null
+                        },
                         startInDraw = dexOpensDraw.also { dexOpensDraw = false },
                         drawn = cards.cards,
                         framedCardId = frameCardId,
@@ -818,6 +968,21 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
+                }
+
+                // **화면 밖에 둔다.** 문은 홈에서만 뜨는 것이 아니라(챗봇 카드 · 방문 ·
+                // 뽑기) 어느 화면에서 눌렀든 그 위에 떠야 한다. `when` 안에 넣으면
+                // 자리마다 한 벌씩 생긴다.
+                petNeed?.let { need ->
+                    PetNeededDialog(
+                        need = need,
+                        onAdd = {
+                            petNeed = null
+                            editing = null
+                            screen = Screen.Onboarding
+                        },
+                        onDismiss = { petNeed = null },
+                    )
                 }
             }
         }

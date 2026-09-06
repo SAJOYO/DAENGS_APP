@@ -37,6 +37,8 @@ data class Pet(
      */
     val farewellOn: LocalDate? = null,
     val isPrimary: Boolean,
+    /** 이 아이의 정보가 마지막으로 바뀐 시각. **아래 [photoUpdatedAt] 과 다른 값이다.** */
+    val updatedAt: String? = null,
     /**
      * 서버에 프로필 사진이 있나.
      *
@@ -45,7 +47,10 @@ data class Pet(
      */
     val hasPhoto: Boolean = false,
     /**
-     * 서버 사진이 마지막으로 바뀐 시각. **캐시 열쇠다.**
+     * **사진이** 마지막으로 바뀐 시각. 캐시 열쇠다.
+     *
+     * ⚠️ [updatedAt] 과 헷갈리면 안 된다 — 그쪽은 이름·몸무게를 고쳐도 바뀌고,
+     * 이쪽은 **사진을 바꿔야** 바뀐다. 이름만 고쳤는데 사진을 다시 받으면 안 된다.
      *
      * 기기에 받아 둔 사진 옆에 이 값을 적어 두고(`PetPhotos.stamp`), 같으면 다시 안
      * 받는다. **시각으로 파싱하지 않는다** — 우리가 계산할 값이 아니라 서버 문자열을
@@ -114,6 +119,7 @@ data class Pet(
             },
             farewellOn = json.optStringOrNull("farewell_on")?.let(LocalDate::parse),
             isPrimary = json.optBoolean("is_primary"),
+            updatedAt = json.optStringOrNull("updated_at"),
             hasPhoto = json.optBoolean("has_photo"),
             photoUpdatedAt = json.optStringOrNull("photo_updated_at"),
         )

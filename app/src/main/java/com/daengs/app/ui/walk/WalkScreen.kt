@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,9 +33,14 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -47,6 +54,7 @@ import androidx.compose.ui.zIndex
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.map.features.territory.TerritoryBoardState
+import com.daengs.app.map.features.territory.TerritoryGameState
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapPurpose
 import com.daengs.app.miniroom.OutsideSnapshot
@@ -98,17 +106,31 @@ fun WalkScreen(
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
 ) {
+    // **이번 산책에 데려가는 아이의 얼굴.** 대표를 데려가면 null 이라 아래에서 원래
+    // 값을 그대로 쓴다 — 지금 동작이 안 바뀌고, 바깥에서 정해 넘기는 값(개발자 패널의
+    // 견종 고르기)도 계속 이긴다. 대표를 빼고 나갔을 때만 그 아이로 바꾼다.
+    val face = walkFaceOverride(state.selection.pets, state.selection.selectedDogIds)
+    // **사진과 견종을 같이 옮긴다.** 사진만 바꾸면, 그 아이가 사진을 안 올렸을 때
+    // 대표의 견종 그림이 남아서 반쯤 다른 아이가 된다.
+    val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
+    val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
+
     val mapPresentation = state.toMapPresentation { formatClock(it) }
     val summary = state.completedSummary
+    var bottomInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var leftInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var rightInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var topInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
 
     Box(modifier.fillMaxSize()) {
         if (showMap) {
             MapHost(
                 scene = mapPresentation.scene,
                 searchOrigin = null,
-                followDevice = state.location.followDevice,
-                avatarRes = avatarBreed?.portraitRes,
-                avatarPhoto = avatarPhoto,
+                followDevice = state.location.followDevice && mapPresentation.fitBounds == null,
+                bottomPaddingPx = bottomInset, leftPaddingPx = leftInset, rightPaddingPx = rightInset, topPaddingPx = topInset,
+                avatarRes = faceRes,
+                avatarPhoto = facePhoto,
                 centerOn = state.location.centerOn,
                 centerZoom = state.location.centerZoom,
                 fitBounds = mapPresentation.fitBounds,
@@ -132,6 +154,7 @@ fun WalkScreen(
             locationGranted = state.location.permissionGranted,
             preciseLocation = state.location.precisePermission,
             locating = state.location.locating,
+            locationSample = state.location.sample,
             locationError = state.location.errorMessage,
             pets = state.selection.pets,
             selectedDogIds = state.selection.selectedDogIds,
@@ -142,6 +165,15 @@ fun WalkScreen(
             resultExpanded = state.completion.resultExpanded,
             mapPurpose = state.map.purpose,
             territory = state.territory,
+            territoryGame = state.territoryGame,
+            onInsets = { left, top, right, bottom -> leftInset = left; topInset = top; rightInset = right; bottomInset = bottom },
+            onCloseTerritory = { onAction(WalkAction.ClearTerritory) },
+            onSelectClaimingPet = { site, pet -> onAction(WalkAction.SelectClaimingPet(site, pet)) },
+            onOpenEntries = { onAction(WalkAction.OpenEntries) },
+            onPhotographWalk = { onAction(WalkAction.PhotographWalk) },
+            onMarkTerritory = { onAction(WalkAction.MarkTerritory(it)) },
+            onPhotographTerritory = { onAction(WalkAction.PhotographTerritory(it)) },
+            onRefreshClaimAccess = { onAction(WalkAction.RefreshClaimAccess) },
             onToggleDog = { onAction(WalkAction.ToggleDog(it)) },
             onHome = { onAction(WalkAction.Home) },
             onMapPurposeChange = { onAction(WalkAction.ChangeMapPurpose(it)) },
@@ -171,6 +203,7 @@ private fun WalkGameOverlay(
     preciseLocation: Boolean,
     locating: Boolean,
     locationError: String?,
+    locationSample: LocationSample? = null,
     pets: List<Pet>,
     selectedDogIds: Set<String>,
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
@@ -181,6 +214,15 @@ private fun WalkGameOverlay(
     resultExpanded: Boolean,
     mapPurpose: MapPurpose = MapPurpose.WALK,
     territory: TerritoryBoardState = TerritoryBoardState(),
+    territoryGame: TerritoryGameState = TerritoryGameState(),
+    onInsets: (Int, Int, Int, Int) -> Unit = { _, _, _, _ -> },
+    onCloseTerritory: () -> Unit = {},
+    onSelectClaimingPet: (String, String) -> Unit = { _, _ -> },
+    onOpenEntries: () -> Unit = {},
+    onPhotographWalk: () -> Unit = {},
+    onMarkTerritory: (String) -> Unit = {},
+    onPhotographTerritory: (String) -> Unit = {},
+    onRefreshClaimAccess: () -> Unit = {},
     onToggleDog: (String) -> Unit,
     onHome: () -> Unit,
     onMapPurposeChange: (MapPurpose) -> Unit = {},
@@ -198,13 +240,18 @@ private fun WalkGameOverlay(
     onShowResult: () -> Unit,
     onCloseResult: () -> Unit,
 ) {
+    var momentsOpen by rememberSaveable { mutableStateOf(false) }
+    var pausedBrowsing by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(tracking.trail.state) { if (tracking.trail.state != TrackingState.PAUSED) pausedBrowsing = false }
+    LaunchedEffect(territory.selectedSiteId) { if (territory.selectedSiteId != null) momentsOpen = false }
     var wallClockMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var realtimeMillis by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(territoryGame.enabled, mapPurpose) {
         while (true) {
             wallClockMillis = System.currentTimeMillis()
             realtimeMillis = SystemClock.elapsedRealtime()
             delay(1_000L)
+            if (territoryGame.enabled && mapPurpose == MapPurpose.TERRITORY) onRefreshClaimAccess()
         }
     }
 
@@ -227,178 +274,80 @@ private fun WalkGameOverlay(
             ?.isFreshEnoughForMoment(realtimeMillis * 1_000_000L) == true
 
         Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
-            if (layoutMode == WalkLayoutMode.LANDSCAPE) {
-                Row(
-                    Modifier.align(Alignment.TopStart).zIndex(10f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    WalkHomeButton(onHome)
-                    WalkStatsHud(
-                        elapsedMillis = elapsedMillis,
-                        distanceMeters = distanceMeters,
-                    )
-                    if (summary == null) {
-                        WalkMapModeButton(mapPurpose, onMapPurposeChange)
-                    }
-                }
-                Row(
-                    Modifier.align(Alignment.TopEnd),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            val landscape = layoutMode == WalkLayoutMode.LANDSCAPE
+            val density = LocalDensity.current
+            var panelWidth by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+            var panelHeight by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+            var dockWidth by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+            var hudHeight by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+            val systemTop = WindowInsets.systemBars.getTop(density)
+            val systemBottom = WindowInsets.systemBars.getBottom(density)
+            LaunchedEffect(panelWidth, panelHeight, dockWidth, hudHeight, systemTop, systemBottom, landscape, tracking.trail.state, summary) {
+                val gap = with(density) { 24.dp.roundToPx() }
+                onInsets(if (landscape && panelHeight > 0) panelWidth + gap else 0,
+                    systemTop + hudHeight + gap,
+                    if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) dockWidth + gap else 0,
+                    if (landscape) systemBottom + gap else systemBottom + panelHeight + gap)
+            }
+            WalkHomeButton(onHome, Modifier.align(Alignment.TopStart))
+            Surface(Modifier.align(if (landscape) Alignment.TopStart else Alignment.TopEnd)
+                .padding(start = if (landscape) 52.dp else 0.dp), shape = RoundedCornerShape(16.dp), color = CardWhite) {
+                Row {
+                    if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
                     WalkRotateButton(layoutMode, onRequestOrientation)
-                    if (summary == null) {
-                        MomentHud(
-                            nowMillis = wallClockMillis,
-                            outside = outside,
-                            gpsLabel = gpsLabel(locationGranted, preciseLocation, tracking.lastSample),
-                        )
-                    } else CompletedWalkHud(summary)
                 }
-                Column(
-                    Modifier.align(Alignment.BottomStart),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    StatusPill(
-                        label = notice,
-                        error = !preciseLocation || locationError != null ||
-                            tracking.errorMessage != null ||
-                            (mapPurpose == MapPurpose.TERRITORY && territory.failure != null),
-                        actionLabel = when {
-                            !locationGranted || !preciseLocation -> "설정"
-                            mapPurpose == MapPurpose.TERRITORY && territory.failure != null -> "다시 시도"
-                            else -> null
-                        },
-                        onAction = if (
-                            mapPurpose == MapPurpose.TERRITORY && territory.failure != null &&
-                            locationGranted && preciseLocation
-                        ) onRetryTerritory else onOpenSettings,
-                    )
-                    if (summary == null) {
-                        DaengsFloatingButton(
-                            label = if (locating) "찾는 중" else "◎ 내 위치",
-                            enabled = locationGranted && !locating,
-                            onClick = onLocate,
-                        )
+            }
+            Row(Modifier.align(if (landscape) Alignment.TopEnd else Alignment.TopCenter)
+                .onSizeChanged { hudHeight = it.height }
+                .padding(top = if (landscape) 0.dp else 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary, gpsContent = {
+                    val gps = walkGpsPresentation(locationGranted, preciseLocation, locationError,
+                        locationSample, realtimeMillis * 1_000_000L)
+                    WalkGpsDot(gps.good, gps.unavailable, gps.detail, onOpenSettings)
+                })
+            }
+            val dock: @Composable () -> Unit = {
+                Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
+                    Row(Modifier.padding(4.dp).onSizeChanged { dockWidth = it.width }) {
+                        WalkToolButton(WalkTool.CAMERA, "산책 사진 촬영", onPhotographWalk,
+                            enabled = tracking.trail.state == TrackingState.RECORDING && tracking.finishingSessionId == null, caption = "사진")
+                        WalkToolButton(WalkTool.RECORD, "행동 기록", {
+                            momentsOpen = !momentsOpen; onCloseTerritory()
+                        }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen, caption = "기록")
+                        WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries, caption = "일기")
+                        WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate, enabled = locationGranted && !locating, caption = "내 위치")
+                        WalkToolButton(if (tracking.trail.state == TrackingState.PAUSED) WalkTool.PLAY else WalkTool.PAUSE,
+                            if (tracking.trail.state == TrackingState.PAUSED) "산책 재개 메뉴" else "잠시 멈춤",
+                            { if (tracking.trail.state == TrackingState.PAUSED) pausedBrowsing = false else onPause() },
+                            caption = if (tracking.trail.state == TrackingState.PAUSED) "재개" else "쉼")
                     }
                 }
-                if (
-                    tracking.trail.state == TrackingState.RECORDING &&
-                    mapPurpose == MapPurpose.WALK
-                ) {
-                    WalkMomentDock(
-                        layoutMode = layoutMode,
-                        enabled = momentEnabled,
-                        onAddMoment = onAddMoment,
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    )
+            }
+            Column(Modifier.align(if (landscape) Alignment.BottomStart else Alignment.BottomCenter)
+                .widthIn(max = if (landscape) 300.dp else 360.dp)
+                .then(if (landscape) Modifier else Modifier.fillMaxWidth())
+                .onSizeChanged { panelWidth = it.width; panelHeight = it.height },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (momentsOpen && tracking.trail.state == TrackingState.RECORDING) WalkMomentDock(
+                    layoutMode = WalkLayoutMode.PORTRAIT, enabled = momentEnabled,
+                    onAddMoment = { momentsOpen = false; onAddMoment(it) })
+                if (summary == null && mapPurpose == MapPurpose.TERRITORY && territory.selectedSiteId != null && territoryGame.enabled) {
+                    TerritoryActionCard(territoryGame, onMarkTerritory, onPhotograph = onPhotographTerritory,
+                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet)
                 }
-                WalkPrimaryControl(
-                    tracking = tracking,
-                    resultExpanded = resultExpanded,
-                    pets = pets,
-                    selectedDogIds = selectedDogIds,
-                    locationReady = locationGranted && preciseLocation,
-                    onToggleDog = onToggleDog,
-                    onStart = onStart,
-                    onPause = onPause,
-                    onShowResult = onShowResult,
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                    photoOf = photoOf,
-                )
-            } else {
-                // **가운데 버튼은 진짜 가운데여야 한다.** `SpaceBetween` 은 남는 자리를
-                // 똑같이 나눌 뿐이라, 양옆 버튼의 너비가 다르면 가운데 것이 한쪽으로
-                // 밀린다 — 홈은 동그란 44dp 이고 가로보기는 글자 버튼이라 늘 다르다.
-                Box(Modifier.fillMaxWidth().align(Alignment.TopStart)) {
-                    WalkHomeButton(onHome, Modifier.align(Alignment.CenterStart))
-                    if (summary == null) {
-                        WalkMapModeButton(
-                            mapPurpose,
-                            onMapPurposeChange,
-                            Modifier.align(Alignment.Center),
-                        )
-                    }
-                    WalkRotateButton(
-                        layoutMode,
-                        onRequestOrientation,
-                        Modifier.align(Alignment.CenterEnd),
-                    )
+                if (tracking.errorMessage != null || (mapPurpose == MapPurpose.TERRITORY &&
+                    (territory.failure != null || territory.sites.isEmpty()))) {
+                    StatusPill(notice, tracking.errorMessage != null || territory.failure != null,
+                        if (territory.failure != null) "다시 시도" else null, onRetryTerritory)
                 }
-                // **한 줄이다.** 예전에는 시간·거리 카드와 날씨 카드가 세로로 쌓여
-                // 지도를 크게 가렸고, 너비가 서로 달라 가운데로 놓아도 들쭉날쭉해
-                // 보였다. 시계와 GPS 줄은 버렸다 — 시각은 상태바에 이미 있고, GPS
-                // 상태는 아래 안내줄이 따로 말해 준다.
-                WalkTopHud(
-                    elapsedMillis = elapsedMillis,
-                    distanceMeters = distanceMeters,
-                    outside = outside.takeIf { summary == null },
-                    nowMillis = wallClockMillis,
-                    summary = summary,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 52.dp),
-                )
-                Column(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .widthIn(max = 380.dp)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (
-                        tracking.trail.state == TrackingState.RECORDING &&
-                        mapPurpose == MapPurpose.WALK
-                    ) {
-                        WalkMomentDock(
-                            layoutMode = layoutMode,
-                            enabled = momentEnabled,
-                            onAddMoment = onAddMoment,
-                        )
-                    }
-                    StatusPill(
-                        label = notice,
-                        error = !preciseLocation || locationError != null ||
-                            tracking.errorMessage != null ||
-                            (mapPurpose == MapPurpose.TERRITORY && territory.failure != null),
-                        actionLabel = when {
-                            !locationGranted || !preciseLocation -> "설정"
-                            mapPurpose == MapPurpose.TERRITORY && territory.failure != null -> "다시 시도"
-                            else -> null
-                        },
-                        onAction = if (
-                            mapPurpose == MapPurpose.TERRITORY && territory.failure != null &&
-                            locationGranted && preciseLocation
-                        ) onRetryTerritory else onOpenSettings,
-                    )
-                    // **내 위치를 큰 버튼 옆에 붙인다.** 예전에는 제 줄을 차지해서
-                    // 지도 아래가 한 줄 더 길었다. 자주 누르는 것도 아니라 동그란
-                    // 아이콘 하나면 된다.
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        if (summary == null) {
-                            WalkLocateButton(
-                                enabled = locationGranted && !locating,
-                                locating = locating,
-                                onClick = onLocate,
-                            )
-                        }
-                        WalkPrimaryControl(
-                            tracking = tracking,
-                            resultExpanded = resultExpanded,
-                            pets = pets,
-                            selectedDogIds = selectedDogIds,
-                            locationReady = locationGranted && preciseLocation,
-                            onToggleDog = onToggleDog,
-                            onStart = onStart,
-                            onPause = onPause,
-                            onShowResult = onShowResult,
-                            photoOf = photoOf,
-                        )
-                    }
-                }
+                if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
+                    tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
+                    onToggleDog, onStart, onPause, onShowResult, photoOf = photoOf)
+                else if (!landscape) dock()
+                if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
+            }
+            if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
+                Box(Modifier.align(Alignment.BottomEnd)) { dock() }
             }
 
             if (selectedRoutePoint != null) {
@@ -428,7 +377,7 @@ private fun WalkGameOverlay(
         }
 
         val modalVisible = tracking.completedSessionId != null && resultExpanded ||
-            tracking.finishingSessionId != null || tracking.trail.state == TrackingState.PAUSED
+            tracking.finishingSessionId != null || (tracking.trail.state == TrackingState.PAUSED && !pausedBrowsing)
         when {
             tracking.completedSessionId != null && resultExpanded -> ModalScrim {
                 if (summary == null) SavingCard("결과를 준비하고 있어요")
@@ -442,13 +391,14 @@ private fun WalkGameOverlay(
                 )
             }
             tracking.finishingSessionId != null -> ModalScrim { SavingCard("산책을 저장하고 있어요") }
-            tracking.trail.state == TrackingState.PAUSED -> ModalScrim {
+            tracking.trail.state == TrackingState.PAUSED && !pausedBrowsing -> ModalScrim {
                 PauseCard(
                     onResume = onResume,
                     onStop = onStop,
+                    onBrowse = { pausedBrowsing = true },
                     // 서비스가 저장 뒤에 재는 것과 **같은 규칙**이다. 여기서 미리 재
                     // 두면 "종료 → 사라짐 → 왜 없지" 가 아니라 누르기 전에 알 수 있다.
-                    tooShort = !countsAsWalk(distanceMeters, elapsedMillis),
+                    tooShort = !countsAsWalk(distanceMeters, elapsedMillis) && tracking.savedEntryCount == 0,
                 )
             }
         }
@@ -477,11 +427,8 @@ private fun WalkMapModeButton(
     modifier: Modifier = Modifier,
 ) {
     val target = if (purpose == MapPurpose.TERRITORY) MapPurpose.WALK else MapPurpose.TERRITORY
-    DaengsFloatingButton(
-        label = if (purpose == MapPurpose.TERRITORY) "산책 지도" else "점령 지도",
-        onClick = { onChange(target) },
-        modifier = modifier.semantics { contentDescription = "지도 모드 전환" },
-    )
+    WalkToolButton(WalkTool.POLE, if (purpose == MapPurpose.TERRITORY) "점령지 숨기기" else "점령지 보기",
+        { onChange(target) }, modifier, active = purpose == MapPurpose.TERRITORY)
 }
 
 internal fun territoryStatusLabel(state: TerritoryBoardState): String = when {
@@ -501,11 +448,8 @@ private fun WalkRotateButton(
     onRequestOrientation: (WalkOrientation) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    DaengsFloatingButton(
-        label = if (layoutMode == WalkLayoutMode.PORTRAIT) "가로 보기" else "세로 보기",
-        onClick = { onRequestOrientation(layoutMode.oppositeOrientation) },
-        modifier = modifier.semantics { contentDescription = "산책 화면 회전" },
-    )
+    WalkToolButton(WalkTool.ROTATE, if (layoutMode == WalkLayoutMode.PORTRAIT) "가로 보기" else "세로 보기",
+        { onRequestOrientation(layoutMode.oppositeOrientation) }, modifier)
 }
 
 @Composable
@@ -542,7 +486,10 @@ private fun WalkPrimaryControl(
             pets = pets,
             selectedDogIds = selectedDogIds,
             onToggleDog = onToggleDog,
-            enabled = locationReady,
+            // **위치만 준비돼서는 부족하다.** 강아지 앱이라 아이 없이는 안 나간다
+            // (`WalkDogPick.canStartWalk`). 둘러보기(목록이 빔)는 예외다.
+            enabled = locationReady && canStartWalk(pets, selectedDogIds),
+            blockedReason = walkStartBlockedReason(pets, selectedDogIds),
             onStart = onStart,
             modifier = modifier,
             photoOf = photoOf,
@@ -556,8 +503,7 @@ private fun WalkPrimaryControl(
  * 예전에는 시간·거리 카드와 날씨 카드가 세로로 쌓여 있었다. 지도를 크게 가렸고,
  * **너비가 서로 달라** 둘 다 가운데로 놓아도 들쭉날쭉해 보였다.
  *
- * 시계와 GPS 줄은 버렸다 — 시각은 상태바에 이미 있고, GPS 상태는 화면 아래 안내줄이
- * 따로 말해 준다. 지도를 덜 가리는 편이 그 둘보다 값지다.
+ * 시각은 시스템 상태바에 맡기고 GPS는 상세를 열 수 있는 작은 점으로 합친다.
  *
  * @param outside 날씨. 산책이 끝난 뒤에는 null 이고 [summary] 자리가 대신 온다
  */
@@ -569,10 +515,11 @@ private fun WalkTopHud(
     nowMillis: Long,
     summary: WalkSummary?,
     modifier: Modifier = Modifier,
+    gpsContent: @Composable () -> Unit = {},
 ) {
     HudSurface(modifier) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             HudMetric("산책 시간", formatDuration(elapsedMillis))
@@ -590,13 +537,14 @@ private fun WalkTopHud(
                 outside != null -> {
                     HudDivider()
                     Text(
-                        momentHeadline(nowMillis, outside),
+                        if (outside.known) outside.temperatureC?.let { "${it.roundToInt()}°C" } ?: "날씨 —" else "날씨 —",
                         color = TextDark,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
             }
+            gpsContent()
         }
     }
 }
@@ -681,7 +629,7 @@ private fun WalkMomentDock(
     if (layoutMode == WalkLayoutMode.LANDSCAPE) {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             WalkMomentType.entries.forEach { type ->
-                WalkMomentButton(type = type, enabled = enabled, onClick = { onAddMoment(type) })
+                WalkMomentButton(type = type, enabled = enabled || type == WalkMomentType.NOTE, onClick = { onAddMoment(type) })
             }
         }
     } else {
@@ -691,7 +639,7 @@ private fun WalkMomentDock(
             WalkMomentType.entries.forEach { type ->
                 WalkMomentButton(
                     type = type,
-                    enabled = enabled,
+                    enabled = enabled || type == WalkMomentType.NOTE,
                     onClick = { onAddMoment(type) },
                     modifier = Modifier.weight(1f),
                 )
@@ -739,18 +687,18 @@ private fun WalkMomentButton(
  */
 private val WalkMomentType.shortLabel: String
     get() = when (this) {
-        WalkMomentType.EXPLORE -> "탐색"
-        WalkMomentType.TOILET_MARKING -> "배변"
-        WalkMomentType.SOCIAL -> "교류"
-        WalkMomentType.SPECIAL -> "순간"
+        WalkMomentType.SNIFFING -> "킁킁"
+        WalkMomentType.EXCRETION -> "배설"
+        WalkMomentType.BARKING -> "짖기"
+        WalkMomentType.NOTE -> "순간"
     }
 
 private val WalkMomentType.walkIcon: DaengsIcon
     get() = when (this) {
-        WalkMomentType.EXPLORE -> DaengsIcon.Pin
-        WalkMomentType.TOILET_MARKING -> DaengsIcon.Paw
-        WalkMomentType.SOCIAL -> DaengsIcon.Heart
-        WalkMomentType.SPECIAL -> DaengsIcon.Book
+        WalkMomentType.SNIFFING -> DaengsIcon.Pin
+        WalkMomentType.EXCRETION -> DaengsIcon.Paw
+        WalkMomentType.BARKING -> DaengsIcon.Sound
+        WalkMomentType.NOTE -> DaengsIcon.Book
     }
 
 @Composable
@@ -897,6 +845,8 @@ private fun ReadyCard(
     selectedDogIds: Set<String>,
     onToggleDog: (String) -> Unit,
     enabled: Boolean,
+    /** 못 누르는 이유. null 이면 막힌 게 아니다 (위치를 기다리는 중일 수 있다) */
+    blockedReason: String? = null,
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
     photoOf: (String) -> ImageBitmap? = { null },
@@ -916,7 +866,9 @@ private fun ReadyCard(
         ) {
             Text("산책을 시작할까요?", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             if (pets.isNotEmpty()) {
-                DogPickRow(pets, selectedDogIds, onToggleDog, photoOf = photoOf)
+                var expanded by rememberSaveable { mutableStateOf(false) }
+                TextButton(onClick = { expanded = !expanded }) { Text("함께 걷는 강아지 ${selectedDogIds.size}마리", fontSize = 12.sp) }
+                if (expanded) DogPickRow(pets, selectedDogIds, onToggleDog, photoOf = photoOf)
             } else {
                 Text(
                     "등록한 강아지가 없어도 산책은 기록할 수 있어요.",
@@ -924,6 +876,10 @@ private fun ReadyCard(
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,
                 )
+            }
+            // **왜 안 눌리는지 말해 준다.** 흐린 버튼만 두면 고장으로 읽힌다.
+            blockedReason?.let {
+                Text(it, color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)
             }
             WalkWideAction("산책 시작", enabled = enabled, onClick = onStart)
         }
@@ -981,7 +937,7 @@ private fun ModalScrim(content: @Composable () -> Unit) {
  *   기록이 사라진 것을 보고 나서 이유를 읽는 순서였다. 누르기 전에 말해 준다
  */
 @Composable
-private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit, tooShort: Boolean) {
+private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit, tooShort: Boolean, onBrowse: () -> Unit = {}) {
     Surface(
         modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(),
         color = CardWhite,
@@ -1012,6 +968,7 @@ private fun PauseCard(onResume: () -> Unit, onStop: () -> Unit, tooShort: Boolea
                 lineHeight = 18.sp,
                 textAlign = TextAlign.Center,
             )
+            TextButton(onClick = onBrowse) { Text("지도 둘러보기") }
             WalkWideAction(if (tooShort) "이어서 걷기" else "계속 걷기", onClick = onResume)
             WalkWideAction(
                 if (tooShort) "그만두기" else "산책 종료",

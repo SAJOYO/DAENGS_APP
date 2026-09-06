@@ -95,7 +95,11 @@ data class PlaceSuggestions(
     enum class Severity { INFO, WARNING, CRITICAL, UNKNOWN }
 
     companion object {
-        /** 저쪽 `CapabilityName.PLACE`. */
+        /**
+         * 저쪽 `CapabilityName.PLACE`. 배지 라벨 쪽에도 같은 값이 따로 적혀 있다
+         * (`chat/ChatModels.kt` 의 `ChatCapability.PLACE`) — 뜻이 달라 안 묶었고,
+         * 대신 `ChatModelsTest` 가 둘이 갈라지는지 지킨다. **한쪽만 고치지 말 것.**
+         */
         const val CAPABILITY = "place"
 
         /**

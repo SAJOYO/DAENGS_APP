@@ -24,6 +24,7 @@ import com.daengs.app.place.PlaceResult
 import com.daengs.app.place.PlaceSearchRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -33,19 +34,25 @@ data class PlacesUiState(
     val location: PlaceLocationState = PlaceLocationState.PermissionRequired,
     val discovery: PlaceDiscoveryState = PlaceDiscoveryState(),
     val journey: PlaceJourneyState = PlaceJourneyState(),
+    val profiles: PlaceProfiles = PlaceProfiles(),
+    val waitingForSearchLocation: Boolean = false,
 )
 
-/** 화면에서 발생할 수 있는 시설 기능 입력을 하나의 닫힌 계약으로 둔다. */
+/** 화면 입력 계약. kind=null은 전체보기이며 HTTP 요청에서는 실제 kind 목록으로 분할한다. */
 sealed interface PlacesAction {
-    data class Locate(val kind: PlaceKind, val preferParking: Boolean) : PlacesAction
+    data class ToggleDog(val id: String) : PlacesAction
+    data class Locate(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
 
-    data class Search(val kind: PlaceKind, val preferParking: Boolean) : PlacesAction
+    data class Search(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
 
     data class SearchAt(
         val point: GeoPoint,
-        val kind: PlaceKind,
+        val kind: PlaceKind?,
         val preferParking: Boolean,
+        val nameQuery: String? = null,
     ) : PlacesAction
+
+    data class SetRadius(val meters: Int) : PlacesAction
 
     data object RetrySearch : PlacesAction
 
@@ -64,6 +71,8 @@ class PlacesViewModel(
     externalScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
+    private val profiles = MutableStateFlow(PlaceProfiles())
+    private var appliedDogs = emptyList<com.daengs.app.place.PlaceDogSnapshot>()
     private val location = PlaceLocationCoordinator(
         source = locationSource,
         scope = runtimeScope,
@@ -77,8 +86,10 @@ class PlacesViewModel(
     val state: StateFlow<PlacesUiState> = combine(
         location.state,
         session.state,
-    ) { location, session ->
-        PlacesUiState(location, session.discovery, session.journey)
+        profiles,
+    ) { location, session, profiles ->
+        PlacesUiState(location, session.discovery, session.journey, profiles,
+            waitingForSearchLocation = session.latestIntent?.origin == PlaceSearchOrigin.CurrentDevice)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -119,15 +130,31 @@ class PlacesViewModel(
         session.updateDogContext(context)
     }
 
+    fun updateProfiles(owner: String?, pets: List<com.daengs.app.pet.Pet>?, busy: Boolean, error: String?) {
+        applyProfiles(profiles.value.receive(owner, pets, busy, error))
+    }
+
+    private fun applyProfiles(value: PlaceProfiles) {
+        profiles.value = value
+        val snapshots = value.snapshots()
+        if (snapshots != appliedDogs) {
+            appliedDogs = snapshots
+            session.updateDogs(snapshots)
+        }
+    }
+
     fun onAction(action: PlacesAction) {
         when (action) {
-            is PlacesAction.Locate -> locateAndSearch(action.kind, action.preferParking)
-            is PlacesAction.Search -> searchAtCurrentOrigin(action.kind, action.preferParking)
+            is PlacesAction.ToggleDog -> applyProfiles(profiles.value.toggle(action.id))
+            is PlacesAction.Locate -> locateAndSearch(action.kind, action.preferParking, action.nameQuery)
+            is PlacesAction.Search -> searchAtCurrentOrigin(action.kind, action.preferParking, action.nameQuery)
             is PlacesAction.SearchAt -> searchAt(
                 action.point,
                 action.kind,
                 action.preferParking,
+                action.nameQuery,
             )
+            is PlacesAction.SetRadius -> session.radius(action.meters)?.let(::locate)
             PlacesAction.RetrySearch -> retrySearch()
             is PlacesAction.Select -> selectPlace(action.key)
             is PlacesAction.LoadJourney -> loadJourney(action.place)
@@ -135,29 +162,30 @@ class PlacesViewModel(
         }
     }
 
-    fun locateAndSearch(kind: PlaceKind, preferParking: Boolean) {
+    fun locateAndSearch(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         if (location.state.value is PlaceLocationState.PermissionRequired ||
             location.state.value is PlaceLocationState.PermissionPermanentlyDenied
         ) {
             return
         }
-        locate(session.requestDeviceSearch(kind, preferParking))
+        locate(session.requestDeviceSearch(kind, preferParking, nameQuery))
     }
 
-    fun searchAtCurrentOrigin(kind: PlaceKind, preferParking: Boolean) {
+    fun searchAtCurrentOrigin(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         session.searchAtCurrentOrigin(
             kind = kind,
             preferParking = preferParking,
             devicePosition = location.state.value.devicePosition,
+            nameQuery = nameQuery,
         )?.let(::locate)
     }
 
-    fun searchAt(point: GeoPoint, kind: PlaceKind, preferParking: Boolean) {
-        session.searchAt(point, kind, preferParking)
+    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
+        session.searchAt(point, kind, preferParking, nameQuery)
     }
 
     fun retrySearch() {
-        session.retrySearch()
+        session.retrySearch()?.let(::locate)
     }
 
     fun selectPlace(key: PlaceKey) {

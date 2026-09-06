@@ -73,6 +73,8 @@ object PetApi {
                 if (it.responseCode !in 200..299) it.fail()
                 parse(if (it.responseCode == 204) "" else it.inputStream.bufferedReader().use { r -> r.readText() })
             }
+        }.onFailure { cause ->
+            if (cause is kotlinx.coroutines.CancellationException) throw cause
         }.recoverCatching { cause ->
             // 서버가 준 문장은 그대로 통과시킨다. 나머지는 연결이 안 된 것이고,
             // 그때 메시지는 영어 한 줄이라 화면에 그대로 띄우면 안 된다.

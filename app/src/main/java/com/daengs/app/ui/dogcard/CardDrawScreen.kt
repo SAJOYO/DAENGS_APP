@@ -54,7 +54,7 @@ import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.screening.Photo
 import com.daengs.app.ui.chat.GuideFrameScreen
 import com.daengs.app.ui.dex.DEX_CARDS
-import com.daengs.app.ui.dex.IMMERSIVE_SCENES
+import com.daengs.app.ui.dex.bgmFor
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -448,9 +448,17 @@ private fun ResultBody(
     }
     Text(dex?.ko ?: template.label, color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
-    // **곡이 있는지 미리 말해 준다.** 열두 장 중 여덟 장은 곡도 무대도 없어서,
-    // 아무 말이 없으면 "뽑았는데 아무 일도 안 일어난다" 로 읽힌다.
-    val hasTune = dex?.id?.let { IMMERSIVE_SCENES[it]?.bgm } != null
+    // **곡이 있는지 미리 말해 준다.** 곡이 없는 카드가 더 많아서, 아무 말이 없으면
+    // "뽑았는데 아무 일도 안 일어난다" 로 읽힌다.
+    //
+    // **`CARD_BGM` 에 묻는다.** 예전에는 무대(`IMMERSIVE_SCENES[id]?.bgm`)에 물었는데,
+    // 곡이 무대에서 떨어져 나온 뒤로는 그게 틀린 질문이다 — 당근·시금치는 곡만 있고
+    // 무대가 없어서 "노래가 없어요" 라고 했는데 턴테이블에는 그 곡이 떴다. 한 앱이
+    // 같은 카드를 두고 두 가지 말을 한 셈이다.
+    //
+    // 턴테이블이 보는 것과 같은 함수를 쓴다 (`TurntablePanel` 의 `bgmFor`). 곡을
+    // 두 군데서 판단하면 또 갈린다 — `CardBgm.kt` 첫 주석이 그 이야기다.
+    val hasTune = dex?.id?.let { bgmFor(it) } != null
     Text(
         if (hasTune) {
             "♫ 이 카드에는 노래가 있어요 — 턴테이블에서 들을 수 있어요"

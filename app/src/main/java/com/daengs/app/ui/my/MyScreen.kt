@@ -88,8 +88,18 @@ fun MyScreen(
      * 그렇게 부른다.
      */
     onReplayTour: (() -> Unit)? = null,
-    /** 방 앞 이름표와 **같은 이름**. 두 곳이 다르면 어느 쪽이 내 방인지 헷갈린다. */
-    roomLabel: String,
+    /**
+     * 사람 이름. **집 이름이 아니다** — 저건 "네옹이네" 고 이건 그 집 사람이다.
+     *
+     * 예전에는 이 자리에 방 이름표(`roomLabel`)를 걸었는데, **강아지가 없으면 그
+     * 화면이 발자국과 "우리집" 뿐이라 누구 것인지 안 읽혔다.** 강아지 등록이 미뤄지면서
+     * 그 상태가 흔해졌다. 집 이름은 방 앞 이름표에서 보고 거기서 고친다.
+     *
+     * null 이면 아직 서버가 안 줬거나(옛 서버) 못 받아 온 것이라 그 줄이 빠진다.
+     */
+    nickname: String?,
+    /** 이름을 고치러 간다. null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다 */
+    onEditNickname: (() -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
     pets: List<Pet>?,
     /**
@@ -160,7 +170,8 @@ fun MyScreen(
             breed = breed,
             photo = profilePhoto,
             dogName = primary?.name,
-            roomLabel = roomLabel,
+            nickname = nickname,
+            onEditNickname = onEditNickname,
             // 대표가 있어야 사진을 걸 자리가 있다.
             onEditPhoto = onEditPhoto?.takeIf { primary != null },
         )
@@ -446,7 +457,8 @@ private fun ProfileHead(
     breed: DogBreed?,
     photo: ImageBitmap?,
     dogName: String?,
-    roomLabel: String,
+    nickname: String?,
+    onEditNickname: (() -> Unit)?,
     onEditPhoto: (() -> Unit)?,
 ) {
     Column(
@@ -482,7 +494,24 @@ private fun ProfileHead(
             Text(dogName, color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(3.dp))
         }
-        Text(roomLabel, color = TextMuted, fontSize = 13.sp)
+        // **강아지가 없어도 나를 가리키는 줄이 남는다.** 위 이름 줄은 대표견이라
+        // 빠질 수 있고, 그러면 이 화면이 발자국 하나가 된다.
+        nickname?.let { name ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, color = TextMuted, fontSize = 13.sp)
+                if (onEditNickname != null) {
+                    Text(
+                        "고치기",
+                        color = DaengPinkDeep,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onEditNickname)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -729,7 +758,7 @@ private fun SettingRow(
 private fun MyScreenSignedInPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, roomLabel = "네옹이네", pets = emptyList(), canAddMore = true,
+            HomeDemoData.DOG_BREED, nickname = "네옹집사", pets = emptyList(), canAddMore = true,
             onAddPet = {}, onEditPet = {}, onPickPrimary = {},
             onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
             signedIn = true, onSignIn = {}, onSignOut = {},
@@ -743,7 +772,7 @@ private fun MyScreenSignedInPreview() {
 private fun MyScreenBrowsingPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, roomLabel = "우리집", pets = null, canAddMore = false,
+            HomeDemoData.DOG_BREED, nickname = null, pets = null, canAddMore = false,
             onAddPet = {}, onEditPet = {}, onPickPrimary = {},
             onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
             signedIn = false, onSignIn = {}, onSignOut = {},

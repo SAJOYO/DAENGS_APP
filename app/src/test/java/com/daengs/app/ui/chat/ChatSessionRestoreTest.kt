@@ -24,6 +24,24 @@ class ChatSessionRestoreTest {
     }
 
     @Test
+    fun `복원한 답변은 어느 turn 인지 들고 있다`() {
+        val response = AssistantResponse(
+            requestId = "request",
+            status = AssistantResponse.Status.ANSWERED,
+            message = "서버 공개 응답",
+            handoffs = emptyList(),
+            clarify = null,
+        )
+        val restored = restoredChatEntries(
+            listOf(turn("첫 질문", "첫 답"), turn("둘째 질문", "낡은 답", response = response)),
+        )
+
+        // 신고가 이 id 를 요구한다. 답변 문자열만 남기면 어느 turn 인지 잃는다.
+        assertEquals("turn-첫 질문", (restored[1] as ChatEntry.Theirs).turnId)
+        assertEquals("turn-둘째 질문", (restored[3] as ChatEntry.Theirs).turnId)
+    }
+
+    @Test
     fun `완료되지 않은 turn은 내부 오류 코드를 노출하지 않는다`() {
         val restored = restoredChatEntries(
             listOf(

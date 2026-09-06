@@ -17,7 +17,8 @@ import androidx.compose.runtime.setValue
  * 로그인하면 서버에서 받아 오면 된다. 기기에 캐시를 두면 "폰에는 있는데 서버에는
  * 없는" 상태를 다룰 자리가 하나 더 생긴다.
  */
-class PetHolder {
+class PetHolder(private val listPets: suspend (String) -> Result<PetList> = PetApi::list) {
+    private var refreshGeneration = 0L
     /** 마지막으로 받아 온 목록. 아직 한 번도 못 받았으면 null 이다 (빈 목록과 다르다). */
     var pets: List<Pet>? by mutableStateOf(null)
         private set
@@ -47,16 +48,29 @@ class PetHolder {
 
     /** 로그아웃·탈퇴할 때. 다음 사람이 남의 강아지를 보면 안 된다. */
     fun forget() {
+        refreshGeneration++
+        busy = false
         pets = null
         maxPets = null
         error = null
     }
 
     /** 서버에서 목록을 다시 받아 온다. */
-    suspend fun refresh(token: String): Boolean = guard {
-        PetApi.list(token).onSuccess {
-            pets = it.pets
-            maxPets = it.maxPets
+    suspend fun refresh(token: String): Boolean {
+        val generation = ++refreshGeneration
+        busy = true
+        error = null
+        try {
+            val result = listPets(token)
+            result.exceptionOrNull()?.let { if (it is kotlinx.coroutines.CancellationException) throw it }
+            if (generation != refreshGeneration) return false
+            result.onSuccess {
+                pets = it.pets
+                maxPets = it.maxPets
+            }.onFailure { error = it.message ?: "반려견을 불러오지 못했어요." }
+            return result.isSuccess
+        } finally {
+            if (generation == refreshGeneration) busy = false
         }
     }
 

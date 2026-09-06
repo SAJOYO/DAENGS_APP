@@ -5,6 +5,10 @@ import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationUpdateConfig
 import com.daengs.app.map.shell.MapPurpose
+import com.daengs.app.map.features.territory.TerritoryGameController
+import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
+import com.daengs.app.territory.InMemoryTerritoryClaimRepository
+import com.daengs.app.territory.TerritorySite
 import com.daengs.app.pet.Pet
 import com.daengs.app.territory.NearbyTerritorySitesRequest
 import com.daengs.app.territory.TerritorySitePage
@@ -32,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -39,6 +44,157 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test fun `async territory submission never reopens a card closed while saving`() = runTest {
+        val stored = kotlinx.coroutines.CompletableDeferred<String>()
+        val local = TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList()))
+        val provider = object : com.daengs.app.map.features.territory.TerritoryGameProvider by local {
+            override suspend fun submitMark(siteId: String, board: com.daengs.app.map.features.territory.TerritoryBoardState,
+                tracking: WalkTrackingState, permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long): String = stored.await()
+        }
+        val controller = FakeWalkController()
+        val vm = viewModel(controller, CountingLocationSource(), TerritorySiteRepository {
+            TerritorySitePage(1, false, listOf(TerritorySite("A", GeoPoint(37.5, 127.0), 0.0)))
+        }, provider)
+        vm.activate(true, true); vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        vm.onAction(WalkAction.SelectTerritorySite("A")); runCurrent()
+        vm.onAction(WalkAction.MarkTerritory("A")); runCurrent()
+        vm.onAction(WalkAction.ClearTerritory); runCurrent()
+        stored.complete("saved"); runCurrent()
+        assertEquals(null, vm.state.value.territory.selectedSiteId)
+        assertEquals(null, vm.state.value.momentNotice)
+    }
+
+    @Test
+    fun `server occupancy reaches map before walking and refresh stops when hidden`() = runTest {
+        val site = TerritorySite("A", GeoPoint(37.5, 127.0), 0.0)
+        var calls = 0
+        val session = com.daengs.app.auth.Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+        val shared = com.daengs.app.map.features.territory.ServerTerritoryGameProvider(
+            com.daengs.app.territory.TerritoryOccupancyClient { _, _ ->
+                calls++
+                listOf(com.daengs.app.territory.SharedTerritorySite("A", 2,
+                    com.daengs.app.territory.SharedTerritoryOccupancy("dog", "두부", false,
+                        com.daengs.app.territory.ClaimCertification.VERIFIED, 1000)))
+            }, { session }, { "user" },
+        )
+        val controller = FakeWalkController()
+        val vm = viewModel(controller, CountingLocationSource(),
+            TerritorySiteRepository { TerritorySitePage(1, false, listOf(site)) }, shared)
+        vm.activate(true, true)
+        runCurrent()
+        assertEquals(0, calls)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        vm.onAction(WalkAction.SelectTerritorySite("A"))
+        runCurrent()
+        assertEquals(1, calls)
+        assertEquals("두부 · 인증", vm.state.value.territoryGame.target!!.occupancyLabel)
+        val marker = vm.state.value.toMapPresentation { "" }.scene.territorySites.single()
+        assertEquals(TerritoryMarkerOccupancy.VERIFIED, marker.occupancy)
+        assertEquals(null, marker.radiusMeters)
+        assertEquals(null, marker.feedback)
+        assertEquals(null, controller.state.value.activeSessionId)
+        advanceTimeBy(15_000); runCurrent()
+        assertEquals(2, calls)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK))
+        runCurrent(); advanceTimeBy(30_000); runCurrent()
+        assertEquals(2, calls)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals(3, calls)
+        vm.updateSharedReadsForeground(false); runCurrent(); advanceTimeBy(30_000); runCurrent()
+        assertEquals(3, calls)
+        vm.updateSharedReadsForeground(true); runCurrent()
+        assertEquals(4, calls)
+        vm.deactivate(); runCurrent(); advanceTimeBy(30_000); runCurrent()
+        assertEquals(4, calls)
+    }
+
+    @Test
+    fun `saved photo settles after map is hidden and walk ends then appears certified`() = runTest {
+        val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val controller = FakeWalkController().apply {
+            publish(WalkTrackingState(
+                activeSessionId = "walk-id", activeDogIds = listOf("dog-1"),
+                trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix,
+            ))
+        }
+        val board = TerritorySiteRepository { TerritorySitePage(1, false, listOf(TerritorySite("A", fix.point, 0.0))) }
+        val claims = InMemoryTerritoryClaimRepository(emptyList())
+        val queue = com.daengs.app.territory.TerritoryPhotoQueue(claims, backgroundScope)
+        val viewModel = viewModel(controller, CountingLocationSource(), board, TerritoryGameController(claims), queue)
+        viewModel.updatePets(listOf(pet("dog-1")))
+        viewModel.activate(true, true)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        val target = com.daengs.app.map.features.territory.TerritoryCaptureTarget(
+            com.daengs.app.territory.ClaimSession("walk-id", "local-territory-preview", "dog-1"), "A",
+        )
+        val attempt = checkNotNull(viewModel.beginTerritoryCapture(target))
+        val file = java.io.File.createTempFile("territory-capture", ".jpg").apply { writeBytes(byteArrayOf(1)) }
+        try {
+            viewModel.submitTerritoryPhoto(attempt, file, com.daengs.app.territory.PhotoSimulation.ACCEPT)
+            viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK))
+            controller.publish(WalkTrackingState())
+            viewModel.deactivate()
+            runCurrent()
+            advanceTimeBy(2000)
+            runCurrent()
+            assertEquals(com.daengs.app.territory.ClaimPhotoStatus.VERIFIED, viewModel.territoryPhotos.value.single().status)
+            viewModel.activate(true, true)
+            viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+            runCurrent()
+            assertEquals(TerritoryMarkerOccupancy.VERIFIED, viewModel.state.value.toMapPresentation { "" }.scene.territorySites.single().occupancy)
+            assertEquals(false, file.exists())
+        } finally { file.delete() }
+    }
+
+    @Test
+    fun `territory action updates scene and map toggle preserves recording and ownership`() = runTest {
+        val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val controller = FakeWalkController().apply {
+            publish(WalkTrackingState(
+                activeSessionId = "walk-id", activeDogIds = listOf("dog-1"),
+                trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix,
+            ))
+        }
+        val repo = TerritorySiteRepository {
+            TerritorySitePage(1, false, listOf(TerritorySite("A", fix.point, 999.0)))
+        }
+        val viewModel = viewModel(controller, CountingLocationSource(), repo,
+            TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList())))
+        viewModel.updatePets(listOf(pet("dog-1")))
+        viewModel.activate(true, true)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals(null, viewModel.state.value.territoryGame.target)
+        viewModel.onAction(WalkAction.MarkTerritory("A"))
+        runCurrent()
+        assertEquals(null, viewModel.state.value.territoryGame.sites.single().claim.occupancy)
+        viewModel.onAction(WalkAction.SelectTerritorySite("A"))
+        runCurrent()
+        assertEquals(true, viewModel.state.value.territoryGame.canMark)
+        assertEquals(com.daengs.app.map.layers.territory.TerritoryFeedbackKind.READY,
+            viewModel.state.value.territoryGame.feedback?.kind)
+        viewModel.onAction(WalkAction.MarkTerritory("A"))
+        runCurrent()
+        val marker = viewModel.state.value.toMapPresentation { "" }.scene.territorySites.single()
+        assertEquals(TerritoryMarkerOccupancy.UNVERIFIED, marker.occupancy)
+        assertEquals(com.daengs.app.map.layers.territory.TerritoryFeedbackKind.MARKED, marker.feedback?.kind)
+        assertEquals(true, marker.selected)
+        assertEquals(20.0, marker.radiusMeters!!, 0.0)
+        assertEquals(false, viewModel.state.value.territoryGame.canMark)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK))
+        runCurrent()
+        assertEquals(0, viewModel.state.value.toMapPresentation { "" }.scene.territorySites.size)
+        assertEquals(null, viewModel.state.value.territoryGame.feedback)
+        assertEquals(TrackingState.RECORDING, controller.state.value.trail.state)
+        viewModel.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        assertEquals("dog-1", viewModel.state.value.territoryGame.sites.single().claim.occupancy!!.ownerPetId)
+        assertEquals(emptyList<Any>(), controller.state.value.momentGroups)
+    }
+
     @Test
     fun `screen location feed stops while tracking service owns the walk`() = runTest {
         val source = CountingLocationSource()
@@ -70,12 +226,43 @@ class WalkViewModelTest {
         val first = pet("dog-1")
         val second = pet("dog-2")
 
+        // 두 마리면 **아무도 안 골라진 채로 시작한다** (`WalkDogPick.defaultWalkDogs`).
+        // 그래서 여기서 누른 한 마리만 명령에 실린다.
         viewModel.updatePets(listOf(first, second))
         runCurrent()
         viewModel.onAction(WalkAction.ToggleDog(second.id))
         viewModel.onAction(WalkAction.StartConfirmed)
 
-        assertEquals(listOf(first.id), controller.startedDogIds)
+        assertEquals(listOf(second.id), controller.startedDogIds)
+    }
+
+    /**
+     * **두 마리 이상이면 아무도 안 골라져 있어야 한다.**
+     *
+     * 예전에는 전부 골라진 채로 시작했다. 화면은 "누구와 나갈까요?" 라고 묻고 골라진
+     * 표시는 연분홍/흰색 차이뿐이라, 데려갈 아이를 고르려고 누른 것이 **빼는 동작**이
+     * 되어 나머지 아이들과 다녀온 것으로 기록됐다 (비공개 테스트에서 실제로 났다).
+     */
+    @Test
+    fun `two dogs start with nothing selected`() = runTest {
+        val viewModel = viewModel(FakeWalkController(), CountingLocationSource())
+
+        viewModel.updatePets(listOf(pet("dog-1"), pet("dog-2")))
+        runCurrent()
+
+        assertEquals(emptySet<String>(), viewModel.state.value.selection.selectedDogIds)
+    }
+
+    /** 한 마리면 고를 것이 없다. 매번 누르게 하면 탭만 는다. */
+    @Test
+    fun `one dog is selected for you`() = runTest {
+        val viewModel = viewModel(FakeWalkController(), CountingLocationSource())
+        val only = pet("dog-1")
+
+        viewModel.updatePets(listOf(only))
+        runCurrent()
+
+        assertEquals(setOf(only.id), viewModel.state.value.selection.selectedDogIds)
     }
 
     @Test
@@ -184,18 +371,79 @@ class WalkViewModelTest {
         assertEquals(GeoPoint(37.5, 127.0), viewModel.state.value.location.currentPosition)
     }
 
+    @Test
+    fun `remote selection preserves queried neighbourhood and pan stops framing`() = runTest {
+        val remote = GeoPoint(37.55, 127.0)
+        val queries = mutableListOf<GeoPoint>()
+        val repo = TerritorySiteRepository { request ->
+            queries.add(request.origin)
+            val id = if (request.origin == remote) "remote" else "home"
+            TerritorySitePage(1, false, listOf(TerritorySite(id, request.origin, 0.0)))
+        }
+        val vm = viewModel(FakeWalkController(), CountingLocationSource(), repo,
+            TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList())))
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY))
+        runCurrent()
+        vm.onAction(WalkAction.CameraMoved)
+        vm.onAction(WalkAction.CameraSettled(remote))
+        advanceTimeBy(400); runCurrent()
+        val queryCount = queries.size
+        vm.onAction(WalkAction.SelectTerritorySite("remote"))
+        runCurrent()
+        assertEquals("remote", vm.state.value.territory.selectedSiteId)
+        assertEquals(remote, vm.state.value.territory.loadedOrigin)
+        assertEquals(queryCount, queries.size)
+        assertEquals(false, vm.state.value.location.followDevice)
+        assertEquals(listOf(remote, GeoPoint(37.5, 127.0)), vm.state.value.toMapPresentation { "" }.fitBounds)
+        vm.onAction(WalkAction.CameraMoved)
+        runCurrent()
+        assertEquals(null, vm.state.value.toMapPresentation { "" }.fitBounds)
+        assertEquals("remote", vm.state.value.territory.selectedSiteId)
+        vm.onAction(WalkAction.SelectTerritorySite("remote"))
+        runCurrent()
+        vm.onAction(WalkAction.Locate)
+        runCurrent()
+        assertEquals(false, vm.state.value.map.frameSelectedTerritory)
+        assertEquals(true, vm.state.value.location.followDevice)
+        assertEquals(GeoPoint(37.5, 127.0), vm.state.value.territory.loadedOrigin)
+    }
+
+    @Test
+    fun `screen location quality reaches UI before walking and clears with permission`() = runTest {
+        val sample = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val source = object : LocationSource {
+            override suspend fun currentLocation() = sample
+            override fun locationUpdates(config: LocationUpdateConfig): Flow<LocationSample> = emptyFlow()
+        }
+        val vm = viewModel(FakeWalkController(), source)
+        vm.activate(true, true)
+        runCurrent()
+        assertEquals(null, vm.state.value.tracking.latestMomentFix)
+        assertEquals(sample, vm.state.value.location.sample)
+        assertEquals(true, walkGpsPresentation(true, true, null, vm.state.value.location.sample, 2_000_000_000L).good)
+        vm.updatePermission(false, false)
+        runCurrent()
+        assertEquals(null, vm.state.value.location.sample)
+    }
+
     private fun TestScope.viewModel(
         controller: FakeWalkController,
         source: LocationSource,
         territoryRepository: TerritorySiteRepository = TerritorySiteRepository {
             TerritorySitePage(count = 0, truncated = false, sites = emptyList())
         },
+        game: com.daengs.app.map.features.territory.TerritoryGameProvider? = null,
+        photoQueue: com.daengs.app.territory.TerritoryPhotoQueue? = null,
     ) = WalkViewModel(
         walkController = controller,
         history = WalkHistory(EmptyWalkFixLog),
         locationSource = source,
         territoryRepository = territoryRepository,
         externalScope = backgroundScope,
+        territoryGame = game,
+        nowNanos = { 2_000_000_000L },
+        photoQueue = photoQueue,
     )
 
     private class CountingLocationSource : LocationSource {

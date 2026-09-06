@@ -1,6 +1,7 @@
 package com.daengs.app.chat
 
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.PlaceSuggestions
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -17,10 +18,11 @@ class ChatModelsTest {
     // ── 능력 라벨 ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `training 은 훈련, life 는 제도, walk 는 산책이다`() {
+    fun `training 은 훈련, life 는 제도, walk 는 산책, place 는 장소다`() {
         assertEquals("훈련", ChatCapability.label("training"))
         assertEquals("제도", ChatCapability.label("life"))
         assertEquals("산책", ChatCapability.label("walk"))
+        assertEquals("장소", ChatCapability.label("place"))
     }
 
     /** `walk` 를 `생활` 로 읽는 실수를 여기서 막는다. 산책 판정은 생활 비서와 별개 능력이다. */
@@ -36,6 +38,25 @@ class ChatModelsTest {
         assertNull(ChatCapability.label("gait"))
         assertNull(ChatCapability.label("something_new"))
         assertNull(ChatCapability.label(""))
+    }
+
+    /**
+     * `"place"` 는 앱 안에 두 벌 적혀 있다 — 여기 [ChatCapability.PLACE] 는 배지 라벨의
+     * 키이고, [PlaceSuggestions.CAPABILITY] 는 `results` 에서 place 결과를 골라내는
+     * 열쇠다. 뜻이 달라서 하나로 묶지 않았다. 묶으면 `chat` 과 `assistant` 가 서로를
+     * 끌어오게 된다.
+     *
+     * 대신 갈라지는 순간만 여기서 잡는다. 저쪽이 값을 바꾸는 날 한쪽만 고치면 컴파일도
+     * 테스트도 다 지나가고 **화면에서만 조용히 틀린다** — 배지는 붙는데 추천 카드가 안
+     * 뜨거나 그 반대다. 저쪽이 이번에 낸 사고가 정확히 이 모양이었다
+     * (`SAJOYO/DAENGS_dev#269`).
+     *
+     * **이건 "둘이 같아야 한다" 는 규칙이 아니라 덫이다.** 저쪽이 언젠가 두 값을 진짜로
+     * 다르게 만들면 정답은 코드를 비트는 게 아니라 이 테스트를 지우는 것이다.
+     */
+    @Test
+    fun `place 문자열은 두 자리에서 같다`() {
+        assertEquals(PlaceSuggestions.CAPABILITY, ChatCapability.PLACE)
     }
 
     // ── 대화 ───────────────────────────────────────────────────────────────────

@@ -36,6 +36,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.art.rememberAssetImage
+import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.ui.dex.DEX_CARDS
 import com.daengs.app.ui.dex.DexCard
 import com.daengs.app.ui.dex.bgmFor
@@ -65,8 +66,14 @@ import kotlinx.coroutines.withContext
 // 곡을 넘길지**만 정한다. `asset = null` 이면 조용히 멈추는 것도 그쪽 계약이다.
 // ---------------------------------------------------------------------------
 
-/** 곡이 있는 카드 한 장. */
-data class CardTune(val card: DexCard, val asset: String)
+/**
+ * 곡이 있는 카드 한 장.
+ *
+ * [mine] 은 **내가 뽑은 그 카드**다. 카탈로그 목록([CARD_TUNES])에는 없고
+ * [ownedTunes] 가 채운다 — 목록에 그릴 그림이 카탈로그 원화가 아니라 내 카드여야
+ * 하기 때문이다 (아래 [TuneRow] 주석).
+ */
+data class CardTune(val card: DexCard, val asset: String, val mine: DrawnCard? = null)
 
 /**
  * 곡이 있는 카드들. **`CARD_BGM` 에서 뽑는다** — 곡을 두 군데 적어 두면 어긋난다.
@@ -177,11 +184,25 @@ fun TurntablePanel(
 /**
  * 내가 가진 곡. **카탈로그 순서를 그대로 따른다** — 뽑은 순서로 늘어놓으면 어제 뽑은
  * 곡이 매번 자리를 옮긴다.
+ *
+ * 같은 종류를 여러 장 뽑았으면 **가장 최근 것**을 싣는다. 도감이 칸 안에서 최근을
+ * 앞에 두는 것과 같은 규칙이다 (`dexSlots`).
  */
 internal fun ownedTunes(drawn: List<DrawnCard>): List<CardTune> {
-    val ids = drawn.map { it.templateId }.toSet()
-    return CARD_TUNES.filter { it.card.id in ids }
+    val newest = drawn.groupBy { it.templateId }
+        .mapValues { (_, copies) -> copies.maxBy { it.drawnAtMillis } }
+    return CARD_TUNES.mapNotNull { tune -> newest[tune.card.id]?.let { tune.copy(mine = it) } }
 }
+
+/**
+ * 목록에 찍는 번호. **어느 벌인지를 앞에 붙인다.**
+ *
+ * 도감이 두 벌이라 **번호가 겹친다** — No.01 이 야채에는 배추, 과일에는 사과다.
+ * 도감 화면에서는 탭이 어느 벌인지 말해 주지만 여기는 야채와 과일이 **한 줄에 섞여
+ * 선다.** 번호만 찍으면 같은 카드가 두 번 뜬 것처럼 읽힌다.
+ */
+internal fun tuneNumberLabel(card: DexCard): String =
+    "${card.deck.label} No. %02d".format(card.no)
 
 /**
  * 한 곡도 없을 때.
@@ -217,6 +238,9 @@ private fun Empty(onOpenDraw: (() -> Unit)?) {
     }
 }
 
+/** 목록 그림의 가로 픽셀. 34dp 짜리라 크게 그릴 이유가 없다 (도감 `COPY_THUMB_PX` 와 같다). */
+private const val TUNE_THUMB_PX = 160
+
 @Composable
 private fun TuneRow(
     tune: CardTune,
@@ -224,8 +248,18 @@ private fun TuneRow(
     onToggle: () -> Unit,
     onSave: () -> Unit,
 ) {
-    // 그리드보다 더 작게 뜨므로 4분의 1로 읽는다. 열두 장을 원본으로 들 이유가 없다.
-    val art = rememberAssetImage(tune.card.art, sample = 4)
+    // **내가 뽑은 카드를 그린다. 카탈로그 원화가 아니다.**
+    //
+    // 원화를 그리다가 곡이 과일까지 늘면서 드러났다 — 야채 원화에는 저쪽이 그린 네오
+    // 강아지가 구워져 있는데 **과일 원화는 구멍만 뚫린 판**이라, 목록에 얼굴 없는
+    // 빈 구멍 카드가 떴다. 곡이 야채뿐일 때는 티가 안 났다.
+    //
+    // 도감이 쓰는 그 함수다(`CopyStrip` 의 `rememberComposedCard`). 얼굴 파일이 없으면
+    // 그쪽이 알아서 비운 판으로 물러서므로 여기서 갈래를 또 만들지 않는다.
+    val composed = rememberComposedCard(tune.mine, width = TUNE_THUMB_PX)
+    // 내 카드가 없을 때(`@Preview`)만 카탈로그 원화다. 4분의 1로 읽는다.
+    val catalog = rememberAssetImage(tune.card.art, sample = 4)
+    val art = composed ?: catalog
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -250,7 +284,7 @@ private fun TuneRow(
         Column(Modifier.weight(1f)) {
             Text(tune.card.name, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                if (playing) "재생 중" else "No. %02d".format(tune.card.no),
+                if (playing) "재생 중" else tuneNumberLabel(tune.card),
                 color = if (playing) DaengPink else TextMuted,
                 fontSize = 11.sp,
             )

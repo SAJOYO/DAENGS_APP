@@ -7,9 +7,36 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+/** Request-local correlation and caller-resolved values; ref is not server-authenticated identity. */
+data class PlaceDogSnapshot(
+    val ref: String,
+    val revision: String? = null,
+    val size: DogSize? = null,
+    val weightKg: Double? = null,
+    val ageYears: Double? = null,
+) {
+    init {
+        require(ref.isNotBlank() && ref.length <= 100)
+        require(revision == null || revision.length <= 100)
+        require(weightKg == null || weightKg > 0 && weightKg <= 200)
+        require(ageYears == null || ageYears in 0.0..40.0)
+    }
+    fun toJson(): JsonObject = buildJsonObject {
+        put("ref", ref)
+        revision?.let { put("revision", it) }
+        size?.let { put("dog_size", it.wire) }
+        weightKg?.let { put("dog_weight_kg", it) }
+        ageYears?.let { put("dog_age_years", it) }
+    }
+}
+
 private const val MAX_KINDS_PER_REQUEST = 6
 private const val MAX_RESULTS_PER_KIND = 3_000
 private const val MAX_TOTAL_RESULTS = 5_000
+const val MAX_PLACE_NAME_LENGTH = 120
+
+fun isValidPlaceNameQuery(value: String): Boolean =
+    value.trim().let { it.codePointCount(0, it.length) <= MAX_PLACE_NAME_LENGTH }
 
 /**
  * 검색에 싣는 개의 **값**. identity(dog_id)가 아니다 — 서버는 프로필을 조회하지 않고
@@ -36,8 +63,13 @@ data class PlaceSearchRequest(
     val dogWeightKg: Double? = null,
     val dogAgeYears: Double? = null,
     val preferParking: Boolean = false,
+    val nameQuery: String = "",
+    val dogs: List<PlaceDogSnapshot> = emptyList(),
 ) {
     init {
+        require(dogs.size <= 20 && dogs.map { it.ref }.distinct().size == dogs.size)
+        require(dogs.isEmpty() || (dogSize == null && dogWeightKg == null && dogAgeYears == null))
+        require(isValidPlaceNameQuery(nameQuery)) { "nameQuery must be at most 120 characters" }
         require(origin.latitude in 32.0..40.0) { "latitude must be inside the server contract" }
         require(origin.longitude in 123.0..133.0) { "longitude must be inside the server contract" }
         require(radiusMeters in 100..20_000) { "radiusMeters must be between 100 and 20000" }
@@ -67,6 +99,8 @@ data class PlaceSearchRequest(
         put("radius_m", radiusMeters)
         put("kinds", buildJsonArray { kinds.forEach { add(JsonPrimitive(it.wire)) } })
         limitPerKind?.let { put("limit_per_kind", it) }
+        nameQuery.trim().takeIf { it.isNotEmpty() }?.let { put("name_query", it) }
+        if (dogs.isNotEmpty()) put("dogs", buildJsonArray { dogs.forEach { add(it.toJson()) } })
 
         // 서버 계약(결정 #73)은 값만 받고 `extra="forbid"` 다 — dog_id 를 보내면 422.
         if (hasDogConditions) {

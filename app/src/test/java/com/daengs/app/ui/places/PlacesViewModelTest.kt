@@ -29,6 +29,50 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlacesViewModelTest {
     @Test
+    fun `radius selected before permission is visible and used by first search`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val vm = viewModelAt(GeoPoint(37.54, 127.05), backgroundScope,
+            PlaceSearchRepository { requests += it; emptyResponse() })
+        vm.activate(false)
+        runCurrent()
+        vm.onAction(PlacesAction.SetRadius(1000))
+        runCurrent()
+        assertEquals(1000, vm.state.value.toConnectedSearchState("", false, null, null).applied.radiusMeters)
+        assertEquals(0, requests.size)
+        vm.updatePermission(false, true)
+        runCurrent()
+        assertEquals(1000, vm.state.value.discovery.radiusMeters)
+        vm.updatePermission(true, false)
+        runCurrent()
+        assertEquals(1000, requests.single().radiusMeters)
+        assertEquals(1000, vm.state.value.discovery.radiusMeters)
+    }
+
+    @Test
+    fun `name actions reach repository through all view model entrypoints`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val point = GeoPoint(37.556, 126.923)
+        val vm = viewModelAt(point, backgroundScope,
+            PlaceSearchRepository { requests += it; emptyResponse() })
+        runCurrent()
+        vm.activate(true)
+        runCurrent()
+        requests.clear()
+        vm.onAction(PlacesAction.Search(PlaceKind.CAFE, false, "홍대"))
+        runCurrent()
+        vm.onAction(PlacesAction.SearchAt(point, PlaceKind.PET_SHOP, false))
+        runCurrent()
+        vm.onAction(PlacesAction.Locate(PlaceKind.PET_SHOP, false))
+        runCurrent()
+        vm.onAction(PlacesAction.RetrySearch)
+        runCurrent()
+        assertEquals(List(4) { "홍대" }, requests.map { it.nameQuery })
+        vm.onAction(PlacesAction.Search(PlaceKind.CAFE, false, ""))
+        runCurrent()
+        assertEquals("", requests.last().nameQuery)
+    }
+
+    @Test
     fun `permission denial has distinct request and settings recovery states`() = runTest {
         val viewModel = viewModelAt(GeoPoint(37.5, 127.0), backgroundScope)
 
