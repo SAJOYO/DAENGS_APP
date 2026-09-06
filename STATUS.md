@@ -292,15 +292,19 @@
 - **에뮬레이터가 안 뜬다.** 스냅샷 복귀로 켜면 `screencap` 이 빈 버퍼(~26KB)를
   돌려주고(`uiautomator dump` 로는 화면이 그려지는 게 확인된다), 콜드 부팅은
   `adb shell` 이 멈춘다. 화면 확인은 지금 실기기뿐이다
-- **산책 기록 편집 화면이 테스트에서 멈추지 않는다.** `WalkEntryEditorTest` 의 두 개가
-  `AppNotIdleException` 으로 실패한다 — Compose 가 **60초 동안 idle 이 안 된다.**
-  같은 커밋(`#166`)이 넣은 `WalkEntryStoreTest` 의 컴파일 에러가 막고 있어서 **여태
-  한 번도 안 돌아간 테스트**였고, 그걸 `#169` 로 고치면서 드러났다.
-  `WalkEntryEditor.kt` 에 `rememberInfiniteTransition` · `LaunchedEffect` ·
-  `withFrameNanos` 가 하나도 없어서 **겉으로 보이는 원인이 없다.** 화면이 실제로 무한
-  리컴포지션을 도는 것인지(그러면 실기기에서 배터리를 먹는다), Robolectric 의 NATIVE
-  그래픽스 모드에서만 나는 것인지부터 갈라야 한다.
-  **보드에 `rkbuhtig` 담당으로 카드가 있다**
+- ~~**산책 기록 편집 화면이 테스트에서 멈추지 않는다.**~~ `#168` 에서 해결했다.
+  **화면 문제가 아니었다** — `AlertDialog` 안에 텍스트필드가 있으면 Robolectric 에서
+  idle 이 안 된다. 진단 테스트로 갈랐다: 다이얼로그에 `Text` 만 · 다이얼로그 없이
+  텍스트필드만 · 다이얼로그 없이 텍스트필드+`label` 은 전부 멀쩡하고, **둘이 만나야
+  터진다.** `label` 도 `minLines` 도 범인이 아니다. 무한 리컴포지션이 아니므로
+  **실기기 배터리와 무관**하고, 편집기 다이얼로그가 정상 동작하는 것도 눈으로 확인했다.
+  `mainClock.autoAdvance = false` 는 안 먹는다 — Robolectric 의 idling 은 compose
+  시계가 아니라 looper 를 돌린다.
+  화면 동작은 그대로 두고 알맹이를 `WalkEntryEditorContent` 로 빼, 테스트가 다이얼로그
+  대신 평범한 `Column` 에 그리게 했다.
+  ⚠️ **대신 테스트가 다이얼로그 배치를 더 이상 안 본다.** 그 부분은 `@Preview` 와
+  실기기에서 봐야 한다. 같은 조합이 `WalkStoryboardScreen` · `PlaceSearchLabScreen`
+  에도 있어서, 그 화면에 UI 테스트를 붙일 때 같은 벽을 만난다
 - 릴리스 빌드에 R8 이 꺼져 있어 안 쓰는 리소스가 안 벗겨진다. 앱 크기를 줄여야 할
   때 볼 자리다
 
