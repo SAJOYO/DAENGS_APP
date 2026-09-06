@@ -78,6 +78,12 @@ class DaengsApp : Application() {
         } finally { file.delete() }
     }
 
+    /**
+     * 카드 얼굴 그림. **동기화가 이걸 읽어 올린다** — `CardStore` 는 그림을 밖으로
+     * 안 꺼내 주는데(그럴 이유가 없었다), 서버에 올리려면 바이트가 필요하다.
+     */
+    lateinit var cardFiles: CardFiles
+        private set
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank()) {
@@ -92,9 +98,10 @@ class DaengsApp : Application() {
         tokenStore = TokenStore(this)
         sessionProvider = SessionProvider(tokenStore)
 
+        cardFiles = CardFiles(this)
         cardStore = RoomCardStore(
             dao = CardDatabase.open(this).cardDao(),
-            files = CardFiles(this),
+            files = cardFiles,
         )
 
         val store = WalkTrackingStore()
