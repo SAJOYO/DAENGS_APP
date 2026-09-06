@@ -175,10 +175,13 @@ class MainActivity : ComponentActivity() {
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
-                // 프로필 사진. **서버에 자리가 없어 이 기기에만 있다**
-                // (`pet/PetPhotos.kt` — GCP 가 정해지면 그쪽으로 옮긴다).
+                // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
+                // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
                 LaunchedEffect(pets.pets) {
+                    // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
+                    // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
+                    // `freshToken` 이 아직 선언되기 전이라 잡히지도 않는다.
                     petPhotos.load(pets.pets.orEmpty().map { it.id })
                 }
                 // 사진을 바꾸는 중인 아이. 홈 위에 덮인다 (배웅 화면과 같은 방식).
@@ -310,7 +313,7 @@ class MainActivity : ComponentActivity() {
                         if (pets.remove(token, pet.id)) {
                             // 사진도 같이 지운다. 남으면 다음에 같은 id 를 받은 아이에게
                             // 남의 얼굴이 붙는다.
-                            petPhotos.clear(pet.id)
+                            petPhotos.clear(pet.id, freshToken())
                             walkRuntime.history.forgetDog(pet.id)
                             todayWalks = walkRuntime.history.todayTotals()
                         }
@@ -382,6 +385,12 @@ class MainActivity : ComponentActivity() {
                     // 새 폰이면 서버의 지난 산책도 되찾는다.
                     walkRuntime.delivery.enqueuePending()
                     walkRuntime.sync.syncOnce(token)
+
+                    // 프로필 사진도 여기서 맞춘다. **새 폰이면 여기서 받아 오고**,
+                    // 서버가 생기기 전부터 이 폰에 있던 사진은 여기서 올라간다.
+                    // **실패해도 조용하다** — 저장소가 아직 안 켜졌으면 저쪽이 503 인데,
+                    // 그걸 띄우면 사진을 안 쓰는 사람에게 로그인마다 팝업이 뜬다.
+                    petPhotos.sync(pets.pets.orEmpty(), token)
 
                     // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
                     // 남의 카드는 안 건드린다 (`CardDao.claimOrphans`).
@@ -512,7 +521,7 @@ class MainActivity : ComponentActivity() {
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
                         onClearPhoto = editing?.let { pet ->
-                            { scope.launch { petPhotos.clear(pet.id) } }
+                            { scope.launch { petPhotos.clear(pet.id, freshToken()) } }
                         },
                         onSubmit = { draft, photo ->
                             scope.launch {
@@ -533,7 +542,7 @@ class MainActivity : ComponentActivity() {
                                             before = before,
                                             after = pets.pets.orEmpty().map { it.id },
                                         )
-                                        if (id != null) petPhotos.set(id, photo)
+                                        if (id != null) petPhotos.set(id, photo, freshToken())
                                     }
                                     editing = null
                                     screen = Screen.Home
@@ -555,7 +564,7 @@ class MainActivity : ComponentActivity() {
                         PetPhotoPicker { made ->
                             photoFor = null
                             if (made != null) {
-                                scope.launch { petPhotos.set(pet.id, made) }
+                                scope.launch { petPhotos.set(pet.id, made, freshToken()) }
                             }
                         }
                     } else if (farewell != null) {
