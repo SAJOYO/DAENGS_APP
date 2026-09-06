@@ -95,6 +95,31 @@ internal class PhotoServer : TerritoryActionClient, TerritoryPhotoUploader {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerTerritoryPhotosTest {
+    @Test fun `pending verdict does not delay a fresh mark until photo retry`() = runTest {
+        val dao = MemoryActions(); val server = PhotoServer(); val state = walking(); val dir = directory()
+        try {
+            val sync = TerritoryActionSync(dao, server, { auth }, { "owner" }, { state }, backgroundScope, {})
+            val photos = ServerTerritoryPhotos(sync, server, server, File(dir, "proof"),
+                { auth }, { "owner" }, { state }, backgroundScope, {})
+            sync.photos = photos
+            val mark = mark(sync, state)
+            val id = UUID.randomUUID().toString()
+            photos.reserve(state, mark, photoCaptureBody(id, WALK, SITE, DOG, fix(), 3100))
+            photos.save(id, source(dir)).await(); runCurrent()
+            assertFalse(photos.deliverBound()) // A real pending verdict, not a mocked scheduler result.
+            val polls = server.calls.count { it.second == "/claims/$CLAIM" && it.first == "GET" }
+            val second = "territory-site:hex-v1:140:2:2"
+            val original = markBody(WALK, second, DOG, fix())
+            val before = testScheduler.currentTime
+            sync.submit(state, second, DOG, original)
+            runCurrent() // No deliver() call and no advance to the 30-second retry.
+            assertEquals(before, testScheduler.currentTime)
+            assertEquals(original, server.claims.committed[second]!!.first)
+            assertEquals(polls, server.calls.count { it.second == "/claims/$CLAIM" && it.first == "GET" })
+            assertEquals("POLLING", dao.all().first { it.kind == "PHOTO" }.photoStage())
+        } finally { dir.deleteRecursively() }
+    }
+
     @Test fun `lost ticket reuses capture while account switch pauses upload under the old owner`() = runTest {
         val dao = MemoryActions(); val server = PhotoServer(); val state = walking(); var owner = "owner"; val dir = directory()
         try {

@@ -86,9 +86,16 @@ class ServerTerritoryGameProvider(
                           petNames: Map<String, String>, nowNanos: Long): TerritoryGameState {
         val cached = this.board.value.takeIf { it.ownerId == currentOwner() }
         val live = actions?.receipt?.value?.takeIf { it.operation.ownerId == currentOwner() }
+        // Occupancy is durable state, not the last animation event. Include every confirmed
+        // MARK (photo settlement updates its response), including restored/response-loss rows.
+        val confirmed = actions?.operations?.value.orEmpty()
+            .filter { it.ownerId == currentOwner() && it.kind == "MARK" && it.state == "CONFIRMED" }
+            .map { parseTerritoryClaim(checkNotNull(it.response), it.body).site }
+            .plus(listOfNotNull(live?.claim?.site))
+            .groupBy { it.siteId }.mapValues { (_, versions) -> versions.maxBy { it.version } }
         val sites = board.sites.map { site ->
             val read = cached?.sites?.get(site.id)
-            val shared = live?.claim?.site?.takeIf { it.siteId == site.id && read != null && it.version > read.version } ?: read
+            val shared = confirmed[site.id]?.takeIf { read != null && it.version > read.version } ?: read
             val occupied = shared?.occupancy
             val claim = TerritoryClaimSite(site.id, occupied?.let {
                 TerritoryOccupancy(it.ownerPetId, null, null, it.certification, it.occupiedAtMillis)
