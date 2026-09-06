@@ -2,6 +2,7 @@ package com.daengs.app.ui.home
 
 import com.daengs.app.ui.dex.CARD_BGM
 import com.daengs.app.ui.dex.DEX_CARDS
+import com.daengs.app.ui.dex.DexDeck
 import com.daengs.app.ui.dex.IMMERSIVE_SCENES
 import com.daengs.app.ui.dex.bgmFor
 import org.junit.Assert.assertEquals
@@ -56,13 +57,46 @@ class CardTuneTest {
         val tuneOnly = DEX_CARDS.filter { bgmFor(it.id) != null && IMMERSIVE_SCENES[it.id] == null }
 
         assertTrue("곡과 무대가 같아졌다면 이 테스트를 지워도 된다", tuneOnly.isNotEmpty())
-        assertEquals(listOf("carrot", "spinach"), tuneOnly.map { it.id }.sorted())
+        assertEquals(
+            listOf("apple", "carrot", "mango", "spinach", "strawberry", "tomato"),
+            tuneOnly.map { it.id }.sorted(),
+        )
     }
 
+    /**
+     * 도감 순서와 다르면 "No.01 다음이 No.10" 이라는 감각이 깨진다.
+     *
+     * **번호 전체를 한 줄로 세워 보면 안 된다.** 도감이 두 벌이라 번호가 겹쳐서,
+     * 야채 마지막(No.12 상추) 다음에 과일 첫 장(No.01 사과)이 온다 — 그게 맞는
+     * 차례인데 `sorted()` 로 보면 어긋난 것으로 나온다. 벌 안에서만 오름차순이다.
+     */
     @Test
-    fun `카드 순서를 그대로 따른다`() {
-        // 도감 순서와 다르면 "No.01 다음이 No.10" 이라는 감각이 깨진다.
-        assertEquals(CARD_TUNES.map { it.card.no }.sorted(), CARD_TUNES.map { it.card.no })
+    fun `벌 안에서는 번호 차례다`() {
+        DexDeck.entries.forEach { deck ->
+            val nos = CARD_TUNES.filter { it.card.deck == deck }.map { it.card.no }
+            assertEquals(deck.label, nos.sorted(), nos)
+        }
+    }
+
+    /** 야채가 다 지나간 뒤에 과일이 온다. 섞이면 도감과 다른 차례가 된다. */
+    @Test
+    fun `야채가 먼저고 과일이 나중이다`() {
+        val decks = CARD_TUNES.map { it.card.deck }
+        assertEquals(decks.sortedBy { it.ordinal }, decks)
+    }
+
+    /**
+     * **한 줄에 같은 글자가 둘 뜨지 않는다.**
+     *
+     * 목록은 야채와 과일을 섞어 세우는데 번호는 벌마다 다시 1번부터다. 번호만
+     * 찍으면 배추와 사과가 둘 다 `No. 01` 이라 같은 카드가 두 번 뜬 것으로 읽힌다.
+     */
+    @Test
+    fun `번호에 벌 이름이 붙는다`() {
+        val labels = CARD_TUNES.map { tuneNumberLabel(it.card) }
+        assertEquals("겹치는 줄이 있다: $labels", labels.size, labels.toSet().size)
+        assertEquals("야채 No. 01", tuneNumberLabel(DEX_CARDS.first { it.id == "cabbage" }))
+        assertEquals("과일 No. 01", tuneNumberLabel(DEX_CARDS.first { it.id == "apple" }))
     }
 
     /** 모르는 id 를 적어 두면 그 줄은 조용히 무시된다 — 곡을 넣었는데 안 나온다. */
@@ -104,7 +138,7 @@ class CardTuneTest {
     /**
      * **한 장도 안 뽑았으면 한 곡도 안 뜬다.**
      *
-     * 예전에는 카탈로그를 다 늘어놓아서, 아무것도 없는 사람에게도 다섯 곡이 들렸다.
+     * 예전에는 카탈로그를 다 늘어놓아서, 아무것도 없는 사람에게도 곡이 전부 들렸다.
      * 그러면 카드를 뽑을 이유가 그만큼 없어진다.
      */
     @Test
@@ -118,7 +152,7 @@ class CardTuneTest {
         assertEquals(listOf("cabbage", "carrot"), mine.map { it.card.id })
     }
 
-    /** 곡이 없는 야채를 뽑아도 목록은 안 는다. 열두 장 중 다섯 장에만 곡이 있다. */
+    /** 곡이 없는 카드를 뽑아도 목록은 안 는다. 스물다섯 장 중 아홉 장에만 곡이 있다. */
     @Test
     fun `곡 없는 카드는 목록에 안 든다`() {
         assertTrue(ownedTunes(listOf(drawn("pepper"), drawn("eggplant"))).isEmpty())

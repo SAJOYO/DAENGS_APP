@@ -184,6 +184,16 @@ internal fun ownedTunes(drawn: List<DrawnCard>): List<CardTune> {
 }
 
 /**
+ * 목록에 찍는 번호. **어느 벌인지를 앞에 붙인다.**
+ *
+ * 도감이 두 벌이라 **번호가 겹친다** — No.01 이 야채에는 배추, 과일에는 사과다.
+ * 도감 화면에서는 탭이 어느 벌인지 말해 주지만 여기는 야채와 과일이 **한 줄에 섞여
+ * 선다.** 번호만 찍으면 같은 카드가 두 번 뜬 것처럼 읽힌다.
+ */
+internal fun tuneNumberLabel(card: DexCard): String =
+    "${card.deck.label} No. %02d".format(card.no)
+
+/**
  * 한 곡도 없을 때.
  *
  * **빈 채로 두지 않는다.** 턴테이블은 방의 붙박이라 아무나 누르는데, 열었더니 아무것도
@@ -250,7 +260,7 @@ private fun TuneRow(
         Column(Modifier.weight(1f)) {
             Text(tune.card.name, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                if (playing) "재생 중" else "No. %02d".format(tune.card.no),
+                if (playing) "재생 중" else tuneNumberLabel(tune.card),
                 color = if (playing) DaengPink else TextMuted,
                 fontSize = 11.sp,
             )
