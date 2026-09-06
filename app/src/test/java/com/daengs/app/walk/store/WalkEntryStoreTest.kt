@@ -123,7 +123,7 @@ class WalkEntryStoreTest {
         store.save(behavior("a"))
         val draft = dao.entry("a")!!.entry()!!
         dao.deleteSession("s")
-        dao.insertSession(WalkSessionRow("s", startedAtMillis = 0))
+        dao.insertSession(WalkSessionRow("s", startedAtMillis = 0, endedAtMillis = null))
         assertTrue(runCatching { store.save(draft) }.isFailure)
         assertNull(dao.entry("a"))
     }
