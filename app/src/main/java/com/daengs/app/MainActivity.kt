@@ -58,6 +58,8 @@ import com.daengs.app.pet.devPets
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
+import com.daengs.app.screening.rememberScreeningHolder
+import com.daengs.app.ui.screening.ScreeningHistoryScreen
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
@@ -107,6 +109,8 @@ private enum class Screen {
     WalkHistory,
     /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
     WalkDetail,
+    /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
+    ScreeningHistory,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -231,6 +235,9 @@ class MainActivity : ComponentActivity() {
                     if (restored != null) session = restored
                     restored?.accessToken
                 }
+                // 피부 변화 기록. **서버가 진짜라 기기에 안 둔다** (`ScreeningHolder`).
+                val screenings = rememberScreeningHolder(freshToken)
+
                 LaunchedEffect(session?.appUserId, pets.primary?.id) {
                     val petId = pets.primary?.id.takeIf { session != null }
                     chatHistory.selectPet(petId)
@@ -749,6 +756,8 @@ class MainActivity : ComponentActivity() {
                                         // 우리 아이의 진짜 사진이다. 안 지우면 다음에
                                         // 이 폰으로 로그인한 사람이 물려받는다.
                                         petPhotos.forgetEverything()
+                                        // 다음 사람이 남의 피부 사진을 보면 안 된다.
+                                        screenings.forget()
                                         // 방 구성도 이 기기의 것이다. `roomStore.clear()`
                                         // 가 파일을 비우므로 화면이 든 값도 같이 비운다.
                                         hiddenRoomPetIds = emptySet()
@@ -821,6 +830,17 @@ class MainActivity : ComponentActivity() {
                         dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
                         historyCoordinator = chatHistory,
+                        // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.
+                        onOpenScreeningHistory = { screen = Screen.ScreeningHistory }
+                            .takeIf { session != null },
+                    )
+
+                    Screen.ScreeningHistory -> ScreeningHistoryScreen(
+                        holder = screenings,
+                        onBack = { screen = Screen.Chat },
+                        // 대표 아이의 것만 본다. 없으면 전부 — 아이를 아직 등록 안
+                        // 했어도 진단은 할 수 있어서 그 기록이 남아 있다.
+                        petId = pets.primary?.id,
                     )
 
                     Screen.Places -> PlacesRoute(
