@@ -23,6 +23,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import com.daengs.app.territory.*
 
 /**
  * 프로세스 공용 SDK와 산책 기록 런타임을 초기화한다.
@@ -48,6 +51,9 @@ class DaengsApp : Application() {
     lateinit var walkRuntime: WalkRuntime
         private set
 
+    var territoryActions: TerritoryActionSync? = null
+        private set
+
     /**
      * 뽑아 놓은 카드. **산책과 DB 파일을 나눠 뒀다** — 탈퇴 때 통째로 지우는 산책과
      * 달리 카드는 나중에 파는 재화라 지우는 규칙이 정반대다 (`CardDatabase` 주석).
@@ -55,6 +61,29 @@ class DaengsApp : Application() {
     lateinit var cardStore: CardStore
         private set
 
+    lateinit var walkEntries: com.daengs.app.walk.store.WalkEntryStore
+        private set
+    lateinit var walkPhotos: com.daengs.app.walk.store.WalkPhotoStore
+        private set
+    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkStoryboardSync
+        private set
+    lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
+        private set
+
+    /** CameraX 완료 뒤 저장은 화면 회전/이탈보다 오래 살아야 한다. */
+    fun saveWalkPhoto(capture: com.daengs.app.walk.WalkPhotoCapture, file: java.io.File) = applicationScope.async {
+        try {
+            walkRuntime.writer.flush()
+            walkPhotos.save(capture, file)
+        } finally { file.delete() }
+    }
+
+    /**
+     * 카드 얼굴 그림. **동기화가 이걸 읽어 올린다** — `CardStore` 는 그림을 밖으로
+     * 안 꺼내 주는데(그럴 이유가 없었다), 서버에 올리려면 바이트가 필요하다.
+     */
+    lateinit var cardFiles: CardFiles
+        private set
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank()) {
@@ -69,13 +98,22 @@ class DaengsApp : Application() {
         tokenStore = TokenStore(this)
         sessionProvider = SessionProvider(tokenStore)
 
+        cardFiles = CardFiles(this)
         cardStore = RoomCardStore(
             dao = CardDatabase.open(this).cardDao(),
-            files = CardFiles(this),
+            files = cardFiles,
         )
 
         val store = WalkTrackingStore()
-        val log = RoomWalkFixLog(WalkDatabase.open(this).walkDao())
+        val dao = WalkDatabase.open(this).walkDao()
+        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos")) {
+            tokenStore.load()?.appUserId.orEmpty()
+        }
+        val log = RoomWalkFixLog(dao, prunePhotos = walkPhotos::prune) { tokenStore.load()?.appUserId.orEmpty() }
+        applicationScope.launch { walkPhotos.prune() }
+        walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
+        walkEntryDao = dao
+        walkStoryboardSync = com.daengs.app.walk.sync.WalkStoryboardSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         val writer = WalkFixWriter(
             log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
@@ -89,10 +127,27 @@ class DaengsApp : Application() {
             writer = writer,
             log = log,
             history = WalkHistory(log),
-            sync = WalkSync(log),
+            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao),
+                storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
         applicationScope.launch { delivery.enqueuePending() }
+        if (BuildConfig.DEBUG && BuildConfig.TERRITORY_SERVER_ACTIONS) {
+            val actions = TerritoryActionSync(TerritoryActionDatabase.open(this).actions(),
+                TerritoryActionApi { BuildConfig.API_BASE_URL }, sessionProvider::freshSession,
+                { tokenStore.load()?.appUserId }, { store.state.value }, applicationScope,
+                { enqueueTerritoryActions(this) })
+            territoryActions = actions
+            actions.photos = ServerTerritoryPhotos(actions, TerritoryActionApi { BuildConfig.API_BASE_URL },
+                HttpTerritoryPhotoUploader(), java.io.File(noBackupFilesDir, "territory-photos"),
+                sessionProvider::freshSession, { tokenStore.load()?.appUserId }, { store.state.value },
+                applicationScope, { enqueueTerritoryActions(this) })
+            applicationScope.launch {
+                actions.recover()
+                store.state.distinctUntilChangedBy { Triple(it.ownerId, it.activeSessionId, it.trail.state) }
+                    .collect { actions.syncTracking() }
+            }
+        }
     }
 }

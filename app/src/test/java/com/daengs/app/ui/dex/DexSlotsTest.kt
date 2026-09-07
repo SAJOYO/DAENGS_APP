@@ -28,9 +28,9 @@ class DexSlotsTest {
     )
 
     @Test
-    fun `한 장도 없으면 열두 칸이 다 잠긴다`() {
+    fun `한 장도 없으면 모든 칸이 잠긴다`() {
         val slots = dexSlots(drawn = emptyList())
-        assertEquals(12, slots.size)
+        assertEquals(DEX_CARDS.size, slots.size)
         assertTrue(slots.all { it.locked })
         assertEquals(0, slots.collectedKinds())
         assertEquals(0, slots.ownedTotal())
@@ -40,7 +40,7 @@ class DexSlotsTest {
     @Test
     fun `같은 종류를 세 번 뽑아도 칸은 하나고 개수가 셋이다`() {
         val slots = dexSlots(drawn = listOf(card("cabbage", 10), card("cabbage", 20), card("cabbage", 30)))
-        assertEquals("칸이 늘면 안 된다", 12, slots.size)
+        assertEquals("칸이 늘면 안 된다", DEX_CARDS.size, slots.size)
         val cabbage = slots.first { it.card.id == "cabbage" }
         assertEquals(3, cabbage.count)
         assertEquals("한 종류만 모았다", 1, slots.collectedKinds())
@@ -71,7 +71,7 @@ class DexSlotsTest {
     @Test
     fun `모르는 종류는 버려지고 장수에도 안 센다`() {
         val slots = dexSlots(drawn = listOf(card("cabbage", 10), card("당근아님", 20)))
-        assertEquals(12, slots.size)
+        assertEquals(DEX_CARDS.size, slots.size)
         assertEquals(1, slots.collectedKinds())
         assertEquals(1, slots.ownedTotal())
     }

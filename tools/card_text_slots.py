@@ -235,6 +235,20 @@ def white_text(img: np.ndarray) -> np.ndarray:
 #
 # **눈금을 얹어 놓고 읽었다** — `punch_card_frame.py` 가 창틀 셋에서 쓴 그 방법이고,
 # 여기도 넷뿐이다. 값은 인쇄된 검은 상자의 **안쪽**이라 그 안의 글자를 다 덮는다.
+# 이름칸의 **왼쪽 끝을 손으로 미는 카드.** 카드 폭 대비 %.
+#
+# 제목 바가 아바타 원 **뒤까지** 뻗어 있는 판이 있다. 그러면 지우는 범위가 아바타를
+# 물고, `erase` 가 그 줄을 좌우 이웃으로 이으면서 **은테와 그림 위로 검은 띠가 번진다.**
+# 구멍 안은 투명이라 안 보이지만 테두리는 그대로 보인다.
+#
+# 과일 `kiwi-gentle`(GENTLE MONSTER)에서 실측했다 — 이름칸이 `x0 = 5.35%` 로 잡혀
+# 아바타(8.4~15.0%)를 통째로 물었다. 나머지 열두 장은 18~19% 라 안 물린다.
+# **자동으로 아바타를 피하게 만들지 않는다** — 그러면 야채 열두 장의 이미 굳은 값이
+# 같이 움직인다 (배추는 19.63% 인데 아바타 오른쪽 끝이 22.33% 다).
+NAME_X0_MIN = {
+    "kiwi-gentle": 24.0,
+}
+
 CODE_BOX = {
     "carrot":   (4.44, 78.75, 25.19, 83.33),
     "pepper":   (4.44, 78.75, 25.19, 83.33),
@@ -337,6 +351,17 @@ def process(veggie: str, drop: pathlib.Path) -> dict | None:
 
     src = next((p for p in (drop / f"{veggie}-card.png", drop / f"{veggie}-card.webp",
                             drop / f"{veggie}-card.jpg") if p.exists()), None)
+    if src is None:
+        # **드롭폴더에 원화가 없으면 건드리지 않는다.**
+        #
+        # 예전에는 그냥 나가 있는 판으로 진행했는데, 그 판은 **이미 글자가 지워진**
+        # 그림이라 바 탐색이 엉뚱한 곳을 문다. 과일 한 벌을 반입하면서 실측했다 —
+        # 드롭폴더에 과일만 넣고 돌렸더니 당근·단호박·가지·피망이
+        # `Slot(0.0, 2.57, 100.0, 4.72)` 처럼 카드 폭 전체를 이름칸으로 냈다.
+        # 그대로 `--apply` 했으면 멀쩡한 야채 판 다섯 장이 다시 지워질 뻔했다.
+        #
+        # 한 벌만 반입할 때 다른 벌을 안 건드리는 것이 이 줄의 값이다.
+        return None
     if src is not None:
         clean = Image.open(src).convert("RGB")
         c = np.asarray(clean, dtype=np.int16)
@@ -415,6 +440,9 @@ def process(veggie: str, drop: pathlib.Path) -> dict | None:
     # 왼쪽은 제일 바깥, 오른쪽은 가운뎃값. 오른쪽은 대각선으로 잘려서 줄마다 다르다.
     nx0 = min(sp[0] for sp in picks)
     nx1 = int(np.median([sp[1] for sp in picks]))
+    floor = NAME_X0_MIN.get(veggie)
+    if floor is not None:
+        nx0 = max(nx0, int(w * floor / 100))
 
     # 세로는 **바 왼쪽 안쪽의 여러 세로줄 중 가장 긴 것**으로 잰다. 한 줄만 보면
     # 그 자리에 글자 획이나 베벨이 걸렸을 때 바가 토막 난다.
@@ -449,6 +477,7 @@ def process(veggie: str, drop: pathlib.Path) -> dict | None:
     anchor = left_at(mid)
     if anchor is not None:
         jump = int(w * 0.04)
+        kept = (ny0, ny1)
         while ny0 + 1 < mid:
             got = left_at(ny0)
             if got is not None and abs(got - anchor) <= jump:
@@ -459,6 +488,21 @@ def process(veggie: str, drop: pathlib.Path) -> dict | None:
             if got is not None and abs(got - anchor) <= jump:
                 break
             ny1 -= 1
+        # **글자보다 얇아졌으면 앵커를 믿지 않는다.**
+        #
+        # `left_at` 은 "바 폭의 절반을 넘는 어두운 구간" 의 왼쪽 끝을 앵커로 삼는데,
+        # 글자 사이가 넓은 카드에서는 글자가 그 줄을 토막 내서 **왼쪽 조각이 절반을
+        # 못 넘긴다.** 그러면 더 오른쪽 조각이 앵커가 되고, 그 값과 안 맞는 줄을
+        # 전부 깎아 내면서 바가 통째로 사라진다.
+        #
+        # 과일 복숭아에서 실측했다 — 앵커가 522(멜론은 225)로 잡혀 바가 98px 에서
+        # **7px** 로 줄었고, 그 안에서 글자를 못 찾아 카드가 통째로 건너뛰어졌다.
+        # 같은 캔버스(1048×1498)의 멜론은 멀쩡했다.
+        #
+        # 잘라 낸 결과가 글자 띠보다 얇으면 자르기 전으로 되돌린다. 제대로 잘린
+        # 카드는 언제나 글자보다 두꺼우므로(멜론 92 > 51) 이 줄에 안 걸린다.
+        if ny1 - ny0 < le - ls:
+            ny0, ny1 = kept
 
     # **검은 판이 통째로 잡히면 글자 높이로 되돌린다.**
     #

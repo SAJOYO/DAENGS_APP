@@ -23,10 +23,10 @@ class DevCardsTest {
         LocalDateTime.of(y, m, d, h, min).atZone(seoul).toInstant().toEpochMilli()
 
     @Test
-    fun `열두 장을 만들어도 오늘 몫은 그대로다`() {
+    fun `전부 만들어도 오늘 몫은 그대로다`() {
         val now = at(2026, 9, 2, 10, 0)
         val made = CARD_TEMPLATES.map { devCardTime(now) }
-        assertEquals(12, made.size)
+        assertEquals(CARD_TEMPLATES.size, made.size)
         assertEquals(3, drawsLeft(made, now, seoul))
     }
 

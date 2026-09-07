@@ -1,10 +1,13 @@
 package com.daengs.app.ui.chat
 
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.PlaceSuggestions
 import com.daengs.app.assistant.WalkVerdict
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -20,6 +23,7 @@ class AssistantChatTest {
         handoffs: List<AssistantResponse.Handoff> = emptyList(),
         clarify: AssistantResponse.Clarify? = null,
         walk: WalkVerdict? = null,
+        places: PlaceSuggestions? = null,
         resultCount: Int = 0,
     ) = AssistantResponse(
         requestId = "r",
@@ -28,7 +32,29 @@ class AssistantChatTest {
         handoffs = handoffs,
         clarify = clarify,
         walk = walk,
+        places = places,
         resultCount = resultCount,
+    )
+
+    private fun candidate(title: String) = PlaceSuggestions.Candidate(
+        placeId = PlaceSuggestions.PlaceId("kto", title),
+        title = title,
+        summary = "",
+        kindLabel = "",
+        lat = null,
+        lon = null,
+        distanceMeters = null,
+        address = "",
+        facts = emptyList(),
+        notices = emptyList(),
+        whyMatched = emptyList(),
+    )
+
+    private fun group(lensId: String, vararg titles: String) = PlaceSuggestions.Group(
+        lensId = lensId,
+        label = lensId,
+        supportNote = "",
+        candidates = titles.map(::candidate),
     )
 
     private fun verdict(grade: WalkVerdict.Grade) = WalkVerdict(
@@ -157,5 +183,100 @@ class AssistantChatTest {
         assertEquals("지금은 산책하기 좋아요.", walkSentenceOf(WalkVerdict.Grade.GOOD))
         assertEquals("나가도 되지만 조심하는 게 좋아요.", walkSentenceOf(WalkVerdict.Grade.CAUTION))
         assertEquals("지금은 안 나가는 게 좋겠어요.", walkSentenceOf(WalkVerdict.Grade.UNSAFE))
+    }
+
+    // ── Place 카드 ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `place 결과가 없으면 카드도 없다`() {
+        val r = response(AssistantResponse.Status.ANSWERED, message = "훈련 답변")
+        assertNull(r.placeCards())
+    }
+
+    @Test
+    fun `후보가 하나도 없으면 카드도 없다`() {
+        val places = PlaceSuggestions(
+            answer = "못 찾았어요.",
+            groups = listOf(group("l1")),
+            refinements = emptyList(),
+            notices = emptyList(),
+        )
+        val r = response(AssistantResponse.Status.UNCERTAIN, places = places)
+        assertNull(r.placeCards())
+    }
+
+    @Test
+    fun `그룹 하나에 후보가 넷이면 앞 셋만 카드로 뜨고 나머지는 표시 제약으로 남는다`() {
+        val places = PlaceSuggestions(
+            answer = "",
+            groups = listOf(group("l1", "A", "B", "C", "D")),
+            refinements = emptyList(),
+            notices = emptyList(),
+        )
+        val r = response(AssistantResponse.Status.ANSWERED, places = places)
+
+        val cards = r.placeCards()!!
+        assertEquals(listOf("A", "B", "C"), cards.candidates.map { it.title })
+        assertEquals(4, cards.totalCandidateCount)
+    }
+
+    @Test
+    fun `그룹이 여럿이면 라운드로빈으로 고른다`() {
+        // 첫 그룹만 셋을 채우면 다른 방향이 안 보인다 — 그룹마다 첫 후보부터 돈다.
+        val places = PlaceSuggestions(
+            answer = "",
+            groups = listOf(group("l1", "A1", "A2"), group("l2", "B1"), group("l3", "C1")),
+            refinements = emptyList(),
+            notices = emptyList(),
+        )
+        val r = response(AssistantResponse.Status.ANSWERED, places = places)
+
+        val cards = r.placeCards()!!
+        assertEquals(listOf("A1", "B1", "C1"), cards.candidates.map { it.title })
+        assertEquals(4, cards.totalCandidateCount)
+    }
+
+    @Test
+    fun `전체가 셋 이하면 그대로 다 보여준다`() {
+        val places = PlaceSuggestions(
+            answer = "",
+            groups = listOf(group("l1", "A")),
+            refinements = emptyList(),
+            notices = emptyList(),
+        )
+        val r = response(AssistantResponse.Status.ANSWERED, places = places)
+
+        val cards = r.placeCards()!!
+        assertEquals(1, cards.candidates.size)
+        assertEquals(1, cards.totalCandidateCount)
+    }
+
+    // ── 위치-CLARIFY ───────────────────────────────────────────────────────
+
+    @Test
+    fun `좌표가 missing이면 위치-CLARIFY다`() {
+        val r = response(
+            AssistantResponse.Status.CLARIFY,
+            clarify = AssistantResponse.Clarify("위치를 알려주세요.", listOf("location.lat", "location.lon")),
+        )
+        assertTrue(r.isLocationClarify())
+    }
+
+    @Test
+    fun `다른 것을 missing해도 위치-CLARIFY가 아니다`() {
+        val r = response(
+            AssistantResponse.Status.CLARIFY,
+            clarify = AssistantResponse.Clarify("크기를 알려주세요.", listOf("signal.dog_size")),
+        )
+        assertFalse(r.isLocationClarify())
+    }
+
+    @Test
+    fun `CLARIFY가 아니면 위치-CLARIFY도 아니다`() {
+        val r = response(
+            AssistantResponse.Status.ANSWERED,
+            message = "답",
+        )
+        assertFalse(r.isLocationClarify())
     }
 }

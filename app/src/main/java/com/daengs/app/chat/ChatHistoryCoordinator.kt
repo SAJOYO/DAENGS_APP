@@ -30,6 +30,15 @@ data class ChatHistoryState(
     val sending: Boolean = false,
     val sendError: ChatApiError? = null,
     val lastResponse: AssistantResponse? = null,
+    /**
+     * [lastResponse] 가 남은 turn 의 id. **응답에는 이 값이 없다** — `POST /assistant/query`
+     * 는 `turn_id` 를 안 준다. 대신 성공 직후 다시 받는 상세에서 우리가 보낸
+     * `client_message_id` 와 같은 turn 을 찾아 넣는다.
+     *
+     * 신고(`POST /app/reports`)가 이것을 요구한다. 이 값이 없으면 방금 받은 답변은
+     * 대화를 다시 열기 전까지 신고할 길이 메일뿐이다.
+     */
+    val lastTurnId: String? = null,
     val deletingSessionId: String? = null,
     val deleteError: ChatApiError? = null,
 ) {
@@ -165,6 +174,7 @@ class ChatHistoryCoordinator(
                 creatingDraft = true,
                 sendError = null,
                 lastResponse = null,
+                lastTurnId = null,
             )
         }
         draftJob = scope.launch {
@@ -219,6 +229,7 @@ class ChatHistoryCoordinator(
                 sending = false,
                 sendError = null,
                 lastResponse = null,
+                lastTurnId = null,
             )
         }
         sessionJob = scope.launch {
@@ -288,7 +299,9 @@ class ChatHistoryCoordinator(
         val selectionSnapshot = sessionGeneration
         val messageId = requestIds.clientMessageId(sessionId, text)
         val persistence = ChatPersistence(sessionId, messageId)
-        mutableState.update { it.copy(sending = true, sendError = null, lastResponse = null) }
+        mutableState.update {
+            it.copy(sending = true, sendError = null, lastResponse = null, lastTurnId = null)
+        }
         sendJob = scope.launch {
             val result = try {
                 gateway.send(accessToken, text, where, petId, persistence)
@@ -307,6 +320,7 @@ class ChatHistoryCoordinator(
                         accessToken,
                         petId,
                         sessionId,
+                        messageId,
                         petSnapshot,
                         selectionSnapshot,
                     )
@@ -344,6 +358,7 @@ class ChatHistoryCoordinator(
                                 sending = false,
                                 sendError = null,
                                 lastResponse = null,
+                                lastTurnId = null,
                             )
                         }
                     }
@@ -384,22 +399,34 @@ class ChatHistoryCoordinator(
                 sending = false,
                 deletingSessionId = null,
                 lastResponse = null,
+                lastTurnId = null,
             )
         }
     }
 
     fun forget() = selectPet(null)
 
+    /**
+     * @param clientMessageId 방금 보낸 질문의 키. 다시 받은 상세에서 **이 값으로** 답한
+     *   turn 을 짚는다 ([ChatHistoryState.lastTurnId]). 순서나 시각으로 짚으면 같은
+     *   대화에 답이 여럿 들어온 뒤 엉뚱한 turn 을 신고하게 된다.
+     */
     private suspend fun refreshAfterCommittedResponse(
         accessToken: String,
         petId: String,
         sessionId: String,
+        clientMessageId: String,
         petSnapshot: Long,
         selectionSnapshot: Long,
     ) {
         val detail = gateway.session(accessToken, sessionId)
         val recent = gateway.listSessions(accessToken, petId)
         if (!isCurrent(petId, petSnapshot, sessionId, selectionSnapshot)) return
+        val answeredTurnId = detail.getOrNull()
+            ?.takeIf { it.session.petId == petId && it.session.id == sessionId }
+            ?.turns
+            ?.firstOrNull { it.clientMessageId == clientMessageId }
+            ?.id
         mutableState.update { old ->
             old.copy(
                 selectedSession = detail.fold(
@@ -417,6 +444,7 @@ class ChatHistoryCoordinator(
                     onFailure = { error -> ChatLoadState.Failed(error.asChatError()) },
                 ),
                 sending = false,
+                lastTurnId = answeredTurnId,
             )
         }
     }

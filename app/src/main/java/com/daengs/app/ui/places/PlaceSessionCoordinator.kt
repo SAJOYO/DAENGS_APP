@@ -33,6 +33,8 @@ internal data class PlaceSearchIntent(
     val origin: PlaceSearchOrigin,
     val kinds: List<PlaceKind>,
     val preferParking: Boolean,
+    val nameQuery: String = "",
+    val radiusMeters: Int = 3_000,
 )
 
 /** 위치 확인이 끝나기 전에도 어느 사용자 검색 명령이 최신인지 식별한다. */
@@ -68,14 +70,23 @@ internal class PlaceSessionCoordinator(
         scope = scope,
     )
     private val latestIntent = MutableStateFlow<PlaceSearchIntent?>(null)
+    // Radius is a user preference even before a location or search exists.
+    private val selectedRadius = MutableStateFlow(3_000)
     private var intentGeneration = 0L
+    private var resumeIntent: PlaceSearchIntent? = null
 
     val state: StateFlow<PlaceSessionState> = combine(
         latestIntent,
         discovery.state,
         journey.state,
-        ::PlaceSessionState,
-    ).stateIn(
+        selectedRadius,
+    ) { intent, discovery, journey, radius ->
+        PlaceSessionState(
+            intent,
+            if (discovery.origin == null) discovery.copy(radiusMeters = radius) else discovery,
+            journey,
+        )
+    }.stateIn(
         scope = scope,
         started = SharingStarted.Eagerly,
         initialValue = PlaceSessionState(),
@@ -85,8 +96,30 @@ internal class PlaceSessionCoordinator(
         discovery.updateDogContext(context)
     }
 
+    fun updateDogs(dogs: List<com.daengs.app.place.PlaceDogSnapshot>) {
+        journey.clear()
+        discovery.updateDogs(dogs)
+    }
+
     fun startDefaultSearchIfNeeded(devicePosition: GeoPoint?): PendingDevicePlaceSearch? {
+        resumeIntent?.let { intent ->
+            resumeIntent = null
+            if (intent.origin == PlaceSearchOrigin.CurrentDevice) {
+                latestIntent.value = intent
+                return PendingDevicePlaceSearch(++intentGeneration, intent)
+            }
+            startResolvedSearch(intent)
+            return null
+        }
+        val previous = latestIntent.value
+        if (previous?.origin == PlaceSearchOrigin.CurrentDevice) {
+            return PendingDevicePlaceSearch(++intentGeneration, previous)
+        }
         if (discovery.state.value.search !is PlaceSearchState.Idle) return null
+        if (previous != null) {
+            startResolvedSearch(previous)
+            return null
+        }
         return if (devicePosition == null) {
             requestDeviceSearch(DEFAULT_PLACE_KIND, preferParking = false)
         } else {
@@ -95,6 +128,7 @@ internal class PlaceSessionCoordinator(
                     origin = PlaceSearchOrigin.DeviceSnapshot(devicePosition),
                     kinds = listOf(DEFAULT_PLACE_KIND),
                     preferParking = false,
+                    radiusMeters = selectedRadius.value,
                 ),
             )
             null
@@ -102,15 +136,20 @@ internal class PlaceSessionCoordinator(
     }
 
     fun requestDeviceSearch(
-        kind: PlaceKind,
+        kind: PlaceKind?,
         preferParking: Boolean,
+        nameQuery: String? = null,
     ): PendingDevicePlaceSearch {
+        resumeIntent = null
         val intent = PlaceSearchIntent(
             origin = PlaceSearchOrigin.CurrentDevice,
-            kinds = listOf(kind),
+            kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
             preferParking = preferParking,
+            nameQuery = resolvedNameQuery(nameQuery),
+            radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
         )
         latestIntent.value = intent
+        discovery.cancel()
         return PendingDevicePlaceSearch(
             generation = ++intentGeneration,
             intent = intent,
@@ -125,45 +164,66 @@ internal class PlaceSessionCoordinator(
     }
 
     fun searchAtCurrentOrigin(
-        kind: PlaceKind,
+        kind: PlaceKind?,
         preferParking: Boolean,
         devicePosition: GeoPoint?,
+        nameQuery: String? = null,
     ): PendingDevicePlaceSearch? {
         val current = discovery.state.value
         val pinned = current.origin?.takeIf { current.originMode == PlaceOriginMode.PINNED }
         return when {
             pinned != null -> {
-                searchAt(pinned, kind, preferParking)
+                searchAt(pinned, kind, preferParking, nameQuery)
                 null
             }
             devicePosition != null -> {
                 startResolvedSearch(
                     PlaceSearchIntent(
                         origin = PlaceSearchOrigin.DeviceSnapshot(devicePosition),
-                        kinds = listOf(kind),
+                        kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
                         preferParking = preferParking,
+                        nameQuery = resolvedNameQuery(nameQuery),
+                        radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
                     ),
                 )
                 null
             }
-            else -> requestDeviceSearch(kind, preferParking)
+            else -> requestDeviceSearch(kind, preferParking, nameQuery)
         }
     }
 
-    fun searchAt(point: GeoPoint, kind: PlaceKind, preferParking: Boolean) {
+    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
         startResolvedSearch(
             PlaceSearchIntent(
                 origin = PlaceSearchOrigin.PinnedMap(point),
-                kinds = listOf(kind),
+                kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
                 preferParking = preferParking,
+                nameQuery = resolvedNameQuery(nameQuery),
+                radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
             ),
         )
     }
 
-    fun retrySearch() {
+    fun radius(meters: Int): PendingDevicePlaceSearch? {
+        require(meters in 100..20_000)
+        selectedRadius.value = meters
+        val previous = latestIntent.value ?: currentResolvedIntent() ?: return null
+        val next = previous.copy(radiusMeters = meters)
+        if (next.origin == PlaceSearchOrigin.CurrentDevice) {
+            latestIntent.value = next
+            return PendingDevicePlaceSearch(++intentGeneration, next)
+        }
+        startResolvedSearch(next)
+        return null
+    }
+
+    fun retrySearch(): PendingDevicePlaceSearch? {
+        val pending = latestIntent.value?.takeIf { it.origin == PlaceSearchOrigin.CurrentDevice }
+        if (pending != null) return PendingDevicePlaceSearch(++intentGeneration, pending)
         invalidatePendingDeviceSearch()
         journey.clear()
         discovery.retry()
+        return null
     }
 
     fun replaceUnsupportedDeviceOrigin(point: GeoPoint) {
@@ -175,6 +235,8 @@ internal class PlaceSessionCoordinator(
                 origin = PlaceSearchOrigin.DeviceSnapshot(point),
                 kinds = current.requestedKinds.ifEmpty { listOf(DEFAULT_PLACE_KIND) },
                 preferParking = current.preferParking,
+                nameQuery = current.nameQuery,
+                radiusMeters = current.radiusMeters,
             ),
         )
     }
@@ -198,12 +260,17 @@ internal class PlaceSessionCoordinator(
     }
 
     fun deactivate() {
+        // Retain unfinished work separately; late location events must still be invalidated.
+        if (latestIntent.value?.origin == PlaceSearchOrigin.CurrentDevice || discovery.state.value.loading) {
+            resumeIntent = latestIntent.value
+        }
         invalidatePendingDeviceSearch()
         discovery.cancel()
         journey.clear()
     }
 
     fun clear() {
+        resumeIntent = null
         invalidatePendingDeviceSearch()
         latestIntent.value = null
         discovery.clear()
@@ -211,6 +278,7 @@ internal class PlaceSessionCoordinator(
     }
 
     private fun startResolvedSearch(intent: PlaceSearchIntent) {
+        resumeIntent = null
         intentGeneration++
         latestIntent.value = intent
         submitResolvedSearch(intent)
@@ -223,7 +291,7 @@ internal class PlaceSessionCoordinator(
             PlaceSearchOrigin.CurrentDevice -> error("장치 위치를 확인한 뒤 검색해야 합니다.")
         }
         journey.clear()
-        discovery.search(point, intent.kinds, intent.preferParking, mode)
+        discovery.search(point, intent.kinds, intent.preferParking, mode, intent.nameQuery, intent.radiusMeters)
     }
 
     private fun invalidatePendingDeviceSearch() {
@@ -241,6 +309,10 @@ internal class PlaceSessionCoordinator(
             PlaceOriginMode.DEVICE -> PlaceSearchOrigin.DeviceSnapshot(point)
             PlaceOriginMode.PINNED -> PlaceSearchOrigin.PinnedMap(point)
         }
-        return PlaceSearchIntent(origin, current.requestedKinds, current.preferParking)
+        return PlaceSearchIntent(origin, current.requestedKinds, current.preferParking, current.nameQuery, current.radiusMeters)
     }
+
+    // null은 기존 조건 유지, 빈 문자열은 사용자가 이름 조건을 지운 새 검색이다.
+    private fun resolvedNameQuery(value: String?): String =
+        value?.trim() ?: latestIntent.value?.nameQuery ?: discovery.state.value.nameQuery
 }
