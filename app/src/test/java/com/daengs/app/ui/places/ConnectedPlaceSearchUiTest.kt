@@ -52,17 +52,22 @@ class ConnectedPlaceSearchUiTest {
             discovery = ready().discovery.copy(search = PlaceSearchState.Content(response)))
         assertTrue(state.toConnectedSearchState("", false, null, null).hits.isEmpty())
     }
-    @Test fun submitDispatchesNameButTypingAndAiDoNotSearch() {
+    @Test fun typingDoesNotSearchAndAiSubmissionDispatchesTheNaturalLanguageQuery() {
         val actions = mutableListOf<PlacesAction>()
-        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, {}, {}, {}, {}, {}, showMap = false) } }
+        val state = androidx.compose.runtime.mutableStateOf(ready())
+        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state.value, { action ->
+            actions += action
+            if (action is PlacesAction.SetAiMode) state.value = state.value.copy(facility = FacilityUiState(enabled = action.enabled))
+        }, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNode(hasSetTextAction()).performTextInput("구욱희씨")
         assertTrue(actions.isEmpty())
         compose.onNodeWithContentDescription("AI 조건 검색 전환").performClick()
+        assertEquals(PlacesAction.SetAiMode(true), actions.single())
         compose.onNodeWithContentDescription("검색 실행").performClick()
-        assertTrue(actions.isEmpty())
+        assertEquals(PlacesAction.Discover("구욱희씨"), actions.last())
         compose.onNodeWithContentDescription("AI 조건 검색 전환").performClick()
         compose.onNodeWithContentDescription("검색 실행").performClick()
-        assertEquals(PlacesAction.Search(PlaceKind.CAFE, false, "구욱희씨"), actions.single())
+        assertEquals(PlacesAction.Search(PlaceKind.CAFE, false, "구욱희씨"), actions.last())
     }
     @Test fun allDispatchesAllScopeAndRadiusCanBeSelected() {
         val actions = mutableListOf<PlacesAction>()
