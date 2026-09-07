@@ -165,6 +165,8 @@ fun WalkDetailScreen(
                 initialEntry = null; entryError = null; editorOpen = true
             }, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp),
         )
+        Surface(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 96.dp, top = 12.dp),
+            shape = RoundedCornerShape(16.dp)) { WalkColorSettingsButton() }
         if (editorOpen) WalkEntryEditor(entries, initialEntry,
             pets.filter { it.id in walk?.dogIds.orEmpty() }, entryError, busy,
             { change(it, false) }, { change(it, true) }, { editorOpen = false },
