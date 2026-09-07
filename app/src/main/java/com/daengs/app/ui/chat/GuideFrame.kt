@@ -318,24 +318,23 @@ internal object Band {
      * 서버 판정의 사본이라 서버가 재촬영으로 돌려보낸다. 그래서 **찍는 시점에**
      * 알려 주는 것이 유일한 길이다. 보행 쪽이 같은 이유로 시트에 안내 줄을 달고 있다.
      *
-     * 숫자를 문장에 박지 않고 [CAPTURE_WIDTH] 에서 끌어온다 — 저쪽이 밴드를 바꾸면
-     * 이 줄만 안 따라오는 일이 실제로 있었다.
+     * ⚠️ **비율 숫자를 문장에 안 쓴다.** 예전엔 "화면 가로의 45%쯤" 을 붙였는데,
+     * 그 숫자는 읽어도 무엇을 해야 하는지로 안 바뀐다. 네모를 이미 그려 주고 있고,
+     * 크기가 틀리면 [hintFor] 가 바로 말해 준다 — 숫자는 그 둘을 되풀이할 뿐이다.
      */
-    val CAPTURE_HINT: String
-        get() = "💡 물어보고 싶은 곳을 가까이 — 화면 가로의 ${(CAPTURE_WIDTH * 100).toInt()}%쯤"
+    const val CAPTURE_HINT: String =
+        "💡 물어보고 싶은 곳을 가까이 찍어주세요"
 
     data class Hint(val text: String, val bad: Boolean)
 
-    fun hintFor(w: Float, centerOff: Float): Hint {
-        val percent = (w * 100).toInt()
-        return when {
+    fun hintFor(w: Float, centerOff: Float): Hint =
+        when {
             w < ALLOW.start -> Hint("너무 작아요 — 더 가까이 찍어 주세요", true)
             w > ALLOW.endInclusive -> Hint("너무 커요 — 주변 피부도 보이게", true)
             centerOff > CENTER_MAX -> Hint("가운데에서 벗어났어요", true)
-            w !in RECOMMEND -> Hint("괜찮아요 · 가로 $percent%", false)
-            else -> Hint("딱 좋아요 · 가로 $percent%", false)
+            w !in RECOMMEND -> Hint("괜찮아요", false)
+            else -> Hint("딱 좋아요", false)
         }
-    }
 }
 
 /** 손잡이로 인정하는 거리. 저쪽 데모와 같다. */
