@@ -128,6 +128,7 @@ fun WalkDetailScreen(
                             MomentMarkerState(moment.id, moment.point, moment.markerLabel)
                         } + diaryPhotos.photoMarkers(),
                         completedRoute = completedRoute,
+                        stayStamps = detail?.stayStamps.orEmpty(),
                     ),
                 ),
                 searchOrigin = null,

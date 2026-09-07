@@ -28,6 +28,7 @@ data class MapSceneSources(
     val moments: List<MomentMarkerState> = emptyList(),
     val trail: TrailLayerState = TrailLayerState(),
     val completedRoute: CompletedRouteLayerState = CompletedRouteLayerState(),
+    val stayStamps: List<com.daengs.app.walk.StayStamp> = emptyList(),
 )
 
 data class MapDisplayPolicy(
@@ -52,6 +53,11 @@ fun composeMapScene(
 ): MapScene {
     val policy = mapDisplayPolicy(purpose, walkActive)
     return MapScene(
+        stayStamps = com.daengs.app.map.layers.stays.anchorStayStamps(
+            sources.stayStamps,
+            (if (policy.showLiveTrail) sources.trail.speedPaths else emptyList()) +
+                (if (policy.showCompletedRoute) sources.completedRoute.speedPaths else emptyList()),
+        ),
         baseMapStyle = policy.baseMapStyle,
         currentPosition = sources.currentPosition,
         places = sources.places.takeIf { policy.showPlaces }.orEmpty(),

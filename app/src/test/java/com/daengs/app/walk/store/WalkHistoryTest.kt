@@ -48,6 +48,22 @@ class WalkHistoryTest {
         history = WalkHistory(log)
     }
 
+    @Test
+    fun `session detail derives stamp from raw stationary fixes without creating owner action`() = runBlocking {
+        val id = "stay-raw"
+        log.openSession(RecordedSession(id = id, startedAtMillis = 1_000L))
+        val fixes = (0..20).map { i ->
+            RecordedFix(i, 0, 1_000L + i * 2_000L, 37.5, 127.0, 3f, false)
+        }
+        fixes.forEach { log.append(id, it) }
+        log.closeSession(id, 42_000L)
+        val detail = checkNotNull(history.sessionDetail(id))
+        assertEquals(1, detail.summary.segments.flatten().size)
+        assertEquals(com.daengs.app.walk.detectStayStamps(fixes), detail.stayStamps)
+        assertEquals(1, detail.stayStamps.size)
+        assertTrue(detail.moments.isEmpty())
+    }
+
     @After
     fun tearDown() = db.close()
 
