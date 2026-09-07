@@ -35,7 +35,7 @@ object ChatCapability {
      * 별개 능력이다 (`WalkVerdict`).
      *
      * 피부·보행 진단은 여기 없다. 그건 Chat 능력이 아니라 `HANDOFF` 로 넘어가는 별도
-     * 흐름(`ScreeningApi` · `GaitApi`)이라, 저쪽 `AgentCategory` 에도 없다.
+     * 흐름(`ScreeningRecordApi` · `GaitApi`)이라, 저쪽 `AgentCategory` 에도 없다.
      *
      * `place` 는 **장소**다. 답변 본문이 이미 `[장소]` 라는 머리말로 나가고 있어서,
      * 배지를 `갈 곳` 이나 `주변` 으로 쓰면 같은 것을 두 이름으로 부르게 된다.

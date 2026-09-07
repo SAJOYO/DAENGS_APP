@@ -95,7 +95,7 @@ import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
-import com.daengs.app.screening.ScreeningApi
+import com.daengs.app.screening.ScreeningRecordApi
 import com.daengs.app.screening.ScreeningRun
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
@@ -240,8 +240,8 @@ internal fun restoredChatEntries(turns: List<ChatTurn>): List<ChatEntry> = build
  * `handoffs` 만 보고 화면을 고른다. **여기서 텍스트를 보고 갈래를 나누지 않는다**
  * (예전 `GAIT_ASK` 키워드 라우팅은 그래서 지웠다).
  *
- * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningApi]) 실제로 부른다. 다만 서버
- * 주소가 아직 없어, 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
+ * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningRecordApi]) 실제로 부른다. 서버
+ * 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
  */
 @Composable
 fun ChatScreen(
@@ -894,7 +894,7 @@ fun ChatScreen(
                 when {
                     // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
                     // 로그인 버튼과 같다.
-                    !ScreeningApi.configured -> notice = SCREEN_NOT_SET
+                    !ScreeningRecordApi.configured -> notice = SCREEN_NOT_SET
                     target == null -> notice = "카메라를 열 수 없어요."
                     // 앱 안에서 찍는다. 그래야 병변에 맞출 네모를 찍는 동안 보여 준다.
                     else -> withCamera { skinCapture = true }
@@ -903,7 +903,7 @@ fun ChatScreen(
             onAttach = {
                 chooserMode = null
                 guidedShot = false
-                if (!ScreeningApi.configured) {
+                if (!ScreeningRecordApi.configured) {
                     notice = SCREEN_NOT_SET
                 } else {
                     pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -1670,8 +1670,12 @@ private val LOCATION_PERMISSIONS = arrayOf(
     Manifest.permission.ACCESS_COARSE_LOCATION,
 )
 
-private const val SCREEN_NOT_SET =
-    "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+/**
+ * 진단 서버 주소가 없을 때. **문장을 여기서 새로 쓰지 않는다** — [ScreeningRun] 도
+ * 같은 상황에서 사용자에게 말해야 해서, 갈라 두면 두 문장이 서로 다른 주소를 가리킨다
+ * (예전 `daengs.screenUrl` 이 그렇게 남아 있었다).
+ */
+private val SCREEN_NOT_SET = ScreeningRun.NOT_CONFIGURED
 
 /**
  * 보행이 꺼져 있을 때 (`daengs.gaitUrl`, 릴리즈는 `daengs.gaitUrlRelease` 가 빈 경우).

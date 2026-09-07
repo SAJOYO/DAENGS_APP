@@ -49,8 +49,8 @@ import java.time.LocalDate
  *    여기서 호스트를 뜯어보거나 우리 토큰을 얹지 않는다. Signed URL 에 우리 헤더를
  *    얹으면 서명이 깨진다.
  *
- * [ScreeningApi][com.daengs.app.screening.ScreeningApi] 와 같은 이유로 HTTP 라이브러리를
- * 안 쓴다 — 부를 엔드포인트가 여섯이고 배관은 이미 여러 번 썼다.
+ * [ScreeningRecordApi][com.daengs.app.screening.ScreeningRecordApi] 와 같은 이유로 HTTP
+ * 라이브러리를 안 쓴다 — 부를 엔드포인트가 여섯이고 배관은 이미 여러 번 썼다.
  */
 object GaitApi {
 

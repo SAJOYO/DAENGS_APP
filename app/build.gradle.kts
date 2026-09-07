@@ -22,10 +22,9 @@ fun localSetting(key: String): String =
 val kakaoNativeAppKey = localSetting("daengs.kakaoNativeAppKey")
 val apiBaseUrl = localSetting("daengs.apiBaseUrl")
 
-// 피부 스크리닝 서버. 우리 서버(apiBaseUrl)와 **다른 주소**다 — 모델이 저쪽
-// 저장소(gayeoniee/deeplearning_test)에서 따로 돌고, 아직 띄워 두지도 않았다.
-// 비어 있으면 채팅의 진단 버튼이 스스로 그렇게 말한다.
-val screenUrl = localSetting("daengs.screenUrl")
+// 피부 스크리닝은 이제 **우리 서버(apiBaseUrl) 안**이다. 저쪽이 D-040 으로 backend
+// 로 옮겼고, 앱은 #134 에서 옛 경로(/screen/v1/screen)를 뗐다. 그래서 `daengs.screenUrl`
+// 은 더 안 읽는다 — local.properties 에 남아 있어도 아무 데도 안 쓰인다.
 
 // 보행 분석 서버. 스크리닝과 **같은 모양**이다 — nginx 가 우리 서버와 같은 호스트에서
 // /gait 접두사로 별도 컨테이너에 넘긴다. 그래서 daengs_backend 의 openapi.json 에는
@@ -47,7 +46,6 @@ val gaitUrl = localSetting("daengs.gaitUrl")
  * 동작해야 한다. 다만 그때는 아래에서 경고를 낸다.
  */
 val apiBaseUrlRelease = localSetting("daengs.apiBaseUrlRelease")
-val screenUrlRelease = localSetting("daengs.screenUrlRelease")
 val gaitUrlRelease = localSetting("daengs.gaitUrlRelease")
 
 /**
@@ -205,7 +203,6 @@ android {
             // 개발 서버. `http://` 라서 디버그 소스셋의 usesCleartextTraffic 이 필요하다
             // (`app/src/debug/AndroidManifest.xml`).
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-            buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
             buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
             // 보행 기능 스위치. **`daengs.gaitUrl` 을 비우면 꺼진다** (#64 의 완화책).
             // 주소 자체는 이제 API_BASE_URL 을 쓰지만(보행이 backend 뒤로 들어감),
@@ -233,11 +230,6 @@ android {
                 "String",
                 "API_BASE_URL",
                 "\"${releaseUrl("apiBaseUrl", apiBaseUrlRelease, apiBaseUrl)}\"",
-            )
-            buildConfigField(
-                "String",
-                "SCREEN_BASE_URL",
-                "\"${releaseUrl("screenUrl", screenUrlRelease, screenUrl)}\"",
             )
             buildConfigField(
                 "String",
