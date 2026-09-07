@@ -31,7 +31,7 @@ class TerritoryPoleArtTest {
 
     @Test fun `투명 배경과 밑동 접점이 두 상태에서 유지된다`() {
         TerritoryMarkerOccupancy.entries.forEach { state ->
-            val bitmap = territoryMarkerIcon(context, state)
+            val bitmap = BitmapFactory.decodeResource(context.resources, TerritoryPoleArt.resource(state))
             assertEquals(TerritoryPoleArt.WIDTH, bitmap.width)
             assertEquals(TerritoryPoleArt.HEIGHT, bitmap.height)
             for (y in 0 until bitmap.height) {
@@ -42,6 +42,23 @@ class TerritoryPoleArtTest {
             assertTrue(Color.alpha(bitmap.getPixel(128, 622)) > 200)
             assertTrue("흰 포스터는 배경으로 지워지면 안 된다", Color.alpha(bitmap.getPixel(75, 330)) > 200)
         }
+    }
+
+    @Test fun `그림만 작아지고 옅은 사선 그림자는 밑동 오른쪽에 붙는다`() {
+        TerritoryMarkerOccupancy.entries.forEach { state ->
+            val bitmap = territoryMarkerIcon(context, state)
+            val inkRows = (0 until bitmap.height).filter { y ->
+                (0 until bitmap.width).any { x -> Color.alpha(bitmap.getPixel(x, y)) > 128 }
+            }
+            assertTrue("본체 높이는 이전 600px의 약 65%", inkRows.size in 380..395)
+            assertTrue("축소해도 발은 같은 지리 좌표", inkRows.last() in 622..624)
+            assertEquals(0, Color.alpha(bitmap.getPixel(128, 200)))
+            assertEquals(46, Color.alpha(bitmap.getPixel(198, 583)))
+            assertEquals(0, Color.alpha(bitmap.getPixel(58, 583)))
+            assertEquals(0, Color.alpha(bitmap.getPixel(220, 560)))
+        }
+        assertEquals(48 to 120, TerritoryPoleArt.size(false))
+        assertEquals(60 to 150, TerritoryPoleArt.size(true))
     }
 
     @Test fun `선택 및 성공 확대에서도 세로 비율과 접점이 유지된다`() {
