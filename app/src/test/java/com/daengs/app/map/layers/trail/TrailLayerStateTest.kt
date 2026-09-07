@@ -10,6 +10,15 @@ import org.junit.Test
 
 class TrailLayerStateTest {
     @Test
+    fun `trimmed trail projects retained original start instead of latest first point`() {
+        val original = sample(GeoPoint(37.5, 127.0), 1L)
+        val recent = sample(GeoPoint(37.6, 127.0), 2L)
+        val layer = TrailSnapshot(segments = listOf(listOf(recent)), startSample = original).toTrailLayerState()
+        assertEquals(original.point, layer.startPoint)
+        assertEquals(listOf(listOf(recent.point)), layer.paths)
+    }
+
+    @Test
     fun `an empty snapshot produces no map paths`() {
         assertTrue(TrailSnapshot().toTrailLayerState().paths.isEmpty())
     }

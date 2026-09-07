@@ -115,7 +115,7 @@ fun WalkScreen(
     val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
     val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
 
-    val mapPresentation = state.toMapPresentation { formatClock(it) }
+    val mapPresentation = state.toMapPresentation()
     val summary = state.completedSummary
     var bottomInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var leftInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }

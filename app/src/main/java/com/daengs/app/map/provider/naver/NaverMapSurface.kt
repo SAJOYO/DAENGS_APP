@@ -23,8 +23,8 @@ import androidx.compose.ui.graphics.toArgb
 import com.daengs.app.BuildConfig
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
-import com.daengs.app.map.layers.completedroute.RouteEndpointKind
 import com.daengs.app.map.shell.BaseMapStyle
+import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -80,7 +80,6 @@ fun NaverMapSurface(
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
-    val latestRouteEndpointCallback by rememberUpdatedState(onSelectRouteEndpoint)
     val latestMomentCallback by rememberUpdatedState(onSelectMoment)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
@@ -356,38 +355,7 @@ fun NaverMapSurface(
         onDispose { lines.forEach { it.map = null } }
     }
 
-    DisposableEffect(naverMap, scene.completedRoute.start, scene.completedRoute.end) {
-        val map = naverMap
-        val endpointMarkers = if (map == null) {
-            emptyList()
-        } else {
-            listOfNotNull(scene.completedRoute.start, scene.completedRoute.end).map { endpoint ->
-                Marker().apply {
-                    position = endpoint.point.toLatLng()
-                    captionText = endpoint.label
-                    captionMinZoom = 0.0
-                    width = if (endpoint.selected) ROUTE_ENDPOINT_PX_SELECTED else ROUTE_ENDPOINT_PX
-                    height = if (endpoint.selected) ROUTE_ENDPOINT_PX_SELECTED else ROUTE_ENDPOINT_PX
-                    anchor = MARKER_ANCHOR
-                    icon = OverlayImage.fromResource(
-                        when (endpoint.kind) {
-                            RouteEndpointKind.START -> R.drawable.ic_walk_start
-                            RouteEndpointKind.END -> R.drawable.ic_walk_finish
-                            RouteEndpointKind.START_END -> R.drawable.ic_walk_start_finish
-                        },
-                    )
-                    zIndex = if (endpoint.selected) SELECTED_MARKER_Z else ROUTE_ENDPOINT_Z
-                    isHideCollidedMarkers = false
-                    setOnClickListener {
-                        latestRouteEndpointCallback(endpoint.id)
-                        true
-                    }
-                    this.map = map
-                }
-            }
-        }
-        onDispose { endpointMarkers.forEach { it.map = null } }
-    }
+    NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
 
     DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {
         val map = naverMap
@@ -532,12 +500,6 @@ private const val MARKER_PX = 72
 private const val MARKER_PX_SELECTED = 92
 
 private const val MOMENT_MARKER_PX = 64
-
-private const val ROUTE_ENDPOINT_PX = 72
-
-private const val ROUTE_ENDPOINT_PX_SELECTED = 84
-
-private const val ROUTE_ENDPOINT_Z = 80
 
 private const val ROUTE_GAP_Z = 40
 

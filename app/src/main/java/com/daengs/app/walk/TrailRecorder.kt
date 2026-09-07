@@ -29,6 +29,8 @@ data class TrailSnapshot(
      * 이 값을 봐야 한다 — 버리기만 하고 말을 안 하면 기록이 멈춘 것으로 읽힌다.
      */
     val skippedTooFast: Int = 0,
+    /** First accepted fix of this walk, retained even when old display points are trimmed. */
+    val startSample: LocationSample? = null,
 ) {
     val sampleCount: Int get() = segments.sumOf { it.size }
 
@@ -57,6 +59,7 @@ class TrailRecorder(
     private var skippedTooFast = 0
     private var breakBeforeNext = false
     private var publishedSnapshot = TrailSnapshot()
+    private var startSample: LocationSample? = null
 
     init {
         require(minDistanceMeters >= 0.0) { "minDistanceMeters must not be negative" }
@@ -72,6 +75,7 @@ class TrailRecorder(
     fun start(): TrailSnapshot {
         state = TrackingState.RECORDING
         segments.clear()
+        startSample = null
         storedSampleCount = 0
         distanceMeters = 0.0
         skippedLowAccuracy = 0
@@ -157,6 +161,7 @@ class TrailRecorder(
         } else {
             segments.last() += sample
         }
+        if (startSample == null) startSample = sample
         storedSampleCount += 1
         distanceMeters += if (startsSegment) 0.0 else delta
         skippedLowAccuracy = 0
@@ -188,6 +193,7 @@ class TrailRecorder(
             distanceMeters = distanceMeters,
             skippedLowAccuracy = skippedLowAccuracy,
             skippedTooFast = skippedTooFast,
+            startSample = startSample,
         )
         return publishedSnapshot
     }
