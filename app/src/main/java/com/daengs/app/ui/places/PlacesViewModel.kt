@@ -18,6 +18,7 @@ import com.daengs.app.map.features.places.PlaceSearchArea
 import com.daengs.app.place.DogSearchContext
 import com.daengs.app.place.PlaceApi
 import com.daengs.app.place.PlaceKey
+import com.daengs.app.place.PlaceCategorySelection
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.place.PlaceResult
@@ -38,19 +39,28 @@ data class PlacesUiState(
     val waitingForSearchLocation: Boolean = false,
 )
 
-/** 화면 입력 계약. kind=null은 전체보기이며 HTTP 요청에서는 실제 kind 목록으로 분할한다. */
+/** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
     data class ToggleDog(val id: String) : PlacesAction
-    data class Locate(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
+    data class Locate(val category: PlaceCategorySelection, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction {
+        constructor(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) :
+            this(PlaceCategorySelection.fromKind(kind), preferParking, nameQuery)
+    }
 
-    data class Search(val kind: PlaceKind?, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction
+    data class Search(val category: PlaceCategorySelection, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction {
+        constructor(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) :
+            this(PlaceCategorySelection.fromKind(kind), preferParking, nameQuery)
+    }
 
     data class SearchAt(
         val point: GeoPoint,
-        val kind: PlaceKind?,
+        val category: PlaceCategorySelection,
         val preferParking: Boolean,
         val nameQuery: String? = null,
-    ) : PlacesAction
+    ) : PlacesAction {
+        constructor(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) :
+            this(point, PlaceCategorySelection.fromKind(kind), preferParking, nameQuery)
+    }
 
     data class SetRadius(val meters: Int) : PlacesAction
 
@@ -88,8 +98,14 @@ class PlacesViewModel(
         session.state,
         profiles,
     ) { location, session, profiles ->
-        PlacesUiState(location, session.discovery, session.journey, profiles,
-            waitingForSearchLocation = session.latestIntent?.origin == PlaceSearchOrigin.CurrentDevice)
+        val pending = session.latestIntent?.takeIf { it.origin == PlaceSearchOrigin.CurrentDevice }
+        val discovery = pending?.let {
+            session.discovery.copy(requestedKinds = it.kinds, nameQuery = it.nameQuery,
+                preferParking = it.preferParking, radiusMeters = it.radiusMeters,
+                search = com.daengs.app.map.features.places.PlaceSearchState.Loading,
+                selectedPlaceKey = null)
+        } ?: session.discovery
+        PlacesUiState(location, discovery, session.journey, profiles, waitingForSearchLocation = pending != null)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -146,11 +162,11 @@ class PlacesViewModel(
     fun onAction(action: PlacesAction) {
         when (action) {
             is PlacesAction.ToggleDog -> applyProfiles(profiles.value.toggle(action.id))
-            is PlacesAction.Locate -> locateAndSearch(action.kind, action.preferParking, action.nameQuery)
-            is PlacesAction.Search -> searchAtCurrentOrigin(action.kind, action.preferParking, action.nameQuery)
+            is PlacesAction.Locate -> locateAndSearch(action.category.kinds, action.preferParking, action.nameQuery)
+            is PlacesAction.Search -> searchAtCurrentOrigin(action.category.kinds, action.preferParking, action.nameQuery)
             is PlacesAction.SearchAt -> searchAt(
                 action.point,
-                action.kind,
+                action.category.kinds,
                 action.preferParking,
                 action.nameQuery,
             )
@@ -162,26 +178,35 @@ class PlacesViewModel(
         }
     }
 
-    fun locateAndSearch(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
+    fun locateAndSearch(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) =
+        locateAndSearch(PlaceCategorySelection.fromKind(kind).kinds, preferParking, nameQuery)
+
+    private fun locateAndSearch(kinds: List<PlaceKind>, preferParking: Boolean, nameQuery: String? = null) {
         if (location.state.value is PlaceLocationState.PermissionRequired ||
             location.state.value is PlaceLocationState.PermissionPermanentlyDenied
         ) {
             return
         }
-        locate(session.requestDeviceSearch(kind, preferParking, nameQuery))
+        locate(session.requestDeviceSearch(kinds, preferParking, nameQuery))
     }
 
-    fun searchAtCurrentOrigin(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
+    fun searchAtCurrentOrigin(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) =
+        searchAtCurrentOrigin(PlaceCategorySelection.fromKind(kind).kinds, preferParking, nameQuery)
+
+    private fun searchAtCurrentOrigin(kinds: List<PlaceKind>, preferParking: Boolean, nameQuery: String? = null) {
         session.searchAtCurrentOrigin(
-            kind = kind,
+            kinds = kinds,
             preferParking = preferParking,
             devicePosition = location.state.value.devicePosition,
             nameQuery = nameQuery,
         )?.let(::locate)
     }
 
-    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
-        session.searchAt(point, kind, preferParking, nameQuery)
+    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) =
+        searchAt(point, PlaceCategorySelection.fromKind(kind).kinds, preferParking, nameQuery)
+
+    private fun searchAt(point: GeoPoint, kinds: List<PlaceKind>, preferParking: Boolean, nameQuery: String? = null) {
+        session.searchAt(point, kinds, preferParking, nameQuery)
     }
 
     fun retrySearch() {

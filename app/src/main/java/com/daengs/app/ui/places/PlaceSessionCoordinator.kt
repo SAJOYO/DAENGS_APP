@@ -135,15 +135,18 @@ internal class PlaceSessionCoordinator(
         }
     }
 
+    fun requestDeviceSearch(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) =
+        requestDeviceSearch(kind?.let { listOf(it) } ?: PlaceKind.entries, preferParking, nameQuery)
+
     fun requestDeviceSearch(
-        kind: PlaceKind?,
+        kinds: List<PlaceKind>,
         preferParking: Boolean,
         nameQuery: String? = null,
     ): PendingDevicePlaceSearch {
         resumeIntent = null
         val intent = PlaceSearchIntent(
             origin = PlaceSearchOrigin.CurrentDevice,
-            kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
+            kinds = kinds,
             preferParking = preferParking,
             nameQuery = resolvedNameQuery(nameQuery),
             radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
@@ -163,8 +166,11 @@ internal class PlaceSessionCoordinator(
         submitResolvedSearch(resolved)
     }
 
+    fun searchAtCurrentOrigin(kind: PlaceKind?, preferParking: Boolean, devicePosition: GeoPoint?, nameQuery: String? = null) =
+        searchAtCurrentOrigin(kind?.let { listOf(it) } ?: PlaceKind.entries, preferParking, devicePosition, nameQuery)
+
     fun searchAtCurrentOrigin(
-        kind: PlaceKind?,
+        kinds: List<PlaceKind>,
         preferParking: Boolean,
         devicePosition: GeoPoint?,
         nameQuery: String? = null,
@@ -173,14 +179,14 @@ internal class PlaceSessionCoordinator(
         val pinned = current.origin?.takeIf { current.originMode == PlaceOriginMode.PINNED }
         return when {
             pinned != null -> {
-                searchAt(pinned, kind, preferParking, nameQuery)
+                searchAt(pinned, kinds, preferParking, nameQuery)
                 null
             }
             devicePosition != null -> {
                 startResolvedSearch(
                     PlaceSearchIntent(
                         origin = PlaceSearchOrigin.DeviceSnapshot(devicePosition),
-                        kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
+                        kinds = kinds,
                         preferParking = preferParking,
                         nameQuery = resolvedNameQuery(nameQuery),
                         radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,
@@ -188,15 +194,18 @@ internal class PlaceSessionCoordinator(
                 )
                 null
             }
-            else -> requestDeviceSearch(kind, preferParking, nameQuery)
+            else -> requestDeviceSearch(kinds, preferParking, nameQuery)
         }
     }
 
-    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) {
+    fun searchAt(point: GeoPoint, kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) =
+        searchAt(point, kind?.let { listOf(it) } ?: PlaceKind.entries, preferParking, nameQuery)
+
+    fun searchAt(point: GeoPoint, kinds: List<PlaceKind>, preferParking: Boolean, nameQuery: String? = null) {
         startResolvedSearch(
             PlaceSearchIntent(
                 origin = PlaceSearchOrigin.PinnedMap(point),
-                kinds = kind?.let { listOf(it) } ?: PlaceKind.entries,
+                kinds = kinds,
                 preferParking = preferParking,
                 nameQuery = resolvedNameQuery(nameQuery),
                 radiusMeters = latestIntent.value?.radiusMeters ?: selectedRadius.value,

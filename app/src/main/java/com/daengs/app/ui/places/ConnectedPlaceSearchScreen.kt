@@ -23,8 +23,10 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
     val response = discovery.response
     val profileMismatch = response != null && response.dogs != profiles.snapshots()
     val locationFailed = waitingForSearchLocation && location is PlaceLocationState.Failed
-    val all = discovery.requestedKinds.size > 6
-    val hits = if (all) response?.overviewHits(discovery.preferParking).orEmpty() else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
+    val category = PlaceCategorySelection.fromKinds(discovery.requestedKinds)
+    val all = category == PlaceCategorySelection.All
+    val hits = if (discovery.requestedKinds.size > 1) response?.overviewHits(discovery.preferParking).orEmpty()
+        else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
         locationFailed -> LabPhase.ERROR
@@ -35,7 +37,7 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
     }
     return PlaceSearchLabState(
         draft = draft, aiMode = ai,
-        applied = LabCriteria(query = discovery.nameQuery, kind = if (all) null else selectedPlaceKind(discovery), parkingFirst = discovery.preferParking, radiusMeters = discovery.radiusMeters),
+        applied = LabCriteria(query = discovery.nameQuery, kind = (category as? PlaceCategorySelection.Kind)?.kind, parkingFirst = discovery.preferParking, radiusMeters = discovery.radiusMeters),
         hits = if (phase == LabPhase.RESULTS) hits else emptyList(), phase = phase,
         selected = discovery.selectedPlaceKey,
         expanded = expanded?.takeIf { key -> hits.any { it.place.key == key } },
@@ -73,10 +75,10 @@ fun ConnectedPlaceSearchScreen(
         // A loading frame has no response; only completed results can remove an expanded card.
         if (state.discovery.response != null) expanded = ui.expanded
     }
-    val kind = ui.applied.kind
+    val category = PlaceCategorySelection.fromKinds(state.discovery.requestedKinds)
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
-    fun search(selected: PlaceKind? = kind, parking: Boolean = state.discovery.preferParking, query: String? = null) {
+    fun search(selected: PlaceCategorySelection = category, parking: Boolean = state.discovery.preferParking, query: String? = null) {
         if (permission) { requestPermission(); return }
         notice = null
         onAction(PlacesAction.Search(selected, parking, query))
@@ -92,11 +94,10 @@ fun ConnectedPlaceSearchScreen(
                 else -> { keyboard?.hide(); search(query = draft.trim()) }
             }
         },
-        onCategory = { selected ->
-            search(selected = selected)
-        },
+        categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
+        resultLabel = category.label,
         onParking = { value ->
-            if (kind == null || kind.supportsParkingPreference()) search(parking = value)
+            if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
         },
         onRadius = { meters -> onAction(PlacesAction.SetRadius(meters)) },
@@ -128,10 +129,10 @@ fun ConnectedPlaceSearchScreen(
             Row(Modifier.align(Alignment.TopCenter)) {
                 TextButton(onClick = onBack) { Text("← 홈") }
                 TextButton(onClick = {
-                    if (permission) requestPermission() else { follow = true; onAction(PlacesAction.Locate(kind, state.discovery.preferParking)) }
+                    if (permission) requestPermission() else { follow = true; onAction(PlacesAction.Locate(category, state.discovery.preferParking)) }
                 }) { Text(if (permission) "위치 권한" else "내 위치") }
                 camera?.takeIf { it != state.discovery.origin }?.let { point ->
-                    TextButton(onClick = { follow = false; onAction(PlacesAction.SearchAt(point, kind, state.discovery.preferParking)) }) { Text("이 지역 검색") }
+                    TextButton(onClick = { follow = false; onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking)) }) { Text("이 지역 검색") }
                 }
             }
             }

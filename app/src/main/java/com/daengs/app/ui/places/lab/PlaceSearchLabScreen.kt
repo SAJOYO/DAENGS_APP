@@ -43,6 +43,8 @@ fun PlaceSearchLabScreen(
     onRadius: (Int) -> Unit = {},
     onRefreshProfiles: () -> Unit = {},
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
+    categoryContent: (@Composable () -> Unit)? = null,
+    resultLabel: String = state.applied.kind?.let(::categoryLabel) ?: "전체",
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
 ) {
     var profiles by remember { mutableStateOf(false) }
@@ -65,7 +67,7 @@ fun PlaceSearchLabScreen(
                 IconButton(onClick = onSubmit, modifier = Modifier.semantics { contentDescription = "검색 실행" }) { Text("↑") }
             }
             if (state.aiMode) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (categoryContent != null) categoryContent() else LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(kinds.chunked(2)) { pair ->
                     Column {
                         pair.forEach { kind ->
@@ -100,7 +102,7 @@ fun PlaceSearchLabScreen(
                 Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
-                    Text("${state.applied.kind?.let(::categoryLabel) ?: "전체"} $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                    Text("$resultLabel $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
                     TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ▾" else "가까운 순 ▾", fontSize = 11.sp) }
                 }
                 if (state.truncated) Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
