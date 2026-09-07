@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -103,6 +104,7 @@ fun WalkDetailScreen(
         }
     }
     var detail by remember(sessionId) { mutableStateOf<WalkSessionDetail?>(null) }
+    var legendInsetPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
 
     LaunchedEffect(sessionId, history, entries) {
         detail = history.sessionDetail(sessionId)
@@ -133,6 +135,7 @@ fun WalkDetailScreen(
                 ),
                 searchOrigin = null,
                 followDevice = false,
+                topPaddingPx = legendInsetPx,
                 onCameraIdle = {},
                 onCameraGesture = {},
                 onSelectPlace = {},
@@ -168,6 +171,9 @@ fun WalkDetailScreen(
         )
         Surface(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 96.dp, top = 12.dp),
             shape = RoundedCornerShape(16.dp)) { WalkColorSettingsButton() }
+        WalkSpeedLegend(Modifier.align(Alignment.TopCenter)
+            .onSizeChanged { legendInsetPx = it.height }
+            .statusBarsPadding().padding(top = 64.dp, bottom = 12.dp))
         if (editorOpen) WalkEntryEditor(entries, initialEntry,
             pets.filter { it.id in walk?.dogIds.orEmpty() }, entryError, busy,
             { change(it, false) }, { change(it, true) }, { editorOpen = false },
