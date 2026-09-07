@@ -10,6 +10,23 @@ import org.junit.Test
 
 class TrailRecorderTest {
     @Test
+    fun `start stays at first accepted fix through trimming pauses and stop`() {
+        val recorder = TrailRecorder(maxSamples = 2)
+        recorder.start()
+        recorder.add(sample(37.0, 127.0, 1L, accuracy = 100f))
+        assertEquals(null, recorder.snapshot().startSample)
+        val first = sample(37.0, 127.0, 2L)
+        recorder.add(first)
+        recorder.add(sample(37.0001, 127.0, 3L))
+        recorder.pause(); recorder.resume()
+        recorder.add(sample(37.0002, 127.0, 4L))
+        assertEquals(2, recorder.snapshot().sampleCount)
+        assertEquals(first, recorder.snapshot().startSample)
+        assertEquals(first, recorder.stop().startSample)
+        assertEquals(null, recorder.start().startSample)
+    }
+
+    @Test
     fun `pausing splits the trail and the gap is not walked distance`() {
         val recorder = TrailRecorder(minDistanceMeters = 1.0)
         val first = sample(37.0, 127.0, 1L)

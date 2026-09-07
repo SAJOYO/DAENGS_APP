@@ -117,7 +117,7 @@ fun WalkDetailScreen(
     Box(modifier.fillMaxSize().background(PinkFaint)) {
         val walk = detail?.summary
         val route = detail?.route
-        val completedRoute = route?.toCompletedRouteLayerState(formatTime = ::formatWalkClock)
+        val completedRoute = route?.toCompletedRouteLayerState()
             ?: CompletedRouteLayerState()
         if (!inspectionMode) {
             MapHost(
