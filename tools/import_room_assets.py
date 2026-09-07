@@ -35,6 +35,7 @@ frankie516c/dog-training-rag 의 `ui-experiments/main-screen/assets` 아래에�
     <받은폴더>/portraits/<견종>.png      (없어도 된다)
     <받은폴더>/window/<시간>_<날씨>.png  (없어도 된다)
     <받은폴더>/door/<시간>_<날씨>.png    (없어도 된다)
+    <받은폴더>/map/<이름>.png          (지도 마커, 흰 배경 또는 알파)
 
 출력폴더 기본값은 `app/src/main/res/drawable-nodpi` 다.
 """
@@ -164,9 +165,20 @@ def main(drop: Path, out: Path) -> None:
             after += b
             made += 1
 
+    # 지도 그림은 방과 다른 기준점/규격을 쓴다. 기존 방·견종 반입에는 영향이 없다.
+    from map_sprite import prepare_map_sprite
+    for png in sorted((drop / "map").glob("*.png")) if (drop / "map").is_dir() else []:
+        staged = png.with_suffix(".cut.png")
+        prepare_map_sprite(png).save(staged)
+        _, b = to_webp(staged, out / f"{resource_name('map', png.stem)}.webp")
+        before += png.stat().st_size
+        after += b
+        made += 1
+        staged.unlink()
+
     if made == 0:
         raise SystemExit(
-            f"구울 게 없다: {drop} 아래에 themes/ · dogs/ · portraits/ · window/ · door/ 가 없다."
+            f"구울 게 없다: {drop} 아래에 themes/ · dogs/ · portraits/ · window/ · door/ · map/ 가 없다."
         )
 
     print(f"{made}개  {before / 1e6:.1f}MB -> {after / 1e6:.1f}MB  ({after / before * 100:.0f}%)")

@@ -18,9 +18,11 @@ private data class SiteOverlays(val marker: Marker, val ring: CircleOverlay?, va
 @Composable
 internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarkerState>, onSelect: (String) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val icons = remember(context) { TerritoryMarkerOccupancy.entries.associateWith {
-        OverlayImage.fromBitmap(territoryMarkerIcon(context, it))
-    } }
+    val icons = remember(context) {
+        TerritoryMarkerOccupancy.entries.map(TerritoryPoleArt::resource).distinct().associateWith {
+            OverlayImage.fromResource(it)
+        }
+    }
     val overlays = remember(map) { mutableMapOf<String, SiteOverlays>() }
     val latestSelect by rememberUpdatedState(onSelect)
     val feedback = sites.firstOrNull { it.selected && it.feedback != null }?.feedback
@@ -36,9 +38,10 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                     TerritoryMarkerOccupancy.VERIFIED -> "인증"
                 }
                 captionMinZoom = 0.0
-                width = if (site.selected) 76 else 60; height = width
-                anchor = PointF(.5f, .5f)
-                icon = icons.getValue(site.occupancy)
+                val size = TerritoryPoleArt.size(site.selected)
+                width = size.first; height = size.second
+                anchor = PointF(TerritoryPoleArt.ANCHOR_X, TerritoryPoleArt.ANCHOR_Y)
+                icon = icons.getValue(TerritoryPoleArt.resource(site.occupancy))
                 zIndex = if (site.selected) 100 else 30
                 // 성공 발자국이 같은 위치에 떠도 선택한 전봇대가 충돌 숨김 처리되면 안 된다.
                 isHideCollidedMarkers = !site.selected; isHideCollidedSymbols = !site.selected
@@ -70,9 +73,9 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
             val active = feedback?.takeIf { it.siteId == site.id }
             val frame = territoryFeedbackFrame(active?.kind, progress)
             val accent = if (active?.kind == TerritoryFeedbackKind.MARKED) Color.rgb(227, 145, 45) else Color.rgb(60, 150, 115)
-            val size = if (site.selected) 76 else 60
-            overlay.marker.width = (size * frame.markerScale).toInt()
-            overlay.marker.height = overlay.marker.width
+            val size = TerritoryPoleArt.size(site.selected, frame.markerScale)
+            overlay.marker.width = size.first
+            overlay.marker.height = size.second
             overlay.ring?.apply {
                 val highlighted = site.ready || frame.glow > 0f
                 val tint = if (highlighted) accent else Color.rgb(115, 125, 135)
