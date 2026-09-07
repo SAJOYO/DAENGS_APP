@@ -29,12 +29,15 @@ def prepare_map_sprite(source: Path) -> Image.Image:
                     pixels[x, y] = (0, 0, 0, 0)
         if sum(outside) < image.width * image.height * .1:
             raise ValueError("지도 마커 바깥 배경을 분리할 수 없습니다. 알파 입력을 사용하세요.")
-    bounds = image.getbbox()
+    # 생성 알파의 거의 투명한 먼지로 크기·밑면이 달라지지 않게 한다.
+    # 실제 픽셀의 알파(외곽 안티앨리어싱)는 그대로 보존한다.
+    silhouette = image.getchannel("A").point(lambda alpha: 255 if alpha > 16 else 0)
+    bounds = silhouette.getbbox()
     if bounds is None:
         raise ValueError("빈 지도 마커입니다.")
     left, top, right, bottom = bounds
     # 기울어진 가로대가 좌우 중심을 바꿔도 기둥 밑면 중심은 같은 좌표에 둔다.
-    foot_bounds = image.crop((0, max(top, bottom - 12), image.width, bottom)).getbbox()
+    foot_bounds = silhouette.crop((0, max(top, bottom - 12), image.width, bottom)).getbbox()
     foot_x = (foot_bounds[0] + foot_bounds[2]) / 2
     content = image.crop(bounds)
     scale = min(224 / content.width, 600 / content.height)
