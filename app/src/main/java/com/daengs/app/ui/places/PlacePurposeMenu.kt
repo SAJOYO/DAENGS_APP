@@ -54,28 +54,33 @@ internal fun PlacePurposeMenu(selection: PlaceCategorySelection, onSelect: (Plac
         listOf(PlaceCategorySelection.All) + PlacePurpose.entries.map(PlaceCategorySelection::Purpose) +
             PlaceCategorySelection.Kind(PlaceKind.ETC)
     }
-    Column {
-        LazyRow(Modifier.fillMaxWidth().selectableGroup().testTag("place-purpose-row"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(options, key = { it.label }) { option ->
-                val selected = option == selection ||
-                    (option is PlaceCategorySelection.Purpose && option.purpose == selection.parentPurpose)
-                val icon = when (option) {
-                    PlaceCategorySelection.All -> null
-                    is PlaceCategorySelection.Purpose -> purposePresentation.getValue(option.purpose).icon
-                    is PlaceCategorySelection.Kind -> option.kind
-                }
-                Column(
-                    Modifier.widthIn(min = 64.dp).heightIn(min = 64.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (selected) DaengsColors.BrandPrimarySoft else DaengsColors.Surface, RoundedCornerShape(12.dp))
-                        .selectable(selected, role = Role.Tab, onClick = { onSelect(option) })
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
-                ) {
-                    PlaceCategoryIcon(icon, Modifier.size(23.dp), DaengsColors.TextPrimary)
-                    Text(option.label, color = DaengsColors.TextPrimary, fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().selectableGroup().testTag("place-purpose-grid"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            options.chunked(5).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEach { option ->
+                        val selected = option == selection ||
+                            (option is PlaceCategorySelection.Purpose && option.purpose == selection.parentPurpose)
+                        val icon = when (option) {
+                            PlaceCategorySelection.All -> null
+                            is PlaceCategorySelection.Purpose -> purposePresentation.getValue(option.purpose).icon
+                            is PlaceCategorySelection.Kind -> option.kind
+                        }
+                        Column(
+                            Modifier.weight(1f).heightIn(min = 64.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) DaengsColors.BrandPrimarySoft else DaengsColors.Surface, RoundedCornerShape(12.dp))
+                                .selectable(selected, role = Role.Tab, onClick = { onSelect(option) })
+                                .padding(horizontal = 2.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                        ) {
+                            PlaceCategoryIcon(icon, Modifier.size(23.dp), DaengsColors.TextPrimary)
+                            Text(option.label, color = DaengsColors.TextPrimary, fontSize = 12.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+                        }
+                    }
+                    repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

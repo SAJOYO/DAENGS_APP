@@ -29,7 +29,7 @@ class ConnectedPlaceSearchUiTest {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNodeWithText("검색 결과가 없어요.").assertDoesNotExist()
-        compose.onNodeWithText("다시 확인").performClick()
+        compose.onNodeWithText("다시 확인").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(PlacesAction.RetrySearch, actions.single())
     }
     @Test fun realProfileNamesDispatchIndependentDogSelection() {
@@ -37,7 +37,7 @@ class ConnectedPlaceSearchUiTest {
         val state = ready().copy(profiles = PlaceProfiles().receive("owner", listOf(dog), false, null))
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
-        compose.onNodeWithText("🐾 반려견 ▾").performClick()
+        compose.onNodeWithText("반려견 선택 ▾").performClick()
         compose.onNodeWithText("콩이").assertExists()
         compose.onNodeWithContentDescription("콩이 선택").performClick()
         assertEquals(PlacesAction.ToggleDog("real-id"), actions.single())
@@ -74,7 +74,7 @@ class ConnectedPlaceSearchUiTest {
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNodeWithText("전체").performClick()
         assertEquals(PlacesAction.Search(null, false, null), actions.single())
-        compose.onNodeWithText("3km ▾").performClick()
+        compose.onNodeWithText("반경 3km ▾").performClick()
         compose.onNodeWithText("5km").performClick()
         assertEquals(PlacesAction.SetRadius(5000), actions.last())
     }
@@ -91,6 +91,7 @@ class ConnectedPlaceSearchUiTest {
         assertTrue(loading.toConnectedSearchState("", false, null, null).hits.isEmpty())
     }
 
+    @Config(qualifiers = "w320dp-h844dp")
     @Test fun purposeSearchShowsOnlyItsChildrenAndChangingPurposeResetsChild() {
         val state = androidx.compose.runtime.mutableStateOf(ready())
         val actions = mutableListOf<PlacesAction>()
@@ -99,23 +100,25 @@ class ConnectedPlaceSearchUiTest {
             if (action is PlacesAction.Search) state.value = state.value.copy(
                 discovery = state.value.discovery.copy(requestedKinds = action.category.kinds))
         }, {}, {}, {}, {}, {}, showMap = false) } }
-        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("식사·카페"))
+        listOf("전체", "진료", "돌봄", "쇼핑", "식사·카페", "나들이", "문화", "숙박", "기타").forEach {
+            compose.onNodeWithText(it).assertIsDisplayed()
+        }
         compose.onNodeWithText("식사·카페").performClick()
         assertEquals(PlaceCategorySelection.Purpose(PlacePurpose.DINING), (actions.last() as PlacesAction.Search).category)
         compose.onNodeWithText("식사·카페 전체").assertIsSelected()
         compose.onNodeWithText("음식점").performClick()
         compose.onNodeWithText("음식점").assertIsSelected()
-        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("진료"))
+        compose.onNodeWithText("진료").assertIsDisplayed()
         compose.onNodeWithText("진료").performClick()
         compose.onNodeWithText("진료 전체").assertIsSelected()
         compose.onNodeWithText("동물병원").assertExists()
         compose.onNodeWithText("음식점").assertDoesNotExist()
         assertEquals(PlacePurpose.HEALTHCARE.kinds, (actions.last() as PlacesAction.Search).category.kinds)
-        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("전체"))
+        compose.onNodeWithText("전체").assertIsDisplayed()
         compose.onNodeWithText("전체").performClick()
         compose.onNodeWithText("진료 전체").assertDoesNotExist()
         assertEquals(PlaceKind.entries, (actions.last() as PlacesAction.Search).category.kinds)
-        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("기타"))
+        compose.onNodeWithText("기타").assertIsDisplayed()
         compose.onNodeWithText("기타").performClick()
         assertEquals(listOf(PlaceKind.ETC), (actions.last() as PlacesAction.Search).category.kinds)
     }
