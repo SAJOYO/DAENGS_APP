@@ -26,9 +26,9 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 
-/** Always visible on walk maps, and observes the same preference as the native path. */
+/** The host chooses when to show this; colors follow the same preference as the native path. */
 @Composable
-internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
+internal fun WalkSpeedLegend(modifier: Modifier = Modifier, showColorSettings: Boolean = false) {
     val selection by rememberWalkStyle()
     val policy = selection.policy
     val theme = policy.theme(selection.themeId)
@@ -44,6 +44,9 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("이동 속도 · m/s", style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.weight(1f))
+                if (showColorSettings) WalkColorSettingsButton()
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(9.dp).clip(RoundedCornerShape(2.dp)).background(Color(policy.unknownColor)))
                 Spacer(Modifier.width(4.dp))
                 Text("속도 미확인", style = MaterialTheme.typography.labelSmall)
@@ -65,3 +68,7 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
 @Preview(showBackground = true)
 @Composable
 private fun WalkSpeedLegendPreview() { DaengsTheme { WalkSpeedLegend() } }
+
+@Preview(showBackground = true)
+@Composable
+private fun WalkSpeedLegendSettingsPreview() { DaengsTheme { WalkSpeedLegend(showColorSettings = true) } }

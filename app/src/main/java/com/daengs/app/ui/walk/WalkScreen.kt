@@ -257,6 +257,7 @@ private fun WalkGameOverlay(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val layoutMode = walkLayoutMode(maxWidth.value, maxHeight.value)
+        val stackMapTools = maxWidth < 380.dp
         val elapsedMillis = summary?.activeDurationMillis ?: tracking.elapsedMillisAt(realtimeMillis)
         val distanceMeters = summary?.distanceMeters ?: tracking.trail.distanceMeters
         val notice = when {
@@ -289,26 +290,38 @@ private fun WalkGameOverlay(
                     if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) dockWidth + gap else 0,
                     if (landscape) systemBottom + gap else systemBottom + panelHeight + gap)
             }
-            WalkHomeButton(onHome, Modifier.align(Alignment.TopStart))
-            Surface(Modifier.align(if (landscape) Alignment.TopStart else Alignment.TopEnd)
-                .padding(start = if (landscape) 52.dp else 0.dp), shape = RoundedCornerShape(16.dp), color = CardWhite) {
-                Row {
-                    if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
-                    WalkColorSettingsButton()
-                    WalkRotateButton(layoutMode, onRequestOrientation)
-                }
-            }
-            Column(Modifier.align(if (landscape) Alignment.TopEnd else Alignment.TopCenter)
-                .onSizeChanged { hudHeight = it.height }
-                .padding(top = if (landscape) 0.dp else 52.dp),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary, gpsContent = {
+            Column(Modifier.align(Alignment.TopStart).fillMaxWidth()
+                .onSizeChanged { hudHeight = it.height },
+                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top) {
+                WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary,
+                    modifier = Modifier.widthIn(max = 224.dp),
+                    controlContent = {
+                        if (summary == null && tracking.trail.state != TrackingState.OFF) {
+                            WalkToolButton(if (tracking.trail.state == TrackingState.PAUSED) WalkTool.PLAY else WalkTool.PAUSE,
+                                if (tracking.trail.state == TrackingState.PAUSED) "산책 재개 메뉴" else "잠시 멈춤",
+                                { if (tracking.trail.state == TrackingState.PAUSED) pausedBrowsing = false else onPause() },
+                                enabled = tracking.finishingSessionId == null,
+                                caption = if (tracking.trail.state == TrackingState.PAUSED) "재개" else "일시정지")
+                        }
+                    }, gpsContent = {
                     val gps = walkGpsPresentation(locationGranted, preciseLocation, locationError,
                         locationSample, realtimeMillis * 1_000_000L)
                     WalkGpsDot(gps.good, gps.unavailable, gps.detail, onOpenSettings)
                 })
-                if (mapPurpose == MapPurpose.WALK || tracking.trail.state != TrackingState.OFF || summary != null) {
-                    WalkSpeedLegend()
+                Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
+                    val tools: @Composable () -> Unit = {
+                        WalkHomeButton(onHome)
+                        if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
+                        WalkRotateButton(layoutMode, onRequestOrientation)
+                    }
+                    if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
+                    else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
+                }
+                }
+                if (tracking.trail.state != TrackingState.OFF || summary != null) {
+                    WalkSpeedLegend(showColorSettings = true)
                 }
             }
             val dock: @Composable () -> Unit = {
@@ -321,10 +334,6 @@ private fun WalkGameOverlay(
                         }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen, caption = "기록")
                         WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries, caption = "일기")
                         WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate, enabled = locationGranted && !locating, caption = "내 위치")
-                        WalkToolButton(if (tracking.trail.state == TrackingState.PAUSED) WalkTool.PLAY else WalkTool.PAUSE,
-                            if (tracking.trail.state == TrackingState.PAUSED) "산책 재개 메뉴" else "잠시 멈춤",
-                            { if (tracking.trail.state == TrackingState.PAUSED) pausedBrowsing = false else onPause() },
-                            caption = if (tracking.trail.state == TrackingState.PAUSED) "재개" else "쉼")
                     }
                 }
             }
@@ -415,7 +424,7 @@ private fun WalkGameOverlay(
                     .systemBarsPadding()
                     .padding(12.dp)
                     .zIndex(30f),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 WalkHomeButton(onHome)
@@ -503,12 +512,7 @@ private fun WalkPrimaryControl(
 }
 
 /**
- * 지도 위에 뜨는 **한 줄짜리** 요약.
- *
- * 예전에는 시간·거리 카드와 날씨 카드가 세로로 쌓여 있었다. 지도를 크게 가렸고,
- * **너비가 서로 달라** 둘 다 가운데로 놓아도 들쭉날쭉해 보였다.
- *
- * 시각은 시스템 상태바에 맡기고 GPS는 상세를 열 수 있는 작은 점으로 합친다.
+ * 왼쪽 위에서 시간과 일시정지를 묶고 거리·날씨·GPS를 보조 줄에 표시한다.
  *
  * @param outside 날씨. 산책이 끝난 뒤에는 null 이고 [summary] 자리가 대신 온다
  */
@@ -520,15 +524,21 @@ private fun WalkTopHud(
     nowMillis: Long,
     summary: WalkSummary?,
     modifier: Modifier = Modifier,
+    controlContent: @Composable () -> Unit = {},
     gpsContent: @Composable () -> Unit = {},
 ) {
     HudSurface(modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HudMetric("산책 시간", formatDuration(elapsedMillis))
+            controlContent()
+        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            HudMetric("산책 시간", formatDuration(elapsedMillis))
-            HudMetric("이동 거리", formatDistance(distanceMeters))
+            Text(formatDistance(distanceMeters), color = TextDark, fontSize = 13.sp,
+                modifier = Modifier.semantics { contentDescription = "이동 거리 ${formatDistance(distanceMeters)}" })
             when {
                 summary != null -> {
                     HudDivider()
@@ -550,6 +560,7 @@ private fun WalkTopHud(
                 }
             }
             gpsContent()
+        }
         }
     }
 }
