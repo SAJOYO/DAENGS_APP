@@ -260,6 +260,7 @@ fun NaverMapSurface(
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
     // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.
     NaverTerritoryLayer(naverMap, scene.territorySites, onSelectTerritorySite)
+    NaverStayStampLayer(naverMap, scene.stayStamps)
 
     DisposableEffect(naverMap) {
         val map = naverMap

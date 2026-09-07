@@ -63,6 +63,7 @@ internal fun WalkUiState.toMapPresentation(
                         selected = moment.id == map.selectedMomentId,
                     )
                 } + diaryPhotos.photoMarkers(),
+                stayStamps = completion.detail?.stayStamps ?: tracking.stayStamps,
                 trail = if (completion.detail == null) {
                     tracking.trail.toTrailLayerState()
                 } else {
