@@ -175,6 +175,27 @@ object GaitApi {
     }
 
     /**
+     * 같은 반려견의 두 기록 비교. `POST /app/gait/compare`.
+     *
+     * **순서는 상관없다** — 서버가 날짜로 past/recent 를 정한다. 그래서 A 진입(방금
+     * 분석한 기록이 기준)과 B 진입(둘 다 고름)이 같은 호출을 쓴다.
+     *
+     * ⚠️ **영상을 읽지 않는다.** 비교는 저쪽 DB 의 분석 데이터만으로 끝난다 — 저장소가
+     *    무엇이든(local·gcs) 이 호출은 그대로 동작한다.
+     */
+    suspend fun compare(
+        accessToken: String,
+        recordIdA: String,
+        recordIdB: String,
+    ): Result<GaitCompared> = call {
+        val body = JSONObject().put("record_id_a", recordIdA).put("record_id_b", recordIdB)
+        open("/compare", "POST", accessToken).use {
+            it.writeJson(body)
+            GaitCompared.parse(it.readJson())
+        }
+    }
+
+    /**
      * 기록을 지운다. `DELETE /app/gait/records/{id}`.
      *
      * 서버는 지우기로 표시만 하고 **저장소 파일 정리는 워커가 이어서** 한다. 앱에서는
@@ -478,3 +499,69 @@ fun GaitSummary.toRecord(): GaitRecord = GaitRecord(
     thumbnail = null,
     comparable = comparable,
 )
+
+
+/**
+ * 비교 결과.
+ *
+ * **문장을 앱이 짓지 않는다.** [messageForUi] 가 저쪽이 실제 계산에서 유도한 한 줄이고,
+ * 화면에 쓸 값으로 지목된 것이다. `_dev_only_*` 는 서버가 아예 안 내려준다.
+ */
+data class GaitCompared(
+    val available: Boolean,
+    val messageForUi: String?,
+    /** 관절 이름 → (x 판정, y 판정). **합치지 않는다** — 아래 [toMetrics] 주석 참고. */
+    val jointComparison: Map<String, JointNote>,
+    val reliabilityNote: String?,
+    /** 두 기록의 필터 버전이 다를 때. **표시해야 한다** — 같은 영상도 달라 보인다. */
+    val versionWarning: String?,
+) {
+    /** 관절 하나의 축별 판정. */
+    data class JointNote(val x: String?, val y: String?)
+
+    companion object {
+        fun parse(json: JSONObject): GaitCompared {
+            val joints = json.optJSONObject("joint_movement_range_comparison")
+            val notes = joints?.keys()?.asSequence()?.associateWith { joint ->
+                // 저쪽은 관절마다 {record_a, record_b, comparison_note:{x,y}} 를 준다.
+                val note = joints.optJSONObject(joint)?.optJSONObject("comparison_note")
+                JointNote(note?.optStringOrNull("x"), note?.optStringOrNull("y"))
+            } ?: emptyMap()
+            return GaitCompared(
+                available = json.optString("status", "ok") != "unavailable",
+                messageForUi = json.optStringOrNull("message_for_ui"),
+                jointComparison = notes,
+                reliabilityNote = json.optStringOrNull("reliability_note"),
+                versionWarning = json.optStringOrNull("version_warning"),
+            )
+        }
+    }
+}
+
+/**
+ * 비교 응답을 표의 줄들로 옮긴다.
+ *
+ * **관절 하나가 두 줄이 된다** (`Hock (좌우)` · `Hock (상하)`). x·y 를 하나로 합치지
+ * 않는 것은 의도다 — 두 축은 뜻이 다르고(앞뒤 이동 vs 위아래 흔들림), 합치면 **어느 쪽이
+ * 움직였는지가 사라진다.** 합치는 규칙은 모델이나 비교 로직을 바꿀 때 그때 정한다 (D-058).
+ *
+ * **문자열을 그대로 믿지 않고 아는 값만 옮긴다** — 모르는 값이 오면 [GaitDelta.Unknown]
+ * 이다. "차이 관찰됨" 을 놓쳐 "유사" 로 떨어지면 **없는 안심**을 주게 된다.
+ *
+ * 비교 자체가 불가(`status: unavailable`)면 표를 비운다. 그러면 [GaitComparison] 이
+ * 판정을 `NotEnough` 로 끌어낸다.
+ */
+fun GaitCompared.toMetrics(): List<GaitMetric> {
+    if (!available) return emptyList()
+    fun delta(v: String?) = when (v) {
+        "비슷함" -> GaitDelta.Similar
+        "차이 관찰됨" -> GaitDelta.Slight
+        else -> GaitDelta.Unknown
+    }
+    return jointComparison.flatMap { (joint, note) ->
+        listOf(
+            GaitMetric("$joint (좌우)", delta(note.x)),
+            GaitMetric("$joint (상하)", delta(note.y)),
+        )
+    }
+}

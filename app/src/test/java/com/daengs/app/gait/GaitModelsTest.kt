@@ -341,6 +341,53 @@ class GaitModelsTest {
         assertEquals(900, ticket.expiresInSeconds)
     }
 
+    // ── 비교 응답: x·y 를 각각 한 줄로 (D-058) ────────────────────────────
+    @Test
+    fun `관절 하나가 좌우 상하 두 줄이 된다`() {
+        """서버는 관절마다 comparison_note{x,y} 를 준다. **합치지 않는다** — 합치면
+        어느 축이 움직였는지가 사라진다."""
+        val compared = GaitCompared.parse(
+            JSONObject(
+                """
+                {"status":"ok","message_for_ui":"일부 움직임 지표에서 차이가 관찰됩니다",
+                 "joint_movement_range_comparison":{
+                   "Hock":{"record_a":{"x_range":10.0},"record_b":{"x_range":20.0},
+                           "comparison_note":{"x":"차이 관찰됨","y":"비슷함"}}},
+                 "version_warning":"두 기록의 분석 버전이 다릅니다"}
+                """.trimIndent(),
+            ),
+        )
+        val metrics = compared.toMetrics().associate { it.name to it.delta }
+
+        assertEquals(2, metrics.size)
+        assertEquals(GaitDelta.Slight, metrics["Hock (좌우)"])
+        assertEquals(GaitDelta.Similar, metrics["Hock (상하)"])
+        assertEquals("두 기록의 분석 버전이 다릅니다", compared.versionWarning)
+    }
+
+    @Test
+    fun `모르는 판정 문자열은 유사로 떨어뜨리지 않는다`() {
+        """"차이 관찰됨" 을 놓쳐 "유사" 가 되면 **없는 안심**을 준다."""
+        val compared = GaitCompared.parse(
+            JSONObject(
+                """{"status":"ok","joint_movement_range_comparison":{
+                     "Knee":{"comparison_note":{"x":"???","y":null}}}}"""
+            ),
+        )
+        val metrics = compared.toMetrics().associate { it.name to it.delta }
+        assertEquals(GaitDelta.Unknown, metrics["Knee (좌우)"])
+        assertEquals(GaitDelta.Unknown, metrics["Knee (상하)"])
+    }
+
+    @Test
+    fun `비교 불가면 표를 비운다`() {
+        val compared = GaitCompared.parse(
+            JSONObject("""{"status":"unavailable","reason":"분석 가능 상태가 아닙니다"}"""),
+        )
+        assertFalse(compared.available)
+        assertTrue(compared.toMetrics().isEmpty())
+    }
+
     @Test
     fun `끝난 상태만 폴링을 멈춘다`() {
         // 폴링이 여기서 끝을 판단한다. PROCESSING 을 끝으로 보면 결과 없는 카드가 뜬다.
