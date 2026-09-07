@@ -72,7 +72,7 @@ fun NicknameScreen(
     startEditing: Boolean = false,
 ) {
     // 「마이」의 "고치기" 로 들어오면 인사말을 건너뛴다. 이미 아는 이름에 대고
-    // "네 이름은 ... 야" 라고 하면 무엇을 하는 화면인지 안 읽힌다.
+    // "이름을 하나 지어 뒀어요" 라고 하면 무엇을 하는 화면인지 안 읽힌다.
     var editing by remember { mutableStateOf(startEditing) }
     var typed by remember { mutableStateOf(issued) }
     val check = rememberNicknameCheck(typed, if (editing) issued else null, ask.takeIf { editing })
@@ -99,15 +99,18 @@ fun NicknameScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
+                // **문장을 이름으로 자르지 않는다.** 예전에는 "네 이름은 / <이름> / 야"
+                // 세 줄이었다. 조사 "야" 만 남은 줄이 생기고, 앱에서 여기만 반말이었다
+                // (버튼은 "이 이름으로 시작", 다음 화면은 "뭐라고 부를까요?" 다).
                 Text("반가워요!", color = TextMuted, fontSize = 14.sp)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "네 이름은",
+                    "이름을 하나 지어 뒀어요",
                     color = TextDark,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(12.dp))
                 Text(
                     issued,
                     color = DaengPink,
@@ -115,8 +118,6 @@ fun NicknameScreen(
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(6.dp))
-                Text("야", color = TextDark, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
 
             // 저장이 실패한 이유. **화면에 그대로 둔다** — 남이 채간 경우가 여기로 오고,
