@@ -59,9 +59,11 @@ fun diaryWalk(
     photos: List<WalkPhoto>,
     draft: StoryboardDraft,
     analysis: StoryboardAnalysisView,
+    observations: List<com.daengs.app.walk.RecordedFix> = emptyList(),
 ): DiaryWalk {
     val localEntries = entries.filter { it.sessionId == walk.sessionId }
-    val sources = analysis.bundle?.scenes?.map { scene ->
+    val index = StoryboardObservationIndex(walk, observations)
+    val sources = analysis.bundle?.takeIf { it.sessionId == walk.sessionId }?.scenes?.map { scene ->
         val id = scene.id.removePrefix("geo:")
         if (id == "start" || id == "end" || id.startsWith("entry:")) scene.copy(id = id) else scene
     }
@@ -69,8 +71,8 @@ fun diaryWalk(
         else applyStoryboardEdits(sources, draft)).filter { it.available && !it.hidden }.map { scene ->
         val entryId = scene.entryReference?.entryId ?: scene.id.takeIf { it.startsWith("entry:") }
             ?.removePrefix("entry:")
-        // An automatic scene's route distance is not an App GPS coordinate. Do not guess one.
-        val point = localEntries.firstOrNull { it.id == entryId }?.point
+        val point = if (entryId != null) localEntries.firstOrNull { it.id == entryId }?.point
+            else index.resolve(scene.observation)
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
             scene.title, scene.body, point, scene.evidence, scene.needsReview, entryId = entryId)
     } + photos.filter { it.sessionId == walk.sessionId }.map { photo ->

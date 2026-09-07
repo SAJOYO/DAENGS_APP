@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,7 +21,7 @@ import com.daengs.app.R
 import com.daengs.app.map.layers.territory.*
 import com.daengs.app.ui.theme.DaengsTheme
 
-/** SDK를 띄울 수 없는 Preview에서 실제 효과의 벡터와 frame 값을 같은 크기로 검토한다. */
+/** SDK와 같은 픽셀 크기·바닥 기준점으로 그림과 효과를 검토한다. */
 @Composable
 internal fun TerritoryFeedbackSample(kind: TerritoryFeedbackKind, progress: Float) {
     val frame = territoryFeedbackFrame(kind, progress)
@@ -31,16 +32,23 @@ internal fun TerritoryFeedbackSample(kind: TerritoryFeedbackKind, progress: Floa
         TerritoryFeedbackKind.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
     }).asImageBitmap() }
     val accent = if (kind == TerritoryFeedbackKind.MARKED) Color(0xffe3912d) else Color(0xff3c9673)
+    val size = TerritoryPoleArt.size(selected = true, scale = frame.markerScale)
+    val density = LocalDensity.current
     Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(130.dp)) {
             drawCircle(accent.copy(alpha = (40 + 35 * frame.glow) / 255f))
             drawCircle(accent, style = Stroke((2 + frame.glow).dp.toPx()))
         }
         Image(icon, "전봇대",
-            modifier = Modifier.size((38 * frame.markerScale).dp))
+            modifier = with(density) { Modifier
+                .offset(y = (size.second * (.5f - TerritoryPoleArt.ANCHOR_Y)).toDp())
+                .size(size.first.toDp(), size.second.toDp()) })
         if (frame.pawAlpha > 0f) Icon(painterResource(R.drawable.ic_territory_paw), "영역표시 성공 발자국",
             tint = accent.copy(alpha = frame.pawAlpha),
-            modifier = Modifier.offset(y = (-35).dp).size((18 * frame.pawScale).dp))
+            modifier = with(density) {
+                val pawSize = 36 * frame.pawScale
+                Modifier.offset(y = (-1.1f * pawSize).toDp()).size(pawSize.toDp())
+            })
     }
 }
 

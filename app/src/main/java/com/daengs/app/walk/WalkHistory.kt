@@ -18,7 +18,8 @@ class WalkHistory(private val log: WalkFixLog) {
     val changes get() = log.historyChanges
 
     /** Fetch only a page plus one eligible lookahead. Skipped short sessions never create empty pages. */
-    suspend fun finishedPage(before: WalkHistoryCursor? = null, dogId: String? = null, size: Int = 5): WalkHistoryPage =
+    suspend fun finishedPage(before: WalkHistoryCursor? = null, dogId: String? = null, size: Int = 5,
+        filter: WalkHistoryFilter = WalkHistoryFilter(), zone: ZoneId = ZoneId.systemDefault()): WalkHistoryPage =
         withContext(Dispatchers.IO) {
             require(size in 1..30)
             val owner = log.ownerId
@@ -27,9 +28,12 @@ class WalkHistory(private val log: WalkFixLog) {
             while (walks.size <= size) {
                 val candidates = log.finishedSessionsPage(cursor, dogId, size + 1)
                 if (candidates.isEmpty()) break
+                val matching = candidates.filter { filter.matches(it, zone) }
+                val text = if (filter.keyword.isBlank()) emptyMap() else log.historySearchText(matching.map { it.id })
                 for (session in candidates) {
-                    val summary = summarize(session, log.fixes(session.id), maxRouteSamples = Int.MAX_VALUE)
                     cursor = WalkHistoryCursor(session.startedAtMillis, session.id)
+                    if (session !in matching || !filter.matchesText(text[session.id].orEmpty())) continue
+                    val summary = summarize(session, log.fixes(session.id), maxRouteSamples = Int.MAX_VALUE)
                     if (summary.countsAsWalk || log.hasEntries(session.id)) walks += summary.forHistoryThumbnail()
                     if (walks.size > size) break
                 }
@@ -144,6 +148,7 @@ class WalkHistory(private val log: WalkFixLog) {
             route = summary.toSessionRoute(),
             moments = log.actions(sessionId).toMomentGroups(),
             stayStamps = detectStayStamps(fixes),
+            observations = fixes,
         )
     }
 }

@@ -21,7 +21,13 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val forgottenOwners = mutableSetOf<String>()
 
     override val ownerId: String get() = owner()
-    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds()) { _, _, _ -> Unit }
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds(), dao.observeAnalysisChanges()) { _, _, _, _ -> Unit }
+
+    override suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> {
+        val expectedOwner = owner()
+        val result = dao.historySearchText(sessionIds, expectedOwner)
+        return if (owner() == expectedOwner) result else emptyMap()
+    }
 
     override suspend fun restoreSession(session: RecordedSession) = sessionMutex.withLock {
         val verifiedOwner = requireNotNull(session.ownerId)

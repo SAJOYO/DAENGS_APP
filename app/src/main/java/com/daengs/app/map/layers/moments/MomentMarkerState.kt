@@ -9,4 +9,5 @@ data class MomentMarkerState(
     val label: String,
     val selected: Boolean = false,
     val photoFile: java.io.File? = null,
+    val aboveRouteEndpoints: Boolean = false,
 )

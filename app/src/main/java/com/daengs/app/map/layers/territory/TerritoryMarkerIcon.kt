@@ -2,27 +2,31 @@ package com.daengs.app.map.layers.territory
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import androidx.core.content.ContextCompat
+import android.graphics.BitmapFactory
+import androidx.annotation.DrawableRes
 import com.daengs.app.R
+import kotlin.math.roundToInt
 
-/** 전체 벡터에 단색 tint를 씌우면 전봇대 선까지 원에 묻힌다. 점유색은 테두리에만 준다. */
-internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOccupancy): Bitmap {
-    val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    checkNotNull(ContextCompat.getDrawable(context, R.drawable.ic_territory_site)).mutate().apply {
-        setBounds(0, 0, 96, 96)
-        draw(canvas)
+/** tools/map_sprite.py와 같은 캔버스/밑면 접점. 지도와 Preview에서 함께 쓴다. */
+internal object TerritoryPoleArt {
+    const val WIDTH = 256
+    const val HEIGHT = 640
+    const val ANCHOR_X = .5f
+    const val ANCHOR_Y = 624f / HEIGHT
+
+    fun size(selected: Boolean, scale: Float = 1f): Pair<Int, Int> {
+        val width = ((if (selected) 60 else 48) * scale).roundToInt()
+        return width to (width * HEIGHT.toFloat() / WIDTH).roundToInt()
     }
-    val accent = when (occupancy) {
-        TerritoryMarkerOccupancy.NEUTRAL -> Color.rgb(115, 125, 135)
-        TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(227, 145, 45)
-        TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(60, 150, 115)
+
+    @DrawableRes
+    fun resource(occupancy: TerritoryMarkerOccupancy): Int = when (occupancy) {
+        TerritoryMarkerOccupancy.NEUTRAL -> R.drawable.map_territory_pole_neutral
+        TerritoryMarkerOccupancy.UNVERIFIED, TerritoryMarkerOccupancy.VERIFIED ->
+            R.drawable.map_territory_pole_occupied
     }
-    canvas.drawCircle(48f, 48f, 43f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = accent; style = Paint.Style.STROKE; strokeWidth = 5f
-    })
-    return bitmap
 }
+
+/** 점유 여부만 그림으로 표시한다. 인증 여부는 기존 지도 caption/카드가 담당한다. */
+internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOccupancy): Bitmap =
+    checkNotNull(BitmapFactory.decodeResource(context.resources, TerritoryPoleArt.resource(occupancy)))

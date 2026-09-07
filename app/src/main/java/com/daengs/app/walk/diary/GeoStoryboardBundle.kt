@@ -15,10 +15,12 @@ data class GeoStoryboardBundle(
         const val FORMAT = "walk-storyboard-candidates-v1"
         const val FORMAT_V2 = "walk-storyboard-candidates-v2"
         const val FORMAT_V3 = "walk-storyboard-candidates-v3"
+        const val FORMAT_V4 = "walk-storyboard-candidates-v4"
         fun parse(text: String): GeoStoryboardBundle {
             require(text.toByteArray(Charsets.UTF_8).size <= 1_000_000) { "장면 파일이 너무 커요." }
             val obj = JSONObject(text)
-            val v3 = obj.getString("format") == FORMAT_V3
+            val v4 = obj.getString("format") == FORMAT_V4
+            val v3 = v4 || obj.getString("format") == FORMAT_V3
             val v2 = v3 || obj.getString("format") == FORMAT_V2
             require(v2 || obj.getString("format") == FORMAT) { "지원하지 않는 장면 형식이에요." }
             obj.exactKeys(*(listOf("format", "session_id", "source_revision", "synthetic", "scenes") +
@@ -29,13 +31,17 @@ data class GeoStoryboardBundle(
             require(obj.get("synthetic") is Boolean)
             val array = obj.getJSONArray("scenes")
             require(array.length() in 1..250)
-            val scenes = (0 until array.length()).map { i -> parseScene(array.getJSONObject(i), v2, obj.getBoolean("synthetic")) }
+            val scenes = (0 until array.length()).map { i -> parseScene(array.getJSONObject(i), v2, v4, obj.getBoolean("synthetic")) }
             require(scenes.map { it.id }.distinct().size == scenes.size) { "장면 ID가 중복됐어요." }
             require(scenes.zipWithNext().all { (a, b) -> a.atMillis <= b.atMillis }) {
                 "장면이 시간순으로 정렬되지 않았어요."
             }
             val title = if (!v3 || obj.isNull("title")) null else obj.requiredText("title", 40).also {
                 require(it == it.trim() && it.none { c -> c in "\n\r\t" })
+            }
+            if (v4) {
+                val end = (0 until array.length()).maxOf { Instant.parse(array.getJSONObject(it).getString("ended_at")).toEpochMilli() }
+                require(scenes.all { it.observation == null || it.observation.atMillis in scenes.first().atMillis..end })
             }
             if (v3) {
                 val refs = obj.getJSONArray("title_fact_ids").strings()
@@ -50,9 +56,10 @@ data class GeoStoryboardBundle(
                 if (v2) StoryboardSelection.parse(obj.getJSONObject("selection")) else null, title)
         }
 
-        private fun parseScene(obj: JSONObject, v2: Boolean, synthetic: Boolean): StoryboardScene {
+        private fun parseScene(obj: JSONObject, v2: Boolean, v4: Boolean, synthetic: Boolean): StoryboardScene {
             obj.exactKeys(*(listOf("id", "revision", "started_at", "ended_at", "route", "reasons", "title", "facts", "sources") +
-                if (v2) listOf("entry") else emptyList()).toTypedArray())
+                (if (v2) listOf("entry") else emptyList()) +
+                (if (v4) listOf("observation") else emptyList())).toTypedArray())
             val id = obj.requiredText("id", 100)
             val revision = obj.requiredText("revision", 100)
             val start = Instant.parse(obj.getString("started_at")).toEpochMilli()
@@ -76,6 +83,11 @@ data class GeoStoryboardBundle(
                     require(block.isFinite() && block >= 0 && block % 1.0 == 0.0)
                 }
             }
+            val observation = if (!v4 || obj.isNull("observation")) null else
+                StoryboardObservation.parse(obj.getJSONObject("observation")).also {
+                    require(entry == null && "observation_gap" !in reasons)
+                    require("session_boundary" in reasons || it.atMillis in start..end)
+                }
             val sources = obj.getJSONArray("sources")
             require(sources.length() in 1..20)
             val sourceIds = mutableSetOf<String>()
@@ -111,11 +123,12 @@ data class GeoStoryboardBundle(
                 route?.let { append("\n수용 경로: ${it.getDouble("start_m").toInt()}~${it.getDouble("end_m").toInt()}m") }
                 append("\n\n관측 사실\n"+texts.joinToString("\n"))
                 append("\n\n출처\n"+sourceTexts.joinToString("\n\n"))
+                observation?.let { append("\n\n지도 위치: 원본 관측 ${it.clientSeq} · ${Instant.ofEpochMilli(it.atMillis)}") }
             }
             // Include actual payload as well as producer revision to detect incorrectly reused revisions.
             return StoryboardScene("geo:$id", start, obj.requiredText("title", 80),
                 texts.joinToString("\n"), evidence, storyboardHash(revision+canonicalJson(obj)),
-                sourcePayload = canonicalJson(obj), entryReference = entry)
+                sourcePayload = canonicalJson(obj), entryReference = entry, observation = observation)
         }
     }
 }

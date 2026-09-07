@@ -60,10 +60,10 @@ internal fun WalkDiaryMapScreen(
         try { history.changes.collect { detail = history.sessionDetail(sessionId); loaded = true } }
         catch (e: Exception) { if (e is CancellationException) throw e; error = "산책 경로를 불러오지 못했어요." }
     }
-    LaunchedEffect(detail?.summary, retry) {
+    LaunchedEffect(detail, retry) {
         diary = null
         val summary = detail?.summary ?: return@LaunchedEffect
-        try { reader.observe(listOf(summary)).collect { diary = it.singleOrNull() } }
+        try { reader.observe(listOf(summary), mapOf(sessionId to detail!!.observations)).collect { diary = it.singleOrNull() } }
         catch (e: Exception) { if (e is CancellationException) throw e; error = "장면을 불러오지 못했어요." }
     }
     fun change(value: WalkEntry, delete: Boolean) {
@@ -82,9 +82,6 @@ internal fun WalkDiaryMapScreen(
     val scenes = diary?.scenes.orEmpty()
     val selected = scenes.firstOrNull { it.id == selectedId }
     val route = detail?.route
-    // 출발·도착 라벨에서 시각을 뺀 뒤로 `formatTime` 인자가 없어졌는데(dev), 이 호출부만
-    // 안 고쳐진 채 머지돼서 dev 가 컴파일되지 않았다. 인자를 빼는 쪽이 맞는 고침이다 —
-    // 라벨을 "출발"·"도착" 으로 줄인 것이 그쪽의 결정이다.
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
     val mapScene = remember(completed, markers, detail?.stayStamps) {
@@ -161,7 +158,7 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): L
     return diaryLocationGroups(scenes).map { group ->
         val chosen = group.firstOrNull { it.id == selectedId } ?: group.first()
         MomentMarkerState(chosen.id, requireNotNull(chosen.point), group.joinToString(" · ") { order[it.id].toString() },
-            selected = group.any { it.id == selectedId })
+            selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true)
     }
 }
 
