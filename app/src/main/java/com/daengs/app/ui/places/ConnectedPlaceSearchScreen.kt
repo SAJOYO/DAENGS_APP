@@ -107,13 +107,6 @@ fun ConnectedPlaceSearchScreen(
     BackHandler(onBack = onBack)
     PlaceSearchLabScreen(
         state = ui, live = true, onBack = onBack,
-        searchOriginLabel = when {
-            state.waitingForSearchLocation && state.location is PlaceLocationState.Failed -> "내 위치 확인 필요"
-            state.waitingForSearchLocation -> "내 위치 확인 중"
-            display.origin == null -> "검색 위치 미설정"
-            display.originMode == PlaceOriginMode.PINNED -> "지도 중심 기준"
-            else -> "내 위치 기준"
-        },
         onEdit = { draft = it }, onAi = { onAction(PlacesAction.SetAiMode(!ai)); notice = null },
         onSubmit = {
             when {

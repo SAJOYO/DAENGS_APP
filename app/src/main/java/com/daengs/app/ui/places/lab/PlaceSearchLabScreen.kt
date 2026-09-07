@@ -41,7 +41,6 @@ fun PlaceSearchLabScreen(
     onAction: (String) -> Unit = {},
     live: Boolean = false,
     onBack: (() -> Unit)? = null,
-    searchOriginLabel: String? = null,
     onRadius: (Int) -> Unit = {},
     onRefreshProfiles: () -> Unit = {},
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
@@ -93,28 +92,14 @@ fun PlaceSearchLabScreen(
         }
         Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.Surface) {
             Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).padding(bottom = 10.dp)) {
-                Column(Modifier.fillMaxWidth().background(DaengsColors.BrandPrimary).padding(top = 10.dp)) {
-                    Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
-                        Text("$resultLabel $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
-                        searchOriginLabel?.let { Text(it, fontSize = 10.sp, color = DaengsColors.TextPrimary) }
-                    }
+                Box(Modifier.fillMaxWidth().height(16.dp).background(DaengsColors.BrandPrimary), contentAlignment = Alignment.Center) {
+                    Box(Modifier.width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
                 }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).semantics { contentDescription = "검색 조건" },
-                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlaceConditionChip(
-                        label = state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
-                        selected = state.selectedDogIds.isNotEmpty(),
-                        onClick = { profiles = true; if (live) onRefreshProfiles() },
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    PlaceConditionChip("반경 ${state.applied.radiusMeters / 1000}km ▾", false, { filters = true })
-                    PlaceConditionChip("주차 우선", state.applied.parkingFirst,
-                        { onParking(!state.applied.parkingFirst) }, Modifier.semantics {
-                            stateDescription = if (state.applied.parkingFirst) "켜짐" else "꺼짐"
-                        })
-                }
+                val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
+                PlaceResultControls("$resultLabel $count",
+                    state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
+                    state.selectedDogIds.isNotEmpty(), state.applied.radiusMeters, state.applied.parkingFirst,
+                    { profiles = true; if (live) onRefreshProfiles() }, { filters = true }, { onParking(!state.applied.parkingFirst) })
                 Spacer(Modifier.height(4.dp))
 
                 Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
@@ -241,6 +226,43 @@ fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, o
             }
         }
     }
+}
+
+@Composable
+private fun PlaceResultControls(count: String, dogLabel: String, dogSelected: Boolean, radiusMeters: Int,
+    parking: Boolean, onDog: () -> Unit, onRadius: () -> Unit, onParking: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        val availableWidth = maxWidth
+        val singleRow = availableWidth >= 340.dp
+        val controls: @Composable (Modifier) -> Unit = { modifier ->
+            Row(modifier.semantics { contentDescription = "검색 조건" },
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                PlaceConditionChip(dogLabel, dogSelected, onDog, Modifier.weight(1f, fill = false))
+                PlaceConditionChip("반경 ${radiusMeters / 1000}km ▾", false, onRadius)
+                PlaceConditionChip("주차 우선", parking, onParking, Modifier.semantics {
+                    stateDescription = if (parking) "켜짐" else "꺼짐"
+                })
+            }
+        }
+        if (singleRow) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(count, Modifier.weight(1f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                controls(Modifier.widthIn(max = availableWidth - 84.dp))
+            }
+        } else {
+            Column {
+                Text(count, Modifier.fillMaxWidth().padding(top = 6.dp), fontSize = 13.sp)
+                controls(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 390)
+@Preview(showBackground = true, widthDp = 320)
+@Composable
+private fun ResultControlsPreview() {
+    DaengsTheme { PlaceResultControls("카페 12곳", "반려견 선택 ▾", false, 3000, false, {}, {}, {}) }
 }
 
 @Composable

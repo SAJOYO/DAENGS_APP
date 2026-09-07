@@ -46,11 +46,14 @@ class ConnectedPlaceSearchUiTest {
         val grid = compose.onNodeWithTag("place-purpose-grid").fetchSemanticsNode().boundsInRoot
         val radius = compose.onNodeWithText("반경 3km ▾").fetchSemanticsNode().boundsInRoot
         val parking = compose.onNodeWithText("주차 우선").fetchSemanticsNode().boundsInRoot
-        assertEquals(grid.left, conditions.left, 1f)
+        val count = compose.onNodeWithText("카페 0곳").fetchSemanticsNode().boundsInRoot
+        assertEquals(grid.left, count.left, 1f)
+        assertTrue(conditions.left > grid.left)
         assertEquals(conditions.top, radius.top, 1f)
         assertEquals(radius.top, parking.top, 1f)
         assertEquals(radius.left - conditions.right, parking.left - radius.right, 1f)
-        assertTrue(parking.right <= grid.right)
+        assertEquals(grid.right, parking.right, 1f)
+        compose.onNodeWithText("지도 중심 기준").assertDoesNotExist()
     }
     @Test fun failedGpsOffersRetryInsteadOfEmptyResults() {
         val state = ready().copy(
@@ -60,7 +63,7 @@ class ConnectedPlaceSearchUiTest {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNodeWithText("검색 결과가 없어요.").assertDoesNotExist()
-        compose.onNodeWithText("내 위치 확인 필요").assertExists()
+        compose.onNode(hasText("현재 위치를 확인하지 못했습니다.") and hasAnyAncestor(hasScrollAction())).assertExists()
         compose.onNodeWithText("다시 확인").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(PlacesAction.RetrySearch, actions.single())
     }
