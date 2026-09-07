@@ -1,6 +1,7 @@
 package com.daengs.app.gait
 
 import android.content.Context
+import android.net.Uri
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 
@@ -100,6 +101,9 @@ class HttpGaitAnalyzer(
             // 길이는 **기기에서 읽은 값**이다. 저쪽 응답에 없다.
             seconds = video.seconds,
             video = video.uri,
+            // 서버가 만든 스켈레톤 영상. 있으면 재생 화면이 원본 대신 이걸 튼다. 저장소가
+            // 미설정이면 저쪽이 null 로 주고, 그때는 방금 찍은 원본으로 물러난다.
+            overlay = finished.overlayUrl?.let(Uri::parse),
             thumbnail = video.thumbnail,
             // **앱이 정하지 않는다.** 저쪽 quality_status 가 그대로 온다.
             comparable = finished.qualityOk,

@@ -33,6 +33,12 @@ data class GaitRecord(
      * 화면을 채우려고 만든 것이고, 재생할 파일이 실제로는 없다.
      */
     val video: Uri? = null,
+    /**
+     * 분석 결과(스켈레톤) 영상 주소. 서버가 만든 것으로, 원본 위에 관절 점·선이 그려져 있다.
+     * 있으면 재생 화면이 [video](기기 원본) 대신 이걸 튼다 — 사용자가 보려는 것이 그 점·선이다.
+     * 없으면(저장소 미설정·구 기록) null 이고 원본으로 물러난다. 서버 `overlay_url` 이 원본이다.
+     */
+    val overlay: Uri? = null,
     /** 목록·카드에 그릴 한 장. 없으면 화면이 발바닥 자리표시를 그린다. */
     val thumbnail: Bitmap? = null,
     /** 다른 기록과 나란히 볼 수 있나. 관절이 안 잡힌 영상은 false 다. */
@@ -57,6 +63,13 @@ data class GaitRecord(
      */
     val aspect: Float? = null,
 ) {
+    /**
+     * 틀 영상이 하나라도 있나. 서버 오버레이(지난 기록의 유일한 재생본)든 기기 원본이든.
+     * 재생기·비교 화면이 "재생할 게 있나" 를 이 하나로 판단한다 — [overlay] 우선은
+     * [com.daengs.app.ui.gait.GaitVideoPlayer] 안에 있고, 여기서는 존재 여부만 본다.
+     */
+    val playable: Boolean get() = overlay != null || video != null
+
     /** `08.31`. 카드 제목과 비교 화면의 두 기둥에 같은 모양으로 쓴다. */
     val dateLabel: String get() = date.format(DAY)
 

@@ -1,5 +1,6 @@
 package com.daengs.app.gait
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,13 +92,48 @@ class GaitHolder(
             return null
         }
 
+        // 저장된 기록은 목록에 오버레이 주소가 없다(`has_overlay` 만 온다). 비교 화면이
+        // 두 편을 재생하려면 각 상세를 받아 오버레이를 채운다 — 방금 분석한 recent 는
+        // 이미 들고 있어 건너뛴다.
+        val recentFull = withOverlay(recent, token)
+        val pastFull = withOverlay(past, token)
+
         // ⚠️ **순서를 앱이 정하지 않는다.** 저쪽이 날짜로 past/recent 를 가른다 — A 진입
         //    (방금 분석한 것이 기준)과 B 진입(둘 다 고름)이 서로 다른 순서를 보내도
         //    같은 결과가 나와야 해서다.
         return GaitApi.compare(token, recentId, pastId)
-            .map { GaitComparison.of(recent, past, it.toMetrics(), it.messageForUi, it.versionWarning) }
+            .map { GaitComparison.of(recentFull, pastFull, it.toMetrics(), it.messageForUi, it.versionWarning) }
             .onFailure { error = it.message ?: "두 기록을 비교하지 못했어요." }
             .getOrNull()
+    }
+
+    /**
+     * 저장된 기록에 오버레이 주소를 채운다. 목록 응답에는 없어서(상세에만 `overlay_url`)
+     * 재생하려면 상세를 한 번 받아야 한다. 이미 있거나(방금 분석) 표본이면 그대로 둔다.
+     * 상세 조회가 실패해도 원본으로 물러나면 되므로 원래 기록을 돌려준다.
+     */
+    private suspend fun withOverlay(record: GaitRecord, token: String): GaitRecord {
+        if (record.overlay != null || record.id.startsWith(SAMPLE_PREFIX)) return record
+        val url = GaitApi.record(token, record.id).getOrNull()?.overlayUrl ?: return record
+        return record.copy(overlay = Uri.parse(url))
+    }
+
+    /**
+     * 상세 화면을 열 때, 저장된 기록에 오버레이를 채워 목록에 도로 넣는다. 이미 있으면
+     * 아무 것도 안 한다 — 조용히 재생본이 생긴다. 실패는 무시한다(원본/자리표시로 물러난다).
+     *
+     * 목록 전체를 미리 채우지 않는 이유: 기록마다 상세 요청이 하나씩 붙어 목록 로드가
+     * 느려진다. **여는 기록만** 그때 채운다.
+     */
+    suspend fun ensureOverlay(id: String) {
+        if (!remote) return
+        val record = find(id) ?: return
+        if (record.overlay != null || id.startsWith(SAMPLE_PREFIX)) return
+        val token = accessToken() ?: return
+        val enriched = withOverlay(record, token)
+        if (enriched.overlay != null) {
+            records = records.map { if (it.id == id) enriched else it }
+        }
     }
 
     /**

@@ -140,9 +140,9 @@ fun GaitCompareScreen(
                 )
             }
 
-            // 둘 다 재생. 한쪽이라도 파일이 있어야 의미가 있다 — 표본끼리
-            // 비교하면 돌릴 것이 없으므로 단추를 감춘다.
-            if (comparison.recent.video != null || comparison.past.video != null) {
+            // 둘 다 재생. 한쪽이라도 틀 것이 있어야 의미가 있다 — 서버 오버레이(지난
+            // 기록의 유일한 재생본)나 기기 원본 중 하나라도. 표본끼리면 둘 다 없어 감춘다.
+            if (comparison.recent.playable || comparison.past.playable) {
                 GaitActionButton(
                     if (playing) DaengsIcon.Close else DaengsIcon.Play,
                     if (playing) "둘 다 멈춤" else "둘 다 재생",

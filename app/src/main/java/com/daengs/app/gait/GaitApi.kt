@@ -408,6 +408,12 @@ data class GaitAnalyzed(
     val recommendation: String?,
     val hasOverlay: Boolean,
     /**
+     * 분석 결과(스켈레톤) 영상을 받을 주소. [hasOverlay] 는 "있나", 이 값은 "어디서 받나" 다 —
+     * overlay 가 있어도 저장소가 미설정이면 저쪽이 null 로 준다. 있으면 재생 화면이
+     * 기기 원본 대신 이걸 튼다(점·선이 그 위에 그려져 있다).
+     */
+    val overlayUrl: String?,
+    /**
      * 워커가 실패한 사유. **운영 진단용이라 화면에 그대로 띄우지 않는다** —
      * 스택 조각이나 내부 경로가 들어 있을 수 있다.
      */
@@ -429,6 +435,7 @@ data class GaitAnalyzed(
                 reason = quality?.optStringOrNull("reason"),
                 recommendation = quality?.optStringOrNull("recommendation"),
                 hasOverlay = json.optBoolean("has_overlay", false),
+                overlayUrl = json.optStringOrNull("overlay_url"),
                 failureReason = json.optStringOrNull("failure_reason"),
             )
         }

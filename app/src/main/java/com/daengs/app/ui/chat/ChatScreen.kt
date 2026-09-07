@@ -1018,6 +1018,10 @@ fun ChatScreen(
     }
 
     gaitDetail?.let { id ->
+        // 저장된 기록은 오버레이 주소가 목록에 없다. 상세를 열 때 한 번 채워, 재생기가
+        // 원본 대신 스켈레톤 영상을 틀 수 있게 한다. 방금 분석한 기록은 이미 들고 있어
+        // 조회가 그냥 건너뛴다.
+        LaunchedEffect(id) { gait.ensureOverlay(id) }
         gait.find(id)?.let { record ->
             GaitDetailScreen(
                 record = record,
