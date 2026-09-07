@@ -321,7 +321,11 @@ private fun WalkGameOverlay(
                 })
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
-                    WalkSpeedLegend(Modifier.align(Alignment.End), showColorSettings = true)
+                    if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End), showColorSettings = true)
+                    else WalkSpeedometer(
+                        speed = if (locationGranted && preciseLocation && locationError == null)
+                            walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                        modifier = Modifier.align(Alignment.End))
                 }
             }
             val dock: @Composable () -> Unit = {
