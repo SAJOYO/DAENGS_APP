@@ -131,9 +131,17 @@ class GaitHolder(
      * 상세 조회가 실패해도 원본으로 물러나면 되므로 원래 기록을 돌려준다.
      */
     private suspend fun withOverlay(record: GaitRecord, token: String): GaitRecord {
-        if (record.overlay != null || record.id.startsWith(SAMPLE_PREFIX)) return record
-        val url = GaitApi.record(token, record.id).getOrNull()?.overlayUrl ?: return record
-        return record.copy(overlay = Uri.parse(url))
+        if (record.id.startsWith(SAMPLE_PREFIX)) return record
+        // 오버레이도 길이도 이미 있으면 받을 것이 없다.
+        if (record.overlay != null && record.seconds != null) return record
+        val detail = GaitApi.record(token, record.id).getOrNull() ?: return record
+        return record.copy(
+            overlay = record.overlay ?: detail.overlayUrl?.let(Uri::parse),
+            // **길이도 여기서 채운다.** 목록 응답에는 길이가 없어 지난 기록이 "길이 미상"
+            // 으로만 떴다 — 비교 화면에서 최근 기록만 길이가 있고 옆은 미상이었다.
+            // 상세의 샘플 프레임 수(5fps)로 셈한다 ([GaitAnalyzed.approxSeconds]).
+            seconds = record.seconds ?: detail.approxSeconds,
+        )
     }
 
     /**
@@ -146,10 +154,11 @@ class GaitHolder(
     suspend fun ensureOverlay(id: String) {
         if (!remote) return
         val record = find(id) ?: return
-        if (record.overlay != null || id.startsWith(SAMPLE_PREFIX)) return
+        if ((record.overlay != null && record.seconds != null) || id.startsWith(SAMPLE_PREFIX)) return
         val token = accessToken() ?: return
         val enriched = withOverlay(record, token)
-        if (enriched.overlay != null) {
+        // 오버레이든 길이든 하나라도 새로 알았으면 목록에 도로 넣는다.
+        if (enriched != record) {
             records = records.map { if (it.id == id) enriched else it }
         }
     }

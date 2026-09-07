@@ -418,8 +418,24 @@ data class GaitAnalyzed(
      * 스택 조각이나 내부 경로가 들어 있을 수 있다.
      */
     val failureReason: String?,
+    /**
+     * 저쪽이 분석하며 훑은 프레임 수(`quality.n_frames_sampled`). 5fps 로 훑으므로
+     * **영상 길이를 이것으로 셈한다** ([approxSeconds]) — 응답에 길이 자체는 없다
+     * (`video_meta` 는 해상도·원본 fps 뿐). 분석이 안 끝났거나 실패면 null.
+     */
+    val sampledFrames: Int?,
 ) {
     val settled: Boolean get() = GaitStatus.settled(status)
+
+    /**
+     * 영상 길이(초)의 근사. `sampledFrames / 5`.
+     *
+     * 5fps 로 영상 전체를 훑으니 샘플 수가 곧 길이다 — 오차는 한 샘플 간격(0.2초) 안이라
+     * "24초" 라고 적기에 충분하다. 방금 분석한 기록은 기기에서 잰 정확한 길이가 이미
+     * 있어 이 값을 쓰지 않는다. **지난 기록**이 "길이 미상" 으로만 뜨던 것을 이걸로 메운다.
+     */
+    val approxSeconds: Int?
+        get() = sampledFrames?.takeIf { it > 0 }?.let { Math.round(it.toFloat() / GaitRecord.ANALYSIS_FPS) }
 
     companion object {
         fun parse(json: JSONObject): GaitAnalyzed {
@@ -437,6 +453,8 @@ data class GaitAnalyzed(
                 hasOverlay = json.optBoolean("has_overlay", false),
                 overlayUrl = json.optStringOrNull("overlay_url"),
                 failureReason = json.optStringOrNull("failure_reason"),
+                // 없으면 0 이 아니라 null — 0 으로 두면 "0초" 로 단언하게 된다.
+                sampledFrames = quality?.takeIf { it.has("n_frames_sampled") }?.optInt("n_frames_sampled"),
             )
         }
     }

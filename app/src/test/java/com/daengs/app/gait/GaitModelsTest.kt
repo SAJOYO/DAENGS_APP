@@ -547,6 +547,31 @@ class GaitModelsTest {
     }
 
     @Test
+    fun `지난 기록의 길이는 상세의 샘플 프레임 수로 셈한다`() {
+        """서버 응답에 길이가 없다 — `video_meta` 는 해상도·원본 fps 뿐이다. 5fps 로 훑은
+        샘플 수가 곧 길이라 그걸로 채운다. 비교 화면에서 옆 기록만 "길이 미상" 이던 것."""
+        val done = GaitAnalyzed.parse(
+            JSONObject(
+                """{"record_id":"r","status":"DONE","quality_status":"ok","quality_tier":"good",
+                    "quality":{"n_frames_sampled":119,"n_frames_gait_usable":105}}"""
+            ),
+        )
+        assertEquals(119, done.sampledFrames)
+        assertEquals(24, done.approxSeconds)   // 119 / 5 = 23.8 → 24
+
+        // 아직 분석 중이면 quality 가 없다 — 0초가 아니라 모른다.
+        val pending = GaitAnalyzed.parse(JSONObject("""{"record_id":"r","status":"PROCESSING"}"""))
+        assertEquals(null, pending.sampledFrames)
+        assertEquals(null, pending.approxSeconds)
+
+        // 샘플이 0 이면 길이를 말하지 않는다.
+        val empty = GaitAnalyzed.parse(
+            JSONObject("""{"record_id":"r","status":"DONE","quality":{"n_frames_sampled":0}}"""),
+        )
+        assertEquals(null, empty.approxSeconds)
+    }
+
+    @Test
     fun `끝난 상태만 폴링을 멈춘다`() {
         // 폴링이 여기서 끝을 판단한다. PROCESSING 을 끝으로 보면 결과 없는 카드가 뜬다.
         assertTrue(GaitStatus.settled("DONE"))
