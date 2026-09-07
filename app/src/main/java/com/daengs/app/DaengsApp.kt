@@ -48,6 +48,9 @@ class DaengsApp : Application() {
     lateinit var sessionProvider: SessionProvider
         private set
 
+    lateinit var activityRepository: com.daengs.app.activity.ActivityRepository
+        private set
+
     lateinit var walkRuntime: WalkRuntime
         private set
 
@@ -97,6 +100,9 @@ class DaengsApp : Application() {
 
         tokenStore = TokenStore(this)
         sessionProvider = SessionProvider(tokenStore)
+        activityRepository = com.daengs.app.activity.ActivityRepository(
+            com.daengs.app.activity.ActivityApi(), sessionProvider::freshSession, tokenStore::load,
+        )
 
         cardFiles = CardFiles(this)
         cardStore = RoomCardStore(
