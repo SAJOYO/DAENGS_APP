@@ -295,6 +295,19 @@ private fun WalkGameOverlay(
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top) {
+                Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
+                    val tools: @Composable () -> Unit = {
+                        WalkHomeButton(onHome)
+                        WalkRotateButton(layoutMode, onRequestOrientation)
+                        WalkMapSettingsButton()
+                    }
+                    if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
+                    else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
+                }
+                if (landscape && summary == null && tracking.trail.state != TrackingState.OFF) {
+                    WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
+                        walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null)
+                }
                 WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary,
                     modifier = Modifier.widthIn(max = 224.dp),
                     controlContent = {
@@ -310,21 +323,18 @@ private fun WalkGameOverlay(
                         locationSample, realtimeMillis * 1_000_000L)
                     WalkGpsDot(gps.good, gps.unavailable, gps.detail, onOpenSettings)
                 })
-                Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
-                    val tools: @Composable () -> Unit = {
-                        WalkHomeButton(onHome)
-                        if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
-                        WalkRotateButton(layoutMode, onRequestOrientation)
-                    }
-                    if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
-                    else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
-                }
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
-                    WalkSpeedLegend(showColorSettings = true)
+                    if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
+                    else if (!landscape) WalkSpeedometer(
+                        speed = if (locationGranted && preciseLocation && locationError == null)
+                            walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                        modifier = Modifier.align(Alignment.End))
                 }
             }
             val dock: @Composable () -> Unit = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                 Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
                     Row(Modifier.padding(4.dp).onSizeChanged { dockWidth = it.width }) {
                         WalkToolButton(WalkTool.CAMERA, "산책 사진 촬영", onPhotographWalk,
@@ -336,6 +346,7 @@ private fun WalkGameOverlay(
                         WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate, enabled = locationGranted && !locating, caption = "내 위치")
                     }
                 }
+            }
             }
             Column(Modifier.align(if (landscape) Alignment.BottomStart else Alignment.BottomCenter)
                 .widthIn(max = if (landscape) 300.dp else 360.dp)
@@ -353,6 +364,9 @@ private fun WalkGameOverlay(
                     (territory.failure != null || territory.sites.isEmpty()))) {
                     StatusPill(notice, tracking.errorMessage != null || territory.failure != null,
                         if (territory.failure != null) "다시 시도" else null, onRetryTerritory)
+                }
+                if (tracking.trail.state == TrackingState.OFF && summary == null) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                 }
                 if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
@@ -424,11 +438,12 @@ private fun WalkGameOverlay(
                     .systemBarsPadding()
                     .padding(12.dp)
                     .zIndex(30f),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 WalkHomeButton(onHome)
                 WalkRotateButton(layoutMode, onRequestOrientation)
+                WalkMapSettingsButton()
             }
         }
     }
@@ -442,7 +457,8 @@ private fun WalkMapModeButton(
 ) {
     val target = if (purpose == MapPurpose.TERRITORY) MapPurpose.WALK else MapPurpose.TERRITORY
     WalkToolButton(WalkTool.POLE, if (purpose == MapPurpose.TERRITORY) "점령지 숨기기" else "점령지 보기",
-        { onChange(target) }, modifier, active = purpose == MapPurpose.TERRITORY)
+        { onChange(target) }, modifier, active = purpose == MapPurpose.TERRITORY,
+        caption = if (purpose == MapPurpose.TERRITORY) "점령지 숨기기" else "점령지 보기", captionBeside = true)
 }
 
 internal fun territoryStatusLabel(state: TerritoryBoardState): String = when {
@@ -616,15 +632,12 @@ private fun WalkLocateButton(enabled: Boolean, locating: Boolean, onClick: () ->
 private fun WalkHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(CardWhite.copy(alpha = 0.96f))
-            .border(1.dp, DaengsColors.BorderNeutral, CircleShape)
+            .size(48.dp)
             .semantics { contentDescription = "홈으로" }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = DaengPinkDeep, filled = true)
+        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = Color.Black, filled = true)
     }
 }
 

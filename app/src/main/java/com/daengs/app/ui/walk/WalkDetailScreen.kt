@@ -170,7 +170,7 @@ fun WalkDetailScreen(
             }, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp),
         )
         Surface(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 96.dp, top = 12.dp),
-            shape = RoundedCornerShape(16.dp)) { WalkColorSettingsButton() }
+            shape = RoundedCornerShape(16.dp)) { WalkMapSettingsButton() }
         WalkSpeedLegend(Modifier.align(Alignment.TopCenter)
             .onSizeChanged { legendInsetPx = it.height }
             .statusBarsPadding().padding(top = 64.dp, bottom = 12.dp))
