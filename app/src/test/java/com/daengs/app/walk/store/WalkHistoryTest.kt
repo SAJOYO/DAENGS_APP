@@ -48,8 +48,58 @@ class WalkHistoryTest {
         history = WalkHistory(log)
     }
 
+    @Test
+    fun `session detail derives stamp from raw stationary fixes without creating owner action`() = runBlocking {
+        val id = "stay-raw"
+        log.openSession(RecordedSession(id = id, startedAtMillis = 1_000L))
+        val fixes = (0..20).map { i ->
+            RecordedFix(i, 0, 1_000L + i * 2_000L, 37.5, 127.0, 3f, false)
+        }
+        fixes.forEach { log.append(id, it) }
+        log.closeSession(id, 42_000L)
+        val detail = checkNotNull(history.sessionDetail(id))
+        assertEquals(1, detail.summary.segments.flatten().size)
+        assertEquals(com.daengs.app.walk.detectStayStamps(fixes), detail.stayStamps)
+        assertEquals(1, detail.stayStamps.size)
+        assertTrue(detail.moments.isEmpty())
+    }
+
     @After
     fun tearDown() = db.close()
+
+    @Test fun `keyset pages isolate owners skip short walks and avoid loading other pages`() = runBlocking {
+        for (i in 0..8) walked("walk-$i", startedAt = 10_000L, meters = 400.0, seconds = 600)
+        walked("tiny", startedAt = 20_000L, meters = 1.0, seconds = 2)
+        val foreign = RoomWalkFixLog(db.walkDao(), owner = { "other" })
+        foreign.openSession(RecordedSession("foreign", startedAtMillis = 30_000L, endedAtMillis = 31_000L))
+        val reads = mutableListOf<String>()
+        val observed = object : com.daengs.app.walk.WalkFixLog by log {
+            override suspend fun fixes(sessionId: String): List<RecordedFix> {
+                reads += sessionId; return log.fixes(sessionId)
+            }
+        }
+        val paged = WalkHistory(observed)
+        val first = paged.finishedPage(size = 3)
+        assertEquals(listOf("walk-8", "walk-7", "walk-6"), first.walks.map { it.sessionId })
+        assertFalse(reads.contains("foreign")); assertFalse(reads.contains("walk-0"))
+        // An insertion at the head must not duplicate records on the next page.
+        walked("new", startedAt = 50_000L, meters = 400.0, seconds = 600)
+        val second = paged.finishedPage(first.next, size = 3)
+        val third = paged.finishedPage(second.next, size = 3)
+        assertEquals(listOf("walk-5","walk-4","walk-3"), second.walks.map { it.sessionId })
+        assertEquals(listOf("walk-2","walk-1","walk-0"), third.walks.map { it.sessionId })
+        assertNull(third.next)
+        assertEquals(first.walks.map { it.sessionId }, paged.finishedPage(size=4).walks.drop(1).map { it.sessionId })
+    }
+
+    @Test fun `page keeps a short walk with an entry and applies dog filter before raw reads`() = runBlocking {
+        walked("entry-only", startedAt = 2_000L, meters = 1.0, seconds = 2)
+        log.appendAction(action("note-action", WalkMomentType.SNIFFING, 2_000L, 37.5, "entry-only"))
+        db.walkDao().insertSessionDog(WalkSessionDogRow("entry-only", "dog-a"))
+        walked("regular", startedAt = 1_000L, meters = 400.0, seconds = 600)
+        assertEquals(listOf("entry-only"), history.finishedPage(dogId="dog-a").walks.map { it.sessionId })
+        assertTrue(history.finishedPage(dogId="missing").walks.isEmpty())
+    }
 
     /** 문을 눌렀다 그냥 닫은 것. **좌표째로 지워야** 목록에도 서버에도 안 남는다. */
     @Test

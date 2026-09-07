@@ -45,6 +45,7 @@ class WalkTrackingService : Service() {
     // 이전 momentGroups 상태를 덮는 경쟁을 만들지 않게 하는 세션 경계다.
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val recorder = TrailRecorder()
+    private val stayRecorder = StayStampRecorder()
 
     private lateinit var locationSource: LocationSource
     private lateinit var tracker: LocationTracker
@@ -126,6 +127,7 @@ class WalkTrackingService : Service() {
         writer.clearFailure()
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
+        stayRecorder.reset()
         val trail = recorder.start()
         openSession(dogIds)
         store.publish(
@@ -138,7 +140,7 @@ class WalkTrackingService : Service() {
         )
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
-        tracker.start(locationSource)
+        tracker.start(locationSource, WALK_OBSERVATION_CONFIG)
     }
 
     private fun pauseRecording(startId: Int) {
@@ -148,6 +150,7 @@ class WalkTrackingService : Service() {
         }
         tracker.stop()
         pauseTiming()
+        stayRecorder.breakContinuity()
         val trail = recorder.pause()
         store.publish(trackingState(trail))
         promote(trail, errorMessage = null)
@@ -165,7 +168,7 @@ class WalkTrackingService : Service() {
         // 행동 버튼은 비활성화된다.
         store.publish(trackingState(trail, latestMomentFix = null))
         promote(trail, errorMessage = null)
-        tracker.start(locationSource)
+        tracker.start(locationSource, WALK_OBSERVATION_CONFIG)
     }
 
     private fun stopRecording(stopStartId: Int) {
@@ -289,6 +292,8 @@ class WalkTrackingService : Service() {
     )
 
     private fun acceptLocation(sample: LocationSample) {
+        // A queued fix after pause/stop must not enter either raw history or the detector.
+        if (recorder.snapshot().state != TrackingState.RECORDING) return
         synchronized(sessionLock) {
             sessionId?.let { id ->
                 writer.append(
@@ -305,6 +310,7 @@ class WalkTrackingService : Service() {
                 )
             }
         }
+        stayRecorder.add(sample)
         val latestMomentFix = if (sample.isAccurateEnoughForMoment()) {
             sample
         } else {
@@ -445,6 +451,7 @@ class WalkTrackingService : Service() {
         if (recorder.snapshot().state != TrackingState.RECORDING) return
         tracker.stop()
         pauseTiming()
+        stayRecorder.breakContinuity()
         val trail = recorder.pause()
         store.publish(trackingState(trail, errorMessage = message))
         promote(trail, message)
@@ -485,6 +492,7 @@ class WalkTrackingService : Service() {
         activeSinceRealtimeMillis = activeSinceRealtimeMillis,
         finishingSessionId = finishingSessionId,
         completedSessionId = completedSessionId,
+        stayStamps = stayRecorder.snapshot(),
     )
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {

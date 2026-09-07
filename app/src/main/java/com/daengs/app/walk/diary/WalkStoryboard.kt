@@ -85,14 +85,14 @@ fun applyStoryboardEdits(sources: List<StoryboardScene>, draft: StoryboardDraft)
     return scenes.sortedWith(compareBy<StoryboardScene> { it.atMillis }.thenBy { it.id })
 }
 
-fun storyboardSnapshot(sessionId: String, scenes: List<StoryboardScene>): String =
+fun storyboardSnapshot(sessionId: String, scenes: List<StoryboardScene>, title: String? = null): String =
     JSONObject().put("version", 1).put("session_id", sessionId).put("scenes", JSONArray().apply {
         scenes.filter { it.available && !it.hidden }.forEach { scene ->
             put(JSONObject().put("id", scene.id).put("at", scene.atMillis).put("title", scene.title)
                 .put("body", scene.body).put("evidence", scene.evidence).put("source", scene.fingerprint)
                 .put("source_payload", scene.sourcePayload?.let { JSONObject(it) } ?: JSONObject.NULL))
         }
-    }).toString()
+    }).apply { title?.let { put("diary_title", it) } }.toString()
 
 internal fun storyboardHash(text: String): String = MessageDigest.getInstance("SHA-256")
     .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

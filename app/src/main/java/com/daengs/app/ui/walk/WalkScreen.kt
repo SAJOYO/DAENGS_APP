@@ -115,7 +115,7 @@ fun WalkScreen(
     val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
     val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
 
-    val mapPresentation = state.toMapPresentation { formatClock(it) }
+    val mapPresentation = state.toMapPresentation()
     val summary = state.completedSummary
     var bottomInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     var leftInset by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -294,17 +294,22 @@ private fun WalkGameOverlay(
                 .padding(start = if (landscape) 52.dp else 0.dp), shape = RoundedCornerShape(16.dp), color = CardWhite) {
                 Row {
                     if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
+                    WalkColorSettingsButton()
                     WalkRotateButton(layoutMode, onRequestOrientation)
                 }
             }
-            Row(Modifier.align(if (landscape) Alignment.TopEnd else Alignment.TopCenter)
+            Column(Modifier.align(if (landscape) Alignment.TopEnd else Alignment.TopCenter)
                 .onSizeChanged { hudHeight = it.height }
-                .padding(top = if (landscape) 0.dp else 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                .padding(top = if (landscape) 0.dp else 52.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary, gpsContent = {
                     val gps = walkGpsPresentation(locationGranted, preciseLocation, locationError,
                         locationSample, realtimeMillis * 1_000_000L)
                     WalkGpsDot(gps.good, gps.unavailable, gps.detail, onOpenSettings)
                 })
+                if (mapPurpose == MapPurpose.WALK || tracking.trail.state != TrackingState.OFF || summary != null) {
+                    WalkSpeedLegend()
+                }
             }
             val dock: @Composable () -> Unit = {
                 Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {

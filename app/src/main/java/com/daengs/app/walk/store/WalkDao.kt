@@ -46,6 +46,9 @@ interface WalkDao {
     @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
     suspend fun storyboard(sessionId: String): WalkStoryboardRow?
 
+    @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
+    fun observeStoryboard(sessionId: String): kotlinx.coroutines.flow.Flow<WalkStoryboardRow?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStoryboard(row: WalkStoryboardRow)
 
@@ -208,6 +211,12 @@ interface WalkDao {
             "ORDER BY startedAtMillis DESC",
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
+
+    @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
+        "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +
+        "AND (:beforeAt IS NULL OR startedAtMillis < :beforeAt OR (startedAtMillis = :beforeAt AND id < :beforeId)) " +
+        "ORDER BY startedAtMillis DESC, id DESC LIMIT :limit")
+    suspend fun finishedSessionsPage(ownerId: String, dogId: String?, beforeAt: Long?, beforeId: String?, limit: Int): List<WalkSessionRow>
 
     /** 끝났지만 아직 계산 완료되지 않은 것. 오래된 것부터 이어서 처리한다. */
     @Query(

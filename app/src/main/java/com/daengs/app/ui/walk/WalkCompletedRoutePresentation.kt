@@ -13,11 +13,13 @@ internal const val ROUTE_START_END_ID = "walk-route-start-end"
 /** 완료 직후와 지난 산책이 같은 출발·도착·구간 경계 표현을 쓰게 하는 화면 모델 변환. */
 internal fun WalkSessionRoute.toCompletedRouteLayerState(
     selectedPoint: WalkRoutePoint? = null,
-    formatTime: (Long) -> String,
 ): CompletedRouteLayerState {
     val endpointsNear = endpointsAreNear(ROUTE_ENDPOINT_MERGE_METERS)
     return CompletedRouteLayerState(
         paths = segments.map { segment -> segment.points.map { it.point } },
+        speedPaths = segments.map { segment -> segment.points.map {
+            com.daengs.app.map.style.WalkSpeedPoint(it.point, it.capturedAtMillis)
+        } },
         start = if (endpointsNear) {
             val startPoint = start
             val endPoint = end
@@ -25,8 +27,7 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
                 RouteEndpointMarkerState(
                     id = ROUTE_START_END_ID,
                     point = endPoint.point,
-                    label = "출발 ${formatTime(startPoint.capturedAtMillis)} · " +
-                        "도착 ${formatTime(endPoint.capturedAtMillis)}",
+                    label = "출발 · 도착",
                     kind = RouteEndpointKind.START_END,
                     selected = selectedPoint == startPoint || selectedPoint == endPoint,
                 )
@@ -37,7 +38,7 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
             RouteEndpointMarkerState(
                 id = ROUTE_START_ID,
                 point = point.point,
-                label = "출발 ${formatTime(point.capturedAtMillis)}",
+                label = "출발",
                 kind = RouteEndpointKind.START,
                 selected = selectedPoint == point,
             )
@@ -46,7 +47,7 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
             RouteEndpointMarkerState(
                 id = ROUTE_END_ID,
                 point = point.point,
-                label = "도착 ${formatTime(point.capturedAtMillis)}",
+                label = "도착",
                 kind = RouteEndpointKind.END,
                 selected = selectedPoint == point,
             )

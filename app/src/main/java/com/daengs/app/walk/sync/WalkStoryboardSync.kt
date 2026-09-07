@@ -38,9 +38,22 @@ class WalkStoryboardSync(
         if (!dao.acceptSceneAnalysis(pending, account)) return@withLock
         try {
             val expected = JSONObject().apply { rows.forEach { put(it.id, it.revision) } }
-            val response = request(token, "/$walkId/storyboard", JSONObject()
+            val body = JSONObject()
                 .put("expected_entries", expected).put("refresh", refresh)
-                .put("bundle_format", GeoStoryboardBundle.FORMAT_V2))
+                .put("bundle_format", GeoStoryboardBundle.FORMAT_V3)
+            val response = try { request(token, "/$walkId/storyboard", body) }
+            catch (e: WalkHttpException) {
+                // Only an old server's format enum rejection is safe to retry with v2.
+                val oldFormat = e.statusCode == 422 && runCatching {
+                    val errors = JSONArray(e.message)
+                    errors.length() == 1 && errors.getJSONObject(0).let {
+                        it.getString("type") == "literal_error" &&
+                            it.getJSONArray("loc").toString() == JSONArray(listOf("body", "bundle_format")).toString()
+                    }
+                }.getOrDefault(false)
+                if (!oldFormat) throw e
+                request(token, "/$walkId/storyboard", body.put("bundle_format", GeoStoryboardBundle.FORMAT_V2))
+            }
             require(response.getString("session_id") == sessionId)
             val remoteEntries = response.getJSONObject("entry_revisions")
             require(remoteEntries.keys().asSequence().toSet() == rows.map { it.id }.toSet() &&

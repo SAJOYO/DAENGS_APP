@@ -1,0 +1,84 @@
+package com.daengs.app.map.provider.naver
+
+import android.graphics.PointF
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.daengs.app.R
+import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.completedroute.LIVE_ROUTE_START_ID
+import com.daengs.app.map.layers.completedroute.RouteEndpointKind
+import com.daengs.app.map.layers.completedroute.RouteEndpointMarkerState
+import com.naver.maps.geometry.LatLng
+import com.naver.maps.map.NaverMap
+import com.naver.maps.map.overlay.Marker
+import com.naver.maps.map.overlay.OverlayImage
+
+/** Small centered stamps. Selection changes stacking, never size or coordinates. */
+@Composable
+internal fun NaverRouteEndpointLayer(
+    map: NaverMap?,
+    endpoints: List<RouteEndpointMarkerState>,
+    onSelect: (String) -> Unit,
+) {
+    if (LocalInspectionMode.current) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            endpoints.forEach { Image(painterResource(it.kind.iconRes), it.label) }
+        }
+        return
+    }
+    val context = LocalContext.current
+    val latestSelect by rememberUpdatedState(onSelect)
+    DisposableEffect(map, endpoints, context.resources.configuration.densityDpi) {
+        val markers = if (map == null) emptyList() else endpoints.map { endpoint ->
+            val resource = endpoint.kind.iconRes
+            // Vector intrinsic dimensions are dp-aware and are also used by Preview.
+            val art = requireNotNull(context.getDrawable(resource))
+            Marker().apply {
+                position = LatLng(endpoint.point.latitude, endpoint.point.longitude)
+                width = art.intrinsicWidth
+                height = art.intrinsicHeight
+                anchor = PointF(0.5f, 0.5f)
+                icon = OverlayImage.fromResource(resource)
+                captionText = endpoint.label.takeIf { endpoint.selected }.orEmpty()
+                captionMinZoom = 0.0
+                zIndex = if (endpoint.selected) 100 else 80
+                isHideCollidedMarkers = false
+                setOnClickListener {
+                    captionText = if (captionText.isEmpty()) endpoint.label else ""
+                    if (endpoint.id != LIVE_ROUTE_START_ID) latestSelect(endpoint.id)
+                    true
+                }
+                this.map = map
+            }
+        }
+        onDispose { markers.forEach { it.map = null } }
+    }
+}
+
+private val RouteEndpointKind.iconRes: Int get() = when (this) {
+    RouteEndpointKind.START -> R.drawable.ic_walk_start
+    RouteEndpointKind.END -> R.drawable.ic_walk_finish
+    RouteEndpointKind.START_END -> R.drawable.ic_walk_start_finish
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFFFAF4)
+@Composable
+private fun RouteEndpointStampsPreview() {
+    val point = GeoPoint(37.5, 127.0)
+    NaverRouteEndpointLayer(null, listOf(
+        RouteEndpointMarkerState("start", point, "출발", RouteEndpointKind.START),
+        RouteEndpointMarkerState("end", point, "도착", RouteEndpointKind.END),
+        RouteEndpointMarkerState("both", point, "출발 · 도착", RouteEndpointKind.START_END),
+    ), {})
+}
