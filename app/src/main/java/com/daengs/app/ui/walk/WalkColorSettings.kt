@@ -18,6 +18,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.DaengsApp
 import com.daengs.app.map.style.WalkStyleStore
+import com.daengs.app.map.style.speedScaleStops
 import com.daengs.app.map.style.rememberWalkStyle
 import com.daengs.app.walk.sync.WalkApi
 
@@ -52,7 +53,7 @@ internal fun WalkColorSettingsButton(modifier: Modifier = Modifier) {
                             Text(theme.label)
                             Spacer(Modifier.height(4.dp))
                             Box(Modifier.fillMaxWidth().height(7.dp).background(Brush.horizontalGradient(
-                                List(81) { Color(selection.policy.color(it * selection.policy.speedMax / 80, theme.id)) },
+                                *selection.policy.speedScaleStops(theme.id).map { (offset, color) -> offset to Color(color) }.toTypedArray(),
                             )))
                         }
                     }
