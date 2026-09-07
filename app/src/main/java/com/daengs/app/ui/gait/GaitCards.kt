@@ -99,6 +99,13 @@ fun GaitIntroCard(
     onCapture: () -> Unit,
     onPick: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 저장된 기록끼리 비교(B 진입). **새 영상을 올리지 않아도** 지난 기록 둘을 견준다.
+     *
+     * `null` 이면 줄을 아예 안 그린다 — 비교할 기록이 둘 미만일 때가 그렇다. 눌러도
+     * 고를 것이 없는 버튼을 띄우면 사용자가 자기가 뭘 잘못했나 생각하게 된다.
+     */
+    onCompareSaved: (() -> Unit)? = null,
 ) {
     GaitCard(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,6 +126,9 @@ fun GaitIntroCard(
             GaitActionButton(DaengsIcon.VideoLibrary, "불러오기", onPick, Modifier.weight(1f))
         }
         GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장")
+        onCompareSaved?.let {
+            GaitActionButton(DaengsIcon.Video, "기록 비교", it, Modifier.fillMaxWidth())
+        }
     }
 }
 

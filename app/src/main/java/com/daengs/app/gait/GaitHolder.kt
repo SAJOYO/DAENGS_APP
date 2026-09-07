@@ -85,14 +85,33 @@ class GaitHolder(
             return GaitComparison.of(recent, past, GaitSampleRecords.metricsFor(recent, past))
         }
 
-        // ⚠️ **새 계약(`/app/gait/…`)에는 비교가 아직 없다.** 옛 `/gait/compare` 는 인증이
-        //    없던 주소라 같이 쓸 수 없고(#64), 기록도 저쪽에 없다 — 새 기록은 backend DB 에
-        //    산다. 그래서 **지어내지 않고 말한다.** 여기서 표본 지표로 물러서면 서버가
-        //    계산하지 않은 비교를 진짜처럼 보여 주게 된다.
-        //    backend 에 `/app/gait/compare` 가 생기면 이 자리에 그대로 끼운다.
-        error = "기록 비교는 아직 준비 중이에요. 조금만 기다려 주세요."
-        return null
+        val token = accessToken()
+        if (token == null) {
+            error = "로그인이 필요해요. 다시 로그인해 주세요."
+            return null
+        }
+
+        // ⚠️ **순서를 앱이 정하지 않는다.** 저쪽이 날짜로 past/recent 를 가른다 — A 진입
+        //    (방금 분석한 것이 기준)과 B 진입(둘 다 고름)이 서로 다른 순서를 보내도
+        //    같은 결과가 나와야 해서다.
+        return GaitApi.compare(token, recentId, pastId)
+            .map { GaitComparison.of(recent, past, it.toMetrics(), it.messageForUi, it.versionWarning) }
+            .onFailure { error = it.message ?: "두 기록을 비교하지 못했어요." }
+            .getOrNull()
     }
+
+    /**
+     * 저장된 기록끼리 비교할 수 있나 (B 진입).
+     *
+     * **둘 이상**이어야 고를 것이 생긴다. 하나뿐이면 시트를 띄워도 상대가 없어서,
+     * 화면이 버튼을 감추거나 안내를 띄우는 근거로 쓴다.
+     */
+    val comparablePairExists: Boolean
+        get() = records.count { it.comparable } >= 2
+
+    /** B 진입에서 첫 기록을 고른 뒤, 상대 후보 — **자기 자신은 뺀다.** */
+    fun comparableExcept(id: String): List<GaitRecord> =
+        records.filter { it.id != id && it.comparable }
 
     /**
      * 기록 하나를 지운다. 상세 화면의 삭제 자리가 부른다.

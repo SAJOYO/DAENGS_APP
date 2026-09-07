@@ -303,6 +303,15 @@ fun ChatScreen(
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
 
+    /**
+     * 저장된 기록끼리 비교(B 진입)에서 **첫 번째로 고른 기록**.
+     *
+     * A 진입(방금 분석한 카드의 [비교하기])은 기준이 이미 있어 시트가 한 번이지만,
+     * 여기는 기준이 없어 **같은 시트를 두 번** 쓴다. `null` 이면 아직 첫 선택 전이다.
+     */
+    var gaitPairFirst by remember { mutableStateOf<GaitRecord?>(null) }
+    var gaitPairPicking by remember { mutableStateOf(false) }
+
     /** 나란히 보는 중. */
     var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
 
@@ -456,6 +465,12 @@ fun ChatScreen(
                             GaitIntroCard(
                                 onCapture = { gaitCapture = true },
                                 onPick = startGaitPicking,
+                                // 저장된 기록이 둘 이상일 때만 줄이 생긴다 (B 진입).
+                                onCompareSaved = if (gait.comparablePairExists) {
+                                    { gaitPairPicking = true }
+                                } else {
+                                    null
+                                },
                             )
                         }
 
@@ -671,6 +686,34 @@ fun ChatScreen(
                 gaitDetail = null
                 // 비교는 서버가 한다. 문장도 저쪽 message_for_ui 가 온다.
                 scope.launch { gaitComparing = gait.compare(recentId, past.id) }
+            },
+        )
+    }
+
+    // ── 저장된 기록끼리 비교 (B 진입) — **같은 시트를 두 번 쓴다** ──────────
+    //
+    // 새 화면을 만들지 않는다. [GaitPickSheet] 가 이미 `comparable` 만 고르게 하고
+    // 날짜를 보여 주므로, 기준을 고르는 데도 상대를 고르는 데도 그대로 쓴다.
+    if (gaitPairPicking) {
+        GaitPickSheet(
+            records = gait.records,
+            onDismiss = { gaitPairPicking = false },
+            onConfirm = { first ->
+                gaitPairPicking = false
+                gaitPairFirst = first          // 두 번째 시트로 넘어간다
+            },
+        )
+    }
+
+    gaitPairFirst?.let { first ->
+        GaitPickSheet(
+            // **첫 번째로 고른 것은 뺀다** — 자기 자신과 비교하면 늘 "차이 없음" 이다.
+            records = gait.comparableExcept(first.id),
+            onDismiss = { gaitPairFirst = null },
+            onConfirm = { second ->
+                gaitPairFirst = null
+                // 순서는 신경 쓰지 않는다 — 저쪽이 날짜로 past/recent 를 가른다.
+                scope.launch { gaitComparing = gait.compare(second.id, first.id) }
             },
         )
     }
