@@ -66,15 +66,15 @@ internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
     }
 }
 
-/** Normal GPS is a dot; details and settings are shown only on request. */
+/** All GPS states use the same small dot; details and settings appear on request. */
 @Composable
 internal fun WalkGpsDot(good: Boolean, unavailable: Boolean, detail: String, onSettings: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val label = if (good) "GPS 양호" else if (unavailable) "GPS 확인 필요" else "GPS 불안정"
     IconButton(onClick = { expanded = true }, modifier = Modifier.semantics { contentDescription = label }) {
-        Box(Modifier.size(if (good) 8.dp else 14.dp).background(
-            if (good) Color(0xff4e9b70) else if (unavailable) Color(0xffbb5555) else Color(0xffb5802e), RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
-            if (!good) Text("!", color = Color.White, fontSize = 10.sp)
+        Box(Modifier.size(8.dp).background(
+            if (good) Color(0xff4e9b70) else if (unavailable) Color(0xffbb5555) else Color(0xffe2b52b), RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+
         }
     }
     if (expanded) AlertDialog(onDismissRequest = { expanded = false }, title = { Text(label) }, text = { Text(detail) },
@@ -85,3 +85,15 @@ internal fun WalkGpsDot(good: Boolean, unavailable: Boolean, detail: String, onS
 @Preview(showBackground = true)
 @Composable
 private fun WalkToolsPreview() { DaengsTheme { Row { WalkToolButton(WalkTool.POLE,"점령지 보기",{},active=true); WalkToolButton(WalkTool.ROTATE,"가로 보기",{}); WalkGpsDot(true,false,"현재 위치를 확인했어요",{}) } } }
+
+@Preview(showBackground = true)
+@Composable
+private fun WalkGpsStatesPreview() {
+    DaengsTheme {
+        Row {
+            WalkGpsDot(false, true, "GPS 확인 필요", {})
+            WalkGpsDot(false, false, "GPS 불안정", {})
+            WalkGpsDot(true, false, "GPS 양호", {})
+        }
+    }
+}
