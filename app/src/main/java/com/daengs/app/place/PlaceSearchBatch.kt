@@ -11,7 +11,12 @@ suspend fun searchPlaceBatches(
     requests: List<PlaceSearchRequest>,
 ): PlaceSearchResponse = coroutineScope {
     require(requests.isNotEmpty() && requests.size <= 3)
-    if (requests.size == 1) return@coroutineScope repository.search(requests.single()).also { it.requireDogEcho(requests.single()) }
+    if (requests.size == 1) return@coroutineScope repository.search(requests.single()).also {
+        it.requireDogEcho(requests.single())
+        if (requests.single().kinds.size > 1 && it.groups.map { group -> group.kind } != requests.single().kinds) {
+            throw SerializationException("Missing or reordered category group")
+        }
+    }
     val responses = requests.map { request ->
         async {
             repository.search(request).also { response ->
@@ -41,7 +46,7 @@ fun PlaceSearchResponse.requireDogEcho(request: PlaceSearchRequest) {
     }) throw SerializationException("Server returned missing dog evaluation axes")
 }
 
-/** 전체보기의 표시 정책. 원본 그룹과 분류는 보존하고 화면에서만 canonical ID를 접는다. */
+/** 전체·대분류의 표시 정책. 원본 그룹과 분류는 보존하고 화면에서만 canonical ID를 접는다. */
 fun PlaceSearchResponse.overviewHits(preferParking: Boolean): List<PlaceSearchHit> =
     groups.flatMap { it.results }.distinctBy { it.place.key }.sortedWith(
         compareBy<PlaceSearchHit> { if (preferParking) it.place.distanceMeters / 500 else 0 }

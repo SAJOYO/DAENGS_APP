@@ -55,6 +55,19 @@ class PlaceDiscoveryPanelTest {
     }
 
     @Test
+    fun `one canonical place in multiple categories produces one selected marker`() {
+        val response = response()
+        val group = response.groups.first()
+        val state = PlaceDiscoveryState(
+            search = PlaceSearchState.Content(response.copy(groups = listOf(group, group.copy(kind = PlaceKind.RESTAURANT)))),
+            selectedPlaceKey = group.results.first().place.key,
+        )
+        val markers = canonicalPlaceMarkers(state)
+        assertEquals(group.results.size, markers.size)
+        assertEquals(1, markers.count { it.selected })
+    }
+
+    @Test
     fun `labels keep unknown facts separate from negative facts`() {
         assertEquals("주차 가능", parkingLabel(true))
         assertEquals("주차 불가", parkingLabel(false))

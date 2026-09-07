@@ -188,7 +188,7 @@ class PlaceDiscoveryController(
                     }
                     mutableState.update {
                         it.copy(
-                            selectedPlaceKey = if (requests.size > 1) response.overviewHits(request.preferParking).firstOrNull()?.place?.key else response.firstPlaceKey(),
+                            selectedPlaceKey = if (requests.sumOf { it.kinds.size } > 1) response.overviewHits(request.preferParking).firstOrNull()?.place?.key else response.firstPlaceKey(),
                             search = resultState,
                         )
                     }

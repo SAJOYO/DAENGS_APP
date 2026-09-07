@@ -67,7 +67,7 @@ class ConnectedPlaceSearchUiTest {
     @Test fun allDispatchesAllScopeAndRadiusCanBeSelected() {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, {}, {}, {}, {}, {}, showMap = false) } }
-        compose.onNodeWithText("전체보기").performClick()
+        compose.onNodeWithText("전체").performClick()
         assertEquals(PlacesAction.Search(null, false, null), actions.single())
         compose.onNodeWithText("3km ▾").performClick()
         compose.onNodeWithText("5km").performClick()
@@ -84,5 +84,46 @@ class ConnectedPlaceSearchUiTest {
         assertEquals(response.groups.sumOf { it.results.size }, ui.hits.size)
         val loading = content.copy(discovery = content.discovery.copy(search = PlaceSearchState.Loading))
         assertTrue(loading.toConnectedSearchState("", false, null, null).hits.isEmpty())
+    }
+
+    @Test fun purposeSearchShowsOnlyItsChildrenAndChangingPurposeResetsChild() {
+        val state = androidx.compose.runtime.mutableStateOf(ready())
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state.value, { action ->
+            actions += action
+            if (action is PlacesAction.Search) state.value = state.value.copy(
+                discovery = state.value.discovery.copy(requestedKinds = action.category.kinds))
+        }, {}, {}, {}, {}, {}, showMap = false) } }
+        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("식사·카페"))
+        compose.onNodeWithText("식사·카페").performClick()
+        assertEquals(PlaceCategorySelection.Purpose(PlacePurpose.DINING), (actions.last() as PlacesAction.Search).category)
+        compose.onNodeWithText("식사·카페 전체").assertIsSelected()
+        compose.onNodeWithText("음식점").performClick()
+        compose.onNodeWithText("음식점").assertIsSelected()
+        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("진료"))
+        compose.onNodeWithText("진료").performClick()
+        compose.onNodeWithText("진료 전체").assertIsSelected()
+        compose.onNodeWithText("동물병원").assertExists()
+        compose.onNodeWithText("음식점").assertDoesNotExist()
+        assertEquals(PlacePurpose.HEALTHCARE.kinds, (actions.last() as PlacesAction.Search).category.kinds)
+        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("전체"))
+        compose.onNodeWithText("전체").performClick()
+        compose.onNodeWithText("진료 전체").assertDoesNotExist()
+        assertEquals(PlaceKind.entries, (actions.last() as PlacesAction.Search).category.kinds)
+        compose.onNodeWithTag("place-purpose-row").performScrollToNode(hasText("기타"))
+        compose.onNodeWithText("기타").performClick()
+        assertEquals(listOf(PlaceKind.ETC), (actions.last() as PlacesAction.Search).category.kinds)
+    }
+
+    @Test fun submittingNameAndParkingPreserveTheSelectedPurpose() {
+        val actions = mutableListOf<PlacesAction>()
+        val state = ready().copy(discovery = ready().discovery.copy(requestedKinds = PlacePurpose.DINING.kinds))
+        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
+        compose.onNodeWithText("식사·카페 0곳").assertExists()
+        compose.onNode(hasSetTextAction()).performTextInput("보리")
+        compose.onNodeWithContentDescription("검색 실행").performClick()
+        assertEquals(PlacesAction.Search(PlaceCategorySelection.Purpose(PlacePurpose.DINING), false, "보리"), actions.last())
+        compose.onNodeWithText("주차 우선").performClick()
+        assertEquals(PlacesAction.Search(PlaceCategorySelection.Purpose(PlacePurpose.DINING), true), actions.last())
     }
 }
