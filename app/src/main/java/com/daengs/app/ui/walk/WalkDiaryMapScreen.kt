@@ -82,7 +82,7 @@ internal fun WalkDiaryMapScreen(
     val scenes = diary?.scenes.orEmpty()
     val selected = scenes.firstOrNull { it.id == selectedId }
     val route = detail?.route
-    val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint, ::formatWalkClock) ?: CompletedRouteLayerState() }
+    val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
     val mapScene = remember(completed, markers, detail?.stayStamps) {
         composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
