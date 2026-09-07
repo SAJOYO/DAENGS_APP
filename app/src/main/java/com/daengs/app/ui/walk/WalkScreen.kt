@@ -295,6 +295,15 @@ private fun WalkGameOverlay(
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top) {
+                Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
+                    val tools: @Composable () -> Unit = {
+                        WalkHomeButton(onHome)
+                        if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
+                        WalkRotateButton(layoutMode, onRequestOrientation)
+                    }
+                    if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
+                    else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
+                }
                 WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary,
                     modifier = Modifier.widthIn(max = 224.dp),
                     controlContent = {
@@ -310,18 +319,9 @@ private fun WalkGameOverlay(
                         locationSample, realtimeMillis * 1_000_000L)
                     WalkGpsDot(gps.good, gps.unavailable, gps.detail, onOpenSettings)
                 })
-                Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
-                    val tools: @Composable () -> Unit = {
-                        WalkHomeButton(onHome)
-                        if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
-                        WalkRotateButton(layoutMode, onRequestOrientation)
-                    }
-                    if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
-                    else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
-                }
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
-                    WalkSpeedLegend(showColorSettings = true)
+                    WalkSpeedLegend(Modifier.align(Alignment.End), showColorSettings = true)
                 }
             }
             val dock: @Composable () -> Unit = {
@@ -424,7 +424,7 @@ private fun WalkGameOverlay(
                     .systemBarsPadding()
                     .padding(12.dp)
                     .zIndex(30f),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 WalkHomeButton(onHome)
@@ -616,15 +616,12 @@ private fun WalkLocateButton(enabled: Boolean, locating: Boolean, onClick: () ->
 private fun WalkHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(CardWhite.copy(alpha = 0.96f))
-            .border(1.dp, DaengsColors.BorderNeutral, CircleShape)
+            .size(48.dp)
             .semantics { contentDescription = "홈으로" }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = DaengPinkDeep, filled = true)
+        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = Color.Black, filled = true)
     }
 }
 

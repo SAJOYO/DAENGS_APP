@@ -8,6 +8,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -23,13 +25,13 @@ enum class WalkTool { POLE, ROTATE, CAMERA, RECORD, ENTRIES, LOCATE, PAUSE, PLAY
 @Composable
 internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
     modifier: Modifier = Modifier, enabled: Boolean = true, active: Boolean = false, caption: String? = null) {
-    val tint = if (active) Color(0xff39744d) else TextDark
+    val tint = if (active) DaengPinkDeep else TextDark
     TextButton(onClick = onClick, enabled = enabled, modifier = modifier
         .widthIn(min = 48.dp).heightIn(min = 48.dp)
         .semantics { contentDescription = label; if (tool == WalkTool.POLE) selected = active },
         contentPadding = PaddingValues(4.dp), shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.textButtonColors(contentColor = tint,
-            containerColor = if (active) Color(0xffe3eee0) else Color.Transparent)) {
+            containerColor = if (active) DaengPinkDeep.copy(alpha = .12f) else Color.Transparent)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Canvas(Modifier.size(22.dp)) {
                 val c = if (enabled) tint else tint.copy(alpha = .4f)
@@ -37,8 +39,18 @@ internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
                 when (tool) {
                     WalkTool.POLE -> { line(12f,2f,12f,23f); line(4f,7f,20f,7f); line(7f,3f,7f,10f); line(17f,3f,17f,10f); line(8f,13f,16f,13f) }
                     WalkTool.ROTATE -> {
-                        drawRect(c, Offset(size.width*.32f,size.height*.2f), Size(size.width*.36f,size.height*.6f), style=Stroke(1.5.dp.toPx()))
-                        drawArc(c, 190f, 140f, false, Offset.Zero, size, style=Stroke(1.5.dp.toPx())); line(21f,4f,21f,9f); line(21f,9f,16f,9f)
+                        rotate(-30f) {
+                            drawRoundRect(c, Offset(size.width*.34f, size.height*.2f),
+                                Size(size.width*.32f, size.height*.6f), CornerRadius(2.dp.toPx()),
+                                style = Stroke(1.5.dp.toPx()))
+                            line(10f, 16f, 14f, 16f)
+                        }
+                        drawArc(c, 205f, 110f, false, Offset(size.width*.04f, size.height*.04f),
+                            Size(size.width*.92f, size.height*.92f), style = Stroke(1.5.dp.toPx()))
+                        line(18f, 3f, 20f, 6f); line(20f, 6f, 16f, 6f)
+                        drawArc(c, 25f, 110f, false, Offset(size.width*.04f, size.height*.04f),
+                            Size(size.width*.92f, size.height*.92f), style = Stroke(1.5.dp.toPx()))
+                        line(6f, 21f, 4f, 18f); line(4f, 18f, 8f, 18f)
                     }
                     WalkTool.CAMERA -> { drawRect(c, Offset(size.width*.1f,size.height*.25f), Size(size.width*.8f,size.height*.6f), style=Stroke(1.5.dp.toPx())); drawCircle(c,size.width*.16f,Offset(size.width*.5f,size.height*.55f),style=Stroke(1.5.dp.toPx())); line(8f,6f,10f,3f); line(10f,3f,15f,3f) }
                     WalkTool.LOCATE -> { drawCircle(c,size.width*.36f,style=Stroke(1.5.dp.toPx())); drawCircle(c,size.width*.12f) }

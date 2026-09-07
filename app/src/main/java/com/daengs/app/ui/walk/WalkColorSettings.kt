@@ -35,7 +35,7 @@ internal fun WalkColorSettingsButton(modifier: Modifier = Modifier) {
         val session = app.sessionProvider.freshSession() ?: return@LaunchedEffect
         WalkApi.stylePolicy(session.accessToken).getOrNull()?.let(store::cachePolicy)
     }
-    TextButton(onClick = { open = true }, modifier = modifier) { Text("색상") }
+    TextButton(onClick = { open = true }, modifier = modifier, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("색상", maxLines = 1) }
     if (open) AlertDialog(
         onDismissRequest = { open = false },
         title = { Text("산책 지도 설정") },

@@ -13,8 +13,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp")
 class WalkScreenPolicyTest {
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
@@ -22,11 +24,11 @@ class WalkScreenPolicyTest {
     @Test fun speedAndColorAppearTogetherOnlyAfterStarting() {
         val state = mutableStateOf(WalkUiState())
         compose.setContent { DaengsTheme { WalkScreen(state.value, {}, showMap = false) } }
-        compose.onNodeWithText("이동 속도 · m/s").assertDoesNotExist()
+        compose.onNodeWithText("속도 m/s").assertDoesNotExist()
         compose.onNodeWithText("색상").assertDoesNotExist()
         compose.onNodeWithContentDescription("잠시 멈춤").assertDoesNotExist()
         compose.runOnIdle { state.value = recording() }
-        compose.onNodeWithText("이동 속도 · m/s").assertIsDisplayed()
+        compose.onNodeWithText("속도 m/s").assertIsDisplayed()
         compose.onNodeWithText("색상").assertIsDisplayed().performClick()
         compose.onNodeWithText("산책 지도 설정").assertIsDisplayed()
     }
@@ -42,12 +44,15 @@ class WalkScreenPolicyTest {
         val pauseBounds = pause.fetchSemanticsNode().boundsInRoot
         val home = compose.onNodeWithContentDescription("홈으로").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val action = compose.onNodeWithContentDescription("행동 기록").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val speed = compose.onNodeWithText("이동 속도 · m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val speed = compose.onNodeWithText("속도 m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val color = compose.onNodeWithText("색상").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue(time.left < home.left)
-        assertTrue(pauseBounds.right <= home.left)
+        assertTrue(home.right <= time.left)
+        assertTrue(home.right <= pauseBounds.left)
         assertTrue(pauseBounds.bottom < action.top)
-        assertTrue(kotlin.math.abs(speed.center.y - color.center.y) < speed.height)
+        assertTrue(speed.right <= color.left)
+        val legend = compose.onNodeWithTag("speedLegend").getUnclippedBoundsInRoot()
+        assertTrue((legend.right - legend.left).value <= 190f)
+        assertTrue(compose.onNodeWithTag("speedLegend").printToString(), (legend.bottom - legend.top).value <= 60f)
         compose.onNodeWithText("쉼").assertDoesNotExist()
         pause.performClick()
         assertEquals(WalkAction.Pause, actions.last())
@@ -56,12 +61,12 @@ class WalkScreenPolicyTest {
     }
 
     @Test fun portraitGroupsRelatedControls() = checkLayout()
-    @Test fun pausedMenuKeepsHomeOnTheRightAndReturnsToTimerControl() {
+    @Test fun pausedMenuKeepsHomeOnTheLeftAndReturnsToTimerControl() {
         val state = recording().copy(tracking = WalkTrackingState(trail = TrailSnapshot(state = TrackingState.PAUSED)))
         compose.setContent { DaengsTheme { WalkScreen(state, {}, showMap = false) } }
         val home = compose.onAllNodesWithContentDescription("홈으로").fetchSemanticsNodes().last().boundsInRoot
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
-        assertTrue(home.center.x > root.center.x)
+        assertTrue(home.center.x < root.center.x)
         compose.onNodeWithText("지도 둘러보기").performClick()
         compose.onNodeWithContentDescription("산책 재개 메뉴").assertIsDisplayed().performClick()
         compose.onNodeWithText("이어서 걷기").assertIsDisplayed()

@@ -18,6 +18,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 import com.daengs.app.map.style.rememberWalkStyle
 import com.daengs.app.map.style.speedScaleStops
 import com.daengs.app.ui.theme.CardWhite
@@ -38,28 +40,22 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier, showColorSettings: B
     val number = remember { DecimalFormat("0.##", DecimalFormatSymbols(Locale.ROOT)) }
     val max = number.format(policy.speedMax)
     val middle = number.format(policy.speedMax / 2)
-    Surface(modifier.width(236.dp), shape = RoundedCornerShape(12.dp), color = CardWhite,
-        shadowElevation = 2.dp) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("이동 속도 · m/s", style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.weight(1f))
-                if (showColorSettings) WalkColorSettingsButton()
+    Surface(modifier.testTag("speedLegend"), shape = RoundedCornerShape(8.dp), color = CardWhite) {
+        Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("속도 m/s", fontSize = 10.sp, lineHeight = 12.sp)
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                    .background(Brush.horizontalGradient(*stops))
+                    .semantics {
+                        contentDescription = "${theme.label} 속도 스펙트럼. 왼쪽 0 m/s에서 오른쪽 $max m/s 이상으로 빨라져요."
+                    })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    for (label in listOf("0", middle, "$max+")) Text(label, fontSize = 10.sp, lineHeight = 12.sp)
+                }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(9.dp).clip(RoundedCornerShape(2.dp)).background(Color(policy.unknownColor)))
+            if (showColorSettings) {
                 Spacer(Modifier.width(4.dp))
-                Text("속도 미확인", style = MaterialTheme.typography.labelSmall)
-            }
-            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp))
-                .background(Brush.horizontalGradient(*stops))
-                .semantics {
-                    contentDescription = "${theme.label} 속도 스펙트럼. 왼쪽 0 m/s에서 오른쪽 $max m/s 이상으로 빨라져요."
-                })
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("0 · 느리게", style = MaterialTheme.typography.labelSmall)
-                Text(middle, style = MaterialTheme.typography.labelSmall)
-                Text("$max+ · 빠르게", style = MaterialTheme.typography.labelSmall)
+                WalkColorSettingsButton(Modifier.width(48.dp).heightIn(min = 48.dp))
             }
         }
     }

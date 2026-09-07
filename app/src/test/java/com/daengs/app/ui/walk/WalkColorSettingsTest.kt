@@ -24,9 +24,9 @@ class WalkColorSettingsTest {
     @Test fun chooseColorFromSettingsAndReopen() {
         val context = ApplicationProvider.getApplicationContext<Application>()
         WalkStyleStore(context).preferences.edit().clear().commit()
-        compose.setContent { DaengsTheme { Column { WalkSpeedLegend(); WalkColorSettingsButton() } } }
-        compose.onNodeWithText("이동 속도 · m/s").assertIsDisplayed()
-        compose.onNodeWithText("속도 미확인").assertIsDisplayed()
+        compose.setContent { DaengsTheme { WalkSpeedLegend(showColorSettings = true) } }
+        compose.onNodeWithText("속도 m/s").assertIsDisplayed()
+        compose.onNodeWithText("속도 미확인").assertDoesNotExist()
         compose.onNodeWithText("색상").performClick()
         compose.onNodeWithText("산책 지도 설정").assertIsDisplayed()
         compose.onNodeWithText("파랑").performClick()
