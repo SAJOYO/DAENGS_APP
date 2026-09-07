@@ -91,13 +91,15 @@ fun PlaceSearchLabScreen(
             PlaceFloatingNotices(listOfNotNull(state.notice, state.profileMessage.takeIf { live }).distinct(),
                 Modifier.align(Alignment.TopCenter).padding(start = 16.dp, end = 16.dp, top = 52.dp))
         }
-        Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.AppBackground) {
-            Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).padding(vertical = 10.dp)) {
-                Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
-                    Text("$resultLabel $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
-                    searchOriginLabel?.let { Text(it, fontSize = 10.sp, color = DaengsColors.TextSecondary) }
+        Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.Surface) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).padding(bottom = 10.dp)) {
+                Column(Modifier.fillMaxWidth().background(DaengsColors.AppBackground).padding(top = 10.dp)) {
+                    Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
+                        Text("$resultLabel $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                        searchOriginLabel?.let { Text(it, fontSize = 10.sp, color = DaengsColors.TextSecondary) }
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).semantics { contentDescription = "검색 조건" },
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
