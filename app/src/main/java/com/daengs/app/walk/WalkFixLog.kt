@@ -12,6 +12,8 @@ interface WalkFixLog {
     val historyChanges: kotlinx.coroutines.flow.Flow<Unit> get() = kotlinx.coroutines.flow.flowOf(Unit)
     suspend fun restoreSession(session: RecordedSession) = openSession(session)
     suspend fun hasEntries(sessionId: String): Boolean = actions(sessionId).isNotEmpty()
+    /** Searchable visible text only, without GPS, photos or a generation request. */
+    suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> = emptyMap()
 
     /** 이미 알려진 ID를 다시 열어도 최초 시작 정보는 바꾸지 않는다. */
     suspend fun openSession(session: RecordedSession)

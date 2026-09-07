@@ -24,8 +24,10 @@ import com.daengs.app.walk.diary.WalkDiaryReader
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
-/** List entry only. Season/weather belong to the later in-map cohort picker. */
+/** Search and conditions remain visible before the first recorded walk. */
 @Composable
 fun WalkHistoryScreen(
     history: WalkHistory, onBack: () -> Unit, onOpen: (String) -> Unit,
@@ -36,22 +38,36 @@ fun WalkHistoryScreen(
     val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
         app.tokenStore.load()?.appUserId.orEmpty()
     } }
+    WalkHistoryBrowser(history, reader, onBack, onOpen, modifier, onSync, pets, photoOf)
+}
+
+@Composable
+internal fun WalkHistoryBrowser(
+    history: WalkHistory, reader: WalkDiaryReader, onBack: () -> Unit, onOpen: (String) -> Unit,
+    modifier: Modifier = Modifier, onSync: (() -> Unit)? = null,
+    pets: List<Pet> = emptyList(), photoOf: (String) -> ImageBitmap? = { null },
+) {
     var dogId by rememberSaveable { mutableStateOf<String?>(null) }
-    var cursors by rememberSaveable(dogId) { mutableStateOf(listOf("")) }
-    var page by remember { mutableStateOf<WalkHistoryPage?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
+    var cursors by rememberSaveable(dogId, filter) { mutableStateOf(listOf("")) }
+    val position = cursors.last()
+    var page by remember(dogId, filter, position) { mutableStateOf<WalkHistoryPage?>(null) }
+    var error by remember(dogId, filter, position) { mutableStateOf<String?>(null) }
+    var hasAny by remember { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
     val pageIds = page?.walks.orEmpty().map { it.sessionId }
     val titles by remember(reader, pageIds) { reader.observeTitles(pageIds) }.collectAsState(initial = emptyMap())
-    val position = cursors.last()
-    val savedLists = rememberSaveableStateHolder()
+    val savedLists = key(dogId, filter) { rememberSaveableStateHolder() }
     LaunchedEffect(history) { onSync?.invoke() }
     LaunchedEffect(pets) { if (dogId != null && pets.none { it.id == dogId }) dogId = null }
-    LaunchedEffect(history, position, dogId, retry) {
+    LaunchedEffect(history, position, dogId, filter, retry) {
         page = null; error = null
         try {
-            history.changes.collect {
-                val loaded = history.finishedPage(WalkHistoryCursor.decode(position), dogId)
+            if (filter.keyword.isNotBlank()) delay(250)
+            history.changes.collectLatest {
+                val loaded = history.finishedPage(WalkHistoryCursor.decode(position), dogId, filter = filter)
+                hasAny = loaded.walks.isNotEmpty() || ((filter.active || dogId != null) &&
+                    history.finishedPage(size = 1).walks.isNotEmpty())
                 if (loaded.walks.isEmpty() && cursors.size > 1) cursors = cursors.dropLast(1)
                 else page = loaded
             }
@@ -61,23 +77,16 @@ fun WalkHistoryScreen(
         }
     }
     BackHandler(onBack = onBack)
-    Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹ 뒤로") }
-            Text("지난 산책", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("산책 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         if (pets.size >= 2) DogFilterRow(pets, dogId, { dogId = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), photoOf = photoOf)
-        when {
-            error != null -> Column(Modifier.padding(20.dp)) {
-                Text(error.orEmpty()); TextButton(onClick = { retry++ }) { Text("다시 시도") }
-            }
-            page == null -> Text("산책 기록을 불러오고 있어요.", Modifier.padding(20.dp))
-            page!!.walks.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(if (dogId == null) "아직 산책 기록이 없어요.\n방문을 열고 산책을 시작해 보세요."
-                    else "이 아이와 나간 산책이 아직 없어요.", color = TextMuted)
-            }
-            else -> savedLists.SaveableStateProvider("${dogId.orEmpty()}/$position") {
+        WalkHistorySearchLayout(filter, { filter = it }, page == null, error, page?.walks?.isEmpty() == true,
+            hasAny, { retry++ }, { filter = WalkHistoryFilter(); dogId = null }, Modifier.weight(1f)) {
+            savedLists.SaveableStateProvider(position) {
                 WalkHistoryPageContent(page!!.walks, cursors.size, cursors.size > 1, page!!.next != null,
                     { cursors = cursors.dropLast(1) },
                     { page?.next?.let { cursors = cursors + it.encode() } }, onOpen, pets,
@@ -115,7 +124,9 @@ internal fun WalkHistoryPageContent(
                                 style = MaterialTheme.typography.labelSmall)
                             Text(listOf(formatWalkDuration(walk.activeDurationMillis), formatWalkDistance(walk.distanceMeters))
                                 .joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                            walk.weather?.let { Text(weatherLabel(it), style = MaterialTheme.typography.labelSmall, color = TextMuted) }
+                            Text(if (WalkDepartureWeather.of(walk.weather?.weatherCode) == WalkDepartureWeather.UNKNOWN)
+                                "출발 날씨 정보 없음" else "출발 ${weatherLabel(requireNotNull(walk.weather))}",
+                                style = MaterialTheme.typography.labelSmall, color = TextMuted)
                         }
                         Text("›", color = TextMuted)
                     }
