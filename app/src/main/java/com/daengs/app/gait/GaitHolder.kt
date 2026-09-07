@@ -172,10 +172,6 @@ class GaitHolder(
     val comparablePairExists: Boolean
         get() = records.count { it.comparable } >= 2
 
-    /** B 진입에서 첫 기록을 고른 뒤, 상대 후보 — **자기 자신은 뺀다.** */
-    fun comparableExcept(id: String): List<GaitRecord> =
-        records.filter { it.id != id && it.comparable }
-
     /**
      * 기록 하나를 지운다. 상세 화면의 삭제 자리가 부른다.
      *

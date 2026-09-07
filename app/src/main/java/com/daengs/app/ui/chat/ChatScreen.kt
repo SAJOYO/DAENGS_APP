@@ -114,6 +114,7 @@ import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
+import com.daengs.app.ui.gait.GaitPairPickSheet
 import com.daengs.app.ui.gait.GaitPickSheet
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
@@ -452,14 +453,11 @@ fun ChatScreen(
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
 
-    /**
-     * 저장된 기록끼리 비교(B 진입)에서 **첫 번째로 고른 기록**.
-     *
-     * A 진입(방금 분석한 카드의 [비교하기])은 기준이 이미 있어 시트가 한 번이지만,
-     * 여기는 기준이 없어 **같은 시트를 두 번** 쓴다. `null` 이면 아직 첫 선택 전이다.
-     */
-    var gaitPairFirst by remember { mutableStateOf<GaitRecord?>(null) }
+    /** 저장된 기록끼리 비교(B 진입) — 둘을 한 시트에서 고르는 중. */
     var gaitPairPicking by remember { mutableStateOf(false) }
+
+    /** AI 기능 선택 → 보행 "지난 기록 보기" 시트가 열려 있나. */
+    var gaitHistoryOpen by remember { mutableStateOf(false) }
 
     /** 나란히 보는 중. */
     var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
@@ -913,6 +911,16 @@ fun ChatScreen(
                     it()
                 }
             },
+            // 남긴 기록이 없으면 줄을 안 그린다 — 눌러도 빈 시트만 뜨는 줄은 사용자가
+            // 자기가 뭘 잘못했나 생각하게 한다 ([기록 비교] 줄과 같은 규칙).
+            onOpenGaitHistory = if (gait.records.isNotEmpty()) {
+                {
+                    chooserMode = null
+                    gaitHistoryOpen = true
+                }
+            } else {
+                null
+            },
             onCamera = {
                 chooserMode = null
                 when {
@@ -1106,30 +1114,36 @@ fun ChatScreen(
         )
     }
 
-    // ── 저장된 기록끼리 비교 (B 진입) — **같은 시트를 두 번 쓴다** ──────────
+    // ── 저장된 기록끼리 비교 (B 진입) — **한 시트에서 둘을 고른다** ──────────
     //
-    // 새 화면을 만들지 않는다. [GaitPickSheet] 가 이미 `comparable` 만 고르게 하고
-    // 날짜를 보여 주므로, 기준을 고르는 데도 상대를 고르는 데도 그대로 쓴다.
+    // 예전에는 같은 시트를 두 번 열었다(기준 → 상대). 두 번째 시트에서 첫 것을 빼는
+    // 것까지는 맞았는데 "방금 골랐는데 또?" 가 됐다. 둘을 체크하고 한 번에 넘어간다.
     if (gaitPairPicking) {
-        GaitPickSheet(
+        GaitPairPickSheet(
             records = gait.records,
             onDismiss = { gaitPairPicking = false },
-            onConfirm = { first ->
+            onConfirm = { a, b ->
                 gaitPairPicking = false
-                gaitPairFirst = first          // 두 번째 시트로 넘어간다
+                // 순서는 신경 쓰지 않는다 — 어느 쪽이 최근인지는 날짜가 정한다.
+                scope.launch { gaitComparing = gait.compare(a.id, b.id) }
             },
         )
     }
 
-    gaitPairFirst?.let { first ->
+    // ── 지난 보행 기록 보기 (AI 기능 선택 시트) ────────────────────────────
+    //
+    // 피부 쪽 "지난 기록 보기" 와 같은 자리다. 비교 시트를 그대로 쓰되 **어느 기록이든**
+    // 열 수 있다 — 비교 지표가 없어도 영상은 볼 수 있으니까. 고르면 상세로 간다.
+    if (gaitHistoryOpen) {
         GaitPickSheet(
-            // **첫 번째로 고른 것은 뺀다** — 자기 자신과 비교하면 늘 "차이 없음" 이다.
-            records = gait.comparableExcept(first.id),
-            onDismiss = { gaitPairFirst = null },
-            onConfirm = { second ->
-                gaitPairFirst = null
-                // 순서는 신경 쓰지 않는다 — 저쪽이 날짜로 past/recent 를 가른다.
-                scope.launch { gaitComparing = gait.compare(second.id, first.id) }
+            records = gait.records,
+            title = "지난 보행 기록",
+            confirmLabel = "기록 열기",
+            requireComparable = false,
+            onDismiss = { gaitHistoryOpen = false },
+            onConfirm = { record ->
+                gaitHistoryOpen = false
+                gaitDetail = record.id
             },
         )
     }
@@ -1800,6 +1814,8 @@ private fun AiActionDialog(
     skinOnly: Boolean = false,
     /** 지난 기록으로. null 이면 줄을 안 그린다 (로그인 안 한 기기). */
     onOpenHistory: (() -> Unit)? = null,
+    /** 보행 쪽 지난 기록으로. null 이면 줄을 안 그린다 (남긴 기록이 없을 때). */
+    onOpenGaitHistory: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -1843,6 +1859,12 @@ private fun AiActionDialog(
                                 SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
                                 RowSeparator()
                                 SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                                if (onOpenGaitHistory != null) {
+                                    RowSeparator()
+                                    // 피부 묶음의 "지난 기록 보기" 와 같은 자리. 분석 카드는
+                                    // 대화 위로 흘러가 버려서, 지난 영상을 다시 열 길이 이것뿐이다.
+                                    SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenGaitHistory)
+                                }
                                 RowSeparator()
                                 // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
                                 // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
@@ -1851,7 +1873,7 @@ private fun AiActionDialog(
                                 // 상수라, 박아 두면 기준이 바뀌어도 이 줄만 안 따라온다 —
                                 // 실제로 "10초 이상" 이 그렇게 남아 있었다.
                                 Text(
-                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                                     color = TextMuted,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1946,7 +1968,7 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
                         RowSeparator()
                         Text(
-                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
