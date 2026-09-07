@@ -97,6 +97,38 @@ class WalkDiaryMapScreenTest {
         assertEquals("2 · 3",markers.single().label)
         assertEquals(c.id,markers.single().id)
         assertTrue(markers.single().selected)
+        assertTrue(markers.single().aboveRouteEndpoints)
+    }
+
+    @Test fun `server GPS anchors select numbered cards and gap navigation clears marker selection`() {
+        val (bundle, fixes) = com.daengs.app.walk.diary.sceneAnchorFixture()
+        val walk = WalkSummary(bundle.sessionId, emptyList(), fixes.first().atMillis,
+            fixes.last().atMillis, null, 0.0, 0, emptyList(), null)
+        val scenes = com.daengs.app.walk.diary.diaryWalk(walk, emptyList(), emptyList(),
+            com.daengs.app.walk.diary.StoryboardDraft(),
+            com.daengs.app.walk.diary.StoryboardAnalysisView(bundle, true, ""), fixes).scenes
+        var selected: DiaryScene? by mutableStateOf(null)
+        compose.setContent {
+            WalkDiaryMapContent(scenes, selected, false, null, { selected = it }, { selected = null },
+                {}, {}, {}, {}, {}, map = {
+                    Row { diarySceneMarkers(scenes, selected?.id).forEach { marker ->
+                        androidx.compose.material3.TextButton(onClick = { selected = scenes.first { it.id == marker.id } }) {
+                            androidx.compose.material3.Text(marker.label)
+                        }
+                    } }
+                })
+        }
+        compose.onNodeWithText("1 · 7").performClick()
+        compose.onNodeWithText("장면 1").assertExists()
+        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("장면 2").assertExists()
+        compose.runOnIdle { assertTrue(diarySceneMarkers(scenes, selected?.id).any { it.selected && it.label == "2" }) }
+        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("장면 3").assertExists()
+        compose.runOnIdle {
+            assertNull(selected?.point)
+            assertTrue(diarySceneMarkers(scenes, selected?.id).none { it.selected })
+        }
     }
 
     @Test fun `new action uses the selected historical observation not current time or location`() {

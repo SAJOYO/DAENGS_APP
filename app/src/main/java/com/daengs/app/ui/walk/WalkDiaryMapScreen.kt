@@ -60,10 +60,10 @@ internal fun WalkDiaryMapScreen(
         try { history.changes.collect { detail = history.sessionDetail(sessionId); loaded = true } }
         catch (e: Exception) { if (e is CancellationException) throw e; error = "산책 경로를 불러오지 못했어요." }
     }
-    LaunchedEffect(detail?.summary, retry) {
+    LaunchedEffect(detail, retry) {
         diary = null
         val summary = detail?.summary ?: return@LaunchedEffect
-        try { reader.observe(listOf(summary)).collect { diary = it.singleOrNull() } }
+        try { reader.observe(listOf(summary), mapOf(sessionId to detail!!.observations)).collect { diary = it.singleOrNull() } }
         catch (e: Exception) { if (e is CancellationException) throw e; error = "장면을 불러오지 못했어요." }
     }
     fun change(value: WalkEntry, delete: Boolean) {
@@ -158,7 +158,7 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): L
     return diaryLocationGroups(scenes).map { group ->
         val chosen = group.firstOrNull { it.id == selectedId } ?: group.first()
         MomentMarkerState(chosen.id, requireNotNull(chosen.point), group.joinToString(" · ") { order[it.id].toString() },
-            selected = group.any { it.id == selectedId })
+            selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true)
     }
 }
 

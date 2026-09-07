@@ -12,6 +12,7 @@ data class StoryboardScene(
     val hidden: Boolean = false, val needsReview: Boolean = false,
     val sourcePayload: String? = null,
     val entryReference: StoryboardEntryReference? = null,
+    val observation: StoryboardObservation? = null,
 )
 
 data class StoryboardEntryReference(val entryId: String, val revision: Long?, val petId: String?, val isNote: Boolean = false)
