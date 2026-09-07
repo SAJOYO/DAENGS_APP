@@ -2,7 +2,10 @@ package com.daengs.app.walk.sync
 
 import android.util.Log
 import com.daengs.app.walk.WalkFixLog
+import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -23,6 +26,8 @@ class WalkSync(
     private val log: WalkFixLog,
     private val api: WalkApiClient = DefaultWalkApiClient,
     private val now: () -> Long = System::currentTimeMillis,
+    private val entrySync: WalkEntrySync? = null,
+    private val storyboardSync: (suspend (String, String, String) -> Unit)? = null,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -34,6 +39,7 @@ class WalkSync(
         Log.w(TAG, message, cause)
     },
 ) {
+    private val pushMutex = Mutex()
 
     /**
      * 한 번 맞춘다. **실패해도 조용하다.**
@@ -46,35 +52,74 @@ class WalkSync(
      */
     suspend fun syncOnce(accessToken: String?): Unit = withContext(Dispatchers.IO) {
         val token = accessToken ?: return@withContext
-        if (!WalkApi.configured) return@withContext
-        runCatching { push(token) }.onFailure { it.warn("올리기") }
+        if (!api.configured || !ownsToken(token)) return@withContext
+        runCatching { pushMutex.withLock { push(token) } }.onFailure { it.warn("올리기") }
         runCatching { pull(token) }.onFailure { it.warn("되찾기") }
+        for (session in log.finishedSessions()) {
+            if (!ownsToken(token)) return@withContext
+            session.serverWalkId?.let { remoteId ->
+                runCatching {
+                    entrySync?.sync(token, session.id, remoteId)
+                    storyboardSync?.invoke(token, session.id, remoteId)
+                }.onFailure { it.warn("기록 맞추기") }
+            }
+        }
     }
 
-    /** 끝났는데 안 올라간 것을 올린다. */
-    private suspend fun push(token: String) {
-        for (session in log.unsyncedSessions()) {
-            val fixes = log.fixes(session.id)
-            val head = fixes.take(POINTS_PER_REQUEST)
-            val walkId = api.upload(token, session, head).getOrElse {
-                // 한 건이 실패해도 나머지는 시도한다 — 한 산책이 특별히 커서 막히는
-                // 경우에 다른 기록까지 볼모가 되면 안 된다.
-                it.warn("산책 ${session.id.take(8)} 올리기")
-                continue
-            }
-            // 긴 산책은 나눠 보낸다. 좌표 순번이 서버 PK 라 나눠도 중복이 안 생긴다.
-            var failed = false
-            for (chunk in fixes.drop(POINTS_PER_REQUEST).chunked(POINTS_PER_REQUEST)) {
-                api.appendPoints(token, walkId, chunk).onFailure {
-                    it.warn("좌표 이어붙이기")
-                    failed = true
+    /**
+     * WorkManager가 지정한 한 건을 보낸다. [syncOnce]와 달리 실패를 삼키지 않는다 —
+     * 호출자가 [androidx.work.ListenableWorker.Result.retry]를 선택해야 하기 때문이다.
+     */
+    suspend fun syncPendingSession(accessToken: String, sessionId: String): Unit =
+        withContext(Dispatchers.IO) {
+            if (!api.configured || !ownsToken(accessToken)) return@withContext
+            pushMutex.withLock {
+                val session = log.session(sessionId) ?: return@withLock
+                if (session.endedAtMillis == null) {
+                    return@withLock
                 }
-                if (failed) break
+                if (session.syncState != WalkSyncState.DERIVED) pushOne(accessToken, session)
+                log.session(sessionId)?.serverWalkId?.let {
+                    entrySync?.sync(accessToken, sessionId, it)
+                    storyboardSync?.invoke(accessToken, sessionId, it)
+                }
             }
-            // 좌표를 다 못 올렸으면 **올라갔다고 표시하지 않는다.** 다음에 다시 올리면
-            // 이미 있는 것은 서버가 알아서 건너뛴다.
-            if (!failed) log.markSynced(session.id, now())
         }
+
+    /** 끝났지만 아직 계산 완료되지 않은 것을 현재 단계부터 이어간다. */
+    private suspend fun push(token: String) {
+        for (session in log.sessionsPendingAnalysis()) {
+            runCatching { if (session.syncState != WalkSyncState.DERIVED) pushOne(token, session) }.onFailure {
+                // 한 건이 실패해도 나머지는 시도한다 — 큰 산책 하나에 다른 기록까지
+                // 볼모가 되면 안 된다.
+                it.warn("산책 ${session.id.take(8)} 동기화")
+            }
+        }
+    }
+
+    private suspend fun pushOne(token: String, session: com.daengs.app.walk.RecordedSession) {
+        if (!ownsToken(token)) return
+        val fixes = log.fixes(session.id)
+        val rememberedWalkId = session.serverWalkId
+            ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
+        val walkId = rememberedWalkId ?: run {
+            val id = api.upload(token, session, fixes.take(POINTS_PER_REQUEST)).getOrThrow()
+            // 긴 산책은 나눠 보낸다. 좌표 순번이 서버 PK 라 재전송해도 중복이 안 생긴다.
+            for (chunk in fixes.drop(POINTS_PER_REQUEST).chunked(POINTS_PER_REQUEST)) {
+                api.appendPoints(token, id, chunk).getOrThrow()
+            }
+            // 여기까지 왔으면 원본은 전부 있다. finalize 응답을 잃더라도 다음 실행에서
+            // 원본을 다시 보내지 않고 이 id로 finalize만 재시도한다.
+            log.markRawUploaded(session.id, id, now())
+            id
+        }
+
+        val manifest = WalkFinalizeManifest(
+            expectedPointCount = fixes.size,
+            terminalClientSeq = fixes.lastOrNull()?.clientSeq,
+        )
+        api.finalize(token, walkId, manifest).getOrThrow()
+        log.markDerived(session.id, now())
     }
 
     /** 서버에 있는데 이 기기에 없는 것을 내려받는다. */
@@ -92,11 +137,23 @@ class WalkSync(
                 it.warn("산책 ${walk.id.take(8)} 받기")
                 continue
             }
-            // 되찾은 것은 이미 서버에 있으므로 올린 것으로 표시해 둔다.
-            log.openSession(detail.walk.toSession(syncedAtMillis = now()))
+            // 목록에는 분석 상태가 없으므로 원본 업로드까지만 확실한 것으로 저장한다.
+            // 다음 sync가 finalize를 멱등 호출한다.
+            if (!ownsToken(token)) return
+            log.restoreSession(detail.walk.toSession(rawUploadedAtMillis = now()).copy(ownerId = tokenOwner(token)))
             for (fix in detail.fixes) log.append(detail.walk.clientSessionId, fix)
         }
     }
+
+    private fun ownsToken(token: String): Boolean {
+        val owner = log.ownerId ?: return true // test logs have no account boundary
+        return owner.isNotEmpty() && tokenOwner(token) == owner
+    }
+
+    private fun tokenOwner(token: String): String? = runCatching {
+            val claims = org.json.JSONObject(String(java.util.Base64.getUrlDecoder().decode(token.split('.')[1])))
+            claims.getString("sub")
+        }.getOrNull()
 
     private fun Throwable.warn(what: String) {
         warn("산책 동기화 — $what 에 실패했다. 다음에 다시 시도한다.", this)
@@ -119,6 +176,8 @@ private const val TAG = "WalkSync"
 
 /** 테스트가 서버 없이 돌 수 있게 낸 얇은 경계. 진짜는 [WalkApi] 다. */
 interface WalkApiClient {
+    val configured: Boolean
+
     suspend fun upload(
         token: String,
         session: com.daengs.app.walk.RecordedSession,
@@ -131,12 +190,21 @@ interface WalkApiClient {
         fixes: List<com.daengs.app.walk.RecordedFix>,
     ): Result<Unit>
 
+    suspend fun finalize(
+        token: String,
+        walkId: String,
+        manifest: WalkFinalizeManifest,
+    ): Result<Unit>
+
     suspend fun list(token: String): Result<List<RemoteWalk>>
 
     suspend fun detail(token: String, walkId: String): Result<RemoteWalkDetail>
 }
 
 private object DefaultWalkApiClient : WalkApiClient {
+    override val configured: Boolean
+        get() = WalkApi.configured
+
     override suspend fun upload(
         token: String,
         session: com.daengs.app.walk.RecordedSession,
@@ -148,6 +216,12 @@ private object DefaultWalkApiClient : WalkApiClient {
         walkId: String,
         fixes: List<com.daengs.app.walk.RecordedFix>,
     ) = WalkApi.appendPoints(token, walkId, fixes)
+
+    override suspend fun finalize(
+        token: String,
+        walkId: String,
+        manifest: WalkFinalizeManifest,
+    ) = WalkApi.finalize(token, walkId, manifest)
 
     override suspend fun list(token: String) = WalkApi.list(token)
 

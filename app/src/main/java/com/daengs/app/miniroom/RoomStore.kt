@@ -57,8 +57,38 @@ class RoomStore(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    /**
+     * 방 둘러보기를 본 적 있나.
+     *
+     * **기기의 일이지 계정의 일이 아니다.** 서버에 안 올린다 — 같은 사람이 새 폰에서
+     * 처음 방을 열면 다시 보는 것이 맞다.
+     */
+    fun tourSeen(): Boolean = prefs.getBoolean(KEY_TOUR_SEEN, false)
+
+    fun markTourSeen() {
+        prefs.edit().putBoolean(KEY_TOUR_SEEN, true).apply()
+    }
+
+    /**
+     * **방에서 뺀 아이들.**
+     *
+     * 넣은 아이가 아니라 **뺀 아이를 적는다.** 기본이 "등록한 아이가 다 선다" 라,
+     * 넣은 쪽을 적으면 새로 등록한 아이가 방에 안 서고 사용자가 매번 켜 줘야 한다.
+     *
+     * 서버에 안 올린다 — 방 배치·액자 카드와 같은 처지로 **이 기기의 일**이다.
+     */
+    fun loadHiddenPetIds(): Set<String> =
+        prefs.getStringSet(KEY_HIDDEN_PETS, emptySet())?.toSet() ?: emptySet()
+
+    fun saveHiddenPetIds(ids: Set<String>) {
+        // `getStringSet` 이 돌려주는 집합은 고치면 안 되는 물건이라 새로 만들어 넣는다.
+        prefs.edit().putStringSet(KEY_HIDDEN_PETS, ids.toSet()).apply()
+    }
+
     private companion object {
         const val KEY_ITEMS = "items"
+        const val KEY_HIDDEN_PETS = "hidden_pets"
+        const val KEY_TOUR_SEEN = "tour_seen"
         const val KEY_THEME = "theme"
         const val KEY_FRAME = "frame_card"
     }

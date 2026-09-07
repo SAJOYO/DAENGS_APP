@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import com.daengs.app.ui.DaengsLogo
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.home.HomeDemoData
+import com.daengs.app.ui.my.PrivacyPolicyLink
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
@@ -110,7 +111,12 @@ fun LandingScreen(
                     CircularProgressIndicator(Modifier.size(20.dp), color = KakaoLabel, strokeWidth = 2.dp)
                 } else {
                     Text(
-                        "카카오로 시작하기",
+                        // **"3초" 를 넣은 것은 약속이다.** 이 뒤로 사용자가 채워야 하는
+                        // 칸이 하나도 없어야 한다 — 이름은 서버가 지어 주고
+                        // (`ui/nickname/`), 강아지 등록은 기능을 누를 때 청한다
+                        // (`ui/home/PetGate.kt`). 둘 중 하나라도 되돌리면 이 문구가
+                        // 거짓말이 된다.
+                        "카카오로 3초 만에 시작하기",
                         color = if (canLogin) KakaoLabel else KakaoLabel.copy(alpha = 0.4f),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -132,6 +138,10 @@ fun LandingScreen(
             // 둘러보기는 **디버그 빌드에만** 있다 — 출시 앱은 로그인이 필수다.
             // 진짜는 `app/src/debug/.../SkipBrowse.kt`, 릴리스는 빈 껍데기다.
             SkipBrowse(enabled = !busy, onSkip = onSkip)
+
+            // 릴리스는 로그인이 필수라 이 화면을 못 지나면 My 화면의 방침 링크에
+            // 닿을 수 없다. Play 정책상 앱 안에서 찾을 수 있어야 해서 여기에도 둔다.
+            PrivacyPolicyLink(Modifier.padding(top = 10.dp))
         }
     }
 }

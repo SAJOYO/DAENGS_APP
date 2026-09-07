@@ -13,11 +13,28 @@ import org.junit.Test
  */
 class DexCardsTest {
 
-    @Test
-    fun `열두 장이고 번호가 하나씩이다`() {
-        assertEquals(12, DEX_CARDS.size)
-        assertEquals((1..12).toList(), DEX_CARDS.map { it.no })
-    }
+    /**
+      * **번호가 벌마다 1부터다.** 야채 01~12, 과일 01~13.
+      *
+      * 그래서 `no` 는 카드를 가리키는 열쇠가 못 된다 — 이머시브 무대도 `id` 로 찾는다
+      * (`IMMERSIVE_SCENES`). 번호를 키로 두면 과일 1번에 배추 무대가 붙는다.
+      */
+     @Test
+     fun `벌마다 번호가 1부터 하나씩이다`() {
+         assertEquals(25, DEX_CARDS.size)
+         DexDeck.entries.forEach { deck ->
+             val nos = DEX_CARDS.filter { it.deck == deck }.map { it.no }
+             assertEquals("$deck", (1..nos.size).toList(), nos)
+         }
+         assertEquals(12, DEX_CARDS.count { it.deck == DexDeck.Veggie })
+         assertEquals(13, DEX_CARDS.count { it.deck == DexDeck.Fruit })
+     }
+
+     /** 두 벌이 한 목록에 있으니 id 는 **전체에서** 하나뿐이어야 한다. */
+     @Test
+     fun `id 가 겹치지 않는다`() {
+         assertEquals(DEX_CARDS.size, DEX_CARDS.map { it.id }.toSet().size)
+     }
 
     /** 한 장이라도 비면 그 카드만 설명이 텅 빈다. */
     @Test
@@ -61,10 +78,14 @@ class DexCardsTest {
         assertEquals(listOf("No.", "Type", "Move", "CRUNCH"), labels)
     }
 
+    /** 분모는 **그 벌의 장수**다. 도감이 탭으로 갈려 있어 전체를 세면 거짓말이 된다. */
     @Test
-    fun `번호는 두 자리다`() {
-        assertEquals("01 / 12", DEX_CARDS.first().detailRows().first().value)
-        assertEquals("12 / 12", DEX_CARDS.last().detailRows().first().value)
+    fun `번호는 두 자리고 분모가 벌 기준이다`() {
+        val veggie = DEX_CARDS.filter { it.deck == DexDeck.Veggie }
+        val fruit = DEX_CARDS.filter { it.deck == DexDeck.Fruit }
+        assertEquals("01 / 12", veggie.first().detailRows(veggie.size).first().value)
+        assertEquals("12 / 12", veggie.last().detailRows(veggie.size).first().value)
+        assertEquals("13 / 13", fruit.last().detailRows(fruit.size).first().value)
     }
 
     /**
@@ -73,7 +94,7 @@ class DexCardsTest {
      */
     @Test
     fun `스탯 라벨이 빈 카드는 Stat 으로 떨어진다`() {
-        val tomato = DEX_CARDS.single { it.no == 11 }
+        val tomato = DEX_CARDS.single { it.id == "tomato" }
         assertEquals("", tomato.statLabel)
         assertEquals("Stat", tomato.detailRows().last().label)
         assertEquals("840", tomato.detailRows().last().value)
@@ -83,8 +104,8 @@ class DexCardsTest {
     @Test
     fun `기술 부연은 있는 카드에만 붙는다`() {
         // 번호판 줄이 빠져서 기술은 셋째 줄이다.
-        val move = { no: Int -> DEX_CARDS.single { it.no == no }.detailRows()[2] }
-        assertTrue(move(1).note.isNotBlank())
-        assertTrue(move(2).note.isBlank())
+        val move = { id: String -> DEX_CARDS.single { it.id == id }.detailRows()[2] }
+        assertTrue(move("cabbage").note.isNotBlank())
+        assertTrue(move("pepper").note.isBlank())
     }
 }

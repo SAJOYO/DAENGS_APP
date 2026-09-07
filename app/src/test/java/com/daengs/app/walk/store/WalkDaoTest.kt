@@ -3,9 +3,13 @@ package com.daengs.app.walk.store
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.RecordedWalkAction
 import com.daengs.app.walk.RecordedWeather
+import com.daengs.app.walk.WalkMomentType
+import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -170,6 +174,25 @@ class WalkDaoTest {
     }
 
     @Test
+    fun `원본 업로드와 계산 완료를 서로 다른 단계로 저장한다`() = runBlocking {
+        log.openSession(session("s1"))
+        log.closeSession("s1", endedAtMillis = 500L)
+
+        log.markRawUploaded("s1", serverWalkId = "walk-1", changedAtMillis = 600L)
+
+        val uploaded = log.session("s1")
+        assertEquals(WalkSyncState.RAW_UPLOADED, uploaded?.syncState)
+        assertEquals("walk-1", uploaded?.serverWalkId)
+        assertEquals(listOf("s1"), log.sessionsPendingAnalysis().map { it.id })
+
+        log.markDerived("s1", changedAtMillis = 700L)
+
+        assertEquals(WalkSyncState.DERIVED, log.session("s1")?.syncState)
+        assertEquals(700L, log.session("s1")?.syncedAtMillis)
+        assertTrue(log.sessionsPendingAnalysis().isEmpty())
+    }
+
+    @Test
     fun `deleting a session cascades to its raw fixes`() = runBlocking {
         log.openSession(session("s1"))
         log.append("s1", fix(0))
@@ -178,6 +201,49 @@ class WalkDaoTest {
 
         assertNull(log.session("s1"))
         assertTrue(log.fixes("s1").isEmpty())
+    }
+
+    @Test
+    fun `행동 원본은 시각 순서로 남고 같은 id는 중복되지 않는다`() = runBlocking {
+        log.openSession(session("s1"))
+        log.appendAction(action("a2", WalkMomentType.BARKING, 3_000L))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L))
+        log.appendAction(action("a1", WalkMomentType.NOTE, 4_000L))
+
+        val stored = log.actions("s1")
+
+        assertEquals(listOf("a1", "a2"), stored.map { it.id })
+        assertEquals(WalkMomentType.SNIFFING, stored.first().type)
+    }
+
+    @Test
+    fun `세션을 지우면 행동 원본도 함께 지워진다`() = runBlocking {
+        log.openSession(session("s1"))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L))
+
+        log.deleteSession("s1")
+
+        assertTrue(log.actions("s1").isEmpty())
+    }
+
+    @Test
+    fun `미래 버전의 모르는 행동 코드는 산책 상세를 막지 않는다`() = runBlocking {
+        log.openSession(session("s1"))
+        db.walkDao().insertAction(
+            WalkActionRow(
+                id = "future",
+                sessionId = "s1",
+                typeCode = "future_behavior",
+                recordedAtMillis = 2_000L,
+                locationCapturedAtMillis = 1_900L,
+                lat = 37.5,
+                lng = 127.0,
+                accuracyM = 5f,
+            ),
+        )
+
+        assertTrue(log.actions("s1").isEmpty())
+        assertEquals("s1", log.session("s1")?.id)
     }
 
 
@@ -192,11 +258,13 @@ class WalkDaoTest {
     fun `그 아이와만 나간 산책은 같이 지운다`() = runBlocking {
         log.openSession(RecordedSession("solo", dogIds = listOf("dog-1"), startedAtMillis = 1_000L))
         log.append("solo", fix(0))
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L, sessionId = "solo"))
 
         log.forgetDog("dog-1")
 
         assertNull(log.session("solo"))
         assertTrue(log.fixes("solo").isEmpty())
+        assertTrue(log.actions("solo").isEmpty())
     }
 
     /**
@@ -251,5 +319,20 @@ class WalkDaoTest {
         lng = 127.0,
         accuracyM = 5f,
         isMock = isMock,
+    )
+
+    private fun action(
+        id: String,
+        type: WalkMomentType,
+        atMillis: Long,
+        sessionId: String = "s1",
+    ) = RecordedWalkAction(
+        id = id,
+        sessionId = sessionId,
+        type = type,
+        recordedAtMillis = atMillis,
+        locationCapturedAtMillis = atMillis - 100L,
+        point = GeoPoint(37.5, 127.0),
+        accuracyMeters = 5f,
     )
 }

@@ -170,7 +170,7 @@ fun CutoutLabScreen(onBack: () -> Unit) {
             title = "얼굴만 원 안에 넣어 주세요",
             confirmLabel = "이 얼굴로 누끼",
             circle = true,
-            guidance = "목 아래는 빼고 얼굴만 담습니다. 모서리 손잡이로 크기를 바꿉니다.",
+            guidance = "목 아래는 빼고 얼굴만 담습니다. 두 손가락 또는 네 모서리로 크기를 바꿉니다.",
         )
         return
     }

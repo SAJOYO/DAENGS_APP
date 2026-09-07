@@ -22,10 +22,9 @@ fun localSetting(key: String): String =
 val kakaoNativeAppKey = localSetting("daengs.kakaoNativeAppKey")
 val apiBaseUrl = localSetting("daengs.apiBaseUrl")
 
-// 피부 스크리닝 서버. 우리 서버(apiBaseUrl)와 **다른 주소**다 — 모델이 저쪽
-// 저장소(gayeoniee/deeplearning_test)에서 따로 돌고, 아직 띄워 두지도 않았다.
-// 비어 있으면 채팅의 진단 버튼이 스스로 그렇게 말한다.
-val screenUrl = localSetting("daengs.screenUrl")
+// 피부 스크리닝은 이제 **우리 서버(apiBaseUrl) 안**이다. 저쪽이 D-040 으로 backend
+// 로 옮겼고, 앱은 #134 에서 옛 경로(/screen/v1/screen)를 뗐다. 그래서 `daengs.screenUrl`
+// 은 더 안 읽는다 — local.properties 에 남아 있어도 아무 데도 안 쓰인다.
 
 // 보행 분석 서버. 스크리닝과 **같은 모양**이다 — nginx 가 우리 서버와 같은 호스트에서
 // /gait 접두사로 별도 컨테이너에 넘긴다. 그래서 daengs_backend 의 openapi.json 에는
@@ -47,7 +46,6 @@ val gaitUrl = localSetting("daengs.gaitUrl")
  * 동작해야 한다. 다만 그때는 아래에서 경고를 낸다.
  */
 val apiBaseUrlRelease = localSetting("daengs.apiBaseUrlRelease")
-val screenUrlRelease = localSetting("daengs.screenUrlRelease")
 val gaitUrlRelease = localSetting("daengs.gaitUrlRelease")
 
 /**
@@ -69,11 +67,48 @@ fun releaseUrl(name: String, release: String, fallback: String): String =
 
 // 네이버 지도 NCP 키. 없어도 앱은 켜진다 — 지도 타일만 인증 실패로 비고,
 // 나머지 화면은 그대로 돈다 (카카오 키와 같은 철학).
-val naverMapClientId = localSetting("daengs.naverMapClientId")
+val naverMapClientId = localSetting("daengs.naverMapClientId").ifBlank {
+    // 로컬 Android 설정을 따로 복제하지 않아도 팀 공용 `.env`에서 주입해 실험할 수 있다.
+    // 값 자체는 APK BuildConfig에만 들어가며 저장소 파일에는 쓰지 않는다.
+    providers.environmentVariable("DAENGS_NAVER_NCP_KEY_ID").orNull.orEmpty()
+}
 
 // 콘솔 Style Editor 에서 만든 지도 스타일(My Style ID). 지도를 앱 팔레트로 칠한다.
 // **없으면 기본 네이버 지도로 뜬다** — 앱은 정상 동작하고, 스타일만 안 입는다.
 val naverMapStyleId = localSetting("daengs.naverMapStyleId")
+
+/**
+ * 스토어에 올릴 버전. **인자를 안 주면 지금과 똑같이 `1` · `"1.0"` 이다.**
+ *
+ * Play 는 한 트랙에서 **같은 versionCode 를 두 번 받지 않는다.** 지운 릴리스가 쓴
+ * 번호도 재사용할 수 없다 — 한 번 올린 번호는 그것으로 끝이다. 그래서 올릴 때마다
+ * 번호가 하나씩 올라가야 하는데, 파일에 상수로 박아 두면 업로드마다 코드와 아무
+ * 상관 없는 커밋이 하나씩 붙고, 잊으면 **업로드 단계에서야** 막힌다.
+ *
+ * 그래서 빌드 인자로 받는다. 아래 `defaultConfig` 의 `slimAbi` 와 같은 방식이다.
+ *
+ *     ./gradlew :app:bundleRelease -PversionCode=2 -PversionName=1.0.1
+ *
+ * **2026-09-02 의 `v1` 태그가 versionCode 1 로 나갔으므로 다음 업로드는 2 부터다.**
+ *
+ * 숫자가 아닌 값이 오면 **빌드를 멈춘다.** 조용히 1 로 떨어지면 오타 하나가 그대로
+ * 통과해서, 몇 분 걸려 만든 AAB 를 올리는 자리에서야 중복으로 거부당한다.
+ */
+val versionCodeArg: Int = providers.gradleProperty("versionCode").orNull?.trim().let { given ->
+    when {
+        given.isNullOrBlank() -> 1
+        else -> given.toIntOrNull()
+            ?: throw GradleException("-PversionCode 는 정수여야 합니다. 받은 값: \"$given\"")
+    }
+}
+
+/**
+ * 버전 이름. 사람이 읽는 값이라 versionCode 와 달리 매번 바뀌지 않아도 된다.
+ * 안 주면 `"1.0"` 이다.
+ */
+val versionNameArg: String = providers.gradleProperty("versionName").orNull?.trim()
+    ?.takeIf { it.isNotBlank() }
+    ?: "1.0"
 
 /**
  * 플레이스토어 업로드 키.
@@ -102,8 +137,9 @@ android {
         applicationId = "com.daengs.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // 위의 versionCodeArg 주석 참고. `-PversionCode=2` 로 준다.
+        versionCode = versionCodeArg
+        versionName = versionNameArg
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -159,10 +195,14 @@ android {
 
     buildTypes {
         debug {
+            // Explicit test build only; ordinary debug stays local, release stays disabled.
+            buildConfigField("Boolean", "TERRITORY_SERVER_READ",
+                (providers.gradleProperty("territoryServerRead").orNull == "true").toString())
+            buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS",
+                (providers.gradleProperty("territoryServerActions").orNull == "true").toString())
             // 개발 서버. `http://` 라서 디버그 소스셋의 usesCleartextTraffic 이 필요하다
             // (`app/src/debug/AndroidManifest.xml`).
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-            buildConfigField("String", "SCREEN_BASE_URL", "\"$screenUrl\"")
             buildConfigField("String", "GAIT_BASE_URL", "\"$gaitUrl\"")
             // 보행 기능 스위치. **`daengs.gaitUrl` 을 비우면 꺼진다** (#64 의 완화책).
             // 주소 자체는 이제 API_BASE_URL 을 쓰지만(보행이 backend 뒤로 들어감),
@@ -170,6 +210,8 @@ android {
             buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
+            buildConfigField("Boolean", "TERRITORY_SERVER_READ", "false")
+            buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS", "false")
             optimization {
                 enable = false
             }
@@ -188,11 +230,6 @@ android {
                 "String",
                 "API_BASE_URL",
                 "\"${releaseUrl("apiBaseUrl", apiBaseUrlRelease, apiBaseUrl)}\"",
-            )
-            buildConfigField(
-                "String",
-                "SCREEN_BASE_URL",
-                "\"${releaseUrl("screenUrl", screenUrlRelease, screenUrl)}\"",
             )
             buildConfigField(
                 "String",
@@ -234,6 +271,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.security.crypto)
     implementation(libs.kakao.user)
     implementation(libs.mlkit.subject.segmentation)
@@ -254,6 +292,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -263,6 +302,11 @@ dependencies {
     // 에서는 모든 메서드가 "not mocked" 예외를 던지는 껍데기다. 진짜 구현을 테스트
     // 클래스패스에 얹어 그 껍데기를 가린다. 앱 APK 에는 안 들어간다.
     testImplementation(libs.org.json)
+    // Compose 화면을 Robolectric 위에서 그려 노드를 찾는다 (개인정보처리방침 링크가
+    // 로그인 전·첫 등록 화면에 실제로 있는지). 단위 테스트에만 얹고 APK 에는 안 들어간다.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

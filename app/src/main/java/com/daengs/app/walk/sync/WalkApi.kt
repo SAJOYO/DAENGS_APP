@@ -61,6 +61,34 @@ object WalkApi {
         JSONObject().put("points", fixes.toJsonArray()),
     ) { }
 
+    /**
+     * 서버에 저장된 좌표열을 봉인하고 계산한다.
+     *
+     * 응답을 잃어 다시 불러도 서버는 같은 analysis를 200으로 돌려준다. 앱은 200과
+     * 첫 완료의 201을 모두 성공으로 보고, 응답이 `derived`인지까지 확인한다.
+     */
+    suspend fun finalize(
+        accessToken: String,
+        walkId: String,
+        manifest: WalkFinalizeManifest,
+    ): Result<Unit> = call(
+        accessToken,
+        "/$walkId/finalize",
+        "POST",
+        JSONObject().apply {
+            put("expected_point_count", manifest.expectedPointCount)
+            put("terminal_client_seq", manifest.terminalClientSeq ?: JSONObject.NULL)
+        },
+    ) { text ->
+        val response = JSONObject(text)
+        check(response.getString("analysis_state") == "derived") {
+            "서버가 산책 계산 완료를 확인하지 않았습니다."
+        }
+        check(response.getInt("point_count") == manifest.expectedPointCount) {
+            "서버 계산의 좌표 수가 업로드 manifest와 다릅니다."
+        }
+    }
+
     /** 서버에 있는 내 산책 목록. **좌표는 안 온다** — 뭐가 있는지만 본다. */
     suspend fun list(accessToken: String): Result<List<RemoteWalk>> =
         call(accessToken, "", "GET") { text ->
@@ -109,7 +137,7 @@ object WalkApi {
         }
     }
 
-    private suspend fun <T> call(
+    internal suspend fun <T> call(
         accessToken: String,
         path: String,
         method: String,
@@ -143,10 +171,14 @@ object WalkApi {
     }
 
     private fun HttpURLConnection.fail(): Nothing {
+        val status = responseCode
         val detail = runCatching {
             JSONObject(errorStream?.bufferedReader()?.readText().orEmpty()).optString("detail")
         }.getOrNull()
-        error(if (detail.isNullOrBlank()) "서버 오류 ($responseCode)" else detail)
+        throw WalkHttpException(
+            statusCode = status,
+            message = if (detail.isNullOrBlank()) "서버 오류 ($status)" else detail,
+        )
     }
 
     private inline fun <T> HttpURLConnection.use(body: (HttpURLConnection) -> T): T =
@@ -160,8 +192,24 @@ object WalkApi {
     private const val READ_TIMEOUT_MS = 30_000
 }
 
+data class WalkFinalizeManifest(
+    val expectedPointCount: Int,
+    val terminalClientSeq: Int?,
+) {
+    init {
+        require(expectedPointCount >= 0)
+        require(terminalClientSeq == expectedPointCount.takeIf { it > 0 }?.minus(1))
+    }
+}
+
 /** 밀리초 → ISO-8601(UTC). 서버가 `TIMESTAMPTZ` 라 시간대를 붙여 보낸다. */
 internal fun Long.toIso(): String = Instant.ofEpochMilli(this).toString()
 
 /** ISO-8601 → 밀리초. 서버가 준 것을 로컬 DB 모양으로 되돌린다. */
 internal fun String.isoToMillis(): Long = Instant.parse(this).toEpochMilli()
+
+/** Worker가 재시도할 HTTP 상태와 영구 실패를 구분할 수 있게 상태 코드를 보존한다. */
+internal class WalkHttpException(
+    val statusCode: Int,
+    message: String,
+) : IllegalStateException(message)

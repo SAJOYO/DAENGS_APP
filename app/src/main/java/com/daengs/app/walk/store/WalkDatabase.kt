@@ -8,10 +8,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
-/** 산책 원본 위치만 소유하는 로컬 DB. 네트워크 동기화 여부는 이 저장소의 책임이 아니다. */
+/** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class],
-    version = 4,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class],
+    version = 11,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -103,9 +103,115 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * "좌표가 올라감"과 "계산이 끝남" 사이를 복구 가능한 상태로 만든다.
+         *
+         * 예전 [syncedAtMillis]는 chunk 업로드 직후 찍혔다. 그 기록을 `derived`로
+         * 간주하면 실제로는 분석이 없는 산책을 영원히 finalize하지 않으므로
+         * `raw_uploaded`로 옮긴다. 예전 행에는 서버 id가 없지만 create API가
+         * `client_session_id`에 멱등이라 다음 동기화에서 다시 얻을 수 있다.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE walk_session ADD COLUMN syncState TEXT NOT NULL " +
+                        "DEFAULT 'local_only'",
+                )
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN serverWalkId TEXT")
+                connection.execSQL(
+                    "UPDATE walk_session SET syncState = 'raw_uploaded' " +
+                        "WHERE syncedAtMillis IS NOT NULL",
+                )
+            }
+        }
+
+        /**
+         * 사용자가 산책 중 직접 누른 행동 원본을 세션 아래에 더한다.
+         *
+         * 기존 산책은 행동이 없던 것이 아니라 앱이 저장하지 않았던 것이므로 빈 표에서
+         * 시작한다. 추측으로 과거 행동을 만들지 않는다. 세션을 지우면 외래키가 같이 지운다.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `walk_action` (" +
+                        "`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `typeCode` TEXT NOT NULL, " +
+                        "`recordedAtMillis` INTEGER NOT NULL, " +
+                        "`locationCapturedAtMillis` INTEGER NOT NULL, `lat` REAL NOT NULL, " +
+                        "`lng` REAL NOT NULL, `accuracyM` REAL, PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`sessionId`) REFERENCES `walk_session`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_walk_action_sessionId` " +
+                        "ON `walk_action` (`sessionId`)",
+                )
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(connection: SQLiteConnection) {
+                // 사용자 결정: 옛 행동은 이관하지 않고 경로는 보존한다.
+                connection.execSQL("DELETE FROM walk_action")
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN ownerId TEXT NOT NULL DEFAULT ''")
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_entry (id TEXT NOT NULL, " +
+                    "sessionId TEXT NOT NULL, payload TEXT, revision INTEGER NOT NULL, " +
+                    "mutationId TEXT NOT NULL, dirty INTEGER NOT NULL, syncError TEXT, PRIMARY KEY(id), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("CREATE INDEX IF NOT EXISTS index_walk_entry_sessionId ON walk_entry(sessionId)")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_storyboard (sessionId TEXT NOT NULL, " +
+                    "payload TEXT NOT NULL, PRIMARY KEY(sessionId), FOREIGN KEY(sessionId) " +
+                    "REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_photo (id TEXT NOT NULL, " +
+                    "sessionId TEXT NOT NULL, ownerId TEXT NOT NULL, capturedAtMillis INTEGER NOT NULL, " +
+                    "locationCapturedAtMillis INTEGER NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL, " +
+                    "accuracyM REAL NOT NULL, PRIMARY KEY(id), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("CREATE INDEX IF NOT EXISTS index_walk_photo_sessionId ON walk_photo(sessionId)")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_scene_analysis (sessionId TEXT NOT NULL, " +
+                    "generation INTEGER NOT NULL, entryStamp TEXT NOT NULL, inputRevision TEXT NOT NULL, " +
+                    "status TEXT NOT NULL, bundle TEXT, error TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_scene_analysis ADD COLUMN bundleEntryStamp TEXT")
+                connection.execSQL("UPDATE walk_scene_analysis SET bundleEntryStamp = entryStamp " +
+                    "WHERE status = 'ready' AND bundle IS NOT NULL")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                )
                 .build()
     }
 }

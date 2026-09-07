@@ -1,6 +1,7 @@
 package com.daengs.app.ui.chat
 
 import android.Manifest
+import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
@@ -39,10 +40,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -69,7 +76,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.daengs.app.assistant.AssistantApi
+import com.daengs.app.assistant.AssistantResponse
 import com.daengs.app.assistant.WalkVerdict
+import com.daengs.app.chat.ChatApiError
+import com.daengs.app.chat.ChatHistoryCoordinator
+import com.daengs.app.chat.ChatHistoryState
+import com.daengs.app.chat.ChatLoadState
+import com.daengs.app.chat.ChatSession
+import com.daengs.app.chat.ChatTurn
+import com.daengs.app.chat.ReportApi
 import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
@@ -80,17 +95,21 @@ import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
-import com.daengs.app.screening.ScreeningApi
+import com.daengs.app.screening.ScreeningRecordApi
+import com.daengs.app.screening.ScreeningRun
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import kotlinx.coroutines.delay
+import com.daengs.app.ui.DogFace
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.camera.CameraPreview
 import com.daengs.app.ui.camera.hasCameraPermission
 import com.daengs.app.ui.camera.rememberCameraController
 import com.daengs.app.ui.camera.rememberVideoRecorder
 import com.daengs.app.ui.camera.takePicture
+import com.daengs.app.ui.common.DaengsWideButton
 import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
@@ -117,10 +136,25 @@ import kotlinx.coroutines.launch
  * 예전에는 `List<String>` 이었다. 사진과 진단 결과가 들어오면서 말풍선 종류가
  * 넷이 됐고, 문자열로는 "이건 사진이다"를 표현할 자리가 없다.
  */
-private sealed interface ChatEntry {
+internal sealed interface ChatEntry {
     data class Mine(val text: String) : ChatEntry
 
-    data class Theirs(val text: String) : ChatEntry
+    /**
+     * **AI 가 준 답.** 신고할 수 있는 말풍선은 이것뿐이다.
+     *
+     * @property turnId 서버에 저장된 turn. **null 이면 저장 안 된 대화의 답**이다
+     *   (무상태 질문). 신고(`POST /app/reports`)가 이 id 를 요구하므로 없으면 메일로 간다.
+     */
+    data class Theirs(val text: String, val turnId: String? = null) : ChatEntry
+
+    /**
+     * **앱이 지어낸 안내.** 생김새는 [Theirs] 와 같은 말풍선이지만 AI 가 한 말이 아니다
+     * ("영상이 준비되었어요", "보행 기록을 지웠어요").
+     *
+     * 갈라 둔 이유는 **신고**다. 예전에는 이것도 `Theirs` 라 길게 누르면 신고 메뉴가
+     * 떴는데, 앱이 만든 문장을 운영자에게 보낼 이유가 없다.
+     */
+    data class Note(val text: String) : ChatEntry
 
     /** 오케스트레이션에 물어보는 중. 답이 오면 이 자리가 [Theirs] 나 [Failed] 로 바뀐다. */
     data object Thinking : ChatEntry
@@ -143,6 +177,21 @@ private sealed interface ChatEntry {
      */
     data class WalkCard(val verdict: WalkVerdict) : ChatEntry
 
+    /**
+     * Place 검색 결과 카드들. [placeCards] 가 고른 후보(최대 [MAX_PLACE_CARDS])를 그대로 그린다.
+     *
+     * 산책 카드와 같은 이유로 말풍선이 아니라 카드다 — 담을 것이 산문이 아니라
+     * 거리·주소·사실 목록이다.
+     */
+    data class PlaceCards(val presentation: PlaceCardsPresentation) : ChatEntry
+
+    /**
+     * 위치가 없어 못 찾겠다는 CLARIFY. 말풍선(저쪽 되묻기 질문)만으로는 사용자가 할 수
+     * 있는 일이 없어서, 위치 권한을 다시 청하고 **같은 질문을 그대로 재전송**하는
+     * 액션을 얹는다. [query] 는 그 재전송에 쓸 원문이다.
+     */
+    data class LocationNeeded(val query: String) : ChatEntry
+
     /** 보행 흐름의 첫 카드. 영상을 어디서 가져올지 고르는 자리다. */
     data object GaitIntro : ChatEntry
 
@@ -162,20 +211,48 @@ private sealed interface ChatEntry {
     data class GaitCompared(val comparison: GaitComparison) : ChatEntry
 }
 
+/** 서버가 준 turn 순서를 그대로 대화 말풍선으로 복원한다. */
+internal fun restoredChatEntries(turns: List<ChatTurn>): List<ChatEntry> = buildList {
+    turns.forEach { turn ->
+        add(ChatEntry.Mine(turn.userContent))
+        when (turn.processingStatus) {
+            ChatTurn.ProcessingStatus.PROCESSING -> add(ChatEntry.Thinking)
+            ChatTurn.ProcessingStatus.FAILED,
+            ChatTurn.ProcessingStatus.UNKNOWN ->
+                add(ChatEntry.Failed("이 답변은 완료되지 않았어요. 다시 질문해 주세요."))
+            ChatTurn.ProcessingStatus.COMPLETED -> {
+                val response = turn.publicResponse
+                if (response == null) {
+                    add(ChatEntry.Theirs(turn.assistantContent.orEmpty(), turn.id))
+                } else {
+                    add(ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage(), turn.id))
+                    response.walkCard()?.let { add(ChatEntry.WalkCard(it)) }
+                    if (response.knownHandoff() == KnownHandoff.GAIT) add(ChatEntry.GaitIntro)
+                }
+            }
+        }
+    }
+}
+
 /**
  * 대화 UI 전용 화면. 자유 텍스트는 `POST /assistant/query` 오케스트레이션으로 간다 —
  * 자연어 해석·능력 실행·집계는 전부 저쪽이 하고, 앱은 상태(`status`)와
  * `handoffs` 만 보고 화면을 고른다. **여기서 텍스트를 보고 갈래를 나누지 않는다**
  * (예전 `GAIT_ASK` 키워드 라우팅은 그래서 지웠다).
  *
- * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningApi]) 실제로 부른다. 다만 서버
- * 주소가 아직 없어, 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
+ * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningRecordApi]) 실제로 부른다. 서버
+ * 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
  */
 @Composable
 fun ChatScreen(
     onBack: () -> Unit,
     /** 대표 강아지 얼굴. 모르는 견종(믹스)이거나 아직 못 받았으면 null 이다. */
     avatar: DogBreed? = null,
+    /**
+     * 올린 프로필 사진. **말풍선 얼굴에는 안 쓴다** — 거기는 학사모 쓴 "똑똑이"와
+     * 앞발 괸 "곰곰이" 자리다. 보행 촬영 화면에서만 쓴다 (거기는 찍히는 그 아이다).
+     */
+    avatarPhoto: ImageBitmap? = null,
     /**
      * 대표 강아지의 id. **서버가 만든 `pets.id` UUID 다** — `MainActivity` 가
      * `pets.primary?.id` 를 그대로 넘긴다.
@@ -191,6 +268,15 @@ fun ChatScreen(
      * 세션을 갱신하지 않는다. null 이면 로그인이 안 된 것이다.
      */
     accessTokenProvider: suspend () -> String? = { null },
+    /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
+    historyCoordinator: ChatHistoryCoordinator? = null,
+    /**
+     * 피부 **변화 기록**으로 가는 길. null 이면 그 줄을 안 보여 준다.
+     *
+     * 기록은 로그인해야 있는 것이라, 로그인 안 한 기기에서는 [MainActivity] 가
+     * null 을 준다 — 눌러 봐야 빈 화면이면 안 누르게 하는 편이 낫다.
+     */
+    onOpenScreeningHistory: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -211,11 +297,61 @@ fun ChatScreen(
 
     var draft by rememberSaveable { mutableStateOf("") }
     val entries = remember { mutableStateListOf<ChatEntry>() }
+    val historyState = historyCoordinator?.state?.collectAsState()?.value
+        ?: ChatHistoryState(selectedPetId = dogId)
+    var displayedSessionId by remember { mutableStateOf<String?>(null) }
+    var recentOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingDeletion by remember { mutableStateOf<ChatSession?>(null) }
+    var pendingPersistedSlot by remember { mutableStateOf<Int?>(null) }
+    var pendingPersistedSessionId by remember { mutableStateOf<String?>(null) }
+    var pendingPersistedQuery by remember { mutableStateOf("") }
+    /** 답이 놓인 자리. 늦게 오는 turn id 를 여기에 채운다. */
+    var answeredSlot by remember { mutableStateOf<Int?>(null) }
+    var queryGeneration by remember { mutableStateOf(0L) }
     val scroll = rememberScrollState()
     // null 이면 닫힘. [ChooserMode.SkinOnly] 는 서버 skin HANDOFF 가 연 것이라
     // 보행 묶음을 감춘다 — 사용자가 그 질문에서 보행을 고를 이유가 없다.
     var chooserMode by remember { mutableStateOf<ChooserMode?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(dogId, historyCoordinator) {
+        queryGeneration++
+        pendingPersistedSlot = null
+        pendingPersistedSessionId = null
+        answeredSlot = null
+        displayedSessionId = null
+        entries.clear()
+        val coordinator = historyCoordinator ?: return@LaunchedEffect
+        coordinator.selectPet(dogId)
+        if (dogId == null) return@LaunchedEffect
+        val token = accessTokenProvider() ?: return@LaunchedEffect
+        coordinator.loadRecent(token)
+        val selectedSessionId = coordinator.state.value.selectedSessionId
+        if (selectedSessionId == null) coordinator.createOrReuseDraft(token)
+        else coordinator.refreshCurrent(token)
+    }
+    DisposableEffect(historyCoordinator) {
+        onDispose { historyCoordinator?.cancelPending() }
+    }
+
+    LaunchedEffect(historyState.selectedSessionId, historyState.selectedSession) {
+        val detail = (historyState.selectedSession as? ChatLoadState.Ready)?.value
+            ?: return@LaunchedEffect
+        if (detail.session.id != displayedSessionId) {
+            entries.clear()
+            entries.addAll(restoredChatEntries(detail.turns))
+            displayedSessionId = detail.session.id
+            pendingPersistedSlot = null
+            pendingPersistedSessionId = null
+            answeredSlot = null
+        }
+    }
+    LaunchedEffect(historyState.selectedSessionId) {
+        val coordinator = historyCoordinator ?: return@LaunchedEffect
+        if (dogId == null || historyState.selectedSessionId != null) return@LaunchedEffect
+        val token = accessTokenProvider() ?: return@LaunchedEffect
+        coordinator.createOrReuseDraft(token)
+    }
 
     // 사진을 고르면 **바로 안 보낸다.** 가이드 프레임에서 병변 자리를 받아야
     // 저쪽이 학습과 같은 함수로 자를 수 있다 ([GuideFrameScreen] 참고).
@@ -228,6 +364,9 @@ fun ChatScreen(
         }
     }
 
+    // 진단 한 번. **새 계약이 되면 기록이 남고, 안 되면 옛 경로로 판정만 받는다.**
+    val screeningRun = remember(accessTokenProvider) { ScreeningRun(accessTokenProvider) }
+
     // 프레임까지 맞춘 사진을 대화에 올리고 서버에 물어본다.
     //
     // **말풍선을 먼저 올리고 자리를 잡아 둔다.** 응답을 기다렸다가 한꺼번에 올리면
@@ -235,12 +374,22 @@ fun ChatScreen(
     // 1~3초 걸린다고 저쪽이 적어 뒀고, 첫 요청은 가중치를 올리느라 더 걸린다.
     val send: (PreparedPhoto, FloatArray) -> Unit = { photo, box ->
         scope.launch {
-            entries += ChatEntry.MyPhoto(photo.thumbnail)
+            // **말풍선에는 자른 자리를 올린다.** 잘라서 보냈는데 사진 전체가 뜨면
+            // 자른 것이 안 먹은 것으로 읽힌다. 서버로 가는 `photo.jpeg` 는 그대로
+            // 원본이다 — 저쪽이 `bbox` 로 학습과 같은 함수로 자른다 ([cropForBubble]).
+            entries += ChatEntry.MyPhoto(cropForBubble(photo.thumbnail, box))
             val slot = entries.size
             entries += ChatEntry.Screening
-            ScreeningApi.screen(photo.jpeg, box)
-                .onSuccess { entries[slot] = ChatEntry.Report(it) }
-                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "진단 서버에 닿지 못했어요.") }
+            // **기록으로 남기되, 못 남겨도 진단은 한다.** 로그인 안 했거나 저쪽
+            // 저장소가 아직 안 켜졌으면(503) 옛 경로로 물러선다 — 그 갈림은
+            // [ScreeningRun] 이 정한다.
+            //
+            // ⚠️ **box 를 이제 실제로 보낸다.** 전에는 안 보내서 저쪽이 화면 중앙으로
+            //    물러섰고, 1단계는 큰 차이가 없지만 2단계 분포가 학습 크롭과 어긋났다.
+            when (val outcome = screeningRun.run(dogId, photo.jpeg, box)) {
+                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report)
+                is ScreeningRun.Outcome.Failed -> entries[slot] = ChatEntry.Failed(outcome.message)
+            }
         }
     }
 
@@ -331,7 +480,7 @@ fun ChatScreen(
             GaitVideo.prepare(context, uri)
                 .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
                 .onSuccess { video ->
-                    entries += ChatEntry.Theirs("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
+                    entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
                     val slot = entries.size
                     entries += ChatEntry.GaitRunning(GaitProgress.START)
                     val record = gait.analyze(video) { entries[slot] = ChatEntry.GaitRunning(it) }
@@ -339,7 +488,7 @@ fun ChatScreen(
                         entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
                         gait.clearError()
                     } else {
-                        entries[slot] = ChatEntry.Theirs("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                        entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
                         entries += ChatEntry.GaitDone(record.id)
                     }
                 }
@@ -351,49 +500,165 @@ fun ChatScreen(
      *
      * **여기서 답을 지어내지 않는다.** 로그인이 안 됐을 때만 로컬 문구를 쓰고,
      * 나머지는 전부 서버가 준 `message`/`clarify`/`handoffs` 를 그대로 옮긴다.
-     * 대화 기록도 안 보낸다 — v1 오케스트레이션은 상태가 없다.
+     * **[dogId] 는 두 경로가 똑같이 싣는다.** 견종·나이는 앱이 지어 보내는 게 아니라
+     * 저쪽이 그 id 로 `pets` 를 읽는다 (PR #112). 저장하는 질문에서는 조율기가 같은
+     * 값을 실어 준다 — 화면이 고른 강아지 하나가 두 경로의 원본이다.
+     *
+     * 강아지와 세션이 있으면 저장 계약의 두 id 를 조율기에 맡기고, 둘 중 하나가 없는
+     * 기존 호출자는 무상태 요청을 그대로 쓴다. 무상태는 대화 기록을 안 보낸다.
      */
     // 물어보는 중인가. **연타를 막는다** — 한 번이 의미 라우터 + 생성이라 값이 비싸고,
     // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
     var asking by remember { mutableStateOf(false) }
+
+    val showResponse: (Int, AssistantResponse, String) -> Unit = { slot, response, asked ->
+        if (slot in entries.indices) {
+            entries[slot] = ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage())
+            response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
+            response.placeCards()?.let { entries += ChatEntry.PlaceCards(it) }
+            // 좌표가 없어 되물은 것이라면 다시 물을 거리를 준다. 무상태 CLARIFY 는
+            // 이어 물을 토큰이 없어서, 문장만 띄우면 사용자에게 막다른 길이다.
+            if (response.isLocationClarify()) entries += ChatEntry.LocationNeeded(asked)
+            when (response.knownHandoff()) {
+                KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
+                KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
+                null -> Unit
+            }
+        }
+    }
+
+    LaunchedEffect(historyState.lastResponse, historyState.sendError) {
+        val slot = pendingPersistedSlot ?: return@LaunchedEffect
+        if (historyState.selectedSessionId != pendingPersistedSessionId) return@LaunchedEffect
+        historyState.lastResponse?.let { response ->
+            showResponse(slot, response, pendingPersistedQuery)
+            answeredSlot = slot
+            pendingPersistedSlot = null
+            pendingPersistedSessionId = null
+            asking = false
+        } ?: historyState.sendError?.let { error ->
+            if (slot in entries.indices) {
+                entries[slot] = ChatEntry.Failed(error.message ?: "AI 서버에 닿지 못했어요.")
+            }
+            pendingPersistedSlot = null
+            pendingPersistedSessionId = null
+            asking = false
+        }
+    }
+
+    // 답이 먼저 오고 turn id 가 나중에 온다 — 조율기가 상세를 다시 받아야 알 수 있는
+    // 값이라서다. 그동안 말풍선은 이미 화면에 있으므로, 늦게 온 id 를 그 자리에 채운다.
+    // 이걸 안 하면 방금 받은 답변은 대화를 다시 열기 전까지 메일로만 신고된다.
+    LaunchedEffect(historyState.lastTurnId) {
+        val slot = answeredSlot ?: return@LaunchedEffect
+        val turnId = historyState.lastTurnId ?: return@LaunchedEffect
+        val shown = entries.getOrNull(slot) as? ChatEntry.Theirs ?: return@LaunchedEffect
+        entries[slot] = shown.copy(turnId = turnId)
+        answeredSlot = null
+    }
+
+    val reportApi = remember { ReportApi() }
+
+    /**
+     * 저장된 답변 하나를 운영자에게 신고한다 (`POST /app/reports`).
+     *
+     * 실패하면 **메일로 물러선다** — 서버가 죽어 있다고 신고할 길이 아예 없어지면 안
+     * 된다. 그때 turn id 와 고른 사유를 메일에 같이 실어서, 운영자가 콘솔에서 그 답변을
+     * 찾을 수 있게 한다.
+     *
+     * **409 만 예외다.** 이미 이 사람이 신고한 답변이라 실패가 아니라 두 번째이고,
+     * 메일로 또 보내면 같은 신고가 두 벌이 된다.
+     */
+    val reportAnswer: (String, String, String) -> Unit = { turnId, reason, answer ->
+        scope.launch {
+            val token = accessTokenProvider()
+            if (token == null) {
+                notice = "로그인이 필요해요. 다시 로그인해 주세요."
+            } else {
+                reportApi.report(token, turnId, reason).fold(
+                    onSuccess = { toast(context, "신고했어요. 운영자가 확인할게요.") },
+                    onFailure = { failure ->
+                        if ((failure as? ChatApiError)?.status == 409) {
+                            toast(context, "이미 신고한 답변이에요.")
+                        } else if (openReportEmail(context, answer, turnId, reason)) {
+                            toast(context, "서버에 보내지 못해 메일 앱을 열었어요. 그대로 보내 주세요.")
+                        } else {
+                            toast(context, "신고를 보내지 못했어요. $REPORT_EMAIL 로 알려 주세요.")
+                        }
+                    },
+                )
+            }
+        }
+    }
 
     val sendQuery: (String) -> Unit = { text ->
         entries += ChatEntry.Mine(text)
         val slot = entries.size
         entries += ChatEntry.Thinking
         asking = true
+        val generation = queryGeneration
+        val selectedSessionId = historyState.selectedSessionId
         scope.launch {
             val token = accessTokenProvider()
-            if (token == null) {
+            if (token == null && generation == queryGeneration) {
                 entries[slot] = ChatEntry.Failed("로그인이 필요해요. 다시 로그인해 주세요.")
                 asking = false
                 return@launch
             }
+            if (token == null) return@launch
             // 지금 있는 곳. **못 구해도 질문은 그냥 보낸다** — 위치가 필요한 질문은
             // 일부고, 좌표 때문에 훈련 질문까지 막으면 안 된다. 서버는 위치가
             // 필요한데 없으면 CLARIFY 로 되묻는데, 이어서 묻는 토큰이 없어서
             // (무상태) 그 되묻기는 사용자에게 막다른 길이다. 그래서 미리 싣는다.
             val where = runCatching { fused.currentLocation().point }.getOrNull()
-            AssistantApi.query(token, text, where)
-                .onSuccess { response ->
-                    // 대기 자리를 답으로 갈아 끼운다. 산책만 물었으면 저쪽 한 줄
-                    // ("현재 산책 판단: GOOD") 대신 대화체 문장을 쓰고 ([walkSentence]),
-                    // 근거와 시간대는 아래 카드가 맡는다.
-                    entries[slot] = ChatEntry.Theirs(
-                        response.walkSentence() ?: response.bubbleMessage(),
-                    )
-                    response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
-                    when (response.knownHandoff()) {
-                        // 실행하지 않는다 — 기존 흐름을 그대로 연다. 보행은 카드를
-                        // 하나 더 얹고, 피부는 이미 있는 선택 시트를 스킨 전용으로 연다.
-                        KnownHandoff.GAIT -> entries += ChatEntry.GaitIntro
-                        KnownHandoff.SKIN -> chooserMode = ChooserMode.SkinOnly
-                        null -> Unit
-                    }
+            if (generation != queryGeneration) return@launch
+            val coordinator = historyCoordinator
+            if (coordinator != null && dogId != null) {
+                val current = coordinator.state.value
+                if (current.selectedPetId != dogId || current.selectedSessionId != selectedSessionId) {
+                    if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 바뀌어 질문을 보내지 않았어요.")
+                    asking = false
+                    return@launch
                 }
-                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.") }
-            asking = false
+                pendingPersistedSlot = slot
+                pendingPersistedSessionId = selectedSessionId
+                pendingPersistedQuery = text
+                if (!coordinator.send(token, text, where)) {
+                    pendingPersistedSlot = null
+                    pendingPersistedSessionId = null
+                    if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 준비된 뒤 다시 보내 주세요.")
+                    asking = false
+                }
+            } else {
+                AssistantApi.query(token, text, where, activeDogId = dogId, persistence = null)
+                    .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
+                    .onFailure {
+                        if (generation == queryGeneration && slot in entries.indices) {
+                            entries[slot] = ChatEntry.Failed(it.message ?: "AI 서버에 닿지 못했어요.")
+                        }
+                    }
+                if (generation == queryGeneration) asking = false
+            }
         }
+    }
+
+    // ── 위치-CLARIFY ────────────────────────────────────────────────────────
+    //
+    // [ChatEntry.LocationNeeded] 의 액션이 누르는 자리. 권한을 다시 청하고, 받으면
+    // 같은 질문을 그대로 재전송한다 — 사용자가 문장을 다시 칠 이유가 없다.
+    var pendingLocationRetry by remember { mutableStateOf<String?>(null) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val retryText = pendingLocationRetry
+        pendingLocationRetry = null
+        if (granted && retryText != null) sendQuery(retryText)
+    }
+    val retryWithLocation: (String) -> Unit = { query ->
+        pendingLocationRetry = query
+        locationPermissionLauncher.launch(LOCATION_PERMISSIONS)
     }
 
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -428,7 +693,15 @@ fun ChatScreen(
             .background(CreamBg)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
-        ChatHeader(onBack = onBack, avatar = avatar)
+        ChatHeader(
+            onBack = onBack,
+            avatar = avatar,
+            onRecent = if (historyCoordinator != null && dogId != null) {
+                { recentOpen = true }
+            } else {
+                null
+            },
+        )
         Column(
             Modifier
                 .weight(1f)
@@ -438,18 +711,46 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (entries.isEmpty()) {
-                AssistantBubble(
-                    "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.",
-                    avatar,
-                )
+                when (val sessionState = historyState.selectedSession) {
+                    ChatLoadState.Loading -> AssistantBubble("대화를 불러오고 있어요…", avatar)
+                    is ChatLoadState.Failed -> {
+                        AssistantBubble(sessionState.error.message ?: "대화를 불러오지 못했어요.", avatar)
+                        Text(
+                            "다시 시도",
+                            color = DaengPinkDeep,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clickable {
+                                val coordinator = historyCoordinator ?: return@clickable
+                                scope.launch {
+                                    val token = accessTokenProvider() ?: return@launch
+                                    val sessionId = historyState.selectedSessionId
+                                    if (sessionId == null) coordinator.createOrReuseDraft(token)
+                                    else coordinator.openSession(token, sessionId)
+                                }
+                            }.padding(horizontal = 40.dp, vertical = 4.dp),
+                        )
+                    }
+                    else -> AssistantBubble(
+                        "반려견의 산책, 건강, 생활을 무엇이든 물어보세요.",
+                        avatar,
+                    )
+                }
             } else {
                 entries.forEach { entry ->
                     when (entry) {
                         is ChatEntry.Mine -> UserBubble(entry.text)
-                        is ChatEntry.Theirs -> AssistantBubble(entry.text, avatar)
-                        ChatEntry.Thinking -> AssistantBubble("생각하는 중이에요…", avatar)
+                        is ChatEntry.Theirs -> AssistantBubble(
+                            entry.text,
+                            avatar,
+                            turnId = entry.turnId,
+                            onReport = reportAnswer,
+                        )
+                        is ChatEntry.Note -> AssistantBubble(entry.text, avatar)
+                        ChatEntry.Thinking -> ThinkingBubble(avatar, "생각 중…")
                         is ChatEntry.MyPhoto -> PhotoBubble(entry.image)
-                        ChatEntry.Screening -> AssistantBubble("사진을 살펴보는 중이에요…", avatar)
+                        // 사진 진단도 몇 초 걸리는 자리라 같은 말풍선을 쓴다.
+                        ChatEntry.Screening -> ThinkingBubble(avatar, "사진 보는 중…")
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
                         is ChatEntry.Report -> ReportBubble(entry.report, avatar)
 
@@ -459,6 +760,25 @@ fun ChatScreen(
                         // 두어 "AI 가 준 것" 이라는 줄맞춤은 지킨다.
                         is ChatEntry.WalkCard -> BesideAvatar {
                             WalkVerdictCard(entry.verdict)
+                        }
+
+                        is ChatEntry.PlaceCards -> BesideAvatar {
+                            PlaceSuggestionCards(
+                                presentation = entry.presentation,
+                                onOpenMap = { candidate ->
+                                    val intent = placeMapIntent(candidate)
+                                    if (intent == null) {
+                                        notice = "이 장소는 지도에서 열 좌표 정보가 없어요."
+                                    } else {
+                                        runCatching { context.startActivity(intent) }
+                                            .onFailure { notice = "지도 앱을 열지 못했어요." }
+                                    }
+                                },
+                            )
+                        }
+
+                        is ChatEntry.LocationNeeded -> BesideAvatar {
+                            LocationClarifyAction(onRetry = { retryWithLocation(entry.query) })
                         }
 
                         ChatEntry.GaitIntro -> BesideAvatar {
@@ -499,7 +819,8 @@ fun ChatScreen(
         ChatInput(
             value = draft,
             onValueChange = { draft = it },
-            busy = asking,
+            busy = asking || historyState.sending ||
+                (historyCoordinator != null && dogId != null && !historyState.canSend),
             onSend = {
                 val text = draft.trim()
                 // 물어보는 중에는 안 받는다 — 위 [asking] 주석.
@@ -518,16 +839,77 @@ fun ChatScreen(
         )
     }
 
+    if (recentOpen && historyCoordinator != null) {
+        Dialog(onDismissRequest = { recentOpen = false }) {
+            Surface(color = CreamBg, shape = RoundedCornerShape(24.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 560.dp).padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("최근 대화", color = TextDark, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(
+                            "닫기",
+                            color = DaengPinkDeep,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable { recentOpen = false }.padding(8.dp),
+                        )
+                    }
+                    RecentChatsContent(
+                        state = historyState.recentSessions,
+                        selectedSessionId = historyState.selectedSessionId,
+                        pendingDeletion = pendingDeletion,
+                        onRetry = {
+                            scope.launch {
+                                val token = accessTokenProvider() ?: return@launch
+                                historyCoordinator.loadRecent(token)
+                            }
+                        },
+                        onSelect = { session ->
+                            recentOpen = false
+                            queryGeneration++
+                            asking = false
+                            pendingPersistedSlot = null
+                            pendingPersistedSessionId = null
+                            displayedSessionId = null
+                            entries.clear()
+                            scope.launch {
+                                val token = accessTokenProvider() ?: return@launch
+                                historyCoordinator.openSession(token, session.id)
+                            }
+                        },
+                        onRequestDelete = { pendingDeletion = it },
+                        onDismissDelete = { pendingDeletion = null },
+                        onConfirmDelete = { session ->
+                            pendingDeletion = null
+                            scope.launch {
+                                val token = accessTokenProvider() ?: return@launch
+                                historyCoordinator.deleteSession(token, session.id)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
+            }
+        }
+    }
+
     chooserMode?.let { mode ->
         AiActionDialog(
             skinOnly = mode == ChooserMode.SkinOnly,
             onDismiss = { chooserMode = null },
+            onOpenHistory = onOpenScreeningHistory?.let {
+                {
+                    chooserMode = null
+                    it()
+                }
+            },
             onCamera = {
                 chooserMode = null
                 when {
                     // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
                     // 로그인 버튼과 같다.
-                    !ScreeningApi.configured -> notice = SCREEN_NOT_SET
+                    !ScreeningRecordApi.configured -> notice = SCREEN_NOT_SET
                     target == null -> notice = "카메라를 열 수 없어요."
                     // 앱 안에서 찍는다. 그래야 병변에 맞출 네모를 찍는 동안 보여 준다.
                     else -> withCamera { skinCapture = true }
@@ -536,7 +918,7 @@ fun ChatScreen(
             onAttach = {
                 chooserMode = null
                 guidedShot = false
-                if (!ScreeningApi.configured) {
+                if (!ScreeningRecordApi.configured) {
                     notice = SCREEN_NOT_SET
                 } else {
                     pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -628,6 +1010,7 @@ fun ChatScreen(
                 onRecord = recorder::toggle,
                 onPick = startGaitPicking,
                 avatar = avatar,
+                photo = avatarPhoto,
                 recording = recorder.recording,
                 preview = { CameraPreview(controller, Modifier.fillMaxSize()) },
             )
@@ -653,7 +1036,7 @@ fun ChatScreen(
                         it is ChatEntry.GaitDone && it.recordId == record.id
                     }
                     if (slot >= 0) {
-                        entries[slot] = ChatEntry.Theirs("${record.dateLabel} 보행 기록을 지웠어요.")
+                        entries[slot] = ChatEntry.Note("${record.dateLabel} 보행 기록을 지웠어요.")
                     }
                 },
             )
@@ -767,8 +1150,32 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
     }
 }
 
+/**
+ * [ChatEntry.LocationNeeded] 가 쓰는 카드. 저쪽 되묻기 질문은 이미 말풍선에 있으니
+ * 여기는 **할 수 있는 일** — 권한을 켜고 같은 질문을 다시 보내는 버튼 — 만 얹는다.
+ */
 @Composable
-private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
+private fun LocationClarifyAction(onRetry: () -> Unit) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, PinkSoft),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "위치 권한을 켜면 주변 장소를 찾을 수 있어요.",
+                color = TextDark,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+            DaengsWideButton("위치 켜고 다시 묻기", onRetry, accent = true)
+        }
+    }
+}
+
+@Composable
+private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?, onRecent: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -784,7 +1191,24 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
             Text("반려견 생활 도우미", color = TextMuted, fontSize = 12.sp)
         }
         Box(Modifier.size(9.dp).background(DaengPink, RoundedCornerShape(50)))
+        if (onRecent != null) {
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "최근",
+                color = DaengPinkDeep,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onRecent)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+            )
+        }
     }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun ChatHeaderPreview() = DaengsTheme {
+    ChatHeader(onBack = {}, avatar = HomeDemoData.DOG_BREED, onRecent = {})
 }
 
 /**
@@ -792,7 +1216,7 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
  * (내 말풍선, 구조화 카드)는 서버 자유 텍스트가 아니라 마크다운을 볼 이유가 없다.
  */
 /**
- * 챗봇이 한 말. **길게 누르면 복사된다.**
+ * 챗봇이 한 말. AI가 생성한 답변은 **길게 누르면 복사·신고 메뉴가 뜹니다.**
  *
  * 메신저와 같은 손버릇이라 따로 안내하지 않아도 찾는다. 말풍선마다 복사 아이콘을
  * 달면 대화가 길어질수록 화면이 아이콘으로 덮인다.
@@ -802,10 +1226,30 @@ private fun ChatHeader(onBack: () -> Unit, avatar: DogBreed?) {
  */
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun AssistantBubble(text: String, avatar: DogBreed?) {
+private fun AssistantBubble(
+    text: String,
+    avatar: DogBreed?,
+    /** 이 답변의 turn. **null 이면 서버 신고를 못 한다** — 메일로 간다. */
+    turnId: String? = null,
+    /**
+     * 서버 신고를 실행할 자리. **null 이면 신고 메뉴 자체가 안 뜬다** — 앱이 지어낸
+     * 안내([ChatEntry.Note])와 진행·실패 문구가 그렇다.
+     */
+    onReport: ((turnId: String, reason: String, answer: String) -> Unit)? = null,
+) {
+    val reportable = onReport != null
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val shown = assistantMarkdown(text)
+    var actionsOpen by remember { mutableStateOf(false) }
+    var reportConfirmOpen by remember { mutableStateOf(false) }
+    val copyShownText = {
+        // 원문 마크다운이 아니라 화면에 보이는 글자를 복사합니다.
+        clipboard.setText(AnnotatedString(shown.text))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(context, "복사했어요", Toast.LENGTH_SHORT).show()
+        }
+    }
     Row(verticalAlignment = Alignment.Top) {
         ChatFace(avatar, 32.dp)
         Spacer(Modifier.width(8.dp))
@@ -818,17 +1262,7 @@ private fun AssistantBubble(text: String, avatar: DogBreed?) {
                     // 짧게 누르는 것은 아무 일도 안 한다. 말풍선은 누르는 것이 아니다.
                     onClick = {},
                     onLongClick = {
-                        // ⚠️ **원문이 아니라 화면에 보이는 글자를 담는다.**
-                        //    서버 답변은 마크다운이라 원문을 그대로 복사하면 붙여넣은
-                        //    곳에 `**굵게**` 의 별표가 같이 간다. [assistantMarkdown] 이
-                        //    이미 표시를 걷어낸 문자열을 들고 있으므로 그것을 쓴다.
-                        clipboard.setText(AnnotatedString(shown.text))
-                        // ⚠️ **안드로이드 13(API 33)부터는 시스템이 알아서 알린다.**
-                        //    거기서 우리 것까지 띄우면 "복사됨" 이 두 번 뜬다.
-                        //    minSdk 가 26이라 그 아래 기기에서는 우리가 알려야 한다.
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                            Toast.makeText(context, "복사했어요", Toast.LENGTH_SHORT).show()
-                        }
+                        if (reportable) actionsOpen = true else copyShownText()
                     },
                 ),
         ) {
@@ -839,6 +1273,208 @@ private fun AssistantBubble(text: String, avatar: DogBreed?) {
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(14.dp),
             )
+        }
+    }
+    if (actionsOpen) {
+        AssistantActionsDialog(
+            onCopy = {
+                actionsOpen = false
+                copyShownText()
+            },
+            onReport = {
+                actionsOpen = false
+                reportConfirmOpen = true
+            },
+            onDismiss = { actionsOpen = false },
+        )
+    }
+    if (reportConfirmOpen) {
+        ReportAnswerDialog(
+            turnId = turnId,
+            onSubmit = { reason ->
+                reportConfirmOpen = false
+                if (turnId != null && onReport != null) {
+                    onReport(turnId, reason, shown.text)
+                } else {
+                    // 저장 안 된 대화의 답변. 사유는 사용자가 메일 본문에 적는다.
+                    val opened = openReportEmail(context, shown.text)
+                    toast(
+                        context,
+                        if (opened) {
+                            "메일 앱을 열었어요. 신고 이유를 적고 보내 주세요."
+                        } else {
+                            "메일 앱을 찾을 수 없어요. $REPORT_EMAIL 로 신고해 주세요."
+                        },
+                    )
+                }
+            },
+            onDismiss = { reportConfirmOpen = false },
+        )
+    }
+}
+
+private fun toast(context: Context, message: String) {
+    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+}
+
+@Composable
+private fun AssistantActionsDialog(
+    onCopy: () -> Unit,
+    onReport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        AssistantActionsContent(onCopy, onReport)
+    }
+}
+
+@Composable
+private fun AssistantActionsContent(onCopy: () -> Unit, onReport: () -> Unit) {
+    Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            AssistantAction("복사", TextDark, onCopy)
+            AssistantAction("신고", DaengsColors.Error, onReport)
+        }
+    }
+}
+
+@Composable
+private fun AssistantAction(label: String, tint: Color, onClick: () -> Unit) {
+    Text(
+        label,
+        color = tint,
+        fontSize = 15.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+    )
+}
+
+@Composable
+private fun ReportAnswerDialog(
+    turnId: String?,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        ReportAnswerContent(byMail = turnId == null, onSubmit = onSubmit, onDismiss = onDismiss)
+    }
+}
+
+/**
+ * 신고 확인.
+ *
+ * **고지가 이 화면의 전제다** — 무엇이 운영자에게 가는지 누르기 전에 말한다
+ * (`DAENGS_dev` 의 `D-053` ④). 문구를 실제보다 넓게 적지 않는다: 운영자가 여는 것은
+ * 신고된 문답 한 건이고, 그 대화의 다른 문답은 관리자 화면에서도 안 열린다.
+ *
+ * @param byMail 저장 안 된 대화라 메일로 가는 경우. 사유를 여기서 안 받는다 —
+ *   사용자가 메일 본문에 적는다.
+ */
+@Composable
+private fun ReportAnswerContent(
+    byMail: Boolean,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var choice by remember { mutableStateOf(ReportReason.WRONG) }
+    var written by remember { mutableStateOf("") }
+    val reason = if (byMail) "" else reportReasonText(choice, written)
+    Surface(color = CardWhite, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(22.dp)) {
+            Text(
+                "이 AI 답변을 신고할까요?",
+                color = TextDark,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                if (byMail) {
+                    "답변 내용이 신고 메일에 포함돼요. 메일 앱에서 이유를 적고 보내 주세요."
+                } else {
+                    "신고하면 이 질문과 답변이 운영자에게 전달돼요. " +
+                        "대화의 다른 내용은 전달되지 않아요."
+                },
+                color = TextMuted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+            )
+            if (!byMail) {
+                Spacer(Modifier.height(16.dp))
+                ReportReason.entries.forEach { option ->
+                    ReportReasonRow(option.label, option == choice) { choice = option }
+                }
+                if (choice == ReportReason.OTHER) {
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = written,
+                        // 상한을 넘으면 저쪽이 422 로 버린다. 잘라 내지 말고 안 받는다.
+                        onValueChange = { if (it.length <= REPORT_REASON_MAX) written = it },
+                        placeholder = { Text("무엇이 문제였는지 적어 주세요", fontSize = 13.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                        singleLine = false,
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                AssistantDialogAction("취소", TextMuted, onDismiss)
+                Spacer(Modifier.width(6.dp))
+                if (byMail) {
+                    AssistantDialogAction("메일 열기", DaengsColors.Error) { onSubmit("") }
+                } else {
+                    // 직접 적기를 골라 놓고 아무것도 안 썼으면 보낼 것이 없다.
+                    AssistantDialogAction(
+                        "신고",
+                        if (reason == null) TextMuted else DaengsColors.Error,
+                    ) { reason?.let(onSubmit) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportReasonRow(label: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onSelect)
+            .padding(vertical = 6.dp),
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Text(label, color = TextDark, fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun AssistantDialogAction(label: String, tint: Color, onClick: () -> Unit) {
+    Text(
+        label,
+        color = tint,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun ReportActionsPreview() {
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            AssistantActionsContent({}, {})
+            ReportAnswerContent(byMail = false, onSubmit = {}, onDismiss = {})
+            ReportAnswerContent(byMail = true, onSubmit = {}, onDismiss = {})
         }
     }
 }
@@ -852,7 +1488,88 @@ private fun UserBubble(text: String) {
     }
 }
 
-/** 내가 올린 사진. 말풍선 대신 그림 자체가 모서리를 갖는다. */
+/**
+ * 답을 만드는 동안 뜨는 말풍선.
+ *
+ * **글자 한 줄이면 멈춘 것과 구분이 안 된다.** 서버가 몇 초 걸리는 자리라 그 사이가
+ * 제일 불안하다. 우리 아이 얼굴이 곰곰이 판과 번갈아 바뀌면서 "돌고 있다" 를 글자
+ * 없이도 말한다. 그림 두 장을 오가는 것만으로 모션이 되어서, 프레임 시트를 따로
+ * 받을 필요가 없었다.
+ *
+ * **왼쪽 얼굴은 안 바꾼다.** 거기는 학사모 쓴 똑똑이이고 누가 말하는지를 가리키는
+ * 자리다 (#92 에서 정한 것). 바뀌는 것은 말풍선 **안**이다.
+ *
+ * 그림이 없는 견종(믹스)이면 이 자리도 글자만 남는다 — 아무 얼굴이나 갖다 쓰면
+ * 사용자가 자기 개가 아닌 얼굴을 본다 ([PawAvatar] 와 같은 규칙).
+ */
+@Composable
+private fun ThinkingBubble(avatar: DogBreed?, text: String) {
+    var pondering by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(THINKING_FRAME_MS)
+            pondering = !pondering
+        }
+    }
+    Row(verticalAlignment = Alignment.Top) {
+        ChatFace(avatar, 32.dp)
+        Spacer(Modifier.width(8.dp))
+        Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (avatar != null) {
+                    DogAvatar(
+                        avatar,
+                        Modifier.size(28.dp),
+                        face = if (pondering) DogFace.Thinking else DogFace.Portrait,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp)
+            }
+        }
+    }
+}
+
+/**
+ * 두 얼굴을 오가는 간격.
+ *
+ * 빠르면 깜빡임으로 읽히고, 느리면 멈춘 것으로 읽힌다. 그림이 둘뿐이라 걷는 느낌이
+ * 아니라 **숨 쉬는 느낌**이 되어야 한다.
+ */
+private const val THINKING_FRAME_MS = 700L
+
+/**
+ * 대기 말풍선. **모션은 프리뷰에서 안 돈다** — 여기서 보는 것은 두 얼굴이 앉는
+ * 자리와 크기다. 움직임이 거슬리는지는 실기기에서 본다.
+ *
+ * 그림 없는 견종(믹스)은 얼굴 없이 글자만 남는 것도 같이 본다.
+ */
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun ThinkingBubblePreview() {
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThinkingBubble(DogBreed.BEAGLE, "생각 중…")
+            ThinkingBubble(DogBreed.TOY_POODLE_SILVER, "사진 보는 중…")
+            ThinkingBubble(null, "생각 중…")
+        }
+    }
+}
+
+/**
+ * 내가 올린 사진. 말풍선 대신 그림 자체가 모서리를 갖는다.
+ *
+ * **폭을 고정한다.** 예전에는 상한만 걸어 두고 그림 크기대로 그렸는데, 말풍선에
+ * 올라가는 것이 통짜 사진에서 **자른 조각**으로 바뀌면서 그 크기가 확 줄었다
+ * ([cropForBubble]). 권장 네모가 사진 가로의 45% 쯤이라 512px 썸네일에서 잘라내면
+ * 200px 남짓이고, 실기기에서 60dp 짜리 말풍선이 됐다 — 무엇을 보냈는지가 안 보인다.
+ *
+ * 높이는 비율대로 두고 상한만 건다. 고정하면 세로로 긴 조각이 잘려서, 자른 자리를
+ * 보여 주려다 또 자르는 셈이 된다.
+ */
 @Composable
 private fun PhotoBubble(image: Bitmap) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -861,12 +1578,21 @@ private fun PhotoBubble(image: Bitmap) {
             contentDescription = "보낸 사진",
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .widthIn(max = 200.dp)
+                .width(PHOTO_BUBBLE_WIDTH)
                 .heightIn(max = 240.dp)
                 .clip(RoundedCornerShape(18.dp, 4.dp, 18.dp, 18.dp)),
         )
     }
 }
+
+/**
+ * 내가 올린 사진 말풍선의 폭.
+ *
+ * 화면 폭의 절반쯤이다. [Photo.THUMB_EDGE] 가 "말풍선이 화면 폭의 절반쯤" 이라는
+ * 이유로 512 를 잡고 있으므로, **이 숫자를 키우면 그쪽도 같이 봐야 한다** — 잘린
+ * 조각을 더 크게 늘리면 그만큼 부드러워진다.
+ */
+private val PHOTO_BUBBLE_WIDTH = 200.dp
 
 /**
  * 진단 결과 말풍선.
@@ -981,8 +1707,18 @@ private fun MeterBar(fraction: Float, color: Color, modifier: Modifier = Modifie
 /** 소수 첫째 자리. 서버가 이미 반올림해 주지만 Float 를 그냥 찍으면 12.300001 이 된다. */
 private fun Float.percentText(): String = String.format("%.1f%%", this)
 
-private const val SCREEN_NOT_SET =
-    "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+/** [ChatScreen] 의 위치-CLARIFY 액션이 청하는 권한. `WalkRoute.kt` 의 것과 같다. */
+private val LOCATION_PERMISSIONS = arrayOf(
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
+)
+
+/**
+ * 진단 서버 주소가 없을 때. **문장을 여기서 새로 쓰지 않는다** — [ScreeningRun] 도
+ * 같은 상황에서 사용자에게 말해야 해서, 갈라 두면 두 문장이 서로 다른 주소를 가리킨다
+ * (예전 `daengs.screenUrl` 이 그렇게 남아 있었다).
+ */
+private val SCREEN_NOT_SET = ScreeningRun.NOT_CONFIGURED
 
 /**
  * 보행이 꺼져 있을 때 (`daengs.gaitUrl`, 릴리즈는 `daengs.gaitUrlRelease` 가 빈 경우).
@@ -1029,6 +1765,8 @@ private fun AiActionDialog(
     onGaitCapture: () -> Unit,
     onGaitPick: () -> Unit,
     skinOnly: Boolean = false,
+    /** 지난 기록으로. null 이면 줄을 안 그린다 (로그인 안 한 기기). */
+    onOpenHistory: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -1046,6 +1784,25 @@ private fun AiActionDialog(
                             SourceRow(DaengsIcon.Camera, "사진찍기", onCamera)
                             RowSeparator()
                             SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
+                            if (onOpenHistory != null) {
+                                RowSeparator()
+                                // 진단은 말풍선으로 지나가고 사라진다. 지난 것을
+                                // 나란히 놓고 보는 자리로 가는 길이다.
+                                SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenHistory)
+                            }
+                            RowSeparator()
+                            // 어떻게 찍어야 쓸 수 있는 사진이 되는지는 **고르기 전에**
+                            // 알려야 한다. 보행 묶음이 같은 이유로 아래 줄을 달고 있다.
+                            //
+                            // 멀리서 찍은 사진은 네모를 아무리 맞춰도 "너무 작아요" 에
+                            // 걸린다. 그 밴드는 서버 판정의 사본이라 앱만 풀어줘도
+                            // 서버가 재촬영으로 돌려보낸다 ([Band] 참고).
+                            Text(
+                                Band.CAPTURE_HINT,
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
                         }
                         if (!skinOnly) {
                             DashedSeparator()
@@ -1141,6 +1898,13 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.Camera, "사진찍기") {}
                         RowSeparator()
                         SourceRow(DaengsIcon.Gallery, "첨부하기") {}
+                        RowSeparator()
+                        Text(
+                            Band.CAPTURE_HINT,
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
                     }
                     DashedSeparator()
                     SourceGroup("보행 영상 분석하기") {
@@ -1263,12 +2027,17 @@ private fun ChatScreenPreview() {
 }
 
 /**
- * 말하는 쪽 얼굴.
+ * 말하는 쪽 얼굴. 헤더와 말풍선이 다 여기를 지난다.
+ *
+ * **`smart = true` 다.** 여기 뜨는 것은 내 개가 아니라 "댕스 AI" 다. 헤더에 그렇게
+ * 적어 놓고 얼굴만 내 개면 누가 말하는 건지 흐려진다. 견종은 대표 강아지를 따라가므로
+ * 남의 개도 아니다 — 같은 견종의, 학사모 쓴 다른 얼굴이다.
  *
  * **모르는 견종(믹스)이면 발자국이다.** 아무 얼굴이나 골라 쓰면 사용자는 자기 개가
  * 아닌 얼굴과 대화하게 된다 (마이 탭 `PetFace` 와 같은 규칙).
  */
 @Composable
 private fun ChatFace(avatar: DogBreed?, size: Dp) {
-    if (avatar != null) DogAvatar(avatar, Modifier.size(size)) else PawAvatar(size = size)
+    if (avatar != null) DogAvatar(avatar, Modifier.size(size), face = DogFace.Smart)
+    else PawAvatar(size = size)
 }

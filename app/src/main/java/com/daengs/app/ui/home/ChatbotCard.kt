@@ -28,6 +28,8 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.DogAvatar
+import com.daengs.app.ui.DogFace
+import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.DaengsTheme
@@ -39,7 +41,12 @@ import com.daengs.app.ui.theme.TextMuted
 fun ChatbotCard(
     onOpenChat: () -> Unit,
     modifier: Modifier = Modifier,
-    avatar: DogBreed = HomeDemoData.DOG_BREED,
+    /**
+     * 챗봇 얼굴의 견종. **null 이면 발자국이다** — 대표가 믹스라 그림이 없는 경우다.
+     * 예전에는 데모 강아지 한 마리로 떨어져서, 믹스를 키우는 사람은 홈에서 남의 개
+     * 얼굴을 봤다.
+     */
+    avatar: DogBreed? = null,
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -77,7 +84,10 @@ fun ChatbotCard(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                DogAvatar(avatar, Modifier.size(40.dp))
+                // **똑똑이 판이다.** 이 자리는 내 개가 아니라 챗봇이다
+                // (`ChatScreen.ChatFace` 와 같은 이유).
+                if (avatar != null) DogAvatar(avatar, Modifier.size(40.dp), face = DogFace.Smart)
+                else PawAvatar(size = 40.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(HomeDemoData.CHAT_PLACEHOLDER, color = TextMuted, fontSize = 14.sp, modifier = Modifier.weight(1f))
                 Box(
@@ -94,5 +104,5 @@ fun ChatbotCard(
 @Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun ChatbotCardPreview() {
-    DaengsTheme { ChatbotCard({}, Modifier.padding(14.dp)) }
+    DaengsTheme { ChatbotCard({}, Modifier.padding(14.dp), avatar = HomeDemoData.DOG_BREED) }
 }

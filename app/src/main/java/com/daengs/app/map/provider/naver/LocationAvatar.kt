@@ -29,8 +29,20 @@ fun circularAvatarBitmap(
     @DrawableRes portraitRes: Int,
     sizePx: Int,
     ringPx: Float,
-): Bitmap? {
-    val source = BitmapFactory.decodeResource(context.resources, portraitRes) ?: return null
+): Bitmap? = BitmapFactory.decodeResource(context.resources, portraitRes)
+    ?.let { circularAvatarBitmap(it, sizePx, ringPx) }
+
+/**
+ * 그림 하나를 그대로 받아 동그란 마커로.
+ *
+ * **사용자가 올린 프로필 사진은 리소스가 아니라 파일이다** (`pet/PetPhotos.kt`).
+ * 견종 그림만 받던 자리를 갈라 둬서, 사진이 있으면 지도의 내 위치도 그 얼굴이 된다.
+ */
+fun circularAvatarBitmap(
+    source: Bitmap,
+    sizePx: Int,
+    ringPx: Float,
+): Bitmap {
     val out = createBitmap(sizePx, sizePx)
     val canvas = Canvas(out)
     val radius = sizePx / 2f

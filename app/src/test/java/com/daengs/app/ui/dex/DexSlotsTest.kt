@@ -28,9 +28,9 @@ class DexSlotsTest {
     )
 
     @Test
-    fun `한 장도 없으면 열두 칸이 다 잠긴다`() {
+    fun `한 장도 없으면 모든 칸이 잠긴다`() {
         val slots = dexSlots(drawn = emptyList())
-        assertEquals(12, slots.size)
+        assertEquals(DEX_CARDS.size, slots.size)
         assertTrue(slots.all { it.locked })
         assertEquals(0, slots.collectedKinds())
         assertEquals(0, slots.ownedTotal())
@@ -40,7 +40,7 @@ class DexSlotsTest {
     @Test
     fun `같은 종류를 세 번 뽑아도 칸은 하나고 개수가 셋이다`() {
         val slots = dexSlots(drawn = listOf(card("cabbage", 10), card("cabbage", 20), card("cabbage", 30)))
-        assertEquals("칸이 늘면 안 된다", 12, slots.size)
+        assertEquals("칸이 늘면 안 된다", DEX_CARDS.size, slots.size)
         val cabbage = slots.first { it.card.id == "cabbage" }
         assertEquals(3, cabbage.count)
         assertEquals("한 종류만 모았다", 1, slots.collectedKinds())
@@ -71,7 +71,7 @@ class DexSlotsTest {
     @Test
     fun `모르는 종류는 버려지고 장수에도 안 센다`() {
         val slots = dexSlots(drawn = listOf(card("cabbage", 10), card("당근아님", 20)))
-        assertEquals(12, slots.size)
+        assertEquals(DEX_CARDS.size, slots.size)
         assertEquals(1, slots.collectedKinds())
         assertEquals(1, slots.ownedTotal())
     }
@@ -80,5 +80,31 @@ class DexSlotsTest {
     fun `카탈로그 순서를 그대로 따른다`() {
         val slots = dexSlots(drawn = listOf(card("lettuce", 10)))
         assertEquals(DEX_CARDS.map { it.id }, slots.map { it.card.id })
+    }
+
+    /**
+     * **마지막 한 장을 지우면 칸이 다시 잠긴다.**
+     *
+     * 지우기를 붙이면서 생긴 갈래다. 확인창이 그렇게 말하고 있으니 실제로도 그래야
+     * 한다 — 말과 다르면 모은 것이 줄어든 이유를 알 수가 없다.
+     */
+    @Test
+    fun `마지막 한 장을 지우면 그 칸이 다시 잠긴다`() {
+        val one = dexSlots(drawn = listOf(card("cabbage", 100)))
+        val cabbage = one.first { it.card.id == "cabbage" }
+        assertFalse(cabbage.locked)
+
+        val none = dexSlots(drawn = emptyList())
+        assertTrue(none.first { it.card.id == "cabbage" }.locked)
+    }
+
+    /** 여러 장 중 하나만 지우면 칸은 열려 있고 장수만 준다. */
+    @Test
+    fun `여러 장 중 하나를 지우면 칸은 열려 있다`() {
+        val two = listOf(card("cabbage", 100), card("cabbage", 200))
+        val after = dexSlots(drawn = two.drop(1))
+        val cabbage = after.first { it.card.id == "cabbage" }
+        assertFalse(cabbage.locked)
+        assertEquals(1, cabbage.count)
     }
 }

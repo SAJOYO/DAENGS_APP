@@ -8,10 +8,18 @@ package com.daengs.app.walk
  * 저장하고, 표시용 동선과 복구 가능한 증거를 서로 다른 층으로 둔다.
  */
 interface WalkFixLog {
+    val ownerId: String? get() = null
+    val historyChanges: kotlinx.coroutines.flow.Flow<Unit> get() = kotlinx.coroutines.flow.flowOf(Unit)
+    suspend fun restoreSession(session: RecordedSession) = openSession(session)
+    suspend fun hasEntries(sessionId: String): Boolean = actions(sessionId).isNotEmpty()
+
     /** 이미 알려진 ID를 다시 열어도 최초 시작 정보는 바꾸지 않는다. */
     suspend fun openSession(session: RecordedSession)
 
     suspend fun append(sessionId: String, fix: RecordedFix)
+
+    /** 사용자가 버튼으로 남긴 행동. GPS 자동 판정이나 서버 attestation이 아니다. */
+    suspend fun appendAction(action: RecordedWalkAction)
 
     suspend fun closeSession(sessionId: String, endedAtMillis: Long)
 
@@ -31,15 +39,22 @@ interface WalkFixLog {
     suspend fun finishedSessions(): List<RecordedSession>
 
     /**
-     * 끝났는데 아직 서버에 안 올라간 것.
+     * 끝났지만 아직 계산 완료되지 않은 것.
      *
-     * **미종료 세션은 안 준다.** 강제 종료로 열린 채 남은 세션은 기록이 아니라
-     * 사고의 흔적이라 올릴 것이 아니다.
+     * [WalkSyncState.LOCAL_ONLY]는 원본부터 올리고, [WalkSyncState.RAW_UPLOADED]는
+     * finalize만 다시 부른다. **미종료 세션은 안 준다.**
      */
-    suspend fun unsyncedSessions(): List<RecordedSession>
+    suspend fun sessionsPendingAnalysis(): List<RecordedSession>
 
-    /** 올라갔다고 표시한다. 다시 올리지 않으려는 표시다. */
-    suspend fun markSynced(sessionId: String, syncedAtMillis: Long)
+    /** 모든 원본 좌표가 서버에 들어갔다. 이 뒤에는 finalize만 재시도한다. */
+    suspend fun markRawUploaded(
+        sessionId: String,
+        serverWalkId: String,
+        changedAtMillis: Long,
+    )
+
+    /** 서버가 계산 결과를 원자적으로 저장했다. */
+    suspend fun markDerived(sessionId: String, changedAtMillis: Long)
 
     /**
      * 그 아이를 기록에서 지운다. **강아지를 지울 때 부른다.**
@@ -57,13 +72,21 @@ interface WalkFixLog {
      */
     suspend fun forgetEverything()
 
+    /** 탈퇴 요청 시작 때 고정한 계정만 삭제한다. 현재 로그인 상태를 다시 읽지 않는다. */
+    suspend fun forgetOwner(ownerId: String) {
+        error("계정별 산책 삭제를 지원하지 않는 저장소입니다.")
+    }
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>
+
+    suspend fun actions(sessionId: String): List<RecordedWalkAction>
 }
 
 data class RecordedSession(
     val id: String,
+    val ownerId: String? = null,
     /**
      * 데리고 나간 아이들. **여러 마리다.**
      *
@@ -75,15 +98,26 @@ data class RecordedSession(
     val endedAtMillis: Long? = null,
     /** 나갈 때의 날씨. 못 받았으면 null 이고 **"맑음"으로 채우지 않는다.** */
     val weather: RecordedWeather? = null,
-    /**
-     * 서버에 올라간 시각. null 이면 아직 이 기기에만 있다.
-     *
-     * **없앨 수 없는 상태다.** 산책은 밖에서 하고 그때 네트워크가 제일 불안하다 —
-     * 지하철에 들어가면 업로드가 실패한다. 좌표를 기기에 먼저 쓰는 것은 선택이 아니라
-     * 안전장치이고, 그 결과로 "아직 안 올라간" 창이 생긴다. 보통 몇 초다.
-     */
+    /** 원본 업로드와 계산 완료를 구분한다. 둘 사이에서 앱이 종료돼도 이어갈 수 있다. */
+    val syncState: WalkSyncState = WalkSyncState.LOCAL_ONLY,
+    /** 서버가 부여한 walk id. [WalkSyncState.RAW_UPLOADED]부터 finalize 재시도에 쓴다. */
+    val serverWalkId: String? = null,
+    /** 마지막 동기화 상태 전이 시각. [WalkSyncState.LOCAL_ONLY]이면 null이다. */
     val syncedAtMillis: Long? = null,
 )
+
+enum class WalkSyncState(val storedValue: String) {
+    LOCAL_ONLY("local_only"),
+    RAW_UPLOADED("raw_uploaded"),
+    DERIVED("derived"),
+    ;
+
+    companion object {
+        fun fromStored(value: String): WalkSyncState =
+            entries.firstOrNull { it.storedValue == value }
+                ?: error("모르는 산책 동기화 상태입니다: $value")
+    }
+}
 
 /**
  * 산책을 시작할 때의 바깥.

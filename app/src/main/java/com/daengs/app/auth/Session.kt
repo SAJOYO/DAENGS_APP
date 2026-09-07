@@ -158,4 +158,15 @@ data class AppMe(
      * 이름으로 짓는다 ([com.daengs.app.ui.home.defaultRoomLabel]).
      */
     val roomName: String?,
+    /**
+     * 사람 이름. **집 이름([roomName])과 다르다** — 저건 "네옹이네" 고 이건 그 집 사람이다.
+     *
+     * **서버가 가입할 때 지어 준다.** 앱이 짓지 않는다. 바꾸고 싶은 사람만
+     * [com.daengs.app.auth.AuthApi.setNickname] 으로 바꾼다.
+     *
+     * **null 은 아직 발급 전**이다 — 이 칸보다 먼저 가입한 회원이고, 다음 로그인에
+     * 채워진다. 그 사이에는 화면에서 그 줄을 비운다. 서버가 이 칸을 아예 안 주는
+     * 경우(옛 서버)도 여기로 들어온다.
+     */
+    val nickname: String? = null,
 )

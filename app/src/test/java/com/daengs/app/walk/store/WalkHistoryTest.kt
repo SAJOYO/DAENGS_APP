@@ -3,9 +3,12 @@ package com.daengs.app.walk.store
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.RecordedWalkAction
 import com.daengs.app.walk.WalkHistory
+import com.daengs.app.walk.WalkMomentType
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
@@ -119,6 +122,35 @@ class WalkHistoryTest {
         assertNotNull(log.session("stub"))
     }
 
+    @Test
+    fun `완료 상세의 경로는 저장된 좌표 원본에서 함께 만들어진다`() = runBlocking {
+        walked("real", startedAt = 1_000L, meters = 400.0, seconds = 600)
+
+        val detail = history.sessionDetail("real")
+
+        assertNotNull(detail)
+        assertEquals(detail?.summary?.segments?.flatten()?.size, detail?.route?.points?.size)
+        assertEquals(detail?.summary?.segments?.first()?.first()?.capturedAtMillis, detail?.route?.start?.capturedAtMillis)
+        assertEquals(detail?.summary?.segments?.last()?.last()?.capturedAtMillis, detail?.route?.end?.capturedAtMillis)
+    }
+
+    @Test
+    fun `저장된 상세는 행동 원본을 현재 반경으로 다시 묶는다`() = runBlocking {
+        walked("real", startedAt = 1_000L, meters = 400.0, seconds = 600)
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, 2_000L, 37.50000))
+        log.appendAction(action("a2", WalkMomentType.BARKING, 3_000L, 37.50001))
+        log.appendAction(action("a3", WalkMomentType.EXCRETION, 4_000L, 37.50100))
+
+        val detail = history.sessionDetail("real")
+
+        assertEquals(2, detail?.moments?.size)
+        assertEquals(2, detail?.moments?.first()?.actions?.size)
+        assertEquals(
+            setOf(WalkMomentType.SNIFFING, WalkMomentType.BARKING),
+            detail?.moments?.first()?.types,
+        )
+    }
+
     /**
      * 좌표 둘을 [meters] 만큼 떼어 [seconds] 초에 걸쳐 남긴 산책 하나.
      *
@@ -126,7 +158,7 @@ class WalkHistoryTest {
      * 안에 들도록 중간 점을 끼워 넣는다.
      */
     /**
-     * 탈퇴하면 **이 기기의 좌표도 남으면 안 된다.**
+     * 탈퇴하면 **이 기기의 좌표와 행동도 남으면 안 된다.**
      *
      * 서버는 탈퇴에서 개인정보를 파기하고 산책도 `ON DELETE CASCADE` 로 지운다.
      * 그런데 폰의 Room 에는 원본 좌표가 그대로 남아 있었다 — 산책 경로는 집과
@@ -135,9 +167,11 @@ class WalkHistoryTest {
      * 물려받기도 한다.
      */
     @Test
-    fun `전부 잊으면 좌표까지 사라진다`() = runBlocking {
+    fun `전부 잊으면 좌표와 행동까지 사라진다`() = runBlocking {
         walked("a", startedAt = todayAt(9), meters = 400.0, seconds = 600)
         walked("b", startedAt = todayAt(19), meters = 600.0, seconds = 900)
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, todayAt(9), 37.5, sessionId = "a"))
+        log.appendAction(action("b1", WalkMomentType.BARKING, todayAt(19), 37.6, sessionId = "b"))
         assertEquals(2, history.finished().size)
 
         history.forgetEverything()
@@ -147,6 +181,8 @@ class WalkHistoryTest {
         assertNull(log.session("b"))
         assertTrue("좌표가 남았다", log.fixes("a").isEmpty())
         assertTrue("좌표가 남았다", log.fixes("b").isEmpty())
+        assertTrue("행동이 남았다", log.actions("a").isEmpty())
+        assertTrue("행동이 남았다", log.actions("b").isEmpty())
     }
 
     /** 비어 있을 때 불러도 터지지 않는다 — 강아지를 한 번도 안 걸은 사람도 탈퇴한다. */
@@ -197,6 +233,22 @@ class WalkHistoryTest {
     private fun todayAt(hour: Int): Long =
         LocalDate.now().atStartOfDay(ZoneId.systemDefault()).plusHours(hour.toLong())
             .toInstant().toEpochMilli()
+
+    private fun action(
+        id: String,
+        type: WalkMomentType,
+        recordedAtMillis: Long,
+        latitude: Double,
+        sessionId: String = "real",
+    ) = RecordedWalkAction(
+        id = id,
+        sessionId = sessionId,
+        type = type,
+        recordedAtMillis = recordedAtMillis,
+        locationCapturedAtMillis = recordedAtMillis - 100L,
+        point = GeoPoint(latitude, 127.0),
+        accuracyMeters = 5f,
+    )
 
     private companion object {
         const val DAY_MILLIS = 86_400_000L

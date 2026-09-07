@@ -71,7 +71,6 @@ daengs.uploadKeyPassword=<비밀번호>
 
 ```properties
 daengs.apiBaseUrlRelease=https://daengapi.weareithero.cloud
-daengs.screenUrlRelease=https://daengapi.weareithero.cloud/screen
 daengs.gaitUrlRelease=https://daengapi.weareithero.cloud/gait
 ```
 
@@ -113,36 +112,35 @@ daengs.apiBaseUrl=http://<서버주소>:8000
   풀어 뒀다 (`app/src/debug/AndroidManifest.xml`). 자체 서버라 **폰이 같은 네트워크에
   있어야** 닿는다.
 
-### 피부 진단을 켜려면 (선택)
+### 피부 진단
 
-**안 채워도 앱은 돌아간다.** 채팅의 사진 진단 버튼이 "진단 서버가 아직 없어요"라고
-알려 줄 뿐이다. 실제로 써 보려면 한 줄을 더 넣는다.
+**따로 채울 것이 없다.** `daengs.apiBaseUrl` 하나면 된다 — 진단이 우리 서버 안으로
+들어와 있고(D-040), 앱은 `/app/screening/…` 한 길만 쓴다. 옛 경로
+`/screen/v1/screen` 은 #134 에서 뗐다.
 
-```properties
-daengs.screenUrl=http://daengback.weareithero.cloud/screen
-```
+> 예전 `daengs.screenUrl` · `daengs.screenUrlRelease` 는 **더 안 읽는다.**
+> local.properties 에 남아 있어도 아무 일도 안 한다.
 
-**카카오 쪽 `daengs.apiBaseUrl` 과 같은 서버지만 다른 컨테이너다.** 모델은
-`DAENGS_dev` 의 `skin-screening/` 에서 따로 돌고, nginx 가 `/screen/` 을 그쪽으로
-넘긴다. 앱은 이 주소 뒤에 `/v1/screen` 을 붙인다.
-
-살아 있는지는 이걸로 본다.
+모델이 살아 있는지는 이걸로 본다.
 
 ```bash
 curl http://daengback.weareithero.cloud/screen/healthz
 # {"ok":true,"mock":false,"contract_version":"1.0","threshold":0.1466...}
 ```
 
+- 이 `/screen/` 은 **콘솔(웹)이 쓰는 경로**다. 앱은 안 부르지만, 모델이 떠 있는지
+  보기에는 여전히 제일 빠르다.
 - `mock` 이 `true` 면 가짜 응답이다. 숫자를 믿으면 안 된다.
 - **`threshold` 가 모델 판이다.** 재학습해서 갈아끼우면 이 값이 바뀌므로, 서버에
   새 가중치가 물렸는지 여기서 확인한다.
 - 서버가 **꺼져 있을 수 있다.** 스크리닝은 `profiles: ["screening"]` 뒤에 있어서
-  평소 `docker compose up -d` 로는 안 뜬다. 못 닿으면 앱이 주소를 화면에 띄워 준다.
+  평소 `docker compose up -d` 로는 안 뜬다. 그때는 앱이 진단을 실패로 알린다.
 
 #### 내 PC 에서 띄워 쓸 때
 
 모델을 직접 고치는 중이라면 [`gayeoniee/deeplearning_test`](https://github.com/gayeoniee/deeplearning_test)
-를 받아 돌리고 주소만 바꾼다.
+를 받아 돌린다. **앱을 그리로 향하게 하는 길은 이제 없다** — 앱은 backend 만 보고
+backend 가 모델을 부른다. 아래는 모델 자체를 확인할 때다.
 
 ```bash
 uv run --extra train --extra serve python serve.py --release <release폴더> --host 0.0.0.0
@@ -154,7 +152,7 @@ uv run --extra train --extra serve python serve.py --release <release폴더> --h
   재시작하면 **말없이 사라진다** — 앱은 잘 떠 있는데 진단만 안 되면 여기부터 본다.
 
   ```bash
-  adb reverse tcp:8000 tcp:8000   # daengs.screenUrl=http://127.0.0.1:8000
+  adb reverse tcp:8000 tcp:8000   # daengs.apiBaseUrl=http://127.0.0.1:8000
   adb reverse --list              # 걸려 있는지 확인
   ```
 
@@ -203,6 +201,28 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Windows 에서는 `gradlew.bat` 을 쓴다.
+
+### 스토어에 올릴 빌드
+
+```bash
+./gradlew :app:bundleRelease -PversionCode=2 -PversionName=1.0.1
+# app/build/outputs/bundle/release/app-release.aab
+```
+
+- **APK 가 아니라 AAB 로 올린다.** 기기마다 필요한 CPU 라이브러리만 내려가서, 130MB
+  짜리 `libnavermap.so` 네 벌이 한 벌이 된다
+- **`-PversionCode` 를 안 주면 `1` 이다.** 평소 빌드가 지금과 똑같아야 해서 그렇게
+  뒀지만, **스토어에 올릴 때는 반드시 준다.** Play 는 한 트랙에서 같은 versionCode 를
+  두 번 받지 않고, **지운 릴리스가 쓴 번호도 재사용할 수 없다**
+- **2026-09-02 의 `v1` 태그가 versionCode 1 로 나갔다. 다음 업로드는 2 부터다**
+- `-PversionName` 은 사람이 읽는 값이라 안 줘도 된다 (없으면 `1.0`)
+- 숫자가 아닌 값을 주면 **빌드가 멈춘다.** 조용히 1 로 떨어지면 오타 하나가 그대로
+  통과해서, 다 만든 AAB 를 올리는 자리에서야 중복으로 거부당한다
+
+⚠️ **카카오 로그인은 키 해시를 하나 더 등록해야 스토어 빌드에서 된다.** Play 앱
+서명을 쓰므로 구글이 앱을 다시 서명하고, 그 키의 해시는 저장소의 debug 키에서 뽑은
+값과 다르다. Play Console → 설정 → 앱 서명 의 SHA-1 을 base64 로 바꿔 카카오 콘솔에
+넣는다 ([카카오 로그인을 켜려면](#카카오-로그인을-켜려면-선택)).
 
 ---
 

@@ -21,7 +21,7 @@ class RoomRosterTest {
     @Test
     fun `등록한 견종이 그대로 방에 선다`() {
         val pets = listOf(pet("1", "dog_beagle"), pet("2", "dog_welsh_corgi"))
-        assertEquals(listOf(DogBreed.BEAGLE, DogBreed.WELSH_CORGI), roomRoster(pets))
+        assertEquals(listOf(DogBreed.BEAGLE, DogBreed.WELSH_CORGI), roomRoster(pets, waitsForPet = false))
     }
 
     /**
@@ -33,25 +33,42 @@ class RoomRosterTest {
      */
     @Test
     fun `목록을 못 받았으면 아무도 안 세운다`() {
-        assertTrue(roomRoster(null).isEmpty())
+        assertTrue(roomRoster(null, waitsForPet = false).isEmpty())
+        // 기다리는 중이어도 마찬가지다 — ① 이 ② 보다 앞선다.
+        assertTrue(roomRoster(null, waitsForPet = true).isEmpty())
     }
 
     /**
-     * 빈 목록은 **받아 왔는데 없는 것**이라 null 과 다르다.
+     * 빈 목록은 **받아 왔는데 없는 것**이라 null 과 다르다. 그리고 그 뜻이
+     * **로그인 여부로 갈린다.**
      *
-     * 둘러보기 중이거나 온보딩으로 넘어가기 직전이다. 그 짧은 사이에 방이 비면
-     * 앱이 고장 난 것처럼 보여서 데모를 세운다 — 이건 거짓이 아니라 견본이다.
+     * 로그인 전이면 랜딩의 "둘러보기"(디버그 전용)다. 계정이 없어 "내 강아지" 라는
+     * 개념 자체가 없으므로 데모를 남의 아이로 오해할 일이 없다.
      */
     @Test
-    fun `받아 왔는데 한 마리도 없으면 견본을 세운다`() {
-        assertEquals(RoomDefaults.DOG_COUNT, roomRoster(emptyList()).size)
-        assertTrue(roomRoster(emptyList()).all { it in DogBreed.ROOM_BREEDS })
+    fun `기다리는 중이 아니고 한 마리도 없으면 견본을 세운다`() {
+        assertEquals(RoomDefaults.DOG_COUNT, roomRoster(emptyList(), waitsForPet = false).size)
+        assertTrue(roomRoster(emptyList(), waitsForPet = false).all { it in DogBreed.ROOM_BREEDS })
+    }
+
+    /**
+     * **로그인했는데 한 마리도 없으면 빈 방이다.**
+     *
+     * 예전에는 이것도 견본으로 채웠다. 근거가 "온보딩으로 넘어가기 직전의 짧은 사이"
+     * 였는데, **강아지 등록이 강제가 아니게 되면서 그 전제가 없어졌다** — 이제는
+     * 오래 머무는 정상 상태이고, 그동안 세워 둔 데모는 내 아이로 오해된다.
+     *
+     * ⚠️ 빈 방은 「강아지 데려오기」([EmptyRoomInvite])와 함께여야 한다.
+     */
+    @Test
+    fun `강아지를 기다리는 중이면 빈 방이다`() {
+        assertTrue(roomRoster(emptyList(), waitsForPet = true).isEmpty())
     }
 
     /** 믹스는 얼굴이 없지만 **방에서는 대역이 선다** — 안 세우면 내 개가 사라진다. */
     @Test
     fun `그림이 없는 견종도 방에는 선다`() {
-        val roster = roomRoster(listOf(pet("mix-1", "mix")))
+        val roster = roomRoster(listOf(pet("mix-1", "mix")), waitsForPet = false)
         assertEquals(1, roster.size)
         assertTrue(roster.single() in DogBreed.ROOM_BREEDS)
     }
@@ -71,7 +88,7 @@ class RoomRosterTest {
         )
         assertEquals(setOf(1), departedInRoom(pets))
         // 명부와 첨자가 맞물려야 한다 — 어긋나면 멀쩡한 아이에게 무지개가 붙는다.
-        assertEquals(3, roomRoster(pets).size)
+        assertEquals(3, roomRoster(pets, waitsForPet = false).size)
     }
 
     @Test
@@ -86,7 +103,8 @@ class RoomRosterTest {
     fun `못 받아 왔거나 견본일 때는 아무도 아니다`() {
         assertTrue(departedInRoom(null).isEmpty())
         assertTrue(departedInRoom(emptyList()).isEmpty())
-        assertFalse(roomRoster(emptyList()).isEmpty())
+        // 대조군 — 견본은 세워져 있다(그래서 "붙이지 않는다" 가 의미가 있다).
+        assertFalse(roomRoster(emptyList(), waitsForPet = false).isEmpty())
     }
 
     @Test
@@ -98,5 +116,87 @@ class RoomRosterTest {
             pet("3", "dog_poodle", gone),
         )
         assertEquals(setOf(0, 2), departedInRoom(pets))
+    }
+}
+
+/**
+ * 방에 세울 아이를 고르는 셈.
+ *
+ * **차례가 어긋나는 것이 제일 무섭다** — 명부와 배웅 자리가 첨자로 이어져 있어서,
+ * 거르는 곳이 둘이 되면 **배웅한 아이의 하트가 남의 아이 곁에** 뜬다. 화면에서는
+ * "왜 얘한테 하트가 있지" 로만 보인다.
+ */
+class RoomPetsTest {
+
+    private fun pet(id: String, breed: String, primary: Boolean = false, farewell: LocalDate? = null) = Pet(
+        id = id, name = "네옹", breed = breed, sex = null, neutered = null,
+        weightKg = null, birthDate = null, birthDateKind = null, isPrimary = primary,
+        farewellOn = farewell,
+    )
+
+    private val a = pet("1", "dog_beagle", primary = true)
+    private val b = pet("2", "dog_welsh_corgi")
+    private val c = pet("3", "dog_maltese")
+
+    @Test
+    fun `아무도 안 뺐으면 다 선다`() {
+        // 기본이 "다 들어감" 이라야 새로 등록한 아이가 저절로 방에 선다.
+        assertEquals(listOf(a, b, c), roomPets(listOf(a, b, c), emptySet()))
+    }
+
+    @Test
+    fun `뺀 아이만 빠진다`() {
+        assertEquals(listOf(a, c), roomPets(listOf(a, b, c), setOf("2")))
+    }
+
+    @Test
+    fun `모르는 id 는 아무 일도 안 한다`() {
+        // 지운 아이의 id 가 남아 있을 수 있다.
+        assertEquals(listOf(a, b, c), roomPets(listOf(a, b, c), setOf("없는아이")))
+    }
+
+    @Test
+    fun `다 빼면 대표 한 마리는 남는다`() {
+        // 화면이 마지막 한 마리를 못 빼게 막지만, 아이를 지우거나 다른 기기에서
+        // 고치면 이 상태로 흘러들 수 있다. **빈 방은 고장 난 것으로 읽힌다.**
+        assertEquals(listOf(a), roomPets(listOf(a, b, c), setOf("1", "2", "3")))
+    }
+
+    @Test
+    fun `아직 못 받았으면 그대로 모른다`() {
+        assertEquals(null, roomPets(null, setOf("1")))
+    }
+
+    @Test
+    fun `배웅한 아이도 방에 둘 수 있다`() {
+        // 배웅은 지우는 일이 아니라는 것이 그 화면의 전제다.
+        val gone = pet("4", "dog_beagle", farewell = LocalDate.of(2026, 1, 1))
+        val inRoom = roomPets(listOf(a, gone), emptySet())
+
+        assertEquals(listOf(a, gone), inRoom)
+        // **명부와 배웅 자리는 같은 목록에서 나와야 한다.** 이 번호로 하트를 그린다.
+        assertEquals(setOf(1), departedInRoom(inRoom))
+    }
+
+    @Test
+    fun `아이를 빼면 하트 자리도 같이 밀린다`() {
+        val gone = pet("4", "dog_beagle", farewell = LocalDate.of(2026, 1, 1))
+        // b 를 빼면 배웅한 아이는 둘째가 아니라 첫째 다음이다. 하트도 그리로 밀린다.
+        val inRoom = roomPets(listOf(a, b, gone), setOf("2"))
+
+        assertEquals(listOf(a, gone), inRoom)
+        assertEquals(setOf(1), departedInRoom(inRoom))
+    }
+
+    @Test
+    fun `마지막 한 마리는 못 뺀다`() {
+        assertTrue(canHideFromRoom(listOf(a, b), emptySet(), "1"))
+        assertFalse("하나만 남았다", canHideFromRoom(listOf(a, b), setOf("2"), "1"))
+    }
+
+    @Test
+    fun `이미 뺀 아이는 언제나 되돌릴 수 있다`() {
+        // 되돌리는 쪽은 막을 이유가 없다.
+        assertTrue(canHideFromRoom(listOf(a, b), setOf("2"), "2"))
     }
 }

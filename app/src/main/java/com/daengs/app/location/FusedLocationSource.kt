@@ -3,6 +3,7 @@ package com.daengs.app.location
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
+import android.os.Build
 import android.os.Looper
 import androidx.core.location.LocationCompat
 import com.google.android.gms.location.LocationCallback
@@ -78,10 +79,8 @@ class FusedLocationSource(context: Context) : LocationSource {
             }
         }
         // **null 을 넘기면 안 된다.** 콜백은 전달받을 Looper 가 필요한데, GMS 는 null 을
-        // 주면 "invalid null looper" 로 거절한다 — *부르는 스레드* 가 자기 Looper 를
-        // 갖고 있을 때만 봐준다. 이 flow 는 산책 서비스의 Dispatchers.Default 에서
-        // 모으는데 거기엔 Looper 가 없다. 그래서 구독이 즉시 실패하고, 산책마다
-        // 위치를 한 번도 못 받은 채 스스로 멈췄다.
+        // 주면 "invalid null looper" 로 거절한다. 수집 코루틴의 dispatcher가 바뀌어도
+        // 위치 콜백의 실행 위치가 함께 바뀌지 않도록 메인 Looper를 계약으로 고정한다.
         client.requestLocationUpdates(request, callback, Looper.getMainLooper())
             .addOnFailureListener { close(it) }
         awaitClose { client.removeLocationUpdates(callback) }
@@ -94,5 +93,29 @@ private fun Location.toSample(): LocationSample = LocationSample(
     elapsedRealtimeNanos = elapsedRealtimeNanos,
     accuracyMeters = accuracy.takeIf { hasAccuracy() },
     speedMetersPerSecond = speed.takeIf { hasSpeed() },
-    isMock = LocationCompat.isMock(this),
+    // 일부 AVD의 `adb emu geo fix`는 플랫폼 mock 표식 없이 내려온다. 그 값만 믿으면
+    // 검증 산책이 실제 기기 증거로 저장·업로드되므로 실행 환경까지 함께 판정한다.
+    isMock = isMockEvidence(
+        platformReportedMock = LocationCompat.isMock(this),
+        fingerprint = Build.FINGERPRINT,
+        model = Build.MODEL,
+        manufacturer = Build.MANUFACTURER,
+        device = Build.DEVICE,
+        product = Build.PRODUCT,
+    ),
 )
+
+internal fun isMockEvidence(
+    platformReportedMock: Boolean,
+    fingerprint: String,
+    model: String,
+    manufacturer: String,
+    device: String,
+    product: String,
+): Boolean = platformReportedMock ||
+    fingerprint.startsWith("generic", ignoreCase = true) ||
+    model.contains("emulator", ignoreCase = true) ||
+    model.startsWith("sdk_", ignoreCase = true) ||
+    manufacturer.contains("genymotion", ignoreCase = true) ||
+    device.startsWith("emu", ignoreCase = true) ||
+    product.startsWith("sdk_", ignoreCase = true)

@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.daengs.app.DaengsApp
@@ -21,7 +22,10 @@ import com.daengs.app.location.LocationSource
 import com.daengs.app.location.LocationTracker
 import com.daengs.app.miniroom.OutsideApi
 import com.daengs.app.miniroom.OutsideTime
+import com.daengs.app.walk.sync.WalkDeliveryScheduler
+import com.daengs.app.walk.sync.completeAndEnqueueWalk
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,19 +41,25 @@ import kotlinx.coroutines.launch
  * 계산은 이 서비스의 책임이 아니며, 명시적인 종료만 저장 세션을 닫는다.
  */
 class WalkTrackingService : Service() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // 위치와 사용자 명령을 한 스레드에서 직렬 처리한다. 액션을 추가하는 순간 위치 갱신이
+    // 이전 momentGroups 상태를 덮는 경쟁을 만들지 않게 하는 세션 경계다.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val recorder = TrailRecorder()
 
     private lateinit var locationSource: LocationSource
     private lateinit var tracker: LocationTracker
     private lateinit var store: WalkTrackingStore
     private lateinit var writer: WalkFixWriter
+    private lateinit var delivery: WalkDeliveryScheduler
 
     /** 판정하려면 방금 쓴 것을 되읽어야 한다. writer 는 쓰기 전용이라 따로 든다. */
     private lateinit var log: WalkFixLog
 
     private val sessionLock = Any()
     private var sessionId: String? = null
+    private var sessionStartedAtMillis: Long? = null
+    private var sessionOwnerId: String? = null
+    private var sessionDogIds: List<String> = emptyList()
     private var nextClientSeq = 0
     private var chainIndex = 0
     private var activeDurationMillis = 0L
@@ -61,6 +71,7 @@ class WalkTrackingService : Service() {
         locationSource = runtime.locationSource
         store = runtime.store
         writer = runtime.writer
+        delivery = runtime.delivery
         log = runtime.log
         tracker = LocationTracker(serviceScope)
         createNotificationChannel()
@@ -77,6 +88,11 @@ class WalkTrackingService : Service() {
             ACTION_PAUSE -> pauseRecording(startId)
             ACTION_RESUME -> resumeRecording(startId)
             ACTION_STOP -> stopRecording(startId)
+            ACTION_RECORD_MOMENT -> recordMoment(
+                intent.getStringExtra(EXTRA_MOMENT_TYPE)
+                    ?.let { code -> WalkMomentType.entries.firstOrNull { it.behaviorCode == code } },
+                startId,
+            )
             else -> stopIfInactive(startId)
         }
         // 복구 정책 없이 프로세스가 살아난 것만으로 산책을 재개하지 않는다.
@@ -106,12 +122,20 @@ class WalkTrackingService : Service() {
             promote(recorder.snapshot(), store.state.value.errorMessage)
             return
         }
+        sessionOwnerId = log.ownerId
         writer.clearFailure()
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         val trail = recorder.start()
         openSession(dogIds)
-        store.publish(trackingState(trail = trail, lastSample = null))
+        store.publish(
+            trackingState(
+                trail = trail,
+                lastSample = null,
+                latestMomentFix = null,
+                momentGroups = emptyList(),
+            ),
+        )
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
         tracker.start(locationSource)
@@ -137,7 +161,9 @@ class WalkTrackingService : Service() {
         val trail = recorder.resume()
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         synchronized(sessionLock) { chainIndex += 1 }
-        store.publish(trackingState(trail))
+        // 일시정지 전에 받은 좌표로 재개 직후 행동을 찍지 않는다. 새 fix가 올 때까지
+        // 행동 버튼은 비활성화된다.
+        store.publish(trackingState(trail, latestMomentFix = null))
         promote(trail, errorMessage = null)
         tracker.start(locationSource)
     }
@@ -153,13 +179,29 @@ class WalkTrackingService : Service() {
         val finished = synchronized(sessionLock) { sessionId }
         closeSession()
         val trail = recorder.stop()
-        store.publish(trackingState(trail))
+        store.publish(trackingState(trail, finishingSessionId = finished))
         serviceScope.launch {
             try {
-                writer.flush()
-                // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
-                // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
-                if (finished != null) discardIfTooShort(finished)
+                completeAndEnqueueWalk(
+                    sessionId = finished,
+                    complete = {
+                        writer.flush()
+                        // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
+                        // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
+                        finished?.let { finishOrDiscard(it) } == true
+                    },
+                    enqueue = delivery::enqueue,
+                    onCompletionFailure = { error ->
+                        publishCompletionFailure(error.message ?: "산책을 저장하지 못했어요.")
+                    },
+                    onEnqueueFailure = { error ->
+                        Log.w(
+                            TAG,
+                            "산책 전달 작업을 예약하지 못했다. 다음 시작에서 다시 찾는다.",
+                            error,
+                        )
+                    },
+                )
             } finally {
                 synchronized(sessionLock) {
                     // flush 중 새 산책이 시작됐다면 새 알림까지 지우지 않는다. 새 startId가
@@ -179,6 +221,73 @@ class WalkTrackingService : Service() {
         if (recorder.snapshot().state == TrackingState.OFF) stopSelf(startId)
     }
 
+    private fun recordMoment(type: WalkMomentType?, startId: Int) {
+        if (type == null || recorder.snapshot().state != TrackingState.RECORDING) {
+            stopIfInactive(startId)
+            return
+        }
+        val current = store.state.value
+        val sample = current.latestMomentFix
+        if (sample == null || !sample.isFreshEnoughForMoment(SystemClock.elapsedRealtimeNanos())) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        val activeSessionId = synchronized(sessionLock) { sessionId }
+        if (activeSessionId == null) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        val actionId = UUID.randomUUID().toString()
+        val recordedAtMillis = System.currentTimeMillis()
+        val update = current.momentGroups.addOrGroupMoment(
+            sample = sample,
+            candidateId = "moment-$actionId",
+            type = type,
+            recordedAtMillis = recordedAtMillis,
+        )
+        // 마커는 즉시 반응시키되, 성공 문구는 아래 Room 완료 신호 뒤에만 보낸다.
+        store.publish(current.copy(momentGroups = update.moments))
+        if (type != WalkMomentType.NOTE) {
+            // 같은 writer 큐에서 fix와 close 사이에 넣는다. 종료 시 flush가 이 행동까지
+            // 끝낸 뒤 완료 상세를 되읽으므로, 완료 직후와 재실행 뒤가 같은 원본을 본다.
+            val stored = writer.appendAction(
+                RecordedWalkAction(
+                    id = actionId,
+                    sessionId = activeSessionId,
+                    type = type,
+                    recordedAtMillis = recordedAtMillis,
+                    locationCapturedAtMillis = sample.capturedAtMillis,
+                    point = sample.point,
+                    accuracyMeters = sample.accuracyMeters,
+                ),
+            )
+            serviceScope.launch {
+                try {
+                    stored.await()
+                    store.publish(update.recordedEvent(type).copy(
+                        momentId = "moment-$actionId", outcome = WalkMomentOutcome.CREATED,
+                    ))
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // writer.failure가 기록 화면에 실패를 알리고, flush도 완료 처리를 막는다.
+                }
+            }
+        } else {
+            store.publish(update.recordedEvent(type).copy(momentId = "moment-$actionId"))
+        }
+    }
+
+    private fun WalkMomentUpdate.recordedEvent(type: WalkMomentType) = WalkEvent.MomentRecorded(
+        type = type,
+        outcome = when {
+            groupCreated -> WalkMomentOutcome.CREATED
+            actionAdded -> WalkMomentOutcome.MERGED
+            else -> WalkMomentOutcome.ALREADY_EXISTS
+        },
+        momentId = selectedMomentId,
+    )
+
     private fun acceptLocation(sample: LocationSample) {
         synchronized(sessionLock) {
             sessionId?.let { id ->
@@ -196,20 +305,33 @@ class WalkTrackingService : Service() {
                 )
             }
         }
-        store.publish(trackingState(trail = recorder.add(sample), lastSample = sample))
+        val latestMomentFix = if (sample.isAccurateEnoughForMoment()) {
+            sample
+        } else {
+            store.state.value.latestMomentFix
+        }
+        store.publish(
+            trackingState(
+                trail = recorder.add(sample),
+                lastSample = sample,
+                latestMomentFix = latestMomentFix,
+            ),
+        )
     }
 
     private fun openSession(dogIds: List<String>) {
         val id = UUID.randomUUID().toString()
         synchronized(sessionLock) {
             sessionId = id
+            sessionStartedAtMillis = System.currentTimeMillis()
+            sessionDogIds = dogIds.toList()
             nextClientSeq = 0
             chainIndex = 0
             writer.openSession(
                 RecordedSession(
                     id = id,
                     dogIds = dogIds,
-                    startedAtMillis = System.currentTimeMillis(),
+                    startedAtMillis = checkNotNull(sessionStartedAtMillis),
                 ),
             )
         }
@@ -251,23 +373,59 @@ class WalkTrackingService : Service() {
      * 걷고 왔는데 목록에 없으면 앱이 잘못한 것처럼 보인다. 카드가 이미 그리고 있는
      * `errorMessage` 자리를 쓴다.
      */
-    private suspend fun discardIfTooShort(sessionId: String) {
-        val session = log.session(sessionId) ?: return
+    private suspend fun finishOrDiscard(sessionId: String): Boolean {
+        val session = log.session(sessionId)
+        if (session == null) {
+            publishCompletionFailure("저장한 산책을 다시 읽지 못했어요.")
+            return false
+        }
         val summary = summarize(session, log.fixes(sessionId))
-        if (summary.countsAsWalk) return
-        log.deleteSession(sessionId)
-        store.publish(
+        if (!summary.countsAsWalk && !log.hasEntries(sessionId)) {
+            log.deleteSession(sessionId)
+            // **잰 값도 같이 지운다.** 안 지우면 방금 걸은 시간이 화면에 그대로 남아,
+            // 지웠다고 말해 놓고 숫자는 계속 보여 주는 꼴이 된다. 거리는 `recorder.stop()`
+            // 이 이미 0 으로 만들지만 시간은 이 서비스가 들고 있다.
+            activeDurationMillis = 0L
+            activeSinceRealtimeMillis = null
+            publishCompletionFailure(
+                "이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.",
+                clearMoments = true,
+            )
+            return false
+        }
+        publishIfStillInactive(
             trackingState(
                 trail = recorder.snapshot(),
-                lastSample = store.state.value.lastSample,
-                errorMessage = "이동 거리가 너무 짧아서 산책으로 기록하지 않았어요.",
+                completedSessionId = sessionId,
             ),
         )
+        return true
+    }
+
+    private fun publishCompletionFailure(message: String, clearMoments: Boolean = false) {
+        publishIfStillInactive(
+            trackingState(
+                trail = recorder.snapshot(),
+                errorMessage = message,
+                latestMomentFix = if (clearMoments) null else store.state.value.latestMomentFix,
+                momentGroups = if (clearMoments) emptyList() else store.state.value.momentGroups,
+            ),
+        )
+    }
+
+    /** 저장하는 사이 새 산책이 시작됐다면 이전 산책 결과로 현재 상태를 덮지 않는다. */
+    private fun publishIfStillInactive(state: WalkTrackingState) {
+        synchronized(sessionLock) {
+            if (sessionId == null && recorder.snapshot().state == TrackingState.OFF) {
+                store.publish(state)
+            }
+        }
     }
 
     private fun closeSession() = synchronized(sessionLock) {
         sessionId?.let { writer.closeSession(it, System.currentTimeMillis()) }
         sessionId = null
+        sessionDogIds = emptyList()
     }
 
     private fun acceptFeedStatus(status: FeedStatus) {
@@ -308,13 +466,25 @@ class WalkTrackingService : Service() {
     private fun trackingState(
         trail: TrailSnapshot,
         lastSample: LocationSample? = store.state.value.lastSample,
+        latestMomentFix: LocationSample? = store.state.value.latestMomentFix,
+        momentGroups: List<WalkMoment> = store.state.value.momentGroups,
         errorMessage: String? = null,
+        finishingSessionId: String? = null,
+        completedSessionId: String? = null,
     ): WalkTrackingState = WalkTrackingState(
+        activeSessionId = sessionId,
+        activeSessionStartedAtMillis = sessionStartedAtMillis.takeIf { sessionId != null },
+        ownerId = sessionOwnerId,
+        activeDogIds = sessionDogIds,
         trail = trail,
         lastSample = lastSample,
+        latestMomentFix = latestMomentFix,
+        momentGroups = momentGroups,
         errorMessage = errorMessage,
         activeDurationMillis = activeDurationMillis,
         activeSinceRealtimeMillis = activeSinceRealtimeMillis,
+        finishingSessionId = finishingSessionId,
+        completedSessionId = completedSessionId,
     )
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {
@@ -393,10 +563,12 @@ class WalkTrackingService : Service() {
     }
 
     companion object {
+        private const val TAG = "WalkTrackingService"
         const val ACTION_START = "com.daengs.app.walk.START"
         const val ACTION_PAUSE = "com.daengs.app.walk.PAUSE"
         const val ACTION_RESUME = "com.daengs.app.walk.RESUME"
         const val ACTION_STOP = "com.daengs.app.walk.STOP"
+        const val ACTION_RECORD_MOMENT = "com.daengs.app.walk.RECORD_MOMENT"
 
         private const val CHANNEL_ID = "walk_tracking"
         private const val NOTIFICATION_ID = 4101
@@ -406,6 +578,7 @@ class WalkTrackingService : Service() {
         private const val REQUEST_STOP = 4104
 
         const val EXTRA_DOG_IDS = "dogIds"
+        const val EXTRA_MOMENT_TYPE = "momentType"
 
         fun commandIntent(context: Context, action: String): Intent =
             Intent(context, WalkTrackingService::class.java).setAction(action)

@@ -1,14 +1,17 @@
 package com.daengs.app.walk.store
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.daengs.app.walk.WalkSyncState
 
 @Entity(tableName = "walk_session")
 data class WalkSessionRow(
     @PrimaryKey val id: String,
     val startedAtMillis: Long,
+    @ColumnInfo(defaultValue = "''") val ownerId: String = "",
     /** null이면 아직 진행 중이거나 명시적인 종료 전에 프로세스가 끝난 세션이다. */
     val endedAtMillis: Long?,
     /**
@@ -18,7 +21,10 @@ data class WalkSessionRow(
     val weatherCode: Int? = null,
     val isDay: Boolean? = null,
     val temperatureC: Float? = null,
-    /** 서버에 올라간 시각. null 이면 아직 이 기기에만 있다. */
+    @ColumnInfo(defaultValue = "'local_only'")
+    val syncState: String = WalkSyncState.LOCAL_ONLY.storedValue,
+    val serverWalkId: String? = null,
+    /** 마지막 동기화 상태 전이 시각. */
     val syncedAtMillis: Long? = null,
 )
 
@@ -80,4 +86,28 @@ data class WalkFixRow(
     val lng: Double,
     val accuracyM: Float?,
     val isMock: Boolean,
+)
+
+/** 버튼을 누른 사실의 원본. 5m 장소 묶음은 저장하지 않고 읽을 때 다시 계산한다. */
+@Entity(
+    tableName = "walk_action",
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkSessionRow::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("sessionId")],
+)
+data class WalkActionRow(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val typeCode: String,
+    val recordedAtMillis: Long,
+    val locationCapturedAtMillis: Long,
+    val lat: Double,
+    val lng: Double,
+    val accuracyM: Float?,
 )

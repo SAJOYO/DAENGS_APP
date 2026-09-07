@@ -17,7 +17,17 @@ import kotlin.random.Random
  * **지금은 기기 안에만 있다.** 서버가 붙으면 [cards] 의 출처만 바뀐다. 화면은 이
  * 홀더만 보고, 카드를 어디서 받아 왔는지는 모른다.
  */
-class CardHolder(private val store: CardStore) {
+class CardHolder(
+    private val store: CardStore,
+    /**
+     * 서버에도 알릴 때 쓰는 토큰. 없으면(로그인 전) **기기에서만** 지운다.
+     *
+     * ⚠️ **지우는 것은 그 자리에서 서버에도 알려야 한다.** 동기화가 뒤늦게 맞추는
+     *    방식으로는 못 한다 — "기기에 없고 서버에 있다" 가 새 폰(받아 와야 함)인지
+     *    삭제(지워야 함)인지 구분이 안 되기 때문이다 (`CardSync` 주석).
+     */
+    private val accessToken: suspend () -> String? = { null },
+) {
 
     /** 최근이 앞이다. 도감 칸의 표지가 가장 최근에 뽑은 것이 된다. */
     var cards: List<DrawnCard> by mutableStateOf(emptyList())
@@ -63,6 +73,8 @@ class CardHolder(private val store: CardStore) {
         dogName: String,
         codeText: String,
         appUserId: String?,
+        /** 사용자가 원형 틀에 직접 맞췄나. `DrawnCardRow.userFramed` 참고 */
+        userFramed: Boolean = false,
         now: Long = System.currentTimeMillis(),
     ): DrawnCard? {
         val card = DrawnCard(
@@ -74,6 +86,7 @@ class CardHolder(private val store: CardStore) {
             drawnAtMillis = now,
             codeText = codeText,
             core = core,
+            userFramed = userFramed,
         )
         return runCatching { store.add(card, face) }
             .map { cards = listOf(card) + cards; card }
@@ -90,7 +103,12 @@ class CardHolder(private val store: CardStore) {
         runCatching { store.remove(id) }.onFailure {
             cards = before
             error = it.message ?: "카드를 지우지 못했어요."
+            return
         }
+        // 서버에도 알린다. **못 알려도 기기에서는 지운 채로 둔다** — 사용자가 지우라고
+        // 한 것을 망 사정 때문에 되돌리면 안 된다. 서버에 남은 것은 다음에 그 카드를
+        // 받아 오게 되는데, 그건 다시 지우면 된다.
+        accessToken()?.let { token -> CardApi.delete(token, id) }
     }
 
     /** 로그인 직후. 둘러보기로 뽑아 둔 카드를 그 계정 것으로 만든다. */

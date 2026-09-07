@@ -20,6 +20,13 @@ data class DrawnCard(
     val drawnAtMillis: Long,
     val codeText: String,
     val core: IntRect,
+    /**
+     * 사용자가 원형 틀에 직접 맞춘 카드인가. `DrawnCardRow.userFramed` 참고.
+     *
+     * 그리는 쪽(`drawInHoleOf`)이 이 값으로 갈린다 — 맞춘 카드는 **가운데 정렬 + 덮기**
+     * 한 번이고, 옛 카드는 예전 보정을 그대로 받는다.
+     */
+    val userFramed: Boolean = false,
 ) {
     /**
      * 얼굴이 낀 카드인가. 곧 **뽑아서 만든 카드인가** 와 같은 말이다.
@@ -44,6 +51,7 @@ data class DrawnCard(
         coreTop = core.top,
         coreRight = core.right,
         coreBottom = core.bottom,
+        userFramed = userFramed,
     )
 
     companion object {
@@ -56,6 +64,7 @@ data class DrawnCard(
             drawnAtMillis = row.drawnAtMillis,
             codeText = row.codeText,
             core = IntRect(row.coreLeft, row.coreTop, row.coreRight, row.coreBottom),
+            userFramed = row.userFramed,
         )
     }
 }

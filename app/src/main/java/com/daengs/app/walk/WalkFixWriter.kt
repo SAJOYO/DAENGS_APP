@@ -3,6 +3,7 @@ package com.daengs.app.walk
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,9 +40,16 @@ class WalkFixWriter(
         }
     }
 
-    fun openSession(session: RecordedSession) = enqueue { log.openSession(session) }
+    fun openSession(session: RecordedSession) {
+        val captured = session.copy(ownerId = session.ownerId ?: log.ownerId)
+        enqueue { log.openSession(captured) }
+    }
 
     fun append(sessionId: String, fix: RecordedFix) = enqueue { log.append(sessionId, fix) }
+
+    /** 성공 안내가 실제 Room 쓰기보다 앞서지 않도록 이 명령만 완료 신호를 돌려준다. */
+    fun appendAction(action: RecordedWalkAction): Deferred<Unit> =
+        enqueueAwait { log.appendAction(action) }
 
     fun closeSession(sessionId: String, endedAtMillis: Long) =
         enqueue { log.closeSession(sessionId, endedAtMillis) }
@@ -56,6 +64,7 @@ class WalkFixWriter(
         val barrier = CompletableDeferred<Unit>()
         enqueue { barrier.complete(Unit) }
         barrier.await()
+        _failure.value?.let { message -> error(message) }
     }
 
     fun clearFailure() {
@@ -64,5 +73,19 @@ class WalkFixWriter(
 
     private fun enqueue(command: suspend () -> Unit) {
         check(commands.trySend(command).isSuccess) { "walk fix writer is unavailable" }
+    }
+
+    private fun enqueueAwait(command: suspend () -> Unit): Deferred<Unit> {
+        val completion = CompletableDeferred<Unit>()
+        enqueue {
+            try {
+                command()
+                completion.complete(Unit)
+            } catch (error: Throwable) {
+                completion.completeExceptionally(error)
+                throw error
+            }
+        }
+        return completion
     }
 }

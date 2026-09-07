@@ -29,10 +29,13 @@ class WalkSummaryTest {
     /** 같은 좌표를 화면에 넣었을 때와 같은 거리가 나와야 한다. 규칙이 두 벌이면 갈라진다. */
     @Test
     fun `거리가 화면에서 보던 값과 같다`() {
+        // 0.001도 = 약 111m 다. **걷는 속도(1.4 m/s)로 80초씩** 두면 실제 산책이 된다 —
+        // 예전에는 2초 간격이라 55 m/s 였고, 속도 문턱([WalkPace])이 생기면서 그런
+        // 좌표는 아예 안 담긴다. 거리를 비교하려면 담기는 좌표여야 한다.
         val fixes = listOf(
             fix(0, 0, 1_000L, 37.5000, 127.0000),
-            fix(1, 0, 3_000L, 37.5010, 127.0000),
-            fix(2, 0, 5_000L, 37.5020, 127.0000),
+            fix(1, 0, 81_000L, 37.5010, 127.0000),
+            fix(2, 0, 161_000L, 37.5020, 127.0000),
         )
         val recorder = TrailRecorder()
         recorder.start()
@@ -64,15 +67,53 @@ class WalkSummaryTest {
             session,
             listOf(
                 fix(0, 0, 1_000L, 37.5000, 127.0000),
-                fix(1, 0, 3_000L, 37.5010, 127.0000),
+                fix(1, 0, 81_000L, 37.5010, 127.0000),
                 // 여기서 일시정지 — 한참 뒤 먼 곳에서 다시 시작
                 fix(2, 1, 900_000L, 37.6000, 127.1000),
-                fix(3, 1, 902_000L, 37.6010, 127.1000),
+                fix(3, 1, 980_000L, 37.6010, 127.1000),
             ),
         )
         assertEquals("세그먼트가 둘이어야 한다", 2, summary.segments.size)
-        // 두 구간 사이 15분은 걸은 시간이 아니다. 각 구간 안의 2초씩만 센다.
-        assertEquals(4_000L, summary.activeDurationMillis)
+        // 두 구간 사이 13분은 걸은 시간이 아니다. 각 구간 안의 80초씩만 센다.
+        assertEquals(160_000L, summary.activeDurationMillis)
+    }
+
+    @Test
+    fun `GPS 점프로 화면 선만 끊겨도 세션 활동 시간축은 끊지 않는다`() {
+        val summary = summarize(
+            session,
+            listOf(
+                fix(0, 0, 1_000L, 37.5000, 127.0000),
+                fix(1, 0, 81_000L, 37.5010, 127.0000),
+                // 1km 를 13분에 걸었다 — 걷는 속도지만 점 사이가 200m 를 넘어서
+                // 화면 선은 끊긴다 (터널·신호 끊김 뒤에 다시 잡히는 모양이다).
+                fix(2, 0, 881_000L, 37.5100, 127.0000),
+            ),
+        )
+
+        assertEquals(2, summary.segments.size)
+        assertEquals(880_000L, summary.activeDurationMillis)
+        assertEquals(summary.activeDurationMillis, summary.toSessionRoute().end?.activeElapsedMillis)
+    }
+
+    @Test
+    fun `목록은 오천 점으로 제한하고 한 산책 상세만 실제 출발점을 보존한다`() {
+        val fixes = (0..5_000).map { index ->
+            fix(
+                seq = index,
+                chain = 0,
+                at = 1_000L + index * 1_000L,
+                lat = 37.5 + index * 0.00004,
+                lng = 127.0,
+            )
+        }
+
+        val listSummary = summarize(session, fixes)
+        val detailSummary = summarize(session, fixes, maxRouteSamples = Int.MAX_VALUE)
+
+        assertEquals(WALK_SUMMARY_ROUTE_SAMPLE_LIMIT, listSummary.segments.flatten().size)
+        assertEquals(5_001, detailSummary.segments.flatten().size)
+        assertEquals(1_000L, detailSummary.toSessionRoute().start?.capturedAtMillis)
     }
 
     @Test

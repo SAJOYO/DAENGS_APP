@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
@@ -57,12 +60,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.daengs.app.dogcard.cardFileName
+import com.daengs.app.ui.dogcard.CardShot
 import com.daengs.app.ui.dogcard.rememberCardSaver
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.DrawnCard
+import androidx.compose.ui.geometry.Size
+import com.daengs.app.ui.dogcard.CardFace
+import com.daengs.app.ui.dogcard.Hole
 import com.daengs.app.ui.dogcard.drawCardFace
+import com.daengs.app.ui.dogcard.drawInHoleOf
 import com.daengs.app.ui.dogcard.drawCardText
 import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.ui.theme.CardWhite
@@ -79,6 +88,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import kotlin.math.roundToInt
+import com.daengs.app.ui.dogcard.rememberComposedCard
+import kotlinx.coroutines.delay
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 
 // ---------------------------------------------------------------------------
 // 네오 채소 도감
@@ -185,6 +200,18 @@ fun CardDexScreen(
      * `@Preview` 와 테스트가 그렇게 부른다.
      */
     draw: (@Composable (onDone: () -> Unit) -> Unit)? = null,
+    /**
+     * 뽑기를 **막고 대신 부를 것.** null 이면 그냥 뽑기 화면이 뜬다.
+     *
+     * 강아지가 아직 없는 사람이 여기를 누르면 **이름도 얼굴도 없는 카드**가 만들어진다
+     * (`CardDrawScreen` 의 `dogs` 가 비면 이름 없이 뽑는다). 그건 도감 칸만 차지하고
+     * 무대·창틀에 우리 것이 하나도 안 얹힌다.
+     *
+     * **자리를 없애지 않고 막는 이유**는, 사라진 버튼은 안내가 아니라서다 — 왜 없는지
+     * 알 길이 없다. `MainActivity` 가 여기에 문을 물린다
+     * ([com.daengs.app.ui.home.PetNeed]).
+     */
+    onDrawBlocked: (() -> Unit)? = null,
     startInDraw: Boolean = false,
     /** 지금 방 액자에 걸려 있는 카드. null 이면 발자국이 걸려 있다 */
     framedCardId: String? = null,
@@ -194,6 +221,12 @@ fun CardDexScreen(
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
     onFrame: ((DrawnCard?) -> Unit)? = null,
+    /**
+     * 카드 한 장을 지운다. **되돌릴 수 없다.**
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onDelete: ((DrawnCard) -> Unit)? = null,
 ) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
@@ -207,8 +240,34 @@ fun CardDexScreen(
     var sceneFace by remember { mutableStateOf<SubjectFace?>(null) }
     // **화면을 안 늘린다.** 뽑기는 `Screen` 에 새 갈래를 내지 않고 도감 위에 덮인다 —
     // 확대 뷰·이머시브가 이미 그 방식이라 결이 맞고, `MainActivity` 를 안 건드린다.
-    var drawing by remember { mutableStateOf(startInDraw && draw != null) }
-    val slots = remember(drawn) { dexSlots(drawn = drawn) }
+    // **막혀 있으면 곧장 열리는 길도 막는다.** 턴테이블의 "뽑으러 가기" 는 이미
+    // `MainActivity` 가 걸러서 오지만, 여기서 한 번 더 안 막으면 부르는 자리가 늘 때
+    // 조용히 새어 나간다.
+    var drawing by remember {
+        mutableStateOf(startInDraw && draw != null && onDrawBlocked == null)
+    }
+    // **지운 뒤에 한 줄 알려 준다.** 확인 창은 뜨지만 지우고 나면 아무 말이 없어서
+    // "지워졌나…?" 로 남는다 — 되돌릴 수 없는 동작이 조용한 것이 제일 나쁘다.
+    // 저장이 쓰는 것과 같은 방식이다 (`CardSaver` 의 `note`).
+    var removedNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(removedNote) {
+        if (removedNote == null) return@LaunchedEffect
+        delay(REMOVED_NOTE_MS)
+        removedNote = null
+    }
+    // 확대 뷰는 지우면 곧 닫히므로, 알림은 **도감 겹**에 둔다.
+    val deleteAndTell: ((DrawnCard) -> Unit)? = onDelete?.let { go ->
+        { card: DrawnCard ->
+            go(card)
+            removedNote = "삭제되었습니다"
+        }
+    }
+    // **탭은 여기서 다룬다.** `slots` 가 그리드와 확대 뷰 **양쪽**에 넘어가고
+    // `opened` 는 그 리스트의 **인덱스**라, 탭을 그리드 안에만 두면 확대 뷰가 엉뚱한
+    // 카드를 연다.
+    var deck by rememberSaveable { mutableStateOf(DexDeck.Veggie) }
+    val all = remember(drawn) { dexSlots(drawn = drawn) }
+    val slots = remember(all, deck) { all.filter { it.card.deck == deck } }
 
     BackHandler {
         when {
@@ -239,9 +298,12 @@ fun CardDexScreen(
     Box(modifier.fillMaxSize().background(DexBg)) {
         DexGrid(
             slots = slots,
+            deck = deck,
+            // 탭이 바뀌면 열려 있던 확대 뷰를 닫는다. 인덱스가 다른 목록을 가리키게 된다.
+            onDeck = { deck = it; opened = null },
             onOpen = { opened = it },
             onClose = onClose,
-            onDraw = draw?.let { { drawing = true } },
+            onDraw = draw?.let { { onDrawBlocked?.invoke() ?: run { drawing = true } } },
             onImmersive = { at, picked, whose, theirFace ->
                 from = at
                 scene = picked
@@ -262,16 +324,53 @@ fun CardDexScreen(
                 onClose = { opened = null },
                 framedCardId = framedCardId,
                 onFrame = onFrame,
+                onDelete = deleteAndTell,
+                // **여기서는 고른 그 장으로 들어간다.** 그리드는 고른 장이 없어서
+                // 첫 장을 쓰지만, 확대 뷰에는 `CopyStrip` 으로 고른 한 장이 있다.
+                onImmersive = { at, picked, whose, theirFace ->
+                    from = at
+                    scene = picked
+                    sceneName = whose
+                    sceneFace = theirFace
+                    opened = null
+                },
+            )
+        }
+
+        // **알림은 제일 위 겹이다.** 확대 뷰가 닫히면서 그 아래 도감이 드러나는데,
+        // 알림이 확대 뷰 안에 있으면 같이 사라져서 아무 말도 못 하고 끝난다.
+        removedNote?.let { note ->
+            Text(
+                note,
+                color = CardWhite,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .systemBarsPadding()
+                    .padding(bottom = 28.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xE6241C1A))
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
             )
         }
     }
 }
+
+/**
+ * 지웠다는 알림이 떠 있는 시간.
+ *
+ * 저장 알림(`CardSaver` 의 `NOTE_MS`)과 **같은 길이다.** 두 알림이 다른 속도로
+ * 사라지면 같은 화면에서 어긋나 보인다.
+ */
+private const val REMOVED_NOTE_MS = 2600L
 
 // -- 그리드 -----------------------------------------------------------------
 
 @Composable
 private fun DexGrid(
     slots: List<DexSlot>,
+    deck: DexDeck,
+    onDeck: (DexDeck) -> Unit,
     onOpen: (Int) -> Unit,
     onClose: () -> Unit,
     onImmersive: (Rect, ImmersiveScene, String?, SubjectFace?) -> Unit,
@@ -287,7 +386,11 @@ private fun DexGrid(
     ) {
         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
             DexHeader(
+                deck = deck,
+                onDeck = onDeck,
                 kinds = slots.collectedKinds(),
+                // **그 벌의 장수**가 분모다. 탭으로 갈려 있어 전체를 세면 거짓말이 된다.
+                of = slots.size,
                 total = slots.ownedTotal(),
                 onClose = onClose,
                 onDraw = onDraw,
@@ -304,7 +407,7 @@ private fun DexGrid(
                 // 주면 뽑을 이유가 없다.
                 // 이머시브는 v1 에 안 들어간다 (`IMMERSIVE_IN_BUILD` 주석 참고).
                 // null 이면 꾹 누르기도, 캡션 아래 배지도 안 붙는다.
-                onImmersive = IMMERSIVE_SCENES[slot.card.no]
+                onImmersive = IMMERSIVE_SCENES[slot.card.id]
                     ?.takeIf { IMMERSIVE_IN_BUILD && !slot.locked }
                     ?.let { picked ->
                         { at: Rect, hero: SubjectFace? ->
@@ -317,7 +420,15 @@ private fun DexGrid(
 }
 
 @Composable
-private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -> Unit)? = null) {
+private fun DexHeader(
+    deck: DexDeck,
+    onDeck: (DexDeck) -> Unit,
+    kinds: Int,
+    of: Int,
+    total: Int,
+    onClose: () -> Unit,
+    onDraw: (() -> Unit)? = null,
+) {
     Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -331,7 +442,13 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             )
         }
         Spacer(Modifier.height(10.dp))
-        Text("채소가 된 우리 아이", color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(
+            when (deck) {
+                DexDeck.Veggie -> "채소가 된 우리 아이"
+                DexDeck.Fruit -> "과일이 된 우리 아이"
+            },
+            color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+        )
         Spacer(Modifier.height(4.dp))
         Text(
             // **여기가 오래 거짓말을 하던 자리다.** 분자·분모가 둘 다 `DEX_CARDS.size` 라
@@ -339,11 +456,13 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             if (kinds == 0) {
                 "카드를 뽑아 도감을 채워 보세요"
             } else {
-                "$kinds / ${DEX_CARDS.size} 수집 · 내 카드 ${total}장"
+                "$kinds / $of 수집 · 내 카드 ${total}장"
             },
             color = TextMuted,
             fontSize = 12.sp,
         )
+        Spacer(Modifier.height(12.dp))
+        DeckTabs(deck, onDeck)
         onDraw?.let { go ->
             Spacer(Modifier.height(12.dp))
             Text(
@@ -359,6 +478,43 @@ private fun DexHeader(kinds: Int, total: Int, onClose: () -> Unit, onDraw: (() -
             )
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * 야채 · 과일 세그먼트.
+ *
+ * **헤더 안에 둔다.** 헤더가 그리드의 첫 아이템이라 목록과 같이 스크롤된다. 위에
+ * 고정하려면 `LazyVerticalGrid` 를 `Column` 으로 감싸야 하고 `systemBarsPadding` ·
+ * `contentPadding` 배치를 다시 잡아야 한다 — 얻는 것에 비해 손이 많이 간다.
+ */
+@Composable
+private fun DeckTabs(deck: DexDeck, onDeck: (DexDeck) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        DexDeck.entries.forEach { one ->
+            val on = one == deck
+            Text(
+                one.label,
+                color = if (on) CardWhite else TextMuted,
+                fontSize = 13.sp,
+                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (on) DaengPink else CardWhite)
+                    .clickable { onDeck(one) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF7EDE8)
+@Composable
+private fun DeckTabsPreview() {
+    Column {
+        DeckTabs(DexDeck.Veggie) {}
+        Spacer(Modifier.height(8.dp))
+        DeckTabs(DexDeck.Fruit) {}
     }
 }
 
@@ -391,7 +547,7 @@ private fun GridCard(
     // 무대 주인공에 끼울 얼굴. **합쳐 놓은 카드가 있을 때만** 넘긴다 — 시드는 얼굴이
     // 없어서 누끼가 뚫린 채로 그려진다. 자리는 카드 구멍에서 계산해 온다.
     val hero = drawn?.takeIf { it.composed }?.let { d ->
-        IMMERSIVE_SCENES[card.no]?.let { sc ->
+        IMMERSIVE_SCENES[card.id]?.let { sc ->
             SubjectFace(
                 face = d.face!!,
                 hole = sc.faceInSubject(d.template!!),
@@ -423,6 +579,7 @@ private fun GridCard(
                 hold = rub.hold,
                 holdColor = card.accent,
                 veil = if (slot.locked) CardLock else null,
+                quiet = foilQuietFor(card.id),
                 beneath = if (drawn?.composed == true) {
                     { drawCardFace(drawn.face!!, drawn.template!!) }
                 } else {
@@ -517,6 +674,23 @@ private fun CardViewer(
     onClose: () -> Unit,
     framedCardId: String? = null,
     onFrame: ((DrawnCard?) -> Unit)? = null,
+    /**
+     * 카드 한 장을 지운다. **되돌릴 수 없다.**
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onDelete: ((DrawnCard) -> Unit)? = null,
+    /**
+     * 꾹 눌러 카드 **안으로** 들어간다.
+     *
+     * 그리드에도 같은 길이 있지만 거기서는 고른 장이 없어 첫 장으로 들어간다.
+     * 여기서는 `CopyStrip` 으로 고른 장이 있고, **무대 주인공이 그 카드의 얼굴이라
+     * 장마다 무대가 실제로 다르다** — 한 칸에 세 장이 모여 있으면 그리드만으로는
+     * 나머지 두 장의 무대에 갈 길이 없다.
+     *
+     * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    onImmersive: ((Rect, ImmersiveScene, String?, SubjectFace?) -> Unit)? = null,
 ) {
     var index by remember { mutableIntStateOf(startIndex) }
     val slot = slots[index]
@@ -546,7 +720,37 @@ private fun CardViewer(
     // 설명을 보며 넘기는 것이 이 시트의 쓸모다.
     // **잠긴 칸은 설명을 안 연다.** 안 가진 카드의 기술·수치를 다 보여 주면 뽑을
     // 이유가 사라진다.
-    val rub = rememberRubState(onTap = { if (!slot.locked) showDetail = !showDetail })
+    //
+    // 이머시브가 **이 카드 자리에서** 출발하도록 화면 위 사각형을 들고 있는다.
+    // 그리드와 같은 방식이다 (창 위 좌표라 이머시브가 자기 자리를 빼서 쓴다).
+    var at by remember { mutableStateOf(Rect.Zero) }
+    // 무대 주인공에 끼울 얼굴. **고른 그 장**(`mine`)에서 온다 — 그리드가 첫 장을
+    // 쓰는 것과 다른 점이 여기다. 합쳐 놓은 카드가 있을 때만 넘긴다.
+    val stageHero = drawn?.takeIf { it.composed }?.let { d ->
+        IMMERSIVE_SCENES[card.id]?.let { sc ->
+            SubjectFace(
+                face = d.face!!,
+                hole = sc.faceInSubject(d.template!!),
+                entryArt = art,
+                template = d.template,
+                name = d.name,
+                code = d.code,
+            )
+        }
+    }
+    // 이머시브인 카드인가. 그리드와 같은 조건을 본다 — 잠긴 칸은 무대까지 안 열어 준다.
+    val stage = IMMERSIVE_SCENES[card.id]?.takeIf {
+        IMMERSIVE_IN_BUILD && !slot.locked && onImmersive != null
+    }
+    val enter = stage?.let { picked ->
+        { onImmersive!!(at, picked, mine?.dogName, stageHero) }
+    }
+    val rub = rememberRubState(
+        onTap = { if (!slot.locked) showDetail = !showDetail },
+        // **설명이 열려 있으면 안 들어간다.** 글씨를 읽으려고 짚고 있었을 뿐인데
+        // 무대가 열리면 놀란다.
+        onHold = enter?.takeIf { !showDetail },
+    )
 
     // 설명이 열려 있으면 뒤로가기가 그것부터 닫는다. 바깥(도감)의 BackHandler 보다
     // 안쪽이라 저절로 먼저 잡힌다.
@@ -616,7 +820,12 @@ private fun CardViewer(
                 input = input,
                 // 잠긴 카드는 안 기울인다. 포일도 안 도는데 기울면 그냥 흔들리는 검은 판이다.
                 tilt = !slot.locked,
+                // 꾹 누르는 동안 차오르는 테두리. 그리드와 같은 이유로 필요하다 —
+                // 게이지가 없으면 꾹 누르는 길이 있는 줄을 모른다.
+                hold = rub.hold,
+                holdColor = card.accent,
                 veil = if (slot.locked) CardLock else null,
+                quiet = foilQuietFor(card.id),
                 beneath = if (drawn?.composed == true) {
                     { drawCardFace(drawn.face!!, drawn.template!!) }
                 } else {
@@ -627,12 +836,24 @@ private fun CardViewer(
                 } else {
                     null
                 },
-                modifier = Modifier.fillMaxWidth().rubbable(rub),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { at = it.boundsInWindow() }
+                    .rubbable(rub),
             )
             // 팝아웃은 카드 **위로 넘어가야** 하므로 카드와 같은 크기의 덧그림 판에서
             // 음수 좌표로 그린다. Compose 는 기본으로 안 자르므로 그대로 보인다.
             if (hero != null && card.pop != null && !slot.locked) {
-                Canvas(Modifier.matchParentSize()) { drawPopOut(hero, card.pop.fit, popped) }
+                // 카드에 얹은 얼굴을 팝아웃에도 그대로 넘긴다. 합쳐지지 않은 카드
+                // (얼굴 파일이 없는 시드 등)면 null 이고, 그때는 저쪽 누끼가 나온다.
+                val popFace = drawn?.takeIf { it.composed }
+                Canvas(Modifier.matchParentSize()) {
+                    drawPopOut(
+                        hero, card.pop.fit, popped,
+                        face = popFace?.face,
+                        hole = popFace?.template?.let { faceInSubject(card.pop.fit, it) },
+                    )
+                }
             }
             if (slot.locked) {
                 Canvas(Modifier.matchParentSize()) { drawLock() }
@@ -640,31 +861,33 @@ private fun CardViewer(
             }
 
             if (showDetail) {
+                // 내보낼 한 장. **그림을 다 읽은 뒤에만 만들어진다** — 아직 안 읽혔는데
+                // 눌리면 빈 카드가 나간다. 저장과 공유가 이 하나를 같이 쓴다.
+                val shot = if (mine != null && art != null) {
+                    CardShot(
+                        fileName = cardFileName(
+                            templateId = mine.templateId,
+                            cardId = mine.id,
+                            at = mine.drawnAtMillis,
+                        ),
+                        art = art,
+                        // 얼굴이 없는 카드(시드 열두 장)는 원화가 곧 그림이라
+                        // 합치지 않고 그대로 내보낸다.
+                        template = if (drawn?.composed == true) drawn.template else null,
+                        face = drawn?.face,
+                        name = mine.dogName,
+                        code = mine.codeText,
+                    )
+                } else {
+                    null
+                }
                 CardDetailSheet(
                     card = card,
+                    of = slots.size,
                     mine = mine,
-                    // **그림을 다 읽은 뒤에만 저장이 뜬다.** 아직 안 읽혔는데 눌리면
-                    // 빈 카드가 파일로 나간다.
-                    onSave = if (mine != null && art != null) {
-                        {
-                            saver.save(
-                                fileName = cardFileName(
-                                    templateId = mine.templateId,
-                                    cardId = mine.id,
-                                    at = mine.drawnAtMillis,
-                                ),
-                                art = art,
-                                // 얼굴이 없는 카드(시드 열두 장)는 원화가 곧 그림이라
-                                // 합치지 않고 그대로 내보낸다.
-                                template = if (drawn?.composed == true) drawn.template else null,
-                                face = drawn?.face,
-                                name = mine.dogName,
-                                code = mine.codeText,
-                            )
-                        }
-                    } else {
-                        null
-                    },
+                    onSave = shot?.let { { saver.save(it) } },
+                    onShare = shot?.let { { saver.share(it) } },
+                    toGallery = saver.toGallery,
                     saveBusy = saver.busy,
                     saveNote = saver.note,
                     // 이 카드가 지금 액자에 걸려 있나. 걸려 있으면 내리는 자리가 된다.
@@ -674,6 +897,12 @@ private fun CardViewer(
                     } else {
                         null
                     },
+                    onDelete = if (mine != null && onDelete != null) {
+                        { onDelete(mine) }
+                    } else {
+                        null
+                    },
+                    lastCopy = slot.count <= 1,
                     onPrev = { index = (index - 1 + slots.size) % slots.size },
                     onNext = { index = (index + 1) % slots.size },
                     onClose = { showDetail = false },
@@ -713,31 +942,32 @@ private fun CardViewer(
                 // 넘기는 데 쓰이므로 여기서 또 쓰면 뜻이 겹친다. 점을 눌러 고른다.
                 if (slot.count > 1) {
                     Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        slot.owned.indices.forEach { i ->
-                            Box(
-                                Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .size(if (i == copy) 9.dp else 7.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (i == copy) Color.White else Color(0x66FFFFFF),
-                                    )
-                                    .clickable { copy = i },
-                            )
-                        }
-                    }
+                    CopyStrip(
+                        owned = slot.owned,
+                        picked = copy,
+                        onPick = { copy = it },
+                    )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "이 야채로 ${slot.drawnCount}장 뽑았어요",
+                        // 벌 이름은 갈래에서 가져온다. 과일 칸에서 "이 야채로" 라고 하면
+                        // 무엇을 세는 말인지가 흐려진다.
+                        "${copy + 1} / ${slot.count} · 이 ${slot.card.deck.label}로 ${slot.drawnCount}장 뽑았어요",
                         color = Color(0xFF9E8B84),
                         fontSize = 12.sp,
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 // 안 알려 주면 아무도 두 번 안 누른다. 웹판에도 있던 힌트다.
+                //
+                // **꾹 누르기도 여기서 알려 준다.** 그리드에는 캡션 아래 배지가 있지만
+                // 확대 뷰까지 들어온 사람은 그 배지를 이미 지나쳤고, 여기서 탭은
+                // 설명 열기라 꾹 누르기가 있는 줄을 알 길이 없다.
                 if (!slot.locked) {
-                    Text("탭하여 상세보기", color = Color(0xFF9E8B84), fontSize = 12.sp)
+                    Text(
+                        if (stage != null) "탭하여 상세보기 · 꾹 눌러 무대로" else "탭하여 상세보기",
+                        color = Color(0xFF9E8B84),
+                        fontSize = 12.sp,
+                    )
                 }
             }
         }
@@ -771,7 +1001,21 @@ private fun CardViewer(
  * 떠오른 동안 카드를 어둡게 죽인다. **안 죽이면 유령이 하나 더 보인다** — 카드
  * 그림에도 같은 주인공이 인쇄돼 있기 때문이다.
  */
-private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: Float) {
+private fun DrawScope.drawPopOut(
+    hero: ImageBitmap,
+    fit: ImmersiveScene.Fit,
+    t: Float,
+    /**
+     * 튀어나온 누끼에 끼울 **우리 아이 얼굴**. null 이면 저쪽 누끼가 그대로 나온다.
+     *
+     * **저쪽 누끼에는 저쪽 강아지가 박혀 있다.** 뚫려 온 셋(배추·고구마·상추)과 달리
+     * `tomato-subject.webp` 만 얼굴이 안 뚫린 채로 왔고, 그래서 카드에는 우리 아이가
+     * 들어가 있는데 짚으면 남의 개가 떠올랐다 — 같은 카드가 한 순간에 두 얼굴을
+     * 가졌다. 불투명하므로 위에 덮어 그리면 가려진다.
+     */
+    face: CardFace? = null,
+    hole: Hole? = null,
+) {
     if (t <= 0.001f) return
     val w = size.width * fit.w / 100f
     val h = size.height * fit.h / 100f
@@ -804,6 +1048,12 @@ private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: 
         alpha = t,
         filterQuality = FilterQuality.High,
     )
+
+    // 얼굴은 **누끼와 같은 사각형**에 끼운다. 자리는 재지 않고 카드 값에서 나눠
+    // 얻으므로(`faceInSubject`) 카드 구멍을 고치면 여기도 같이 맞는다.
+    if (face != null && hole != null) {
+        drawInHoleOf(face, hole, Offset(x, y), Size(gw, gh))
+    }
 }
 
 /**
@@ -824,10 +1074,23 @@ private fun DrawScope.drawPopOut(hero: ImageBitmap, fit: ImmersiveScene.Fit, t: 
 @Composable
 private fun CardDetailSheet(
     card: DexCard,
+    /**
+     * `No.` 줄의 분모. **그 벌의 장수**다.
+     *
+     * 기본값을 쓰면 도감 전체(스물다섯)를 세어, 과일 탭에서 `13 / 25` 라고 말한다.
+     */
+    of: Int = DEX_CARDS.size,
     /** 이 칸에서 지금 보고 있는 내 카드. null 이면 카탈로그 설명만 보여 준다 */
     mine: DrawnCard? = null,
-    /** 이미지로 저장한다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
+    /** 이미지로 내보낸다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
     onSave: (() -> Unit)? = null,
+    /** 다른 앱으로 보낸다. null 이면 그 줄이 안 뜬다 */
+    onShare: (() -> Unit)? = null,
+    /**
+     * 저장이 **사진첩으로 바로** 가는가. 옛 기기(API 28 이하)는 저장할 곳을 묻는
+     * 창이 뜬다 — 하는 일이 다른데 같은 말을 쓰면 거짓말이 되므로 글씨를 가른다
+     */
+    toGallery: Boolean = true,
     saveBusy: Boolean = false,
     /** 저장하고 나서 한 줄. 잠시 뒤 사라진다 */
     saveNote: String? = null,
@@ -835,11 +1098,28 @@ private fun CardDetailSheet(
     framed: Boolean = false,
     /** 액자에 걸거나 내린다. null 이면 그 자리가 안 뜬다 */
     onFrame: (() -> Unit)? = null,
+    /** 이 카드를 지운다. **되돌릴 수 없다.** null 이면 그 자리가 안 뜬다 */
+    onDelete: (() -> Unit)? = null,
+    /** 이 칸의 마지막 한 장인가. 지우면 도감 칸이 다시 잠긴다 */
+    lastCopy: Boolean = false,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // **한 번 더 묻는다.** 카드는 서버에 사본이 없어서 지우면 그것으로 끝이다.
+    var confirmDelete by remember { mutableStateOf(false) }
+    if (confirmDelete && onDelete != null) {
+        DeleteCardDialog(
+            lastCopy = lastCopy,
+            onCancel = { confirmDelete = false },
+            onConfirm = {
+                confirmDelete = false
+                onDelete()
+            },
+        )
+    }
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         // **살짝 비친다.** 뒤의 카드가 어렴풋이 보여야 "그 카드의 설명" 으로 읽힌다.
@@ -884,7 +1164,7 @@ private fun CardDetailSheet(
             // 인쇄된 값이고, 우리 카드에는 아이 생일에서 만든 번호가 찍혀 있다.
             // 번호판은 **내 카드의 것만** 보여 준다. 카탈로그의 `NEO-0824` 는 저쪽
             // 카드에 인쇄돼 있던 값이라 우리 화면에 나올 이유가 없다.
-            card.detailRows(code = mine?.codeText).forEach { row ->
+            card.detailRows(total = of, code = mine?.codeText).forEach { row ->
                 Row(Modifier.padding(vertical = 3.dp)) {
                     Text(
                         row.label,
@@ -944,15 +1224,45 @@ private fun CardDetailSheet(
                 // 파일이 하나 생기는 동작이라, 같은 줄에 있으면 다음 카드를 누르려다
                 // 저장 창이 뜬다.
                 SheetAction(
-                    if (saveBusy) "저장하는 중…" else "이미지로 저장",
+                    when {
+                        saveBusy -> "저장하는 중…"
+                        toGallery -> "갤러리에 저장"
+                        else -> "이미지로 저장"
+                    },
                     onClick = if (saveBusy) ({}) else onSave,
                 )
-                // 저장은 창이 닫히고 나면 아무 표시가 없다 — 됐는지 안 됐는지를
-                // 여기서 말해 준다.
-                if (saveNote != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(saveNote, color = Color(0xFF9E8B84), fontSize = 12.sp)
-                }
+            }
+
+            if (onShare != null) {
+                Spacer(Modifier.height(6.dp))
+                // **저장과 나란히 두지 않는다.** 하나는 내 폰에 남기는 일이고 하나는
+                // 남에게 보내는 일이라, 같은 줄에 있으면 잘못 눌러 남에게 간다.
+                SheetAction(
+                    if (saveBusy) "준비하는 중…" else "공유하기",
+                    onClick = if (saveBusy) ({}) else onShare,
+                )
+            }
+
+            // 저장은 끝나고 나면 아무 표시가 없다 — 됐는지 안 됐는지를 여기서 말해
+            // 준다. 공유는 시트가 스스로 뜨므로 잘됐을 때 할 말이 없다.
+            if (saveNote != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(saveNote, color = Color(0xFF9E8B84), fontSize = 12.sp)
+            }
+
+            if (onDelete != null) {
+                Spacer(Modifier.height(10.dp))
+                // **조용한 글씨다.** 되돌릴 수 없는 자리를 저장과 같은 무게로 두면
+                // 다음 카드를 누르려다 눌린다.
+                Text(
+                    "이 카드 지우기",
+                    color = Color(0xFFC98C86),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { confirmDelete = true }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -969,6 +1279,97 @@ private fun CardDetailSheet(
         }
     }
 }
+
+/**
+ * 지우기 전에 한 번 더 묻는다.
+ *
+ * **되돌릴 수 없다는 것과, 도감 칸이 어떻게 되는지를 같이 말한다.** 마지막 한 장을
+ * 지우면 그 칸이 다시 잠기는데(`DexSlot.locked` 이 `owned.isEmpty()` 다), 그걸 모르고
+ * 지우면 모은 것이 줄어든 이유를 알 수가 없다.
+ */
+@Composable
+private fun DeleteCardDialog(
+    lastCopy: Boolean,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("이 카드를 지울까요?") },
+        text = {
+            Text(
+                if (lastCopy) {
+                    // **벌 이름을 안 부른다.** 여기까지 갈래를 넘기면 두 겹을 지나야 하는데,
+                    // 무엇의 마지막인지는 지우려는 카드를 보고 있으므로 이미 안다.
+                    "되돌릴 수 없어요. 마지막 한 장이라 도감 칸이 다시 잠겨요."
+                } else {
+                    "되돌릴 수 없어요."
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("지우기", color = Color(0xFFC0554E)) }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("그대로 두기") } },
+    )
+}
+
+/**
+ * 같은 야채를 여러 장 뽑았을 때 고르는 줄.
+ *
+ * 예전에는 7~9dp 짜리 **점**이었다. 누를 자리가 너무 작았고, 무엇보다 **어떤 카드들인지
+ * 안 보였다** — 같은 야채라도 얼굴과 뽑은 날이 다른데 점은 그걸 말해 주지 않는다.
+ *
+ * 좌우 화살표는 **다른 야채**라는 뜻으로 이미 쓰이고 있어서 여기 못 쓴다. 그래서
+ * 작은 카드를 늘어놓고 고르게 한다.
+ *
+ * 그림은 `rememberComposedCard` 가 굽는다 — 방 액자가 쓰는 그것이다. 장수가 많아야
+ * 서너 장이라 다 구워도 부담이 없다.
+ */
+@Composable
+private fun CopyStrip(
+    owned: List<DrawnCard>,
+    picked: Int,
+    onPick: (Int) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        owned.forEachIndexed { i, card ->
+            val thumb = rememberComposedCard(card, width = COPY_THUMB_PX)
+            Box(
+                Modifier
+                    .height(52.dp)
+                    .aspectRatio(COPY_THUMB_RATIO)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0x22FFFFFF))
+                    // 고른 것만 테두리를 두른다. 밝기로만 가르면 포일 위에서 안 보인다.
+                    .border(
+                        width = if (i == picked) 2.dp else 0.dp,
+                        color = if (i == picked) DaengPink else Color.Transparent,
+                        shape = RoundedCornerShape(6.dp),
+                    )
+                    .clickable { onPick(i) },
+            ) {
+                thumb?.let {
+                    Image(
+                        bitmap = it,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 작은 카드를 구울 가로 픽셀. 52dp 높이로 뜨는 자리라 이만하면 넉넉하다. */
+private const val COPY_THUMB_PX = 160
+
+/** 카드 비율. 열두 장이 1080x1440 한 판이다. */
+private const val COPY_THUMB_RATIO = 1080f / 1440f
 
 @Composable
 private fun SheetAction(label: String, onClick: () -> Unit) {

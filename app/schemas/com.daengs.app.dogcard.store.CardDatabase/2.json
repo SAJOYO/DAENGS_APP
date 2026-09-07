@@ -1,0 +1,133 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "69a7ca1bc2709e155534de3c105c36b5",
+    "entities": [
+      {
+        "tableName": "drawn_card",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `appUserId` TEXT, `templateId` TEXT NOT NULL, `dogId` TEXT, `dogName` TEXT NOT NULL, `drawnAtMillis` INTEGER NOT NULL, `codeText` TEXT NOT NULL, `userFramed` INTEGER NOT NULL, `coreLeft` INTEGER NOT NULL, `coreTop` INTEGER NOT NULL, `coreRight` INTEGER NOT NULL, `coreBottom` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appUserId",
+            "columnName": "appUserId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "templateId",
+            "columnName": "templateId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dogId",
+            "columnName": "dogId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dogName",
+            "columnName": "dogName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drawnAtMillis",
+            "columnName": "drawnAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "codeText",
+            "columnName": "codeText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userFramed",
+            "columnName": "userFramed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coreLeft",
+            "columnName": "coreLeft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coreTop",
+            "columnName": "coreTop",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coreRight",
+            "columnName": "coreRight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coreBottom",
+            "columnName": "coreBottom",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_drawn_card_templateId",
+            "unique": false,
+            "columnNames": [
+              "templateId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_drawn_card_templateId` ON `${TABLE_NAME}` (`templateId`)"
+          },
+          {
+            "name": "index_drawn_card_dogId",
+            "unique": false,
+            "columnNames": [
+              "dogId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_drawn_card_dogId` ON `${TABLE_NAME}` (`dogId`)"
+          },
+          {
+            "name": "index_drawn_card_drawnAtMillis",
+            "unique": false,
+            "columnNames": [
+              "drawnAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_drawn_card_drawnAtMillis` ON `${TABLE_NAME}` (`drawnAtMillis`)"
+          },
+          {
+            "name": "index_drawn_card_appUserId",
+            "unique": false,
+            "columnNames": [
+              "appUserId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_drawn_card_appUserId` ON `${TABLE_NAME}` (`appUserId`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '69a7ca1bc2709e155534de3c105c36b5')"
+    ]
+  }
+}

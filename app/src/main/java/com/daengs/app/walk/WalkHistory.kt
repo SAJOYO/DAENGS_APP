@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
  * 여기에 원본이 그대로 있으므로 이 클래스 안만 바뀐다.
  */
 class WalkHistory(private val log: WalkFixLog) {
+    val changes get() = log.historyChanges
 
     /**
      * 끝난 산책, 최근 것부터.
@@ -33,7 +34,7 @@ class WalkHistory(private val log: WalkFixLog) {
             // 요약을 저장하지 않는 것과 같은 원칙이다 — 규칙이 바뀌면 지난 기록도
             // 같이 바뀌는 것이 맞다. **지우지는 않는다.** 원본은 그대로 있어서
             // 문턱값을 낮추면 다시 보인다.
-            .filter { it.countsAsWalk }
+            .filter { it.countsAsWalk || log.hasEntries(it.sessionId) }
     }
 
     /**
@@ -63,7 +64,7 @@ class WalkHistory(private val log: WalkFixLog) {
      */
     suspend fun keepIfWalk(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         val summary = detail(sessionId) ?: return@withContext false
-        if (summary.countsAsWalk) return@withContext true
+        if (summary.countsAsWalk || log.hasEntries(sessionId)) return@withContext true
         log.deleteSession(sessionId)
         false
     }
@@ -96,8 +97,26 @@ class WalkHistory(private val log: WalkFixLog) {
         log.forgetEverything()
     }
 
+    suspend fun forgetOwner(ownerId: String) = withContext(Dispatchers.IO) {
+        require(ownerId.isNotBlank())
+        log.forgetOwner(ownerId)
+    }
+
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {
         val session = log.session(sessionId) ?: return@withContext null
         summarize(session, log.fixes(sessionId))
+    }
+
+    /** 완료 직후와 지난 기록에서 같은 저장 원본을 읽는다. 프로세스 메모리는 보지 않는다. */
+    suspend fun sessionDetail(sessionId: String): WalkSessionDetail? = withContext(Dispatchers.IO) {
+        val session = log.session(sessionId) ?: return@withContext null
+        // 전체 경로는 사용자가 한 세션을 연 이 자리에서만 만든다. 목록과 오늘 합계까지
+        // 모든 과거 좌표를 무제한으로 펼치면 기록이 쌓일수록 읽기 비용이 폭증한다.
+        val summary = summarize(session, log.fixes(sessionId), maxRouteSamples = Int.MAX_VALUE)
+        WalkSessionDetail(
+            summary = summary,
+            route = summary.toSessionRoute(),
+            moments = log.actions(sessionId).toMomentGroups(),
+        )
     }
 }

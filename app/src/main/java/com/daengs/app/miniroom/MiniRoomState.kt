@@ -10,6 +10,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntOffset
 import com.daengs.app.miniroom.art.ItemCatalog
 import com.daengs.app.miniroom.art.footprintFacing
@@ -30,6 +31,32 @@ fun RoomGeometry.toArtLocal(p: Offset, item: PlacedItem, catalog: ItemCatalog): 
     } else {
         local
     }
+}
+
+/**
+ * 이 아이템의 **터치 영역을 화면 사각형으로.** [toArtLocal] 의 역이다.
+ *
+ * ⚠️ **둘은 같이 고쳐야 한다.** 한쪽만 바꾸면 손가락이 닿는 자리와 화면이 가리키는
+ * 자리가 갈라진다 — 그러면 "여기를 누르세요" 가 엉뚱한 데를 가리킨다.
+ *
+ * 방 둘러보기가 붙박이(턴테이블)를 밝힐 때 쓴다. 붙박이는 못 옮기지만 자리를 상수로
+ * 박지 않는다 — 배치가 바뀌면 같이 따라가야 한다.
+ */
+fun RoomGeometry.touchRectOf(item: PlacedItem, catalog: ItemCatalog): Rect? {
+    val box = catalog[item.itemId]?.box ?: return null
+    val c = footprintCenter(item.col, item.row, box.footprintFacing(item.facing))
+    val left = c.x - box.anchor.x * scaleX
+    val top = c.y - box.anchor.y * scale
+    val area = box.touchArea
+    // 좌우 반전된 아이템은 판정도 뒤집히므로 사각형의 좌우가 바뀐다.
+    val x0 = if (item.facing == 1) 2f * box.anchor.x - area.right else area.left
+    val x1 = if (item.facing == 1) 2f * box.anchor.x - area.left else area.right
+    return Rect(
+        left = left + x0 * scaleX,
+        top = top + area.top * scale,
+        right = left + x1 * scaleX,
+        bottom = top + area.bottom * scale,
+    )
 }
 
 /**
