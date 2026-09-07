@@ -280,15 +280,16 @@ private fun WalkGameOverlay(
             var panelWidth by remember { androidx.compose.runtime.mutableIntStateOf(0) }
             var panelHeight by remember { androidx.compose.runtime.mutableIntStateOf(0) }
             var dockWidth by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+            var gaugeHeight by remember { androidx.compose.runtime.mutableIntStateOf(0) }
             var hudHeight by remember { androidx.compose.runtime.mutableIntStateOf(0) }
             val systemTop = WindowInsets.systemBars.getTop(density)
             val systemBottom = WindowInsets.systemBars.getBottom(density)
-            LaunchedEffect(panelWidth, panelHeight, dockWidth, hudHeight, systemTop, systemBottom, landscape, tracking.trail.state, summary) {
+            LaunchedEffect(panelWidth, panelHeight, dockWidth, gaugeHeight, hudHeight, systemTop, systemBottom, landscape, tracking.trail.state, summary) {
                 val gap = with(density) { 24.dp.roundToPx() }
                 onInsets(if (landscape && panelHeight > 0) panelWidth + gap else 0,
                     systemTop + hudHeight + gap,
                     if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) dockWidth + gap else 0,
-                    if (landscape) systemBottom + gap else systemBottom + panelHeight + gap)
+                    if (landscape) systemBottom + (if (tracking.trail.state != TrackingState.OFF && summary == null) gaugeHeight else 0) + gap else systemBottom + panelHeight + gap)
             }
             Column(Modifier.align(Alignment.TopStart).fillMaxWidth()
                 .onSizeChanged { hudHeight = it.height },
@@ -303,10 +304,6 @@ private fun WalkGameOverlay(
                     }
                     if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
                     else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
-                }
-                if (landscape && summary == null && tracking.trail.state != TrackingState.OFF) {
-                    WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
-                        walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null)
                 }
                 WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary,
                     modifier = Modifier.widthIn(max = 224.dp),
@@ -336,7 +333,7 @@ private fun WalkGameOverlay(
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                 Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
-                    Row(Modifier.padding(4.dp).onSizeChanged { dockWidth = it.width }) {
+                    Row(Modifier.padding(4.dp)) {
                         WalkToolButton(WalkTool.CAMERA, "산책 사진 촬영", onPhotographWalk,
                             enabled = tracking.trail.state == TrackingState.RECORDING && tracking.finishingSessionId == null, caption = "사진")
                         WalkToolButton(WalkTool.RECORD, "행동 기록", {
@@ -375,7 +372,10 @@ private fun WalkGameOverlay(
                 if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
             }
             if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
-                Box(Modifier.align(Alignment.BottomEnd)) { dock() }
+                WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
+                    walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { gaugeHeight = it.height })
+                Box(Modifier.align(Alignment.BottomEnd).onSizeChanged { dockWidth = it.width }) { dock() }
             }
 
             if (selectedRoutePoint != null) {
