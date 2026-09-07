@@ -1,6 +1,7 @@
 package com.daengs.app.ui.places
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -70,6 +71,7 @@ internal fun PlacePurposeMenu(selection: PlaceCategorySelection, onSelect: (Plac
                             Modifier.weight(1f).heightIn(min = 64.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (selected) DaengsColors.BrandPrimarySoft else DaengsColors.Surface, RoundedCornerShape(12.dp))
+                                .border(1.dp, if (selected) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral, RoundedCornerShape(12.dp))
                                 .selectable(selected, role = Role.Tab, onClick = { onSelect(option) })
                                 .padding(horizontal = 2.dp, vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,

@@ -7,10 +7,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
-import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.features.places.*
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
@@ -90,7 +88,7 @@ fun ConnectedPlaceSearchScreen(
     val display = state.visibleDiscovery()
     var expanded by remember { mutableStateOf<PlaceKey?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
-    var camera by remember { mutableStateOf<GeoPoint?>(null) }
+    var camera by remember { mutableStateOf(PlaceMapCamera()) }
     var follow by remember { mutableStateOf(true) }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
@@ -108,7 +106,14 @@ fun ConnectedPlaceSearchScreen(
     }
     BackHandler(onBack = onBack)
     PlaceSearchLabScreen(
-        state = ui, live = true,
+        state = ui, live = true, onBack = onBack,
+        searchOriginLabel = when {
+            state.waitingForSearchLocation && state.location is PlaceLocationState.Failed -> "내 위치 확인 필요"
+            state.waitingForSearchLocation -> "내 위치 확인 중"
+            display.origin == null -> "검색 위치 미설정"
+            display.originMode == PlaceOriginMode.PINNED -> "지도 중심 기준"
+            else -> "내 위치 기준"
+        },
         onEdit = { draft = it }, onAi = { onAction(PlacesAction.SetAiMode(!ai)); notice = null },
         onSubmit = {
             when {
@@ -153,19 +158,22 @@ fun ConnectedPlaceSearchScreen(
             if (showMap) MapHost(
                 scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
                 searchOrigin = display.origin, followDevice = follow,
-                onCameraIdle = { camera = it }, onCameraGesture = { follow = false },
+                onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
                 onSelectPlace = { id -> keys[id]?.let { onAction(PlacesAction.Select(it)) } },
                 modifier = Modifier.fillMaxSize(),
             )
-            Row(Modifier.align(Alignment.TopCenter)) {
-                TextButton(onClick = onBack) { Text("← 홈") }
-                TextButton(onClick = {
-                    if (permission) requestPermission() else { follow = true; onAction(PlacesAction.Locate(category, state.discovery.preferParking)) }
-                }) { Text(if (permission) "위치 권한" else "내 위치") }
-                camera?.takeIf { it != state.discovery.origin }?.let { point ->
-                    TextButton(onClick = { follow = false; onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking)) }) { Text("이 지역 검색") }
-                }
-            }
+            val candidate = camera.searchPoint(state.discovery.origin)
+            PlaceMapControls(candidate != null,
+                onMapSearch = { candidate?.let { point ->
+                    follow = false; camera = camera.submitted()
+                    onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking))
+                } },
+                onDeviceSearch = {
+                    if (permission) requestPermission() else {
+                        follow = true; camera = camera.submitted()
+                        onAction(PlacesAction.Locate(category, state.discovery.preferParking))
+                    }
+                })
             }
         },
     )

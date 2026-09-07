@@ -2,6 +2,7 @@ package com.daengs.app.ui.places
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.features.places.PlaceDiscoveryState
 import com.daengs.app.map.features.places.PlaceSearchState
@@ -21,6 +22,25 @@ class ConnectedPlaceSearchUiTest {
     @get:Rule val compose = createComposeRule()
     private fun ready() = PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.54,127.05)),
         discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE)))
+
+    @Config(qualifiers = "w320dp-h844dp")
+    @Test fun compactHeaderAndMapControlsKeepNavigationSeparateFromSearching() {
+        var backs = 0
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, { backs++ }, {}, {}, {}, {}, showMap = false) } }
+        compose.onNodeWithTag("place-search-field").assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithContentDescription("AI 조건 검색 전환").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithContentDescription("뒤로가기").performClick()
+        assertEquals(1, backs)
+        assertTrue(actions.isEmpty())
+        compose.onNodeWithText("이 주변 검색").assertDoesNotExist()
+        compose.onNodeWithText("내 주변 검색").performClick()
+        assertEquals(PlacesAction.Locate(PlaceKind.CAFE, false), actions.single())
+        val category = compose.onNodeWithText("전체").fetchSemanticsNode().boundsInRoot
+        val conditions = compose.onNodeWithText("반려견 선택 ▾").fetchSemanticsNode().boundsInRoot
+        assertTrue(conditions.top > category.bottom)
+        compose.onAllNodesWithText("주차 우선").assertCountEquals(1)
+    }
     @Test fun failedGpsOffersRetryInsteadOfEmptyResults() {
         val state = ready().copy(
             location = PlaceLocationState.Failed(PlaceLocationFailure.UNAVAILABLE, null),
@@ -29,6 +49,7 @@ class ConnectedPlaceSearchUiTest {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNodeWithText("검색 결과가 없어요.").assertDoesNotExist()
+        compose.onNodeWithText("내 위치 확인 필요").assertExists()
         compose.onNodeWithText("다시 확인").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(PlacesAction.RetrySearch, actions.single())
     }

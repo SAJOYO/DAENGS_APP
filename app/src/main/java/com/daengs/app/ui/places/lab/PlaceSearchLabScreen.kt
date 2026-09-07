@@ -8,8 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,6 +37,8 @@ fun PlaceSearchLabScreen(
     onDog: (String) -> Unit = {}, onToggle: (PlaceKey) -> Unit = {}, onRetry: () -> Unit = {},
     onAction: (String) -> Unit = {},
     live: Boolean = false,
+    onBack: (() -> Unit)? = null,
+    searchOriginLabel: String? = null,
     onRadius: (Int) -> Unit = {},
     onRefreshProfiles: () -> Unit = {},
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
@@ -56,44 +55,10 @@ fun PlaceSearchLabScreen(
     val kinds = remember { listOf<PlaceKind?>(null, PlaceKind.CAFE, PlaceKind.RESTAURANT) + PlaceKind.entries.filter { it != PlaceKind.CAFE && it != PlaceKind.RESTAURANT } }
     Column(Modifier.fillMaxSize().background(DaengsColors.AppBackground).safeDrawingPadding()) {
         Column(Modifier.fillMaxWidth().background(DaengsColors.Surface).padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = state.draft, onValueChange = onEdit, modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (state.aiMode) "원하는 동반 조건" else if (live) "장소명 검색" else "장소명·주소 검색", fontSize = 12.sp) },
-                    singleLine = true, shape = RoundedCornerShape(16.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-                    trailingIcon = {
-                        IconButton(onClick = onSubmit, modifier = Modifier.semantics { contentDescription = "검색 실행" }) {
-                            SearchActionIcon(Modifier.size(21.dp))
-                        }
-                    },
-                )
-                OutlinedButton(onClick = onAi, shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (state.aiMode) DaengsColors.BrandPrimarySoft else DaengsColors.SurfaceMuted,
-                        contentColor = DaengsColors.TextPrimary),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, if (state.aiMode) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral),
-                    modifier = Modifier.size(width = 48.dp, height = 40.dp).semantics {
-                    contentDescription = "AI 조건 검색 전환"
-                    stateDescription = if (state.aiMode) "켜짐" else "꺼짐"
-                }) {
-                    RobotSearchIcon(Modifier.size(24.dp), active = state.aiMode)
-                }
-            }
+            PlaceSearchHeader(state.draft,
+                if (state.aiMode) "원하는 동반 조건" else if (live) "장소명 검색" else "장소명·주소 검색",
+                state.aiMode, onEdit, onSubmit, onAi, onBack)
             if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
-            Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth().semantics { contentDescription = "검색 조건" }, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { profiles = true; if (live) onRefreshProfiles() }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 2.dp)) {
-                    Text(state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
-                        fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                TextButton(onClick = { filters = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("반경 ${state.applied.radiusMeters / 1000}km ▾", fontSize = 12.sp) }
-                TextButton(onClick = { onParking(!state.applied.parkingFirst) }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.semantics {
-                    stateDescription = if (state.applied.parkingFirst) "켜짐" else "꺼짐"
-                }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 12.sp) }
-            }
             Spacer(Modifier.height(12.dp))
             if (categoryContent != null) categoryContent() else LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(kinds.chunked(2)) { pair ->
@@ -122,36 +87,49 @@ fun PlaceSearchLabScreen(
                 Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 52.dp))
         }
         Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.Surface) {
-            Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).verticalScroll(rememberScrollState()).padding(vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).padding(vertical = 10.dp)) {
                 Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
                     Text("$resultLabel $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
-                    TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ▾" else "가까운 순 ▾", fontSize = 11.sp) }
+                    searchOriginLabel?.let { Text(it, fontSize = 10.sp, color = DaengsColors.TextSecondary) }
                 }
-                if (state.truncated) Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
-                if (state.applied.kind == null && !live) Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
-                if (state.phase == LabPhase.RESULTS) {
-                    val list = rememberLazyListState()
-                    LaunchedEffect(state.selected, state.hits) {
-                        val index = state.hits.indexOfFirst { it.place.key == state.selected }
-                        if (index >= 0) list.animateScrollToItem(index)
+                Row(Modifier.fillMaxWidth().semantics { contentDescription = "검색 조건" }, verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { profiles = true; if (live) onRefreshProfiles() }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 2.dp)) {
+                        Text(state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
+                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    LazyRow(state = list, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(state.hits, key = { placeMarkerId(it.place.key) }) { hit ->
-                            PlaceDrawerCard(hit, state.expanded == hit.place.key, state.selected == hit.place.key, { onToggle(hit.place.key) }, onAction, cardActions, state.profileNames)
+                    TextButton(onClick = { filters = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("반경 ${state.applied.radiusMeters / 1000}km ▾", fontSize = 12.sp) }
+                    TextButton(onClick = { onParking(!state.applied.parkingFirst) }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.semantics {
+                        stateDescription = if (state.applied.parkingFirst) "켜짐" else "꺼짐"
+                    }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 12.sp) }
+                }
+
+                Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                    if (state.truncated) Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
+                    if (state.applied.kind == null && !live) Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
+                    if (state.phase == LabPhase.RESULTS) {
+                        val list = rememberLazyListState()
+                        LaunchedEffect(state.selected, state.hits) {
+                            val index = state.hits.indexOfFirst { it.place.key == state.selected }
+                            if (index >= 0) list.animateScrollToItem(index)
                         }
+                        LazyRow(state = list, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(state.hits, key = { placeMarkerId(it.place.key) }) { hit ->
+                                PlaceDrawerCard(hit, state.expanded == hit.place.key, state.selected == hit.place.key, { onToggle(hit.place.key) }, onAction, cardActions, state.profileNames)
+                            }
+                        }
+                    } else {
+                        Text(when (state.phase) {
+                            LabPhase.LOADING -> "찾는 중…"
+                            LabPhase.EMPTY -> emptyMessage
+                            LabPhase.ERROR -> state.errorText ?: "검토 데이터를 읽지 못했어요."
+                            LabPhase.PERMISSION -> "위치 권한이 필요해요."
+                            LabPhase.UNSAMPLED -> "이 종류는 검토판에 수집하지 않았어요."
+                            else -> ""
+                        }, Modifier.padding(20.dp), fontSize = 13.sp)
+                        if (showRetry && (state.phase == LabPhase.ERROR || state.phase == LabPhase.PERMISSION)) TextButton(onClick = onRetry) { Text("다시 확인") }
                     }
-                } else {
-                    Text(when (state.phase) {
-                        LabPhase.LOADING -> "찾는 중…"
-                        LabPhase.EMPTY -> emptyMessage
-                        LabPhase.ERROR -> state.errorText ?: "검토 데이터를 읽지 못했어요."
-                        LabPhase.PERMISSION -> "위치 권한이 필요해요."
-                        LabPhase.UNSAMPLED -> "이 종류는 검토판에 수집하지 않았어요."
-                        else -> ""
-                    }, Modifier.padding(20.dp), fontSize = 13.sp)
-                    if (showRetry && (state.phase == LabPhase.ERROR || state.phase == LabPhase.PERMISSION)) TextButton(onClick = onRetry) { Text("다시 확인") }
                 }
             }
         }
