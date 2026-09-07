@@ -44,6 +44,10 @@ fun PlaceSearchLabScreen(
     onRefreshProfiles: () -> Unit = {},
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
     categoryContent: (@Composable () -> Unit)? = null,
+    conditionContent: (@Composable () -> Unit)? = null,
+    aiConnected: Boolean = false,
+    emptyMessage: String = "검색 결과가 없어요.",
+    showRetry: Boolean = true,
     resultLabel: String = state.applied.kind?.let(::categoryLabel) ?: "전체",
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
 ) {
@@ -66,7 +70,7 @@ fun PlaceSearchLabScreen(
                 }) { Text("🤖", color = if (state.aiMode) DaengsColors.BrandPrimary else DaengsColors.TextPrimary) }
                 IconButton(onClick = onSubmit, modifier = Modifier.semantics { contentDescription = "검색 실행" }) { Text("↑") }
             }
-            if (state.aiMode) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
+            if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
             if (categoryContent != null) categoryContent() else LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(kinds.chunked(2)) { pair ->
                     Column {
@@ -93,6 +97,7 @@ fun PlaceSearchLabScreen(
                 TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 11.sp) }
                 IconButton(onClick = { filters = true }, modifier = Modifier.semantics { contentDescription = "검색 조건" }) { Text("⚙") }
             }
+            conditionContent?.invoke()
             state.notice?.let { Text(it, fontSize = 11.sp, maxLines = 3) }
             if (live) state.profileMessage?.let { Text(it, fontSize = 11.sp) }
         }
@@ -121,13 +126,13 @@ fun PlaceSearchLabScreen(
                 } else {
                     Text(when (state.phase) {
                         LabPhase.LOADING -> "찾는 중…"
-                        LabPhase.EMPTY -> "검색 결과가 없어요."
+                        LabPhase.EMPTY -> emptyMessage
                         LabPhase.ERROR -> state.errorText ?: "검토 데이터를 읽지 못했어요."
                         LabPhase.PERMISSION -> "위치 권한이 필요해요."
                         LabPhase.UNSAMPLED -> "이 종류는 검토판에 수집하지 않았어요."
                         else -> ""
                     }, Modifier.padding(20.dp), fontSize = 13.sp)
-                    if (state.phase == LabPhase.ERROR || state.phase == LabPhase.PERMISSION) TextButton(onClick = onRetry) { Text("다시 확인") }
+                    if (showRetry && (state.phase == LabPhase.ERROR || state.phase == LabPhase.PERMISSION)) TextButton(onClick = onRetry) { Text("다시 확인") }
                 }
             }
         }

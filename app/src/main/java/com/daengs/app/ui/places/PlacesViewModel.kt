@@ -19,6 +19,14 @@ import com.daengs.app.place.DogSearchContext
 import com.daengs.app.place.PlaceApi
 import com.daengs.app.place.PlaceKey
 import com.daengs.app.place.PlaceCategorySelection
+import com.daengs.app.place.FacilityRepository
+import com.daengs.app.place.FacilityQuery
+import com.daengs.app.place.FacilityChoice
+import com.daengs.app.place.FacilityResponse
+import com.daengs.app.place.FacilityAction
+import com.daengs.app.place.FacilityException
+import com.daengs.app.place.FacilityApi
+import com.daengs.app.place.AuthenticatedFacilityRepository
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.place.PlaceResult
@@ -37,10 +45,15 @@ data class PlacesUiState(
     val journey: PlaceJourneyState = PlaceJourneyState(),
     val profiles: PlaceProfiles = PlaceProfiles(),
     val waitingForSearchLocation: Boolean = false,
+    val facility: FacilityUiState = FacilityUiState(),
 )
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
+    data class SetAiMode(val enabled: Boolean) : PlacesAction
+    data class Discover(val query: String) : PlacesAction
+    data class ChooseAi(val choice: FacilityChoice) : PlacesAction
+    data object RetryAi : PlacesAction
     data class ToggleDog(val id: String) : PlacesAction
     data class Locate(val category: PlaceCategorySelection, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction {
         constructor(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) :
@@ -79,8 +92,13 @@ class PlacesViewModel(
     journeyRepository: JourneyRepository,
     locationSource: LocationSource,
     externalScope: CoroutineScope? = null,
+    facilityRepository: FacilityRepository? = null,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
+    private val facility = FacilitySearchCoordinator(facilityRepository ?: object : FacilityRepository {
+        override suspend fun discover(owner: String, query: FacilityQuery): FacilityResponse = throw FacilityException(0)
+        override suspend fun act(owner: String, previous: FacilityResponse, action: FacilityAction): FacilityResponse = throw FacilityException(0)
+    }, runtimeScope)
     private val profiles = MutableStateFlow(PlaceProfiles())
     private var appliedDogs = emptyList<com.daengs.app.place.PlaceDogSnapshot>()
     private val location = PlaceLocationCoordinator(
@@ -97,7 +115,8 @@ class PlacesViewModel(
         location.state,
         session.state,
         profiles,
-    ) { location, session, profiles ->
+        facility.state,
+    ) { location, session, profiles, facility ->
         val pending = session.latestIntent?.takeIf { it.origin == PlaceSearchOrigin.CurrentDevice }
         val discovery = pending?.let {
             session.discovery.copy(requestedKinds = it.kinds, nameQuery = it.nameQuery,
@@ -105,7 +124,7 @@ class PlacesViewModel(
                 search = com.daengs.app.map.features.places.PlaceSearchState.Loading,
                 selectedPlaceKey = null)
         } ?: session.discovery
-        PlacesUiState(location, discovery, session.journey, profiles, waitingForSearchLocation = pending != null)
+        PlacesUiState(location, discovery, session.journey, profiles, waitingForSearchLocation = pending != null, facility = facility)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -129,12 +148,14 @@ class PlacesViewModel(
     }
 
     fun deactivate() {
+        facility.enable(false)
         location.deactivate()
         session.deactivate()
     }
 
     fun updatePermission(granted: Boolean, permanentlyDenied: Boolean) {
         if (!granted) {
+            facility.invalidate()
             location.cancelLocate()
             session.clear()
         }
@@ -151,6 +172,9 @@ class PlacesViewModel(
     }
 
     private fun applyProfiles(value: PlaceProfiles) {
+        if (value.ownerId != profiles.value.ownerId || value.snapshots() != profiles.value.snapshots()) {
+            facility.invalidate(if (facility.state.value.enabled) "반려견 정보가 바뀌었어요. 조건을 확인하고 다시 검색해 주세요." else null)
+        }
         profiles.value = value
         val snapshots = value.snapshots()
         if (snapshots != appliedDogs) {
@@ -160,7 +184,14 @@ class PlacesViewModel(
     }
 
     fun onAction(action: PlacesAction) {
+        if (action is PlacesAction.Search || action is PlacesAction.SearchAt || action is PlacesAction.Locate || action is PlacesAction.SetRadius) {
+            facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
+        }
         when (action) {
+            is PlacesAction.SetAiMode -> facility.enable(action.enabled)
+            is PlacesAction.Discover -> discover(action.query)
+            is PlacesAction.ChooseAi -> facility.choose(action.choice)
+            PlacesAction.RetryAi -> facility.retry()
             is PlacesAction.ToggleDog -> applyProfiles(profiles.value.toggle(action.id))
             is PlacesAction.Locate -> locateAndSearch(action.category.kinds, action.preferParking, action.nameQuery)
             is PlacesAction.Search -> searchAtCurrentOrigin(action.category.kinds, action.preferParking, action.nameQuery)
@@ -209,11 +240,34 @@ class PlacesViewModel(
         session.searchAt(point, kinds, preferParking, nameQuery)
     }
 
+    private fun discover(text: String) {
+        val query = text.trim()
+        if (profiles.value.ownerId == null) {
+            facility.reject("AI 조건 검색은 로그인 후 사용할 수 있어요."); return
+        }
+        if (query.isEmpty() || query.codePointCount(0, query.length) > 1000) {
+            facility.reject("원하는 장소와 조건을 1~1,000자로 입력해 주세요."); return
+        }
+        if (profiles.value.selectedIds.isNotEmpty() && !profiles.value.ready) {
+            facility.reject("선택한 반려견 정보를 새로고침한 뒤 검색해 주세요."); return
+        }
+        val current = state.value
+        val origin = current.discovery.origin
+        if (origin == null || current.waitingForSearchLocation || !PlaceSearchArea.contains(origin)) {
+            facility.reject("위치를 확인하거나 지도를 움직여 이 지역 검색을 누른 뒤 다시 시도해 주세요."); return
+        }
+        val kinds = current.discovery.requestedKinds
+        facility.search(profiles.value.ownerId, FacilityQuery(query, origin, current.discovery.radiusMeters,
+            if (kinds.toSet() == PlaceKind.entries.toSet()) emptyList() else kinds,
+            current.discovery.preferParking, profiles.value.snapshots()))
+    }
+
     fun retrySearch() {
         session.retrySearch()?.let(::locate)
     }
 
     fun selectPlace(key: PlaceKey) {
+        facility.select(key)
         session.selectPlace(key)
     }
 
@@ -258,6 +312,10 @@ class PlacesViewModel(
                             JourneyApi(baseUrl = { BuildConfig.API_BASE_URL }),
                         ),
                         locationSource = FusedLocationSource(context.applicationContext),
+                        facilityRepository = (context.applicationContext as com.daengs.app.DaengsApp).let { app ->
+                            AuthenticatedFacilityRepository(FacilityApi { BuildConfig.API_BASE_URL },
+                                app.sessionProvider::freshSession, app.tokenStore::load)
+                        },
                     ) as T
                 }
             }
