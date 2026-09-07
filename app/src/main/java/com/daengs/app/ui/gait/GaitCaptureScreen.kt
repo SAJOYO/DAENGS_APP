@@ -150,7 +150,7 @@ fun GaitCaptureScreen(
                     "다 찍었으면 가운데 단추를 한 번 더 누르세요"
                 } else {
                     "걷는 모습 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 · " +
-                        "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 촬영 권장"
+                        "${GaitRecord.RECOMMENDED_SECONDS}초 내외 촬영 권장"
                 },
                 color = TextMuted,
                 fontSize = 13.sp,
@@ -396,7 +396,7 @@ private fun GaitTipsPanel(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 "강아지 뒤에서, 같은 속도로 따라 걸어요.",
                 "네 다리가 다 보이게 화면에 담아요.",
                 "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담겨야 해요.",
-                "서다 걷다 하면 그만큼 빠지니 ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 찍어요.",
+                "서다 걷다 하면 그만큼 빠지니 ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 찍어요.",
                 "지난 기록과 비슷한 곳에서 찍으면 나란히 보기 좋아요.",
             ).forEach { line ->
                 Row(verticalAlignment = Alignment.Top) {

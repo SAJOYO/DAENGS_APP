@@ -222,7 +222,7 @@ fun GaitRecord.summaryLines(): List<String> = buildList {
         if (secs < GaitRecord.RECOMMENDED_SECONDS) {
             add(
                 "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담겨야 해요. " +
-                    "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 찍으면 넉넉해요.",
+                    "${GaitRecord.RECOMMENDED_SECONDS}초 내외로 찍으면 돼요.",
             )
         }
     }
