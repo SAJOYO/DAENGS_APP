@@ -55,7 +55,7 @@ class WalkScreenPolicyTest {
         assertTrue(home.right <= pauseBounds.left)
         assertTrue(pauseBounds.bottom < action.top)
         assertTrue(settings.right <= time.left)
-        assertTrue(settings.bottom <= speed.top)
+        assertTrue(settings.bottom <= speed.top || settings.right <= speed.left)
         assertTrue(territory.bottom <= action.top)
         assertTrue(territory.top > speed.bottom)
         compose.onNodeWithText("색상").assertDoesNotExist()

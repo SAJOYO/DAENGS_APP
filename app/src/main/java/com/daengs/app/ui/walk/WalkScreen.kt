@@ -304,6 +304,10 @@ private fun WalkGameOverlay(
                     if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
                     else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
                 }
+                if (landscape && summary == null && tracking.trail.state != TrackingState.OFF) {
+                    WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
+                        walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null)
+                }
                 WalkTopHud(elapsedMillis, distanceMeters, outside.takeIf { summary == null }, wallClockMillis, summary,
                     modifier = Modifier.widthIn(max = 224.dp),
                     controlContent = {
@@ -322,7 +326,7 @@ private fun WalkGameOverlay(
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
                     if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
-                    else WalkSpeedometer(
+                    else if (!landscape) WalkSpeedometer(
                         speed = if (locationGranted && preciseLocation && locationError == null)
                             walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
                         modifier = Modifier.align(Alignment.End))
