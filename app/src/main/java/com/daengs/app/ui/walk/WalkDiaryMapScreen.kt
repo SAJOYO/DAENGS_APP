@@ -60,10 +60,10 @@ internal fun WalkDiaryMapScreen(
         try { history.changes.collect { detail = history.sessionDetail(sessionId); loaded = true } }
         catch (e: Exception) { if (e is CancellationException) throw e; error = "산책 경로를 불러오지 못했어요." }
     }
-    LaunchedEffect(detail?.summary, retry) {
+    LaunchedEffect(detail, retry) {
         diary = null
         val summary = detail?.summary ?: return@LaunchedEffect
-        try { reader.observe(listOf(summary)).collect { diary = it.singleOrNull() } }
+        try { reader.observe(listOf(summary), mapOf(sessionId to detail!!.observations)).collect { diary = it.singleOrNull() } }
         catch (e: Exception) { if (e is CancellationException) throw e; error = "장면을 불러오지 못했어요." }
     }
     fun change(value: WalkEntry, delete: Boolean) {
@@ -82,7 +82,7 @@ internal fun WalkDiaryMapScreen(
     val scenes = diary?.scenes.orEmpty()
     val selected = scenes.firstOrNull { it.id == selectedId }
     val route = detail?.route
-    val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint, ::formatWalkClock) ?: CompletedRouteLayerState() }
+    val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
     val mapScene = remember(completed, markers, detail?.stayStamps) {
         composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
@@ -158,7 +158,7 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): L
     return diaryLocationGroups(scenes).map { group ->
         val chosen = group.firstOrNull { it.id == selectedId } ?: group.first()
         MomentMarkerState(chosen.id, requireNotNull(chosen.point), group.joinToString(" · ") { order[it.id].toString() },
-            selected = group.any { it.id == selectedId })
+            selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true)
     }
 }
 

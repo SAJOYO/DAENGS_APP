@@ -30,7 +30,7 @@ class WalkDiaryReader(
         }.flowOn(Dispatchers.IO)
     }
 
-    fun observe(walks: List<WalkSummary>): Flow<List<DiaryWalk>> {
+    fun observe(walks: List<WalkSummary>, observations: Map<String, List<com.daengs.app.walk.RecordedFix>> = emptyMap()): Flow<List<DiaryWalk>> {
         if (walks.isEmpty()) return flowOf(emptyList())
         val expectedOwner = owner()
         return combine(walks.map { walk ->
@@ -41,7 +41,8 @@ class WalkDiaryReader(
                         it.id == walk.sessionId && it.ownerId == expectedOwner && it.endedAtMillis != null
                     }) null
                 else diaryWalk(walk, entries.mapNotNull { it.entry() }, images,
-                    StoryboardDraft.parse(draft?.payload), storyboardAnalysisView(analysis, entries))
+                    StoryboardDraft.parse(draft?.payload), storyboardAnalysisView(analysis, entries),
+                    observations[walk.sessionId].orEmpty())
             }
         }) { records -> records.filterNotNull() }.flowOn(Dispatchers.IO)
     }

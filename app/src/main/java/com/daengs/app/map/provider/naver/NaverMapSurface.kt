@@ -72,6 +72,12 @@ fun NaverMapSurface(
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (androidx.compose.ui.platform.LocalInspectionMode.current) {
+        androidx.compose.foundation.layout.Box(modifier) {
+            androidx.compose.material3.Text("지도 · ${scene.moments.size}개 장면")
+        }
+        return
+    }
     val walkStyle by rememberWalkStyle()
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -308,7 +314,9 @@ fun NaverMapSurface(
                 height = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
                 anchor = MARKER_ANCHOR
                 icon = photoIcons[moment.photoFile] ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
-                zIndex = if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
+                zIndex = if (moment.aboveRouteEndpoints) {
+                    if (moment.selected) 140 else 120
+                } else if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
                 isHideCollidedMarkers = false
                 setOnClickListener {
                     latestMomentCallback(moment.id)
@@ -519,6 +527,14 @@ private const val MOMENT_MARKER_PX_SELECTED = 82
 
 /** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
 private const val MOMENT_MARKER_Z = 50
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun NaverSceneMapPreview() {
+    NaverMapSurface(MapScene(moments = listOf(
+        com.daengs.app.map.layers.moments.MomentMarkerState("scene", GeoPoint(37.5, 127.0), "1 · 7",
+            aboveRouteEndpoints = true))), null, false, onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {})
+}
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
