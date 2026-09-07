@@ -39,6 +39,9 @@ import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
 import com.naver.maps.map.overlay.PathOverlay
+import com.naver.maps.map.overlay.MultipartPathOverlay
+import com.daengs.app.map.style.rememberWalkStyle
+import com.daengs.app.map.style.paintWalkSpeedPath
 import com.naver.maps.map.overlay.CircleOverlay
 
 @Composable
@@ -69,6 +72,7 @@ fun NaverMapSurface(
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val walkStyle by rememberWalkStyle()
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
@@ -256,6 +260,7 @@ fun NaverMapSurface(
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
     // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.
     NaverTerritoryLayer(naverMap, scene.territorySites, onSelectTerritorySite)
+    NaverStayStampLayer(naverMap, scene.stayStamps)
 
     DisposableEffect(naverMap) {
         val map = naverMap
@@ -316,48 +321,37 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
-    DisposableEffect(naverMap, scene.trail) {
-        val map = naverMap
-        val lines = if (map == null) {
-            emptyList()
-        } else {
-            scene.trail.paths
-                .filter { it.size >= 2 }
-                .map { path ->
-                    // 선 하나가 세그먼트 하나다. **이어 붙이지 않는다** — 일시정지나
-                    // GPS 점프 앞뒤를 한 선으로 합치면 걷지 않은 길을 걸은 것으로 그린다.
-                    PathOverlay().apply {
-                        coords = path.map(GeoPoint::toLatLng)
-                        width = TRAIL_WIDTH
-                        color = TRAIL_COLOR
-                        outlineWidth = TRAIL_OUTLINE_WIDTH
-                        outlineColor = TRAIL_OUTLINE_COLOR
-                        this.map = map
-                    }
-                }
-        }
-        onDispose { lines.forEach { it.map = null } }
+    val speedPaths = remember(scene.trail, scene.completedRoute.paths, scene.completedRoute.speedPaths, walkStyle) {
+        (scene.trail.speedPaths + scene.completedRoute.speedPaths).map { path ->
+            paintWalkSpeedPath(path, walkStyle.policy, walkStyle.themeId)
+        }.filter { it.isNotEmpty() }
     }
-
-    // 완료 경로는 라이브 trail과 별도다. 완료 화면에서 출발·도착과 끊긴 지점을 더해도
-    // 산책 중 갱신되는 경로 객체의 의미와 수명은 바뀌지 않는다.
-    DisposableEffect(naverMap, scene.completedRoute.paths) {
+    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths) {
         val map = naverMap
-        val lines = if (map == null) {
-            emptyList()
-        } else {
-            scene.completedRoute.paths
-                .filter { it.size >= 2 }
-                .map { path ->
-                    PathOverlay().apply {
-                        coords = path.map(GeoPoint::toLatLng)
-                        width = TRAIL_WIDTH
-                        color = TRAIL_COLOR
-                        outlineWidth = TRAIL_OUTLINE_WIDTH
-                        outlineColor = TRAIL_OUTLINE_COLOR
-                        this.map = map
-                    }
+        val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
+        if (map != null) {
+            // One multipart overlay per recording segment keeps pauses and GPS gaps separate.
+            speedPaths.forEach { parts ->
+                lines += MultipartPathOverlay().apply {
+                    coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
+                    colorParts = parts.map { part -> MultipartPathOverlay.ColorPart(part.color, part.color, part.color, part.color) }
+                    width = TRAIL_WIDTH
+                    outlineWidth = 0
+                    this.map = map
                 }
+            }
+            // Legacy coordinate-only callers have unknown speed, never pretend it is zero.
+            val fallback = (if (scene.trail.speedPaths.isEmpty()) scene.trail.paths else emptyList()) +
+                (if (scene.completedRoute.speedPaths.isEmpty()) scene.completedRoute.paths else emptyList())
+            fallback.filter { it.size >= 2 }.forEach { path ->
+                lines += PathOverlay().apply {
+                    coords = path.map(GeoPoint::toLatLng)
+                    width = TRAIL_WIDTH
+                    color = walkStyle.policy.unknownColor
+                    outlineWidth = 0
+                    this.map = map
+                }
+            }
         }
         onDispose { lines.forEach { it.map = null } }
     }

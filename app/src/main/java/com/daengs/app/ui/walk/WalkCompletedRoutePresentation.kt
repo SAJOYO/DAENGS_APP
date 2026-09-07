@@ -18,6 +18,9 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
     val endpointsNear = endpointsAreNear(ROUTE_ENDPOINT_MERGE_METERS)
     return CompletedRouteLayerState(
         paths = segments.map { segment -> segment.points.map { it.point } },
+        speedPaths = segments.map { segment -> segment.points.map {
+            com.daengs.app.map.style.WalkSpeedPoint(it.point, it.capturedAtMillis)
+        } },
         start = if (endpointsNear) {
             val startPoint = start
             val endPoint = end
