@@ -546,29 +546,26 @@ data class GaitCompared(
 }
 
 /**
- * 비교 응답을 표의 줄들로 옮긴다.
+ * 비교 응답을 관절 여섯 줄로 옮긴다.
  *
- * **관절 하나가 두 줄이 된다** (`Hock (좌우)` · `Hock (상하)`). x·y 를 하나로 합치지
- * 않는 것은 의도다 — 두 축은 뜻이 다르고(앞뒤 이동 vs 위아래 흔들림), 합치면 **어느 쪽이
- * 움직였는지가 사라진다.** 합치는 규칙은 모델이나 비교 로직을 바꿀 때 그때 정한다 (D-058).
+ * **관절 하나가 한 줄이다.** 예전에는 x·y 를 나눠 `L_Hip (좌우)` · `L_Hip (상하)` 두
+ * 줄로 폈고, 그래서 표가 열두 줄이었다 (D-058). 축을 나눠 두면 정보는 안 잃지만 사용자가
+ * 열두 줄을 읽고 나서 스스로 관절별로 다시 묶어야 했다. 지금은 합치되 **어느 축이
+ * 움직였는지를 문구에 남긴다** ([GaitJointChange]) — 그게 나눠 뒀던 이유였으니까.
  *
- * **문자열을 그대로 믿지 않고 아는 값만 옮긴다** — 모르는 값이 오면 [GaitDelta.Unknown]
- * 이다. "차이 관찰됨" 을 놓쳐 "유사" 로 떨어지면 **없는 안심**을 주게 된다.
+ * **여섯 줄을 늘 채운다.** 서버가 관절을 빠뜨리면 그 줄은 [GaitJointChange.Unknown] 이다.
+ * 줄을 아예 안 그리면 무엇이 빠졌는지가 화면에서 사라진다.
+ *
+ * **모르는 문자열을 "비슷함" 으로 떨어뜨리지 않는다** — "차이 관찰됨" 을 놓치면
+ * **없는 안심**을 주게 된다 ([GaitAxis.of]).
  *
  * 비교 자체가 불가(`status: unavailable`)면 표를 비운다. 그러면 [GaitComparison] 이
- * 판정을 `NotEnough` 로 끌어낸다.
+ * 판정을 [GaitVerdict.NotEnough] 로 끌어낸다.
  */
-fun GaitCompared.toMetrics(): List<GaitMetric> {
+fun GaitCompared.toJointStates(): List<GaitJointState> {
     if (!available) return emptyList()
-    fun delta(v: String?) = when (v) {
-        "비슷함" -> GaitDelta.Similar
-        "차이 관찰됨" -> GaitDelta.Slight
-        else -> GaitDelta.Unknown
-    }
-    return jointComparison.flatMap { (joint, note) ->
-        listOf(
-            GaitMetric("$joint (좌우)", delta(note.x)),
-            GaitMetric("$joint (상하)", delta(note.y)),
-        )
+    return GaitJoint.entries.map { joint ->
+        val note = jointComparison[joint.key]
+        GaitJointState(joint, GaitJointChange.of(GaitAxis.of(note?.x), GaitAxis.of(note?.y)))
     }
 }

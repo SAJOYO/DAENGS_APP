@@ -468,6 +468,15 @@ fun ChatScreen(
     var gaitDetail by remember { mutableStateOf<String?>(null) }
 
     /**
+     * 상세를 열면서 영상부터 틀까.
+     *
+     * **비교 화면의 영상 카드로 들어온 경우에만 참이다.** 그때 누른 뜻이 "이 기록의
+     * 분석 영상을 크게 보겠다" 라서, 도착해서 재생을 또 눌러야 하면 흐름이 끊긴다.
+     * 대화 카드에서 들어온 경우는 상세를 읽으러 온 것이라 멈춰 둔다.
+     */
+    var gaitDetailAutoPlay by remember { mutableStateOf(false) }
+
+    /**
      * 영상 한 편을 대화에 태운다.
      *
      * 자리 잡는 방식은 사진 진단([send])과 같다 — 진행 카드를 먼저 올려 두고 그 자리를
@@ -1017,6 +1026,31 @@ fun ChatScreen(
         }
     }
 
+    gaitComparing?.let { comparison ->
+        GaitCompareScreen(
+            comparison = comparison,
+            onBack = { gaitComparing = null },
+            // 카드를 누르면 그 기록의 상세가 **비교 위에 얹힌다.** 비교를 닫지 않으므로
+            // 뒤로 가면 보던 비교로 돌아온다 — 영상 하나 크게 보려고 누른 것이지
+            // 비교를 그만두려던 것이 아니다.
+            onOpenRecord = { record ->
+                gaitDetailAutoPlay = true
+                gaitDetail = record.id
+            },
+            // 기준은 그대로 두고 상대만 다시 고른다. 시트는 A 진입이 쓰던 것이다.
+            onCompareAnother = {
+                gaitComparing = null
+                gaitPicking = comparison.recent.id
+            },
+            onSaveToChat = {
+                gaitComparing = null
+                entries += ChatEntry.GaitCompared(comparison)
+            },
+        )
+    }
+
+    // **비교보다 뒤에 그린다.** 앞에 두면 비교 화면이 상세를 덮어서, 카드를 눌러도
+    // 아무 일도 안 일어난 것처럼 보인다.
     gaitDetail?.let { id ->
         // 저장된 기록은 오버레이 주소가 목록에 없다. 상세를 열 때 한 번 채워, 재생기가
         // 원본 대신 스켈레톤 영상을 틀 수 있게 한다. 방금 분석한 기록은 이미 들고 있어
@@ -1026,13 +1060,22 @@ fun ChatScreen(
             GaitDetailScreen(
                 record = record,
                 canCompare = gait.hasComparable(record.id),
-                onBack = { gaitDetail = null },
+                onBack = {
+                    gaitDetail = null
+                    gaitDetailAutoPlay = false
+                },
                 onCompare = { gaitPicking = record.id },
                 onDelete = {
                     // 서버에서도 지운다. 화면은 기다리지 않는다 — 홀더가 먼저 빼고
                     // 실패하면 되돌린다.
                     scope.launch { gait.remove(record.id) }
                     gaitDetail = null
+                    gaitDetailAutoPlay = false
+                    // **지운 기록을 낀 비교도 같이 닫는다.** 안 닫으면 뒤로 갔을 때
+                    // 없는 기록 두 편을 나란히 놓은 화면으로 돌아간다.
+                    if (gaitComparing?.let { record.id in listOf(it.recent.id, it.past.id) } == true) {
+                        gaitComparing = null
+                    }
                     // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
                     // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
                     // 있었는지 알 수 없다.
@@ -1043,23 +1086,9 @@ fun ChatScreen(
                         entries[slot] = ChatEntry.Note("${record.dateLabel} 보행 기록을 지웠어요.")
                     }
                 },
+                autoPlay = gaitDetailAutoPlay,
             )
         } ?: run { gaitDetail = null }
-    }
-
-    gaitComparing?.let { comparison ->
-        GaitCompareScreen(
-            comparison = comparison,
-            onBack = { gaitComparing = null },
-            onOpenDetail = {
-                gaitComparing = null
-                gaitDetail = comparison.recent.id
-            },
-            onSaveToChat = {
-                gaitComparing = null
-                entries += ChatEntry.GaitCompared(comparison)
-            },
-        )
     }
 
     gaitPicking?.let { recentId ->
@@ -1145,7 +1174,7 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(comparison.verdict.sentence, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+            Text(comparison.verdict.title, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("다시 보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(13.dp), tint = DaengPinkDeep)

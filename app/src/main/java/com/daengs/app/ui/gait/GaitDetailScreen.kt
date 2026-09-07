@@ -75,6 +75,15 @@ fun GaitDetailScreen(
     onCompare: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 열자마자 영상을 틀까.
+     *
+     * **비교 화면에서 카드를 눌러 온 경우에만 참이다.** 그때 사용자가 원한 것은
+     * "이 기록의 분석 영상을 크게 보는 것" 하나뿐이라, 도착해서 재생을 한 번 더
+     * 눌러야 하면 누른 이유가 화면에서 이어지지 않는다. 대화 카드에서 들어온
+     * 경우는 상세를 읽으러 온 것이라 그대로 멈춰 둔다.
+     */
+    autoPlay: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
 
@@ -101,7 +110,11 @@ fun GaitDetailScreen(
             // 상세는 **영상을 보러 오는 화면**이라 표지가 아니라 재생기를 놓는다.
             // 컨트롤을 켜서 되감기·일시정지를 손으로 할 수 있게 한다 — 걸음 한
             // 주기를 다시 보려면 되감기가 있어야 한다.
-            GaitVideoPlayer(record, Modifier.fillMaxWidth().aspectRatio(record.displayAspect))
+            GaitVideoPlayer(
+                record,
+                Modifier.fillMaxWidth().aspectRatio(record.displayAspect),
+                playing = autoPlay,
+            )
 
             DetailSection("분석 상태") {
                 // 네 단계 다 끝난 뒤에만 열리는 화면이라 전부 완료로 그린다.

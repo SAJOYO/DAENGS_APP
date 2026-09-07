@@ -42,10 +42,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitComparison
-import com.daengs.app.gait.GaitDelta
-import com.daengs.app.gait.GaitMetric
+import com.daengs.app.gait.GaitJoint
+import com.daengs.app.gait.GaitJointChange
+import com.daengs.app.gait.GaitJointState
+import com.daengs.app.gait.GaitLeg
 import com.daengs.app.gait.GaitRecord
-import com.daengs.app.gait.GaitSampleRecords
 import com.daengs.app.gait.GaitVerdict
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -68,11 +69,23 @@ import java.time.LocalDate
  * 으로 못박아 뒀고, 그 원칙이 실제로 지켜지는지는 여기서 갈린다 — 두 시점을 나란히
  * 놓으면 화살표 하나만 그려도 곧바로 호전/악화 화면이 되기 때문이다. 그래서
  *
- *  - 지표는 [GaitDelta] 세 갈래뿐이고 셋 다 **차이의 유무**만 말한다
+ *  - 관절 상태는 [GaitJointChange] 네 갈래(+측정 부족)이고 다 **차이의 유무와 방향**만 말한다
  *  - 어느 쪽이 낫다는 순서를 안 준다. 최근이 왼쪽인 것은 **시간 순서**일 뿐이다
- *  - 문장은 [GaitComparison.verdict] 가 지표에서 끌어낸 것을 그대로 쓴다
+ *  - 제목·보조문구는 [GaitComparison.verdict] 가 관절 결과에서 끌어낸 것을 그대로 쓴다
  *
- * @param onOpenDetail 최근 기록의 상세로 간다
+ * ### 색을 쓰면서 진단이 되지 않게
+ *
+ * 관절 점에 초록·주황·빨강이 들어간다. 색은 글자보다 먼저 읽히므로 **빨강이 "위험"
+ * 으로 읽힐 위험**이 실제로 있다. 그래서
+ *
+ *  - 요약 배너는 갈래와 **무관하게 같은 색**이다. 색이 붙는 곳은 관절 점뿐이다
+ *  - 빨강의 뜻은 "두 방향 모두 달라졌다" 이지 정도가 심하다는 뜻이 아니다
+ *  - 화면 아래 진단아님 문구를 **지우지 않는다.** 색이 들어왔으니 더 필요해졌다
+ *
+ * @param onOpenRecord 그 기록의 상세로 가서 분석 오버레이를 크게 본다.
+ *   상세를 새로 만들지 않고 [GaitDetailScreen] 을 그대로 쓰되, 그 화면이 영상부터
+ *   틀어 주므로 카드를 누른 직후 눈에 들어오는 것은 그 한 편의 오버레이다
+ * @param onCompareAnother 비교할 과거 기록을 다시 고른다
  * @param onSaveToChat 이 비교를 대화에 남긴다. 서버에 저장하는 것이 아니다 —
  *   저장할 곳이 아직 없어서, "남긴다" 가 실제로 뜻하는 자리는 대화뿐이다
  */
@@ -80,7 +93,8 @@ import java.time.LocalDate
 fun GaitCompareScreen(
     comparison: GaitComparison,
     onBack: () -> Unit,
-    onOpenDetail: () -> Unit,
+    onOpenRecord: (GaitRecord) -> Unit,
+    onCompareAnother: () -> Unit,
     onSaveToChat: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -115,6 +129,7 @@ fun GaitCompareScreen(
                     "최근 기록",
                     accent = true,
                     playing = playing,
+                    onOpen = { onOpenRecord(comparison.recent) },
                     modifier = Modifier.weight(1f),
                 )
                 Box(
@@ -136,12 +151,16 @@ fun GaitCompareScreen(
                     "비교 기록",
                     accent = false,
                     playing = playing,
+                    onOpen = { onOpenRecord(comparison.past) },
                     modifier = Modifier.weight(1f),
                 )
             }
 
             // 둘 다 재생. 한쪽이라도 틀 것이 있어야 의미가 있다 — 서버 오버레이(지난
             // 기록의 유일한 재생본)나 기기 원본 중 하나라도. 표본끼리면 둘 다 없어 감춘다.
+            //
+            // **카드 터치와 역할이 다르다.** 이 단추는 둘을 동시에 보는 것이고,
+            // 카드 하나를 누르는 것은 그 한 편을 크게 보는 것이다.
             if (comparison.recent.playable || comparison.past.playable) {
                 GaitActionButton(
                     if (playing) DaengsIcon.Close else DaengsIcon.Play,
@@ -154,24 +173,31 @@ fun GaitCompareScreen(
 
             VerdictBanner(comparison.verdict)
 
-            Surface(
-                color = CardWhite,
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, PinkSoft),
-            ) {
-                Column(
-                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(13.dp),
-                ) {
-                    comparison.metrics.forEach { MetricRow(it) }
-                    if (comparison.metrics.isEmpty()) {
-                        Text("잴 수 있는 지표가 없어요.", color = TextMuted, fontSize = 13.sp)
-                    }
-                }
+            JointTable(comparison.joints)
+
+            // 변화가 잡혔을 때만 나온다. 차이가 없는 화면에 "촬영 조건을 확인하세요"
+            // 가 붙어 있으면 무엇을 확인하라는 것인지 알 수 없다.
+            if (comparison.verdict.changed) {
+                AdviceCard(
+                    "먼저 촬영 조건을 확인해 주세요",
+                    "반려견이 뛰었거나 걷는 속도, 촬영 각도, 바닥 환경 등이 이전 영상과 " +
+                        "다르면 움직임 차이가 감지될 수 있어요.",
+                )
+                AdviceCard(
+                    "비슷한 조건에서도 변화가 계속된다면",
+                    "같은 조건으로 다시 촬영해 경과를 관찰해 주세요. 변화가 반복되거나 " +
+                        "보행이 불편해 보인다면 수의사 등 전문가와 상담하는 것을 권장해요.",
+                )
             }
 
+            // 저쪽이 준 문장을 **그대로** 옮긴다. 어느 기록이 왜 참고용인지, 버전이
+            // 어떻게 다른지는 서버만 안다.
+            comparison.reliabilityNote?.let { ServerNote(it) }
+            comparison.versionWarning?.let { ServerNote(it) }
+
             // 이 화면이 판정이 아니라는 말은 **화면 안에** 있어야 한다. 문서에만
-            // 적어 두면 화면을 보는 사람에게는 없는 말이다.
+            // 적어 두면 화면을 보는 사람에게는 없는 말이다. 관절 점에 색이 들어온
+            // 뒤로는 더 그렇다 — 색을 정상/위험으로 읽지 않게 붙들어 주는 문장이다.
             Text(
                 "이 비교는 같은 아이의 두 시점을 나란히 놓아 본 것이에요.\n" +
                     "건강 상태를 판단하거나 진단하지 않아요.",
@@ -185,17 +211,21 @@ fun GaitCompareScreen(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            GaitActionButton(DaengsIcon.Chart, "결과 자세히 보기", onOpenDetail, Modifier.weight(1f))
+            // 예전 자리에는 "결과 자세히 보기" 가 있었고 단일 기록 상세로 갔다.
+            // 비교를 보다가 한쪽 기록의 상세로 튕겨 나가는 흐름이라 어색했다 —
+            // 영상을 보고 싶으면 위의 카드를 누르는 길이 생겼으니 여기서는 뺐다.
+            GaitActionButton(DaengsIcon.Compare, "다른 기록 비교하기", onCompareAnother, Modifier.weight(1f))
             GaitActionButton(DaengsIcon.Chat, "대화에 남기기", onSaveToChat, Modifier.weight(1f), accent = true)
         }
     }
 }
 
 /**
- * 한쪽 기둥. 라벨 · 날짜 · 표지 · 길이.
+ * 한쪽 기둥. 라벨 · 날짜 · 표지 · 길이 · **누르면 크게 보기.**
  *
  * @param accent 최근 쪽만 분홍 테를 두른다. **더 중요하다는 뜻이 아니라** 둘이
  *   같은 모양이면 어느 쪽이 언제 것인지 날짜를 매번 읽어야 하기 때문이다
+ * @param onOpen 이 기록의 분석 오버레이를 크게 본다
  */
 @Composable
 private fun ComparePillar(
@@ -203,6 +233,7 @@ private fun ComparePillar(
     label: String,
     accent: Boolean,
     playing: Boolean,
+    onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -212,7 +243,9 @@ private fun ComparePillar(
         modifier = modifier,
     ) {
         Column(
-            Modifier.padding(10.dp),
+            // 카드 전체가 누르는 자리다. 영상만 누르게 하면 어디를 눌러야 하는지
+            // 손가락으로 찾아야 한다.
+            Modifier.clickable(onClick = onOpen).padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
@@ -233,60 +266,160 @@ private fun ComparePillar(
                 controls = false,
             )
             Text(record.lengthLabel, color = TextMuted, fontSize = 12.sp)
+            // 누를 수 있다는 것을 한 줄로 알린다. 아이콘만 얹으면 재생 단추로 읽힌다.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DaengsIconView(DaengsIcon.Video, Modifier.size(12.dp), tint = DaengPinkDeep)
+                Spacer(Modifier.width(4.dp))
+                Text("분석 영상 보기", color = DaengPinkDeep, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }
 
 /**
- * 판정 문장 한 줄.
+ * 제목 한 줄과 보조문구 한 줄.
  *
- * **세 갈래 다 같은 색이다.** 차이가 관찰됐다고 노랑·빨강으로 칠하면 그 순간
- * 중립이던 문장이 경고가 된다 — 색은 글자보다 먼저 읽힌다.
+ * **갈래마다 색을 갈지 않는다.** 변화가 관찰됐다고 주황·빨강으로 칠하면 그 순간
+ * 중립이던 문장이 경고가 된다 — 색은 글자보다 먼저 읽힌다. 색이 붙는 곳은
+ * 관절 점뿐이고, 그건 방향을 구분하려는 것이지 정도를 매기려는 것이 아니다.
  */
 @Composable
 private fun VerdictBanner(verdict: GaitVerdict) {
     Surface(color = PinkFaint, shape = RoundedCornerShape(15.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
             DaengsIconView(DaengsIcon.Joint, Modifier.size(19.dp), tint = DaengPink)
             Spacer(Modifier.width(11.dp))
-            Text(
-                verdict.sentence,
-                color = TextDark,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    verdict.title,
+                    color = TextDark,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(verdict.detail, color = TextMuted, fontSize = 12.5.sp, lineHeight = 19.sp)
+            }
         }
     }
 }
 
 /**
- * 지표 한 줄.
+ * 관절 여섯 줄. **다리로 묶어서 그린다.**
  *
- * 오른쪽 점의 색만 갈린다 — "약간의 차이" 는 [DaengsColors.Warning] 이지만 **글자는
- * 검다.** 문장까지 주황으로 물들이면 주의보로 읽힌다.
+ * 예전에는 `L_Hip (좌우)` 같은 열두 줄이 평평하게 나열돼 있었다. 서버 key 를 그대로
+ * 띄운 것이라 읽을 수 없었고, 축이 나뉘어 있어 관절 하나를 알려면 두 줄을 찾아
+ * 맞춰야 했다. 지금은 다리 → 관절 순서로 묶여서 **위에서 아래로 읽으면 된다.**
  */
 @Composable
-private fun MetricRow(metric: GaitMetric) {
-    val dot = when (metric.delta) {
-        GaitDelta.Similar -> DaengsColors.Success
-        GaitDelta.Slight -> DaengsColors.Warning
-        GaitDelta.Unknown -> DaengsColors.BorderNeutral
+private fun JointTable(joints: List<GaitJointState>) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, PinkSoft),
+    ) {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            if (joints.isEmpty()) {
+                Text("잴 수 있는 관절 지표가 없어요.", color = TextMuted, fontSize = 13.sp)
+                return@Column
+            }
+            GaitLeg.entries.forEach { leg ->
+                val rows = joints.filter { it.joint.leg == leg }
+                if (rows.isEmpty()) return@forEach
+                Text(
+                    leg.label,
+                    color = DaengPinkDeep,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                rows.forEach { JointRow(it) }
+            }
+        }
     }
+}
+
+/**
+ * 관절 한 줄.
+ *
+ * 오른쪽 점의 색만 갈린다 — **글자는 검다.** 문구까지 주황·빨강으로 물들이면
+ * 주의보로 읽힌다. 점의 뜻은 방향의 개수이지 정도가 아니다:
+ * 초록 = 두 방향 다 비슷함, 주황 = 한 방향, 빨강 = 두 방향, 회색 = 못 쟀음.
+ */
+@Composable
+private fun JointRow(state: GaitJointState) {
+    val dot = dotColorFor(state.change)
     Row(verticalAlignment = Alignment.CenterVertically) {
         DaengsIconView(DaengsIcon.Joint, Modifier.size(16.dp), tint = TextMuted)
         Spacer(Modifier.width(10.dp))
-        Text(metric.name, color = TextDark, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Text(state.joint.label, color = TextDark, fontSize = 14.sp, modifier = Modifier.width(56.dp))
         Text(
-            metric.delta.label,
-            color = if (metric.delta == GaitDelta.Unknown) TextMuted else TextDark,
+            state.change.label,
+            color = if (state.change == GaitJointChange.Unknown) TextMuted else TextDark,
             fontSize = 13.sp,
+            modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(8.dp))
         Box(Modifier.size(8.dp).clip(RoundedCornerShape(50)).background(dot))
+    }
+}
+
+/**
+ * 상태 점의 색.
+ *
+ * **빨강은 "위험" 이 아니다.** 좌우와 위아래가 둘 다 달라졌다는 표시이고, 그
+ * 이상으로 읽지 않게 붙드는 것은 화면 아래 진단아님 문구다.
+ */
+private fun dotColorFor(change: GaitJointChange): Color = when (change) {
+    GaitJointChange.None -> DaengsColors.Success
+    GaitJointChange.Horizontal, GaitJointChange.Vertical -> DaengsColors.Warning
+    GaitJointChange.Both -> DaengsColors.Error
+    GaitJointChange.Unknown -> DaengsColors.BorderNeutral
+}
+
+/**
+ * 변화가 잡혔을 때만 나오는 안내 한 장.
+ *
+ * **첫 장이 촬영 조건인 것이 순서의 전부다.** 변화가 감지되는 흔한 이유가 강아지가
+ * 아니라 촬영이라서, 그 말을 먼저 하지 않으면 사용자가 두 번째 장(전문가 상담)만
+ * 읽고 겁을 낸다.
+ */
+@Composable
+private fun AdviceCard(title: String, body: String) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(15.dp),
+        border = BorderStroke(1.dp, PinkSoft),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            DaengsIconView(DaengsIcon.Bulb, Modifier.size(16.dp), tint = DaengPink)
+            Spacer(Modifier.width(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(body, color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
+            }
+        }
+    }
+}
+
+/** 서버가 준 주의 문장. **앱이 고쳐 쓰지 않는다.** */
+@Composable
+private fun ServerNote(text: String) {
+    Surface(color = PinkFaint, shape = RoundedCornerShape(13.dp)) {
+        Text(
+            text,
+            color = TextMuted,
+            fontSize = 11.5.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp),
+        )
     }
 }
 
@@ -312,22 +445,65 @@ fun GaitTopBar(title: String, onBack: () -> Unit, trailing: @Composable RowScope
     }
 }
 
+// ── 프리뷰 ────────────────────────────────────────────────────────────────────
+//
+// 표본 생성기 대신 **상태를 손으로 적는다.** 갈래마다 화면이 어떻게 달라지는지가
+// 프리뷰의 요점인데, 해시로 뽑으면 어느 갈래가 나올지 읽는 사람이 알 수 없다.
+
+private fun jointsOf(vararg changes: GaitJointChange): List<GaitJointState> =
+    GaitJoint.entries.mapIndexed { index, joint -> GaitJointState(joint, changes[index]) }
+
+private fun previewRecords(): Pair<GaitRecord, GaitRecord> =
+    GaitRecord("now", LocalDate.of(2026, 8, 31), seconds = 21) to
+        GaitRecord("old", LocalDate.of(2026, 7, 15), seconds = 24)
+
+/** 한쪽 다리만 기준을 채운 경우. 안내 두 장이 붙는다. */
 @Preview(widthDp = 411, heightDp = 891, showBackground = true)
 @Composable
-private fun GaitCompareScreenPreview() {
-    val records = GaitSampleRecords.of(LocalDate.of(2026, 8, 31))
-    val recent = GaitRecord("now", LocalDate.of(2026, 8, 31), seconds = 12)
+private fun GaitCompareOneSidePreview() {
+    val (recent, past) = previewRecords()
     DaengsTheme {
         GaitCompareScreen(
-            comparison = GaitComparison.of(recent, records[0], GaitSampleRecords.metricsFor(recent, records[0])),
+            comparison = GaitComparison.of(
+                recent,
+                past,
+                jointsOf(
+                    GaitJointChange.None, GaitJointChange.Vertical, GaitJointChange.None,
+                    GaitJointChange.Horizontal, GaitJointChange.None, GaitJointChange.Both,
+                ),
+            ),
             onBack = {},
-            onOpenDetail = {},
+            onOpenRecord = {},
+            onCompareAnother = {},
             onSaveToChat = {},
         )
     }
 }
 
-/** 지표가 모자란 경우. 이쪽이 화면에서 제일 조용해야 한다. */
+/** 기준 미충족. 화면에서 제일 조용해야 한다 — 안내가 안 붙는다. */
+@Preview(widthDp = 411, heightDp = 891, showBackground = true)
+@Composable
+private fun GaitCompareNoChangePreview() {
+    val (recent, past) = previewRecords()
+    DaengsTheme {
+        GaitCompareScreen(
+            comparison = GaitComparison.of(
+                recent,
+                past,
+                jointsOf(
+                    GaitJointChange.None, GaitJointChange.None, GaitJointChange.Horizontal,
+                    GaitJointChange.None, GaitJointChange.None, GaitJointChange.None,
+                ),
+            ),
+            onBack = {},
+            onOpenRecord = {},
+            onCompareAnother = {},
+            onSaveToChat = {},
+        )
+    }
+}
+
+/** 측정 부족. **"비슷함" 으로 흘러들면 안 되는 경우다.** */
 @Preview(widthDp = 411, heightDp = 891, showBackground = true)
 @Composable
 private fun GaitCompareNotEnoughPreview() {
@@ -335,9 +511,17 @@ private fun GaitCompareNotEnoughPreview() {
     val past = GaitRecord("old", LocalDate.of(2026, 7, 15), seconds = 9, comparable = false)
     DaengsTheme {
         GaitCompareScreen(
-            comparison = GaitComparison.of(recent, past, GaitSampleRecords.metricsFor(recent, past)),
+            comparison = GaitComparison.of(
+                recent,
+                past,
+                jointsOf(
+                    GaitJointChange.None, GaitJointChange.None, GaitJointChange.None,
+                    GaitJointChange.None, GaitJointChange.None, GaitJointChange.None,
+                ),
+            ),
             onBack = {},
-            onOpenDetail = {},
+            onOpenRecord = {},
+            onCompareAnother = {},
             onSaveToChat = {},
         )
     }

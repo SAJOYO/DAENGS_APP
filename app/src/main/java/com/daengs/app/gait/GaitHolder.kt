@@ -83,7 +83,7 @@ class GaitHolder(
         // 표본끼리는 서버에 없다. 서버 주소가 없을 때도 마찬가지다.
         val sample = recentId.startsWith(SAMPLE_PREFIX) || pastId.startsWith(SAMPLE_PREFIX)
         if (!remote || sample) {
-            return GaitComparison.of(recent, past, GaitSampleRecords.metricsFor(recent, past))
+            return GaitComparison.of(recent, past, GaitSampleRecords.jointStatesFor(recent, past))
         }
 
         val token = accessToken()
@@ -101,8 +101,19 @@ class GaitHolder(
         // ⚠️ **순서를 앱이 정하지 않는다.** 저쪽이 날짜로 past/recent 를 가른다 — A 진입
         //    (방금 분석한 것이 기준)과 B 진입(둘 다 고름)이 서로 다른 순서를 보내도
         //    같은 결과가 나와야 해서다.
+        // 제목·보조문구는 **관절 결과에서 앱이 짓는다** — 서버 `message_for_ui` 는 어느
+        // 다리인지를 말하지 못해서다 ([GaitJoints.kt] 머리말). `reliability_note` 와
+        // `version_warning` 은 저쪽 문장을 그대로 넘긴다.
         return GaitApi.compare(token, recentId, pastId)
-            .map { GaitComparison.of(recentFull, pastFull, it.toMetrics(), it.messageForUi, it.versionWarning) }
+            .map {
+                GaitComparison.of(
+                    recentFull,
+                    pastFull,
+                    it.toJointStates(),
+                    it.versionWarning,
+                    it.reliabilityNote,
+                )
+            }
             .onFailure { error = it.message ?: "두 기록을 비교하지 못했어요." }
             .getOrNull()
     }

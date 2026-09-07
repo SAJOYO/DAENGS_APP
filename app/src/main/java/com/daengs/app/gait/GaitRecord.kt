@@ -137,89 +137,55 @@ data class GaitRecord(
 }
 
 /**
- * 두 기록을 나란히 본 결과.
- *
- * 세 갈래뿐이고 **셋 다 중립이다.** 좋아졌다·나빠졌다가 없는 이유는
- * [GaitRecord] 의 주석과 같다. `문구` 는 서버가 생기면 그쪽 문장으로 갈아 끼우되,
- * 갈래 자체는 여기서 고정한다 — 화면이 네 번째 갈래를 지어내면 안 된다.
- */
-enum class GaitVerdict(val sentence: String) {
-    /** 지표가 다 비슷하게 나왔다. */
-    NoClearDifference("뚜렷한 차이는 관찰되지 않았습니다"),
-
-    /** 한 지표라도 다르게 나왔다. **나쁘다는 뜻이 아니다.** */
-    SomeDifference("일부 관절 움직임에서 차이가 관찰됩니다"),
-
-    /** 잴 수 있는 게 모자랐다. 영상 문제이지 강아지 문제가 아니다. */
-    NotEnough("비교할 수 있는 관절 지표가 부족합니다"),
-}
-
-/** 지표 하나가 두 영상 사이에서 어떻게 나왔나. */
-enum class GaitDelta(val label: String) {
-    Similar("유사"),
-    Slight("약간의 차이"),
-
-    /** 이 지표는 못 쟀다. 두 영상 중 한쪽에 관절이 안 잡힌 경우다. */
-    Unknown("측정 부족"),
-}
-
-/** 비교표의 한 줄. 이름은 서버 계약이 생기면 그쪽에서 온다. */
-data class GaitMetric(val name: String, val delta: GaitDelta)
-
-/**
  * 비교 결과 한 벌.
  *
- * [verdict] 를 밖에서 받지 않고 [of] 가 지표에서 **끌어낸다.** 문장과 표가 따로
- * 오면 "차이 없음" 이라고 써 놓고 표에는 차이가 있는 화면이 만들어진다.
+ * [verdict] 를 밖에서 받지 않고 관절 상태에서 **끌어낸다** ([verdictOf]). 문장과 표가
+ * 따로 오면 "차이 없음" 이라고 써 놓고 표에는 차이가 있는 화면이 만들어진다.
+ *
+ * 갈래와 문장은 [GaitJoints.kt] 에 있다 — 왜 서버 문장 대신 앱이 짓는지도 거기 적었다.
  */
 data class GaitComparison(
     val recent: GaitRecord,
     val past: GaitRecord,
-    val metrics: List<GaitMetric>,
-    /**
-     * 서버가 준 한 줄(`message_for_ui`). **있으면 이것이 [verdict] 문장을 이긴다** —
-     * 저쪽이 실제 계산에서 유도한 문장이고, API.md 가 화면에 쓸 값으로 지목했다.
-     * 서버가 없을 때(표본끼리 비교)는 null 이고 그때만 앱 문장이 나온다.
-     */
-    val serverMessage: String? = null,
+    /** 관절 여섯 줄. 서버가 빠뜨린 관절은 [GaitJointChange.Unknown] 으로 채워져 온다. */
+    val joints: List<GaitJointState>,
     /**
      * 두 기록의 필터 버전이 다를 때 저쪽이 붙이는 경고. **표시해야 한다** —
      * 같은 영상이라도 버전이 다르면 이동범위가 달라 보인다.
      */
     val versionWarning: String? = null,
+    /**
+     * 유효 프레임이 적어 참고용이라는 저쪽 문장(`reliability_note`).
+     *
+     * **앱이 고쳐 쓰지 않는다.** 어느 기록이 왜 참고용인지는 저쪽만 안다.
+     */
+    val reliabilityNote: String? = null,
 ) {
-    /** 화면에 그릴 한 줄. 서버 문장이 있으면 그것, 없으면 [verdict] 의 것이다. */
-    val sentence: String get() = serverMessage ?: verdict.sentence
-
-    val verdict: GaitVerdict = when {
-        metrics.isEmpty() || metrics.all { it.delta == GaitDelta.Unknown } -> GaitVerdict.NotEnough
-        metrics.any { it.delta == GaitDelta.Slight } -> GaitVerdict.SomeDifference
-        else -> GaitVerdict.NoClearDifference
-    }
+    val verdict: GaitVerdict = verdictOf(joints)
 
     companion object {
         /**
-         * 비교 불가 기록이 섞이면 표를 통째로 [GaitDelta.Unknown] 으로 만든다.
+         * 비교 불가 기록이 섞이면 표를 통째로 [GaitJointChange.Unknown] 으로 만든다.
          *
-         * 한쪽이 못 쓰는 영상인데 나머지 지표만 "유사" 로 남기면, 실제로는 재지도
+         * 한쪽이 못 쓰는 영상인데 나머지 관절만 "비슷함" 으로 남기면, 실제로는 재지도
          * 못한 것을 재서 같다고 한 것처럼 읽힌다.
          */
         fun of(
             recent: GaitRecord,
             past: GaitRecord,
-            metrics: List<GaitMetric>,
-            serverMessage: String? = null,
+            joints: List<GaitJointState>,
             versionWarning: String? = null,
+            reliabilityNote: String? = null,
         ): GaitComparison =
             if (recent.comparable && past.comparable) {
-                GaitComparison(recent, past, metrics, serverMessage, versionWarning)
+                GaitComparison(recent, past, joints, versionWarning, reliabilityNote)
             } else {
                 GaitComparison(
                     recent,
                     past,
-                    metrics.map { it.copy(delta = GaitDelta.Unknown) },
-                    serverMessage,
+                    joints.map { it.copy(change = GaitJointChange.Unknown) },
                     versionWarning,
+                    reliabilityNote,
                 )
             }
     }
