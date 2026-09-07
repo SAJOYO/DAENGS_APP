@@ -40,7 +40,7 @@ class WalkScreenPolicyTest {
     private fun recording() = WalkUiState(tracking = WalkTrackingState(
         trail = TrailSnapshot(state = TrackingState.RECORDING)))
 
-    private fun checkLayout() {
+    private fun checkLayout(landscape: Boolean = false) {
         val actions = mutableListOf<WalkAction>()
         compose.setContent { DaengsTheme { WalkScreen(recording(), actions::add, showMap = false) } }
         val time = compose.onNodeWithText("산책 시간").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
@@ -57,7 +57,14 @@ class WalkScreenPolicyTest {
         assertTrue(settings.right <= time.left)
         assertTrue(settings.bottom <= speed.top || settings.right <= speed.left)
         assertTrue(territory.bottom <= action.top)
-        assertTrue(territory.top > speed.bottom)
+        val gauge = compose.onNodeWithTag("speedometer").fetchSemanticsNode().boundsInRoot
+        if (landscape) {
+            val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+            assertTrue(gauge.top > root.center.y)
+            assertTrue(kotlin.math.abs(gauge.center.x - root.center.x) < 2f)
+            assertTrue(gauge.right <= territory.left)
+            assertTrue(gauge.right <= action.left)
+        } else assertTrue(territory.top > gauge.bottom)
         compose.onNodeWithText("색상").assertDoesNotExist()
         val reading = compose.onNodeWithText("—").fetchSemanticsNode().boundsInRoot
         val unit = compose.onNodeWithText("m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
@@ -86,5 +93,5 @@ class WalkScreenPolicyTest {
     @Test @Config(qualifiers = "w320dp-h844dp")
     fun narrowScreenKeepsControlsApart() = checkLayout()
     @Test @Config(qualifiers = "w891dp-h411dp")
-    fun landscapeGroupsRelatedControls() = checkLayout()
+    fun landscapeGroupsRelatedControls() = checkLayout(landscape = true)
 }
