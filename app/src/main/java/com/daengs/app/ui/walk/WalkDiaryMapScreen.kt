@@ -82,7 +82,10 @@ internal fun WalkDiaryMapScreen(
     val scenes = diary?.scenes.orEmpty()
     val selected = scenes.firstOrNull { it.id == selectedId }
     val route = detail?.route
-    val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint, ::formatWalkClock) ?: CompletedRouteLayerState() }
+    // 출발·도착 라벨에서 시각을 뺀 뒤로 `formatTime` 인자가 없어졌는데(dev), 이 호출부만
+    // 안 고쳐진 채 머지돼서 dev 가 컴파일되지 않았다. 인자를 빼는 쪽이 맞는 고침이다 —
+    // 라벨을 "출발"·"도착" 으로 줄인 것이 그쪽의 결정이다.
+    val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
     val mapScene = remember(completed, markers, detail?.stayStamps) {
         composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
