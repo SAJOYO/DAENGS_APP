@@ -14,12 +14,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.places.PlaceSearchStyle
 
 /** 카테고리와 같은 24 단위 선 아이콘. 전환 의미와 상태는 바깥 버튼이 읽어 준다. */
 @Composable
 internal fun RobotSearchIcon(modifier: Modifier, active: Boolean) {
-    val tint = DaengsColors.TextPrimary
-    val eyes = if (active) DaengsColors.BrandPrimary else tint
+    val tint = if (active) PlaceSearchStyle.AiForeground else DaengsColors.TextPrimary
+    val eyes = tint
     Canvas(modifier) {
         scale(size.minDimension / 24f, pivot = Offset.Zero) {
             val stroke = Stroke(1.8f, cap = StrokeCap.Round)

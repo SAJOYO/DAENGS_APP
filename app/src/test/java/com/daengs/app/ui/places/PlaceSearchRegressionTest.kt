@@ -48,7 +48,10 @@ class PlaceSearchRegressionTest {
         val hit = original.copy(place = original.place.copy(facts = original.place.facts.copy(
             petAccess = original.place.facts.petAccess!!.copy(allowed = true, dogOk = false))))
         val expanded = mutableStateOf(false)
-        compose.setContent { DaengsTheme { PlaceDrawerCard(hit, expanded.value, false, { expanded.value = !expanded.value }) } }
+        compose.setContent { DaengsTheme {
+            if (expanded.value) androidx.compose.foundation.layout.Column { PlaceDetailContent(hit) }
+            else PlaceResultRow(hit, false, { expanded.value = true })
+        } }
         compose.onNodeWithText("× 동반 불가 등록").assertExists()
         compose.onNodeWithContentDescription("동반 불가 등록").assertExists()
         compose.onNodeWithText("✓ 동반 가능 등록").assertDoesNotExist()

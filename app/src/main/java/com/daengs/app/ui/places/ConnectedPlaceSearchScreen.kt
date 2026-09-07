@@ -152,7 +152,7 @@ fun ConnectedPlaceSearchScreen(
                 scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
                 searchOrigin = display.origin, followDevice = follow,
                 onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
-                onSelectPlace = { id -> keys[id]?.let { onAction(PlacesAction.Select(it)) } },
+                onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
                 modifier = Modifier.fillMaxSize(),
             )
             val candidate = camera.searchPoint(state.discovery.origin)
