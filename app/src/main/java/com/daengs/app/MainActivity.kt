@@ -892,7 +892,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Screen.WalkDetail -> openedWalkId?.let { id ->
-                        WalkDetailScreen(
+                        com.daengs.app.ui.walk.WalkDiaryMapScreen(
                             sessionId = id,
                             history = walkRuntime.history,
                             onBack = { screen = Screen.WalkHistory },

@@ -38,6 +38,14 @@ interface WalkFixLog {
     /** 끝난 산책만, 최근 것부터. 목록 화면이 쓴다. */
     suspend fun finishedSessions(): List<RecordedSession>
 
+    /** Stable keyset order. Room overrides this to page before fetching any GPS. */
+    suspend fun finishedSessionsPage(before: WalkHistoryCursor?, dogId: String?, limit: Int): List<RecordedSession> =
+        finishedSessions().filter { (dogId == null || dogId in it.dogIds) &&
+            (before == null || it.startedAtMillis < before.startedAtMillis ||
+                (it.startedAtMillis == before.startedAtMillis && it.id < before.sessionId)) }
+            .sortedWith(compareByDescending<RecordedSession> { it.startedAtMillis }.thenByDescending { it.id })
+            .take(limit)
+
     /**
      * 끝났지만 아직 계산 완료되지 않은 것.
      *

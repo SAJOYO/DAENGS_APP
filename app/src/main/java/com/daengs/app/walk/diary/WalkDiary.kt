@@ -46,6 +46,7 @@ data class DiaryScene(
     val evidence: String,
     val needsReview: Boolean = false,
     val photo: WalkPhoto? = null,
+    val entryId: String? = null,
 )
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String)
@@ -70,7 +71,7 @@ fun diaryWalk(
         // An automatic scene's route distance is not an App GPS coordinate. Do not guess one.
         val point = localEntries.firstOrNull { it.id == entryId }?.point
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
-            scene.title, scene.body, point, scene.evidence, scene.needsReview)
+            scene.title, scene.body, point, scene.evidence, scene.needsReview, entryId = entryId)
     } + photos.filter { it.sessionId == walk.sessionId }.map { photo ->
         DiaryScene("${walk.sessionId}/photo:${photo.id}", walk.sessionId, photo.capturedAtMillis,
             "산책 사진", "이날 남긴 사진", photo.point, "촬영할 때 저장한 위치", photo = photo)

@@ -135,6 +135,9 @@ class RoomWalkFixLog(private val dao: WalkDao,
     override suspend fun finishedSessions(): List<RecordedSession> =
         dao.finishedSessions().withDogs()
 
+    override suspend fun finishedSessionsPage(before: com.daengs.app.walk.WalkHistoryCursor?, dogId: String?, limit: Int): List<RecordedSession> =
+        dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
+
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
         (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }
             .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
