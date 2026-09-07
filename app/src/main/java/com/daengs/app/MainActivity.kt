@@ -38,6 +38,7 @@ import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
 import com.daengs.app.dogcard.CardSyncRunner
+import com.daengs.app.dogcard.MissLog
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
@@ -244,7 +245,7 @@ class MainActivity : ComponentActivity() {
                 //
                 // **`freshToken` 뒤에 둔다.** 지우기가 서버에도 알려야 하는데, 코틀린은
                 // 앞서 선언된 지역 변수만 잡는다 — 위에 두면 컴파일이 안 된다.
-                val cards = remember { CardHolder(cardStore, freshToken) }
+                val cards = remember { CardHolder(cardStore, freshToken, MissLog(context)) }
 
                 // 카드를 서버와 맞추는 자리. **claimOrphans 뒤에 돈다** — 순서가
                 // 뒤집히면 방금 로그인한 사람의 둘러보기 카드가 안 올라간다.
@@ -962,6 +963,8 @@ class MainActivity : ComponentActivity() {
                                 },
                                 drawsLeft = cards.drawsLeft(),
                                 onCancel = done,
+                                // 꽝도 하루 한 번을 쓴다. 안 적으면 그 판이 없던 일이 된다.
+                                onMiss = { cards.recordMiss() },
                                 onDrawn = { dog, template, face, core ->
                                     cards.draw(
                                         template = template,

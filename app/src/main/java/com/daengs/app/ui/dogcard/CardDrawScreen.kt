@@ -49,7 +49,8 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.DAILY_DRAWS
 import com.daengs.app.dogcard.DrawnCard
 import com.daengs.app.dogcard.cardFileName
-import com.daengs.app.dogcard.drawTemplate
+import com.daengs.app.dogcard.DrawOutcome
+import com.daengs.app.dogcard.drawOutcome
 import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.screening.Photo
 import com.daengs.app.ui.chat.GuideFrameScreen
@@ -87,6 +88,11 @@ fun CardDrawScreen(
     drawsLeft: Int,
     onCancel: () -> Unit,
     onDrawn: suspend (dog: DrawDog?, template: CardTemplate, face: Bitmap, core: IntRect) -> DrawnCard?,
+    /**
+     * 꽝이 났다고 알린다. **카드를 저장하는 것과 같은 무게다** — 이걸 안 부르면
+     * 그 판은 없던 일이 되고 하루 세 번이 도로 살아난다 (`CardHolder.recordMiss`).
+     */
+    onMiss: () -> Unit = {},
     onOpenDex: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -175,16 +181,29 @@ fun CardDrawScreen(
             val square = withContext(Dispatchers.Default) { bakeFramed(plain, frame) }
             val core = IntRect(0, 0, square.width, square.height)
             shown = CardFace(square.asImageBitmap(), core, framed = true)
-            val template = drawTemplate()
-            val card = onDrawn(dog, template, square, core)
-            busy = false
-            if (card == null) {
-                error = "카드를 저장하지 못했어요."
-                return@launch
+            // **꽝도 여기서 갈린다.** 얼굴은 이미 구웠지만 버린다 — 굽는 것이
+            // 먼저인 이유는 꽝일 때만 빨라 보이면 결과가 미리 새기 때문이다.
+            when (val outcome = drawOutcome()) {
+                DrawOutcome.Miss -> {
+                    onMiss()
+                    busy = false
+                    left = (left - 1).coerceAtLeast(0)
+                    step = DrawStep.Miss
+                }
+
+                is DrawOutcome.Got -> {
+                    val template = outcome.template
+                    val card = onDrawn(dog, template, square, core)
+                    busy = false
+                    if (card == null) {
+                        error = "카드를 저장하지 못했어요."
+                        return@launch
+                    }
+                    won = template to card
+                    left = (left - 1).coerceAtLeast(0)
+                    step = DrawStep.Flip
+                }
             }
-            won = template to card
-            left = (left - 1).coerceAtLeast(0)
-            step = DrawStep.Flip
         }
     }
 
@@ -277,6 +296,17 @@ fun CardDrawScreen(
                 }
             }
 
+            DrawStep.Miss -> MissBody(
+                left = left,
+                onAgain = {
+                    result = null
+                    shown = null
+                    won = null
+                    step = DrawStep.Intro
+                },
+                onOpenDex = onOpenDex,
+            )
+
             DrawStep.Result -> won?.let { (template, card) ->
                 ResultBody(
                     template = template,
@@ -301,7 +331,7 @@ fun CardDrawScreen(
     }
 }
 
-private enum class DrawStep { Intro, Box, Frame, Flip, Result }
+private enum class DrawStep { Intro, Box, Frame, Flip, Miss, Result }
 
 /**
  * 뽑기에 쓸 아이 하나.
@@ -506,6 +536,51 @@ private fun ResultBody(
     )
 }
 
+/**
+ * 꽝 자리의 가로세로. 카드 그림과 같은 비율이라 결과 화면과 높이가 안 튄다.
+ *
+ * `CardSlots.kt` 의 `SLOTS_RATIO` 와 같은 값인데 그쪽이 파일 private 이라 여기
+ * 다시 적는다. **카드 판형이 바뀌면 두 군데를 같이 고쳐야 한다.**
+ */
+private const val MISS_CARD_RATIO = 1080f / 1440f
+
+/**
+ * 꽝. **카드 자리를 비워 두지 않는다** — 결과 화면과 높이가 크게 다르면 뽑을 때마다
+ * 화면이 튀어서, 꽝이 오류처럼 읽힌다.
+ *
+ * 사과하지 않는다. 꽝은 잘못된 일이 아니라 놀이의 일부라, "못 뽑았어요" 처럼 쓰면
+ * 앱이 실수한 것처럼 들린다.
+ */
+@Composable
+private fun MissBody(left: Int, onAgain: () -> Unit, onOpenDex: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth(0.72f)
+            .aspectRatio(MISS_CARD_RATIO)
+            .clip(RoundedCornerShape(18.dp))
+            .background(PinkFaint),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("꽝", color = PinkSoft, fontSize = 64.sp, fontWeight = FontWeight.Bold)
+    }
+    Text("이번엔 꽝이에요", color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    Text(
+        "카드는 안 나왔지만 오늘 뽑기는 한 번 썼어요",
+        color = TextMuted,
+        fontSize = 13.sp,
+        lineHeight = 20.sp,
+        textAlign = TextAlign.Center,
+    )
+
+    Spacer(Modifier.height(2.dp))
+    PinkButton(
+        label = if (left > 0) "한 번 더 (${left}번 남음)" else "오늘 뽑기를 다 썼어요",
+        enabled = left > 0,
+        onClick = onAgain,
+    )
+    QuietButton(label = "도감에서 보기", onClick = onOpenDex)
+}
+
 @Composable
 private fun PinkButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
@@ -578,6 +653,34 @@ private fun DrawEmptyPreview() {
                 busy = false,
                 onPick = {},
             )
+        }
+    }
+}
+
+@Preview(name = "뽑기 · 꽝", widthDp = 411, heightDp = 620)
+@Composable
+private fun DrawMissPreview() {
+    DaengsTheme {
+        Column(
+            Modifier.fillMaxSize().background(CreamBg).padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            MissBody(left = 2, onAgain = {}, onOpenDex = {})
+        }
+    }
+}
+
+@Preview(name = "뽑기 · 꽝 (다 씀)", widthDp = 411, heightDp = 620)
+@Composable
+private fun DrawMissEmptyPreview() {
+    DaengsTheme {
+        Column(
+            Modifier.fillMaxSize().background(CreamBg).padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            MissBody(left = 0, onAgain = {}, onOpenDex = {})
         }
     }
 }
