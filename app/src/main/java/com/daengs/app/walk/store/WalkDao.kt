@@ -46,6 +46,9 @@ interface WalkDao {
     @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
     suspend fun storyboard(sessionId: String): WalkStoryboardRow?
 
+    @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
+    fun observeStoryboard(sessionId: String): kotlinx.coroutines.flow.Flow<WalkStoryboardRow?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStoryboard(row: WalkStoryboardRow)
 

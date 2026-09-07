@@ -28,6 +28,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
+import com.daengs.app.walk.diary.DiarySeason
+import com.daengs.app.walk.diary.DiaryWeather
+import com.daengs.app.walk.diary.matchesDiary
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -77,11 +84,23 @@ fun WalkHistoryScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var walks by remember { mutableStateOf<List<WalkSummary>?>(null) }
-    var filterDogId by remember { mutableStateOf<String?>(null) }
+    var filterDogId by rememberSaveable { mutableStateOf<String?>(null) }
+    var mapMode by rememberSaveable { mutableStateOf(false) }
+    var seasonNames by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var weatherNames by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var sessionScope by rememberSaveable { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var retry by remember { mutableStateOf(0) }
+    val diaryState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
 
-    LaunchedEffect(history) {
+    LaunchedEffect(history, retry) {
         onSync?.invoke()
-        history.changes.collect { walks = history.finished() }
+        error = null
+        try { history.changes.collect { walks = history.finished() } }
+        catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            error = "산책 기록을 불러오지 못했어요. 다시 시도해 주세요."
+        }
     }
 
     // 아이가 지워지면 그 아이로 건 필터도 풀어야 한다. 안 그러면 아무것도 없는 목록
@@ -126,11 +145,25 @@ fun WalkHistoryScreen(
             )
         }
 
-        val list = walks?.walkedWith(filterDogId)
+        DiaryHistoryFilters(mapMode, seasonNames, weatherNames,
+            onMode = { mapMode = it },
+            onSeason = { seasonNames = it; sessionScope = null },
+            onWeather = { weatherNames = it; sessionScope = null })
+
+        val list = walks?.filter { it.matchesDiary(filterDogId,
+            seasonNames.map(DiarySeason::valueOf).toSet(), weatherNames.map(DiaryWeather::valueOf).toSet()) }
         when {
+            error != null -> Column(Modifier.padding(18.dp)) {
+                Text(error.orEmpty())
+                DaengsTextAction("다시 시도", { retry++ })
+            }
             // null 은 **아직 못 읽은 것**이다. 빈 목록과 같은 말을 하면 안 된다 —
             // 기록이 있는데도 "없어요" 가 잠깐 스친다.
-            list == null -> Unit
+            list == null -> Text("산책 기록을 불러오고 있어요.", Modifier.padding(18.dp))
+
+            mapMode -> diaryState.SaveableStateProvider("map") { WalkDiaryMapScreen(list, history, sessionScope,
+                onScope = { sessionScope = it }, onOpen = onOpen,
+                modifier = Modifier.weight(1f)) }
 
             list.isEmpty() -> Box(
                 Modifier.fillMaxSize().padding(24.dp),
@@ -138,7 +171,9 @@ fun WalkHistoryScreen(
             ) {
                 Text(
                     // 거르고 나서 빈 것과 아예 없는 것은 다른 이야기다.
-                    if (filterDogId != null) {
+                    if (seasonNames.isNotEmpty() || weatherNames.isNotEmpty()) {
+                        "이 조건에 맞는 산책이 없어요. 계절이나 강수 조건을 바꿔보세요."
+                    } else if (filterDogId != null) {
                         "이 아이와 나간 산책이 아직 없어요."
                     } else {
                         "아직 산책 기록이 없어요.\n방문을 열고 산책을 시작해 보세요."
@@ -154,11 +189,46 @@ fun WalkHistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(list, key = { it.sessionId }) { walk ->
-                    WalkRow(walk, dogNames(walk.dogIds, pets)) { onOpen(walk.sessionId) }
+                    WalkRow(walk, dogNames(walk.dogIds, pets)) {
+                        sessionScope = walk.sessionId; mapMode = true
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+internal fun DiaryHistoryFilters(
+    mapMode: Boolean, seasons: List<String>, weather: List<String>,
+    onMode: (Boolean) -> Unit, onSeason: (List<String>) -> Unit, onWeather: (List<String>) -> Unit,
+) {
+    Column(Modifier.padding(horizontal = 14.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(!mapMode, { onMode(false) }, label = { Text("목록") })
+            FilterChip(mapMode, { onMode(true) }, label = { Text("지도") })
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(seasons.isEmpty(), { onSeason(emptyList()) }, label = { Text("모든 계절") })
+            DiarySeason.entries.forEach { value ->
+                FilterChip(value.name in seasons, { onSeason(if (value.name in seasons) seasons - value.name else seasons + value.name) },
+                    label = { Text(value.label) })
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(weather.isEmpty(), { onWeather(emptyList()) }, label = { Text("모든 강수") })
+            DiaryWeather.entries.filter { it != DiaryWeather.MIXED }.forEach { value ->
+                FilterChip(value.name in weather, { onWeather(if (value.name in weather) weather - value.name else weather + value.name) },
+                    label = { Text(value.label) })
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+private fun DiaryHistoryFiltersPreview() {
+    DaengsTheme { DiaryHistoryFilters(true, listOf("AUTUMN"), listOf("RAIN"), {}, {}, {}) }
 }
 
 @Composable
