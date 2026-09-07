@@ -157,6 +157,7 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                val walkHistoryState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
                 val loadingSince = remember { SystemClock.elapsedRealtime() }
@@ -874,7 +875,7 @@ class MainActivity : ComponentActivity() {
                         onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
-                    Screen.WalkHistory -> WalkHistoryScreen(
+                    Screen.WalkHistory -> walkHistoryState.SaveableStateProvider("walk-history") { WalkHistoryScreen(
                         history = walkRuntime.history,
                         // 목록을 열 때 한 번 더. 걷고 나서 지하철에 들어갔던 기록이
                         // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
@@ -888,8 +889,10 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
+                    }
+
                     Screen.WalkDetail -> openedWalkId?.let { id ->
-                        WalkDetailScreen(
+                        com.daengs.app.ui.walk.WalkDiaryMapScreen(
                             sessionId = id,
                             history = walkRuntime.history,
                             onBack = { screen = Screen.WalkHistory },

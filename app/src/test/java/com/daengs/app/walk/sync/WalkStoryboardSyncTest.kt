@@ -16,6 +16,30 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WalkStoryboardSyncTest {
+    @Test fun `v3 title persists and only old format rejection falls back to v2`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        try {
+            val dao = db.walkDao()
+            dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
+            WalkStoryboardSync(dao, { owner }) { _, _, _ -> response().put("bundle",
+                com.daengs.app.walk.diary.titledDiaryFixture()) }.sync(token, "s", "remote")
+            assertEquals("함께 남긴 산책 기록", storyboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!.title)
+            val formats = mutableListOf<String>()
+            WalkStoryboardSync(dao, { owner }) { _, _, body ->
+                formats += body.getString("bundle_format")
+                if (formats.size == 1) throw WalkHttpException(422,
+                    """[{"type":"literal_error","loc":["body","bundle_format"]}]""")
+                response(2)
+            }.sync(token, "s", "remote")
+            assertEquals(listOf("walk-storyboard-candidates-v3", "walk-storyboard-candidates-v2"), formats)
+            assertEquals("ready", dao.sceneAnalysis("s")!!.status)
+            var calls = 0
+            val failed = runCatching { WalkStoryboardSync(dao, { owner }) { _, _, _ ->
+                calls++; throw WalkHttpException(422, "other validation failure")
+            }.sync(token, "s", "remote") }
+            assertTrue(failed.isFailure); assertEquals(1, calls)
+        } finally { db.close() }
+    }
     private val owner = "owner"
     private val token = "header."+java.util.Base64.getUrlEncoder().withoutPadding()
         .encodeToString("{\"sub\":\"owner\"}".toByteArray())+".signature"
@@ -129,7 +153,7 @@ class WalkStoryboardSyncTest {
             val sync = WalkStoryboardSync(dao, { owner }) { _, path, body ->
                 assertEquals("/remote/storyboard", path)
                 assertEquals(0, body.getJSONObject("expected_entries").length())
-                assertEquals("walk-storyboard-candidates-v2", body.getString("bundle_format"))
+                assertEquals("walk-storyboard-candidates-v3", body.getString("bundle_format"))
                 response()
             }
             sync.sync(token, "s", "remote")

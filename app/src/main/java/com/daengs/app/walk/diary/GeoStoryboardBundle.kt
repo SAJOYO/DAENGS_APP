@@ -9,17 +9,21 @@ data class GeoStoryboardBundle(
     val sessionId: String, val sourceRevision: String, val synthetic: Boolean,
     val scenes: List<StoryboardScene>, val rawJson: String,
     val selection: StoryboardSelection? = null,
+    val title: String? = null,
 ) {
     companion object {
         const val FORMAT = "walk-storyboard-candidates-v1"
         const val FORMAT_V2 = "walk-storyboard-candidates-v2"
+        const val FORMAT_V3 = "walk-storyboard-candidates-v3"
         fun parse(text: String): GeoStoryboardBundle {
             require(text.toByteArray(Charsets.UTF_8).size <= 1_000_000) { "장면 파일이 너무 커요." }
             val obj = JSONObject(text)
-            val v2 = obj.getString("format") == FORMAT_V2
+            val v3 = obj.getString("format") == FORMAT_V3
+            val v2 = v3 || obj.getString("format") == FORMAT_V2
             require(v2 || obj.getString("format") == FORMAT) { "지원하지 않는 장면 형식이에요." }
             obj.exactKeys(*(listOf("format", "session_id", "source_revision", "synthetic", "scenes") +
-                if (v2) listOf("selection") else emptyList()).toTypedArray())
+                (if (v2) listOf("selection") else emptyList()) +
+                (if (v3) listOf("title", "title_fact_ids") else emptyList())).toTypedArray())
             val session = obj.requiredText("session_id", 128)
             val revision = obj.requiredText("source_revision", 100)
             require(obj.get("synthetic") is Boolean)
@@ -30,8 +34,20 @@ data class GeoStoryboardBundle(
             require(scenes.zipWithNext().all { (a, b) -> a.atMillis <= b.atMillis }) {
                 "장면이 시간순으로 정렬되지 않았어요."
             }
+            val title = if (!v3 || obj.isNull("title")) null else obj.requiredText("title", 40).also {
+                require(it == it.trim() && it.none { c -> c in "\n\r\t" })
+            }
+            if (v3) {
+                val refs = obj.getJSONArray("title_fact_ids").strings()
+                val facts = (0 until array.length()).flatMap { i ->
+                    val items = array.getJSONObject(i).getJSONArray("facts")
+                    (0 until items.length()).map { items.getJSONObject(it) }
+                        .filter { it.getString("kind") != "coverage" }.map { it.getString("id") }
+                }.toSet()
+                require(refs.size <= 8 && refs.all { it in facts } && (title != null) == refs.isNotEmpty())
+            }
             return GeoStoryboardBundle(session, revision, obj.getBoolean("synthetic"), scenes, text,
-                if (v2) StoryboardSelection.parse(obj.getJSONObject("selection")) else null)
+                if (v2) StoryboardSelection.parse(obj.getJSONObject("selection")) else null, title)
         }
 
         private fun parseScene(obj: JSONObject, v2: Boolean, synthetic: Boolean): StoryboardScene {
