@@ -7,6 +7,30 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT sessionId FROM walk_scene_analysis")
+    fun observeAnalysisChanges(): kotlinx.coroutines.flow.Flow<List<String>>
+
+    @Query("SELECT * FROM walk_entry WHERE sessionId IN (:ids) ORDER BY id")
+    suspend fun historySearchEntries(ids: List<String>): List<WalkEntryRow>
+
+    @Query("SELECT * FROM walk_scene_analysis WHERE sessionId IN (:ids)")
+    suspend fun historySearchAnalyses(ids: List<String>): List<WalkSceneAnalysisRow>
+
+    /** A fresh, bounded projection instead of a second mutable search copy of private notes. */
+    @androidx.room.Transaction
+    suspend fun historySearchText(ids: List<String>, ownerId: String): Map<String, List<String>> {
+        val allowed = ids.filter { session(it)?.let { s -> s.ownerId == ownerId && s.endedAtMillis != null } == true }
+        if (allowed.isEmpty()) return emptyMap()
+        val entries = historySearchEntries(allowed).groupBy { it.sessionId }
+        val analyses = historySearchAnalyses(allowed).associateBy { it.sessionId }
+        return allowed.associateWith { id ->
+            val rows = entries[id].orEmpty()
+            val title = com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows)
+                .bundle?.takeIf { it.sessionId == id }?.title
+            listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
+        }
+    }
+
     @Query("SELECT * FROM walk_scene_analysis WHERE sessionId = :sessionId")
     fun observeSceneAnalysis(sessionId: String): kotlinx.coroutines.flow.Flow<WalkSceneAnalysisRow?>
     @Query("SELECT * FROM walk_scene_analysis WHERE sessionId = :sessionId")
