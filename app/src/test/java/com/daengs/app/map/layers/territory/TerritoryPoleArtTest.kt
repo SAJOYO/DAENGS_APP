@@ -53,9 +53,14 @@ class TerritoryPoleArtTest {
             assertTrue("본체 높이는 이전 600px의 약 65%", inkRows.size in 380..395)
             assertTrue("축소해도 발은 같은 지리 좌표", inkRows.last() in 622..624)
             assertEquals(0, Color.alpha(bitmap.getPixel(128, 200)))
-            assertEquals(46, Color.alpha(bitmap.getPixel(198, 583)))
+            assertEquals(76, Color.alpha(bitmap.getPixel(218, 575)))
             assertEquals(0, Color.alpha(bitmap.getPixel(58, 583)))
-            assertEquals(0, Color.alpha(bitmap.getPixel(220, 560)))
+            assertEquals(0, Color.alpha(bitmap.getPixel(220, 540)))
+            val small = Bitmap.createScaledBitmap(bitmap, 48, 120, true)
+            val visibleShadow = (100 until 119).sumOf { y ->
+                (36 until 47).count { x -> Color.alpha(small.getPixel(x, y)) >= 40 }
+            }
+            assertTrue("실제 표시 크기에서도 밑동 밖 그림자가 남아야 한다", visibleShadow >= 8)
         }
         assertEquals(48 to 120, TerritoryPoleArt.size(false))
         assertEquals(60 to 150, TerritoryPoleArt.size(true))

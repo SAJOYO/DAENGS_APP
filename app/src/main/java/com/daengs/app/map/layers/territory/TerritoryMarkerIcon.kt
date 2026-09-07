@@ -40,14 +40,14 @@ internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOcc
     val result = Bitmap.createBitmap(TerritoryPoleArt.WIDTH, TerritoryPoleArt.HEIGHT, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(result)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    // 팔 없는 짧고 뭉뚝한 고깔 그림자. 두 상태에 같은 방향·18% 알파를 쓴다.
-    paint.color = Color.argb(46, 80, 65, 51)
+    // 축소 후에도 밑동 밖으로 보이는 짧은 고깔. 두 상태에 같은 방향·30% 알파.
+    paint.color = Color.argb(76, 80, 65, 51)
     canvas.drawPath(Path().apply {
-        moveTo(112f, 618f)
-        lineTo(204f, 573f)
-        quadTo(216f, 569f, 210f, 581f)
-        lineTo(148f, 624f)
-        quadTo(130f, 626f, 112f, 618f)
+        moveTo(105f, 614f)
+        lineTo(233f, 556f)
+        quadTo(254f, 551f, 246f, 567f)
+        lineTo(150f, 626f)
+        quadTo(128f, 627f, 105f, 614f)
         close()
     }, paint)
     paint.color = Color.WHITE
