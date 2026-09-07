@@ -77,8 +77,15 @@ class GaitHolder(
      * 판정은 [GaitComparison.of] 가 지표에서 끌어낸다 — 여기서 문장을 고르지 않는다.
      */
     suspend fun compare(recentId: String, pastId: String): GaitComparison? {
-        val recent = find(recentId) ?: return null
-        val past = find(pastId) ?: return null
+        val first = find(recentId) ?: return null
+        val second = find(pastId) ?: return null
+
+        // **화면의 "최근"·"비교" 라벨은 날짜가 정한다.** B 진입은 사용자가 고른 순서대로
+        // 넘기는데, 그 순서를 그대로 라벨에 쓰면 09.02 가 "최근 기록" 으로 붙는다
+        // (에뮬레이터에서 실제로 그랬다). 서버는 어차피 날짜로 past/recent 를 가르므로
+        // 여기서 맞춰 두면 표와 라벨이 같은 것을 가리킨다. 날짜가 같으면 넘긴 순서대로.
+        val (recent, past) =
+            if (second.date.isAfter(first.date)) second to first else first to second
 
         // 표본끼리는 서버에 없다. 서버 주소가 없을 때도 마찬가지다.
         val sample = recentId.startsWith(SAMPLE_PREFIX) || pastId.startsWith(SAMPLE_PREFIX)

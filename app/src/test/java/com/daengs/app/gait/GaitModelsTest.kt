@@ -314,6 +314,25 @@ class GaitModelsTest {
     }
 
     @Test
+    fun `비교의 최근과 비교 자리는 넘긴 순서가 아니라 날짜가 정한다`() = runTest {
+        """B 진입은 사용자가 고른 순서대로 넘긴다. 그 순서를 라벨에 그대로 쓰면 09.02 가
+        "최근 기록" 으로 붙는다 — 에뮬레이터에서 실제로 그랬다."""
+        val older = GaitRecord("old", LocalDate.of(2026, 9, 2))
+        val newer = GaitRecord("new", LocalDate.of(2026, 9, 7))
+        val holder = GaitHolder(initial = listOf(newer, older))
+
+        val backwards = holder.compare(recentId = "old", pastId = "new")!!
+        assertEquals("new", backwards.recent.id)
+        assertEquals("old", backwards.past.id)
+
+        // 날짜가 같으면 넘긴 순서를 그대로 둔다 — 뒤집을 근거가 없다.
+        val sameDay = GaitHolder(initial = listOf(record("a"), record("b")))
+            .compare(recentId = "b", pastId = "a")!!
+        assertEquals("b", sameDay.recent.id)
+        assertEquals("a", sameDay.past.id)
+    }
+
+    @Test
     fun `서버 목록 한 줄은 길이를 모른 채로 옮겨진다`() {
         val summary = GaitSummary.parse(
             JSONObject(
