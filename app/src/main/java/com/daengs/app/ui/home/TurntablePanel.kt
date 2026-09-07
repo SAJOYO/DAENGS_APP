@@ -191,7 +191,13 @@ fun TurntablePanel(
 internal fun ownedTunes(drawn: List<DrawnCard>): List<CardTune> {
     val newest = drawn.groupBy { it.templateId }
         .mapValues { (_, copies) -> copies.maxBy { it.drawnAtMillis } }
-    return CARD_TUNES.mapNotNull { tune -> newest[tune.card.id]?.let { tune.copy(mine = it) } }
+    return CARD_TUNES.mapNotNull { tune ->
+        newest[tune.card.id]?.let { mine ->
+            // **곡을 여기서 다시 묻는다.** 곡이 둘인 카드(망고)는 뽑는 사람마다 갈리는데,
+            // [CARD_TUNES] 는 카탈로그라 사람을 모른다. 내 카드에는 `appUserId` 가 있다.
+            tune.copy(mine = mine, asset = bgmFor(tune.card.id, mine.appUserId) ?: tune.asset)
+        }
+    }
 }
 
 /**

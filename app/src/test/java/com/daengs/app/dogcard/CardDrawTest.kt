@@ -1,6 +1,8 @@
 package com.daengs.app.dogcard
 
+import com.daengs.app.ui.dex.CARD_BGM
 import com.daengs.app.ui.dex.DEX_CARDS
+import com.daengs.app.ui.dex.IMMERSIVE_SCENES
 import com.daengs.app.ui.dogcard.CARD_TEMPLATES
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -9,7 +11,7 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 /**
- * 뽑기가 정말 12종 균등인지 잡는다.
+ * 뽑기가 정말 스물다섯 종에 제 무게로 나오는지 잡는다.
  *
  * **이 테스트의 절반은 `CARD_TEMPLATES.size` 를 세는 것이다.** 자리를 비운 카드는
  * 열두 장이 다 들어와 있었는데 코드는 두 장만 알고 있었다 — 그대로 뽑기를 붙였으면
@@ -121,22 +123,76 @@ class CardDrawTest {
         }
     }
 
+    /**
+     * **갈래(야채·과일)로는 여전히 안 가린다.** 무게는 곡·무대가 있느냐로만 갈린다
+     * (사용자 결정 2026-09-04 는 그대로고, 그 위에 레어도가 얹힌 것이다).
+     *
+     * 같은 무게끼리는 고르게 나와야 한다 — 한 칸이라도 무게를 잘못 매기면 여기서 걸린다.
+     */
     @Test
-    fun `스물다섯 종이 고르게 나온다`() {
+    fun `무게가 같은 카드끼리는 고르게 나온다`() {
         val random = Random(42)
-        val rounds = 120_000
+        val rounds = 200_000
         val counts = mutableMapOf<String, Int>()
         repeat(rounds) {
             val id = drawTemplate(random = random).id
             counts[id] = (counts[id] ?: 0) + 1
         }
 
-        // **갈래를 안 가린다.** 야채도 과일도 같은 확률이다 (사용자 결정 2026-09-04).
         assertEquals("스물다섯 종이 다 나와야 한다", CARD_TEMPLATES.size, counts.size)
-        val expected = rounds.toDouble() / CARD_TEMPLATES.size
+        val total = CARD_TEMPLATES.sumOf { weightOf(it.id) }
         counts.forEach { (id, n) ->
+            val expected = rounds.toDouble() * weightOf(id) / total
             val off = abs(n - expected) / rounds
             assertTrue("$id 가 $n 번 (기대 ${expected.toInt()}) — 0.5%p 를 벗어났다", off < 0.005)
+        }
+    }
+
+    /**
+     * 무게가 실제로 세 갈래인지 못 박는다.
+     *
+     * **[weightOf] 가 목록을 안 들고 곡·무대 표에 물어보기 때문에** 곡을 하나 붙이면
+     * 그 카드는 그날로 레어가 된다. 반대로 표를 잘못 건드리면 조용히 균등으로 돌아간다.
+     */
+    @Test
+    fun `곡과 무대가 있는 카드가 더 드물다`() {
+        val stage = CARD_TEMPLATES.filter { it.id in IMMERSIVE_SCENES }
+        val tuneOnly = CARD_TEMPLATES.filter { it.id in CARD_BGM && it.id !in IMMERSIVE_SCENES }
+        val plain = CARD_TEMPLATES.filter { it.id !in CARD_BGM }
+
+        assertEquals("무대 3장 + 곡만 8장 + 그냥 14장", 3, stage.size)
+        assertEquals(8, tuneOnly.size)
+        assertEquals(14, plain.size)
+
+        stage.forEach { assertEquals(it.id, 1, weightOf(it.id)) }
+        tuneOnly.forEach { assertEquals(it.id, 2, weightOf(it.id)) }
+        plain.forEach { assertEquals(it.id, 4, weightOf(it.id)) }
+    }
+
+    /**
+     * 꽝이 20% 다.
+     *
+     * **꽝이 0 이 되면 화면은 멀쩡해 보인다** — 그냥 늘 카드가 나올 뿐이라, 이 숫자를
+     * 지키는 것은 테스트뿐이다.
+     */
+    @Test
+    fun `한 판에 스무 번 중 네 번은 꽝이다`() {
+        val random = Random(7)
+        val rounds = 200_000
+        val misses = (1..rounds).count { drawOutcome(random = random) is DrawOutcome.Miss }
+        val off = abs(misses.toDouble() / rounds - MISS_PERCENT / 100.0)
+        assertTrue("꽝이 $misses/$rounds — 0.5%p 를 벗어났다", off < 0.005)
+    }
+
+    /** 꽝이 아니면 반드시 카드가 나온다. 둘 사이에 빈 값이 없다. */
+    @Test
+    fun `꽝이 아닌 판은 언제나 카드다`() {
+        val random = Random(11)
+        repeat(5_000) {
+            val outcome = drawOutcome(random = random)
+            if (outcome is DrawOutcome.Got) {
+                assertTrue(outcome.template.id, outcome.template in CARD_TEMPLATES)
+            }
         }
     }
 
