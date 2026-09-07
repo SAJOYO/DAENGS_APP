@@ -20,11 +20,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.*
 
-enum class WalkTool { POLE, ROTATE, CAMERA, RECORD, ENTRIES, LOCATE, PAUSE, PLAY, CLOSE }
+enum class WalkTool { POLE, ROTATE, CAMERA, RECORD, ENTRIES, LOCATE, PAUSE, PLAY, CLOSE, SETTINGS }
 
 @Composable
 internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
-    modifier: Modifier = Modifier, enabled: Boolean = true, active: Boolean = false, caption: String? = null) {
+    modifier: Modifier = Modifier, enabled: Boolean = true, active: Boolean = false, caption: String? = null, captionBeside: Boolean = false) {
     val tint = if (active) DaengPinkDeep else TextDark
     TextButton(onClick = onClick, enabled = enabled, modifier = modifier
         .widthIn(min = 48.dp).heightIn(min = 48.dp)
@@ -32,7 +32,7 @@ internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
         contentPadding = PaddingValues(4.dp), shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.textButtonColors(contentColor = tint,
             containerColor = if (active) DaengPinkDeep.copy(alpha = .12f) else Color.Transparent)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        val icon: @Composable () -> Unit = {
             Canvas(Modifier.size(22.dp)) {
                 val c = if (enabled) tint else tint.copy(alpha = .4f)
                 fun line(x: Float, y: Float, a: Float, b: Float) = drawLine(c, Offset(size.width*x/24, size.height*y/24), Offset(size.width*a/24, size.height*b/24), 1.7.dp.toPx())
@@ -58,9 +58,24 @@ internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
                     WalkTool.ENTRIES -> { for (y in listOf(5f,12f,19f)) line(4f,y,20f,y) }
                     WalkTool.PAUSE -> { line(8f,4f,8f,20f); line(16f,4f,16f,20f) }
                     WalkTool.PLAY -> { line(7f,3f,20f,12f); line(20f,12f,7f,21f); line(7f,21f,7f,3f) }
+                    WalkTool.SETTINGS -> {
+                        drawCircle(c, size.width*.31f, style = Stroke(1.7.dp.toPx()))
+                        drawCircle(c, size.width*.12f, style = Stroke(1.7.dp.toPx()))
+                        for (angle in 0 until 360 step 45) rotate(angle.toFloat()) {
+                            drawLine(c, Offset(size.width*.5f, size.height*.08f),
+                                Offset(size.width*.5f, size.height*.22f), 2.5.dp.toPx())
+                        }
+                    }
                     WalkTool.CLOSE -> { line(6f,6f,18f,18f); line(18f,6f,6f,18f) }
                 }
             }
+        }
+        if (captionBeside) Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            icon()
+            caption?.let { Text(it, fontSize = 11.sp, maxLines = 1) }
+        } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            icon()
             caption?.let { Text(it, fontSize = 10.sp, maxLines = 1) }
         }
     }

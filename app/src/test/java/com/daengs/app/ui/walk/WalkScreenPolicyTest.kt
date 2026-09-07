@@ -21,15 +21,19 @@ import org.robolectric.annotation.GraphicsMode
 class WalkScreenPolicyTest {
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
-    @Test fun speedAndColorAppearTogetherOnlyAfterStarting() {
+    @Test fun settingsAreAvailableBeforeWalkingAndSpeedAppearsAfterStarting() {
         val state = mutableStateOf(WalkUiState())
         compose.setContent { DaengsTheme { WalkScreen(state.value, {}, showMap = false) } }
-        compose.onNodeWithText("속도 m/s").assertDoesNotExist()
+        compose.onNodeWithText("속도").assertDoesNotExist()
         compose.onNodeWithText("색상").assertDoesNotExist()
         compose.onNodeWithContentDescription("잠시 멈춤").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 지도 설정").assertIsDisplayed().performClick()
+        compose.onNodeWithText("동선 색상").assertIsDisplayed()
+        compose.onNodeWithText("완료").performClick()
         compose.runOnIdle { state.value = recording() }
-        compose.onNodeWithText("속도 m/s").assertIsDisplayed()
-        compose.onNodeWithText("색상").assertIsDisplayed().performClick()
+        compose.onNodeWithText("속도").assertIsDisplayed()
+        compose.onNodeWithText("색상").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 지도 설정").assertIsDisplayed().performClick()
         compose.onNodeWithText("산책 지도 설정").assertIsDisplayed()
     }
 
@@ -44,14 +48,22 @@ class WalkScreenPolicyTest {
         val pauseBounds = pause.fetchSemanticsNode().boundsInRoot
         val home = compose.onNodeWithContentDescription("홈으로").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val action = compose.onNodeWithContentDescription("행동 기록").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val speed = compose.onNodeWithText("속도 m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val color = compose.onNodeWithText("색상").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val speed = compose.onNodeWithText("속도").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val settings = compose.onNodeWithContentDescription("산책 지도 설정").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val territory = compose.onNodeWithContentDescription("점령지 보기").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(home.right <= time.left)
         assertTrue(home.right <= pauseBounds.left)
         assertTrue(pauseBounds.bottom < action.top)
-        assertTrue(speed.right <= color.left)
+        assertTrue(settings.right <= time.left)
+        assertTrue(settings.bottom <= speed.top)
+        assertTrue(territory.bottom <= action.top)
+        assertTrue(territory.top > speed.bottom)
+        compose.onNodeWithText("색상").assertDoesNotExist()
+        val reading = compose.onNodeWithText("—").fetchSemanticsNode().boundsInRoot
+        val unit = compose.onNodeWithText("m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue(reading.right <= unit.left && unit.top < reading.bottom)
         val legend = compose.onNodeWithTag("speedometer").getUnclippedBoundsInRoot()
-        assertTrue((legend.right - legend.left).value <= 190f)
+        assertTrue((legend.right - legend.left).value <= 140f)
         assertTrue(compose.onNodeWithTag("speedometer").printToString(), (legend.bottom - legend.top).value <= 116f)
         compose.onNodeWithText("쉼").assertDoesNotExist()
         pause.performClick()

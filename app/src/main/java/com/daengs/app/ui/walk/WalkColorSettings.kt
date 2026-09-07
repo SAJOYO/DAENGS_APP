@@ -23,7 +23,7 @@ import com.daengs.app.map.style.rememberWalkStyle
 import com.daengs.app.walk.sync.WalkApi
 
 @Composable
-internal fun WalkColorSettingsButton(modifier: Modifier = Modifier) {
+internal fun WalkMapSettingsButton(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val store = remember(context) { WalkStyleStore(context) }
     val selection by rememberWalkStyle()
@@ -35,7 +35,7 @@ internal fun WalkColorSettingsButton(modifier: Modifier = Modifier) {
         val session = app.sessionProvider.freshSession() ?: return@LaunchedEffect
         WalkApi.stylePolicy(session.accessToken).getOrNull()?.let(store::cachePolicy)
     }
-    TextButton(onClick = { open = true }, modifier = modifier, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("색상", maxLines = 1) }
+    WalkToolButton(WalkTool.SETTINGS, "산책 지도 설정", { open = true }, modifier, active = open)
     if (open) AlertDialog(
         onDismissRequest = { open = false },
         title = { Text("산책 지도 설정") },
@@ -70,5 +70,5 @@ internal fun WalkColorSettingsButton(modifier: Modifier = Modifier) {
 @Preview
 @Composable
 private fun WalkColorSettingsPreview() {
-    com.daengs.app.ui.theme.DaengsTheme { WalkColorSettingsButton() }
+    com.daengs.app.ui.theme.DaengsTheme { WalkMapSettingsButton() }
 }

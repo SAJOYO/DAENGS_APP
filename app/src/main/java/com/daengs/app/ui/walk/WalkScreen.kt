@@ -298,8 +298,8 @@ private fun WalkGameOverlay(
                 Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
                     val tools: @Composable () -> Unit = {
                         WalkHomeButton(onHome)
-                        if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
                         WalkRotateButton(layoutMode, onRequestOrientation)
+                        WalkMapSettingsButton()
                     }
                     if (stackMapTools) Column(horizontalAlignment = Alignment.CenterHorizontally) { tools() }
                     else Row(verticalAlignment = Alignment.CenterVertically) { tools() }
@@ -321,7 +321,7 @@ private fun WalkGameOverlay(
                 })
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
-                    if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End), showColorSettings = true)
+                    if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
                     else WalkSpeedometer(
                         speed = if (locationGranted && preciseLocation && locationError == null)
                             walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
@@ -329,6 +329,8 @@ private fun WalkGameOverlay(
                 }
             }
             val dock: @Composable () -> Unit = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                 Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
                     Row(Modifier.padding(4.dp).onSizeChanged { dockWidth = it.width }) {
                         WalkToolButton(WalkTool.CAMERA, "산책 사진 촬영", onPhotographWalk,
@@ -340,6 +342,7 @@ private fun WalkGameOverlay(
                         WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate, enabled = locationGranted && !locating, caption = "내 위치")
                     }
                 }
+            }
             }
             Column(Modifier.align(if (landscape) Alignment.BottomStart else Alignment.BottomCenter)
                 .widthIn(max = if (landscape) 300.dp else 360.dp)
@@ -357,6 +360,9 @@ private fun WalkGameOverlay(
                     (territory.failure != null || territory.sites.isEmpty()))) {
                     StatusPill(notice, tracking.errorMessage != null || territory.failure != null,
                         if (territory.failure != null) "다시 시도" else null, onRetryTerritory)
+                }
+                if (tracking.trail.state == TrackingState.OFF && summary == null) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                 }
                 if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
@@ -433,6 +439,7 @@ private fun WalkGameOverlay(
             ) {
                 WalkHomeButton(onHome)
                 WalkRotateButton(layoutMode, onRequestOrientation)
+                WalkMapSettingsButton()
             }
         }
     }
@@ -446,7 +453,8 @@ private fun WalkMapModeButton(
 ) {
     val target = if (purpose == MapPurpose.TERRITORY) MapPurpose.WALK else MapPurpose.TERRITORY
     WalkToolButton(WalkTool.POLE, if (purpose == MapPurpose.TERRITORY) "점령지 숨기기" else "점령지 보기",
-        { onChange(target) }, modifier, active = purpose == MapPurpose.TERRITORY)
+        { onChange(target) }, modifier, active = purpose == MapPurpose.TERRITORY,
+        caption = if (purpose == MapPurpose.TERRITORY) "점령지 숨기기" else "점령지 보기", captionBeside = true)
 }
 
 internal fun territoryStatusLabel(state: TerritoryBoardState): String = when {

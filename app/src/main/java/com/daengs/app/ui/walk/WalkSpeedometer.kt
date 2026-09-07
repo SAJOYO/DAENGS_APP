@@ -53,7 +53,7 @@ internal fun WalkSpeedometer(speed: Float?, modifier: Modifier = Modifier) {
     Surface(modifier.testTag("speedometer"), shape = RoundedCornerShape(12.dp), color = CardWhite) {
         Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("속도 m/s", fontSize = 10.sp, lineHeight = 12.sp)
+                Text("속도", fontSize = 10.sp, lineHeight = 12.sp)
                 Box(Modifier.fillMaxWidth().height(68.dp)) {
                     Canvas(Modifier.fillMaxWidth().height(58.dp).semantics {
                         contentDescription = "${theme.label} 속도계. 현재 ${if (validSpeed == null) "속도 확인 중" else "$value m/s"}"
@@ -86,10 +86,11 @@ internal fun WalkSpeedometer(speed: Float?, modifier: Modifier = Modifier) {
                         Text(String.format(Locale.ROOT, "%s+", policy.speedMax.toString().removeSuffix(".0")), fontSize = 9.sp, lineHeight = 10.sp)
                     }
                 }
-                Text(value, fontSize = 18.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(value, Modifier.alignByBaseline(), fontSize = 18.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("m/s", Modifier.alignByBaseline(), fontSize = 10.sp, lineHeight = 12.sp, color = TextMuted)
+                }
             }
-            Spacer(Modifier.width(4.dp))
-            WalkColorSettingsButton(Modifier.width(48.dp).heightIn(min = 48.dp))
         }
     }
 }

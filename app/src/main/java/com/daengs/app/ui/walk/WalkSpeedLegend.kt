@@ -30,7 +30,7 @@ import java.util.Locale
 
 /** The host chooses when to show this; colors follow the same preference as the native path. */
 @Composable
-internal fun WalkSpeedLegend(modifier: Modifier = Modifier, showColorSettings: Boolean = false) {
+internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
     val selection by rememberWalkStyle()
     val policy = selection.policy
     val theme = policy.theme(selection.themeId)
@@ -53,10 +53,7 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier, showColorSettings: B
                     for (label in listOf("0", middle, "$max+")) Text(label, fontSize = 10.sp, lineHeight = 12.sp)
                 }
             }
-            if (showColorSettings) {
-                Spacer(Modifier.width(4.dp))
-                WalkColorSettingsButton(Modifier.width(48.dp).heightIn(min = 48.dp))
-            }
+
         }
     }
 }
@@ -64,7 +61,3 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier, showColorSettings: B
 @Preview(showBackground = true)
 @Composable
 private fun WalkSpeedLegendPreview() { DaengsTheme { WalkSpeedLegend() } }
-
-@Preview(showBackground = true)
-@Composable
-private fun WalkSpeedLegendSettingsPreview() { DaengsTheme { WalkSpeedLegend(showColorSettings = true) } }
