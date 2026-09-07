@@ -101,7 +101,7 @@ fun GaitDetailScreen(
     // 제목 고치는 중. 촬영·업로드 때와 같은 다이얼로그를 초기값만 넣어 연다.
     var editingTitle by remember { mutableStateOf(false) }
     if (editingTitle) {
-        GaitTitleDialog(initial = record.title) { title ->
+        GaitTitleDialog(initial = record.title, editing = true) { title ->
             editingTitle = false
             if (title != record.title) onRename(title)
         }

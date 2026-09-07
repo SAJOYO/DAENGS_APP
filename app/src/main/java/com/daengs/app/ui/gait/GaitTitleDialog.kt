@@ -62,10 +62,15 @@ import com.daengs.app.ui.theme.TextMuted
 @Composable
 fun GaitTitleDialog(
     initial: String?,
+    /**
+     * 고치는 중인가. 제목이 아직 없는 기록의 ✎ 도 "수정" 이다 — 초기값만 보고 정하면
+     * 그때 "기록 제목을 정해주세요 / 건너뛰기" 가 떠서 새 기록을 만드는 것처럼 읽힌다.
+     */
+    editing: Boolean = initial != null,
+    // 마지막 인자라야 부르는 쪽이 후행 람다로 넘길 수 있다.
     onDone: (String?) -> Unit,
 ) {
     var text by remember { mutableStateOf(initial.orEmpty()) }
-    val editing = initial != null
 
     // 취소는 원래 값 그대로. 다이얼로그 밖을 눌러도 같다 — 밖을 눌렀는데 제목이
     // 지워지면 실수 하나로 기록 이름이 날아간다.
