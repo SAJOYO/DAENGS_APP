@@ -1,5 +1,8 @@
 package com.daengs.app.ui.places
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -195,7 +198,9 @@ class ConnectedPlaceSearchUiTest {
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     @Test fun cultureTabsWrapAndOnlyOneSubcategoryRemainsSelected() {
         val selection = androidx.compose.runtime.mutableStateOf<PlaceCategorySelection>(PlaceCategorySelection.Purpose(PlacePurpose.CULTURE))
-        compose.setContent { DaengsTheme { PlacePurposeMenu(selection.value) { selection.value = it } } }
+        compose.setContent { DaengsTheme {
+            Box(Modifier.width(288.dp)) { PlacePurposeMenu(selection.value) { selection.value = it } }
+        } }
         val panel = compose.onNodeWithTag("place-subcategory-panel").fetchSemanticsNode().boundsInRoot
         val tabs = PlacePurpose.CULTURE.kinds.map { kind ->
             compose.onNode(hasText(com.daengs.app.map.features.places.categoryLabel(kind)) and
@@ -203,7 +208,7 @@ class ConnectedPlaceSearchUiTest {
         }
         val bounds = tabs.map { it.assertIsDisplayed().fetchSemanticsNode().boundsInRoot }
         assertTrue(bounds.all { it.left >= panel.left && it.right <= panel.right && it.bottom <= panel.bottom })
-        assertTrue(bounds.last().top > bounds.first().top)
+        assertTrue("Expected wrapped culture tabs: $bounds", bounds.last().top > bounds.first().top)
         tabs[0].performClick().assertIsSelected()
         tabs[1].performClick().assertIsSelected()
         tabs[0].assertIsNotSelected()
