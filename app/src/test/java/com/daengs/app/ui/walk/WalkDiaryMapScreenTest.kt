@@ -56,6 +56,18 @@ class WalkDiaryMapScreenTest {
         compose.onNodeWithText("다음 ›").performClick(); assertTrue(next)
     }
 
+    @Test fun `saved title is shown with date and returns to date title when removed`() {
+        val walk = previewDiarySummary()
+        val titles = mutableStateOf(mapOf(walk.sessionId to "벤치 옆에서 남긴 기록"))
+        compose.setContent { WalkHistoryPageContent(listOf(walk), 1, false, false, {}, {}, {},
+            modifier = Modifier.fillMaxSize(), titles = titles.value) }
+        compose.onNodeWithText("벤치 옆에서 남긴 기록").assertExists()
+        compose.onNodeWithText(formatWalkDay(walk.startedAtMillis)).assertExists()
+        compose.runOnIdle { titles.value = emptyMap() }
+        compose.onNodeWithText("벤치 옆에서 남긴 기록").assertDoesNotExist()
+        compose.onNodeWithText("${formatWalkDay(walk.startedAtMillis)} 산책").assertExists()
+    }
+
     @Test fun `map and navigation remain visible with a long card on a small screen`() {
         var rendered: android.view.View? = null
         val scene = DiaryScene("s/n", "s", 0, "벤치 옆에서 남긴 메모", "함께 걸었던 하루. ".repeat(100), null, "사용자 기록", entryId = "n")

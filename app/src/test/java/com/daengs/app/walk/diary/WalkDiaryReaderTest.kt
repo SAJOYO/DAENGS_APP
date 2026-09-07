@@ -31,6 +31,28 @@ class WalkDiaryReaderTest {
     }
     @After fun close() { db.close() }
 
+    @Test fun `page and map read the same saved title and drop it after source mutation`() = runBlocking {
+        withTimeout(10000) {
+            val stamp = com.daengs.app.walk.sync.storyboardEntryStamp(emptyList())
+            val source = WalkSceneAnalysisRow("s", 1, stamp, "r", "ready", titledDiaryFixture().toString(), null)
+            assertTrue(dao.acceptSceneAnalysis(source, owner))
+            val titles = reader.observeTitles(listOf("s"))
+            assertEquals("함께 남긴 산책 기록", titles.first()["s"])
+            assertEquals(titles.first()["s"], reader.observe(listOf(summary)).first().single().title)
+            dao.acceptSceneAnalysis(source.copy(status = "running", bundle = null), owner)
+            dao.failSceneAnalysis("s", stamp, "failed")
+            assertEquals("함께 남긴 산책 기록", titles.first()["s"])
+            owner = "other"
+            assertTrue(reader.observeTitles(listOf("s")).first().isEmpty())
+            owner = "a"
+            val changed = async { titles.first { it.isEmpty() } }
+            dao.insertEntry(WalkEntryRow("new", "s", null, 0, "mutation", true))
+            assertTrue(changed.await().isEmpty())
+            assertNull(reader.observe(listOf(summary)).first().single().title)
+            assertTrue(reader.observeTitles(emptyList()).first().isEmpty())
+        }
+    }
+
     @Test fun `관측 중인 검토본 숨김 변경과 세션 삭제를 지도 목록에 반영한다`() = runBlocking {
         withTimeout(10000) {
             val data = reader.observe(listOf(summary))

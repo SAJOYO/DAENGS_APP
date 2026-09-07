@@ -49,7 +49,8 @@ data class DiaryScene(
     val entryId: String? = null,
 )
 
-data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String)
+data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
+    val title: String? = null)
 
 /** Read-only projection: never mutates saved text, hiding choices, or the reviewed snapshot. */
 fun diaryWalk(
@@ -77,7 +78,7 @@ fun diaryWalk(
             "산책 사진", "이날 남긴 사진", photo.point, "촬영할 때 저장한 위치", photo = photo)
     }
     return DiaryWalk(walk, scenes.sortedWith(compareBy<DiaryScene> { it.atMillis }.thenBy { it.id }),
-        analysis.notice)
+        analysis.notice, analysis.bundle?.takeIf { it.sessionId == walk.sessionId }?.title)
 }
 
 /** Same coordinate records share a marker; membership stays distinct and chronological. */

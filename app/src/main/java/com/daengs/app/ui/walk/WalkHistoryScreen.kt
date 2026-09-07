@@ -13,10 +13,14 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.pet.Pet
+import com.daengs.app.DaengsApp
+import com.daengs.app.walk.diary.WalkDiaryReader
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.*
 import kotlinx.coroutines.CancellationException
@@ -28,11 +32,17 @@ fun WalkHistoryScreen(
     modifier: Modifier = Modifier, onSync: (() -> Unit)? = null,
     pets: List<Pet> = emptyList(), photoOf: (String) -> ImageBitmap? = { null },
 ) {
+    val app = LocalContext.current.applicationContext as DaengsApp
+    val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
+        app.tokenStore.load()?.appUserId.orEmpty()
+    } }
     var dogId by rememberSaveable { mutableStateOf<String?>(null) }
     var cursors by rememberSaveable(dogId) { mutableStateOf(listOf("")) }
     var page by remember { mutableStateOf<WalkHistoryPage?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var retry by remember { mutableIntStateOf(0) }
+    val pageIds = page?.walks.orEmpty().map { it.sessionId }
+    val titles by remember(reader, pageIds) { reader.observeTitles(pageIds) }.collectAsState(initial = emptyMap())
     val position = cursors.last()
     val savedLists = rememberSaveableStateHolder()
     LaunchedEffect(history) { onSync?.invoke() }
@@ -71,7 +81,7 @@ fun WalkHistoryScreen(
                 WalkHistoryPageContent(page!!.walks, cursors.size, cursors.size > 1, page!!.next != null,
                     { cursors = cursors.dropLast(1) },
                     { page?.next?.let { cursors = cursors + it.encode() } }, onOpen, pets,
-                    Modifier.weight(1f))
+                    Modifier.weight(1f), titles)
             }
         }
     }
@@ -82,6 +92,7 @@ internal fun WalkHistoryPageContent(
     walks: List<WalkSummary>, pageNumber: Int, hasPrevious: Boolean, hasNext: Boolean,
     onPrevious: () -> Unit, onNext: () -> Unit, onOpen: (String) -> Unit,
     pets: List<Pet> = emptyList(), modifier: Modifier = Modifier,
+    titles: Map<String, String> = emptyMap(),
 ) {
     val scroll = rememberLazyListState()
     Column(modifier) {
@@ -95,7 +106,10 @@ internal fun WalkHistoryPageContent(
                         WalkRouteThumbnail(walk, Modifier.size(88.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("${formatWalkDay(walk.startedAtMillis)} 산책", fontWeight = FontWeight.SemiBold)
+                            Text(walkDiaryTitle(walk, titles[walk.sessionId]), fontWeight = FontWeight.SemiBold,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (titles[walk.sessionId] != null) Text(formatWalkDay(walk.startedAtMillis),
+                                style = MaterialTheme.typography.labelSmall, color = TextMuted)
                             val names = dogNames(walk.dogIds, pets)
                             if (names.isNotEmpty()) Text(names.joinToString(" · "), color = DaengPinkDeep,
                                 style = MaterialTheme.typography.labelSmall)
@@ -116,6 +130,9 @@ internal fun WalkHistoryPageContent(
         }
     }
 }
+
+internal fun walkDiaryTitle(walk: WalkSummary, title: String?): String =
+    title ?: "${formatWalkDay(walk.startedAtMillis)} 산책"
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 780)
 @Composable

@@ -94,7 +94,7 @@ internal fun WalkDiaryMapScreen(
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹ 목록") }
-            Text(detail?.summary?.let { "${formatWalkDay(it.startedAtMillis)} 산책" } ?: "산책 일기",
+            Text(detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
                 Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
             WalkColorSettingsButton()
         }
