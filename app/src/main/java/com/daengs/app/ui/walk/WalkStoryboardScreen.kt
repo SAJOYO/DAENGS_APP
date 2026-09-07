@@ -114,7 +114,7 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
             else scene
         }
     val notice = analysisView.notice
-    val snapshot = storyboardSnapshot(sessionId, scenes)
+    val snapshot = storyboardSnapshot(sessionId, scenes, bundle?.title)
     val unresolved = scenes.any { it.available && !it.hidden && it.needsReview }
     StoryboardContent(scenes, busy, error,
         reviewed = current.reviewed == snapshot && (owner.isEmpty() || analysisView.canReview),
@@ -126,7 +126,8 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         onOriginal = { scene -> original = entries.orEmpty().firstOrNull { "entry:${it.id}" == scene.id } },
         onReview = { save(current.copy(reviewed = snapshot)) }, connectionNotice = notice,
         onAnalyze = { analyze(refresh = analysisView.canReview) }, analyzing = analyzing,
-        selectionNotice = bundle?.selection?.description(), petNames = pets.associate { it.id to it.name })
+        selectionNotice = bundle?.selection?.description(), petNames = pets.associate { it.id to it.name },
+        diaryTitle = walkDiaryTitle(summary, bundle?.title))
     editing?.let { scene ->
         var title by remember(scene.id) { mutableStateOf(scene.title) }
         var body by remember(scene.id) { mutableStateOf(scene.body) }
@@ -184,12 +185,14 @@ internal fun StoryboardContent(
     analyzing: Boolean = false,
     selectionNotice: String? = null,
     petNames: Map<String, String> = emptyMap(),
+    diaryTitle: String? = null,
 ) {
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item {
             TextButton(enabled = !busy, onClick = onBack) { Text("← 산책 상세") }
             Text("스토리보드 검토", style = MaterialTheme.typography.headlineSmall)
+            diaryTitle?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
             Text("시간순 장면을 확인하고 일기에 남길 내용을 골라보세요.")
             Text(connectionNotice,
                 style = MaterialTheme.typography.bodySmall)

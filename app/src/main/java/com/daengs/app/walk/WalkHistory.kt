@@ -17,6 +17,31 @@ import kotlinx.coroutines.withContext
 class WalkHistory(private val log: WalkFixLog) {
     val changes get() = log.historyChanges
 
+    /** Fetch only a page plus one eligible lookahead. Skipped short sessions never create empty pages. */
+    suspend fun finishedPage(before: WalkHistoryCursor? = null, dogId: String? = null, size: Int = 5): WalkHistoryPage =
+        withContext(Dispatchers.IO) {
+            require(size in 1..30)
+            val owner = log.ownerId
+            val walks = mutableListOf<WalkSummary>()
+            var cursor = before
+            while (walks.size <= size) {
+                val candidates = log.finishedSessionsPage(cursor, dogId, size + 1)
+                if (candidates.isEmpty()) break
+                for (session in candidates) {
+                    val summary = summarize(session, log.fixes(session.id), maxRouteSamples = Int.MAX_VALUE)
+                    cursor = WalkHistoryCursor(session.startedAtMillis, session.id)
+                    if (summary.countsAsWalk || log.hasEntries(session.id)) walks += summary.forHistoryThumbnail()
+                    if (walks.size > size) break
+                }
+                if (candidates.size < size + 1) break
+            }
+            check(log.ownerId == owner) { "산책을 읽는 동안 계정이 변경됐어요." }
+            val visible = walks.take(size)
+            WalkHistoryPage(visible, if (walks.size > size) visible.last().let {
+                WalkHistoryCursor(it.startedAtMillis, it.sessionId)
+            } else null)
+        }
+
     /**
      * 끝난 산책, 최근 것부터.
      *
