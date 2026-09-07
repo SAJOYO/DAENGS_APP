@@ -294,6 +294,7 @@ private fun WalkGameOverlay(
                 .padding(start = if (landscape) 52.dp else 0.dp), shape = RoundedCornerShape(16.dp), color = CardWhite) {
                 Row {
                     if (summary == null) WalkMapModeButton(mapPurpose, onMapPurposeChange)
+                    WalkColorSettingsButton()
                     WalkRotateButton(layoutMode, onRequestOrientation)
                 }
             }
