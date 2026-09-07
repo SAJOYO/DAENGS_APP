@@ -341,7 +341,7 @@ class GaitModelsTest {
         assertEquals(900, ticket.expiresInSeconds)
     }
 
-    // ── 비교 응답: x·y 를 각각 한 줄로 (D-056) ────────────────────────────
+    // ── 비교 응답: x·y 를 각각 한 줄로 (D-058) ────────────────────────────
     @Test
     fun `관절 하나가 좌우 상하 두 줄이 된다`() {
         """서버는 관절마다 comparison_note{x,y} 를 준다. **합치지 않는다** — 합치면
