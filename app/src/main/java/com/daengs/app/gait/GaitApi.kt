@@ -427,6 +427,10 @@ data class GaitAnalyzed(
 ) {
     val settled: Boolean get() = GaitStatus.settled(status)
 
+    /** 화면 모델의 등급. `quality_status` 가 ok 가 아니면 tier 가 와도 null 이다. */
+    val tier: GaitQualityTier?
+        get() = GaitQualityTier.of(if (qualityOk) "ok" else "unavailable", qualityTier)
+
     /**
      * 영상 길이(초)의 근사. `sampledFrames / 5`.
      *
@@ -488,6 +492,14 @@ data class GaitSummary(
     val hasOverlay: Boolean,
     /** 필터 버전. 서로 다른 버전끼리 비교하면 저쪽이 경고를 붙인다. */
     val filterVersion: String?,
+    /** 저쪽 `quality_status` · `quality_tier`. 목록에도 온다 — 요약 문장이 이걸로 갈린다. */
+    val tier: GaitQualityTier?,
+    /**
+     * 저쪽 `note`. **지금은 제목 용도로 쓴다** — 처음 정한 제목을 `/analyze` 의 note 로
+     * 실어 보냈고, 여기로 돌아온다. 별도 메모 기능이 생기면 title/note 를 갈라야 한다
+     * ([GaitTitleStore] 머리말).
+     */
+    val note: String?,
 ) {
     companion object {
         fun parse(json: JSONObject): GaitSummary = GaitSummary(
@@ -497,6 +509,8 @@ data class GaitSummary(
             comparable = json.optBoolean("comparable", false),
             hasOverlay = json.optBoolean("has_overlay", false),
             filterVersion = json.optStringOrNull("gait_filter_version"),
+            tier = GaitQualityTier.of(json.optStringOrNull("quality_status"), json.optStringOrNull("quality_tier")),
+            note = json.optStringOrNull("note"),
         )
     }
 }
@@ -523,6 +537,10 @@ fun GaitSummary.toRecord(): GaitRecord = GaitRecord(
     video = null,
     thumbnail = null,
     comparable = comparable,
+    qualityTier = tier,
+    hasOverlay = hasOverlay,
+    // 서버 note = 처음 정한 제목. 로컬 수정본은 [GaitHolder] 가 그 위에 덮는다.
+    title = note,
 )
 
 

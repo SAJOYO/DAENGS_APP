@@ -315,14 +315,17 @@ private fun GaitPickRow(record: GaitRecord, selected: Boolean, enabled: Boolean,
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
+            // 제목 한 줄, 날짜·길이 한 줄. 제목이 없으면 "보행 기록" 이라 예전과 같은 모양이다.
             Text(
-                "${record.dateLabel} 보행 기록",
+                record.displayTitle,
                 color = if (enabled) TextDark else TextMuted,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
-                if (record.comparable) record.lengthLabel else "${record.lengthLabel} · 비교 지표 부족",
+                if (record.comparable) record.dateAndLength else "${record.dateAndLength} · 비교 지표 부족",
                 color = TextMuted,
                 fontSize = 12.sp,
             )

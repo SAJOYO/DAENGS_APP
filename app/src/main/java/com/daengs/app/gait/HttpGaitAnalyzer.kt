@@ -60,6 +60,7 @@ class HttpGaitAnalyzer(
     override suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
+        title: String?,
     ): Result<GaitRecord> = runCatching {
         val pet = petId() ?: error(
             "어느 강아지의 기록인지 몰라 올릴 수 없어요.\n강아지를 먼저 등록해 주세요.",
@@ -77,6 +78,9 @@ class HttpGaitAnalyzer(
             sourceFile = GaitApi.displayNameOf(context, video.uri),
             contentType = GaitApi.contentTypeOf(context, video.uri),
             capturedAt = date,
+            // 제목은 저쪽 `note` 로 간다 — 지금 서버에는 title 컬럼이 없다. 별도 메모가
+            // 생기면 갈라야 한다 ([GaitTitleStore] 머리말).
+            note = title,
         ).getOrThrow()
 
         // ② 업로드 — 티켓이 준 주소·헤더 그대로. 우리 토큰을 얹지 않는다.
@@ -114,6 +118,10 @@ class HttpGaitAnalyzer(
             // 화면이 영상 비율대로 자리를 잡는다. 저쪽 응답에 크기가 없어서
             // 기기에서 읽은 값이 유일한 근거다.
             aspect = video.aspect,
+            // 요약 문장이 등급으로 갈린다. 숫자(유효 프레임 등)는 여기서 버린다.
+            qualityTier = finished.tier,
+            hasOverlay = finished.hasOverlay,
+            title = title,
         )
     }
 

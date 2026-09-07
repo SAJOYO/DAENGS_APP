@@ -90,6 +90,7 @@ import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
+import com.daengs.app.gait.PreparedVideo
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
@@ -116,6 +117,7 @@ import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
 import com.daengs.app.ui.gait.GaitPairPickSheet
 import com.daengs.app.ui.gait.GaitPickSheet
+import com.daengs.app.ui.gait.GaitTitleDialog
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
 import com.daengs.app.ui.home.HomeDemoData
@@ -459,6 +461,12 @@ fun ChatScreen(
     /** AI 기능 선택 → 보행 "지난 기록 보기" 시트가 열려 있나. */
     var gaitHistoryOpen by remember { mutableStateOf(false) }
 
+    /**
+     * 읽어 둔 영상에 **제목을 묻는 중.** 촬영·업로드 둘 다 [runGait] 로 모이므로 이 하나로
+     * 두 경로가 같은 다이얼로그를 탄다. 다이얼로그가 닫히면 분석이 시작된다.
+     */
+    var gaitTitlePending by remember { mutableStateOf<PreparedVideo?>(null) }
+
     /** 나란히 보는 중. */
     var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
 
@@ -482,23 +490,30 @@ fun ChatScreen(
      * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
      * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
      */
+    val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
+        scope.launch {
+            entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
+            val slot = entries.size
+            entries += ChatEntry.GaitRunning(GaitProgress.START)
+            val record = gait.analyze(video, title) { entries[slot] = ChatEntry.GaitRunning(it) }
+            if (record == null) {
+                entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
+                gait.clearError()
+            } else {
+                entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                entries += ChatEntry.GaitDone(record.id)
+            }
+        }
+    }
+
+    // **촬영과 업로드가 여기서 만난다.** 영상을 먼저 읽어 보고(못 읽는 파일이면 제목을
+    // 물을 이유가 없다), 제목 다이얼로그를 띄운 뒤 분석을 시작한다 — 두 경로가 같은
+    // 다이얼로그를 타는 이유는 이 함수가 하나라서다. 제목은 서버 `note` 로 같이 올라간다.
     val runGait: (Uri) -> Unit = { uri ->
         scope.launch {
             GaitVideo.prepare(context, uri)
                 .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
-                .onSuccess { video ->
-                    entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
-                    val slot = entries.size
-                    entries += ChatEntry.GaitRunning(GaitProgress.START)
-                    val record = gait.analyze(video) { entries[slot] = ChatEntry.GaitRunning(it) }
-                    if (record == null) {
-                        entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
-                        gait.clearError()
-                    } else {
-                        entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
-                        entries += ChatEntry.GaitDone(record.id)
-                    }
-                }
+                .onSuccess { video -> gaitTitlePending = video }
         }
     }
 
@@ -1091,12 +1106,25 @@ fun ChatScreen(
                         it is ChatEntry.GaitDone && it.recordId == record.id
                     }
                     if (slot >= 0) {
-                        entries[slot] = ChatEntry.Note("${record.dateLabel} 보행 기록을 지웠어요.")
+                        entries[slot] = ChatEntry.Note("${record.dateLabel} 「${record.displayTitle}」 기록을 지웠어요.")
                     }
                 },
                 autoPlay = gaitDetailAutoPlay,
+                // 제목만 바뀐다. 날짜는 홀더가 손대지 않는다 (`GaitHolder.rename`).
+                onRename = { title -> gait.rename(record.id, title) },
             )
         } ?: run { gaitDetail = null }
+    }
+
+    // ── 기록 제목 묻기 — **촬영·업로드 공통** ───────────────────────────────
+    //
+    // 영상을 읽어 둔 뒤, 분석을 시작하기 전에 한 번 묻는다. 건너뛰거나 비워 두면 null 이
+    // 가고 화면이 "보행 기록" 을 그린다. 다이얼로그가 닫히는 순간 분석이 시작된다.
+    gaitTitlePending?.let { video ->
+        GaitTitleDialog(initial = null) { title ->
+            gaitTitlePending = null
+            startGaitAnalysis(video, title)
+        }
     }
 
     gaitPicking?.let { recentId ->

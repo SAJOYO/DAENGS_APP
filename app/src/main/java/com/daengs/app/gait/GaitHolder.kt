@@ -29,6 +29,11 @@ class GaitHolder(
      * **[MockGaitAnalyzer] 를 끼울 때는 부르지 않는다** — 아래 [remote] 가 먼저 막는다.
      */
     private val accessToken: suspend () -> String? = { null },
+    /**
+     * 고친 제목의 로컬 저장소. **서버에 수정 API 가 없어서** 여기 둔다 — 한계는
+     * [GaitTitleStore] 머리말. null 이면(테스트·프리뷰) 고친 제목이 메모리에만 산다.
+     */
+    private val titles: GaitTitleStore? = null,
 ) {
     /**
      * 서버에 같이 알릴 것인가.
@@ -61,11 +66,16 @@ class GaitHolder(
      * 영상 한 편을 분석하고 목록에 얹는다.
      *
      * @param onProgress 단계가 넘어갈 때마다 불린다. 화면이 진행 카드를 다시 그린다
+     * @param title 사용자가 정한 제목. 서버 `note` 로 같이 올라간다. null 이면 기본값
      * @return 만들어진 기록. 실패하면 null 이고 이유는 [error] 에 남는다
      */
-    suspend fun analyze(video: PreparedVideo, onProgress: (GaitProgress) -> Unit): GaitRecord? {
+    suspend fun analyze(
+        video: PreparedVideo,
+        title: String? = null,
+        onProgress: (GaitProgress) -> Unit,
+    ): GaitRecord? {
         error = null
-        return analyzer.analyze(video, onProgress)
+        return analyzer.analyze(video, onProgress, GaitTitleStore.normalize(title))
             .onSuccess { records = listOf(it) + records }
             .onFailure { error = it.message ?: "보행 영상을 분석하지 못했어요." }
             .getOrNull()
@@ -141,6 +151,11 @@ class GaitHolder(
             // 으로만 떴다 — 비교 화면에서 최근 기록만 길이가 있고 옆은 미상이었다.
             // 상세의 샘플 프레임 수(5fps)로 셈한다 ([GaitAnalyzed.approxSeconds]).
             seconds = record.seconds ?: detail.approxSeconds,
+            // 등급·오버레이 유무·권고도 상세가 더 정확하다. 목록에 없던 것은 여기서 채운다.
+            qualityTier = record.qualityTier ?: detail.tier,
+            hasOverlay = record.hasOverlay || detail.hasOverlay,
+            qualityReason = record.qualityReason ?: detail.reason,
+            qualityAdvice = record.qualityAdvice ?: detail.recommendation,
         )
     }
 
@@ -184,6 +199,7 @@ class GaitHolder(
     suspend fun remove(id: String) {
         val before = records
         records = records.filterNot { it.id == id }
+        titles?.remove(id)
         if (!remote || id.startsWith(SAMPLE_PREFIX)) return
         val token = accessToken()
         if (token == null) {
@@ -198,6 +214,19 @@ class GaitHolder(
     }
 
     /**
+     * 제목을 고친다. 상세 화면의 ✎ 가 부른다.
+     *
+     * **날짜는 손대지 않는다** — 제목과 날짜는 다른 필드이고 여기서는 `title` 만 복사한다.
+     * 빈 값이면 제목을 지운다(기본값으로 돌아간다). 서버에는 안 간다 — 수정 API 가
+     * 없어서 [GaitTitleStore] 에만 남고, 그 한계는 거기 적혀 있다.
+     */
+    fun rename(id: String, title: String?) {
+        val value = GaitTitleStore.normalize(title)
+        titles?.set(id, value)
+        records = records.map { if (it.id == id) it.copy(title = value) else it }
+    }
+
+    /**
      * 서버에서 이 강아지의 기록을 받아 온다.
      *
      * **실패해도 화면을 비우지 않는다.** 목록이 통째로 사라지면 사용자는 기록이
@@ -209,7 +238,15 @@ class GaitHolder(
         if (!remote) return
         val token = accessToken() ?: return  // 로그인 전이면 조용히 둔다 — 화면이 아직 뜨는 중이다
         GaitApi.records(token, petId)
-            .onSuccess { page -> records = page.records.reversed().map { it.toRecord() } }
+            .onSuccess { page ->
+                // 제목은 **로컬 수정본 → 서버 note → 기본값** 순이다. 서버에 수정 API 가
+                // 없어 고친 제목은 기기에만 있다 ([GaitTitleStore]). 옛 기록은 note 도
+                // 없어 title 이 null 이고, 화면이 "보행 기록" 을 그린다 — 마이그레이션 없음.
+                records = page.records.reversed().map { summary ->
+                    val record = summary.toRecord()
+                    titles?.get(record.id)?.let { record.copy(title = it) } ?: record
+                }
+            }
             .onFailure { error = it.message ?: "기록을 받아오지 못했어요." }
     }
 
@@ -249,6 +286,7 @@ fun rememberGaitHolder(
                 MockGaitAnalyzer()
             },
             accessToken = { token() },
+            titles = GaitTitleStore(context.applicationContext),
         )
     }
 }

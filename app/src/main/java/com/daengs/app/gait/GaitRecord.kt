@@ -62,7 +62,32 @@ data class GaitRecord(
      * 그때 가로로 가정하면 세로 영상이 좌우로 텅 빈 채 눕는다 — 실제로 그랬다.
      */
     val aspect: Float? = null,
+    /**
+     * 저쪽 `quality_tier` (good / ok / low). **`null` 이면 분석 불가(unavailable)이거나
+     * 서버가 없는 표본**이다 — 둘은 [comparable] 로 가른다. 목록·상세 둘 다에 온다.
+     */
+    val qualityTier: GaitQualityTier? = null,
+    /**
+     * 저쪽에 스켈레톤 영상이 **있나** (`has_overlay`). 받을 주소([overlay])는 상세에만 오므로,
+     * 목록에서 온 기록은 "있는데 아직 주소를 못 받은" 동안이 있다 — 그때 요약이
+     * "재생 안 됨" 이라고 잘못 말하지 않게 이 값을 본다.
+     */
+    val hasOverlay: Boolean = false,
+    /**
+     * 사용자가 정한 제목. `null` 이면 기본값([displayTitle]).
+     *
+     * 출처가 둘이다 — 처음 정한 것은 서버 `note`(목록 응답)로 오고, 나중에 고친 것은
+     * [GaitTitleStore](로컬)가 덮어쓴다. **날짜와는 독립**이다: 제목을 고쳐도 [date] 는
+     * 그대로다. 날짜를 제목 문자열에 섞어 저장하지 않는다.
+     */
+    val title: String? = null,
 ) {
+    /** 화면에 그릴 제목. 제목이 없으면 [DEFAULT_TITLE]. 날짜는 여기 안 섞는다. */
+    val displayTitle: String get() = title?.ifBlank { null } ?: DEFAULT_TITLE
+
+    /** `09.07 · 24초`. 길이를 모르면 날짜만 — "· 길이 미상" 을 굳이 붙이지 않는다. */
+    val dateAndLength: String get() = seconds?.let { "$dateLabel · ${it}초" } ?: dateLabel
+
     /**
      * 틀 영상이 하나라도 있나. 서버 오버레이(지난 기록의 유일한 재생본)든 기기 원본이든.
      * 재생기·비교 화면이 "재생할 게 있나" 를 이 하나로 판단한다 — [overlay] 우선은
@@ -132,7 +157,33 @@ data class GaitRecord(
         /** 제일 납작하게 허용하는 비 (16:9). */
         const val MAX_ASPECT = 16f / 9f
 
+        /** 제목을 안 정했을 때. 저장하지 않고 **그릴 때만** 쓴다 — 기본값을 저장해 두면 나중에 문구를 바꿀 수 없다. */
+        const val DEFAULT_TITLE = "보행 기록"
+
         private val DAY = DateTimeFormatter.ofPattern("MM.dd")
+    }
+}
+
+/**
+ * 저쪽 `quality_tier`. 서버 `quality.py` 가 유효 프레임 구간으로 매긴다(§21) —
+ * good / ok / low 셋이고, `status: unavailable` 이면 tier 자체가 없다.
+ *
+ * **숫자는 안 가져온다.** 사용자에게 "유효 프레임 105" 를 보여 줄 일이 없다 — 등급이
+ * 사용자 문장([GaitRecord.summaryLines])으로 바뀌는 자리가 여기 하나면 된다.
+ */
+enum class GaitQualityTier(val server: String) {
+    Good("good"),
+    Ok("ok"),
+    Low("low"),
+    ;
+
+    companion object {
+        /**
+         * 서버 값에서. `status` 가 ok 가 아니면 tier 가 와도 무시한다 — unavailable 인
+         * 기록에 "충분히 확인된" 이 붙으면 안 된다. 모르는 문자열은 null.
+         */
+        fun of(status: String?, tier: String?): GaitQualityTier? =
+            if (status != "ok") null else entries.firstOrNull { it.server == tier }
     }
 }
 
@@ -192,44 +243,49 @@ data class GaitComparison(
 }
 
 /**
- * 상세 화면 요약에 올릴 줄들. **화면이 아니라 여기서 만든다.**
+ * 상세 화면 요약에 올릴 줄들 — **최대 셋**. 화면이 아니라 여기서 만든다.
  *
- * Composable 안에 두면 테스트가 못 들어와서, "1분짜리에 짧다고 하지 않는다" 같은
- * 규칙을 사람이 눈으로만 지켜야 한다. 실제로 그렇게 뚫렸다 — `comparable` 의 뜻이
- * 길이에서 서버 판정으로 바뀌었는데 문장은 옛 뜻에 남아 있었고, 빌드도 테스트도
- * 통과했다. 순수 함수로 내려두면 그 규칙이 빨간 줄로 잡힌다.
+ * Composable 안에 두면 테스트가 못 들어와서, 문구 규칙을 사람이 눈으로만 지켜야 한다.
+ * 실제로 그렇게 뚫렸다 — `comparable` 의 뜻이 길이에서 서버 판정으로 바뀌었는데 문장은
+ * 옛 뜻에 남아 있었고, 빌드도 테스트도 통과했다. 순수 함수로 내려두면 빨간 줄로 잡힌다.
+ *
+ * ### 무엇을 말하고 무엇을 말하지 않나
+ *
+ * 이 화면은 **영상 한 편을 보는 자리**다. 요약이 할 일은 "이 영상이 분석에 어느 정도
+ * 쓸 만했나" 를 사용자 말로 짧게 하는 것뿐이다. 그래서
+ *
+ *  1. `09.07 · 24초` — 날짜와 길이. 길이를 모르면 날짜만
+ *  2. 등급 한 줄 — [GaitQualityTier] 를 문장으로. 숫자(유효 프레임·검출률·conf)는 안 나간다
+ *  3. 다음 행동 또는 재생 안내 — 분석 불가면 저쪽 `recommendation`(다시 찍는 요령)이
+ *     우선이고, 그게 없거나 분석이 됐으면 오버레이를 볼 수 있는지
+ *
+ * 예전에 있던 "지난 기록과 나란히 볼 수 있어요" · "표본이라 파일이 없어요" · 권장 길이는
+ * 뺐다. 기능 설명이지 이 영상에 대한 말이 아니었다. 모델명·플래그·feature·진단 표현은
+ * 애초에 이 모델에 자리가 없다.
  */
 fun GaitRecord.summaryLines(): List<String> = buildList {
-    add("$dateLabel · $lengthLabel 영상")
+    add(dateAndLength)
 
-    if (comparable) {
-        add("지난 기록과 나란히 볼 수 있어요.")
-    } else {
-        // 저쪽이 준 사유·권고를 그대로 옮긴다. 둘 다 사용자에게 보여 줄 말로
-        // 써 준 문장이라 앱에서 고쳐 쓰지 않는다.
-        qualityReason?.let(::add)
-        qualityAdvice?.let(::add)
-        // 사유가 아예 없을 때만 앱이 한 줄 말한다. **원인을 짚지 않는다** —
-        // 모르는 것을 "짧아서" 로 메우면 1분짜리에도 그 말이 붙는다.
-        if (qualityReason == null && qualityAdvice == null) {
-            add("이 영상에서는 나란히 볼 관절 지표를 뽑지 못했어요.")
-        }
-    }
+    // 서버가 없는 표본·옛 기록은 tier 가 없다. comparable 이면 "확인할 수 있는" 으로,
+    // 아니면 분석 불가로 본다 — 모르는 것을 "충분히" 로 올려 말하지 않는다.
+    val tier = qualityTier ?: if (comparable) GaitQualityTier.Ok else null
+    add(
+        when (tier) {
+            GaitQualityTier.Good -> "관절 움직임이 충분히 확인된 영상이에요."
+            GaitQualityTier.Ok -> "관절 움직임을 확인할 수 있는 영상이에요."
+            GaitQualityTier.Low -> "확인된 보행 장면이 적어 결과는 참고용으로 봐주세요."
+            null -> "분석 가능한 보행 장면이 충분하지 않았어요."
+        },
+    )
 
-    // 길이는 **앱이 직접 잰 경우에만** 말한다. 서버 목록에서 온 기록은 길이가
-    // 안 담겨 와서 모른다. 그리고 이건 사유가 아니라 다음에 더 잘 찍는 요령이다.
-    seconds?.let { secs ->
-        if (secs < GaitRecord.RECOMMENDED_SECONDS) {
-            add(
-                "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담겨야 해요. " +
-                    "${GaitRecord.RECOMMENDED_SECONDS}초 내외로 찍으면 돼요.",
-            )
-        }
-    }
-
-    if (video == null) {
-        // 표본 기록임을 숨기지 않는다. 재생을 눌렀는데 아무 일도 안 나면
-        // 앱이 고장 난 것으로 읽힌다.
-        add("이 기록은 화면 확인용 표본이라 재생할 영상 파일이 없어요.")
+    // 분석 불가면 저쪽 권고가 유일한 행동 지침이라 재생 안내보다 앞선다.
+    val advice = if (tier == null) qualityAdvice?.ifBlank { null } else null
+    when {
+        advice != null -> add(advice)
+        overlay != null -> add("분석 영상에서 관절 위치를 직접 확인할 수 있어요.")
+        // 저쪽에 있다는데 주소를 아직 못 받았다 — 상세를 열면 곧 채워진다. 그 사이에
+        // "지원되지 않아요" 라고 했다가 바뀌면 화면이 말을 바꾼 것으로 읽힌다.
+        hasOverlay -> Unit
+        else -> add("이 기록은 분석 영상 재생이 지원되지 않아요.")
     }
 }

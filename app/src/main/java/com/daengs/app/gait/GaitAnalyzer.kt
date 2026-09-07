@@ -20,9 +20,14 @@ interface GaitAnalyzer {
     /**
      * @param video 고르거나 찍은 영상
      * @param onStage 한 단계가 끝날 때마다 불린다. 화면이 이걸로 진행 카드를 다시 그린다
+     * @param title 사용자가 정한 제목. null 이면 정하지 않은 것 — 기본값은 화면이 그린다
      * @return 대화에 남을 기록
      */
-    suspend fun analyze(video: PreparedVideo, onStage: (GaitProgress) -> Unit): Result<GaitRecord>
+    suspend fun analyze(
+        video: PreparedVideo,
+        onStage: (GaitProgress) -> Unit,
+        title: String? = null,
+    ): Result<GaitRecord>
 }
 
 /**
@@ -44,6 +49,7 @@ class MockGaitAnalyzer(
     override suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
+        title: String?,
     ): Result<GaitRecord> = runCatching {
         var progress = GaitProgress.START
         onStage(progress)
@@ -54,12 +60,14 @@ class MockGaitAnalyzer(
         }
         GaitRecord(
             id = "gait-${System.currentTimeMillis()}",
+            // **기록을 만든 날**이다. 영상 파일의 날짜가 아니다 — 서버 구현도 같다.
             date = today(),
             seconds = video.seconds,
             video = video.uri,
             thumbnail = video.thumbnail,
             comparable = video.seconds >= GaitRecord.RECOMMENDED_SECONDS,
             aspect = video.aspect,
+            title = title,
         )
     }
 }

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daengs.app.gait.GaitQualityTier
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.summaryLines
 import com.daengs.app.gait.GaitStage
@@ -84,6 +85,12 @@ fun GaitDetailScreen(
      * 경우는 상세를 읽으러 온 것이라 그대로 멈춰 둔다.
      */
     autoPlay: Boolean = false,
+    /**
+     * 제목을 고쳤다. 정리된 제목(빈 값이면 null)이 온다. **날짜는 건드리지 않는다** —
+     * 제목과 날짜는 다른 필드다. 서버에 수정 API 가 없어 지금은 기기 안에만 남는다
+     * ([com.daengs.app.gait.GaitTitleStore]).
+     */
+    onRename: (String?) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
 
@@ -91,13 +98,29 @@ fun GaitDetailScreen(
     // 사라지면 되돌릴 길이 없다.
     var confirming by remember { mutableStateOf(false) }
 
+    // 제목 고치는 중. 촬영·업로드 때와 같은 다이얼로그를 초기값만 넣어 연다.
+    var editingTitle by remember { mutableStateOf(false) }
+    if (editingTitle) {
+        GaitTitleDialog(initial = record.title) { title ->
+            editingTitle = false
+            if (title != record.title) onRename(title)
+        }
+    }
+
     Column(
         modifier
             .fillMaxSize()
             .background(CreamBg)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
     ) {
-        GaitTopBar("${record.dateLabel} 보행 기록", onBack)
+        // 제목 옆의 ✎ 가 수정 자리다. 날짜는 제목에 안 섞고 아래 줄에 따로 둔다 —
+        // "09.07 보행 기록" 처럼 합쳐 두면 제목을 고칠 때 날짜가 같이 움직이는 것처럼 보인다.
+        GaitTopBar(record.displayTitle, onBack) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(50)).clickable { editingTitle = true },
+                contentAlignment = Alignment.Center,
+            ) { Text("✎", color = DaengPinkDeep, fontSize = 18.sp) }
+        }
 
         Column(
             Modifier
@@ -107,6 +130,12 @@ fun GaitDetailScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            Text(
+                record.dateAndLength,
+                color = TextMuted,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = 4.dp),
+            )
             // 상세는 **영상을 보러 오는 화면**이라 표지가 아니라 재생기를 놓는다.
             // 컨트롤을 켜서 되감기·일시정지를 손으로 할 수 있게 한다 — 걸음 한
             // 주기를 다시 보려면 되감기가 있어야 한다.
@@ -288,7 +317,13 @@ private fun DeleteAction(
 private fun GaitDetailScreenPreview() {
     DaengsTheme {
         GaitDetailScreen(
-            record = GaitRecord("p", LocalDate.of(2026, 8, 31), seconds = 12),
+            record = GaitRecord(
+                "p",
+                LocalDate.of(2026, 8, 31),
+                seconds = 24,
+                title = "저녁 산책",
+                qualityTier = GaitQualityTier.Good,
+            ),
             canCompare = true,
             onBack = {},
             onCompare = {},

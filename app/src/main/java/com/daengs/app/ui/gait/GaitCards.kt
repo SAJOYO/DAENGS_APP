@@ -248,13 +248,20 @@ fun GaitResultCard(
 ) {
     GaitCard(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${record.dateLabel} 보행 기록",
-                color = TextDark,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.weight(1f))
+            // 제목과 날짜를 따로 그린다. 합쳐 두면 제목을 고칠 때 날짜가 같이 움직이는
+            // 것처럼 보이고, 저장할 때도 합친 문자열을 남기게 된다.
+            Column(Modifier.weight(1f)) {
+                Text(
+                    record.displayTitle,
+                    color = TextDark,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(record.dateAndLength, color = TextMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(8.dp))
             GaitBadge(record)
         }
         // **영상 비율을 따른다.** 가로로 박아 두면 세로 영상이 좌우로 텅 빈 채

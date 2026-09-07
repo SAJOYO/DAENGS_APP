@@ -644,49 +644,78 @@ class GaitModelsTest {
     }
     // -- 상세 요약 문장 -------------------------------------------------------
     //
-    // 여기가 한 번 뚫린 자리다. comparable 의 뜻이 "10초 넘나" 에서 서버의
-    // quality.status 로 바뀌었는데 문장만 옛 뜻에 남아, **1분짜리 영상에도
-    // "10초보다 짧게 찍혀서" 가 떴다.** 빌드도 테스트도 그대로 통과했다.
+    // 최대 셋: 날짜·길이 / 등급 한 줄 / 권고 또는 재생 안내. 숫자·모델명·플래그·진단
+    // 표현은 안 나간다. 여기가 한 번 뚫린 자리라(옛 문장이 뜻이 바뀐 뒤에도 남았다)
+    // 문장을 테스트가 붙든다.
+
+    private fun tiered(tier: GaitQualityTier?, comparable: Boolean = tier != null) =
+        record("a", comparable = comparable, seconds = 24).copy(qualityTier = tier)
 
     @Test
-    fun `길이가 넉넉한데 비교 불가면 짧다는 말을 하지 않는다`() {
-        val lines = record("a", comparable = false, seconds = 62)
-            .copy(qualityReason = "걷는 구간이 충분히 잡히지 않았어요.")
-            .summaryLines()
-
-        assertTrue("서버 사유가 그대로 나와야 한다", lines.any { it.contains("걷는 구간") })
-        assertFalse("1분짜리에 짧다고 말하면 안 된다: $lines", lines.any { it.contains("짧") })
+    fun `요약 첫 줄은 날짜와 길이고 길이를 모르면 날짜만이다`() {
+        assertEquals("08.31 · 24초", tiered(GaitQualityTier.Good).summaryLines().first())
+        assertEquals("08.31", record("a", seconds = null).summaryLines().first())
+        assertFalse(record("a", seconds = null).summaryLines().any { it.contains("미상") })
     }
 
     @Test
-    fun `서버가 준 사유와 권고를 그대로 옮긴다`() {
-        val lines = record("a", comparable = false)
-            .copy(
-                qualityReason = "걷는 구간이 충분히 잡히지 않았어요.",
-                qualityAdvice = "쉬지 않고 걷는 장면으로 다시 찍어 주세요.",
-            )
-            .summaryLines()
-
-        assertTrue(lines.contains("걷는 구간이 충분히 잡히지 않았어요."))
-        assertTrue(lines.contains("쉬지 않고 걷는 장면으로 다시 찍어 주세요."))
+    fun `등급마다 정해진 한 줄이 둘째 줄이다`() {
+        assertEquals("관절 움직임이 충분히 확인된 영상이에요.", tiered(GaitQualityTier.Good).summaryLines()[1])
+        assertEquals("관절 움직임을 확인할 수 있는 영상이에요.", tiered(GaitQualityTier.Ok).summaryLines()[1])
+        assertEquals("확인된 보행 장면이 적어 결과는 참고용으로 봐주세요.", tiered(GaitQualityTier.Low).summaryLines()[1])
+        assertEquals("분석 가능한 보행 장면이 충분하지 않았어요.", tiered(null, comparable = false).summaryLines()[1])
+        // 등급 없이 comparable 인 옛 기록·표본은 "충분히" 로 올려 말하지 않는다.
+        assertEquals("관절 움직임을 확인할 수 있는 영상이에요.", tiered(null, comparable = true).summaryLines()[1])
     }
 
     @Test
-    fun `사유가 없으면 원인을 짚지 않고 사실만 말한다`() {
-        val lines = record("a", comparable = false, seconds = 62).summaryLines()
+    fun `분석 불가면 셋째 줄은 서버 권고가 먼저고 없을 때만 재생 안내다`() {
+        val advised = tiered(null, comparable = false)
+            .copy(qualityAdvice = "쉬지 않고 걷는 장면으로 다시 찍어 주세요.", overlay = Uri.parse("http://x/o.mp4"))
+        assertEquals("쉬지 않고 걷는 장면으로 다시 찍어 주세요.", advised.summaryLines()[2])
 
-        assertTrue(lines.any { it.contains("관절 지표를 뽑지 못했어요") })
-        assertFalse("원인을 지어내면 안 된다: $lines", lines.any { it.contains("짧") })
+        val noAdvice = tiered(null, comparable = false).copy(overlay = Uri.parse("http://x/o.mp4"))
+        assertEquals("분석 영상에서 관절 위치를 직접 확인할 수 있어요.", noAdvice.summaryLines()[2])
+
+        // 분석이 된 기록은 권고가 있어도 재생 안내다 — 권고는 분석 불가의 행동 지침이다.
+        val good = tiered(GaitQualityTier.Good).copy(qualityAdvice = "무시돼야 함", overlay = Uri.parse("http://x/o.mp4"))
+        assertEquals("분석 영상에서 관절 위치를 직접 확인할 수 있어요.", good.summaryLines()[2])
     }
 
     @Test
-    fun `앱이 직접 잰 길이가 권장보다 짧을 때만 길이 이야기를 한다`() {
-        val short = GaitRecord.RECOMMENDED_SECONDS - 1
-        val long = GaitRecord.RECOMMENDED_SECONDS + 1
-        assertTrue(record("a", seconds = short).summaryLines().any { it.contains("걷는 모습이") })
-        assertFalse(record("b", seconds = long).summaryLines().any { it.contains("걷는 모습이") })
-        // 서버 목록에서 온 기록은 길이를 모른다 — 모르면 아무 말도 안 한다.
-        assertFalse(record("c", seconds = null).summaryLines().any { it.contains("걷는 모습이") })
+    fun `오버레이가 없으면 지원되지 않는다고 하고 아직 못 받았으면 말을 아낀다`() {
+        assertEquals("이 기록은 분석 영상 재생이 지원되지 않아요.", tiered(GaitQualityTier.Ok).summaryLines()[2])
+        // 저쪽에 있다는데 주소를 아직 못 받았다 — 잠깐 "지원 안 됨" 이라고 했다가 바뀌면 안 된다.
+        val pending = tiered(GaitQualityTier.Ok).copy(hasOverlay = true)
+        assertEquals(2, pending.summaryLines().size)
+    }
+
+    @Test
+    fun `요약은 셋을 넘지 않고 숫자나 평가하는 말이 없다`() {
+        val samples = listOf(
+            tiered(GaitQualityTier.Good).copy(overlay = Uri.parse("http://x/o.mp4")),
+            tiered(GaitQualityTier.Low),
+            tiered(null, comparable = false).copy(qualityAdvice = "다시 찍어 주세요."),
+        )
+        val banned = listOf("프레임", "conf", "keypoint", "검출률", "표본", "정상", "이상", "진단", "질환", "위험")
+        samples.forEach { r ->
+            val lines = r.summaryLines()
+            assertTrue("셋을 넘었다: $lines", lines.size <= 3)
+            lines.drop(1).forEach { line ->
+                banned.forEach { assertFalse("'$it' 가 들어갔다: $line", line.contains(it)) }
+                assertFalse("숫자가 새면 안 된다: $line", line.any { ch -> ch.isDigit() })
+            }
+        }
+    }
+
+    @Test
+    fun `등급은 status 가 ok 일 때만 읽는다`() {
+        assertEquals(GaitQualityTier.Good, GaitQualityTier.of("ok", "good"))
+        assertEquals(GaitQualityTier.Low, GaitQualityTier.of("ok", "low"))
+        // unavailable 이면 tier 가 딸려 와도 없는 것이다.
+        assertEquals(null, GaitQualityTier.of("unavailable", "good"))
+        assertEquals(null, GaitQualityTier.of(null, "good"))
+        assertEquals(null, GaitQualityTier.of("ok", "???"))
     }
 
     @Test
@@ -694,6 +723,81 @@ class GaitModelsTest {
         val r = record("a", seconds = null)
         assertEquals("길이 미상", r.lengthLabel)
         assertEquals(null, r.clockLabel)
+    }
+
+    // -- 기록 제목 -------------------------------------------------------------
+    //
+    // 제목과 날짜는 다른 필드다. 제목을 고쳐도 날짜는 그대로여야 하고, 날짜는 파일이
+    // 아니라 **기록을 만든 날**이다. 서버에 수정 API 가 없어 고친 제목은 로컬에만 남는다.
+
+    @Test
+    fun `제목이 없으면 기본값을 그리고 저장하지는 않는다`() {
+        assertEquals("보행 기록", record("a").displayTitle)
+        assertEquals("보행 기록", record("a").copy(title = "  ").displayTitle)
+        assertEquals("저녁 산책", record("a").copy(title = "저녁 산책").displayTitle)
+        assertEquals(null, record("a").title)
+    }
+
+    @Test
+    fun `서버 note 가 제목이 된다`() {
+        val summary = GaitSummary.parse(
+            JSONObject(
+                """{"record_id":"r","status":"DONE","captured_at":"2026-09-07","comparable":true,
+                    "has_overlay":true,"quality_status":"ok","quality_tier":"good","note":"저녁 산책"}"""
+            ),
+        )
+        val r = summary.toRecord()
+        assertEquals("저녁 산책", r.title)
+        assertEquals(GaitQualityTier.Good, r.qualityTier)
+        assertTrue(r.hasOverlay)
+        assertEquals(LocalDate.of(2026, 9, 7), r.date)
+    }
+
+    @Test
+    fun `제목은 다듬고 스물 자에서 자르며 비면 없는 것이다`() {
+        assertEquals("저녁 산책", GaitTitleStore.normalize("  저녁 산책  "))
+        assertEquals(null, GaitTitleStore.normalize("   "))
+        assertEquals(null, GaitTitleStore.normalize(null))
+        assertEquals(20, GaitTitleStore.normalize("가".repeat(30))!!.length)
+    }
+
+    @Test
+    fun `제목을 고쳐도 날짜는 그대로다`() = runTest {
+        val holder = GaitHolder(initial = listOf(record("a"), record("b")))
+        val before = holder.find("a")!!.date
+        holder.rename("a", "저녁 산책")
+        assertEquals("저녁 산책", holder.find("a")!!.title)
+        assertEquals(before, holder.find("a")!!.date)
+        // 비우면 기본값으로 돌아간다.
+        holder.rename("a", "")
+        assertEquals(null, holder.find("a")!!.title)
+        assertEquals(before, holder.find("a")!!.date)
+        // 옆 기록은 건드리지 않는다.
+        assertEquals(null, holder.find("b")!!.title)
+    }
+
+    @Test
+    fun `기록 날짜는 영상 파일이 아니라 기록을 만든 날이다`() = runTest {
+        val created = LocalDate.of(2026, 9, 7)
+        val holder = GaitHolder(
+            analyzer = MockGaitAnalyzer(stepMillis = 0L, today = { created }),
+            initial = emptyList(),
+        )
+        val made = holder.analyze(PreparedVideo(Uri.EMPTY, seconds = 24, thumbnail = null), "저녁 산책") {}
+        assertEquals(created, requireNotNull(made).date)
+        assertEquals("저녁 산책", made.title)
+    }
+
+    @Test
+    fun `로컬 제목 저장소는 넣고 읽고 지운다`() {
+        val store = GaitTitleStore(androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>())
+        store.set("r1", "  아침 산책 ")
+        assertEquals("아침 산책", store.get("r1"))
+        store.set("r1", "")
+        assertEquals(null, store.get("r1"))
+        store.set("r2", "x")
+        store.remove("r2")
+        assertEquals(null, store.get("r2"))
     }
     // -- 영상 자리 비율 -------------------------------------------------------
     //
