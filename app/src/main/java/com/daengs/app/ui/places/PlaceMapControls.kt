@@ -39,7 +39,7 @@ internal fun PlaceMapControls(canSearchMap: Boolean, onMapSearch: () -> Unit, on
             Text("이 주변 검색", fontSize = 13.sp)
         }
         Surface(onClick = onDeviceSearch, shape = RoundedCornerShape(24.dp), shadowElevation = 4.dp,
-            color = DaengsColors.Surface, modifier = Modifier.align(Alignment.BottomEnd).padding(start = 12.dp, end = 12.dp, bottom = 40.dp)) {
+            color = DaengsColors.Surface, modifier = Modifier.align(Alignment.BottomEnd).padding(start = 16.dp, end = 16.dp, bottom = 40.dp)) {
             Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 NearbyLocationIcon(Modifier.size(22.dp))

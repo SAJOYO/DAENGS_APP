@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.places.PlaceSearchStyle
 
 @Composable
 internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
@@ -30,7 +31,7 @@ internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
             BackSearchIcon(Modifier.size(22.dp))
         }
         Surface(Modifier.weight(1f).height(48.dp).testTag("place-search-field"), shape = shape,
-            color = DaengsColors.Surface, border = BorderStroke(1.dp, DaengsColors.BorderNeutral)) {
+            color = DaengsColors.Surface, border = BorderStroke(1.dp, PlaceSearchStyle.Border)) {
             BasicTextField(value = draft, onValueChange = onEdit, singleLine = true,
                 textStyle = TextStyle(fontSize = 14.sp, color = DaengsColors.TextPrimary),
                 cursorBrush = SolidColor(DaengsColors.BrandPrimary),
@@ -44,18 +45,18 @@ internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
                             input()
                         }
                         IconButton(onClick = onSubmit, modifier = Modifier.size(48.dp).semantics { contentDescription = "검색 실행" }) {
-                            SearchActionIcon(Modifier.size(21.dp))
+                            SearchActionIcon(Modifier.size(22.dp))
                         }
                     }
                 })
         }
         OutlinedButton(onClick = onAi, shape = shape, contentPadding = PaddingValues(0.dp),
-            colors = ButtonDefaults.outlinedButtonColors(containerColor = if (ai) DaengsColors.BrandPrimarySoft else DaengsColors.SurfaceMuted),
-            border = BorderStroke(1.dp, if (ai) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral),
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = if (ai) DaengsColors.BrandPrimarySoft else DaengsColors.Surface),
+            border = BorderStroke(1.dp, if (ai) DaengsColors.BrandPrimary else PlaceSearchStyle.Border),
             modifier = Modifier.size(48.dp).semantics {
                 contentDescription = "AI 조건 검색 전환"
                 stateDescription = if (ai) "켜짐" else "꺼짐"
-            }) { RobotSearchIcon(Modifier.size(24.dp), active = ai) }
+            }) { RobotSearchIcon(Modifier.size(22.dp), active = ai) }
     }
 }
 

@@ -1,6 +1,7 @@
 package com.daengs.app.ui.places.lab
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,6 +18,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,6 +28,7 @@ import com.daengs.app.map.features.places.toCardPresentation
 import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.places.PlaceSearchStyle
 import kotlinx.serialization.json.*
 
 /** 상태와 이벤트만 받아 Preview·fixture·향후 실제 API에서 같은 화면을 사용한다. */
@@ -54,7 +57,7 @@ fun PlaceSearchLabScreen(
     var filters by remember { mutableStateOf(false) }
     val kinds = remember { listOf<PlaceKind?>(null, PlaceKind.CAFE, PlaceKind.RESTAURANT) + PlaceKind.entries.filter { it != PlaceKind.CAFE && it != PlaceKind.RESTAURANT } }
     Column(Modifier.fillMaxSize().background(DaengsColors.AppBackground).safeDrawingPadding()) {
-        Column(Modifier.fillMaxWidth().background(DaengsColors.Surface).padding(12.dp)) {
+        Column(Modifier.fillMaxWidth().background(DaengsColors.Surface).padding(horizontal = 16.dp, vertical = 12.dp)) {
             PlaceSearchHeader(state.draft,
                 if (state.aiMode) "원하는 동반 조건" else if (live) "장소명 검색" else "장소명·주소 검색",
                 state.aiMode, onEdit, onSubmit, onAi, onBack)
@@ -78,13 +81,15 @@ fun PlaceSearchLabScreen(
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            conditionContent?.invoke()
+            if (conditionContent != null) {
+                Spacer(Modifier.height(8.dp))
+                conditionContent()
+            }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             map()
             PlaceFloatingNotices(listOfNotNull(state.notice, state.profileMessage.takeIf { live }).distinct(),
-                Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 52.dp))
+                Modifier.align(Alignment.TopCenter).padding(start = 16.dp, end = 16.dp, top = 52.dp))
         }
         Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.Surface) {
             Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).padding(vertical = 10.dp)) {
@@ -94,16 +99,21 @@ fun PlaceSearchLabScreen(
                     Text("$resultLabel $count", modifier = Modifier.weight(1f), fontSize = 13.sp)
                     searchOriginLabel?.let { Text(it, fontSize = 10.sp, color = DaengsColors.TextSecondary) }
                 }
-                Row(Modifier.fillMaxWidth().semantics { contentDescription = "검색 조건" }, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { profiles = true; if (live) onRefreshProfiles() }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 2.dp)) {
-                        Text(state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
-                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    TextButton(onClick = { filters = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("반경 ${state.applied.radiusMeters / 1000}km ▾", fontSize = 12.sp) }
-                    TextButton(onClick = { onParking(!state.applied.parkingFirst) }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.semantics {
-                        stateDescription = if (state.applied.parkingFirst) "켜짐" else "꺼짐"
-                    }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 12.sp) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).semantics { contentDescription = "검색 조건" },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PlaceConditionChip(
+                        label = state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
+                        selected = state.selectedDogIds.isNotEmpty(),
+                        onClick = { profiles = true; if (live) onRefreshProfiles() },
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    PlaceConditionChip("반경 ${state.applied.radiusMeters / 1000}km ▾", false, { filters = true })
+                    PlaceConditionChip("주차 우선", state.applied.parkingFirst,
+                        { onParking(!state.applied.parkingFirst) }, Modifier.semantics {
+                            stateDescription = if (state.applied.parkingFirst) "켜짐" else "꺼짐"
+                        })
                 }
+                Spacer(Modifier.height(4.dp))
 
                 Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
                     if (state.truncated) Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(horizontal = 16.dp), fontSize = 10.sp)
@@ -180,12 +190,17 @@ fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, o
     val allowed = if (access?.dogOk == false) false else access?.allowed
     val registration = when (allowed) { true -> "동반 가능 등록"; false -> "동반 불가 등록"; null -> "동반 여부 확인 필요" }
     val mark = when (allowed) { true -> "✓"; false -> "×"; null -> "?" }
-    Surface(modifier = Modifier.width(292.dp), shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral)) {
-        Column(Modifier.padding(14.dp)) {
+    Surface(modifier = Modifier.width(292.dp), color = DaengsColors.Surface, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, if (selected) DaengsColors.BrandPrimary else PlaceSearchStyle.Border)) {
+        Column(Modifier.padding(12.dp)) {
             Column(Modifier.fillMaxWidth().clickable(onClick = onToggle).semantics { stateDescription = if (expanded) "펼침" else "접힘" }) {
-                Row { Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp); Text(if (expanded) "⌃" else "⌄") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (expanded) "⌃" else "⌄", color = DaengsColors.TextSecondary)
+                }
+                Spacer(Modifier.height(4.dp))
                 Text(presentation.meta, color = DaengsColors.TextSecondary, fontSize = 12.sp)
-                Text(if (expanded) "🐾$mark $registration" else "🐾$mark", Modifier.padding(top = 8.dp).semantics { contentDescription = registration }, fontSize = 14.sp)
+                Text("$mark $registration", Modifier.padding(top = 6.dp).semantics { contentDescription = registration },
+                    color = DaengsColors.TextPrimary, fontSize = 12.sp)
             }
             if (expanded) {
                 HorizontalDivider(Modifier.padding(vertical = 12.dp))
@@ -222,6 +237,33 @@ fun PlaceDrawerCard(hit: PlaceSearchHit, expanded: Boolean, selected: Boolean, o
                 TextButton(onClick = { onAction("길찾기는 실제 앱 연결 단계에서 확인합니다.") }) { Text("길찾기") }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlaceConditionChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FilterChip(selected = selected, onClick = onClick, modifier = modifier,
+        label = { Text(label, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, if (selected) DaengsColors.BrandPrimary else PlaceSearchStyle.Border),
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = DaengsColors.Surface,
+            labelColor = DaengsColors.TextPrimary,
+            selectedContainerColor = DaengsColors.BrandPrimarySoft,
+            selectedLabelColor = DaengsColors.TextPrimary,
+        ),
+    )
+}
+
+@Preview(showBackground = true, widthDp = 320)
+@Composable
+private fun PlaceConditionsPreview() {
+    DaengsTheme {
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PlaceConditionChip("반려견 선택 ▾", false, {}, Modifier.weight(1f, fill = false))
+            PlaceConditionChip("반경 3km ▾", false, {})
+            PlaceConditionChip("주차 우선", true, {})
         }
     }
 }

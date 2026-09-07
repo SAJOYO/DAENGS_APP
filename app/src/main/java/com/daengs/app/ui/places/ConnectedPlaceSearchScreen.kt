@@ -125,7 +125,7 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
         resultLabel = if (ai) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
         aiConnected = true,
-        conditionContent = { FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) },
+        conditionContent = if (state.facility.enabled) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
         emptyMessage = if (ai && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
         onParking = { value ->
             if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)

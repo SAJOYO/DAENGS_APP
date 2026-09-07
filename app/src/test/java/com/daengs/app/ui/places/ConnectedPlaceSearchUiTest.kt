@@ -15,6 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -24,6 +25,7 @@ class ConnectedPlaceSearchUiTest {
         discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE)))
 
     @Config(qualifiers = "w320dp-h844dp")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
     @Test fun compactHeaderAndMapControlsKeepNavigationSeparateFromSearching() {
         var backs = 0
         val actions = mutableListOf<PlacesAction>()
@@ -40,6 +42,15 @@ class ConnectedPlaceSearchUiTest {
         val conditions = compose.onNodeWithText("반려견 선택 ▾").fetchSemanticsNode().boundsInRoot
         assertTrue(conditions.top > category.bottom)
         compose.onAllNodesWithText("주차 우선").assertCountEquals(1)
+        compose.onNodeWithText("주차 우선").assertIsNotSelected()
+        val grid = compose.onNodeWithTag("place-purpose-grid").fetchSemanticsNode().boundsInRoot
+        val radius = compose.onNodeWithText("반경 3km ▾").fetchSemanticsNode().boundsInRoot
+        val parking = compose.onNodeWithText("주차 우선").fetchSemanticsNode().boundsInRoot
+        assertEquals(grid.left, conditions.left, 1f)
+        assertEquals(conditions.top, radius.top, 1f)
+        assertEquals(radius.top, parking.top, 1f)
+        assertEquals(radius.left - conditions.right, parking.left - radius.right, 1f)
+        assertTrue(parking.right <= grid.right)
     }
     @Test fun failedGpsOffersRetryInsteadOfEmptyResults() {
         val state = ready().copy(

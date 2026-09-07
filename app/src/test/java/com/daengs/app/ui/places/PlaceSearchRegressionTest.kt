@@ -49,10 +49,10 @@ class PlaceSearchRegressionTest {
             petAccess = original.place.facts.petAccess!!.copy(allowed = true, dogOk = false))))
         val expanded = mutableStateOf(false)
         compose.setContent { DaengsTheme { PlaceDrawerCard(hit, expanded.value, false, { expanded.value = !expanded.value }) } }
-        compose.onNodeWithText("🐾×").assertExists()
+        compose.onNodeWithText("× 동반 불가 등록").assertExists()
         compose.onNodeWithContentDescription("동반 불가 등록").assertExists()
-        compose.onNodeWithText("🐾✓").assertDoesNotExist()
+        compose.onNodeWithText("✓ 동반 가능 등록").assertDoesNotExist()
         compose.onNodeWithContentDescription("동반 불가 등록").performClick()
-        compose.onNodeWithText("🐾× 동반 불가 등록").assertExists()
+        compose.onNodeWithText("× 동반 불가 등록").assertExists()
     }
 }

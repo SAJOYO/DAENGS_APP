@@ -22,15 +22,15 @@ internal fun RobotSearchIcon(modifier: Modifier, active: Boolean) {
     val eyes = if (active) DaengsColors.BrandPrimary else tint
     Canvas(modifier) {
         scale(size.minDimension / 24f, pivot = Offset.Zero) {
-            val stroke = Stroke(1.6f, cap = StrokeCap.Round)
+            val stroke = Stroke(1.8f, cap = StrokeCap.Round)
             drawRoundRect(tint, Offset(4f, 7f), Size(16f, 13f), CornerRadius(4f), style = stroke)
-            drawLine(tint, Offset(12f, 7f), Offset(12f, 4f), 1.6f, StrokeCap.Round)
+            drawLine(tint, Offset(12f, 7f), Offset(12f, 4f), 1.8f, StrokeCap.Round)
             drawCircle(tint, 1.2f, Offset(12f, 3f))
-            drawLine(tint, Offset(1.5f, 12f), Offset(1.5f, 15f), 1.6f, StrokeCap.Round)
-            drawLine(tint, Offset(22.5f, 12f), Offset(22.5f, 15f), 1.6f, StrokeCap.Round)
+            drawLine(tint, Offset(1.5f, 12f), Offset(1.5f, 15f), 1.8f, StrokeCap.Round)
+            drawLine(tint, Offset(22.5f, 12f), Offset(22.5f, 15f), 1.8f, StrokeCap.Round)
             drawCircle(eyes, 1.2f, Offset(8.5f, 12.5f))
             drawCircle(eyes, 1.2f, Offset(15.5f, 12.5f))
-            drawLine(tint, Offset(10f, 16.5f), Offset(14f, 16.5f), 1.6f, StrokeCap.Round)
+            drawLine(tint, Offset(10f, 16.5f), Offset(14f, 16.5f), 1.8f, StrokeCap.Round)
         }
     }
 }

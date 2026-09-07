@@ -56,9 +56,9 @@ internal fun PlacePurposeMenu(selection: PlaceCategorySelection, onSelect: (Plac
             PlaceCategorySelection.Kind(PlaceKind.ETC)
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.fillMaxWidth().selectableGroup().testTag("place-purpose-grid"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxWidth().selectableGroup().testTag("place-purpose-grid"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             options.chunked(5).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { option ->
                         val selected = option == selection ||
                             (option is PlaceCategorySelection.Purpose && option.purpose == selection.parentPurpose)
@@ -71,14 +71,14 @@ internal fun PlacePurposeMenu(selection: PlaceCategorySelection, onSelect: (Plac
                             Modifier.weight(1f).heightIn(min = 64.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (selected) DaengsColors.BrandPrimarySoft else DaengsColors.Surface, RoundedCornerShape(12.dp))
-                                .border(1.dp, if (selected) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral, RoundedCornerShape(12.dp))
+                                .border(1.dp, if (selected) DaengsColors.BrandPrimary else PlaceSearchStyle.Border, RoundedCornerShape(12.dp))
                                 .selectable(selected, role = Role.Tab, onClick = { onSelect(option) })
                                 .padding(horizontal = 2.dp, vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
                         ) {
-                            PlaceCategoryIcon(icon, Modifier.size(23.dp), DaengsColors.TextPrimary)
-                            Text(option.label, color = DaengsColors.TextPrimary, fontSize = 12.sp,
+                            PlaceCategoryIcon(icon, Modifier.size(22.dp), DaengsColors.TextPrimary)
+                            Text(option.label, color = DaengsColors.TextPrimary, fontSize = 11.sp, lineHeight = 16.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
                         }
                     }
@@ -96,7 +96,7 @@ internal fun PlacePurposeMenu(selection: PlaceCategorySelection, onSelect: (Plac
                             selected = selection == option,
                             onClick = { onSelect(option) },
                             label = { Text(if (option == group) "${group.label} 전체" else option.label, fontSize = 12.sp) },
-                            border = BorderStroke(1.dp, if (selection == option) DaengsColors.BrandPrimarySoft else DaengsColors.BorderNeutral),
+                            border = BorderStroke(1.dp, if (selection == option) DaengsColors.BrandPrimary else PlaceSearchStyle.Border),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = DaengsColors.BrandPrimarySoft,
                                 selectedLabelColor = DaengsColors.TextPrimary,
