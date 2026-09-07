@@ -56,21 +56,45 @@ fun PlaceSearchLabScreen(
     val kinds = remember { listOf<PlaceKind?>(null, PlaceKind.CAFE, PlaceKind.RESTAURANT) + PlaceKind.entries.filter { it != PlaceKind.CAFE && it != PlaceKind.RESTAURANT } }
     Column(Modifier.fillMaxSize().background(DaengsColors.AppBackground).safeDrawingPadding()) {
         Column(Modifier.fillMaxWidth().background(DaengsColors.Surface).padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = state.draft, onValueChange = onEdit, modifier = Modifier.weight(1f),
                     placeholder = { Text(if (state.aiMode) "원하는 동반 조건" else if (live) "장소명 검색" else "장소명·주소 검색", fontSize = 12.sp) },
                     singleLine = true, shape = RoundedCornerShape(16.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                    trailingIcon = {
+                        IconButton(onClick = onSubmit, modifier = Modifier.semantics { contentDescription = "검색 실행" }) {
+                            SearchActionIcon(Modifier.size(21.dp))
+                        }
+                    },
                 )
-                IconButton(onClick = onAi, modifier = Modifier.semantics {
+                OutlinedButton(onClick = onAi, shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (state.aiMode) DaengsColors.BrandPrimarySoft else DaengsColors.SurfaceMuted,
+                        contentColor = DaengsColors.TextPrimary),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (state.aiMode) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral),
+                    modifier = Modifier.size(width = 48.dp, height = 40.dp).semantics {
                     contentDescription = "AI 조건 검색 전환"
                     stateDescription = if (state.aiMode) "켜짐" else "꺼짐"
-                }) { Text("🤖", color = if (state.aiMode) DaengsColors.BrandPrimary else DaengsColors.TextPrimary) }
-                IconButton(onClick = onSubmit, modifier = Modifier.semantics { contentDescription = "검색 실행" }) { Text("↑") }
+                }) {
+                    RobotSearchIcon(Modifier.size(24.dp), active = state.aiMode)
+                }
             }
             if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth().semantics { contentDescription = "검색 조건" }, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { profiles = true; if (live) onRefreshProfiles() }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 2.dp)) {
+                    Text(state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
+                        fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                TextButton(onClick = { filters = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("반경 ${state.applied.radiusMeters / 1000}km ▾", fontSize = 12.sp) }
+                TextButton(onClick = { onParking(!state.applied.parkingFirst) }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.semantics {
+                    stateDescription = if (state.applied.parkingFirst) "켜짐" else "꺼짐"
+                }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 12.sp) }
+            }
+            Spacer(Modifier.height(12.dp))
             if (categoryContent != null) categoryContent() else LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(kinds.chunked(2)) { pair ->
                     Column {
@@ -89,19 +113,14 @@ fun PlaceSearchLabScreen(
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { profiles = true; if (live) onRefreshProfiles() }, modifier = Modifier.weight(1f)) {
-                    Text("🐾 " + state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견" } + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                TextButton(onClick = { filters = true }) { Text("${state.applied.radiusMeters / 1000}km ▾", fontSize = 11.sp) }
-                TextButton(onClick = { onParking(!state.applied.parkingFirst) }) { Text(if (state.applied.parkingFirst) "주차 우선 ✓" else "주차 우선", fontSize = 11.sp) }
-                IconButton(onClick = { filters = true }, modifier = Modifier.semantics { contentDescription = "검색 조건" }) { Text("⚙") }
-            }
+            Spacer(Modifier.height(8.dp))
             conditionContent?.invoke()
-            state.notice?.let { Text(it, fontSize = 11.sp, maxLines = 3) }
-            if (live) state.profileMessage?.let { Text(it, fontSize = 11.sp) }
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) { map() }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            map()
+            PlaceFloatingNotices(listOfNotNull(state.notice, state.profileMessage.takeIf { live }).distinct(),
+                Modifier.align(Alignment.TopCenter).padding(start = 12.dp, end = 12.dp, top = 52.dp))
+        }
         Surface(shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), color = DaengsColors.Surface) {
             Column(Modifier.fillMaxWidth().heightIn(max = 330.dp).verticalScroll(rememberScrollState()).padding(vertical = 10.dp)) {
                 Box(Modifier.align(Alignment.CenterHorizontally).width(42.dp).height(4.dp).background(DaengsColors.BorderNeutral, RoundedCornerShape(4.dp)))
