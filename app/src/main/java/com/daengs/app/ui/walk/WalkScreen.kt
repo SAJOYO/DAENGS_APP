@@ -866,9 +866,18 @@ private fun ReadyCard(
         ) {
             Text("산책을 시작할까요?", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold)
             if (pets.isNotEmpty()) {
-                var expanded by rememberSaveable { mutableStateOf(false) }
-                TextButton(onClick = { expanded = !expanded }) { Text("함께 걷는 강아지 ${selectedDogIds.size}마리", fontSize = 12.sp) }
-                if (expanded) DogPickRow(pets, selectedDogIds, onToggleDog, photoOf = photoOf)
+                // **접어 두지 않는다.** 예전에는 "함께 걷는 강아지 0마리" 버튼 하나만
+                // 보였다. 두 마리 이상이면 아무도 안 골라진 채로 열리는데(`defaultWalkDogs`)
+                // 골라야 할 아이들이 그 버튼 뒤에 숨어 있어서, 시작이 막힌 이유도
+                // 푸는 방법도 화면에 없었다. 아이들을 바로 내놓고 [walkDogPickLabel] 이
+                // "누구와 나갈까요?" 라고 말하게 한다.
+                DogPickRow(
+                    pets,
+                    selectedDogIds,
+                    onToggleDog,
+                    modifier = Modifier.fillMaxWidth(),
+                    photoOf = photoOf,
+                )
             } else {
                 Text(
                     "등록한 강아지가 없어도 산책은 기록할 수 있어요.",
