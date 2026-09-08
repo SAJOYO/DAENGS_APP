@@ -169,6 +169,62 @@ class GaitModelsTest {
         assertEquals(GaitVerdict.NotEnough, c.verdict)
     }
 
+    // ── 비교가 얼마나 믿을 만한가 ────────────────────────────────────────────
+    //
+    // 저쪽 `reliability_note` 를 그대로 띄우던 자리다. 그 문장에는 record UUID 와
+    // "§21 기준 80프레임 미만" 이 들어 있어 화면에 개발자 말이 새고 있었다.
+
+    private fun withTier(id: String, tier: GaitQualityTier?) =
+        record(id, comparable = tier != null).copy(qualityTier = tier)
+
+    private fun pair(recent: GaitQualityTier?, past: GaitQualityTier?) =
+        GaitComparison.of(withTier("recent", recent), withTier("past", past), allSimilar)
+            .reliabilitySentence
+
+    @Test
+    fun `믿을 만한 정도는 어느 쪽 기록이 모자랐는지까지 말한다`() {
+        assertEquals(
+            "두 기록 모두 비교하기에 충분한 보행 장면이 확인됐어요.",
+            pair(GaitQualityTier.Good, GaitQualityTier.Good),
+        )
+        assertEquals(
+            "최근 기록의 보행 장면이 적어 결과는 참고용으로 봐주세요.",
+            pair(GaitQualityTier.Low, GaitQualityTier.Good),
+        )
+        assertEquals(
+            "비교 기록의 보행 장면이 적어 결과는 참고용으로 봐주세요.",
+            pair(GaitQualityTier.Good, GaitQualityTier.Low),
+        )
+        assertEquals(
+            "두 기록 모두 보행 장면이 적어 결과는 참고용으로 봐주세요.",
+            pair(GaitQualityTier.Low, GaitQualityTier.Low),
+        )
+    }
+
+    @Test
+    fun `모자람의 기준은 저쪽과 같게 good 이 아닌 것이다`() {
+        """저쪽은 `quality_tier != "good"` 일 때 주의를 붙였다. 여기서 기준을 느슨하게 잡으면
+        저쪽이 참고용이라고 본 비교에 앱이 "충분" 도장을 찍게 된다."""
+        assertTrue(pair(GaitQualityTier.Ok, GaitQualityTier.Good).startsWith("최근 기록"))
+        // 등급을 모르는 기록(표본·옛 기록)도 "충분" 으로 올려 말하지 않는다.
+        assertTrue(pair(null, GaitQualityTier.Good).startsWith("최근 기록"))
+    }
+
+    @Test
+    fun `믿을 만한 정도 문장에 내부 표기가 새지 않는다`() {
+        val banned = listOf("§", "프레임", "record", "id", "quality", "tier", "-")
+        listOf(
+            GaitQualityTier.Good to GaitQualityTier.Good,
+            GaitQualityTier.Low to GaitQualityTier.Good,
+            GaitQualityTier.Good to GaitQualityTier.Low,
+            GaitQualityTier.Low to GaitQualityTier.Low,
+        ).forEach { (a, b) ->
+            val line = pair(a, b)
+            banned.forEach { assertFalse("'$it' 가 들어갔다: $line", line.contains(it, ignoreCase = true)) }
+            assertFalse("숫자가 새면 안 된다: $line", line.any { ch -> ch.isDigit() })
+        }
+    }
+
     // ── 축 두 개를 한 줄로 합치는 규칙 ───────────────────────────────────────
 
     @Test

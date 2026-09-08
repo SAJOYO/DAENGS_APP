@@ -48,6 +48,7 @@ import com.daengs.app.gait.GaitJointState
 import com.daengs.app.gait.GaitLeg
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVerdict
+import com.daengs.app.gait.reliabilitySentence
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.theme.CardWhite
@@ -192,8 +193,12 @@ fun GaitCompareScreen(
 
             // 저쪽이 준 문장을 **그대로** 옮긴다. 어느 기록이 왜 참고용인지, 버전이
             // 어떻게 다른지는 서버만 안다.
-            comparison.reliabilityNote?.let { ServerNote(it) }
-            comparison.versionWarning?.let { ServerNote(it) }
+            // 믿을 만한 정도는 **앱이 문장을 짓는다.** 저쪽 `reliability_note` 에는
+            // record UUID 와 `§21 기준 80프레임 미만` 같은 내부 표기가 들어 있어 그대로
+            // 띄울 수 없었다 ([GaitComparison.reliabilityNote]).
+            NoteBox(comparison.reliabilitySentence)
+            // 버전 경고는 저쪽 문장을 그대로 쓴다 — 어느 버전끼리인지는 서버만 안다.
+            comparison.versionWarning?.let { NoteBox(it) }
 
             // 이 화면이 판정이 아니라는 말은 **화면 안에** 있어야 한다. 문서에만
             // 적어 두면 화면을 보는 사람에게는 없는 말이다. 관절 점에 색이 들어온
@@ -409,9 +414,12 @@ private fun AdviceCard(title: String, body: String) {
     }
 }
 
-/** 서버가 준 주의 문장. **앱이 고쳐 쓰지 않는다.** */
+/**
+ * 표 아래 붙는 주의 한 줄. 믿을 만한 정도(앱이 지음)와 버전 경고(서버 문장)가 같은 모양을 쓴다 —
+ * 둘 다 "결과를 어떻게 받아들일지" 를 말하는 자리라 생김새가 갈리면 하나가 더 중해 보인다.
+ */
 @Composable
-private fun ServerNote(text: String) {
+private fun NoteBox(text: String) {
     Surface(color = PinkFaint, shape = RoundedCornerShape(13.dp)) {
         Text(
             text,

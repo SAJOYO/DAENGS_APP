@@ -208,7 +208,13 @@ data class GaitComparison(
     /**
      * 유효 프레임이 적어 참고용이라는 저쪽 문장(`reliability_note`).
      *
-     * **앱이 고쳐 쓰지 않는다.** 어느 기록이 왜 참고용인지는 저쪽만 안다.
+     * ⚠️ **화면에 그대로 띄우지 않는다.** 저쪽 문장에는 `기록 55d18f59-bc8a-…은(는) 유효
+     * 프레임 수가 적어(§21 기준 80프레임 미만)` 처럼 record UUID 와 내부 규격 번호가 들어
+     * 있어서 사용자에게 보여 줄 말이 아니다. 화면은 대신 [reliabilitySentence] 로 어느 쪽
+     * 기록이 모자랐는지를 말한다.
+     *
+     * 그래도 모델에는 남긴다 — 저쪽 계약이 무엇을 주는지가 코드에서 사라지면, 나중에
+     * 그 문장이 사용자용으로 다듬어져도 아무도 다시 찾아 쓰지 않는다.
      */
     val reliabilityNote: String? = null,
 ) {
@@ -241,6 +247,32 @@ data class GaitComparison(
             }
     }
 }
+
+/**
+ * 비교가 얼마나 믿을 만한지 한 줄 — **어느 쪽 기록이 모자랐는지까지** 말한다.
+ *
+ * 저쪽 `reliability_note` 를 그대로 띄우던 자리다. 그 문장에는 record UUID 와 `§21 기준
+ * 80프레임 미만` 같은 내부 표기가 들어 있어 사용자가 읽을 수 없었다
+ * ([GaitComparison.reliabilityNote]).
+ *
+ * **"모자람" 의 기준은 저쪽과 같게 `good` 이 아닌 것**으로 둔다. 저쪽이 주의 문장을 붙이던
+ * 경우와 정확히 같은 집합이라, 문구만 바뀌고 언제 주의가 뜨는지는 안 바뀐다 — 여기서
+ * 기준을 느슨하게 잡으면 저쪽이 참고용이라고 본 비교에 앱이 "충분" 이라고 도장을 찍게 된다.
+ *
+ * 등급을 아예 모르는 기록(표본·옛 기록)은 [GaitRecord.effectiveTier] 가 `Ok` 로 보정하므로
+ * 여기서도 모자란 쪽으로 샌다 — 모르는 것을 "충분" 으로 올려 말하지 않는다.
+ */
+val GaitComparison.reliabilitySentence: String
+    get() {
+        val recentShort = recent.effectiveTier != GaitQualityTier.Good
+        val pastShort = past.effectiveTier != GaitQualityTier.Good
+        return when {
+            !recentShort && !pastShort -> "두 기록 모두 비교하기에 충분한 보행 장면이 확인됐어요."
+            recentShort && pastShort -> "두 기록 모두 보행 장면이 적어 결과는 참고용으로 봐주세요."
+            recentShort -> "최근 기록의 보행 장면이 적어 결과는 참고용으로 봐주세요."
+            else -> "비교 기록의 보행 장면이 적어 결과는 참고용으로 봐주세요."
+        }
+    }
 
 /**
  * 상세 화면 요약에 올릴 줄들 — **최대 셋**. 화면이 아니라 여기서 만든다.
