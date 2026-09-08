@@ -24,9 +24,6 @@ interface CardStore {
 
     /** 탈퇴. 표와 그림을 같이 지운다. */
     suspend fun forgetEverything()
-
-    /** 아직 한 장도 없나. 첫 실행 시드가 이걸 본다. */
-    suspend fun isEmpty(): Boolean
 }
 
 class RoomCardStore(
@@ -60,6 +57,4 @@ class RoomCardStore(
         withContext(Dispatchers.IO) { dao.deleteAll() }
         files.deleteAll()
     }
-
-    override suspend fun isEmpty(): Boolean = withContext(Dispatchers.IO) { dao.count() == 0 }
 }

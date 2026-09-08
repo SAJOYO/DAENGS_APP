@@ -49,7 +49,6 @@ import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.makeDevCard
-import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
@@ -404,8 +403,6 @@ class MainActivity : ComponentActivity() {
                     // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
                     // 남의 카드는 안 건드린다 (`CardDao.claimOrphans`).
                     session?.appUserId?.let { cards.claimOrphans(it) }
-                    // 출시본에서는 아무 일도 안 일어난다 — 디버그 소스셋의 시드다.
-                    pets.primary?.let { seedCards(context, cardStore, it.id, it.name, it.birthDate) }
                     // 서버와 맞춘다. **새 폰이면 여기서 카드가 되돌아오고**, 이 폰에만
                     // 있던 카드는 여기서 올라간다. **실패해도 조용하다** — 도감은
                     // 기기 것만으로도 온전히 돈다.

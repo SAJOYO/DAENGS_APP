@@ -75,9 +75,19 @@ class CardHolder(
      *
      * **실패해도 화면을 비우지 않는다.** 목록이 통째로 사라지면 사용자는 카드가
      * 지워진 줄 안다 (`GaitHolder.load` 와 같은 원칙).
+     *
+     * **얼굴 자리가 빈 줄은 지우고 준다.** 예전 디버그 빌드가 첫 실행에 넣어 두던 시드
+     * 열두 장이 그 모양인데(`core` 가 0, `DrawnCard.drawn` 이 false), 시더를 없앤 뒤에도
+     * 팀원 폰에는 그 줄이 남아 도감이 뽑지도 않은 카드를 모은 것처럼 보였다. 서버는 빈
+     * 사각형을 422 로 거절하므로 이런 줄은 시드밖에 없고, 서버에 알릴 것도 없다.
      */
     suspend fun load(appUserId: String?) {
-        runCatching { store.all(appUserId) }
+        runCatching {
+            val all = store.all(appUserId)
+            val (seeds, real) = all.partition { !it.drawn }
+            seeds.forEach { runCatching { store.remove(it.id) } }
+            real
+        }
             .onSuccess { cards = it }
             .onFailure { error = it.message ?: "카드를 불러오지 못했어요." }
     }

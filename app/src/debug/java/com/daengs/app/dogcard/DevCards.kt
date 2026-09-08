@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
  * 개발자 패널이 야채를 **지정해서** 카드를 만든다. **디버그 소스셋이다.**
  *
  * 짝이 되는 `app/src/release/.../DevCards.kt` 는 아무것도 안 한다 —
- * `DeveloperPanel` · `seedCards` 가 쓰는 그 수법이고, 출시본 바이트코드에는 이
+ * `DeveloperPanel` 이 쓰는 그 수법이고, 출시본 바이트코드에는 이
  * 코드가 아예 안 들어간다.
  *
  * 왜 필요한가: 뽑기는 **12종 균등에 중복도 허용**이라(`drawTemplate`) 원하는 야채가
@@ -29,8 +29,7 @@ private const val DAY_MS = 24L * 60 * 60 * 1000
  *
  * **오늘로 넣으면 안 된다.** 하루 세 번 제한이 "오늘 자정 이후의 카드"를 세는데
  * (`drawsLeft`), 지정해서 만든 카드가 그 수를 먹으면 **정작 뽑기 연출을 못 본다** —
- * 뽑기 팝업은 진짜 뽑기 흐름에서만 뜨기 때문이다. `seedCards` 가 시드를 지난
- * 날짜로 두는 것과 같은 이유다.
+ * 뽑기 팝업은 진짜 뽑기 흐름에서만 뜨기 때문이다.
  */
 fun devCardTime(now: Long = System.currentTimeMillis()): Long = now - DAY_MS
 
