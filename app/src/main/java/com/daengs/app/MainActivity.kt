@@ -891,6 +891,10 @@ class MainActivity : ComponentActivity() {
                         // 릴리스 UI 다. 옛 PlacesScreen 은 이제 아무도 안 부르지만, 새
                         // 화면이 릴리스로 한 판 나가는 것을 보기 전에는 지우지 않는다.
                         useConnectedSearch = true,
+                        // 지도의 내 위치도 올린 사진을 따른다. 산책 지도와 같은
+                        // 목록(`pets.primary`)을 본다 — `shownPets` 를 보면 개발자
+                        // 패널의 가짜 아이를 켰을 때 사진만 사라진다.
+                        avatarPhoto = pets.primary?.let { petPhotos[it.id] }?.asAndroidBitmap(),
                         profileOwnerId = session?.appUserId,
                         profilePets = pets.pets,
                         profilesBusy = pets.busy,

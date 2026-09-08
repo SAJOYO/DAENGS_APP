@@ -84,6 +84,8 @@ fun PlacesRoute(
     modifier: Modifier = Modifier,
     viewModel: PlacesViewModel = viewModel(factory = PlacesViewModel.factory(LocalContext.current)),
     useConnectedSearch: Boolean = false,
+    /** 지도의 "내 위치" 에 쓸, 사용자가 올린 프로필 사진. 없으면 견종 그림으로 떨어진다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
     profileOwnerId: String? = null,
     profilePets: List<Pet>? = null,
     profilesBusy: Boolean = false,
@@ -144,6 +146,8 @@ fun PlacesRoute(
             onCall = { dial(context, it) },
             onOpenHandoff = { openNaverHandoff(context, it) },
             onRefreshProfiles = onRefreshProfiles,
+            avatarBreed = primaryPet?.breedArt,
+            avatarPhoto = avatarPhoto,
         )
         return
     }
