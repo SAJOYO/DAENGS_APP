@@ -44,6 +44,17 @@ internal object ActivityFixtures {
 }
 
 class ActivityApiTest {
+    @Test fun `current season distinguishes no season from failures`() {
+        withStub("""{"server_now_ms":1000,"season":null}""") { stub ->
+            assertNull(runBlocking { stub.api.currentSeason("token") })
+        }
+        withStub("""{"server_now_ms":1000,"season":{"id":"fall","ends_ms":2000}}""") { stub ->
+            assertEquals(ActivitySeason("fall", 2000, 1000), runBlocking { stub.api.currentSeason("token") })
+        }
+        withStub("""{"server_now_ms":1000}""") { stub ->
+            assertFails { runBlocking { stub.api.currentSeason("token") } }
+        }
+    }
     @Test fun `GET sends bearer auth and validates requested session`() = withStub(ActivityFixtures.session()) { stub ->
         val result = runBlocking { stub.api.sessionLink("access-token", ActivityFixtures.SESSION) }
         assertEquals("GET", stub.method)

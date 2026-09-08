@@ -10,6 +10,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 interface ActivityClient {
+    suspend fun currentSeason(token: String): ActivitySeason? = null
     suspend fun sessionLink(token: String, clientSessionId: String): ActivitySessionLink
     suspend fun walkSummary(token: String, window: ActivityWalkWindow): ActivityWalkSummary
     suspend fun territorySummary(token: String, seasonId: String, petId: String): ActivityTerritorySummary
@@ -17,6 +18,15 @@ interface ActivityClient {
 
 /** Read-only API. 생성하거나 조회를 예약하지 않으며 서버 flag를 바꾸지 않는다. */
 class ActivityApi(private val baseUrl: () -> String = { BuildConfig.API_BASE_URL }) : ActivityClient {
+    override suspend fun currentSeason(token: String): ActivitySeason? {
+        val root = Json.parseToJsonElement(get(token, "/seasons/current")).jsonObject
+        val season = root["season"] ?: error("Missing season")
+        if (season is JsonNull) return null
+        val row = season.jsonObject
+        return ActivitySeason(row.getValue("id").jsonPrimitive.content,
+            row.getValue("ends_ms").jsonPrimitive.long,
+            root.getValue("server_now_ms").jsonPrimitive.long)
+    }
     override suspend fun sessionLink(token: String, clientSessionId: String): ActivitySessionLink {
         requireActivityUuid(clientSessionId)
         return ActivityJson.session(get(token, "/sessions/$clientSessionId")).also {

@@ -27,6 +27,7 @@ data class TerritoryGameSite(
     val distanceMeters: Double?,
     val attempted: Boolean,
     val occupancyKnown: Boolean = true,
+    val sharedState: com.daengs.app.territory.SharedTerritorySite? = null,
 ) {
     val occupancyLabel: String get() = if (!occupancyKnown) "점유 확인 전" else when (claim.occupancy?.certification) {
         null -> "미점유"

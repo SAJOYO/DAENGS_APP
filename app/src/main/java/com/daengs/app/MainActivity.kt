@@ -664,6 +664,15 @@ class MainActivity : ComponentActivity() {
                         onOpenWalk = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
                         todayWalks = todayWalks,
+                        gameContent = {
+                            com.daengs.app.ui.home.HomeGameRoute(
+                                repository = app.activityRepository,
+                                ownerId = session?.appUserId,
+                                petId = pets.primary?.id,
+                                petName = pets.primary?.name,
+                                onOpenGame = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
+                            )
+                        },
                         signedIn = session != null,
                         nickname = nickname,
                         // 「마이」의 "고치기". 이름 확인 화면과 **같은 칸**을 띄운다 —
