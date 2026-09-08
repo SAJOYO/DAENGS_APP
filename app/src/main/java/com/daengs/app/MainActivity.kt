@@ -881,7 +881,16 @@ class MainActivity : ComponentActivity() {
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
                         primaryPet = pets.primary,
-                        useConnectedSearch = BuildConfig.DEBUG,
+                        // **빌드에 따라 다른 화면을 띄우지 않는다.** 이 값이
+                        // `BuildConfig.DEBUG` 이던 동안, 고쳐 온 내 주변(업종 대·소분류,
+                        // 조건 검색, 결과 패널)이 디버그 APK 에만 나오고 스토어판은
+                        // v1.0.2 의 옛 화면 그대로였다. "고쳤다" 고 한 것이 스토어에서는
+                        // 안 보인다.
+                        //
+                        // 두 화면은 같은 PlacesViewModel·state 를 쓰므로 이 한 줄이 곧
+                        // 릴리스 UI 다. 옛 PlacesScreen 은 이제 아무도 안 부르지만, 새
+                        // 화면이 릴리스로 한 판 나가는 것을 보기 전에는 지우지 않는다.
+                        useConnectedSearch = true,
                         profileOwnerId = session?.appUserId,
                         profilePets = pets.pets,
                         profilesBusy = pets.busy,
