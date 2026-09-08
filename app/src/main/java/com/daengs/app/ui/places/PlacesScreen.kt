@@ -237,35 +237,45 @@ fun PlacesScreen(
             },
             enabled = !discovery.loading && permissionAction == null,
             canSubmit = validName,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            // 안내 줄을 없앤 자리가 그대로 비어 검색칸이 지도에 붙어 버렸다.
+            // 조작부와 지도 사이의 경계는 남겨 둔다.
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
         )
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = when {
-                    !validName -> "장소명은 120자까지 입력할 수 있어요"
-                    discovery.nameQuery.isNotEmpty() -> "이름 조건: ${discovery.nameQuery}"
-                    else -> "선택한 카테고리 · 반경 3km 안에서 이름 검색"
-                },
-                color = if (validName) PlaceSearchColors.Ink else DaengsColors.Error,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (nameDraft.isNotEmpty() || discovery.nameQuery.isNotEmpty()) {
-                DaengsFloatingButton(
-                    label = "이름 지우기",
-                    enabled = !discovery.loading && permissionAction == null,
-                    onClick = {
-                        nameDraft = ""
-                        keyboard?.hide()
-                        onAction(PlacesAction.Search(selectedKind, discovery.preferParking, ""))
-                    },
+        // **할 말이 없으면 이 줄은 없다.** 전에는 늘 "선택한 카테고리 · 반경 3km 안에서
+        // 이름 검색" 이 떠 있었다. 검색칸 바로 밑에서 검색칸이 하는 일을 다시 적는
+        // 문장이라 알려 주는 것이 없으면서 30dp 를 늘 차지했다. 지도를 그만큼 덮는다.
+        // 알려 줄 것이 실제로 있을 때 — 글자 수를 넘겼거나 이름 조건이 걸렸을 때 — 만 뜬다.
+        val nameHint = when {
+            !validName -> "장소명은 120자까지 입력할 수 있어요"
+            discovery.nameQuery.isNotEmpty() -> "이름 조건: ${discovery.nameQuery}"
+            else -> null
+        }
+        val canClearName = nameDraft.isNotEmpty() || discovery.nameQuery.isNotEmpty()
+        if (nameHint != null || canClearName) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = nameHint.orEmpty(),
+                    color = if (validName) PlaceSearchColors.Ink else DaengsColors.Error,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
+                if (canClearName) {
+                    DaengsFloatingButton(
+                        label = "이름 지우기",
+                        enabled = !discovery.loading && permissionAction == null,
+                        onClick = {
+                            nameDraft = ""
+                            keyboard?.hide()
+                            onAction(PlacesAction.Search(selectedKind, discovery.preferParking, ""))
+                        },
+                    )
+                }
             }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {

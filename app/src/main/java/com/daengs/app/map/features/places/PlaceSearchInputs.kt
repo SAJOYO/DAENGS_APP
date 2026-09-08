@@ -31,8 +31,12 @@ fun PlaceNameSearchField(
     modifier: Modifier = Modifier, enabled: Boolean = true,
     canSubmit: Boolean = true,
 ) {
+    // **위의 카테고리 막대와 같은 46dp 다.** 나란히 놓이는 두 칸이라 높이가 다르면
+    // 한쪽이 잘못 그려진 것처럼 보인다. 막대는 `20dp 아이콘 + 위아래 12dp + 테두리 2dp`
+    // 로 46dp 이고, 이 칸은 `42dp 단추 + 위아래 2dp` 로 같은 46dp 를 만든다.
     Surface(modifier, shape = RoundedCornerShape(19.dp), color = PlaceSearchColors.Field) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+        Row(Modifier.fillMaxWidth().heightIn(min = 46.dp)
+            .padding(start = 16.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(
                 value = query, onValueChange = onQueryChange, enabled = enabled, singleLine = true,
@@ -48,8 +52,8 @@ fun PlaceNameSearchField(
             )
             Surface(onClick = onSearch, enabled = enabled && canSubmit, shape = RoundedCornerShape(14.dp),
                 color = PlaceSearchColors.Accent,
-                modifier = Modifier.size(48.dp).semantics { contentDescription = "장소 검색 실행" }) {
-                Canvas(Modifier.padding(14.dp)) {
+                modifier = Modifier.size(42.dp).semantics { contentDescription = "장소 검색 실행" }) {
+                Canvas(Modifier.padding(12.dp)) {
                     val r = size.minDimension * .32f
                     val center = Offset(size.width * .4f, size.height * .4f)
                     drawCircle(PlaceSearchColors.Background, r, center, style = Stroke(1.8.dp.toPx()))
