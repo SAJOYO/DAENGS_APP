@@ -73,6 +73,7 @@ import com.daengs.app.ui.home.needsPet
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
+import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
@@ -150,6 +151,8 @@ class MainActivity : ComponentActivity() {
                 // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
                 val chatHistory = remember(scope) { ChatHistoryCoordinator(scope) }
                 val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
+                // 저장소 탭의 오늘의 케어 기록 (#201). 요약 보관함과 같은 생애 — 서버 사본이고 기기에 안 남긴다.
+                val careLog = remember(scope) { CareLogCoordinator(scope) }
                 val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
@@ -643,6 +646,7 @@ class MainActivity : ComponentActivity() {
                                 petId = pets.primary?.id.takeIf { session != null },
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
+                                careCoordinator = careLog,
                                 accessTokenProvider = freshToken,
                                 onOpenSource = { sessionId ->
                                     scope.launch {

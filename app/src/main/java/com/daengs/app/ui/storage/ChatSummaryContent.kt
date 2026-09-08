@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +72,37 @@ fun ChatSummaryContent(
     }
     pendingDeletion?.let { summary ->
         SummaryDeleteConfirmation(summary, onDismissDelete) { onConfirmDelete(summary) }
+    }
+}
+
+/**
+ * [ChatSummaryContent] 와 같은 내용을 **바깥 `LazyColumn` 의 항목으로** 푼다. 저장소 탭이
+ * 케어 기록·보관함·사진 안내를 한 목록으로 스크롤하려고 쓴다 — 스크롤 안에 스크롤을 두지 않는다.
+ */
+fun LazyListScope.chatSummaryItems(
+    state: ChatLoadState<ChatSummaryList>,
+    onRetry: () -> Unit,
+    onOpenSource: (String) -> Unit,
+    onOpenCitation: (ChatCitation) -> Unit,
+    onRequestDelete: (ChatSummary) -> Unit,
+    selectedSummaryId: String? = null,
+) {
+    when (state) {
+        ChatLoadState.Idle, ChatLoadState.Loading -> item(key = "summaries-loading") { ChatSummariesLoading() }
+        is ChatLoadState.Failed -> item(key = "summaries-error") { ChatSummariesError(state.error, onRetry) }
+        is ChatLoadState.Ready -> if (state.value.summaries.isEmpty()) {
+            item(key = "summaries-empty") { ChatSummariesEmpty() }
+        } else {
+            items(state.value.summaries, key = { it.id }) { summary ->
+                ChatSummaryCard(
+                    summary = summary,
+                    onOpenSource = onOpenSource,
+                    onOpenCitation = onOpenCitation,
+                    onDelete = onRequestDelete,
+                    selected = summary.id == selectedSummaryId,
+                )
+            }
+        }
     }
 }
 
