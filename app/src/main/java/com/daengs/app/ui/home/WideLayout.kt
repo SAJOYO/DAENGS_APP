@@ -37,3 +37,14 @@ val WIDE_BREAKPOINT: Dp = 560.dp
  * 그것들까지 잘라 내면 지금 폰에서 보이는 모습이 바뀌기 때문이다.
  */
 val CONTENT_MAX_WIDTH: Dp = 460.dp
+
+/**
+ * 하단바 대신 **왼쪽 세로 레일**을 쓸 창인가.
+ *
+ * 가로에서는 세로 공간이 411dp 뿐이라 하단바가 설 자리가 없다 — 실제로 눕히면 바가
+ * 통째로 사라져서 다른 탭으로 갈 방법이 없었다. 세로보다 가로가 길면 레일로 간다.
+ *
+ * **폭이 아니라 가로세로 비로 정한다.** 폴드를 세로로 펼치면 622×746 이라 넓지만
+ * 세로가 더 기니 하단바가 그대로 맞다. 넓이([WIDE_BREAKPOINT])와는 다른 질문이다.
+ */
+fun usesNavRail(maxWidth: Dp, maxHeight: Dp): Boolean = maxWidth > maxHeight

@@ -75,7 +75,6 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.Daengs.Splash"
             android:windowSoftInputMode="adjustResize">
             <!-- ⚠️ targetSdk 가 37 이라 위의 screenOrientation 만으로는 부족하다.

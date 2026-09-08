@@ -377,14 +377,22 @@ private fun DexGrid(
     onDraw: (() -> Unit)? = null,
 ) {
     LazyVerticalGrid(
-        // 두 칸. 웹판에서 한 칸이면 카드가 화면을 꽉 채워 무거웠다.
-        columns = GridCells.Fixed(2),
+        // **폭에 맞춰 칸 수가 늘어난다.** 폰에서는 두 칸 그대로다(383dp 를 175 로
+        // 나누면 둘). 두 칸으로 못 박아 두면 가로에서 한 칸이 450dp 가 되고, 카드
+        // 높이가 칸 폭에서 나오므로(`maxWidth * SLOT_RATIO`) 카드가 화면 밖으로
+        // 흘러내렸다 — 실기기 가로에서 두 장만 보이고 잘렸다.
+        //
+        // 웹판에서 한 칸이면 카드가 화면을 꽉 채워 무거웠다. 175dp 는 그 한 칸이
+        // 되지 않게 막는 값이기도 하다.
+        columns = GridCells.Adaptive(minSize = DEX_MIN_SLOT),
         modifier = Modifier.fillMaxSize().systemBarsPadding(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+        // 칸 수가 폭에 따라 달라지므로 머리말은 **그 줄 전체**를 쓴다. 2 로 못 박으면
+        // 칸이 셋 이상인 화면에서 머리말 옆에 카드가 끼어든다.
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
             DexHeader(
                 deck = deck,
                 onDeck = onDeck,
@@ -1401,3 +1409,11 @@ private fun NavButton(label: String, onClick: () -> Unit) {
 
 @Suppress("unused")
 private val unusedPalette = listOf(CreamBg, DaengPink)
+
+/**
+ * 도감 한 칸의 최소 폭. 이보다 좁아지지 않는 선에서 칸 수가 정해진다.
+ *
+ * 폰(내용 폭 약 383dp)에서 두 칸이 되도록 잡은 값이다 — 지금 모습이 그대로여야 한다.
+ * 가로(914dp)에서는 다섯 칸이 되어 카드가 화면 안에 들어온다.
+ */
+private val DEX_MIN_SLOT = 175.dp

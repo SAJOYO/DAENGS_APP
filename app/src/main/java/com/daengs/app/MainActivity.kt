@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
                 }
                 LaunchedEffect(screen, walkOrientation) {
                     requestedOrientation = when {
-                        screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_USER
                         walkOrientation == WalkOrientation.PORTRAIT ->
                             ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                         else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
