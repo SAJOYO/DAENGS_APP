@@ -19,6 +19,8 @@ data class TerritoryGamePolicy(val radiusMeters: Double = 20.0, val maxFixAgeNan
 
 data class TerritoryCaptureTarget(val session: ClaimSession, val siteId: String, val serverClaimId: String? = null)
 
+enum class TerritoryOccupancyReadState { LOADING, READY, FAILED, LOGIN_REQUIRED }
+
 data class TerritoryGameSite(
     val site: TerritorySite,
     val claim: TerritoryClaimSite,
@@ -27,8 +29,14 @@ data class TerritoryGameSite(
     val distanceMeters: Double?,
     val attempted: Boolean,
     val occupancyKnown: Boolean = true,
+    val occupancyReadState: TerritoryOccupancyReadState = if (occupancyKnown) TerritoryOccupancyReadState.READY else TerritoryOccupancyReadState.LOADING,
+    val isOwnedByMe: Boolean? = null,
 ) {
-    val occupancyLabel: String get() = if (!occupancyKnown) "점유 확인 전" else when (claim.occupancy?.certification) {
+    val occupancyLabel: String get() = if (!occupancyKnown) when (occupancyReadState) {
+        TerritoryOccupancyReadState.FAILED -> "점유 조회 실패"
+        TerritoryOccupancyReadState.LOGIN_REQUIRED -> "로그인 필요"
+        else -> "점유 확인 전"
+    } else when (claim.occupancy?.certification) {
         null -> "미점유"
         ClaimCertification.UNVERIFIED -> "$ownerLabel · 미인증"
         ClaimCertification.VERIFIED -> "$ownerLabel · 인증"
