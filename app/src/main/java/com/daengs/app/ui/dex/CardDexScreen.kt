@@ -1,5 +1,7 @@
 package com.daengs.app.ui.dex
 
+import com.daengs.app.ui.home.WIDE_BREAKPOINT
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
@@ -193,6 +195,18 @@ private const val SLOT_RATIO = 1.25f
 fun CardDexScreen(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 이머시브 무대가 열리고 닫힐 때 알린다.
+     *
+     * **화면 방향 때문에 필요하다.** 앱은 세로로 고정돼 있는데 무대만 예외로 가로를
+     * 허용한다 — 배경이 좌우로 펼쳐지는 장면이라 가로가 이득이 큰 유일한 자리다.
+     * 무대는 이 화면 **안의 상태**라 바깥에서는 열렸는지 알 길이 없어 알려 준다.
+     */
+    onImmersiveChange: (Boolean) -> Unit = {},
+    /** 무대가 지금 눕혀져 있나. 화면 방향은 바깥(`MainActivity`)이 갖는다. */
+    immersiveLandscape: Boolean = false,
+    /** 무대의 눕히기 버튼. null 이면 버튼이 안 뜬다. */
+    onToggleImmersiveOrientation: (() -> Unit)? = null,
     /** 내가 뽑은 카드. 비어 있으면 열두 칸이 다 잠긴다 */
     drawn: List<DrawnCard> = emptyList(),
     /**
@@ -283,15 +297,31 @@ fun CardDexScreen(
         return
     }
 
+    // 무대가 열리고 닫히는 것을 바깥에 알린다 (화면 방향).
+    LaunchedEffect(scene != null) { onImmersiveChange(scene != null) }
+    DisposableEffect(Unit) { onDispose { onImmersiveChange(false) } }
+
     scene?.let { showing ->
-        ImmersiveScreen(
-            scene = showing,
-            // 무대에도 카드와 같은 이름을 쓴다. 꾹 눌러 들어간 그 칸의 내 카드다.
-            titleOverride = sceneName,
-            hero = sceneFace,
-            from = from,
-            onClose = { scene = null },
-        )
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // **큰 화면에서는 눕히기를 안 준다.** 폴더블을 펼치면 이미 넓어서 눕힐
+            // 이득이 없고, 폴드를 돌리는 동작 자체가 번거롭다 (사용자 결정).
+            //
+            // ⚠️ **짧은 변으로 잰다.** 지금 눕혀져 있는지로 재면, 버튼을 눌러 눕힌
+            // 순간 폭이 넓어져 버튼이 사라지고 **다시 세울 방법이 없어진다.**
+            // 짧은 변은 눕혀도 안 변하므로 "이 기기가 큰 화면인가" 만 묻게 된다
+            // (`uiScaleForWindow` 가 배율을 정할 때 쓰는 것과 같은 기준이다).
+            val bigScreen = minOf(maxWidth, maxHeight) >= WIDE_BREAKPOINT
+            ImmersiveScreen(
+                scene = showing,
+                // 무대에도 카드와 같은 이름을 쓴다. 꾹 눌러 들어간 그 칸의 내 카드다.
+                titleOverride = sceneName,
+                hero = sceneFace,
+                from = from,
+                onClose = { scene = null },
+                onRotate = if (bigScreen) null else onToggleImmersiveOrientation,
+                landscape = immersiveLandscape,
+            )
+        }
         return
     }
 

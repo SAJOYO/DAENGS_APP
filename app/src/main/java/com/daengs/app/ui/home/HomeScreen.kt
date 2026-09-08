@@ -372,6 +372,7 @@ fun HomeScreen(
     // 하단바가 설 자리가 없어서, 눕히면 바가 통째로 사라지고 다른 탭으로 갈 방법이
     // 없었다 (실기기에서 확인). 레일은 세로를 안 먹는다.
     val rail = usesNavRail(maxWidth, maxHeight)
+    val compactTop = hidesTopBar(maxHeight)
     Row(Modifier.fillMaxSize()) {
     if (rail) {
         DaengsNavRail(
@@ -387,13 +388,15 @@ fun HomeScreen(
             // 가운데 버튼은 하단바와 같은 뜻이다 — 챗봇이다 (아래 `onCenter` 참고).
             onCenter = { onOpenChat?.invoke() },
             tourSpots = tourSpots,
-            header = {
+            header = if (!compactTop) null else {
+                {
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(50))
                         .clickable { onOpenMy?.invoke() }
                         .padding(2.dp),
                 ) { PetAvatar(profilePhoto, profileBreed, 34.dp) }
+                }
             },
         )
     }
@@ -404,9 +407,10 @@ fun HomeScreen(
         // 방 배경은 상태바 아래까지 흘려보내고 싶기 때문이다.
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            // **가로에서는 상단바를 안 그린다.** 로고가 두 줄이라 이것만으로 화면의
-            // 3분의 1을 먹었다. 프로필은 레일 맨 위로 올렸다.
-            if (rail) return@Scaffold
+            // **세로가 짧으면 상단바를 안 그린다.** 로고가 두 줄이라 가로에서는 이것만
+            // 으로 화면의 3분의 1을 먹었다. 폴더블 세로 펼침은 세로가 넉넉하므로
+            // 레일을 쓰더라도 상단바는 그대로 둔다.
+            if (compactTop) return@Scaffold
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
                     // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.

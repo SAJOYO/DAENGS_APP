@@ -69,12 +69,21 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Daengs">
         <!-- 세로로 고정한다. 가로 화면은 만든 적이 없어서 눕히면 방도 카드도 무너진다.
-             configChanges 는 일부러 안 넣는다 — 방향이 고정되면 회전으로 인한 재생성
-             자체가 없고, 넣으면 다른 설정 변경까지 우리가 떠안는다. -->
+             예외는 **산책과 이머시브 무대** 둘이고, 그 둘은 화면 안의 버튼으로 눕힌다
+             (`MainActivity` 의 `requestedOrientation`).
+
+             ⚠️ configChanges 를 **넣는다.** 예전에는 "방향이 고정되면 회전으로 인한
+             재생성 자체가 없다" 는 이유로 안 넣었는데, 그 전제가 깨졌다 — 두 화면이
+             실제로 회전한다. 안 넣으면 회전할 때마다 액티비티가 다시 만들어져서
+             **이머시브 무대가 그대로 닫힌다** (눕히기 버튼을 눌러도 무대가 사라지고
+             세로로 돌아왔다). Compose 는 설정 변경을 재구성으로 받으므로 이 넷을
+             우리가 받아도 따로 할 일이 없다. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Daengs.Splash"
             android:windowSoftInputMode="adjustResize">
             <!-- ⚠️ targetSdk 가 37 이라 위의 screenOrientation 만으로는 부족하다.
