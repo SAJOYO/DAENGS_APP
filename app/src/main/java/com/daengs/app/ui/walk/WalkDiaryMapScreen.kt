@@ -96,7 +96,7 @@ internal fun WalkDiaryMapScreen(
             TextButton(onClick = onBack) { Text("‹ 목록") }
             Text(detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
                 Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-            WalkColorSettingsButton()
+            WalkMapSettingsButton()
         }
         if (loaded && detail == null) {
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))

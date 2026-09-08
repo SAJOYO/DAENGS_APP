@@ -59,7 +59,10 @@ class CardTuneTest {
 
         assertTrue("곡과 무대가 같아졌다면 이 테스트를 지워도 된다", tuneOnly.isNotEmpty())
         assertEquals(
-            listOf("apple", "carrot", "mango", "spinach", "strawberry", "tomato"),
+            listOf(
+                "apple", "banana", "carrot", "mango",
+                "spinach", "strawberry", "tomato", "watermelon",
+            ),
             tuneOnly.map { it.id }.sorted(),
         )
     }
@@ -100,6 +103,45 @@ class CardTuneTest {
         assertEquals("과일 No. 01", tuneNumberLabel(DEX_CARDS.first { it.id == "apple" }))
     }
 
+    // -- 곡이 둘인 카드 -----------------------------------------------------
+
+    /**
+     * **같은 사람에게는 언제나 같은 곡이다.** 열 때마다 굴리면 "내 망고 노래가
+     * 바뀌었는데?" 가 된다.
+     */
+    @Test
+    fun `한 사람의 망고 곡은 늘 같다`() {
+        val first = bgmFor("mango", "user-a")
+        repeat(50) { assertEquals(first, bgmFor("mango", "user-a")) }
+    }
+
+    /** 사람이 다르면 갈린다. 안 갈리면 곡을 두 개 넣은 뜻이 없다. */
+    @Test
+    fun `사람이 다르면 망고 곡도 갈린다`() {
+        val heard = (1..200).map { bgmFor("mango", "user-$it") }.toSet()
+        assertEquals("두 곡이 다 나와야 한다", CARD_BGM.getValue("mango").toSet(), heard)
+    }
+
+    /**
+     * 로그인 전·게스트(`null`)면 첫 곡이다.
+     *
+     * **터지지 않는 것이 요점이다.** 둘러보기로 뽑은 카드에는 `appUserId` 가 없다.
+     */
+    @Test
+    fun `로그인 전에는 첫 곡으로 떨어진다`() {
+        assertEquals(CARD_BGM.getValue("mango").first(), bgmFor("mango", null))
+        assertEquals(CARD_BGM.getValue("mango").first(), bgmFor("mango"))
+    }
+
+    /** 곡이 하나뿐인 카드는 사람과 상관없이 그 곡이다. */
+    @Test
+    fun `곡이 하나인 카드는 사람을 안 탄다`() {
+        CARD_BGM.filterValues { it.size == 1 }.forEach { (id, paths) ->
+            assertEquals(id, paths.first(), bgmFor(id, "user-a"))
+            assertEquals(id, paths.first(), bgmFor(id, "user-b"))
+        }
+    }
+
     /** 모르는 id 를 적어 두면 그 줄은 조용히 무시된다 — 곡을 넣었는데 안 나온다. */
     @Test
     fun `CARD_BGM 의 id 가 전부 실재하는 카드다`() {
@@ -118,8 +160,8 @@ class CardTuneTest {
     fun `적어 둔 곡 파일이 실제로 있다`() {
         val roots = listOf(File("src/main/assets"), File("app/src/main/assets"))
         val assets = roots.firstOrNull { it.isDirectory } ?: return
-        CARD_BGM.forEach { (id, path) ->
-            assertTrue("$id: $path 가 없다", File(assets, path).isFile)
+        CARD_BGM.forEach { (id, paths) ->
+            paths.forEach { path -> assertTrue("$id: $path 가 없다", File(assets, path).isFile) }
         }
     }
 

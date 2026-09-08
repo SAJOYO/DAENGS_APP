@@ -42,3 +42,15 @@ class MapSpriteTest(unittest.TestCase):
             Image.new("RGBA", (20, 20)).save(source)
             with self.assertRaises(ValueError):
                 prepare_map_sprite(source)
+
+    def test_nearly_transparent_noise_does_not_move_foot_or_change_scale(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "sprite.png"
+            image = Image.new("RGBA", (100, 240))
+            ImageDraw.Draw(image).rectangle((30, 10, 70, 230), fill=(150, 130, 110, 255))
+            image.save(source)
+            clean = prepare_map_sprite(source)
+            image.putpixel((2, 239), (0, 0, 0, 1))
+            image.putpixel((98, 1), (0, 0, 0, 16))
+            image.save(source)
+            self.assertEqual(clean.tobytes(), prepare_map_sprite(source).tobytes())

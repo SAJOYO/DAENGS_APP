@@ -19,8 +19,8 @@ private data class SiteOverlays(val marker: Marker, val ring: CircleOverlay?, va
 internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarkerState>, onSelect: (String) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val icons = remember(context) {
-        TerritoryMarkerOccupancy.entries.map(TerritoryPoleArt::resource).distinct().associateWith {
-            OverlayImage.fromResource(it)
+        TerritoryMarkerOccupancy.entries.distinctBy(TerritoryPoleArt::resource).associate {
+            TerritoryPoleArt.resource(it) to OverlayImage.fromBitmap(territoryMarkerIcon(context, it))
         }
     }
     val overlays = remember(map) { mutableMapOf<String, SiteOverlays>() }
