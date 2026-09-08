@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -54,7 +55,7 @@ import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 
 /**
- * 비교할 지난 기록을 고르는 시트.
+ * 지난 기록 하나를 고르는 시트.
  *
  * **바텀 시트다.** 이 저장소에는 `NavHost` 가 없고 화면 전환이 [Screen] 하나로
  * 갈리는데(`MainActivity`), 기록 고르기 하나 때문에 화면을 새로 만들면 대화가
@@ -65,7 +66,13 @@ import com.daengs.app.ui.theme.TextMuted
  * 에 `.clickable` 을 붙여 직접 짠다 (`DaengsControls.kt` 첫 주석) — M3 시트는 자기
  * 모서리·자기 손잡이 색을 들고 와서 크림·핑크 사이에서 혼자 튄다.
  *
+ * 쓰는 자리가 둘이다:
+ *  - **비교 상대 고르기** (기본값). `comparable` 인 것만 고를 수 있다
+ *  - **지난 기록 보기** (`requireComparable = false`). 어느 기록이든 열어 본다 —
+ *    비교 지표가 없어도 영상은 볼 수 있으니까
+ *
  * @param records 고를 수 있는 기록. 방금 찍은 것은 부르는 쪽이 빼고 넘긴다
+ * @param requireComparable false 면 비교 지표가 없는 기록도 고를 수 있다
  */
 @Composable
 fun GaitPickSheet(
@@ -73,12 +80,134 @@ fun GaitPickSheet(
     onDismiss: () -> Unit,
     onConfirm: (GaitRecord) -> Unit,
     modifier: Modifier = Modifier,
+    title: String = "지난 보행 기록 선택",
+    confirmLabel: String = "선택 완료",
+    requireComparable: Boolean = true,
+) {
+    // 고른 것은 시트 안에서만 산다. 확인을 눌러야 밖으로 나간다 — 줄을 눌렀다고
+    // 바로 다음으로 넘어가면 잘못 누른 것을 되돌릴 자리가 없다.
+    var picked by remember {
+        mutableStateOf(records.firstOrNull { !requireComparable || it.comparable }?.id)
+    }
+    val chosen = records.firstOrNull { it.id == picked }
+
+    SheetFrame(title = title, onDismiss = onDismiss, modifier = modifier) {
+        if (records.isEmpty()) {
+            EmptyLine(
+                if (requireComparable) {
+                    "아직 비교할 지난 기록이 없어요.\n보행 영상을 한 편 더 남기면 나란히 볼 수 있어요."
+                } else {
+                    "아직 남긴 보행 기록이 없어요."
+                },
+            )
+        } else {
+            LazyColumn(
+                Modifier.weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(records, key = { it.id }) { record ->
+                    val enabled = !requireComparable || record.comparable
+                    GaitPickRow(
+                        record = record,
+                        selected = record.id == picked,
+                        enabled = enabled,
+                        // 비교 지표가 없는 기록은 못 고른다. 고르게 두면 다음 화면이
+                        // "부족합니다" 만 띄우게 되는데, 그건 여기서 이미 알 수 있는 일이다.
+                        onClick = { if (enabled) picked = record.id },
+                    )
+                }
+            }
+        }
+        ConfirmButton(
+            label = confirmLabel,
+            enabled = chosen != null,
+            onClick = { chosen?.let(onConfirm) },
+            modifier = Modifier.padding(top = 14.dp, bottom = 18.dp),
+        )
+    }
+}
+
+/**
+ * 비교할 기록 **둘을 한 시트에서** 고른다.
+ *
+ * 예전에는 같은 시트를 두 번 열었다(기준 → 상대). 두 번째 시트에서 첫 번째로 고른 것을
+ * 빼는 것까지는 맞았는데, 사용자 입장에서는 "방금 골랐는데 또 고르라고?" 가 됐다.
+ * 두 개를 체크하고 한 번에 넘어가는 편이 하려는 일(둘을 나란히 놓기)과 같은 모양이다.
+ *
+ * **셋째를 누르면 먼저 고른 것이 빠진다.** 셋을 막고 "둘까지만" 을 띄우는 것보다,
+ * 마지막에 누른 둘이 남는 쪽이 손이 덜 간다. 고른 것을 다시 누르면 빠진다.
+ *
+ * 순서는 넘기지 않는다 — 어느 쪽이 최근인지는 날짜가 정한다 (`GaitHolder.compare`).
+ */
+@Composable
+fun GaitPairPickSheet(
+    records: List<GaitRecord>,
+    onDismiss: () -> Unit,
+    onConfirm: (GaitRecord, GaitRecord) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 고른 순서대로 든다. 셋째가 오면 앞(먼저 고른 것)을 민다.
+    var picked by remember { mutableStateOf<List<String>>(emptyList()) }
+    val chosen = picked.mapNotNull { id -> records.firstOrNull { it.id == id } }
+    val comparable = records.count { it.comparable }
+
+    SheetFrame(
+        title = "비교할 기록 2개 선택",
+        subtitle = "${picked.size} / $PAIR 선택",
+        onDismiss = onDismiss,
+        modifier = modifier,
+    ) {
+        if (comparable < PAIR) {
+            // 부르는 쪽이 막고 있지만(둘 미만이면 [기록 비교] 줄을 안 그린다), 시트가
+            // 스스로도 말할 수 있어야 한다.
+            EmptyLine("비교할 수 있는 기록이 둘은 있어야 해요.\n보행 영상을 한 편 더 남기면 나란히 볼 수 있어요.")
+        } else {
+            LazyColumn(
+                Modifier.weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(records, key = { it.id }) { record ->
+                    GaitPickRow(
+                        record = record,
+                        selected = record.id in picked,
+                        enabled = record.comparable,
+                        onClick = {
+                            if (!record.comparable) return@GaitPickRow
+                            picked = when {
+                                record.id in picked -> picked - record.id
+                                else -> (picked + record.id).takeLast(PAIR)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        ConfirmButton(
+            label = "비교하기",
+            enabled = chosen.size == PAIR,
+            onClick = { if (chosen.size == PAIR) onConfirm(chosen[0], chosen[1]) },
+            modifier = Modifier.padding(top = 14.dp, bottom = 18.dp),
+        )
+    }
+}
+
+/** 한 번에 고르는 수. 비교는 둘을 나란히 놓는 일이라 둘이다. */
+private const val PAIR = 2
+
+/**
+ * 시트의 틀 — 어둠 · 손잡이 · 제목 · 닫기. 두 시트가 같은 틀을 쓴다.
+ *
+ * @param subtitle 제목 오른쪽 작은 글자. 몇 개 골랐는지 같은 것
+ */
+@Composable
+private fun SheetFrame(
+    title: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
-
-    // 고른 것은 시트 안에서만 산다. 확인을 눌러야 밖으로 나간다 — 줄을 눌렀다고
-    // 바로 비교로 넘어가면 잘못 누른 것을 되돌릴 자리가 없다.
-    var picked by remember { mutableStateOf(records.firstOrNull { it.comparable }?.id) }
 
     Box(modifier.fillMaxSize()) {
         // 바깥을 눌러도 닫힌다. 물결(ripple)은 끈다 — 시트 뒤 어둠이 눌린 것처럼
@@ -122,55 +251,37 @@ fun GaitPickSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "지난 보행 기록 선택",
+                        title,
                         color = TextDark,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                     )
+                    if (subtitle != null) {
+                        Text(subtitle, color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(10.dp))
+                    }
                     Box(
                         Modifier.size(34.dp).clip(RoundedCornerShape(50)).clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center,
                     ) { DaengsIconView(DaengsIcon.Close, Modifier.size(16.dp), tint = TextMuted) }
                 }
-
-                if (records.isEmpty()) {
-                    // 부르는 쪽이 막고 있지만(결과 카드가 비교 버튼을 감춘다),
-                    // 시트가 스스로도 빈 경우를 말할 수 있어야 한다.
-                    Text(
-                        "아직 비교할 지난 기록이 없어요.\n보행 영상을 한 편 더 남기면 나란히 볼 수 있어요.",
-                        color = TextMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(vertical = 28.dp),
-                    )
-                } else {
-                    LazyColumn(
-                        Modifier.weight(1f, fill = false),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(records, key = { it.id }) { record ->
-                            GaitPickRow(
-                                record = record,
-                                selected = record.id == picked,
-                                // 비교 지표가 없는 기록은 못 고른다. 고르게 두면
-                                // 다음 화면이 "부족합니다" 만 띄우게 되는데, 그건
-                                // 여기서 이미 알 수 있는 일이다.
-                                onClick = { if (record.comparable) picked = record.id },
-                            )
-                        }
-                    }
-                }
-
-                val chosen = records.firstOrNull { it.id == picked }
-                ConfirmButton(
-                    enabled = chosen != null,
-                    onClick = { chosen?.let(onConfirm) },
-                    modifier = Modifier.padding(top = 14.dp, bottom = 18.dp),
-                )
+                content()
             }
         }
     }
+}
+
+/** 고를 것이 없을 때의 한 줄. */
+@Composable
+private fun EmptyLine(text: String) {
+    Text(
+        text,
+        color = TextMuted,
+        fontSize = 13.sp,
+        lineHeight = 20.sp,
+        modifier = Modifier.padding(vertical = 28.dp),
+    )
 }
 
 /**
@@ -178,10 +289,11 @@ fun GaitPickSheet(
  *
  * 못 고르는 줄은 **지우지 않고 흐리게 남긴다.** 목록에서 빼 버리면 "07.15 에 찍은 게
  * 있었는데 어디 갔지" 가 된다. 남겨 두고 왜 못 고르는지를 그 자리에 적는다.
+ *
+ * @param enabled 고를 수 있나. 비교 상대로는 `comparable` 만, 지난 기록 보기로는 전부
  */
 @Composable
-private fun GaitPickRow(record: GaitRecord, selected: Boolean, onClick: () -> Unit) {
-    val on = record.comparable
+private fun GaitPickRow(record: GaitRecord, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -192,7 +304,7 @@ private fun GaitPickRow(record: GaitRecord, selected: Boolean, onClick: () -> Un
                 if (selected) DaengPink else DaengsColors.BorderNeutral,
                 RoundedCornerShape(16.dp),
             )
-            .clickable(enabled = on, onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -203,14 +315,17 @@ private fun GaitPickRow(record: GaitRecord, selected: Boolean, onClick: () -> Un
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
+            // 제목 한 줄, 날짜·길이 한 줄. 제목이 없으면 "보행 기록" 이라 예전과 같은 모양이다.
             Text(
-                "${record.dateLabel} 보행 기록",
-                color = if (on) TextDark else TextMuted,
+                record.displayTitle,
+                color = if (enabled) TextDark else TextMuted,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
-                if (on) record.lengthLabel else "${record.lengthLabel} · 비교 지표 부족",
+                if (record.comparable) record.dateAndLength else "${record.dateAndLength} · 비교 지표 부족",
                 color = TextMuted,
                 fontSize = 12.sp,
             )
@@ -237,7 +352,7 @@ private fun GaitPickRow(record: GaitRecord, selected: Boolean, onClick: () -> Un
 
 /** 시트를 닫는 한 줄짜리 버튼. 고른 게 없으면 눌리지 않는다. */
 @Composable
-private fun ConfirmButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ConfirmButton(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
             .fillMaxWidth()
@@ -248,7 +363,7 @@ private fun ConfirmButton(enabled: Boolean, onClick: () -> Unit, modifier: Modif
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "선택 완료",
+            label,
             color = if (enabled) CardWhite else TextMuted,
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
@@ -262,6 +377,16 @@ private fun GaitPickSheetPreview() {
     DaengsTheme {
         Box(Modifier.fillMaxSize().background(com.daengs.app.ui.theme.CreamBg)) {
             GaitPickSheet(GaitSampleRecords.of(), onDismiss = {}, onConfirm = {})
+        }
+    }
+}
+
+@Preview(widthDp = 411, heightDp = 891)
+@Composable
+private fun GaitPairPickSheetPreview() {
+    DaengsTheme {
+        Box(Modifier.fillMaxSize().background(com.daengs.app.ui.theme.CreamBg)) {
+            GaitPairPickSheet(GaitSampleRecords.of(), onDismiss = {}, onConfirm = { _, _ -> })
         }
     }
 }

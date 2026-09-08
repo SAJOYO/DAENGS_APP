@@ -57,7 +57,10 @@ fun GaitVideoPlayer(
     controls: Boolean = true,
     loop: Boolean = true,
 ) {
-    val video = record.video
+    // 스켈레톤 오버레이가 있으면 그것을, 없으면 기기 원본을 튼다. 보려는 것이 점·선이라
+    // 오버레이가 우선이다 ([GaitRecord.overlay] 주석). 지난 기록은 원본이 기기에 없어
+    // ([GaitRecord.video] 가 null) 오버레이가 유일한 재생본이다.
+    val video = record.overlay ?: record.video
     if (video == null) {
         // 재생할 것이 없다. 왜 없는지는 상세 화면의 요약이 한 줄로 말해 준다.
         Box(

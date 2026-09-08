@@ -90,6 +90,7 @@ import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
+import com.daengs.app.gait.PreparedVideo
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
@@ -114,7 +115,9 @@ import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
+import com.daengs.app.ui.gait.GaitPairPickSheet
 import com.daengs.app.ui.gait.GaitPickSheet
+import com.daengs.app.ui.gait.GaitTitleDialog
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
 import com.daengs.app.ui.home.HomeDemoData
@@ -452,20 +455,32 @@ fun ChatScreen(
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
 
-    /**
-     * 저장된 기록끼리 비교(B 진입)에서 **첫 번째로 고른 기록**.
-     *
-     * A 진입(방금 분석한 카드의 [비교하기])은 기준이 이미 있어 시트가 한 번이지만,
-     * 여기는 기준이 없어 **같은 시트를 두 번** 쓴다. `null` 이면 아직 첫 선택 전이다.
-     */
-    var gaitPairFirst by remember { mutableStateOf<GaitRecord?>(null) }
+    /** 저장된 기록끼리 비교(B 진입) — 둘을 한 시트에서 고르는 중. */
     var gaitPairPicking by remember { mutableStateOf(false) }
+
+    /** AI 기능 선택 → 보행 "지난 기록 보기" 시트가 열려 있나. */
+    var gaitHistoryOpen by remember { mutableStateOf(false) }
+
+    /**
+     * 읽어 둔 영상에 **제목을 묻는 중.** 촬영·업로드 둘 다 [runGait] 로 모이므로 이 하나로
+     * 두 경로가 같은 다이얼로그를 탄다. 다이얼로그가 닫히면 분석이 시작된다.
+     */
+    var gaitTitlePending by remember { mutableStateOf<PreparedVideo?>(null) }
 
     /** 나란히 보는 중. */
     var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
 
     /** 상세를 보는 중인 기록 id. */
     var gaitDetail by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 상세를 열면서 영상부터 틀까.
+     *
+     * **비교 화면의 영상 카드로 들어온 경우에만 참이다.** 그때 누른 뜻이 "이 기록의
+     * 분석 영상을 크게 보겠다" 라서, 도착해서 재생을 또 눌러야 하면 흐름이 끊긴다.
+     * 대화 카드에서 들어온 경우는 상세를 읽으러 온 것이라 멈춰 둔다.
+     */
+    var gaitDetailAutoPlay by remember { mutableStateOf(false) }
 
     /**
      * 영상 한 편을 대화에 태운다.
@@ -475,23 +490,30 @@ fun ChatScreen(
      * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
      * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
      */
+    val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
+        scope.launch {
+            entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
+            val slot = entries.size
+            entries += ChatEntry.GaitRunning(GaitProgress.START)
+            val record = gait.analyze(video, title) { entries[slot] = ChatEntry.GaitRunning(it) }
+            if (record == null) {
+                entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
+                gait.clearError()
+            } else {
+                entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                entries += ChatEntry.GaitDone(record.id)
+            }
+        }
+    }
+
+    // **촬영과 업로드가 여기서 만난다.** 영상을 먼저 읽어 보고(못 읽는 파일이면 제목을
+    // 물을 이유가 없다), 제목 다이얼로그를 띄운 뒤 분석을 시작한다 — 두 경로가 같은
+    // 다이얼로그를 타는 이유는 이 함수가 하나라서다. 제목은 서버 `note` 로 같이 올라간다.
     val runGait: (Uri) -> Unit = { uri ->
         scope.launch {
             GaitVideo.prepare(context, uri)
                 .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
-                .onSuccess { video ->
-                    entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
-                    val slot = entries.size
-                    entries += ChatEntry.GaitRunning(GaitProgress.START)
-                    val record = gait.analyze(video) { entries[slot] = ChatEntry.GaitRunning(it) }
-                    if (record == null) {
-                        entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
-                        gait.clearError()
-                    } else {
-                        entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
-                        entries += ChatEntry.GaitDone(record.id)
-                    }
-                }
+                .onSuccess { video -> gaitTitlePending = video }
         }
     }
 
@@ -904,6 +926,16 @@ fun ChatScreen(
                     it()
                 }
             },
+            // 남긴 기록이 없으면 줄을 안 그린다 — 눌러도 빈 시트만 뜨는 줄은 사용자가
+            // 자기가 뭘 잘못했나 생각하게 한다 ([기록 비교] 줄과 같은 규칙).
+            onOpenGaitHistory = if (gait.records.isNotEmpty()) {
+                {
+                    chooserMode = null
+                    gaitHistoryOpen = true
+                }
+            } else {
+                null
+            },
             onCamera = {
                 chooserMode = null
                 when {
@@ -1017,18 +1049,56 @@ fun ChatScreen(
         }
     }
 
+    gaitComparing?.let { comparison ->
+        GaitCompareScreen(
+            comparison = comparison,
+            onBack = { gaitComparing = null },
+            // 카드를 누르면 그 기록의 상세가 **비교 위에 얹힌다.** 비교를 닫지 않으므로
+            // 뒤로 가면 보던 비교로 돌아온다 — 영상 하나 크게 보려고 누른 것이지
+            // 비교를 그만두려던 것이 아니다.
+            onOpenRecord = { record ->
+                gaitDetailAutoPlay = true
+                gaitDetail = record.id
+            },
+            // 기준은 그대로 두고 상대만 다시 고른다. 시트는 A 진입이 쓰던 것이다.
+            onCompareAnother = {
+                gaitComparing = null
+                gaitPicking = comparison.recent.id
+            },
+            onSaveToChat = {
+                gaitComparing = null
+                entries += ChatEntry.GaitCompared(comparison)
+            },
+        )
+    }
+
+    // **비교보다 뒤에 그린다.** 앞에 두면 비교 화면이 상세를 덮어서, 카드를 눌러도
+    // 아무 일도 안 일어난 것처럼 보인다.
     gaitDetail?.let { id ->
+        // 저장된 기록은 오버레이 주소가 목록에 없다. 상세를 열 때 한 번 채워, 재생기가
+        // 원본 대신 스켈레톤 영상을 틀 수 있게 한다. 방금 분석한 기록은 이미 들고 있어
+        // 조회가 그냥 건너뛴다.
+        LaunchedEffect(id) { gait.ensureOverlay(id) }
         gait.find(id)?.let { record ->
             GaitDetailScreen(
                 record = record,
                 canCompare = gait.hasComparable(record.id),
-                onBack = { gaitDetail = null },
+                onBack = {
+                    gaitDetail = null
+                    gaitDetailAutoPlay = false
+                },
                 onCompare = { gaitPicking = record.id },
                 onDelete = {
                     // 서버에서도 지운다. 화면은 기다리지 않는다 — 홀더가 먼저 빼고
                     // 실패하면 되돌린다.
                     scope.launch { gait.remove(record.id) }
                     gaitDetail = null
+                    gaitDetailAutoPlay = false
+                    // **지운 기록을 낀 비교도 같이 닫는다.** 안 닫으면 뒤로 갔을 때
+                    // 없는 기록 두 편을 나란히 놓은 화면으로 돌아간다.
+                    if (gaitComparing?.let { record.id in listOf(it.recent.id, it.past.id) } == true) {
+                        gaitComparing = null
+                    }
                     // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
                     // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
                     // 있었는지 알 수 없다.
@@ -1036,26 +1106,25 @@ fun ChatScreen(
                         it is ChatEntry.GaitDone && it.recordId == record.id
                     }
                     if (slot >= 0) {
-                        entries[slot] = ChatEntry.Note("${record.dateLabel} 보행 기록을 지웠어요.")
+                        entries[slot] = ChatEntry.Note("${record.dateLabel} 「${record.displayTitle}」 기록을 지웠어요.")
                     }
                 },
+                autoPlay = gaitDetailAutoPlay,
+                // 제목만 바뀐다. 날짜는 홀더가 손대지 않는다 (`GaitHolder.rename`).
+                onRename = { title -> gait.rename(record.id, title) },
             )
         } ?: run { gaitDetail = null }
     }
 
-    gaitComparing?.let { comparison ->
-        GaitCompareScreen(
-            comparison = comparison,
-            onBack = { gaitComparing = null },
-            onOpenDetail = {
-                gaitComparing = null
-                gaitDetail = comparison.recent.id
-            },
-            onSaveToChat = {
-                gaitComparing = null
-                entries += ChatEntry.GaitCompared(comparison)
-            },
-        )
+    // ── 기록 제목 묻기 — **촬영·업로드 공통** ───────────────────────────────
+    //
+    // 영상을 읽어 둔 뒤, 분석을 시작하기 전에 한 번 묻는다. 건너뛰거나 비워 두면 null 이
+    // 가고 화면이 "보행 기록" 을 그린다. 다이얼로그가 닫히는 순간 분석이 시작된다.
+    gaitTitlePending?.let { video ->
+        GaitTitleDialog(initial = null) { title ->
+            gaitTitlePending = null
+            startGaitAnalysis(video, title)
+        }
     }
 
     gaitPicking?.let { recentId ->
@@ -1073,30 +1142,36 @@ fun ChatScreen(
         )
     }
 
-    // ── 저장된 기록끼리 비교 (B 진입) — **같은 시트를 두 번 쓴다** ──────────
+    // ── 저장된 기록끼리 비교 (B 진입) — **한 시트에서 둘을 고른다** ──────────
     //
-    // 새 화면을 만들지 않는다. [GaitPickSheet] 가 이미 `comparable` 만 고르게 하고
-    // 날짜를 보여 주므로, 기준을 고르는 데도 상대를 고르는 데도 그대로 쓴다.
+    // 예전에는 같은 시트를 두 번 열었다(기준 → 상대). 두 번째 시트에서 첫 것을 빼는
+    // 것까지는 맞았는데 "방금 골랐는데 또?" 가 됐다. 둘을 체크하고 한 번에 넘어간다.
     if (gaitPairPicking) {
-        GaitPickSheet(
+        GaitPairPickSheet(
             records = gait.records,
             onDismiss = { gaitPairPicking = false },
-            onConfirm = { first ->
+            onConfirm = { a, b ->
                 gaitPairPicking = false
-                gaitPairFirst = first          // 두 번째 시트로 넘어간다
+                // 순서는 신경 쓰지 않는다 — 어느 쪽이 최근인지는 날짜가 정한다.
+                scope.launch { gaitComparing = gait.compare(a.id, b.id) }
             },
         )
     }
 
-    gaitPairFirst?.let { first ->
+    // ── 지난 보행 기록 보기 (AI 기능 선택 시트) ────────────────────────────
+    //
+    // 피부 쪽 "지난 기록 보기" 와 같은 자리다. 비교 시트를 그대로 쓰되 **어느 기록이든**
+    // 열 수 있다 — 비교 지표가 없어도 영상은 볼 수 있으니까. 고르면 상세로 간다.
+    if (gaitHistoryOpen) {
         GaitPickSheet(
-            // **첫 번째로 고른 것은 뺀다** — 자기 자신과 비교하면 늘 "차이 없음" 이다.
-            records = gait.comparableExcept(first.id),
-            onDismiss = { gaitPairFirst = null },
-            onConfirm = { second ->
-                gaitPairFirst = null
-                // 순서는 신경 쓰지 않는다 — 저쪽이 날짜로 past/recent 를 가른다.
-                scope.launch { gaitComparing = gait.compare(second.id, first.id) }
+            records = gait.records,
+            title = "지난 보행 기록",
+            confirmLabel = "기록 열기",
+            requireComparable = false,
+            onDismiss = { gaitHistoryOpen = false },
+            onConfirm = { record ->
+                gaitHistoryOpen = false
+                gaitDetail = record.id
             },
         )
     }
@@ -1141,7 +1216,7 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(comparison.verdict.sentence, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+            Text(comparison.verdict.title, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("다시 보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(13.dp), tint = DaengPinkDeep)
@@ -1767,6 +1842,8 @@ private fun AiActionDialog(
     skinOnly: Boolean = false,
     /** 지난 기록으로. null 이면 줄을 안 그린다 (로그인 안 한 기기). */
     onOpenHistory: (() -> Unit)? = null,
+    /** 보행 쪽 지난 기록으로. null 이면 줄을 안 그린다 (남긴 기록이 없을 때). */
+    onOpenGaitHistory: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -1810,6 +1887,12 @@ private fun AiActionDialog(
                                 SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
                                 RowSeparator()
                                 SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                                if (onOpenGaitHistory != null) {
+                                    RowSeparator()
+                                    // 피부 묶음의 "지난 기록 보기" 와 같은 자리. 분석 카드는
+                                    // 대화 위로 흘러가 버려서, 지난 영상을 다시 열 길이 이것뿐이다.
+                                    SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenGaitHistory)
+                                }
                                 RowSeparator()
                                 // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
                                 // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
@@ -1818,7 +1901,7 @@ private fun AiActionDialog(
                                 // 상수라, 박아 두면 기준이 바뀌어도 이 줄만 안 따라온다 —
                                 // 실제로 "10초 이상" 이 그렇게 남아 있었다.
                                 Text(
-                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                                     color = TextMuted,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1913,7 +1996,7 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
                         RowSeparator()
                         Text(
-                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
