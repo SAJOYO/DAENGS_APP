@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitJoint
@@ -203,16 +204,17 @@ fun GaitCompareScreen(
             // 이 화면이 판정이 아니라는 말은 **화면 안에** 있어야 한다. 문서에만
             // 적어 두면 화면을 보는 사람에게는 없는 말이다. 관절 점에 색이 들어온
             // 뒤로는 더 그렇다 — 색을 정상/위험으로 읽지 않게 붙들어 주는 문장이다.
-            Text(
-                "이 비교는 같은 아이의 두 시점을 나란히 놓아 본 것이에요.\n" +
-                    "건강 상태를 판단하거나 진단하지 않아요.",
-                color = TextMuted,
-                fontSize = 11.sp,
-                lineHeight = 17.sp,
-                // 위 주의 상자의 글자와 왼쪽 끝을 맞춘다. 상자가 없다고 여백을 안 주면
-                // 이 문구만 왼쪽으로 튀어나온다.
-                modifier = Modifier.padding(horizontal = NOTE_INSET),
-            )
+            // 위 주의 상자와 **같은 점, 같은 여백**을 쓴다. 상자만 없고 나머지가 같아야 두
+            // 문단의 글자가 한 세로선에서 시작한다 — 여백만 맞추고 점을 빼면 이 줄만 점
+            // 자리에서 시작해 여전히 어긋난다.
+            Column(
+                Modifier.padding(horizontal = NOTE_INSET),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                // 줄마다 점 하나. 두 문장은 각각 완결된 말이라 한 점에 매달지 않는다.
+                DottedLine("이 비교는 같은 아이의 두 시점을 나란히 놓아 본 것이에요.", fontSize = 11.sp, lineHeight = 17.sp)
+                DottedLine("건강 상태를 판단하거나 진단하지 않아요.", fontSize = 11.sp, lineHeight = 17.sp)
+            }
         }
 
         Row(
@@ -424,18 +426,33 @@ private fun AdviceCard(title: String, body: String) {
 @Composable
 private fun NoteBox(text: String) {
     Surface(color = PinkFaint, shape = RoundedCornerShape(13.dp)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = NOTE_INSET, vertical = 11.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            // 가운뎃점. 한 줄만 있으면 상자 안이 허전해서 문장이 떠 보인다. Row 로 두면
-            // 여러 줄로 접힐 때 둘째 줄이 글자 앞으로 들어와 매달린 들여쓰기가 된다.
-            Text("·", color = TextMuted, fontSize = 11.5.sp, lineHeight = 18.sp)
-            Spacer(Modifier.width(6.dp))
-            Text(text, color = TextMuted, fontSize = 11.5.sp, lineHeight = 18.sp)
-        }
+        DottedLine(
+            text,
+            fontSize = 11.5.sp,
+            lineHeight = 18.sp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = NOTE_INSET, vertical = 11.dp),
+        )
+    }
+}
+
+/**
+ * 가운뎃점 하나 + 문장 하나. 주의 상자와 그 아래 진단아님 문구가 **같은 것**을 쓴다 —
+ * 점과 간격이 같아야 두 문단의 글자가 한 세로선에서 시작한다.
+ *
+ * 점만 있으면 한 줄짜리 상자가 허전해서 문장이 떠 보이던 것도 잡힌다. 문장이 여러 줄로
+ * 접히면 둘째 줄이 글자 앞으로 들어와 매달린 들여쓰기가 된다.
+ */
+@Composable
+private fun DottedLine(
+    text: String,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.Top) {
+        Text("·", color = TextMuted, fontSize = fontSize, lineHeight = lineHeight)
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = TextMuted, fontSize = fontSize, lineHeight = lineHeight)
     }
 }
 
