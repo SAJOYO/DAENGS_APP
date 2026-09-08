@@ -47,6 +47,7 @@ class ConnectedPlaceSearchUiTest {
         compose.onNodeWithText("이 주변 검색").assertDoesNotExist()
         compose.onNodeWithText("내 주변 검색").performClick()
         assertEquals(PlacesAction.Locate(PlaceKind.CAFE, false), actions.single())
+        expandCategories()
         val category = compose.onNode(hasText("전체") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).fetchSemanticsNode().boundsInRoot
         val conditions = compose.onNodeWithText("반려견 선택 ▾").fetchSemanticsNode().boundsInRoot
         assertTrue(conditions.top > category.bottom)
@@ -119,9 +120,16 @@ class ConnectedPlaceSearchUiTest {
         compose.onNodeWithContentDescription("검색 실행").performClick()
         assertEquals(PlacesAction.Search(PlaceKind.CAFE, false, "구욱희씨"), actions.last())
     }
+    /**
+     * 카테고리 격자를 편다. **격자는 기본이 접혀 있고 고르면 도로 접힌다** — 지도를
+     * 가리지 않으려는 것이라, 격자를 두 번 만지는 시험은 그 사이에 다시 펴야 한다.
+     */
+    private fun expandCategories() = compose.onNodeWithTag("place-category-bar").performClick()
+
     @Test fun allDispatchesAllScopeAndRadiusCanBeSelected() {
         val actions = mutableListOf<PlacesAction>()
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(ready(), actions::add, {}, {}, {}, {}, {}, showMap = false) } }
+        expandCategories()
         compose.onNode(hasText("전체") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
         assertEquals(PlacesAction.Search(null, false, null), actions.single())
         compose.onNodeWithText("반경 3km ▾").performClick()
@@ -150,27 +158,33 @@ class ConnectedPlaceSearchUiTest {
             if (action is PlacesAction.Search) state.value = state.value.copy(
                 discovery = state.value.discovery.copy(requestedKinds = action.category.kinds))
         }, {}, {}, {}, {}, {}, showMap = false) } }
+        expandCategories()
         listOf("전체", "진료", "돌봄", "쇼핑", "식사·카페", "나들이", "문화", "숙박", "기타").forEach {
             compose.onNode(hasText(it) and hasAnyAncestor(hasTestTag("place-purpose-grid"))).assertIsDisplayed()
         }
-        compose.onNodeWithText("식사·카페").performClick()
+        // **격자 안으로 한정한다.** 접힘 막대가 고른 갈래 이름을 그대로 보여 줘서,
+        // 글자만으로 찾으면 막대와 격자 둘이 걸린다.
+        compose.onNode(hasText("식사·카페") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
         assertEquals(PlaceCategorySelection.Purpose(PlacePurpose.DINING), (actions.last() as PlacesAction.Search).category)
         compose.onNodeWithContentDescription("식사·카페 전체").assertIsSelected().assertTextEquals("전체")
         compose.onNodeWithTag("place-subcategory-panel").assertIsDisplayed()
         compose.onNodeWithText("음식점").performClick()
         compose.onNodeWithText("음식점").assertIsSelected()
-        compose.onNodeWithText("진료").assertIsDisplayed()
-        compose.onNodeWithText("진료").performClick()
+        expandCategories()
+        compose.onNode(hasText("진료") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).assertIsDisplayed()
+        compose.onNode(hasText("진료") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
         compose.onNodeWithContentDescription("진료 전체").assertIsSelected()
         compose.onNodeWithText("동물병원").assertExists()
         compose.onNodeWithText("음식점").assertDoesNotExist()
         assertEquals(PlacePurpose.HEALTHCARE.kinds, (actions.last() as PlacesAction.Search).category.kinds)
+        expandCategories()
         compose.onNode(hasText("전체") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).assertIsDisplayed()
         compose.onNode(hasText("전체") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
         compose.onNodeWithTag("place-subcategory-panel").assertDoesNotExist()
         assertEquals(PlaceKind.entries, (actions.last() as PlacesAction.Search).category.kinds)
-        compose.onNodeWithText("기타").assertIsDisplayed()
-        compose.onNodeWithText("기타").performClick()
+        expandCategories()
+        compose.onNode(hasText("기타") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).assertIsDisplayed()
+        compose.onNode(hasText("기타") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
         assertEquals(listOf(PlaceKind.ETC), (actions.last() as PlacesAction.Search).category.kinds)
     }
 
@@ -189,7 +203,8 @@ class ConnectedPlaceSearchUiTest {
     @Test fun lodgingParentAndChildCanShareTheirDisplayName() {
         val selection = androidx.compose.runtime.mutableStateOf<PlaceCategorySelection>(PlaceCategorySelection.All)
         compose.setContent { DaengsTheme { PlacePurposeMenu(selection.value) { selection.value = it } } }
-        compose.onNodeWithText("숙박").performClick()
+        expandCategories()
+        compose.onNode(hasText("숙박") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
         compose.onNodeWithContentDescription("숙박 전체").assertIsSelected()
         compose.onNode(hasText("숙박") and hasAnyAncestor(hasTestTag("place-subcategory-panel"))).performClick()
         assertEquals(PlaceCategorySelection.Kind(PlaceKind.STAY), selection.value)
