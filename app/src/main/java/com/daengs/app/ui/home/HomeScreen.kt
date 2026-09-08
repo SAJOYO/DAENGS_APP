@@ -1,5 +1,9 @@
 package com.daengs.app.ui.home
 
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -640,7 +644,20 @@ private fun RoomSection(
 
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
-    Box(modifier.onSizeChanged { boxSize = it }) {
+    // 문이 화면 어디에 있나. **방이 터치 판정에 쓰는 것과 같은 값**이라
+    // (`RoomTouchSpots`) 가리키는 곳과 눌리는 곳이 갈라지지 않는다.
+    var doorSpot by remember { mutableStateOf<Rect?>(null) }
+    // 방 상자가 창 안에서 어디에 있나. **`onSpots` 는 창 좌표로 온다**(`toWindow`) —
+    // 둘러보기 겹이 화면 전체를 덮기 때문이다. 알약은 이 상자 안에 있으므로 그만큼 뺀다.
+    var roomOrigin by remember { mutableStateOf(Offset.Zero) }
+    // 알약을 누르면 이 값이 오르고, 방이 그때 문을 연다.
+    var doorSignal by remember { mutableIntStateOf(0) }
+
+    Box(
+        modifier
+            .onSizeChanged { boxSize = it }
+            .onGloballyPositioned { roomOrigin = it.positionInWindow() },
+    ) {
         MiniRoomCanvas(
             state = state,
             catalog = catalog,
@@ -652,11 +669,16 @@ private fun RoomSection(
             modifier = Modifier.fillMaxSize(),
             // **자리를 여기서 다시 계산하지 않는다.** 방이 터치 판정에 쓰는 것과 같은
             // 셈으로 알려 준다 — 가리키는 곳과 눌리는 곳이 갈라지면 안 된다.
-            onSpots = if (tourSpots == null) null else { spots ->
-                tourSpots.put(TourStop.Door, spots.door)
-                tourSpots.put(TourStop.Frame, spots.frame)
-                spots.turntable?.let { tourSpots.put(TourStop.Turntable, it) }
+            // **자리는 언제나 받는다.** 둘러보기가 꺼져 있어도 문 알약이 이 값을 쓴다.
+            onSpots = { spots ->
+                doorSpot = spots.door
+                if (tourSpots != null) {
+                    tourSpots.put(TourStop.Door, spots.door)
+                    tourSpots.put(TourStop.Frame, spots.frame)
+                    spots.turntable?.let { tourSpots.put(TourStop.Turntable, it) }
+                }
             },
+            openDoorSignal = doorSignal,
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —
@@ -699,6 +721,18 @@ private fun RoomSection(
         ) {
             EmptyRoomInvite(onAddPet, Modifier.align(Alignment.Center))
         }
+
+        // **문이 산책 나가는 곳이라고 말해 준다.**
+        //
+        // 문짝의 흰빛만으로는 "누를 수 있다" 까지만 읽히고 "누르면 산책" 까지는 못 간다.
+        // 편집 중에는 안 띄운다 — 그때는 문이 산책으로 안 이어진다(`onDoorOpened` 가 null).
+        // 빈 방 안내가 떠 있을 때도 안 띄운다. 그때 할 일은 산책이 아니라 등록이다.
+        val doorBadgeVisible = onOpenWalk != null && !inventoryOpen && !tourOpen &&
+            !showsEmptyRoomInvite(waitsForPet, showDogsLoading, inventoryOpen, tourOpen)
+        doorSpot?.takeIf { doorBadgeVisible }?.let { spot ->
+            DoorWalkBadge(spot.translate(-roomOrigin.x, -roomOrigin.y), boxSize) { doorSignal++ }
+        }
+
         TodayCard(
             dateLabel = dateLabel,
             note = todayNote,
