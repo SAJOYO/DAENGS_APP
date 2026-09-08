@@ -1,6 +1,7 @@
 package com.daengs.app.ui.walk
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.*
@@ -24,16 +26,32 @@ enum class WalkTool { POLE, ROTATE, CAMERA, RECORD, ENTRIES, LOCATE, PAUSE, PLAY
 
 @Composable
 internal fun WalkToolButton(tool: WalkTool, label: String, onClick: () -> Unit,
-    modifier: Modifier = Modifier, enabled: Boolean = true, active: Boolean = false, caption: String? = null, captionBeside: Boolean = false) {
+    modifier: Modifier = Modifier, enabled: Boolean = true, active: Boolean = false, caption: String? = null,
+    captionBeside: Boolean = false, emphasis: Boolean = false,
+    /** 버튼 한 칸의 최소 크기. 아래 도크는 손가락이 자주 가는 자리라 조금 크게 쓴다. */
+    minSize: Dp = 48.dp,
+    /** 그림 크기. [minSize] 를 키우면 같이 키워야 칸 안이 허전하지 않다. */
+    iconSize: Dp = 22.dp) {
+    // **강조는 바탕과 테두리로 준다. 글자색은 진한 갈색 그대로다.**
+    //
+    // 처음에 분홍 글자로 해 봤더니 연분홍 바탕에서 2.49:1 밖에 안 나와서, 실기기에서
+    // 눌리지 않는 버튼처럼 보였다. 같은 바탕에 `TextDark` 면 8.77:1 이다. 이 저장소의
+    // 분홍은 밝은 색이라 흰 글자를 얹어도 2.4:1 언저리다 — 분홍 위에 흰 글자를 쓰지 않는다.
     val tint = if (active) DaengPinkDeep else TextDark
+    val shape = RoundedCornerShape(12.dp)
     TextButton(onClick = onClick, enabled = enabled, modifier = modifier
-        .widthIn(min = 48.dp).heightIn(min = 48.dp)
+        .widthIn(min = minSize).heightIn(min = minSize)
+        .then(if (emphasis) Modifier.border(1.5.dp, DaengPink, shape) else Modifier)
         .semantics { contentDescription = label; if (tool == WalkTool.POLE) selected = active },
-        contentPadding = PaddingValues(4.dp), shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(4.dp), shape = shape,
         colors = ButtonDefaults.textButtonColors(contentColor = tint,
-            containerColor = if (active) DaengPinkDeep.copy(alpha = .12f) else Color.Transparent)) {
+            containerColor = when {
+                emphasis -> PinkSoft
+                active -> DaengPinkDeep.copy(alpha = .12f)
+                else -> Color.Transparent
+            })) {
         val icon: @Composable () -> Unit = {
-            Canvas(Modifier.size(22.dp)) {
+            Canvas(Modifier.size(iconSize)) {
                 val c = if (enabled) tint else tint.copy(alpha = .4f)
                 fun line(x: Float, y: Float, a: Float, b: Float) = drawLine(c, Offset(size.width*x/24, size.height*y/24), Offset(size.width*a/24, size.height*b/24), 1.7.dp.toPx())
                 when (tool) {
