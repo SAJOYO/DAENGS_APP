@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * 저쪽 계약을 우리가 제대로 읽는가.
@@ -159,5 +160,114 @@ class PetTest {
         val list = PetList.parse(JSONObject(body))
         assertNull(list.maxPets)
         assertEquals("네옹", list.pets.single().name)
+    }
+
+    // ── 돌봄 (#200 · 저쪽 #331) ─────────────────────────────────────────
+
+    private val care = """
+        {"id":"x","name":"네옹","breed":"mix","is_primary":false,
+         "feeding_style":"scheduled","feeding_times":["08:00","19:30"],
+         "health_conditions":"슬개골 탈구","medications":"관절약"}
+    """.trimIndent()
+
+    @Test
+    fun `돌봄 칸을 읽는다`() {
+        val p = Pet.parse(JSONObject(care))
+        assertEquals(Pet.FeedingStyle.SCHEDULED, p.feedingStyle)
+        assertEquals(listOf(LocalTime.of(8, 0), LocalTime.of(19, 30)), p.feedingTimes)
+        assertEquals("슬개골 탈구", p.healthConditions)
+        assertEquals("관절약", p.medications)
+    }
+
+    /** 옛 서버(#331 전)는 이 칸을 아예 안 준다. **없어도 깨지면 안 되고 null 이다.** */
+    @Test
+    fun `돌봄 칸이 안 와도 null 로 읽는다`() {
+        val p = Pet.parse(JSONObject(full))
+        assertNull(p.feedingStyle)
+        assertNull(p.feedingTimes)
+        assertNull(p.healthConditions)
+        assertNull(p.medications)
+    }
+
+    @Test
+    fun `자율급식은 시각 없이 온다`() {
+        val json = """{"id":"x","name":"네옹","breed":"mix","is_primary":false,
+            "feeding_style":"free","feeding_times":null}"""
+        val p = Pet.parse(JSONObject(json))
+        assertEquals(Pet.FeedingStyle.FREE, p.feedingStyle)
+        assertNull(p.feedingTimes)
+    }
+
+    /** 초안에도 실린다. 빠지면 몸무게 한 번 고칠 때 지병이 null 로 덮인다 (PUT). */
+    @Test
+    fun `초안이 돌봄 칸을 그대로 담는다`() {
+        val d = Pet.parse(JSONObject(care)).toDraft()
+        assertEquals(Pet.FeedingStyle.SCHEDULED, d.feedingStyle)
+        assertEquals(listOf(LocalTime.of(8, 0), LocalTime.of(19, 30)), d.feedingTimes)
+        assertEquals("슬개골 탈구", d.healthConditions)
+        assertEquals("관절약", d.medications)
+    }
+
+    @Test
+    fun `돌봄 칸을 안 채우면 null 로 보낸다`() {
+        val json = PetDraft(name = "네옹", breed = "beagle").toJson()
+        assertTrue(json.isNull("feeding_style"))
+        assertTrue(json.isNull("feeding_times"))
+        assertTrue(json.isNull("health_conditions"))
+        assertTrue(json.isNull("medications"))
+    }
+
+    @Test
+    fun `시간제 급식은 시각을 HH_MM 배열로 보낸다`() {
+        val json = PetDraft(
+            name = "네옹", breed = "beagle",
+            feedingStyle = Pet.FeedingStyle.SCHEDULED,
+            feedingTimes = listOf(LocalTime.of(8, 0), LocalTime.of(19, 30)),
+        ).toJson()
+        assertEquals("scheduled", json.getString("feeding_style"))
+        val arr = json.getJSONArray("feeding_times")
+        assertEquals(listOf("08:00", "19:30"), (0 until arr.length()).map(arr::getString))
+    }
+
+    /**
+     * 시간제인데 시각을 아직 안 넣었으면 **빈 배열이 아니라 null** 이다.
+     * 저쪽이 `min_length=1` 이라 `[]` 는 422 다.
+     */
+    @Test
+    fun `시각이 하나도 없으면 null 로 보낸다`() {
+        val json = PetDraft(
+            name = "네옹", breed = "beagle",
+            feedingStyle = Pet.FeedingStyle.SCHEDULED, feedingTimes = emptyList(),
+        ).toJson()
+        assertEquals("scheduled", json.getString("feeding_style"))
+        assertTrue(json.isNull("feeding_times"))
+    }
+
+    /** 공백만 적은 병·약은 **모름** 이다. 빈 문자열이 가면 저쪽이 "복약 중" 으로 읽는다. */
+    @Test
+    fun `공백만 있는 병과 약은 null 로 보낸다`() {
+        val json = PetDraft(
+            name = "네옹", breed = "beagle", healthConditions = "  ", medications = " 관절약 ",
+        ).toJson()
+        assertTrue(json.isNull("health_conditions"))
+        assertEquals("관절약", json.getString("medications"))
+    }
+
+    /** 시각은 시간제일 때만 있을 수 있다. 서버도 막지만 여기서 알아야 화면이 말한다. */
+    @Test
+    fun `자율급식에 시각이 붙으면 보낼 수 없다`() {
+        val base = PetDraft(name = "네옹", breed = "beagle", feedingTimes = listOf(LocalTime.of(8, 0)))
+        assertFalse(base.valid)
+        assertFalse(base.copy(feedingStyle = Pet.FeedingStyle.FREE).valid)
+        assertTrue(base.copy(feedingStyle = Pet.FeedingStyle.SCHEDULED).valid)
+    }
+
+    /** 저쪽 상한(`CARE_TEXT_MAX` = 200). 넘기면 422 라 보내기 전에 안다. */
+    @Test
+    fun `병과 약은 200자를 넘기면 보낼 수 없다`() {
+        val base = PetDraft(name = "네옹", breed = "beagle")
+        assertTrue(base.copy(healthConditions = "가".repeat(PetDraft.CARE_TEXT_MAX)).valid)
+        assertFalse(base.copy(healthConditions = "가".repeat(PetDraft.CARE_TEXT_MAX + 1)).valid)
+        assertFalse(base.copy(medications = "가".repeat(PetDraft.CARE_TEXT_MAX + 1)).valid)
     }
 }

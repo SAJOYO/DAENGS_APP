@@ -61,6 +61,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.common.DateWheel
+import com.daengs.app.ui.common.TimeWheel
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
 import com.daengs.app.pet.PetWeight
@@ -82,6 +85,7 @@ import com.daengs.app.ui.theme.PinkSoft
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeParseException
 
 /**
@@ -146,6 +150,14 @@ fun PetFormScreen(
         mutableStateOf(initial?.birthDateKind ?: Pet.BirthDateKind.BIRTHDAY)
     }
 
+    // 돌봄 (#200). 급식 시각은 시간제일 때만 서버로 간다 — 자율급식으로 바꿔도 목록은
+    // 들고 있다가 다시 시간제로 돌아오면 그대로 보여 준다. 실수로 바꿨다가 되돌릴 때
+    // 시각을 다시 다 넣게 하면 안 된다.
+    var feedingStyle by remember { mutableStateOf(initial?.feedingStyle) }
+    var feedingTimes by remember { mutableStateOf(initial?.feedingTimes.orEmpty()) }
+    var healthConditions by remember { mutableStateOf(initial?.healthConditions.orEmpty()) }
+    var medications by remember { mutableStateOf(initial?.medications.orEmpty()) }
+
     val parsedDate = day.takeIf { dateOn }
     val dateBad = false
     // 몸무게는 비워 둘 수 있는 칸이라 "빈 칸"과 "잘못 쓴 값"을 가른다 ([PetWeight]).
@@ -164,6 +176,11 @@ fun PetFormScreen(
         // 날짜를 안 넣었으면 종류도 안 보낸다 — 서버가 "같이 있거나 같이 없어야
         // 한다"로 막고, 여기서 맞춰야 422 를 안 받는다.
         birthDateKind = parsedDate?.let { dateKind },
+        feedingStyle = feedingStyle,
+        // 시간제가 아니면 안 보낸다. 서버가 "시각은 시간제일 때만" 으로 422 를 준다.
+        feedingTimes = feedingTimes.takeIf { feedingStyle == Pet.FeedingStyle.SCHEDULED && it.isNotEmpty() },
+        healthConditions = healthConditions,
+        medications = medications,
     )
 
     if (onCancel != null) BackHandler(enabled = !busy, onBack = onCancel)
@@ -286,6 +303,45 @@ fun PetFormScreen(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
+
+        Spacer(Modifier.height(18.dp))
+        FieldLabel("급식 방식")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("자율급식", feedingStyle == Pet.FeedingStyle.FREE) {
+                feedingStyle = toggle(feedingStyle, Pet.FeedingStyle.FREE)
+            }
+            Chip("시간제", feedingStyle == Pet.FeedingStyle.SCHEDULED) {
+                feedingStyle = toggle(feedingStyle, Pet.FeedingStyle.SCHEDULED)
+            }
+        }
+        if (feedingStyle == Pet.FeedingStyle.SCHEDULED) {
+            Spacer(Modifier.height(8.dp))
+            FeedingTimes(
+                times = feedingTimes,
+                onAdd = { feedingTimes = (feedingTimes + it).distinct().sorted() },
+                onRemove = { feedingTimes = feedingTimes - it },
+            )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        FieldLabel("앓는 병")
+        TextInput(
+            healthConditions,
+            { healthConditions = it },
+            "예: 슬개골 탈구",
+            label = "앓는 병",
+            maxLength = PetDraft.CARE_TEXT_MAX,
+        )
+
+        Spacer(Modifier.height(18.dp))
+        FieldLabel("먹는 약")
+        TextInput(
+            medications,
+            { medications = it },
+            "예: 관절 영양제, 심장사상충약",
+            label = "먹는 약",
+            maxLength = PetDraft.CARE_TEXT_MAX,
+        )
 
         if (error != null) {
             Spacer(Modifier.height(16.dp))
@@ -413,6 +469,105 @@ private fun FieldLabel(text: String, required: Boolean = false) {
 }
 
 /**
+ * 시간제 급식의 시각 목록.
+ *
+ * 시각마다 칩 하나에 지우기가 붙고, 아래에 **다이얼이 접혀 있다.** 펼치면 시·분을 굴려
+ * 고르고 [CONFIRM_FEEDING_TIME_LABEL] 로 넣는다 — 다이얼을 늘 펼쳐 두면 폼이 그만큼
+ * 길어지고, 시각 셋을 넣는 사람보다 하나 넣는 사람이 많다.
+ *
+ * 열두 개가 상한이다 (저쪽 `max_length=12`). 차면 추가 줄이 사라진다.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FeedingTimes(
+    times: List<LocalTime>,
+    onAdd: (LocalTime) -> Unit,
+    onRemove: (LocalTime) -> Unit,
+) {
+    var picking by remember { mutableStateOf(false) }
+    var pick by remember { mutableStateOf(LocalTime.of(8, 0)) }
+
+    if (times.isNotEmpty()) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            times.forEach { time ->
+                val text = time.format(Pet.FEEDING_TIME)
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PinkSoft)
+                        .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        Modifier
+                            .clip(CircleShape)
+                            .clickable { onRemove(time) }
+                            .semantics { contentDescription = "$text 지우기" }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) { Text("✕", color = TextMuted, fontSize = 12.sp) }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+
+    when {
+        picking -> {
+            TimeWheel(value = pick, onChange = { pick = it })
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    CONFIRM_FEEDING_TIME_LABEL,
+                    color = DaengPink,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            onAdd(pick)
+                            picking = false
+                        }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+                Text(
+                    "닫기",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { picking = false }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
+        }
+        times.size < MAX_FEEDING_TIMES -> Text(
+            ADD_FEEDING_TIME_LABEL,
+            color = DaengPink,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { picking = true }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/** 시각 추가 줄. 테스트가 이 글자로 찾는다. */
+internal const val ADD_FEEDING_TIME_LABEL = "+ 시간 추가"
+
+/** 다이얼에서 고른 시각을 목록에 넣는 줄. */
+internal const val CONFIRM_FEEDING_TIME_LABEL = "이 시간 넣기"
+
+/** 급식 시각 상한. 저쪽 `feeding_times` 의 `max_length` 와 같은 수다. */
+private const val MAX_FEEDING_TIMES = 12
+
+/**
  * 별표가 붙는 칸.
  *
  * **[PetDraft.valid] 가 요구하는 것과 같은 목록이다.** 나머지는 안 골라도 되고,
@@ -434,6 +589,8 @@ private fun TextInput(
      * 이름 없는 입력 칸을 만나고, 테스트도 자리표시자 글자를 칸으로 착각한다.
      */
     label: String? = null,
+    /** 글자 수 상한. 넘게 쳐도 안 들어간다 — 서버가 422 로 돌려주기 전에 여기서 막는다. */
+    maxLength: Int = Int.MAX_VALUE,
 ) {
     Box(
         Modifier
@@ -446,7 +603,7 @@ private fun TextInput(
         if (value.isEmpty()) Text(hint, color = TextMuted, fontSize = 14.sp)
         BasicTextField(
             value = value,
-            onValueChange = onChange,
+            onValueChange = { if (it.length <= maxLength) onChange(it) },
             singleLine = true,
             textStyle = TextStyle(color = TextDark, fontSize = 14.sp),
             cursorBrush = SolidColor(DaengPink),
@@ -652,6 +809,27 @@ private fun PhotoRowPreview() {
 @Composable
 private fun PetFormNewPreview() {
     DaengsTheme { PetFormScreen(onSubmit = { _, _ -> }, onCancel = null, busy = false, error = null) }
+}
+
+/** 시간제 급식에 시각 둘, 병·약이 찬 수정 화면. 칩 줄과 텍스트 칸이 어떻게 놓이는지 본다. */
+@Preview(widthDp = 411, heightDp = 1400, showBackground = true)
+@Composable
+private fun PetFormCarePreview() {
+    DaengsTheme {
+        PetFormScreen(
+            onSubmit = { _, _ -> }, onCancel = {}, busy = false, error = null,
+            initial = Pet(
+                id = "p1", name = "네옹", breed = DogBreed.BEAGLE.id,
+                sex = Pet.Sex.FEMALE, neutered = true, weightKg = 4.2f,
+                birthDate = LocalDate.of(2023, 5, 14), birthDateKind = Pet.BirthDateKind.BIRTHDAY,
+                isPrimary = true,
+                feedingStyle = Pet.FeedingStyle.SCHEDULED,
+                feedingTimes = listOf(LocalTime.of(8, 0), LocalTime.of(19, 30)),
+                healthConditions = "슬개골 탈구",
+                medications = "관절 영양제",
+            ),
+        )
+    }
 }
 
 @Preview(widthDp = 411, heightDp = 900, showBackground = true)
