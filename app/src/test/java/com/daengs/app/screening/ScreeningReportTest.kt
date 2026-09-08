@@ -30,6 +30,18 @@ class ScreeningReportTest {
           },
           "stage2": {
             "shown": true,
+            "groups": [
+              {"name": "표면 변화", "prob": 0.75, "percent": 75.0},
+              {"name": "융기·발진", "prob": 0.17, "percent": 17.0},
+              {"name": "미란·궤양", "prob": 0.05, "percent": 5.0},
+              {"name": "결절·종괴", "prob": 0.03, "percent": 3.0}
+            ],
+            "group": {
+              "name": "표면 변화", "prob": 0.75, "percent": 75.0, "confidence": 0.6225,
+              "text": "모양만 보면 표면 변화 계열에 가깝습니다.",
+              "caveat": "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
+            },
+            "alert": null,
             "distribution": [
               {"code": "A2", "name_ko": "농포", "name_en": "pustule", "prob": 0.41, "percent": 41.0},
               {"code": "A1", "name_ko": "구진", "name_en": "papule", "prob": 0.33, "percent": 33.0},
@@ -143,5 +155,95 @@ class ScreeningReportTest {
         }
         val found = keys.filter { it.lowercase() in banned }
         assertTrue("계약에 금지된 필드가 생겼다: $found", found.isEmpty())
+    }
+
+    // ── 계열 4묶음 (2026-09-08) ────────────────────────────────
+
+    /**
+     * 보호자 화면이 그리는 것은 [ScreeningReport.groups] 다. 6종([stage2])은 계약에
+     * 그대로 오지만 **안 그린다** — 관리자 콘솔이 본다.
+     */
+    @Test
+    fun `계열 네 묶음을 읽고 6종도 그대로 들고 있다`() {
+        val r = ScreeningReport.parse(JSONObject(abnormalJson))
+        assertEquals(4, r.groups.size)
+        assertEquals("표면 변화", r.groups[0].name)
+        assertEquals(75.0f, r.groups[0].percent, 0.01f)
+        // 계약이 6종을 안 줄였다는 것까지 같이 못 박는다
+        assertEquals(3, r.stage2.size)
+    }
+
+    /** 묶음 순서도 서버 것이다. 앱이 다시 정렬하면 두 정렬이 갈라진다. */
+    @Test
+    fun `묶음 순서를 건드리지 않는다`() {
+        val r = ScreeningReport.parse(JSONObject(abnormalJson))
+        assertEquals(
+            listOf("표면 변화", "융기·발진", "미란·궤양", "결절·종괴"),
+            r.groups.map { it.name },
+        )
+    }
+
+    /** 계열 한 줄은 문장을 **그대로** 옮긴다. 앱이 지어 쓰면 저쪽과 갈라진다. */
+    @Test
+    fun `계열 한 줄을 그대로 읽는다`() {
+        val g = ScreeningReport.parse(JSONObject(abnormalJson)).group!!
+        assertEquals("모양만 보면 표면 변화 계열에 가깝습니다.", g.text)
+        assertTrue("면책이 비었다", g.caveat.isNotBlank())
+    }
+
+    /**
+     * ★ **확신이 낮으면 서버가 `group` 을 null 로 준다** — 셋에 하나쯤이다.
+     * 그때 앱이 막대 1등을 대신 문장으로 만들면, 확신 없을 때 말하지 않기로 한
+     * 규칙이 앱에서 무너진다. 그러니 **null 이면 null 이어야** 한다.
+     */
+    @Test
+    fun `확신이 낮으면 계열 한 줄이 없다`() {
+        // 문자열을 자르지 않고 JSON 을 손본다 — 정규식으로 도려내면 예시가
+        // 바뀔 때 조용히 안 맞는다.
+        val o = JSONObject(abnormalJson)
+        o.getJSONObject("stage2").put("group", JSONObject.NULL)
+        val r = ScreeningReport.parse(o)
+        assertNull(r.group)
+        assertEquals("막대는 남아야 한다", 4, r.groups.size)
+    }
+
+    /**
+     * 덩어리 경보. **계약에서 유일하게 병변 이름을 말하는 자리**다.
+     * 안 뜨면 null 이고, 그때 앱이 대신 문턱을 재지 않는다.
+     */
+    @Test
+    fun `덩어리 경보를 읽고 안 뜨면 없음이다`() {
+        assertNull("alert 가 null 이면 없음", ScreeningReport.parse(JSONObject(abnormalJson)).alert)
+
+        val o2 = JSONObject(abnormalJson)
+        o2.getJSONObject("stage2").put(
+            "alert",
+            JSONObject(mapOf(
+                "code" to "A6", "score" to 0.72, "threshold" to 0.40,
+                "text" to "덩어리가 의심됩니다.", "action" to "빠른 진료를 권합니다.",
+                "caveat" to "진단이 아닙니다.",
+            )),
+        )
+        val a = ScreeningReport.parse(o2).alert!!
+        assertEquals("A6", a.code)
+        assertEquals(0.72f, a.score, 0.001f)
+        assertEquals(0.40f, a.threshold, 0.001f)
+        assertTrue(a.text.isNotBlank() && a.action.isNotBlank())
+    }
+
+    /**
+     * ★ **옛 응답에는 `groups` 가 없다.** 이 기능 전에 저장된 기록이 그렇다.
+     * 그때 터지지 않고 빈 목록이어야 한다 — 화면은 문장 셋만 남는다.
+     */
+    @Test
+    fun `옛 응답에 묶음이 없어도 안 터진다`() {
+        val json = """
+            {"verdict": "abnormal", "headline": "", "body": "", "action": "",
+             "stage1": {}, "stage2": {"shown": true, "distribution": []}}
+        """.trimIndent()
+        val r = ScreeningReport.parse(JSONObject(json))
+        assertTrue(r.groups.isEmpty())
+        assertNull(r.group)
+        assertNull(r.alert)
     }
 }
