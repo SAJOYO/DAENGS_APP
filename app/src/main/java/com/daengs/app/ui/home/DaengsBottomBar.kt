@@ -1,5 +1,10 @@
 package com.daengs.app.ui.home
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -126,6 +131,87 @@ fun DaengsBottomBar(
         }
     }
 }
+
+/**
+ * 가로에서 하단바 대신 서는 **왼쪽 세로 레일**.
+ *
+ * ## 왜 필요한가
+ *
+ * 가로에서는 세로 공간이 411dp 뿐이라 하단바가 설 자리가 없다. 실제로 가로로 눕히면
+ * **바가 통째로 사라져서 도감에 들어가면 다른 탭으로 갈 방법이 없었다** — 뒤로가기
+ * 말고는 갇힌다. 세로 공간을 안 먹는 쪽으로 옮긴다.
+ *
+ * 항목·아이콘·고른 표시는 [DaengsBottomBar] 와 같은 [BottomItem] 을 쓴다. 두 벌로
+ * 만들면 한쪽만 고쳐지는 날이 온다.
+ */
+@Composable
+fun DaengsNavRail(
+    selected: BottomTab,
+    onSelect: (BottomTab) -> Unit,
+    onCenter: () -> Unit,
+    modifier: Modifier = Modifier,
+    tourSpots: TourSpots? = null,
+    /**
+     * 레일 맨 위에 얹을 것 (프로필·알림).
+     *
+     * **가로에서는 상단바를 없앤다.** 로고가 두 줄이라 상단바만으로 화면의 3분의 1을
+     * 먹었다. 프로필은 어디선가는 눌러야 하므로 레일이 받는다.
+     */
+    header: (@Composable () -> Unit)? = null,
+) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp),
+        modifier = modifier
+            .fillMaxHeight()
+            .shadow(10.dp, RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp), clip = false),
+    ) {
+        // **스크롤을 둔다.** 가로에서는 세로가 411dp 뿐이라 머리(프로필) + 항목 넷 +
+        // 가운데 버튼이 다 안 들어가서 **저장소가 화면 밖으로 밀렸다** — 눌릴 수가
+        // 없으니 그 탭에 영영 못 간다. 넘치면 스크롤되고, 안 넘치면 가운데에 선다.
+        Column(
+            Modifier
+                .width(RailWidth)
+                .fillMaxHeight()
+                .systemBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 6.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            header?.let {
+                it()
+                Spacer(Modifier.height(14.dp))
+            }
+            BottomItem(BottomTab.Home, selected, onSelect)
+            BottomItem(BottomTab.Nearby, selected, onSelect)
+            // 가운데 버튼은 세로에서도 가운데다. 하단바에서 튀어나온 그 자리와 같은 뜻이다.
+            Spacer(Modifier.height(10.dp))
+            Box(
+                Modifier
+                    .size(FabSize)
+                    .shadow(8.dp, RoundedCornerShape(50), clip = false)
+                    .clip(RoundedCornerShape(50))
+                    .background(DaengPink)
+                    .clickable(onClick = onCenter),
+                contentAlignment = Alignment.Center,
+            ) {
+                DaengsIconView(DaengsIcon.Paw, Modifier.size(29.dp), tint = CardWhite)
+            }
+            Spacer(Modifier.height(10.dp))
+            BottomItem(BottomTab.Dex, selected, onSelect)
+            BottomItem(
+                BottomTab.Storage,
+                selected,
+                onSelect,
+                Modifier.tourSpot(tourSpots, TourStop.Storage),
+            )
+        }
+    }
+}
+
+/** 레일의 폭. 아이콘 23dp + 글자 10sp 가 들어가고 손가락이 닿는 최소치를 넘는다. */
+private val RailWidth = 76.dp
 
 @Composable
 private fun BottomItem(

@@ -1,5 +1,7 @@
 package com.daengs.app.ui.dex
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.daengs.app.ui.dogcard.drawInHoleOf
 import com.daengs.app.ui.dogcard.drawPersonalCardAt
 import com.daengs.app.ui.dogcard.drawSlotTextAt
@@ -178,6 +180,15 @@ fun ImmersiveScreen(
      */
     from: Rect = Rect.Zero,
     onClose: () -> Unit,
+    /**
+     * 눕히기·세우기. null 이면 그 버튼이 안 뜬다 — `@Preview` 가 그렇게 쓴다.
+     *
+     * **이 화면만 가로를 허용한다.** 배경이 좌우로 펼쳐지는 장면이라 가로가 이득인
+     * 유일한 자리다. 나머지 화면은 세로 전용으로 그려져 있어 눕히면 무너진다.
+     */
+    onRotate: (() -> Unit)? = null,
+    /** 지금 눕혀져 있나. 버튼이 가리키는 뜻(가로로/세로로)이 이걸로 갈린다. */
+    landscape: Boolean = false,
 ) {
     val back = rememberAssetImage(scene.back)
     val subject = rememberAssetImage(scene.subject)
@@ -266,6 +277,31 @@ fun ImmersiveScreen(
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("아무 데나 누르면 나갑니다", color = Color(0x88FFFFFF), fontSize = 11.sp)
+                // **눕히기.** 이 화면만 가로를 허용한다 — 배경이 좌우로 펼쳐지는 장면이라
+                // 가로가 이득인 유일한 자리다. 기기의 회전 설정에 기대지 않고 버튼으로
+                // 정하는 것은 산책 화면과 같은 방식이다 (`WalkRotateButton`).
+                //
+                // 소리 버튼과 같은 이유로 누르는 자리는 48dp 다 — 빗나가면 화면이 닫힌다.
+                onRotate?.let { rotate ->
+                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(50))
+                            .semantics { contentDescription = if (landscape) "세로로 보기" else "가로로 보기" }
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                            ) { rotate() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        DaengsIconView(
+                            DaengsIcon.Rotate,
+                            Modifier.size(18.dp),
+                            tint = Color(0x88FFFFFF),
+                        )
+                    }
+                }
                 if (scene.bgm != null) {
                     Spacer(Modifier.width(4.dp))
                     // **탭이 겹친다.** 배경 전체가 "누르면 나갑니다"라, 자식이
@@ -774,8 +810,16 @@ private fun subjectRect(
     // **화면을 채우면 안 된다.** 예전엔 폭 105% 라 배추가 양옆으로 넘쳤고, 그러면
     // 밭에 서 있는 게 아니라 배추 사진 위에 앉은 것처럼 보인다. 사방에 밭이 보여야
     // "안에 들어와 있다"가 된다.
-    val toW = stage.width * SUBJECT_WIDTH
-    val toH = toW * subject.height / subject.width
+    // **폭으로만 재면 가로 화면에서 넘친다.** 폭의 몇 %로 잡는데 가로에서는 그 폭이
+    // 두 배라 주인공이 화면 높이를 넘어 위아래가 잘리고, 아래 글자와도 겹쳤다
+    // (실기기 가로에서 확인). 세로도 같이 재서 **작은 쪽을 따른다.**
+    var toW = stage.width * SUBJECT_WIDTH
+    var toH = toW * subject.height / subject.width
+    val maxH = stage.height * SUBJECT_MAX_HEIGHT
+    if (toH > maxH) {
+        toH = maxH
+        toW = toH * subject.width / subject.height
+    }
     val to = Offset((stage.width - toW) / 2f, stage.height * SUBJECT_CENTER_Y - toH / 2f)
     val toSize = Size(toW, toH)
 
@@ -848,3 +892,12 @@ private fun grownCardRect(card: ImageBitmap, stage: Size, enter: Float): Pair<Of
     val h = w / ratio
     return Offset((stage.width - w) / 2f, (stage.height - h) / 2f) to Size(w, h)
 }
+
+/**
+ * 주인공이 무대에서 차지할 **세로**의 최대 비율.
+ *
+ * 폭만으로 크기를 정하면 가로 화면에서 화면 높이를 넘어 위아래가 잘린다. 위에는
+ * 하늘이, 아래에는 이름·장소 글자가 있어야 "안에 들어와 있다" 가 되므로 그만큼 남긴다.
+ * 세로 화면에서는 이 선에 안 걸려 지금 크기 그대로다.
+ */
+private const val SUBJECT_MAX_HEIGHT = 0.74f

@@ -1,5 +1,7 @@
 package com.daengs.app.ui.landing
 
+import com.daengs.app.ui.home.CONTENT_MAX_WIDTH
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,10 +62,19 @@ fun LandingScreen(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // **넓은 화면에서는 폭을 막고 가운데에 둔다.** 폴더블을 펼치면 777dp 라 카카오
+    // 버튼이 화면을 가로질러 늘어난다 — 누르는 자리가 손보다 훨씬 넓어 어색하다.
+    // 폰은 이 선(460dp) 아래라 지금 모습 그대로다.
     Box(
-        modifier
+        modifier.fillMaxSize().background(CreamBg),
+        contentAlignment = Alignment.Center,
+    ) {
+    Box(
+        Modifier
+            // **`widthIn` 이 `fillMaxSize` 보다 먼저다.** 뒤에 두면 이미 폭이 화면
+            // 전체로 고정된 뒤라 상한이 안 먹는다 (그렇게 해 보고 알았다).
+            .widthIn(max = CONTENT_MAX_WIDTH)
             .fillMaxSize()
-            .background(CreamBg)
             .systemBarsPadding()
             .padding(horizontal = 32.dp),
     ) {
@@ -143,6 +154,7 @@ fun LandingScreen(
             // 닿을 수 없다. Play 정책상 앱 안에서 찾을 수 있어야 해서 여기에도 둔다.
             PrivacyPolicyLink(Modifier.padding(top = 10.dp))
         }
+    }
     }
 }
 

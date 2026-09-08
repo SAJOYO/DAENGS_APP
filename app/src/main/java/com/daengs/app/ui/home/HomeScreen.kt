@@ -1,5 +1,11 @@
 package com.daengs.app.ui.home
 
+import androidx.compose.foundation.clickable
+import com.daengs.app.ui.PetAvatar
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -361,7 +367,39 @@ fun HomeScreen(
     // 다시 열 때마다 처음부터. `tourOpen` 이 키라 껐다 켜면 1단계로 돌아온다.
     var tourStep by remember(tourOpen) { mutableIntStateOf(0) }
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // **가로면 하단바를 왼쪽 세로 레일로 바꾼다.** 가로에서는 세로 공간이 411dp 뿐이라
+    // 하단바가 설 자리가 없어서, 눕히면 바가 통째로 사라지고 다른 탭으로 갈 방법이
+    // 없었다 (실기기에서 확인). 레일은 세로를 안 먹는다.
+    val rail = usesNavRail(maxWidth, maxHeight)
+    val compactTop = hidesTopBar(maxHeight)
+    Row(Modifier.fillMaxSize()) {
+    if (rail) {
+        DaengsNavRail(
+            selected = tab,
+            onSelect = { picked ->
+                if (myOpen) onCloseMy?.invoke()
+                when (picked) {
+                    BottomTab.Dex -> onOpenDex?.invoke()
+                    BottomTab.Nearby -> onOpenPlaces?.invoke()
+                    else -> onSelectTab(picked)
+                }
+            },
+            // 가운데 버튼은 하단바와 같은 뜻이다 — 챗봇이다 (아래 `onCenter` 참고).
+            onCenter = { onOpenChat?.invoke() },
+            tourSpots = tourSpots,
+            header = if (!compactTop) null else {
+                {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onOpenMy?.invoke() }
+                        .padding(2.dp),
+                ) { PetAvatar(profilePhoto, profileBreed, 34.dp) }
+                }
+            },
+        )
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = CreamBg,
@@ -369,6 +407,10 @@ fun HomeScreen(
         // 방 배경은 상태바 아래까지 흘려보내고 싶기 때문이다.
         contentWindowInsets = WindowInsets(0),
         topBar = {
+            // **세로가 짧으면 상단바를 안 그린다.** 로고가 두 줄이라 가로에서는 이것만
+            // 으로 화면의 3분의 1을 먹었다. 폴더블 세로 펼침은 세로가 넉넉하므로
+            // 레일을 쓰더라도 상단바는 그대로 둔다.
+            if (compactTop) return@Scaffold
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
                     // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
@@ -380,6 +422,7 @@ fun HomeScreen(
             }
         },
         bottomBar = {
+            if (rail) return@Scaffold
             DaengsBottomBar(
                 tourSpots = tourSpots,
                 selected = tab,
@@ -545,8 +588,14 @@ fun HomeScreen(
                 // "볕이 뜨거우니 / 해 지고 / 나가자댕!" 이 세 줄로 쪼개졌다. 방은
                 // 정사각에 가까워 폭을 더 줘도 세로에 먼저 막히므로 덜 아쉽다.
                 room(Modifier.weight(1f).fillMaxHeight())
+                // **스크롤을 둔다.** 가로에서는 이 칸의 세로가 411dp 뿐이라 카드 셋
+                // (TODAY·챗봇·산책 요약)이 안 들어가고 마지막 것이 잘렸다. 내용이
+                // 넘치지 않는 폴드 세로에서는 스크롤이 생기지 않아 지금과 같다.
                 Column(
-                    Modifier.weight(1f).fillMaxHeight(),
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     // 방 위에 얹혀 모서리를 덮던 카드를 여기로 올린다 (사용자 결정).
@@ -570,6 +619,7 @@ fun HomeScreen(
             }
         }
         }
+    }
     }
 
     // **겹은 Scaffold 위에 있다.** 하단바도 가리켜야 하는데 Scaffold 안에 있으면

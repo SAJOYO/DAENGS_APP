@@ -169,8 +169,20 @@ class MainActivity : ComponentActivity() {
                 var walkOrientation by rememberSaveable {
                     mutableStateOf(WalkOrientation.PORTRAIT)
                 }
-                LaunchedEffect(screen, walkOrientation) {
+                // 이머시브 무대가 떠 있나. **무대만 가로를 허용한다** — 배경이 좌우로
+                // 펼쳐지는 장면이라 가로가 이득인 유일한 자리다. 나머지는 세로 전용으로
+                // 그려져 있어 눕히면 무너진다 (실기기에서 확인).
+                var immersiveOpen by remember { mutableStateOf(false) }
+                // 무대를 눕혔나. **무대를 닫으면 원래대로 돌아온다** — 세워 둔 채로
+                // 나가면 다음에 들어올 때 이유 없이 누워 있다.
+                var immersiveLandscape by remember { mutableStateOf(false) }
+                // **`immersiveLandscape` 도 키다.** 값만 바뀌고 이 자리가 안 돌면 버튼을 눌러도
+                // 방향이 그대로다 — 실제로 그렇게 안 돌아갔다.
+                LaunchedEffect(screen, walkOrientation, immersiveOpen, immersiveLandscape) {
                     requestedOrientation = when {
+                        screen == Screen.Dex && immersiveOpen ->
+                            if (immersiveLandscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                         screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                         walkOrientation == WalkOrientation.PORTRAIT ->
                             ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
@@ -924,6 +936,12 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        onImmersiveChange = {
+                            immersiveOpen = it
+                            if (!it) immersiveLandscape = false
+                        },
+                        immersiveLandscape = immersiveLandscape,
+                        onToggleImmersiveOrientation = { immersiveLandscape = !immersiveLandscape },
                         // **도감 보기는 열어 두고 뽑기만 막는다.** 이미 뽑아 둔 카드를
                         // 못 보게 하면 그게 더 이상하다.
                         onDrawBlocked = if (waitsForPet) {
