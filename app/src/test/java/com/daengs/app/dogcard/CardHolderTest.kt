@@ -49,8 +49,6 @@ class CardHolderTest {
         override suspend fun forgetEverything() {
             rows.clear()
         }
-
-        override suspend fun isEmpty(): Boolean = rows.isEmpty()
     }
 
     private fun card(id: String, owner: String?, at: Long) = DrawnCard(
@@ -63,6 +61,25 @@ class CardHolderTest {
         codeText = "NEO-0824",
         core = IntRect(0, 0, 10, 10),
     )
+
+    /**
+     * 예전 디버그 빌드가 첫 실행에 넣어 두던 시드 열두 장은 **얼굴 자리가 비어 있다**
+     * (`core` 가 0). 시더는 지웠지만 팀원 폰에는 그 줄이 남아 있어 도감이 뽑지도 않은
+     * 카드를 모은 것처럼 보였다. 목록을 읽을 때 그 줄을 지운다 — 서버는 빈 사각형을
+     * 422 로 거절하므로 그런 줄은 시드일 수밖에 없다.
+     */
+    @Test
+    fun `읽을 때 얼굴 자리가 빈 옛 시드 줄을 지운다`() = runTest {
+        val seed = card("seed", "user-1", 5).copy(core = IntRect.Zero)
+        val real = card("real", "user-1", 10)
+        val store = FakeCardStore(mutableListOf(seed, real))
+        val holder = CardHolder(store)
+
+        holder.load("user-1")
+
+        assertEquals(listOf("real"), holder.cards.map { it.id })
+        assertEquals("저장소에서도 지운다", listOf("real"), store.rows.map { it.id })
+    }
 
     @Test
     fun `뽑으면 목록 맨 앞에 온다`() = runTest {

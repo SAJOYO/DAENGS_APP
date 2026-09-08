@@ -90,6 +90,7 @@ import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
+import com.daengs.app.gait.PreparedVideo
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
@@ -114,7 +115,9 @@ import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
+import com.daengs.app.ui.gait.GaitPairPickSheet
 import com.daengs.app.ui.gait.GaitPickSheet
+import com.daengs.app.ui.gait.GaitTitleDialog
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
 import com.daengs.app.ui.home.HomeDemoData
@@ -452,11 +455,32 @@ fun ChatScreen(
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
 
+    /** 저장된 기록끼리 비교(B 진입) — 둘을 한 시트에서 고르는 중. */
+    var gaitPairPicking by remember { mutableStateOf(false) }
+
+    /** AI 기능 선택 → 보행 "지난 기록 보기" 시트가 열려 있나. */
+    var gaitHistoryOpen by remember { mutableStateOf(false) }
+
+    /**
+     * 읽어 둔 영상에 **제목을 묻는 중.** 촬영·업로드 둘 다 [runGait] 로 모이므로 이 하나로
+     * 두 경로가 같은 다이얼로그를 탄다. 다이얼로그가 닫히면 분석이 시작된다.
+     */
+    var gaitTitlePending by remember { mutableStateOf<PreparedVideo?>(null) }
+
     /** 나란히 보는 중. */
     var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
 
     /** 상세를 보는 중인 기록 id. */
     var gaitDetail by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 상세를 열면서 영상부터 틀까.
+     *
+     * **비교 화면의 영상 카드로 들어온 경우에만 참이다.** 그때 누른 뜻이 "이 기록의
+     * 분석 영상을 크게 보겠다" 라서, 도착해서 재생을 또 눌러야 하면 흐름이 끊긴다.
+     * 대화 카드에서 들어온 경우는 상세를 읽으러 온 것이라 멈춰 둔다.
+     */
+    var gaitDetailAutoPlay by remember { mutableStateOf(false) }
 
     /**
      * 영상 한 편을 대화에 태운다.
@@ -466,23 +490,30 @@ fun ChatScreen(
      * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
      * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
      */
+    val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
+        scope.launch {
+            entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
+            val slot = entries.size
+            entries += ChatEntry.GaitRunning(GaitProgress.START)
+            val record = gait.analyze(video, title) { entries[slot] = ChatEntry.GaitRunning(it) }
+            if (record == null) {
+                entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
+                gait.clearError()
+            } else {
+                entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                entries += ChatEntry.GaitDone(record.id)
+            }
+        }
+    }
+
+    // **촬영과 업로드가 여기서 만난다.** 영상을 먼저 읽어 보고(못 읽는 파일이면 제목을
+    // 물을 이유가 없다), 제목 다이얼로그를 띄운 뒤 분석을 시작한다 — 두 경로가 같은
+    // 다이얼로그를 타는 이유는 이 함수가 하나라서다. 제목은 서버 `note` 로 같이 올라간다.
     val runGait: (Uri) -> Unit = { uri ->
         scope.launch {
             GaitVideo.prepare(context, uri)
                 .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
-                .onSuccess { video ->
-                    entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
-                    val slot = entries.size
-                    entries += ChatEntry.GaitRunning(GaitProgress.START)
-                    val record = gait.analyze(video) { entries[slot] = ChatEntry.GaitRunning(it) }
-                    if (record == null) {
-                        entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
-                        gait.clearError()
-                    } else {
-                        entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
-                        entries += ChatEntry.GaitDone(record.id)
-                    }
-                }
+                .onSuccess { video -> gaitTitlePending = video }
         }
     }
 
@@ -776,6 +807,12 @@ fun ChatScreen(
                             GaitIntroCard(
                                 onCapture = { gaitCapture = true },
                                 onPick = startGaitPicking,
+                                // 저장된 기록이 둘 이상일 때만 줄이 생긴다 (B 진입).
+                                onCompareSaved = if (gait.comparablePairExists) {
+                                    { gaitPairPicking = true }
+                                } else {
+                                    null
+                                },
                             )
                         }
 
@@ -888,6 +925,16 @@ fun ChatScreen(
                     chooserMode = null
                     it()
                 }
+            },
+            // 남긴 기록이 없으면 줄을 안 그린다 — 눌러도 빈 시트만 뜨는 줄은 사용자가
+            // 자기가 뭘 잘못했나 생각하게 한다 ([기록 비교] 줄과 같은 규칙).
+            onOpenGaitHistory = if (gait.records.isNotEmpty()) {
+                {
+                    chooserMode = null
+                    gaitHistoryOpen = true
+                }
+            } else {
+                null
             },
             onCamera = {
                 chooserMode = null
@@ -1002,18 +1049,56 @@ fun ChatScreen(
         }
     }
 
+    gaitComparing?.let { comparison ->
+        GaitCompareScreen(
+            comparison = comparison,
+            onBack = { gaitComparing = null },
+            // 카드를 누르면 그 기록의 상세가 **비교 위에 얹힌다.** 비교를 닫지 않으므로
+            // 뒤로 가면 보던 비교로 돌아온다 — 영상 하나 크게 보려고 누른 것이지
+            // 비교를 그만두려던 것이 아니다.
+            onOpenRecord = { record ->
+                gaitDetailAutoPlay = true
+                gaitDetail = record.id
+            },
+            // 기준은 그대로 두고 상대만 다시 고른다. 시트는 A 진입이 쓰던 것이다.
+            onCompareAnother = {
+                gaitComparing = null
+                gaitPicking = comparison.recent.id
+            },
+            onSaveToChat = {
+                gaitComparing = null
+                entries += ChatEntry.GaitCompared(comparison)
+            },
+        )
+    }
+
+    // **비교보다 뒤에 그린다.** 앞에 두면 비교 화면이 상세를 덮어서, 카드를 눌러도
+    // 아무 일도 안 일어난 것처럼 보인다.
     gaitDetail?.let { id ->
+        // 저장된 기록은 오버레이 주소가 목록에 없다. 상세를 열 때 한 번 채워, 재생기가
+        // 원본 대신 스켈레톤 영상을 틀 수 있게 한다. 방금 분석한 기록은 이미 들고 있어
+        // 조회가 그냥 건너뛴다.
+        LaunchedEffect(id) { gait.ensureOverlay(id) }
         gait.find(id)?.let { record ->
             GaitDetailScreen(
                 record = record,
                 canCompare = gait.hasComparable(record.id),
-                onBack = { gaitDetail = null },
+                onBack = {
+                    gaitDetail = null
+                    gaitDetailAutoPlay = false
+                },
                 onCompare = { gaitPicking = record.id },
                 onDelete = {
                     // 서버에서도 지운다. 화면은 기다리지 않는다 — 홀더가 먼저 빼고
                     // 실패하면 되돌린다.
                     scope.launch { gait.remove(record.id) }
                     gaitDetail = null
+                    gaitDetailAutoPlay = false
+                    // **지운 기록을 낀 비교도 같이 닫는다.** 안 닫으면 뒤로 갔을 때
+                    // 없는 기록 두 편을 나란히 놓은 화면으로 돌아간다.
+                    if (gaitComparing?.let { record.id in listOf(it.recent.id, it.past.id) } == true) {
+                        gaitComparing = null
+                    }
                     // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
                     // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
                     // 있었는지 알 수 없다.
@@ -1021,26 +1106,25 @@ fun ChatScreen(
                         it is ChatEntry.GaitDone && it.recordId == record.id
                     }
                     if (slot >= 0) {
-                        entries[slot] = ChatEntry.Note("${record.dateLabel} 보행 기록을 지웠어요.")
+                        entries[slot] = ChatEntry.Note("${record.dateLabel} 「${record.displayTitle}」 기록을 지웠어요.")
                     }
                 },
+                autoPlay = gaitDetailAutoPlay,
+                // 제목만 바뀐다. 날짜는 홀더가 손대지 않는다 (`GaitHolder.rename`).
+                onRename = { title -> gait.rename(record.id, title) },
             )
         } ?: run { gaitDetail = null }
     }
 
-    gaitComparing?.let { comparison ->
-        GaitCompareScreen(
-            comparison = comparison,
-            onBack = { gaitComparing = null },
-            onOpenDetail = {
-                gaitComparing = null
-                gaitDetail = comparison.recent.id
-            },
-            onSaveToChat = {
-                gaitComparing = null
-                entries += ChatEntry.GaitCompared(comparison)
-            },
-        )
+    // ── 기록 제목 묻기 — **촬영·업로드 공통** ───────────────────────────────
+    //
+    // 영상을 읽어 둔 뒤, 분석을 시작하기 전에 한 번 묻는다. 건너뛰거나 비워 두면 null 이
+    // 가고 화면이 "보행 기록" 을 그린다. 다이얼로그가 닫히는 순간 분석이 시작된다.
+    gaitTitlePending?.let { video ->
+        GaitTitleDialog(initial = null) { title ->
+            gaitTitlePending = null
+            startGaitAnalysis(video, title)
+        }
     }
 
     gaitPicking?.let { recentId ->
@@ -1054,6 +1138,40 @@ fun ChatScreen(
                 gaitDetail = null
                 // 비교는 서버가 한다. 문장도 저쪽 message_for_ui 가 온다.
                 scope.launch { gaitComparing = gait.compare(recentId, past.id) }
+            },
+        )
+    }
+
+    // ── 저장된 기록끼리 비교 (B 진입) — **한 시트에서 둘을 고른다** ──────────
+    //
+    // 예전에는 같은 시트를 두 번 열었다(기준 → 상대). 두 번째 시트에서 첫 것을 빼는
+    // 것까지는 맞았는데 "방금 골랐는데 또?" 가 됐다. 둘을 체크하고 한 번에 넘어간다.
+    if (gaitPairPicking) {
+        GaitPairPickSheet(
+            records = gait.records,
+            onDismiss = { gaitPairPicking = false },
+            onConfirm = { a, b ->
+                gaitPairPicking = false
+                // 순서는 신경 쓰지 않는다 — 어느 쪽이 최근인지는 날짜가 정한다.
+                scope.launch { gaitComparing = gait.compare(a.id, b.id) }
+            },
+        )
+    }
+
+    // ── 지난 보행 기록 보기 (AI 기능 선택 시트) ────────────────────────────
+    //
+    // 피부 쪽 "지난 기록 보기" 와 같은 자리다. 비교 시트를 그대로 쓰되 **어느 기록이든**
+    // 열 수 있다 — 비교 지표가 없어도 영상은 볼 수 있으니까. 고르면 상세로 간다.
+    if (gaitHistoryOpen) {
+        GaitPickSheet(
+            records = gait.records,
+            title = "지난 보행 기록",
+            confirmLabel = "기록 열기",
+            requireComparable = false,
+            onDismiss = { gaitHistoryOpen = false },
+            onConfirm = { record ->
+                gaitHistoryOpen = false
+                gaitDetail = record.id
             },
         )
     }
@@ -1098,7 +1216,7 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(comparison.verdict.sentence, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+            Text(comparison.verdict.title, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("다시 보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(13.dp), tint = DaengPinkDeep)
@@ -1573,6 +1691,35 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // ★ 덩어리 경보. **카드에서 제일 먼저 보여야 하는 줄**이라 머리말보다
+                //   위에 둔다. 안 뜨면 null 이고 그러면 통째로 안 그린다.
+                //
+                //   계약 전체가 "병변 이름을 말하지 마라" 인데 **여기만 예외**다.
+                //   저쪽 `config.A6_ALERT_MIN` 에 이유가 적혀 있다 — 임상 해설이
+                //   "결절·종괴로 오탐하는 건 상대적으로 안전" 이라 했고(병원에 가서
+                //   확인하면 되니까) **놓치는 쪽이 훨씬 나쁘다.**
+                //
+                //   ⚠️ 문턱을 앱에서 다시 재지 않는다. 켤지 말지는 서버가 이미 정했다.
+                report.alert?.let { a ->
+                    Surface(color = PinkFaint, shape = RoundedCornerShape(12.dp)) {
+                        Column(
+                            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                listOf(a.text, a.action).filter { it.isNotBlank() }.joinToString(" "),
+                                color = DaengPinkDeep,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (a.caveat.isNotBlank()) {
+                                Text(a.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                            }
+                        }
+                    }
+                }
+
                 Text(
                     report.headline,
                     color = accent,
@@ -1607,32 +1754,53 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                     }
                 }
 
+                // 계열 한 줄. **null 이면 통째로 안 그린다** — 확신이 모자라면
+                // 서버가 아예 안 보낸다 (셋에 하나쯤). 그때는 아래 본문만 남는다.
+                //
+                // ⚠️ 여기에 긴급도('조기 진료' 같은 말)를 붙이지 않는다. 묶음의
+                //    긴급도는 높은 쪽으로 잡혀 있어서, 붙이면 말한 것의 절반이 한
+                //    단계 부풀려진다 (저쪽 실측 과잉 52.4%).
+                report.group?.let { g ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(g.text, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                        if (g.caveat.isNotBlank()) {
+                            Text(g.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                        }
+                    }
+                }
+
                 Text(report.body, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
 
-                if (report.stage2.isNotEmpty()) {
+                // ★ 2026-09-08 — 6종(report.stage2) 대신 **계열 네 묶음**을 그린다.
+                //   6종 이름은 저쪽 holdout 커버리지 41.1% 라 못 쓰는데 네 묶음은 66.5% 다.
+                //
+                //   ⚠️ 자른 게 아니라 **더한 것**이다. 여섯 개가 전부 어딘가에 들어가
+                //      있어 숨기는 게 없다 — "상위 몇 개로 자르지 마라" 와 다른 이야기다.
+                //   ⚠️ report.stage2 는 그대로 파싱해 두되 **화면에는 안 쓴다.**
+                //      관리자 콘솔이 6종을 본다.
+                if (report.groups.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("모델이 비슷하다고 본 정도", color = TextMuted, fontSize = 12.sp)
-                        report.stage2.forEach { lesion ->
+                        report.groups.forEach { g ->
                             // 전부 같은 글꼴·같은 굵기다. 첫 줄만 굵게 하면 그게 곧
                             // "1등" 이라, 계약이 그 필드를 안 준 뜻이 없어진다.
                             //
                             // 이름과 막대를 **위아래로** 둔다. 옆으로 나란히 두면
-                            // "비듬·각질·상피성잔고리" 같은 이름이 두 줄로 접히면서
-                            // 막대와 높이가 어긋난다 — 이름은 저쪽 표에서 오므로
-                            // 길이를 우리가 정할 수 없다.
+                            // 이름이 두 줄로 접히면서 막대와 높이가 어긋난다 —
+                            // 이름은 저쪽 표에서 오므로 길이를 우리가 정할 수 없다.
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        lesion.nameKo,
+                                        g.name,
                                         color = TextDark,
                                         fontSize = 12.sp,
                                         lineHeight = 16.sp,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Text(lesion.percent.percentText(), color = TextMuted, fontSize = 11.sp)
+                                    Text(g.percent.percentText(), color = TextMuted, fontSize = 11.sp)
                                 }
-                                MeterBar(lesion.percent / 100f, PinkSoft)
+                                MeterBar(g.percent / 100f, PinkSoft)
                             }
                         }
                     }
@@ -1643,6 +1811,90 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                     Text(report.disclaimer, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
                 }
             }
+        }
+    }
+}
+
+/**
+ * 결과 말풍선 — **세 경우를 같이 본다.** 셋이 다른 화면이라 하나만 보면 못 잡는다.
+ *
+ * 1. 덩어리 경보 + 계열 한 줄
+ * 2. 계열 한 줄만 (경보 없음)
+ * 3. **확신이 낮아 계열 한 줄이 없는 경우** — 셋에 하나쯤 이 모양이다.
+ *    막대만 남고 문장이 사라지는데, 그때도 카드가 허전해 보이지 않는지 본다
+ *
+ * 여기서 보는 것은 자리와 무게다. 긴 계열 이름이 접히는지, 경보 상자가 머리말을
+ * 밀어내지 않는지. 실기기 색감은 폰에서 본다.
+ */
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0, heightDp = 1100)
+@Composable
+private fun ReportBubblePreview() {
+    fun report(
+        groups: List<ScreeningReport.Group>,
+        group: ScreeningReport.GroupLine?,
+        alert: ScreeningReport.Alert?,
+    ) = ScreeningReport(
+        contractVersion = "1.0",
+        verdict = ScreeningReport.Verdict.ABNORMAL,
+        headline = "피부에 이상 소견이 보입니다.",
+        body = "어떤 병변인지까지는 이 사진만으로 판단할 수 없습니다.",
+        action = "수의사 진료를 받아보시기를 권합니다.",
+        stage1 = ScreeningReport.Stage1(83.0f, 14.7f, calibrated = true),
+        stage2 = emptyList(),
+        groups = groups,
+        group = group,
+        alert = alert,
+        disclaimer = "이 결과는 수의학적 진단이 아니며, 수의사의 진료를 대체하지 않습니다.",
+    )
+
+    val surface = listOf(
+        ScreeningReport.Group("표면 변화", 75.0f),
+        ScreeningReport.Group("융기·발진", 17.0f),
+        ScreeningReport.Group("미란·궤양", 5.0f),
+        ScreeningReport.Group("결절·종괴", 3.0f),
+    )
+    val lump = listOf(
+        ScreeningReport.Group("결절·종괴", 62.0f),
+        ScreeningReport.Group("표면 변화", 25.0f),
+        ScreeningReport.Group("융기·발진", 9.0f),
+        ScreeningReport.Group("미란·궤양", 4.0f),
+    )
+    val flat = listOf(
+        ScreeningReport.Group("표면 변화", 39.0f),
+        ScreeningReport.Group("융기·발진", 37.0f),
+        ScreeningReport.Group("미란·궤양", 13.0f),
+        ScreeningReport.Group("결절·종괴", 11.0f),
+    )
+    val caveat = "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
+
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            ReportBubble(
+                report(
+                    lump,
+                    ScreeningReport.GroupLine(
+                        "결절·종괴", 62.0f, "모양만 보면 결절·종괴 계열에 가깝습니다.", caveat,
+                    ),
+                    ScreeningReport.Alert(
+                        "A6", "덩어리가 의심됩니다.", "빠른 진료를 권합니다.",
+                        "진단이 아닙니다. 덩어리처럼 보이는 다른 병변일 수 있습니다.",
+                        0.72f, 0.40f,
+                    ),
+                ),
+                DogBreed.BEAGLE,
+            )
+            ReportBubble(
+                report(
+                    surface,
+                    ScreeningReport.GroupLine(
+                        "표면 변화", 75.0f, "모양만 보면 표면 변화 계열에 가깝습니다.", caveat,
+                    ),
+                    null,
+                ),
+                DogBreed.BEAGLE,
+            )
+            // 확신이 낮은 경우 — 문장이 없고 막대만 남는다
+            ReportBubble(report(flat, null, null), DogBreed.BEAGLE)
         }
     }
 }
@@ -1724,6 +1976,8 @@ private fun AiActionDialog(
     skinOnly: Boolean = false,
     /** 지난 기록으로. null 이면 줄을 안 그린다 (로그인 안 한 기기). */
     onOpenHistory: (() -> Unit)? = null,
+    /** 보행 쪽 지난 기록으로. null 이면 줄을 안 그린다 (남긴 기록이 없을 때). */
+    onOpenGaitHistory: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -1767,6 +2021,12 @@ private fun AiActionDialog(
                                 SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
                                 RowSeparator()
                                 SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                                if (onOpenGaitHistory != null) {
+                                    RowSeparator()
+                                    // 피부 묶음의 "지난 기록 보기" 와 같은 자리. 분석 카드는
+                                    // 대화 위로 흘러가 버려서, 지난 영상을 다시 열 길이 이것뿐이다.
+                                    SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenGaitHistory)
+                                }
                                 RowSeparator()
                                 // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
                                 // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
@@ -1775,7 +2035,7 @@ private fun AiActionDialog(
                                 // 상수라, 박아 두면 기준이 바뀌어도 이 줄만 안 따라온다 —
                                 // 실제로 "10초 이상" 이 그렇게 남아 있었다.
                                 Text(
-                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                                     color = TextMuted,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1870,7 +2130,7 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
                         RowSeparator()
                         Text(
-                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),

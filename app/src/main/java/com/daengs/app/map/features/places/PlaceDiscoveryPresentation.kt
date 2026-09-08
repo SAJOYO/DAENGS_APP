@@ -130,7 +130,7 @@ fun canonicalPlaceMarkers(state: PlaceDiscoveryState): List<PlaceMarkerState> =
                 iconGroup = hit.place.iconGroup,
             )
         }
-    }
+    }.distinctBy { it.id }
 
 fun canonicalPlaceKeysByMarker(state: PlaceDiscoveryState): Map<String, PlaceKey> =
     state.response?.groups.orEmpty().flatMap(PlaceSearchGroup::results)

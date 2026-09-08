@@ -1,5 +1,6 @@
 package com.daengs.app.ui
 
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -42,6 +43,14 @@ enum class DaengsIcon {
 
     /** 배웅한 아이 표시. **이 아이콘만 tint 를 안 쓴다** — 무지개는 색이 곧 뜻이다. */
     Rainbow,
+
+    /**
+     * 화면 눕히기·세우기.
+     *
+     * 산책 화면이 같은 뜻으로 제 그림을 따로 갖고 있었다(`WalkTools` 의 `ROTATE`).
+     * 이머시브에도 같은 버튼이 생기면서 두 벌이 되므로 여기로 올린다.
+     */
+    Rotate,
 }
 
 @Composable
@@ -56,6 +65,25 @@ fun DaengsIconView(
         scale(s, s, pivot = Offset.Zero) {
             when (icon) {
                 DaengsIcon.Paw -> drawPawStamp(Offset(12f, 14f), 6.4f, tint)
+                DaengsIcon.Rotate -> {
+                    fun line(x: Float, y: Float, a: Float, b: Float) =
+                        drawLine(tint, Offset(x, y), Offset(a, b), 1.7f)
+                    rotate(-30f, pivot = Offset(12f, 12f)) {
+                        drawRoundRect(
+                            tint,
+                            Offset(8.2f, 4.8f),
+                            androidx.compose.ui.geometry.Size(7.6f, 14.4f),
+                            androidx.compose.ui.geometry.CornerRadius(2f),
+                            style = Stroke(1.5f),
+                        )
+                    }
+                    drawArc(tint, 205f, 110f, false, Offset(1f, 1f),
+                        androidx.compose.ui.geometry.Size(22f, 22f), style = Stroke(1.5f))
+                    line(18f, 3f, 20f, 6f); line(20f, 6f, 16f, 6f)
+                    drawArc(tint, 25f, 110f, false, Offset(1f, 1f),
+                        androidx.compose.ui.geometry.Size(22f, 22f), style = Stroke(1.5f))
+                    line(6f, 21f, 4f, 18f); line(4f, 18f, 8f, 18f)
+                }
                 DaengsIcon.Home -> iconHome(tint, filled)
                 DaengsIcon.Book -> iconBook(tint)
                 DaengsIcon.Bell -> iconBell(tint)

@@ -327,7 +327,9 @@ private fun floorPath(g: RoomGeometry): Path = Path().apply {
 fun DrawScope.drawDoorHint(g: RoomGeometry, pulse: Float) {
     if (pulse <= 0.001f) return
     // 여기도 문 모양이다. 네모로 얹으면 문 위 벽이 같이 밝아져서 티가 난다.
-    drawPath(doorPath(DoorSpec.rectOf(g, DoorSpec.leaf)), Color.White.copy(alpha = 0.10f * pulse))
+    // 0.10 은 실기기에서 사실상 안 보였다. 문 옆 알약(`DoorWalkBadge`)이 뜻을 말해 주므로
+    // 여기는 "저기가 눌리는 곳"을 알약과 이어 주기만 하면 된다 — 그래도 보이긴 해야 한다.
+    drawPath(doorPath(DoorSpec.rectOf(g, DoorSpec.leaf)), Color.White.copy(alpha = 0.18f * pulse))
 }
 
 // 문 너머 지평선(0.62)과 잔디·흙길 색은 여기 있었다. 이제 문밖 그림 안에 들어

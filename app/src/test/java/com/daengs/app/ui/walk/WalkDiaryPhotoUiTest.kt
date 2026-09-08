@@ -44,7 +44,7 @@ class WalkDiaryPhotoUiTest {
     @Test fun `사진은 점령지 레이어를 숨겨도 같은 위치에 남는다`() {
         for (purpose in listOf(MapPurpose.WALK, MapPurpose.TERRITORY)) {
             val scene = WalkUiState(map = WalkMapUiState(purpose = purpose), diaryPhotos = listOf(photo))
-                .toMapPresentation { "time" }.scene
+                .toMapPresentation().scene
             assertEquals("photo-p", scene.moments.single().id)
             assertEquals(photo.point, scene.moments.single().point)
             assertEquals(photo.file, scene.moments.single().photoFile)

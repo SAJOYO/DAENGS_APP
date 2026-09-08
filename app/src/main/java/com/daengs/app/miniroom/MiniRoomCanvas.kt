@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
@@ -97,6 +98,15 @@ fun MiniRoomCanvas(
     /** 편집 모드에서 빈 곳을 눌렀을 때. 선택 해제용. */
     onEmptyTap: (() -> Unit)? = null,
     doorOpenOverride: Float? = null,
+    /**
+     * 밖에서 문을 여는 신호. **값이 바뀔 때마다 한 번 연다.**
+     *
+     * 문 옆 「산책 나가기」 알약이 쓴다. 알약을 문 위에 겹쳐 두면 방 그림을 가리고,
+     * 옆에 두면 눌러도 아무 일이 안 일어나므로, 같은 [openDoor] 를 밖에서도 부를
+     * 길을 낸다. `Boolean` 이 아니라 세는 수인 것은 두 번 연달아 눌러도 값이 바뀌게
+     * 하려는 것이다.
+     */
+    openDoorSignal: Int = 0,
     /** 개발자 오버레이. 격자·발자국·강아지 반경을 그림 위에 덧그린다. */
     developer: Boolean = false,
 ) {
@@ -142,6 +152,10 @@ fun MiniRoomCanvas(
             doorOpen.animateTo(0f, tween(260, easing = FastOutSlowInEasing))
         }
     }
+
+    // 밖에서 온 신호. 첫 합성 때는 안 연다 — 화면에 들어오자마자 문이 열리면
+    // 사용자가 누르지도 않았는데 산책으로 나간다.
+    LaunchedEffect(openDoorSignal) { if (openDoorSignal > 0) openDoor() }
 
     // 콜백을 pointerInput 키로 직접 쓰면 안 된다. 람다는 재구성마다 새 객체라
     // 제스처 코루틴이 매번 재시작되고, 끌던 중이면 그대로 죽는다.

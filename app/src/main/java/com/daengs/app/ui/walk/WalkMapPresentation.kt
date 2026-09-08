@@ -18,9 +18,7 @@ internal data class WalkMapPresentation(
 )
 
 /** Walk 상태를 지도 공급자와 무관한 scene으로 투영한다. */
-internal fun WalkUiState.toMapPresentation(
-    formatTime: (Long) -> String,
-): WalkMapPresentation {
+internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
     val route = completion.detail?.route
     val summary = completedSummary
     val gameSites = territoryGame.sites.associateBy { it.site.id }
@@ -63,6 +61,7 @@ internal fun WalkUiState.toMapPresentation(
                         selected = moment.id == map.selectedMomentId,
                     )
                 } + diaryPhotos.photoMarkers(),
+                stayStamps = completion.detail?.stayStamps ?: tracking.stayStamps,
                 trail = if (completion.detail == null) {
                     tracking.trail.toTrailLayerState()
                 } else {
@@ -70,7 +69,6 @@ internal fun WalkUiState.toMapPresentation(
                 },
                 completedRoute = route?.toCompletedRouteLayerState(
                     selectedPoint = selectedRoutePoint,
-                    formatTime = formatTime,
                 ) ?: CompletedRouteLayerState(),
             ),
             walkActive = trackingActive,

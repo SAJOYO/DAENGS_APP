@@ -27,6 +27,13 @@ class CardHolder(
      *    삭제(지워야 함)인지 구분이 안 되기 때문이다 (`CardSync` 주석).
      */
     private val accessToken: suspend () -> String? = { null },
+    /**
+     * 꽝이 난 시각을 적어 두는 곳. **없으면(테스트·미리보기) 꽝이 횟수를 안 쓴다.**
+     *
+     * 카드 표에 안 넣는 이유는 [MissLog] 주석에 있다 — 얼굴 없는 줄은 이미 다른 뜻이라
+     * 도감에 빈 카드가 뜬다.
+     */
+    private val missLog: MissLog? = null,
 ) {
 
     /** 최근이 앞이다. 도감 칸의 표지가 가장 최근에 뽑은 것이 된다. */
@@ -41,18 +48,46 @@ class CardHolder(
         error = null
     }
 
-    /** 오늘 몇 번 더 뽑을 수 있나. */
+    /**
+     * 오늘 몇 번 더 뽑을 수 있나.
+     *
+     * **카드 시각에 꽝 시각을 더해서 센다.** 꽝은 카드를 안 남기므로 카드만 세면
+     * 꽝이 공짜가 된다 (`MissLog`).
+     */
     fun drawsLeft(now: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): Int =
-        drawsLeft(cards.map { it.drawnAtMillis }, now, zone)
+        drawsLeft(cards.map { it.drawnAtMillis } + misses, now, zone)
+
+    /** 오늘 난 꽝. 화면이 다시 그려질 때 같이 읽히도록 상태로 든다. */
+    var misses: List<Long> by mutableStateOf(missLog?.today().orEmpty())
+        private set
+
+    /**
+     * 꽝 한 판을 적는다. **카드를 저장하는 자리와 같은 무게다** — 이걸 빼먹으면
+     * 그 판은 없던 일이 되고 하루 세 번이 도로 살아난다.
+     */
+    fun recordMiss(at: Long = System.currentTimeMillis()) {
+        missLog?.add(at)
+        misses = misses + at
+    }
 
     /**
      * 목록을 받아 온다.
      *
      * **실패해도 화면을 비우지 않는다.** 목록이 통째로 사라지면 사용자는 카드가
      * 지워진 줄 안다 (`GaitHolder.load` 와 같은 원칙).
+     *
+     * **얼굴 자리가 빈 줄은 지우고 준다.** 예전 디버그 빌드가 첫 실행에 넣어 두던 시드
+     * 열두 장이 그 모양인데(`core` 가 0, `DrawnCard.drawn` 이 false), 시더를 없앤 뒤에도
+     * 팀원 폰에는 그 줄이 남아 도감이 뽑지도 않은 카드를 모은 것처럼 보였다. 서버는 빈
+     * 사각형을 422 로 거절하므로 이런 줄은 시드밖에 없고, 서버에 알릴 것도 없다.
      */
     suspend fun load(appUserId: String?) {
-        runCatching { store.all(appUserId) }
+        runCatching {
+            val all = store.all(appUserId)
+            val (seeds, real) = all.partition { !it.drawn }
+            seeds.forEach { runCatching { store.remove(it.id) } }
+            real
+        }
             .onSuccess { cards = it }
             .onFailure { error = it.message ?: "카드를 불러오지 못했어요." }
     }
@@ -119,6 +154,8 @@ class CardHolder(
 
     /** 탈퇴. 되돌릴 수 없다. */
     suspend fun forgetEverything() {
+        missLog?.clear()
+        misses = emptyList()
         runCatching { store.forgetEverything() }
         cards = emptyList()
     }

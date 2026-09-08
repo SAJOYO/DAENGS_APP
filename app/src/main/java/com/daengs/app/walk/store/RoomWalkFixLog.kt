@@ -21,7 +21,13 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val forgottenOwners = mutableSetOf<String>()
 
     override val ownerId: String get() = owner()
-    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds()) { _, _, _ -> Unit }
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds(), dao.observeAnalysisChanges()) { _, _, _, _ -> Unit }
+
+    override suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> {
+        val expectedOwner = owner()
+        val result = dao.historySearchText(sessionIds, expectedOwner)
+        return if (owner() == expectedOwner) result else emptyMap()
+    }
 
     override suspend fun restoreSession(session: RecordedSession) = sessionMutex.withLock {
         val verifiedOwner = requireNotNull(session.ownerId)
@@ -134,6 +140,9 @@ class RoomWalkFixLog(private val dao: WalkDao,
 
     override suspend fun finishedSessions(): List<RecordedSession> =
         dao.finishedSessions().withDogs()
+
+    override suspend fun finishedSessionsPage(before: com.daengs.app.walk.WalkHistoryCursor?, dogId: String?, limit: Int): List<RecordedSession> =
+        dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
         (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }

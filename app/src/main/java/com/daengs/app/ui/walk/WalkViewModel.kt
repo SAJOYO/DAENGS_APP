@@ -512,7 +512,18 @@ class WalkViewModel(
      * 산책이 어디 갔는지 설명하는 말이라, 토스트처럼 스쳐 지나가면 안 된다.
      */
     private fun scheduleTrackingErrorDismiss(message: String?) {
-        if (message == null || message == presentation.value.dismissedTrackingError) return
+        // **안내가 걷히면 기억도 지운다.**
+        //
+        // 지운 것을 **글자 내용으로** 기억하는데, 그걸 안 비우면 같은 문장은 두 번째부터
+        // 영영 안 뜬다. "너무 짧아서 기록하지 않았어요" 는 짧게 걸을 때마다 나오는
+        // 같은 문장이라, 두 번째 짧은 산책부터는 산책이 왜 사라졌는지 아무 말도 못
+        // 듣게 됐다 (실기기에서 그렇게 보였다).
+        if (message == null) {
+            trackingErrorJob?.cancel()
+            presentation.update { it.copy(dismissedTrackingError = null) }
+            return
+        }
+        if (message == presentation.value.dismissedTrackingError) return
         trackingErrorJob?.cancel()
         trackingErrorJob = runtimeScope.launch {
             delay(trackingErrorMillis)

@@ -100,6 +100,13 @@ object WalkApi {
     suspend fun detail(accessToken: String, walkId: String): Result<RemoteWalkDetail> =
         call(accessToken, "/$walkId", "GET") { RemoteWalkDetail.parse(JSONObject(it)) }
 
+    /** Optional display policy. Old servers/offline maps continue with the bundled v1. */
+    suspend fun stylePolicy(accessToken: String): Result<String> =
+        call(accessToken, "/style-policy", "GET") { text ->
+            com.daengs.app.map.style.WalkStylePolicy.parse(text)
+            text
+        }
+
     // -- 아래는 배관 -------------------------------------------------------
 
     private fun uploadBody(session: RecordedSession, fixes: List<RecordedFix>) =

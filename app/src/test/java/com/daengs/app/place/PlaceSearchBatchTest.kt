@@ -56,4 +56,12 @@ class PlaceSearchBatchTest {
             fail("must reject missing categories")
         } catch (_: kotlinx.serialization.SerializationException) { }
     }
+
+    @Test fun missingSubcategoryCannotLookLikeCompletePurposeResults() = runTest {
+        val request = requests().first().copy(kinds = PlacePurpose.DINING.kinds)
+        try {
+            searchPlaceBatches(PlaceSearchRepository { response(it).copy(groups = response(it).groups.take(1)) }, listOf(request))
+            fail("must reject incomplete purpose")
+        } catch (_: kotlinx.serialization.SerializationException) { }
+    }
 }

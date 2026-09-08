@@ -175,6 +175,27 @@ object GaitApi {
     }
 
     /**
+     * 같은 반려견의 두 기록 비교. `POST /app/gait/compare`.
+     *
+     * **순서는 상관없다** — 서버가 날짜로 past/recent 를 정한다. 그래서 A 진입(방금
+     * 분석한 기록이 기준)과 B 진입(둘 다 고름)이 같은 호출을 쓴다.
+     *
+     * ⚠️ **영상을 읽지 않는다.** 비교는 저쪽 DB 의 분석 데이터만으로 끝난다 — 저장소가
+     *    무엇이든(local·gcs) 이 호출은 그대로 동작한다.
+     */
+    suspend fun compare(
+        accessToken: String,
+        recordIdA: String,
+        recordIdB: String,
+    ): Result<GaitCompared> = call {
+        val body = JSONObject().put("record_id_a", recordIdA).put("record_id_b", recordIdB)
+        open("/compare", "POST", accessToken).use {
+            it.writeJson(body)
+            GaitCompared.parse(it.readJson())
+        }
+    }
+
+    /**
      * 기록을 지운다. `DELETE /app/gait/records/{id}`.
      *
      * 서버는 지우기로 표시만 하고 **저장소 파일 정리는 워커가 이어서** 한다. 앱에서는
@@ -387,12 +408,38 @@ data class GaitAnalyzed(
     val recommendation: String?,
     val hasOverlay: Boolean,
     /**
+     * 분석 결과(스켈레톤) 영상을 받을 주소. [hasOverlay] 는 "있나", 이 값은 "어디서 받나" 다 —
+     * overlay 가 있어도 저장소가 미설정이면 저쪽이 null 로 준다. 있으면 재생 화면이
+     * 기기 원본 대신 이걸 튼다(점·선이 그 위에 그려져 있다).
+     */
+    val overlayUrl: String?,
+    /**
      * 워커가 실패한 사유. **운영 진단용이라 화면에 그대로 띄우지 않는다** —
      * 스택 조각이나 내부 경로가 들어 있을 수 있다.
      */
     val failureReason: String?,
+    /**
+     * 저쪽이 분석하며 훑은 프레임 수(`quality.n_frames_sampled`). 5fps 로 훑으므로
+     * **영상 길이를 이것으로 셈한다** ([approxSeconds]) — 응답에 길이 자체는 없다
+     * (`video_meta` 는 해상도·원본 fps 뿐). 분석이 안 끝났거나 실패면 null.
+     */
+    val sampledFrames: Int?,
 ) {
     val settled: Boolean get() = GaitStatus.settled(status)
+
+    /** 화면 모델의 등급. `quality_status` 가 ok 가 아니면 tier 가 와도 null 이다. */
+    val tier: GaitQualityTier?
+        get() = GaitQualityTier.of(if (qualityOk) "ok" else "unavailable", qualityTier)
+
+    /**
+     * 영상 길이(초)의 근사. `sampledFrames / 5`.
+     *
+     * 5fps 로 영상 전체를 훑으니 샘플 수가 곧 길이다 — 오차는 한 샘플 간격(0.2초) 안이라
+     * "24초" 라고 적기에 충분하다. 방금 분석한 기록은 기기에서 잰 정확한 길이가 이미
+     * 있어 이 값을 쓰지 않는다. **지난 기록**이 "길이 미상" 으로만 뜨던 것을 이걸로 메운다.
+     */
+    val approxSeconds: Int?
+        get() = sampledFrames?.takeIf { it > 0 }?.let { Math.round(it.toFloat() / GaitRecord.ANALYSIS_FPS) }
 
     companion object {
         fun parse(json: JSONObject): GaitAnalyzed {
@@ -408,7 +455,10 @@ data class GaitAnalyzed(
                 reason = quality?.optStringOrNull("reason"),
                 recommendation = quality?.optStringOrNull("recommendation"),
                 hasOverlay = json.optBoolean("has_overlay", false),
+                overlayUrl = json.optStringOrNull("overlay_url"),
                 failureReason = json.optStringOrNull("failure_reason"),
+                // 없으면 0 이 아니라 null — 0 으로 두면 "0초" 로 단언하게 된다.
+                sampledFrames = quality?.takeIf { it.has("n_frames_sampled") }?.optInt("n_frames_sampled"),
             )
         }
     }
@@ -442,6 +492,14 @@ data class GaitSummary(
     val hasOverlay: Boolean,
     /** 필터 버전. 서로 다른 버전끼리 비교하면 저쪽이 경고를 붙인다. */
     val filterVersion: String?,
+    /** 저쪽 `quality_status` · `quality_tier`. 목록에도 온다 — 요약 문장이 이걸로 갈린다. */
+    val tier: GaitQualityTier?,
+    /**
+     * 저쪽 `note`. **지금은 제목 용도로 쓴다** — 처음 정한 제목을 `/analyze` 의 note 로
+     * 실어 보냈고, 여기로 돌아온다. 별도 메모 기능이 생기면 title/note 를 갈라야 한다
+     * ([GaitTitleStore] 머리말).
+     */
+    val note: String?,
 ) {
     companion object {
         fun parse(json: JSONObject): GaitSummary = GaitSummary(
@@ -451,6 +509,8 @@ data class GaitSummary(
             comparable = json.optBoolean("comparable", false),
             hasOverlay = json.optBoolean("has_overlay", false),
             filterVersion = json.optStringOrNull("gait_filter_version"),
+            tier = GaitQualityTier.of(json.optStringOrNull("quality_status"), json.optStringOrNull("quality_tier")),
+            note = json.optStringOrNull("note"),
         )
     }
 }
@@ -477,4 +537,71 @@ fun GaitSummary.toRecord(): GaitRecord = GaitRecord(
     video = null,
     thumbnail = null,
     comparable = comparable,
+    qualityTier = tier,
+    hasOverlay = hasOverlay,
+    // 서버 note = 처음 정한 제목. 로컬 수정본은 [GaitHolder] 가 그 위에 덮는다.
+    title = note,
 )
+
+
+/**
+ * 비교 결과.
+ *
+ * **문장을 앱이 짓지 않는다.** [messageForUi] 가 저쪽이 실제 계산에서 유도한 한 줄이고,
+ * 화면에 쓸 값으로 지목된 것이다. `_dev_only_*` 는 서버가 아예 안 내려준다.
+ */
+data class GaitCompared(
+    val available: Boolean,
+    val messageForUi: String?,
+    /** 관절 이름 → (x 판정, y 판정). **합치지 않는다** — 아래 [toMetrics] 주석 참고. */
+    val jointComparison: Map<String, JointNote>,
+    val reliabilityNote: String?,
+    /** 두 기록의 필터 버전이 다를 때. **표시해야 한다** — 같은 영상도 달라 보인다. */
+    val versionWarning: String?,
+) {
+    /** 관절 하나의 축별 판정. */
+    data class JointNote(val x: String?, val y: String?)
+
+    companion object {
+        fun parse(json: JSONObject): GaitCompared {
+            val joints = json.optJSONObject("joint_movement_range_comparison")
+            val notes = joints?.keys()?.asSequence()?.associateWith { joint ->
+                // 저쪽은 관절마다 {record_a, record_b, comparison_note:{x,y}} 를 준다.
+                val note = joints.optJSONObject(joint)?.optJSONObject("comparison_note")
+                JointNote(note?.optStringOrNull("x"), note?.optStringOrNull("y"))
+            } ?: emptyMap()
+            return GaitCompared(
+                available = json.optString("status", "ok") != "unavailable",
+                messageForUi = json.optStringOrNull("message_for_ui"),
+                jointComparison = notes,
+                reliabilityNote = json.optStringOrNull("reliability_note"),
+                versionWarning = json.optStringOrNull("version_warning"),
+            )
+        }
+    }
+}
+
+/**
+ * 비교 응답을 관절 여섯 줄로 옮긴다.
+ *
+ * **관절 하나가 한 줄이다.** 예전에는 x·y 를 나눠 `L_Hip (좌우)` · `L_Hip (상하)` 두
+ * 줄로 폈고, 그래서 표가 열두 줄이었다 (D-058). 축을 나눠 두면 정보는 안 잃지만 사용자가
+ * 열두 줄을 읽고 나서 스스로 관절별로 다시 묶어야 했다. 지금은 합치되 **어느 축이
+ * 움직였는지를 문구에 남긴다** ([GaitJointChange]) — 그게 나눠 뒀던 이유였으니까.
+ *
+ * **여섯 줄을 늘 채운다.** 서버가 관절을 빠뜨리면 그 줄은 [GaitJointChange.Unknown] 이다.
+ * 줄을 아예 안 그리면 무엇이 빠졌는지가 화면에서 사라진다.
+ *
+ * **모르는 문자열을 "비슷함" 으로 떨어뜨리지 않는다** — "차이 관찰됨" 을 놓치면
+ * **없는 안심**을 주게 된다 ([GaitAxis.of]).
+ *
+ * 비교 자체가 불가(`status: unavailable`)면 표를 비운다. 그러면 [GaitComparison] 이
+ * 판정을 [GaitVerdict.NotEnough] 로 끌어낸다.
+ */
+fun GaitCompared.toJointStates(): List<GaitJointState> {
+    if (!available) return emptyList()
+    return GaitJoint.entries.map { joint ->
+        val note = jointComparison[joint.key]
+        GaitJointState(joint, GaitJointChange.of(GaitAxis.of(note?.x), GaitAxis.of(note?.y)))
+    }
+}

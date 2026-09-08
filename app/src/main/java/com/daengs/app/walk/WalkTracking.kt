@@ -34,6 +34,7 @@ data class WalkTrackingState(
     val finishingSessionId: String? = null,
     /** 저장과 유효성 판정까지 끝나 결과 화면으로 넘길 수 있는 세션. */
     val completedSessionId: String? = null,
+    val stayStamps: List<StayStamp> = emptyList(),
 ) {
     fun elapsedMillisAt(realtimeMillis: Long): Long =
         activeDurationMillis + activeSinceRealtimeMillis

@@ -1,6 +1,7 @@
 package com.daengs.app.pet
 
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * 개발자 패널이 넣어 보는 **가짜 강아지들.** 디버그 소스셋이다.
@@ -42,6 +43,10 @@ private fun devPet(
     breed: String,
     primary: Boolean = false,
     farewell: LocalDate? = null,
+    feedingStyle: Pet.FeedingStyle? = null,
+    feedingTimes: List<LocalTime>? = null,
+    healthConditions: String? = null,
+    medications: String? = null,
 ) = Pet(
     id = id,
     name = name,
@@ -53,10 +58,21 @@ private fun devPet(
     birthDateKind = Pet.BirthDateKind.BIRTHDAY,
     farewellOn = farewell,
     isPrimary = primary,
+    feedingStyle = feedingStyle,
+    feedingTimes = feedingTimes,
+    healthConditions = healthConditions,
+    medications = medications,
 )
 
 private val DEV_DOGS = listOf(
-    devPet("dev-1", "몽이", "dog_beagle", primary = true),
+    // 첫째는 돌봄 칸(#200)이 차 있다. 수정 화면에서 시각 칩과 병·약 칸이 찬 모습을 보는 자리.
+    devPet(
+        "dev-1", "몽이", "dog_beagle", primary = true,
+        feedingStyle = Pet.FeedingStyle.SCHEDULED,
+        feedingTimes = listOf(LocalTime.of(8, 0), LocalTime.of(19, 30)),
+        healthConditions = "슬개골 탈구",
+        medications = "관절 영양제",
+    ),
     devPet("dev-2", "초코", "dog_welsh_corgi"),
     // 배웅한 아이. 하트가 남의 아이 곁으로 옮겨 가는지 보는 자리다.
     devPet("dev-3", "별이", "dog_maltese", farewell = LocalDate.of(2026, 3, 14)),

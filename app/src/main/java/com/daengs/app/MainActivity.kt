@@ -38,6 +38,7 @@ import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
 import com.daengs.app.dogcard.CardSyncRunner
+import com.daengs.app.dogcard.MissLog
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
@@ -48,7 +49,6 @@ import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.makeDevCard
-import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
@@ -72,6 +72,7 @@ import com.daengs.app.ui.home.needsPet
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
+import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
@@ -149,6 +150,8 @@ class MainActivity : ComponentActivity() {
                 // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
                 val chatHistory = remember(scope) { ChatHistoryCoordinator(scope) }
                 val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
+                // 저장소 탭의 오늘의 케어 기록 (#201). 요약 보관함과 같은 생애 — 서버 사본이고 기기에 안 남긴다.
+                val careLog = remember(scope) { CareLogCoordinator(scope) }
                 val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
@@ -157,6 +160,7 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                val walkHistoryState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
                 val loadingSince = remember { SystemClock.elapsedRealtime() }
@@ -165,8 +169,20 @@ class MainActivity : ComponentActivity() {
                 var walkOrientation by rememberSaveable {
                     mutableStateOf(WalkOrientation.PORTRAIT)
                 }
-                LaunchedEffect(screen, walkOrientation) {
+                // 이머시브 무대가 떠 있나. **무대만 가로를 허용한다** — 배경이 좌우로
+                // 펼쳐지는 장면이라 가로가 이득인 유일한 자리다. 나머지는 세로 전용으로
+                // 그려져 있어 눕히면 무너진다 (실기기에서 확인).
+                var immersiveOpen by remember { mutableStateOf(false) }
+                // 무대를 눕혔나. **무대를 닫으면 원래대로 돌아온다** — 세워 둔 채로
+                // 나가면 다음에 들어올 때 이유 없이 누워 있다.
+                var immersiveLandscape by remember { mutableStateOf(false) }
+                // **`immersiveLandscape` 도 키다.** 값만 바뀌고 이 자리가 안 돌면 버튼을 눌러도
+                // 방향이 그대로다 — 실제로 그렇게 안 돌아갔다.
+                LaunchedEffect(screen, walkOrientation, immersiveOpen, immersiveLandscape) {
                     requestedOrientation = when {
+                        screen == Screen.Dex && immersiveOpen ->
+                            if (immersiveLandscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                         screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                         walkOrientation == WalkOrientation.PORTRAIT ->
                             ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
@@ -243,7 +259,7 @@ class MainActivity : ComponentActivity() {
                 //
                 // **`freshToken` 뒤에 둔다.** 지우기가 서버에도 알려야 하는데, 코틀린은
                 // 앞서 선언된 지역 변수만 잡는다 — 위에 두면 컴파일이 안 된다.
-                val cards = remember { CardHolder(cardStore, freshToken) }
+                val cards = remember { CardHolder(cardStore, freshToken, MissLog(context)) }
 
                 // 카드를 서버와 맞추는 자리. **claimOrphans 뒤에 돈다** — 순서가
                 // 뒤집히면 방금 로그인한 사람의 둘러보기 카드가 안 올라간다.
@@ -402,8 +418,6 @@ class MainActivity : ComponentActivity() {
                     // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
                     // 남의 카드는 안 건드린다 (`CardDao.claimOrphans`).
                     session?.appUserId?.let { cards.claimOrphans(it) }
-                    // 출시본에서는 아무 일도 안 일어난다 — 디버그 소스셋의 시드다.
-                    pets.primary?.let { seedCards(context, cardStore, it.id, it.name, it.birthDate) }
                     // 서버와 맞춘다. **새 폰이면 여기서 카드가 되돌아오고**, 이 폰에만
                     // 있던 카드는 여기서 올라간다. **실패해도 조용하다** — 도감은
                     // 기기 것만으로도 온전히 돈다.
@@ -641,6 +655,7 @@ class MainActivity : ComponentActivity() {
                                 petId = pets.primary?.id.takeIf { session != null },
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
+                                careCoordinator = careLog,
                                 accessTokenProvider = freshToken,
                                 onOpenSource = { sessionId ->
                                     scope.launch {
@@ -874,7 +889,7 @@ class MainActivity : ComponentActivity() {
                         onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
-                    Screen.WalkHistory -> WalkHistoryScreen(
+                    Screen.WalkHistory -> walkHistoryState.SaveableStateProvider("walk-history") { WalkHistoryScreen(
                         history = walkRuntime.history,
                         // 목록을 열 때 한 번 더. 걷고 나서 지하철에 들어갔던 기록이
                         // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
@@ -888,8 +903,10 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
+                    }
+
                     Screen.WalkDetail -> openedWalkId?.let { id ->
-                        WalkDetailScreen(
+                        com.daengs.app.ui.walk.WalkDiaryMapScreen(
                             sessionId = id,
                             history = walkRuntime.history,
                             onBack = { screen = Screen.WalkHistory },
@@ -919,6 +936,12 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        onImmersiveChange = {
+                            immersiveOpen = it
+                            if (!it) immersiveLandscape = false
+                        },
+                        immersiveLandscape = immersiveLandscape,
+                        onToggleImmersiveOrientation = { immersiveLandscape = !immersiveLandscape },
                         // **도감 보기는 열어 두고 뽑기만 막는다.** 이미 뽑아 둔 카드를
                         // 못 보게 하면 그게 더 이상하다.
                         onDrawBlocked = if (waitsForPet) {
@@ -959,6 +982,8 @@ class MainActivity : ComponentActivity() {
                                 },
                                 drawsLeft = cards.drawsLeft(),
                                 onCancel = done,
+                                // 꽝도 하루 한 번을 쓴다. 안 적으면 그 판이 없던 일이 된다.
+                                onMiss = { cards.recordMiss() },
                                 onDrawn = { dog, template, face, core ->
                                     cards.draw(
                                         template = template,

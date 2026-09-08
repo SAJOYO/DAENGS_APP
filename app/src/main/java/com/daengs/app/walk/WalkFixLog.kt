@@ -12,6 +12,8 @@ interface WalkFixLog {
     val historyChanges: kotlinx.coroutines.flow.Flow<Unit> get() = kotlinx.coroutines.flow.flowOf(Unit)
     suspend fun restoreSession(session: RecordedSession) = openSession(session)
     suspend fun hasEntries(sessionId: String): Boolean = actions(sessionId).isNotEmpty()
+    /** Searchable visible text only, without GPS, photos or a generation request. */
+    suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> = emptyMap()
 
     /** 이미 알려진 ID를 다시 열어도 최초 시작 정보는 바꾸지 않는다. */
     suspend fun openSession(session: RecordedSession)
@@ -37,6 +39,14 @@ interface WalkFixLog {
 
     /** 끝난 산책만, 최근 것부터. 목록 화면이 쓴다. */
     suspend fun finishedSessions(): List<RecordedSession>
+
+    /** Stable keyset order. Room overrides this to page before fetching any GPS. */
+    suspend fun finishedSessionsPage(before: WalkHistoryCursor?, dogId: String?, limit: Int): List<RecordedSession> =
+        finishedSessions().filter { (dogId == null || dogId in it.dogIds) &&
+            (before == null || it.startedAtMillis < before.startedAtMillis ||
+                (it.startedAtMillis == before.startedAtMillis && it.id < before.sessionId)) }
+            .sortedWith(compareByDescending<RecordedSession> { it.startedAtMillis }.thenByDescending { it.id })
+            .take(limit)
 
     /**
      * 끝났지만 아직 계산 완료되지 않은 것.
