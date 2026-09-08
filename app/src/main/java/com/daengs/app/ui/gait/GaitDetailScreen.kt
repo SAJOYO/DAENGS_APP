@@ -238,6 +238,10 @@ private fun DetailSection(
             color = CardWhite,
             shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, PinkSoft),
+            // **폭을 화면에 맞춘다.** 안 주면 카드가 제 내용 길이를 따라가서, 짧은 글만
+            // 든 요약 카드만 좁아진다 — 위아래로 붙어 있는 분석 상태 카드는 안쪽 줄이
+            // `weight(1f)` 라 저절로 꽉 차서, 둘의 오른쪽 끝이 어긋나 보였다.
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
                 Modifier.padding(14.dp),
