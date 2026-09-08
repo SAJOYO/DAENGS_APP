@@ -11,9 +11,20 @@ import org.json.JSONObject
  * 띄우고, 그게 막으려던 일이다. 사진 한 장으로 병명을 단정할 수 없다.
  * `tests/test_agent.py` 가 금지 키 목록(`top1`·`diagnosis`·`label`…)을 들고 감시한다.
  *
- * 그래서 이 화면도 [stage2] 를 **분포로만** 그린다. 1등을 골라 크게 쓰지 않는다.
+ * 그래서 이 화면은 [groups] 를 **분포로만** 그린다. 1등을 골라 크게 쓰지 않는다.
  * 문장 셋([headline]·[body]·[action])은 서버가 사용자에게 보여 줄 말로 써 놓은 것이라
  * 앱에서 다시 쓰지 않고 **그대로 옮긴다.**
+ *
+ * ## 2026-09-08 — 화면이 6종에서 **계열 4묶음**으로 바뀌었다
+ *
+ * 6종 이름은 저쪽 holdout 에서 커버리지 41.1% 라 못 쓰는데, 네 묶음으로 굵게 물으면
+ * **66.5%** 다. 그래서 보호자 화면은 [groups] 를 그리고 [stage2] 는 **안 그린다.**
+ *
+ * ⚠️ **[stage2] 를 지우지 않는다.** 계약에 그대로 오고 관리자 콘솔이 쓴다.
+ *    화면 결정이 뒤집혀도 여기 한 줄이지 계약을 다시 고치는 일이 아니다.
+ *
+ * ⚠️ 네 묶음은 6종을 **자른 게 아니라 더한 것**이다 — 여섯 개가 전부 어딘가에
+ *    들어가 있어 숨기는 게 없다. "상위 몇 개로 자르지 마라" 는 규칙과 다르다.
  */
 @Immutable
 data class ScreeningReport(
@@ -23,8 +34,22 @@ data class ScreeningReport(
     val body: String,
     val action: String,
     val stage1: Stage1,
-    /** 병변 6종 분포. [Verdict.ABNORMAL] 이 아니면 비어 있다. */
+    /**
+     * 병변 6종 분포. [Verdict.ABNORMAL] 이 아니면 비어 있다.
+     *
+     * ⚠️ **화면에 안 그린다** (2026-09-08). 관리자 콘솔용이고, 여기서는 계약이
+     *    오는지 확인하는 용도로만 들고 있다.
+     */
     val stage2: List<Lesion>,
+    /** 계열 네 묶음 **분포**. 확신과 무관하게 늘 온다 — 막대는 이걸로 그린다. */
+    val groups: List<Group>,
+    /**
+     * 계열 **주장** 한 줄. 확신이 모자라면 **null** 이고, 그때는 통째로 안 그린다
+     * (저쪽 실측으로 셋에 하나쯤). 막대만 남는다.
+     */
+    val group: GroupLine?,
+    /** "덩어리가 의심됩니다" 경보. 안 뜨면 **null**. */
+    val alert: Alert?,
     val disclaimer: String,
 ) {
     /** 정상/이상/재촬영. 저쪽은 셋 중 하나만 보낸다. */
@@ -53,10 +78,54 @@ data class ScreeningReport(
     @Immutable
     data class Lesion(val code: String, val nameKo: String, val percent: Float)
 
+    /**
+     * 계열 막대 한 줄. 이름도 서버가 준 것을 쓴다 — 묶음표를 앱에 두면 갈라진다.
+     * 저쪽은 묶음을 정하는 코드를 `agent.lesion_group()` **한 곳**으로 모아 뒀다.
+     */
+    @Immutable
+    data class Group(val name: String, val percent: Float)
+
+    /**
+     * 계열 한 줄. [text] 와 [caveat] 를 **그대로** 띄운다.
+     *
+     * ⚠️ 앱이 문장을 지어 쓰면 저쪽과 표현이 갈리고, 갈리면 한쪽이 단정적으로 읽힌다.
+     * ⚠️ **긴급도 문구를 붙이지 않는다.** 묶음의 긴급도는 높은 쪽으로 잡혀서,
+     *    붙이면 말한 것의 절반이 한 단계 부풀려진다 (저쪽 실측 과잉 52.4%).
+     */
+    @Immutable
+    data class GroupLine(val name: String, val percent: Float, val text: String, val caveat: String)
+
+    /**
+     * "덩어리가 의심됩니다" — **계약에서 유일하게 병변 이름을 말하는 자리**다.
+     *
+     * 나머지가 전부 "이름을 말하지 마라" 인데 여기만 예외인 이유는 저쪽
+     * `config.A6_ALERT_MIN` 에 적혀 있다 — 임상 해설이 *"결절·종괴로 오탐하는 건
+     * 상대적으로 안전"* 이라 했고(병원에 가서 확인하면 되니까), **놓치는 쪽이
+     * 훨씬 나쁘다.**
+     *
+     * ⚠️ 문턱을 앱에서 다시 재지 않는다. [score]·[threshold] 는 **보여 주기용**이고
+     *    켤지 말지는 서버가 이미 정했다. 여기서 다시 재면 둘이 갈라진다.
+     */
+    @Immutable
+    data class Alert(
+        val code: String,
+        val text: String,
+        val action: String,
+        val caveat: String,
+        val score: Float,
+        val threshold: Float,
+    )
+
     companion object {
         fun parse(json: JSONObject): ScreeningReport {
             val s1 = json.optJSONObject("stage1")
-            val s2 = json.optJSONObject("stage2")?.optJSONArray("distribution")
+            val s2obj = json.optJSONObject("stage2")
+            val s2 = s2obj?.optJSONArray("distribution")
+            val gs = s2obj?.optJSONArray("groups")
+            // ⚠️ `optJSONObject` 는 JSON null 에도 null 을 준다 — 그래서 "안 뜸"과
+            //    "필드가 없음"이 같게 읽힌다. 둘 다 안 그리는 게 맞으므로 괜찮다.
+            val g = s2obj?.optJSONObject("group")
+            val al = s2obj?.optJSONObject("alert")
             return ScreeningReport(
                 contractVersion = json.optString("contract_version"),
                 verdict = when (json.optString("verdict")) {
@@ -85,6 +154,37 @@ data class ScreeningReport(
                             ),
                         )
                     }
+                },
+                groups = buildList {
+                    for (i in 0 until (gs?.length() ?: 0)) {
+                        val o = gs!!.getJSONObject(i)
+                        val name = o.optString("name")
+                        // 이름이 비면 막대만 남아서 무엇인지 못 읽는다 — 통째로 뺀다.
+                        if (name.isNotBlank()) {
+                            add(Group(name, o.optDouble("percent", 0.0).toFloat()))
+                        }
+                    }
+                },
+                group = g?.let {
+                    val text = it.optString("text")
+                    // 문장이 없으면 그릴 게 없다. 앱이 대신 지어 쓰지 않는다.
+                    if (text.isBlank()) null else GroupLine(
+                        name = it.optString("name"),
+                        percent = it.optDouble("percent", 0.0).toFloat(),
+                        text = text,
+                        caveat = it.optString("caveat"),
+                    )
+                },
+                alert = al?.let {
+                    val text = it.optString("text")
+                    if (text.isBlank()) null else Alert(
+                        code = it.optString("code"),
+                        text = text,
+                        action = it.optString("action"),
+                        caveat = it.optString("caveat"),
+                        score = it.optDouble("score", 0.0).toFloat(),
+                        threshold = it.optDouble("threshold", 0.0).toFloat(),
+                    )
                 },
                 disclaimer = json.optString("disclaimer"),
             )

@@ -1691,6 +1691,35 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // ★ 덩어리 경보. **카드에서 제일 먼저 보여야 하는 줄**이라 머리말보다
+                //   위에 둔다. 안 뜨면 null 이고 그러면 통째로 안 그린다.
+                //
+                //   계약 전체가 "병변 이름을 말하지 마라" 인데 **여기만 예외**다.
+                //   저쪽 `config.A6_ALERT_MIN` 에 이유가 적혀 있다 — 임상 해설이
+                //   "결절·종괴로 오탐하는 건 상대적으로 안전" 이라 했고(병원에 가서
+                //   확인하면 되니까) **놓치는 쪽이 훨씬 나쁘다.**
+                //
+                //   ⚠️ 문턱을 앱에서 다시 재지 않는다. 켤지 말지는 서버가 이미 정했다.
+                report.alert?.let { a ->
+                    Surface(color = PinkFaint, shape = RoundedCornerShape(12.dp)) {
+                        Column(
+                            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                listOf(a.text, a.action).filter { it.isNotBlank() }.joinToString(" "),
+                                color = DaengPinkDeep,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (a.caveat.isNotBlank()) {
+                                Text(a.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                            }
+                        }
+                    }
+                }
+
                 Text(
                     report.headline,
                     color = accent,
@@ -1725,32 +1754,53 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                     }
                 }
 
+                // 계열 한 줄. **null 이면 통째로 안 그린다** — 확신이 모자라면
+                // 서버가 아예 안 보낸다 (셋에 하나쯤). 그때는 아래 본문만 남는다.
+                //
+                // ⚠️ 여기에 긴급도('조기 진료' 같은 말)를 붙이지 않는다. 묶음의
+                //    긴급도는 높은 쪽으로 잡혀 있어서, 붙이면 말한 것의 절반이 한
+                //    단계 부풀려진다 (저쪽 실측 과잉 52.4%).
+                report.group?.let { g ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(g.text, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                        if (g.caveat.isNotBlank()) {
+                            Text(g.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                        }
+                    }
+                }
+
                 Text(report.body, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
 
-                if (report.stage2.isNotEmpty()) {
+                // ★ 2026-09-08 — 6종(report.stage2) 대신 **계열 네 묶음**을 그린다.
+                //   6종 이름은 저쪽 holdout 커버리지 41.1% 라 못 쓰는데 네 묶음은 66.5% 다.
+                //
+                //   ⚠️ 자른 게 아니라 **더한 것**이다. 여섯 개가 전부 어딘가에 들어가
+                //      있어 숨기는 게 없다 — "상위 몇 개로 자르지 마라" 와 다른 이야기다.
+                //   ⚠️ report.stage2 는 그대로 파싱해 두되 **화면에는 안 쓴다.**
+                //      관리자 콘솔이 6종을 본다.
+                if (report.groups.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("모델이 비슷하다고 본 정도", color = TextMuted, fontSize = 12.sp)
-                        report.stage2.forEach { lesion ->
+                        report.groups.forEach { g ->
                             // 전부 같은 글꼴·같은 굵기다. 첫 줄만 굵게 하면 그게 곧
                             // "1등" 이라, 계약이 그 필드를 안 준 뜻이 없어진다.
                             //
                             // 이름과 막대를 **위아래로** 둔다. 옆으로 나란히 두면
-                            // "비듬·각질·상피성잔고리" 같은 이름이 두 줄로 접히면서
-                            // 막대와 높이가 어긋난다 — 이름은 저쪽 표에서 오므로
-                            // 길이를 우리가 정할 수 없다.
+                            // 이름이 두 줄로 접히면서 막대와 높이가 어긋난다 —
+                            // 이름은 저쪽 표에서 오므로 길이를 우리가 정할 수 없다.
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Row(verticalAlignment = Alignment.Bottom) {
                                     Text(
-                                        lesion.nameKo,
+                                        g.name,
                                         color = TextDark,
                                         fontSize = 12.sp,
                                         lineHeight = 16.sp,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Text(lesion.percent.percentText(), color = TextMuted, fontSize = 11.sp)
+                                    Text(g.percent.percentText(), color = TextMuted, fontSize = 11.sp)
                                 }
-                                MeterBar(lesion.percent / 100f, PinkSoft)
+                                MeterBar(g.percent / 100f, PinkSoft)
                             }
                         }
                     }
@@ -1761,6 +1811,90 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                     Text(report.disclaimer, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
                 }
             }
+        }
+    }
+}
+
+/**
+ * 결과 말풍선 — **세 경우를 같이 본다.** 셋이 다른 화면이라 하나만 보면 못 잡는다.
+ *
+ * 1. 덩어리 경보 + 계열 한 줄
+ * 2. 계열 한 줄만 (경보 없음)
+ * 3. **확신이 낮아 계열 한 줄이 없는 경우** — 셋에 하나쯤 이 모양이다.
+ *    막대만 남고 문장이 사라지는데, 그때도 카드가 허전해 보이지 않는지 본다
+ *
+ * 여기서 보는 것은 자리와 무게다. 긴 계열 이름이 접히는지, 경보 상자가 머리말을
+ * 밀어내지 않는지. 실기기 색감은 폰에서 본다.
+ */
+@Preview(showBackground = true, backgroundColor = 0xFFFDF4F0, heightDp = 1100)
+@Composable
+private fun ReportBubblePreview() {
+    fun report(
+        groups: List<ScreeningReport.Group>,
+        group: ScreeningReport.GroupLine?,
+        alert: ScreeningReport.Alert?,
+    ) = ScreeningReport(
+        contractVersion = "1.0",
+        verdict = ScreeningReport.Verdict.ABNORMAL,
+        headline = "피부에 이상 소견이 보입니다.",
+        body = "어떤 병변인지까지는 이 사진만으로 판단할 수 없습니다.",
+        action = "수의사 진료를 받아보시기를 권합니다.",
+        stage1 = ScreeningReport.Stage1(83.0f, 14.7f, calibrated = true),
+        stage2 = emptyList(),
+        groups = groups,
+        group = group,
+        alert = alert,
+        disclaimer = "이 결과는 수의학적 진단이 아니며, 수의사의 진료를 대체하지 않습니다.",
+    )
+
+    val surface = listOf(
+        ScreeningReport.Group("표면 변화", 75.0f),
+        ScreeningReport.Group("융기·발진", 17.0f),
+        ScreeningReport.Group("미란·궤양", 5.0f),
+        ScreeningReport.Group("결절·종괴", 3.0f),
+    )
+    val lump = listOf(
+        ScreeningReport.Group("결절·종괴", 62.0f),
+        ScreeningReport.Group("표면 변화", 25.0f),
+        ScreeningReport.Group("융기·발진", 9.0f),
+        ScreeningReport.Group("미란·궤양", 4.0f),
+    )
+    val flat = listOf(
+        ScreeningReport.Group("표면 변화", 39.0f),
+        ScreeningReport.Group("융기·발진", 37.0f),
+        ScreeningReport.Group("미란·궤양", 13.0f),
+        ScreeningReport.Group("결절·종괴", 11.0f),
+    )
+    val caveat = "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
+
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            ReportBubble(
+                report(
+                    lump,
+                    ScreeningReport.GroupLine(
+                        "결절·종괴", 62.0f, "모양만 보면 결절·종괴 계열에 가깝습니다.", caveat,
+                    ),
+                    ScreeningReport.Alert(
+                        "A6", "덩어리가 의심됩니다.", "빠른 진료를 권합니다.",
+                        "진단이 아닙니다. 덩어리처럼 보이는 다른 병변일 수 있습니다.",
+                        0.72f, 0.40f,
+                    ),
+                ),
+                DogBreed.BEAGLE,
+            )
+            ReportBubble(
+                report(
+                    surface,
+                    ScreeningReport.GroupLine(
+                        "표면 변화", 75.0f, "모양만 보면 표면 변화 계열에 가깝습니다.", caveat,
+                    ),
+                    null,
+                ),
+                DogBreed.BEAGLE,
+            )
+            // 확신이 낮은 경우 — 문장이 없고 막대만 남는다
+            ReportBubble(report(flat, null, null), DogBreed.BEAGLE)
         }
     }
 }
