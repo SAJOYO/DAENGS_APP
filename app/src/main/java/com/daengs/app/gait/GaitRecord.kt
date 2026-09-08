@@ -208,7 +208,13 @@ data class GaitComparison(
     /**
      * 유효 프레임이 적어 참고용이라는 저쪽 문장(`reliability_note`).
      *
-     * **앱이 고쳐 쓰지 않는다.** 어느 기록이 왜 참고용인지는 저쪽만 안다.
+     * ⚠️ **화면에 그대로 띄우지 않는다.** 저쪽 문장에는 `기록 55d18f59-bc8a-…은(는) 유효
+     * 프레임 수가 적어(§21 기준 80프레임 미만)` 처럼 record UUID 와 내부 규격 번호가 들어
+     * 있어서 사용자에게 보여 줄 말이 아니다. 화면은 대신 [reliabilitySentence] 로 어느 쪽
+     * 기록이 모자랐는지를 말한다.
+     *
+     * 그래도 모델에는 남긴다 — 저쪽 계약이 무엇을 주는지가 코드에서 사라지면, 나중에
+     * 그 문장이 사용자용으로 다듬어져도 아무도 다시 찾아 쓰지 않는다.
      */
     val reliabilityNote: String? = null,
 ) {
@@ -243,6 +249,32 @@ data class GaitComparison(
 }
 
 /**
+ * 비교가 얼마나 믿을 만한지 한 줄 — **어느 쪽 기록이 모자랐는지까지** 말한다.
+ *
+ * 저쪽 `reliability_note` 를 그대로 띄우던 자리다. 그 문장에는 record UUID 와 `§21 기준
+ * 80프레임 미만` 같은 내부 표기가 들어 있어 사용자가 읽을 수 없었다
+ * ([GaitComparison.reliabilityNote]).
+ *
+ * **"모자람" 의 기준은 저쪽과 같게 `good` 이 아닌 것**으로 둔다. 저쪽이 주의 문장을 붙이던
+ * 경우와 정확히 같은 집합이라, 문구만 바뀌고 언제 주의가 뜨는지는 안 바뀐다 — 여기서
+ * 기준을 느슨하게 잡으면 저쪽이 참고용이라고 본 비교에 앱이 "충분" 이라고 도장을 찍게 된다.
+ *
+ * 등급을 아예 모르는 기록(표본·옛 기록)은 [GaitRecord.effectiveTier] 가 `Ok` 로 보정하므로
+ * 여기서도 모자란 쪽으로 샌다 — 모르는 것을 "충분" 으로 올려 말하지 않는다.
+ */
+val GaitComparison.reliabilitySentence: String
+    get() {
+        val recentShort = recent.effectiveTier != GaitQualityTier.Good
+        val pastShort = past.effectiveTier != GaitQualityTier.Good
+        return when {
+            !recentShort && !pastShort -> "두 기록 모두 비교하기에 충분한 보행 장면이 확인됐어요."
+            recentShort && pastShort -> "두 기록 모두 보행 장면이 적어 결과는 참고용으로 봐주세요."
+            recentShort -> "최근 기록의 보행 장면이 적어 결과는 참고용으로 봐주세요."
+            else -> "비교 기록의 보행 장면이 적어 결과는 참고용으로 봐주세요."
+        }
+    }
+
+/**
  * 상세 화면 요약에 올릴 줄들 — **최대 셋**. 화면이 아니라 여기서 만든다.
  *
  * Composable 안에 두면 테스트가 못 들어와서, 문구 규칙을 사람이 눈으로만 지켜야 한다.
@@ -263,29 +295,47 @@ data class GaitComparison(
  * 뺐다. 기능 설명이지 이 영상에 대한 말이 아니었다. 모델명·플래그·feature·진단 표현은
  * 애초에 이 모델에 자리가 없다.
  */
-fun GaitRecord.summaryLines(): List<String> = buildList {
-    add(dateAndLength)
+fun GaitRecord.summaryLines(): List<String> =
+    listOfNotNull(dateAndLength, qualitySentence, summaryNote)
 
-    // 서버가 없는 표본·옛 기록은 tier 가 없다. comparable 이면 "확인할 수 있는" 으로,
-    // 아니면 분석 불가로 본다 — 모르는 것을 "충분히" 로 올려 말하지 않는다.
-    val tier = qualityTier ?: if (comparable) GaitQualityTier.Ok else null
-    add(
-        when (tier) {
-            GaitQualityTier.Good -> "관절 움직임이 충분히 확인된 영상이에요."
-            GaitQualityTier.Ok -> "관절 움직임을 확인할 수 있는 영상이에요."
-            GaitQualityTier.Low -> "확인된 보행 장면이 적어 결과는 참고용으로 봐주세요."
-            null -> "분석 가능한 보행 장면이 충분하지 않았어요."
-        },
-    )
+/**
+ * 화면이 실제로 쓰는 등급. 서버가 없는 표본·옛 기록은 [qualityTier] 가 없으므로
+ * [comparable] 로 보정한다 — 잴 수 있었으면 "확인할 수 있는"(Ok), 아니면 분석 불가(null).
+ *
+ * **모르는 것을 "충분히" 로 올려 말하지 않는다.**
+ */
+val GaitRecord.effectiveTier: GaitQualityTier?
+    get() = qualityTier ?: if (comparable) GaitQualityTier.Ok else null
 
-    // 분석 불가면 저쪽 권고가 유일한 행동 지침이라 재생 안내보다 앞선다.
-    val advice = if (tier == null) qualityAdvice?.ifBlank { null } else null
-    when {
-        advice != null -> add(advice)
-        overlay != null -> add("분석 영상에서 관절 위치를 직접 확인할 수 있어요.")
-        // 저쪽에 있다는데 주소를 아직 못 받았다 — 상세를 열면 곧 채워진다. 그 사이에
-        // "지원되지 않아요" 라고 했다가 바뀌면 화면이 말을 바꾼 것으로 읽힌다.
-        hasOverlay -> Unit
-        else -> add("이 기록은 분석 영상 재생이 지원되지 않아요.")
+/**
+ * 등급 한 줄.
+ *
+ * 화면은 이 문장 옆에 점을 찍고 색을 [effectiveTier] 로 정한다 — **문장과 색이 같은 값에서
+ * 나와야** 초록 점 옆에 "충분하지 않았어요" 가 붙는 일이 없다.
+ */
+val GaitRecord.qualitySentence: String
+    get() = when (effectiveTier) {
+        GaitQualityTier.Good -> "관절 움직임이 충분히 확인된 영상이에요."
+        GaitQualityTier.Ok -> "관절 움직임을 확인할 수 있는 영상이에요."
+        GaitQualityTier.Low -> "확인된 보행 장면이 적어 결과는 참고용으로 봐주세요."
+        null -> "분석 가능한 보행 장면이 충분하지 않았어요."
     }
-}
+
+/**
+ * 마지막 한 줄 — 다음에 뭘 하면 되나, 또는 분석 영상을 볼 수 있나. 없으면 `null` 이라
+ * 화면이 그 줄을 안 그린다.
+ *
+ * 분석 불가면 저쪽 권고가 유일한 행동 지침이라 재생 안내보다 앞선다.
+ */
+val GaitRecord.summaryNote: String?
+    get() {
+        val advice = if (effectiveTier == null) qualityAdvice?.ifBlank { null } else null
+        return when {
+            advice != null -> advice
+            overlay != null -> "분석 영상에서 관절 위치를 직접 확인할 수 있어요."
+            // 저쪽에 있다는데 주소를 아직 못 받았다 — 상세를 열면 곧 채워진다. 그 사이에
+            // "지원되지 않아요" 라고 했다가 바뀌면 화면이 말을 바꾼 것으로 읽힌다.
+            hasOverlay -> null
+            else -> "이 기록은 분석 영상 재생이 지원되지 않아요."
+        }
+    }

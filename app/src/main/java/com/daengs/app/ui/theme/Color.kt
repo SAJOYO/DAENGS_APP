@@ -26,6 +26,15 @@ object DaengsColors {
     val Warning = Color(0xFFC98B32)
     val Error = Color(0xFFC45E5E)
 
+    /**
+     * [Success] 보다 한 단계 연한 연두.
+     *
+     * "좋다" 와 "괜찮다" 를 **색의 진하기로만** 가르는 자리에 쓴다 (보행 기록 정보의 등급 점).
+     * 같은 초록을 쓰면 두 등급이 구분되지 않고, 다른 색을 쓰면 갈래가 하나 더 있는 것처럼
+     * 읽힌다 — 같은 계열에서 옅게 뽑은 이유다.
+     */
+    val SuccessLight = Color(0xFF86BE8A)
+
     // 오류를 바탕으로 깔 때. [BrandPrimary] : [BrandPrimarySoft] 와 같은 비율로
     // [Error] 를 옅게 뽑았다. M3 의 errorContainer 자리에 들어간다 — 안 주면
     // 기본 빨강·보라가 크림·핑크 사이로 튀어나온다 (Theme.kt 참고).

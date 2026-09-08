@@ -48,6 +48,7 @@ import com.daengs.app.gait.GaitJointState
 import com.daengs.app.gait.GaitLeg
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVerdict
+import com.daengs.app.gait.reliabilitySentence
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.theme.CardWhite
@@ -192,19 +193,27 @@ fun GaitCompareScreen(
 
             // 저쪽이 준 문장을 **그대로** 옮긴다. 어느 기록이 왜 참고용인지, 버전이
             // 어떻게 다른지는 서버만 안다.
-            comparison.reliabilityNote?.let { ServerNote(it) }
-            comparison.versionWarning?.let { ServerNote(it) }
+            // 믿을 만한 정도는 **앱이 문장을 짓는다.** 저쪽 `reliability_note` 에는
+            // record UUID 와 `§21 기준 80프레임 미만` 같은 내부 표기가 들어 있어 그대로
+            // 띄울 수 없었다 ([GaitComparison.reliabilityNote]).
+            NoteBox(comparison.reliabilitySentence)
+            // 버전 경고는 저쪽 문장을 그대로 쓴다 — 어느 버전끼리인지는 서버만 안다.
+            comparison.versionWarning?.let { NoteBox(it) }
 
             // 이 화면이 판정이 아니라는 말은 **화면 안에** 있어야 한다. 문서에만
             // 적어 두면 화면을 보는 사람에게는 없는 말이다. 관절 점에 색이 들어온
             // 뒤로는 더 그렇다 — 색을 정상/위험으로 읽지 않게 붙들어 주는 문장이다.
-            Text(
-                "이 비교는 같은 아이의 두 시점을 나란히 놓아 본 것이에요.\n" +
-                    "건강 상태를 판단하거나 진단하지 않아요.",
-                color = TextMuted,
-                fontSize = 11.sp,
-                lineHeight = 17.sp,
-            )
+            // 위 주의 상자와 **같은 점, 같은 여백**을 쓴다. 상자만 없고 나머지가 같아야 두
+            // 문단의 글자가 한 세로선에서 시작한다 — 여백만 맞추고 점을 빼면 이 줄만 점
+            // 자리에서 시작해 여전히 어긋난다.
+            Column(
+                Modifier.padding(horizontal = NOTE_INSET),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                // 줄마다 점 하나. 두 문장은 각각 완결된 말이라 한 점에 매달지 않는다.
+                DottedLine("이 비교는 같은 아이의 두 시점을 나란히 놓아 본 것이에요.", fontSize = 11.sp, lineHeight = 17.sp)
+                DottedLine("건강 상태를 판단하거나 진단하지 않아요.", fontSize = 11.sp, lineHeight = 17.sp)
+            }
         }
 
         Row(
@@ -399,29 +408,50 @@ private fun AdviceCard(title: String, body: String) {
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            DaengsIconView(DaengsIcon.Bulb, Modifier.size(16.dp), tint = DaengPink)
+            // 전구를 제목 글줄 가운데로 내린다. Row 위 끝에 그대로 두면 제목 글자는 줄 상자
+            // 안에서 아래로 처져 있어(글꼴 여백) 전구만 위로 떠 보인다.
+            DaengsIconView(
+                DaengsIcon.Bulb,
+                Modifier.padding(top = 3.dp).size(16.dp),
+                tint = DaengPink,
+            )
             Spacer(Modifier.width(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    title,
+                    color = TextDark,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(body, color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
             }
         }
     }
 }
 
-/** 서버가 준 주의 문장. **앱이 고쳐 쓰지 않는다.** */
+/**
+ * 표 아래 붙는 주의 한 줄. 믿을 만한 정도(앱이 지음)와 버전 경고(서버 문장)가 같은 모양을 쓴다 —
+ * 둘 다 "결과를 어떻게 받아들일지" 를 말하는 자리라 생김새가 갈리면 하나가 더 중해 보인다.
+ */
 @Composable
-private fun ServerNote(text: String) {
+private fun NoteBox(text: String) {
     Surface(color = PinkFaint, shape = RoundedCornerShape(13.dp)) {
-        Text(
+        DottedLine(
             text,
-            color = TextMuted,
             fontSize = 11.5.sp,
             lineHeight = 18.sp,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = NOTE_INSET, vertical = 11.dp),
         )
     }
 }
+
+
+/**
+ * [NoteBox] 안쪽 여백. **진단아님 문구도 같은 값을 쓴다** — 상자가 없는 그 문구가 상자 안
+ * 글자보다 왼쪽에서 시작하면 둘의 왼쪽 끝이 어긋나 보인다.
+ */
+private val NOTE_INSET = 13.dp
 
 /** 보행 화면들이 같이 쓰는 상단바. 대화 헤더와 높이·되돌아가기 자리가 같다. */
 @Composable
