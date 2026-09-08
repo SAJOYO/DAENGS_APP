@@ -8,16 +8,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,17 +49,49 @@ internal fun WalkSpeedometer(speed: Float?, modifier: Modifier = Modifier) {
     val policy = selection.policy
     val theme = policy.theme(selection.themeId)
     val validSpeed = speed?.takeIf { it.isFinite() && it >= 0f }
+    var lastSpeed by rememberSaveable { mutableFloatStateOf(0f) }
+    var hasReceivedSpeed by rememberSaveable { mutableStateOf(false) }
+    SideEffect {
+        if (validSpeed != null) {
+            lastSpeed = validSpeed
+            hasReceivedSpeed = true
+        }
+    }
+    val displayedSpeed = validSpeed ?: lastSpeed
+    val signalDescription = when {
+        validSpeed != null -> "현재 수신 속도"
+        hasReceivedSpeed -> "속도 신호 대기. 마지막 수신 값 유지"
+        else -> "속도 신호 대기. 측정 전 초기값"
+    }
     val fraction by animateFloatAsState(
-        targetValue = (validSpeed ?: 0f).div(policy.speedMax.toFloat()).coerceIn(0f, 1f),
+        targetValue = displayedSpeed.div(policy.speedMax.toFloat()).coerceIn(0f, 1f),
         animationSpec = tween(650), label = "speedNeedle")
-    val value = validSpeed?.let { String.format(Locale.ROOT, "%.1f", it) } ?: "—"
+    val value = String.format(Locale.ROOT, "%.1f", displayedSpeed)
     Surface(modifier.testTag("speedometer"), shape = RoundedCornerShape(12.dp), color = CardWhite) {
         Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("속도", fontSize = 10.sp, lineHeight = 12.sp)
+                Box(Modifier.fillMaxWidth().height(18.dp), contentAlignment = Alignment.Center) {
+                    Text("속도", fontSize = 10.sp, lineHeight = 12.sp)
+                    Canvas(Modifier.align(Alignment.CenterEnd).size(14.dp).testTag("speedSignalLamp").semantics {
+                        contentDescription = "속도 수신 상태"
+                        stateDescription = signalDescription
+                    }) {
+                        val lamp = if (validSpeed == null) Color(0xffc99522) else TextMuted.copy(alpha = .22f)
+                        val triangle = Path().apply {
+                            moveTo(size.width*.5f, size.height*.12f)
+                            lineTo(size.width*.92f, size.height*.88f)
+                            lineTo(size.width*.08f, size.height*.88f)
+                            close()
+                        }
+                        drawPath(triangle, lamp, style = Stroke(1.4.dp.toPx()))
+                        drawLine(lamp, Offset(size.width*.5f, size.height*.38f),
+                            Offset(size.width*.5f, size.height*.59f), 1.4.dp.toPx(), StrokeCap.Round)
+                        drawCircle(lamp, 0.8.dp.toPx(), Offset(size.width*.5f, size.height*.73f))
+                    }
+                }
                 Box(Modifier.fillMaxWidth().height(68.dp)) {
-                    Canvas(Modifier.fillMaxWidth().height(58.dp).semantics {
-                        contentDescription = "${theme.label} 속도계. 현재 ${if (validSpeed == null) "속도 확인 중" else "$value m/s"}"
+                    Canvas(Modifier.fillMaxWidth().height(58.dp).testTag("speedDial").semantics {
+                        contentDescription = "${theme.label} 속도계. $signalDescription. $value m/s"
                     }) {
                         val radius = size.width / 2 - 6.dp.toPx()
                         val center = Offset(size.width / 2, size.height - 3.dp.toPx())
@@ -73,7 +108,7 @@ internal fun WalkSpeedometer(speed: Float?, modifier: Modifier = Modifier) {
                             drawLine(TextMuted.copy(alpha = .55f), point(radius - 7.dp.toPx()),
                                 point(radius - 10.dp.toPx()), 1.dp.toPx())
                         }
-                        if (validSpeed != null) {
+                        run {
                             val angle = Math.PI + Math.PI * fraction
                             val tip = Offset(center.x + cos(angle).toFloat()*(radius - 13.dp.toPx()),
                                 center.y + sin(angle).toFloat()*(radius - 13.dp.toPx()))
@@ -86,7 +121,8 @@ internal fun WalkSpeedometer(speed: Float?, modifier: Modifier = Modifier) {
                         Text(String.format(Locale.ROOT, "%s+", policy.speedMax.toString().removeSuffix(".0")), fontSize = 9.sp, lineHeight = 10.sp)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(Modifier.testTag("speedReading").semantics { stateDescription = signalDescription },
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(value, Modifier.alignByBaseline(), fontSize = 18.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
                     Text("m/s", Modifier.alignByBaseline(), fontSize = 10.sp, lineHeight = 12.sp, color = TextMuted)
                 }
