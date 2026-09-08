@@ -263,29 +263,47 @@ data class GaitComparison(
  * 뺐다. 기능 설명이지 이 영상에 대한 말이 아니었다. 모델명·플래그·feature·진단 표현은
  * 애초에 이 모델에 자리가 없다.
  */
-fun GaitRecord.summaryLines(): List<String> = buildList {
-    add(dateAndLength)
+fun GaitRecord.summaryLines(): List<String> =
+    listOfNotNull(dateAndLength, qualitySentence, summaryNote)
 
-    // 서버가 없는 표본·옛 기록은 tier 가 없다. comparable 이면 "확인할 수 있는" 으로,
-    // 아니면 분석 불가로 본다 — 모르는 것을 "충분히" 로 올려 말하지 않는다.
-    val tier = qualityTier ?: if (comparable) GaitQualityTier.Ok else null
-    add(
-        when (tier) {
-            GaitQualityTier.Good -> "관절 움직임이 충분히 확인된 영상이에요."
-            GaitQualityTier.Ok -> "관절 움직임을 확인할 수 있는 영상이에요."
-            GaitQualityTier.Low -> "확인된 보행 장면이 적어 결과는 참고용으로 봐주세요."
-            null -> "분석 가능한 보행 장면이 충분하지 않았어요."
-        },
-    )
+/**
+ * 화면이 실제로 쓰는 등급. 서버가 없는 표본·옛 기록은 [qualityTier] 가 없으므로
+ * [comparable] 로 보정한다 — 잴 수 있었으면 "확인할 수 있는"(Ok), 아니면 분석 불가(null).
+ *
+ * **모르는 것을 "충분히" 로 올려 말하지 않는다.**
+ */
+val GaitRecord.effectiveTier: GaitQualityTier?
+    get() = qualityTier ?: if (comparable) GaitQualityTier.Ok else null
 
-    // 분석 불가면 저쪽 권고가 유일한 행동 지침이라 재생 안내보다 앞선다.
-    val advice = if (tier == null) qualityAdvice?.ifBlank { null } else null
-    when {
-        advice != null -> add(advice)
-        overlay != null -> add("분석 영상에서 관절 위치를 직접 확인할 수 있어요.")
-        // 저쪽에 있다는데 주소를 아직 못 받았다 — 상세를 열면 곧 채워진다. 그 사이에
-        // "지원되지 않아요" 라고 했다가 바뀌면 화면이 말을 바꾼 것으로 읽힌다.
-        hasOverlay -> Unit
-        else -> add("이 기록은 분석 영상 재생이 지원되지 않아요.")
+/**
+ * 등급 한 줄.
+ *
+ * 화면은 이 문장 옆에 점을 찍고 색을 [effectiveTier] 로 정한다 — **문장과 색이 같은 값에서
+ * 나와야** 초록 점 옆에 "충분하지 않았어요" 가 붙는 일이 없다.
+ */
+val GaitRecord.qualitySentence: String
+    get() = when (effectiveTier) {
+        GaitQualityTier.Good -> "관절 움직임이 충분히 확인된 영상이에요."
+        GaitQualityTier.Ok -> "관절 움직임을 확인할 수 있는 영상이에요."
+        GaitQualityTier.Low -> "확인된 보행 장면이 적어 결과는 참고용으로 봐주세요."
+        null -> "분석 가능한 보행 장면이 충분하지 않았어요."
     }
-}
+
+/**
+ * 마지막 한 줄 — 다음에 뭘 하면 되나, 또는 분석 영상을 볼 수 있나. 없으면 `null` 이라
+ * 화면이 그 줄을 안 그린다.
+ *
+ * 분석 불가면 저쪽 권고가 유일한 행동 지침이라 재생 안내보다 앞선다.
+ */
+val GaitRecord.summaryNote: String?
+    get() {
+        val advice = if (effectiveTier == null) qualityAdvice?.ifBlank { null } else null
+        return when {
+            advice != null -> advice
+            overlay != null -> "분석 영상에서 관절 위치를 직접 확인할 수 있어요."
+            // 저쪽에 있다는데 주소를 아직 못 받았다 — 상세를 열면 곧 채워진다. 그 사이에
+            // "지원되지 않아요" 라고 했다가 바뀌면 화면이 말을 바꾼 것으로 읽힌다.
+            hasOverlay -> null
+            else -> "이 기록은 분석 영상 재생이 지원되지 않아요."
+        }
+    }
