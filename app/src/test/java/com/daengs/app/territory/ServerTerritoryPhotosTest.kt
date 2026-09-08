@@ -30,6 +30,7 @@ internal class PhotoServer : TerritoryActionClient, TerritoryPhotoUploader {
     var uploadedBytes: ByteArray? = null
     var admissionFailure: String? = null
     var accessAction = "PHOTO_UPGRADE"
+    var accessReason: String? = null
     var afterAdmission: (() -> Unit)? = null
     private fun ticket(photo: Photo) = JSONObject(photo.body)
         .put("attempt_id", photo.id).put("status", photo.status)
@@ -56,7 +57,8 @@ internal class PhotoServer : TerritoryActionClient, TerritoryPhotoUploader {
     }
     override suspend fun request(token: String, method: String, path: String, body: String?): String {
         calls += Triple(method, path, body)
-        if (path.endsWith("/photo-access")) return JSONObject().put("allowed_action", accessAction).toString()
+        if (path.endsWith("/photo-access")) return JSONObject().put("allowed_action", accessAction)
+            .put("reason", accessReason ?: JSONObject.NULL).toString()
         if (path.contains("/challenges/")) {
             admissionFailure?.let { throw TerritoryActionException(409, it) }
             afterAdmission?.invoke()
@@ -140,7 +142,10 @@ class ServerTerritoryPhotosTest {
             sync.photos = photos
             val mark = mark(sync, state)
             server.accessAction = "WAIT"
-            assertFalse(photos.checkAccess(mark))
+            server.accessReason = "protected"
+            val accessError = runCatching { photos.checkAccess(mark) }.exceptionOrNull()
+            assertTrue(accessError is TerritoryCaptureBlocked)
+            assertTrue(accessError!!.message!!.contains("보호"))
             server.admissionFailure = "protected"
             val id = UUID.randomUUID().toString()
             val error = runCatching { photos.reserve(state, mark, photoCaptureBody(id, WALK, SITE, DOG, fix(), 3100), 1) }.exceptionOrNull()
@@ -152,7 +157,7 @@ class ServerTerritoryPhotosTest {
             assertFalse(refused.photoGuidance().contains("전송"))
             assertTrue(server.photos.isEmpty())
             assertNull(server.uploadedBytes)
-            server.admissionFailure = null; server.accessAction = "PHOTO_UPGRADE"
+            server.admissionFailure = null; server.accessAction = "PHOTO_UPGRADE"; server.accessReason = null
             assertTrue(photos.checkAccess(mark))
             val retry = UUID.randomUUID().toString()
             assertEquals(retry, photos.reserve(state, mark, photoCaptureBody(retry, WALK, SITE, DOG, fix(), 3100), 2))

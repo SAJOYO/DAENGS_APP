@@ -322,6 +322,7 @@ class WalkViewModel(
                             if (target != null && (photoQueue != null || onlineTerritoryPhotos)) emit(WalkEffect.CaptureTerritory(target))
                             else showNotice("현재 위치와 산책 상태를 확인해 주세요")
                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (blocked: com.daengs.app.territory.TerritoryCaptureBlocked) { showNotice(checkNotNull(blocked.message)) }
                         catch (_: Exception) { showNotice("사진 인증을 준비하지 못했어요 · 연결 상태를 확인해 주세요") }
                         finally { preparingTerritoryCapture = false }
                     }

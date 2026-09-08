@@ -95,8 +95,12 @@ class ServerTerritoryPhotos(
             if (auth.appUserId != mark.ownerId || currentOwner() != mark.ownerId) return false
             val claim = parseTerritoryClaim(checkNotNull(mark.response), mark.body)
             val value = JSONObject(api.request(auth.accessToken, "GET", "/claims/${claim.claimId}/photo-access", null))
-            currentOwner() == mark.ownerId && value.getString("allowed_action") in setOf("PHOTO_TAKEOVER", "PHOTO_UPGRADE")
+            if (currentOwner() != mark.ownerId) return false
+            if (value.getString("allowed_action") !in setOf("PHOTO_TAKEOVER", "PHOTO_UPGRADE"))
+                throw TerritoryCaptureBlocked(value.optString("reason"))
+            true
         } catch (cancelled: CancellationException) { throw cancelled }
+        catch (blocked: TerritoryCaptureBlocked) { throw blocked }
         catch (_: Exception) { false }
     }
 

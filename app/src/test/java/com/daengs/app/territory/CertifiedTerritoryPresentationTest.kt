@@ -49,6 +49,20 @@ class CertifiedTerritoryPresentationTest {
             remote = remote.copy(occupancy = remote.occupancy!!.copy(certification = ClaimCertification.UNVERIFIED, protectedUntilMillis = null), serverNowMillis = 2000)
             provider.refresh(board.sites)
             assertTrue(view().canPhotograph)
+            // A policy change after this board read must retain its reason through prepareCapture.
+            for ((reason, action, message) in listOf(
+                Triple("protected", "WAIT", "보호"),
+                Triple("season_ended", "UNAVAILABLE", "시즌"),
+            )) {
+                server.accessReason = reason; server.accessAction = action
+                val error = runCatching {
+                    provider.prepareCapture(SITE, board, state, true, mapOf(DOG to "보리"), 2_000_000_000, 2000)
+                }.exceptionOrNull()
+                assertTrue(error is TerritoryCaptureBlocked)
+                assertTrue(error!!.message!!.contains(message))
+                assertFalse(dao.all().any { it.kind == "PHOTO" })
+                assertTrue(server.photos.isEmpty())
+            }
         } finally { dir.deleteRecursively() }
     }
 }

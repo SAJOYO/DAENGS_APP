@@ -28,6 +28,7 @@ import com.daengs.app.walk.WalkTrackingState
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +45,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test fun `photo preflight rejection displays policy message without opening camera`() = runTest {
+        for (reason in listOf("protected", "season_ended")) {
+            val blocked = com.daengs.app.territory.TerritoryCaptureBlocked(reason)
+            val local = TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList()))
+            val provider = object : com.daengs.app.map.features.territory.TerritoryGameProvider by local {
+                override val onlinePhotos = true
+                override suspend fun prepareCapture(siteId: String, board: com.daengs.app.map.features.territory.TerritoryBoardState,
+                    tracking: WalkTrackingState, permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long): com.daengs.app.map.features.territory.TerritoryCaptureTarget? = throw blocked
+            }
+            val vm = viewModel(FakeWalkController(), CountingLocationSource(), TerritorySiteRepository {
+                TerritorySitePage(1, false, listOf(TerritorySite("A", GeoPoint(37.5, 127.0), 0.0)))
+            }, provider)
+            val effects = mutableListOf<WalkEffect>()
+            backgroundScope.launch { vm.effects.collect { effects += it } }
+            vm.activate(true, true); vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+            vm.onAction(WalkAction.SelectTerritorySite("A")); runCurrent()
+            vm.onAction(WalkAction.PhotographTerritory("A")); runCurrent()
+            assertEquals(blocked.message, vm.state.value.momentNotice)
+            assertEquals(false, effects.any { it is WalkEffect.CaptureTerritory })
+        }
+    }
+
     @Test fun `async territory submission never reopens a card closed while saving`() = runTest {
         val stored = kotlinx.coroutines.CompletableDeferred<String>()
         val local = TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList()))
