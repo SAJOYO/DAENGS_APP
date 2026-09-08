@@ -237,7 +237,9 @@ fun PlacesScreen(
             },
             enabled = !discovery.loading && permissionAction == null,
             canSubmit = validName,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            // 안내 줄을 없앤 자리가 그대로 비어 검색칸이 지도에 붙어 버렸다.
+            // 조작부와 지도 사이의 경계는 남겨 둔다.
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
         )
         // **할 말이 없으면 이 줄은 없다.** 전에는 늘 "선택한 카테고리 · 반경 3km 안에서
         // 이름 검색" 이 떠 있었다. 검색칸 바로 밑에서 검색칸이 하는 일을 다시 적는
