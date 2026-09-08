@@ -209,6 +209,9 @@ fun GaitCompareScreen(
                 color = TextMuted,
                 fontSize = 11.sp,
                 lineHeight = 17.sp,
+                // 위 주의 상자의 글자와 왼쪽 끝을 맞춘다. 상자가 없다고 여백을 안 주면
+                // 이 문구만 왼쪽으로 튀어나온다.
+                modifier = Modifier.padding(horizontal = NOTE_INSET),
             )
         }
 
@@ -421,15 +424,26 @@ private fun AdviceCard(title: String, body: String) {
 @Composable
 private fun NoteBox(text: String) {
     Surface(color = PinkFaint, shape = RoundedCornerShape(13.dp)) {
-        Text(
-            text,
-            color = TextMuted,
-            fontSize = 11.5.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp),
-        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NOTE_INSET, vertical = 11.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            // 가운뎃점. 한 줄만 있으면 상자 안이 허전해서 문장이 떠 보인다. Row 로 두면
+            // 여러 줄로 접힐 때 둘째 줄이 글자 앞으로 들어와 매달린 들여쓰기가 된다.
+            Text("·", color = TextMuted, fontSize = 11.5.sp, lineHeight = 18.sp)
+            Spacer(Modifier.width(6.dp))
+            Text(text, color = TextMuted, fontSize = 11.5.sp, lineHeight = 18.sp)
+        }
     }
 }
+
+/**
+ * [NoteBox] 안쪽 여백. **진단아님 문구도 같은 값을 쓴다** — 상자가 없는 그 문구가 상자 안
+ * 글자보다 왼쪽에서 시작하면 둘의 왼쪽 끝이 어긋나 보인다.
+ */
+private val NOTE_INSET = 13.dp
 
 /** 보행 화면들이 같이 쓰는 상단바. 대화 헤더와 높이·되돌아가기 자리가 같다. */
 @Composable
