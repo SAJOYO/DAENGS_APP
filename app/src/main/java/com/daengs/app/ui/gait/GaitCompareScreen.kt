@@ -408,10 +408,22 @@ private fun AdviceCard(title: String, body: String) {
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            DaengsIconView(DaengsIcon.Bulb, Modifier.size(16.dp), tint = DaengPink)
+            // 전구를 제목 글줄 가운데로 내린다. Row 위 끝에 그대로 두면 제목 글자는 줄 상자
+            // 안에서 아래로 처져 있어(글꼴 여백) 전구만 위로 떠 보인다.
+            DaengsIconView(
+                DaengsIcon.Bulb,
+                Modifier.padding(top = 3.dp).size(16.dp),
+                tint = DaengPink,
+            )
             Spacer(Modifier.width(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    title,
+                    color = TextDark,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(body, color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
             }
         }
