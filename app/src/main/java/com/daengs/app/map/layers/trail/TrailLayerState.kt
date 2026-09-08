@@ -11,8 +11,16 @@ import com.daengs.app.walk.TrailSnapshot
  */
 data class TrailLayerState(
     val paths: List<List<GeoPoint>> = emptyList(),
+    val speedPaths: List<List<com.daengs.app.map.style.WalkSpeedPoint>> = emptyList(),
+    val startPoint: GeoPoint? = null,
 )
 
-/** 위치 표본의 기록 메타데이터를 제외하고 지도에 필요한 좌표만 넘긴다. */
+/** 좌표와 속도 표시용 시각을 넘긴다. 기록 원본은 수정하지 않는다. */
 fun TrailSnapshot.toTrailLayerState(): TrailLayerState =
-    TrailLayerState(paths = segments.map { segment -> segment.map { it.point } })
+    TrailLayerState(
+        startPoint = startSample?.point ?: segments.firstOrNull()?.firstOrNull()?.point,
+        paths = segments.map { segment -> segment.map { it.point } },
+        speedPaths = segments.map { segment -> segment.map {
+            com.daengs.app.map.style.WalkSpeedPoint(it.point, it.capturedAtMillis)
+        } },
+    )

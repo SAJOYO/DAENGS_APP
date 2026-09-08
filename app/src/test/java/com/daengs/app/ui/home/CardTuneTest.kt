@@ -2,9 +2,11 @@ package com.daengs.app.ui.home
 
 import com.daengs.app.ui.dex.CARD_BGM
 import com.daengs.app.ui.dex.DEX_CARDS
+import com.daengs.app.ui.dex.DexDeck
 import com.daengs.app.ui.dex.IMMERSIVE_SCENES
 import com.daengs.app.ui.dex.bgmFor
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -56,13 +58,88 @@ class CardTuneTest {
         val tuneOnly = DEX_CARDS.filter { bgmFor(it.id) != null && IMMERSIVE_SCENES[it.id] == null }
 
         assertTrue("곡과 무대가 같아졌다면 이 테스트를 지워도 된다", tuneOnly.isNotEmpty())
-        assertEquals(listOf("carrot", "spinach"), tuneOnly.map { it.id }.sorted())
+        assertEquals(
+            listOf(
+                "apple", "banana", "carrot", "mango",
+                "spinach", "strawberry", "tomato", "watermelon",
+            ),
+            tuneOnly.map { it.id }.sorted(),
+        )
     }
 
+    /**
+     * 도감 순서와 다르면 "No.01 다음이 No.10" 이라는 감각이 깨진다.
+     *
+     * **번호 전체를 한 줄로 세워 보면 안 된다.** 도감이 두 벌이라 번호가 겹쳐서,
+     * 야채 마지막(No.12 상추) 다음에 과일 첫 장(No.01 사과)이 온다 — 그게 맞는
+     * 차례인데 `sorted()` 로 보면 어긋난 것으로 나온다. 벌 안에서만 오름차순이다.
+     */
     @Test
-    fun `카드 순서를 그대로 따른다`() {
-        // 도감 순서와 다르면 "No.01 다음이 No.10" 이라는 감각이 깨진다.
-        assertEquals(CARD_TUNES.map { it.card.no }.sorted(), CARD_TUNES.map { it.card.no })
+    fun `벌 안에서는 번호 차례다`() {
+        DexDeck.entries.forEach { deck ->
+            val nos = CARD_TUNES.filter { it.card.deck == deck }.map { it.card.no }
+            assertEquals(deck.label, nos.sorted(), nos)
+        }
+    }
+
+    /** 야채가 다 지나간 뒤에 과일이 온다. 섞이면 도감과 다른 차례가 된다. */
+    @Test
+    fun `야채가 먼저고 과일이 나중이다`() {
+        val decks = CARD_TUNES.map { it.card.deck }
+        assertEquals(decks.sortedBy { it.ordinal }, decks)
+    }
+
+    /**
+     * **한 줄에 같은 글자가 둘 뜨지 않는다.**
+     *
+     * 목록은 야채와 과일을 섞어 세우는데 번호는 벌마다 다시 1번부터다. 번호만
+     * 찍으면 배추와 사과가 둘 다 `No. 01` 이라 같은 카드가 두 번 뜬 것으로 읽힌다.
+     */
+    @Test
+    fun `번호에 벌 이름이 붙는다`() {
+        val labels = CARD_TUNES.map { tuneNumberLabel(it.card) }
+        assertEquals("겹치는 줄이 있다: $labels", labels.size, labels.toSet().size)
+        assertEquals("야채 No. 01", tuneNumberLabel(DEX_CARDS.first { it.id == "cabbage" }))
+        assertEquals("과일 No. 01", tuneNumberLabel(DEX_CARDS.first { it.id == "apple" }))
+    }
+
+    // -- 곡이 둘인 카드 -----------------------------------------------------
+
+    /**
+     * **같은 사람에게는 언제나 같은 곡이다.** 열 때마다 굴리면 "내 망고 노래가
+     * 바뀌었는데?" 가 된다.
+     */
+    @Test
+    fun `한 사람의 망고 곡은 늘 같다`() {
+        val first = bgmFor("mango", "user-a")
+        repeat(50) { assertEquals(first, bgmFor("mango", "user-a")) }
+    }
+
+    /** 사람이 다르면 갈린다. 안 갈리면 곡을 두 개 넣은 뜻이 없다. */
+    @Test
+    fun `사람이 다르면 망고 곡도 갈린다`() {
+        val heard = (1..200).map { bgmFor("mango", "user-$it") }.toSet()
+        assertEquals("두 곡이 다 나와야 한다", CARD_BGM.getValue("mango").toSet(), heard)
+    }
+
+    /**
+     * 로그인 전·게스트(`null`)면 첫 곡이다.
+     *
+     * **터지지 않는 것이 요점이다.** 둘러보기로 뽑은 카드에는 `appUserId` 가 없다.
+     */
+    @Test
+    fun `로그인 전에는 첫 곡으로 떨어진다`() {
+        assertEquals(CARD_BGM.getValue("mango").first(), bgmFor("mango", null))
+        assertEquals(CARD_BGM.getValue("mango").first(), bgmFor("mango"))
+    }
+
+    /** 곡이 하나뿐인 카드는 사람과 상관없이 그 곡이다. */
+    @Test
+    fun `곡이 하나인 카드는 사람을 안 탄다`() {
+        CARD_BGM.filterValues { it.size == 1 }.forEach { (id, paths) ->
+            assertEquals(id, paths.first(), bgmFor(id, "user-a"))
+            assertEquals(id, paths.first(), bgmFor(id, "user-b"))
+        }
     }
 
     /** 모르는 id 를 적어 두면 그 줄은 조용히 무시된다 — 곡을 넣었는데 안 나온다. */
@@ -83,20 +160,20 @@ class CardTuneTest {
     fun `적어 둔 곡 파일이 실제로 있다`() {
         val roots = listOf(File("src/main/assets"), File("app/src/main/assets"))
         val assets = roots.firstOrNull { it.isDirectory } ?: return
-        CARD_BGM.forEach { (id, path) ->
-            assertTrue("$id: $path 가 없다", File(assets, path).isFile)
+        CARD_BGM.forEach { (id, paths) ->
+            paths.forEach { path -> assertTrue("$id: $path 가 없다", File(assets, path).isFile) }
         }
     }
 
     // -- 턴테이블이 보여 주는 것 --------------------------------------------
 
-    private fun drawn(templateId: String) = com.daengs.app.dogcard.DrawnCard(
-        id = templateId,
+    private fun drawn(templateId: String, at: Long = 0L) = com.daengs.app.dogcard.DrawnCard(
+        id = "$templateId-$at",
         appUserId = null,
         templateId = templateId,
         dogId = null,
         dogName = "네옹",
-        drawnAtMillis = 0L,
+        drawnAtMillis = at,
         codeText = "DG-0824",
         core = androidx.compose.ui.unit.IntRect(0, 0, 10, 10),
     )
@@ -104,7 +181,7 @@ class CardTuneTest {
     /**
      * **한 장도 안 뽑았으면 한 곡도 안 뜬다.**
      *
-     * 예전에는 카탈로그를 다 늘어놓아서, 아무것도 없는 사람에게도 다섯 곡이 들렸다.
+     * 예전에는 카탈로그를 다 늘어놓아서, 아무것도 없는 사람에게도 곡이 전부 들렸다.
      * 그러면 카드를 뽑을 이유가 그만큼 없어진다.
      */
     @Test
@@ -118,7 +195,7 @@ class CardTuneTest {
         assertEquals(listOf("cabbage", "carrot"), mine.map { it.card.id })
     }
 
-    /** 곡이 없는 야채를 뽑아도 목록은 안 는다. 열두 장 중 다섯 장에만 곡이 있다. */
+    /** 곡이 없는 카드를 뽑아도 목록은 안 는다. 스물다섯 장 중 아홉 장에만 곡이 있다. */
     @Test
     fun `곡 없는 카드는 목록에 안 든다`() {
         assertTrue(ownedTunes(listOf(drawn("pepper"), drawn("eggplant"))).isEmpty())
@@ -134,7 +211,37 @@ class CardTuneTest {
     @Test
     fun `카탈로그 순서를 따른다`() {
         val mine = ownedTunes(listOf(drawn("lettuce"), drawn("cabbage")))
-        assertEquals(CARD_TUNES.filter { it.card.id in setOf("cabbage", "lettuce") }, mine)
+        assertEquals(listOf("cabbage", "lettuce"), mine.map { it.card.id })
+    }
+
+    // -- 목록에 그릴 그림 --------------------------------------------------
+    //
+    // 목록은 **내가 뽑은 카드**를 그린다. 카탈로그 원화를 그리다가 곡이 과일까지
+    // 늘면서 드러났다 — 야채 원화에는 저쪽이 그린 네오 강아지가 구워져 있는데
+    // 과일 원화는 구멍만 뚫린 판이라, 목록에 얼굴 없는 빈 구멍 카드가 떴다.
+
+    @Test
+    fun `내가 뽑은 카드를 달고 나온다`() {
+        val mine = ownedTunes(listOf(drawn("apple")))
+        assertEquals("apple-0", mine.single().mine?.id)
+    }
+
+    /** 카탈로그 목록은 누구의 것도 아니다. 여기에 카드가 붙으면 남의 얼굴이 뜬다. */
+    @Test
+    fun `카탈로그 목록에는 내 카드가 없다`() {
+        CARD_TUNES.forEach { assertNull(it.mine) }
+    }
+
+    /**
+     * 같은 종류를 여러 장 뽑았으면 **가장 최근 것**이다.
+     *
+     * 도감이 칸 안에서 최근을 앞에 두는 것과 같은 규칙이다(`dexSlots`). 갈리면
+     * 도감에서 보던 얼굴과 턴테이블의 얼굴이 다른 장이 된다.
+     */
+    @Test
+    fun `같은 종류는 가장 최근 장을 싣는다`() {
+        val mine = ownedTunes(listOf(drawn("cabbage", at = 10), drawn("cabbage", at = 30)))
+        assertEquals("cabbage-30", mine.single().mine?.id)
     }
 
     @Test

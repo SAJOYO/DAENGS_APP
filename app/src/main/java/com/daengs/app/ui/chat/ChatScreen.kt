@@ -90,12 +90,14 @@ import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
+import com.daengs.app.gait.PreparedVideo
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
-import com.daengs.app.screening.ScreeningApi
+import com.daengs.app.screening.ScreeningRecordApi
+import com.daengs.app.screening.ScreeningRun
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -113,7 +115,9 @@ import com.daengs.app.ui.gait.GaitCaptureScreen
 import com.daengs.app.ui.gait.GaitCompareScreen
 import com.daengs.app.ui.gait.GaitDetailScreen
 import com.daengs.app.ui.gait.GaitIntroCard
+import com.daengs.app.ui.gait.GaitPairPickSheet
 import com.daengs.app.ui.gait.GaitPickSheet
+import com.daengs.app.ui.gait.GaitTitleDialog
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
 import com.daengs.app.ui.home.HomeDemoData
@@ -239,8 +243,8 @@ internal fun restoredChatEntries(turns: List<ChatTurn>): List<ChatEntry> = build
  * `handoffs` 만 보고 화면을 고른다. **여기서 텍스트를 보고 갈래를 나누지 않는다**
  * (예전 `GAIT_ASK` 키워드 라우팅은 그래서 지웠다).
  *
- * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningApi]) 실제로 부른다. 다만 서버
- * 주소가 아직 없어, 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
+ * 사진 진단은 다르다 — 계약이 이미 있어서([ScreeningRecordApi]) 실제로 부른다. 서버
+ * 주소가 비어 있으면 버튼이 스스로 그렇게 말한다.
  */
 @Composable
 fun ChatScreen(
@@ -269,6 +273,13 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
+    /**
+     * 피부 **변화 기록**으로 가는 길. null 이면 그 줄을 안 보여 준다.
+     *
+     * 기록은 로그인해야 있는 것이라, 로그인 안 한 기기에서는 [MainActivity] 가
+     * null 을 준다 — 눌러 봐야 빈 화면이면 안 누르게 하는 편이 낫다.
+     */
+    onOpenScreeningHistory: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -356,6 +367,9 @@ fun ChatScreen(
         }
     }
 
+    // 진단 한 번. **새 계약이 되면 기록이 남고, 안 되면 옛 경로로 판정만 받는다.**
+    val screeningRun = remember(accessTokenProvider) { ScreeningRun(accessTokenProvider) }
+
     // 프레임까지 맞춘 사진을 대화에 올리고 서버에 물어본다.
     //
     // **말풍선을 먼저 올리고 자리를 잡아 둔다.** 응답을 기다렸다가 한꺼번에 올리면
@@ -369,9 +383,16 @@ fun ChatScreen(
             entries += ChatEntry.MyPhoto(cropForBubble(photo.thumbnail, box))
             val slot = entries.size
             entries += ChatEntry.Screening
-            ScreeningApi.screen(photo.jpeg, box)
-                .onSuccess { entries[slot] = ChatEntry.Report(it) }
-                .onFailure { entries[slot] = ChatEntry.Failed(it.message ?: "진단 서버에 닿지 못했어요.") }
+            // **기록으로 남기되, 못 남겨도 진단은 한다.** 로그인 안 했거나 저쪽
+            // 저장소가 아직 안 켜졌으면(503) 옛 경로로 물러선다 — 그 갈림은
+            // [ScreeningRun] 이 정한다.
+            //
+            // ⚠️ **box 를 이제 실제로 보낸다.** 전에는 안 보내서 저쪽이 화면 중앙으로
+            //    물러섰고, 1단계는 큰 차이가 없지만 2단계 분포가 학습 크롭과 어긋났다.
+            when (val outcome = screeningRun.run(dogId, photo.jpeg, box)) {
+                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report)
+                is ScreeningRun.Outcome.Failed -> entries[slot] = ChatEntry.Failed(outcome.message)
+            }
         }
     }
 
@@ -434,11 +455,32 @@ fun ChatScreen(
     /** 비교할 지난 기록을 고르는 중. 값은 **비교의 기준이 되는 최근 기록 id** 다. */
     var gaitPicking by remember { mutableStateOf<String?>(null) }
 
+    /** 저장된 기록끼리 비교(B 진입) — 둘을 한 시트에서 고르는 중. */
+    var gaitPairPicking by remember { mutableStateOf(false) }
+
+    /** AI 기능 선택 → 보행 "지난 기록 보기" 시트가 열려 있나. */
+    var gaitHistoryOpen by remember { mutableStateOf(false) }
+
+    /**
+     * 읽어 둔 영상에 **제목을 묻는 중.** 촬영·업로드 둘 다 [runGait] 로 모이므로 이 하나로
+     * 두 경로가 같은 다이얼로그를 탄다. 다이얼로그가 닫히면 분석이 시작된다.
+     */
+    var gaitTitlePending by remember { mutableStateOf<PreparedVideo?>(null) }
+
     /** 나란히 보는 중. */
     var gaitComparing by remember { mutableStateOf<GaitComparison?>(null) }
 
     /** 상세를 보는 중인 기록 id. */
     var gaitDetail by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * 상세를 열면서 영상부터 틀까.
+     *
+     * **비교 화면의 영상 카드로 들어온 경우에만 참이다.** 그때 누른 뜻이 "이 기록의
+     * 분석 영상을 크게 보겠다" 라서, 도착해서 재생을 또 눌러야 하면 흐름이 끊긴다.
+     * 대화 카드에서 들어온 경우는 상세를 읽으러 온 것이라 멈춰 둔다.
+     */
+    var gaitDetailAutoPlay by remember { mutableStateOf(false) }
 
     /**
      * 영상 한 편을 대화에 태운다.
@@ -448,23 +490,30 @@ fun ChatScreen(
      * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
      * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
      */
+    val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
+        scope.launch {
+            entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
+            val slot = entries.size
+            entries += ChatEntry.GaitRunning(GaitProgress.START)
+            val record = gait.analyze(video, title) { entries[slot] = ChatEntry.GaitRunning(it) }
+            if (record == null) {
+                entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
+                gait.clearError()
+            } else {
+                entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                entries += ChatEntry.GaitDone(record.id)
+            }
+        }
+    }
+
+    // **촬영과 업로드가 여기서 만난다.** 영상을 먼저 읽어 보고(못 읽는 파일이면 제목을
+    // 물을 이유가 없다), 제목 다이얼로그를 띄운 뒤 분석을 시작한다 — 두 경로가 같은
+    // 다이얼로그를 타는 이유는 이 함수가 하나라서다. 제목은 서버 `note` 로 같이 올라간다.
     val runGait: (Uri) -> Unit = { uri ->
         scope.launch {
             GaitVideo.prepare(context, uri)
                 .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
-                .onSuccess { video ->
-                    entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
-                    val slot = entries.size
-                    entries += ChatEntry.GaitRunning(GaitProgress.START)
-                    val record = gait.analyze(video) { entries[slot] = ChatEntry.GaitRunning(it) }
-                    if (record == null) {
-                        entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
-                        gait.clearError()
-                    } else {
-                        entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
-                        entries += ChatEntry.GaitDone(record.id)
-                    }
-                }
+                .onSuccess { video -> gaitTitlePending = video }
         }
     }
 
@@ -758,6 +807,12 @@ fun ChatScreen(
                             GaitIntroCard(
                                 onCapture = { gaitCapture = true },
                                 onPick = startGaitPicking,
+                                // 저장된 기록이 둘 이상일 때만 줄이 생긴다 (B 진입).
+                                onCompareSaved = if (gait.comparablePairExists) {
+                                    { gaitPairPicking = true }
+                                } else {
+                                    null
+                                },
                             )
                         }
 
@@ -865,12 +920,28 @@ fun ChatScreen(
         AiActionDialog(
             skinOnly = mode == ChooserMode.SkinOnly,
             onDismiss = { chooserMode = null },
+            onOpenHistory = onOpenScreeningHistory?.let {
+                {
+                    chooserMode = null
+                    it()
+                }
+            },
+            // 남긴 기록이 없으면 줄을 안 그린다 — 눌러도 빈 시트만 뜨는 줄은 사용자가
+            // 자기가 뭘 잘못했나 생각하게 한다 ([기록 비교] 줄과 같은 규칙).
+            onOpenGaitHistory = if (gait.records.isNotEmpty()) {
+                {
+                    chooserMode = null
+                    gaitHistoryOpen = true
+                }
+            } else {
+                null
+            },
             onCamera = {
                 chooserMode = null
                 when {
                     // 설정이 없을 때 화면이 스스로 알려 주는 결은 랜딩의 카카오
                     // 로그인 버튼과 같다.
-                    !ScreeningApi.configured -> notice = SCREEN_NOT_SET
+                    !ScreeningRecordApi.configured -> notice = SCREEN_NOT_SET
                     target == null -> notice = "카메라를 열 수 없어요."
                     // 앱 안에서 찍는다. 그래야 병변에 맞출 네모를 찍는 동안 보여 준다.
                     else -> withCamera { skinCapture = true }
@@ -879,7 +950,7 @@ fun ChatScreen(
             onAttach = {
                 chooserMode = null
                 guidedShot = false
-                if (!ScreeningApi.configured) {
+                if (!ScreeningRecordApi.configured) {
                     notice = SCREEN_NOT_SET
                 } else {
                     pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -978,18 +1049,56 @@ fun ChatScreen(
         }
     }
 
+    gaitComparing?.let { comparison ->
+        GaitCompareScreen(
+            comparison = comparison,
+            onBack = { gaitComparing = null },
+            // 카드를 누르면 그 기록의 상세가 **비교 위에 얹힌다.** 비교를 닫지 않으므로
+            // 뒤로 가면 보던 비교로 돌아온다 — 영상 하나 크게 보려고 누른 것이지
+            // 비교를 그만두려던 것이 아니다.
+            onOpenRecord = { record ->
+                gaitDetailAutoPlay = true
+                gaitDetail = record.id
+            },
+            // 기준은 그대로 두고 상대만 다시 고른다. 시트는 A 진입이 쓰던 것이다.
+            onCompareAnother = {
+                gaitComparing = null
+                gaitPicking = comparison.recent.id
+            },
+            onSaveToChat = {
+                gaitComparing = null
+                entries += ChatEntry.GaitCompared(comparison)
+            },
+        )
+    }
+
+    // **비교보다 뒤에 그린다.** 앞에 두면 비교 화면이 상세를 덮어서, 카드를 눌러도
+    // 아무 일도 안 일어난 것처럼 보인다.
     gaitDetail?.let { id ->
+        // 저장된 기록은 오버레이 주소가 목록에 없다. 상세를 열 때 한 번 채워, 재생기가
+        // 원본 대신 스켈레톤 영상을 틀 수 있게 한다. 방금 분석한 기록은 이미 들고 있어
+        // 조회가 그냥 건너뛴다.
+        LaunchedEffect(id) { gait.ensureOverlay(id) }
         gait.find(id)?.let { record ->
             GaitDetailScreen(
                 record = record,
                 canCompare = gait.hasComparable(record.id),
-                onBack = { gaitDetail = null },
+                onBack = {
+                    gaitDetail = null
+                    gaitDetailAutoPlay = false
+                },
                 onCompare = { gaitPicking = record.id },
                 onDelete = {
                     // 서버에서도 지운다. 화면은 기다리지 않는다 — 홀더가 먼저 빼고
                     // 실패하면 되돌린다.
                     scope.launch { gait.remove(record.id) }
                     gaitDetail = null
+                    gaitDetailAutoPlay = false
+                    // **지운 기록을 낀 비교도 같이 닫는다.** 안 닫으면 뒤로 갔을 때
+                    // 없는 기록 두 편을 나란히 놓은 화면으로 돌아간다.
+                    if (gaitComparing?.let { record.id in listOf(it.recent.id, it.past.id) } == true) {
+                        gaitComparing = null
+                    }
                     // 카드가 가리키던 기록이 없어졌다. 카드를 지우지 않고 자리를
                     // 말풍선으로 바꾼다 — 대화에서 줄이 통째로 사라지면 무엇이
                     // 있었는지 알 수 없다.
@@ -997,26 +1106,25 @@ fun ChatScreen(
                         it is ChatEntry.GaitDone && it.recordId == record.id
                     }
                     if (slot >= 0) {
-                        entries[slot] = ChatEntry.Note("${record.dateLabel} 보행 기록을 지웠어요.")
+                        entries[slot] = ChatEntry.Note("${record.dateLabel} 「${record.displayTitle}」 기록을 지웠어요.")
                     }
                 },
+                autoPlay = gaitDetailAutoPlay,
+                // 제목만 바뀐다. 날짜는 홀더가 손대지 않는다 (`GaitHolder.rename`).
+                onRename = { title -> gait.rename(record.id, title) },
             )
         } ?: run { gaitDetail = null }
     }
 
-    gaitComparing?.let { comparison ->
-        GaitCompareScreen(
-            comparison = comparison,
-            onBack = { gaitComparing = null },
-            onOpenDetail = {
-                gaitComparing = null
-                gaitDetail = comparison.recent.id
-            },
-            onSaveToChat = {
-                gaitComparing = null
-                entries += ChatEntry.GaitCompared(comparison)
-            },
-        )
+    // ── 기록 제목 묻기 — **촬영·업로드 공통** ───────────────────────────────
+    //
+    // 영상을 읽어 둔 뒤, 분석을 시작하기 전에 한 번 묻는다. 건너뛰거나 비워 두면 null 이
+    // 가고 화면이 "보행 기록" 을 그린다. 다이얼로그가 닫히는 순간 분석이 시작된다.
+    gaitTitlePending?.let { video ->
+        GaitTitleDialog(initial = null) { title ->
+            gaitTitlePending = null
+            startGaitAnalysis(video, title)
+        }
     }
 
     gaitPicking?.let { recentId ->
@@ -1030,6 +1138,40 @@ fun ChatScreen(
                 gaitDetail = null
                 // 비교는 서버가 한다. 문장도 저쪽 message_for_ui 가 온다.
                 scope.launch { gaitComparing = gait.compare(recentId, past.id) }
+            },
+        )
+    }
+
+    // ── 저장된 기록끼리 비교 (B 진입) — **한 시트에서 둘을 고른다** ──────────
+    //
+    // 예전에는 같은 시트를 두 번 열었다(기준 → 상대). 두 번째 시트에서 첫 것을 빼는
+    // 것까지는 맞았는데 "방금 골랐는데 또?" 가 됐다. 둘을 체크하고 한 번에 넘어간다.
+    if (gaitPairPicking) {
+        GaitPairPickSheet(
+            records = gait.records,
+            onDismiss = { gaitPairPicking = false },
+            onConfirm = { a, b ->
+                gaitPairPicking = false
+                // 순서는 신경 쓰지 않는다 — 어느 쪽이 최근인지는 날짜가 정한다.
+                scope.launch { gaitComparing = gait.compare(a.id, b.id) }
+            },
+        )
+    }
+
+    // ── 지난 보행 기록 보기 (AI 기능 선택 시트) ────────────────────────────
+    //
+    // 피부 쪽 "지난 기록 보기" 와 같은 자리다. 비교 시트를 그대로 쓰되 **어느 기록이든**
+    // 열 수 있다 — 비교 지표가 없어도 영상은 볼 수 있으니까. 고르면 상세로 간다.
+    if (gaitHistoryOpen) {
+        GaitPickSheet(
+            records = gait.records,
+            title = "지난 보행 기록",
+            confirmLabel = "기록 열기",
+            requireComparable = false,
+            onDismiss = { gaitHistoryOpen = false },
+            onConfirm = { record ->
+                gaitHistoryOpen = false
+                gaitDetail = record.id
             },
         )
     }
@@ -1074,7 +1216,7 @@ private fun GaitComparedBubble(comparison: GaitComparison, onOpen: () -> Unit) {
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(comparison.verdict.sentence, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+            Text(comparison.verdict.title, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("다시 보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(13.dp), tint = DaengPinkDeep)
@@ -1646,8 +1788,12 @@ private val LOCATION_PERMISSIONS = arrayOf(
     Manifest.permission.ACCESS_COARSE_LOCATION,
 )
 
-private const val SCREEN_NOT_SET =
-    "진단 서버가 아직 없어요.\nlocal.properties 의 daengs.screenUrl 을 채우면 열려요."
+/**
+ * 진단 서버 주소가 없을 때. **문장을 여기서 새로 쓰지 않는다** — [ScreeningRun] 도
+ * 같은 상황에서 사용자에게 말해야 해서, 갈라 두면 두 문장이 서로 다른 주소를 가리킨다
+ * (예전 `daengs.screenUrl` 이 그렇게 남아 있었다).
+ */
+private val SCREEN_NOT_SET = ScreeningRun.NOT_CONFIGURED
 
 /**
  * 보행이 꺼져 있을 때 (`daengs.gaitUrl`, 릴리즈는 `daengs.gaitUrlRelease` 가 빈 경우).
@@ -1694,6 +1840,10 @@ private fun AiActionDialog(
     onGaitCapture: () -> Unit,
     onGaitPick: () -> Unit,
     skinOnly: Boolean = false,
+    /** 지난 기록으로. null 이면 줄을 안 그린다 (로그인 안 한 기기). */
+    onOpenHistory: (() -> Unit)? = null,
+    /** 보행 쪽 지난 기록으로. null 이면 줄을 안 그린다 (남긴 기록이 없을 때). */
+    onOpenGaitHistory: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(color = CardWhite, shape = RoundedCornerShape(24.dp)) {
@@ -1711,6 +1861,12 @@ private fun AiActionDialog(
                             SourceRow(DaengsIcon.Camera, "사진찍기", onCamera)
                             RowSeparator()
                             SourceRow(DaengsIcon.Gallery, "첨부하기", onAttach)
+                            if (onOpenHistory != null) {
+                                RowSeparator()
+                                // 진단은 말풍선으로 지나가고 사라진다. 지난 것을
+                                // 나란히 놓고 보는 자리로 가는 길이다.
+                                SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenHistory)
+                            }
                             RowSeparator()
                             // 어떻게 찍어야 쓸 수 있는 사진이 되는지는 **고르기 전에**
                             // 알려야 한다. 보행 묶음이 같은 이유로 아래 줄을 달고 있다.
@@ -1731,6 +1887,12 @@ private fun AiActionDialog(
                                 SourceRow(DaengsIcon.Video, "영상 촬영", onGaitCapture)
                                 RowSeparator()
                                 SourceRow(DaengsIcon.VideoLibrary, "불러오기", onGaitPick)
+                                if (onOpenGaitHistory != null) {
+                                    RowSeparator()
+                                    // 피부 묶음의 "지난 기록 보기" 와 같은 자리. 분석 카드는
+                                    // 대화 위로 흘러가 버려서, 지난 영상을 다시 열 길이 이것뿐이다.
+                                    SourceRow(DaengsIcon.Gallery, "지난 기록 보기", onOpenGaitHistory)
+                                }
                                 RowSeparator()
                                 // 어떻게 찍어야 쓸 수 있는 영상이 되는지는 **고르기 전에**
                                 // 알려야 한다. 찍고 나서 알려주면 다시 찍어야 한다.
@@ -1739,7 +1901,7 @@ private fun AiActionDialog(
                                 // 상수라, 박아 두면 기준이 바뀌어도 이 줄만 안 따라온다 —
                                 // 실제로 "10초 이상" 이 그렇게 남아 있었다.
                                 Text(
-                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                                    "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                                     color = TextMuted,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1834,7 +1996,7 @@ private fun AiActionDialogPreview() {
                         SourceRow(DaengsIcon.VideoLibrary, "불러오기") {}
                         RowSeparator()
                         Text(
-                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장",
+                            "💡 뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장",
                             color = TextMuted,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),

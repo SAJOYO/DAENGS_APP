@@ -7,6 +7,141 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT sessionId FROM walk_scene_analysis")
+    fun observeAnalysisChanges(): kotlinx.coroutines.flow.Flow<List<String>>
+
+    @Query("SELECT * FROM walk_entry WHERE sessionId IN (:ids) ORDER BY id")
+    suspend fun historySearchEntries(ids: List<String>): List<WalkEntryRow>
+
+    @Query("SELECT * FROM walk_scene_analysis WHERE sessionId IN (:ids)")
+    suspend fun historySearchAnalyses(ids: List<String>): List<WalkSceneAnalysisRow>
+
+    /** A fresh, bounded projection instead of a second mutable search copy of private notes. */
+    @androidx.room.Transaction
+    suspend fun historySearchText(ids: List<String>, ownerId: String): Map<String, List<String>> {
+        val allowed = ids.filter { session(it)?.let { s -> s.ownerId == ownerId && s.endedAtMillis != null } == true }
+        if (allowed.isEmpty()) return emptyMap()
+        val entries = historySearchEntries(allowed).groupBy { it.sessionId }
+        val analyses = historySearchAnalyses(allowed).associateBy { it.sessionId }
+        return allowed.associateWith { id ->
+            val rows = entries[id].orEmpty()
+            val title = com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows)
+                .bundle?.takeIf { it.sessionId == id }?.title
+            listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
+        }
+    }
+
+    @Query("SELECT * FROM walk_scene_analysis WHERE sessionId = :sessionId")
+    fun observeSceneAnalysis(sessionId: String): kotlinx.coroutines.flow.Flow<WalkSceneAnalysisRow?>
+    @Query("SELECT * FROM walk_scene_analysis WHERE sessionId = :sessionId")
+    suspend fun sceneAnalysis(sessionId: String): WalkSceneAnalysisRow?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveSceneAnalysis(row: WalkSceneAnalysisRow)
+    @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
+    suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
+    @androidx.room.Transaction
+    suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String): Boolean {
+        if (session(row.sessionId)?.ownerId != ownerId) return false
+        if (com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId)) != row.entryStamp) return false
+        val current = sceneAnalysis(row.sessionId)
+        if (current != null && current.generation > row.generation) return false
+        // A pending/failed/stale response must not erase the last successful source or relabel it
+        // as belonging to the new input. Acceptance of that input is still checked above.
+        saveSceneAnalysis(if (row.status == "ready") row.copy(bundleEntryStamp = row.entryStamp)
+            else row.copy(bundle = current?.bundle, bundleEntryStamp = current?.bundleEntryStamp))
+        return true
+    }
+
+    @Query("SELECT * FROM walk_photo WHERE sessionId = :sessionId ORDER BY capturedAtMillis, id")
+    fun observePhotos(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkPhotoRow>>
+    @Query("SELECT * FROM walk_photo WHERE id = :id")
+    suspend fun photo(id: String): WalkPhotoRow?
+    @Query("SELECT id FROM walk_photo")
+    suspend fun photoIds(): List<String>
+    @Query("SELECT id FROM walk_photo ORDER BY id")
+    fun observePhotoIds(): kotlinx.coroutines.flow.Flow<List<String>>
+    @Query("SELECT EXISTS(SELECT 1 FROM walk_photo WHERE sessionId = :sessionId)")
+    suspend fun hasPhotos(sessionId: String): Boolean
+    @Insert
+    suspend fun insertPhoto(row: WalkPhotoRow)
+    @Query("DELETE FROM walk_photo WHERE id = :id")
+    suspend fun deletePhoto(id: String)
+
+    @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
+    suspend fun storyboard(sessionId: String): WalkStoryboardRow?
+
+    @Query("SELECT * FROM walk_storyboard WHERE sessionId = :sessionId")
+    fun observeStoryboard(sessionId: String): kotlinx.coroutines.flow.Flow<WalkStoryboardRow?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveStoryboard(row: WalkStoryboardRow)
+
+    @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
+    fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
+
+    @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
+    suspend fun entries(sessionId: String): List<WalkEntryRow>
+
+    @Query("SELECT * FROM walk_entry WHERE id = :id")
+    suspend fun entry(id: String): WalkEntryRow?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEntry(row: WalkEntryRow)
+
+    @Query("UPDATE walk_entry SET payload = :payload, mutationId = :mutationId, dirty = 1, syncError = NULL WHERE id = :id AND payload IS NOT NULL")
+    suspend fun editEntry(id: String, payload: String?, mutationId: String): Int
+
+    @Query("UPDATE walk_entry SET payload = :payload, mutationId = :mutationId, dirty = 1, syncError = NULL WHERE id = :id AND sessionId = :sessionId AND payload IS NOT NULL AND revision = :baseRevision AND mutationId = :baseMutationId")
+    suspend fun editEntryIfUnchanged(id: String, sessionId: String, payload: String, mutationId: String,
+        baseRevision: Int?, baseMutationId: String?): Int
+
+    /** 검사와 쓰기를 한 트랜잭션으로 묶어 그 사이의 GET/ACK/삭제도 막는다. */
+    @androidx.room.Transaction
+    suspend fun saveEntryChecked(id: String, sessionId: String, payload: String, mutationId: String,
+        baseRevision: Int?, baseMutationId: String?, ownerId: String?) {
+        val session = session(sessionId)
+        check(session != null && (ownerId == null || session.ownerId == ownerId)) {
+            "현재 계정의 산책 기록이 아닙니다."
+        }
+        val existing = entry(id)
+        if (existing == null) {
+            check(baseRevision == null && baseMutationId == null) { "이미 삭제된 기록입니다." }
+            insertEntry(WalkEntryRow(id, sessionId, payload, 0, mutationId, true))
+        } else {
+            check(existing.sessionId == sessionId && existing.payload != null) { "이미 삭제된 기록입니다." }
+            check(editEntryIfUnchanged(id, sessionId, payload, mutationId, baseRevision, baseMutationId) == 1) {
+                "편집 중 기록이 변경됐어요. 최신 내용을 확인해 주세요. 작성 중인 내용은 유지돼요."
+            }
+        }
+    }
+
+    @Query("UPDATE walk_entry SET revision = :revision, dirty = CASE WHEN mutationId = :mutationId THEN 0 ELSE 1 END WHERE id = :id")
+    suspend fun acknowledgeEntry(id: String, revision: Int, mutationId: String)
+
+    @Query("UPDATE walk_entry SET payload = :payload, revision = :revision, mutationId = :mutationId WHERE id = :id AND dirty = 0")
+    suspend fun acceptEntry(id: String, payload: String?, revision: Int, mutationId: String)
+
+    @Query("SELECT DISTINCT sessionId FROM walk_entry WHERE dirty = 1")
+    suspend fun dirtyEntrySessions(): List<String>
+
+    @Query("UPDATE walk_entry SET revision = :revision, syncError = :message WHERE id = :id AND mutationId = :mutationId")
+    suspend fun conflictEntry(id: String, revision: Int, mutationId: String, message: String)
+
+    @Query("UPDATE walk_entry SET payload = NULL, revision = :revision, dirty = 0, syncError = NULL WHERE id = :id")
+    suspend fun acceptDeletedEntry(id: String, revision: Int)
+
+    @Query("SELECT * FROM walk_session ORDER BY startedAtMillis DESC")
+    fun observeSessions(): kotlinx.coroutines.flow.Flow<List<WalkSessionRow>>
+
+    @Query("SELECT mutationId FROM walk_entry ORDER BY id")
+    fun observeEntryRevisions(): kotlinx.coroutines.flow.Flow<List<String>>
+
+    @Query("DELETE FROM walk_session WHERE ownerId = :ownerId")
+    suspend fun deleteOwnerSessions(ownerId: String)
+
+    @Query("UPDATE walk_session SET ownerId = :ownerId, serverWalkId = :serverWalkId WHERE id = :id AND ownerId = ''")
+    suspend fun restoreOwner(id: String, ownerId: String, serverWalkId: String)
+
     /**
      * IGNORE: 같은 세션 시작을 재전송해도 최초 시작 시각을 덮어쓰지 않는다.
      *
@@ -100,6 +235,12 @@ interface WalkDao {
             "ORDER BY startedAtMillis DESC",
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
+
+    @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
+        "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +
+        "AND (:beforeAt IS NULL OR startedAtMillis < :beforeAt OR (startedAtMillis = :beforeAt AND id < :beforeId)) " +
+        "ORDER BY startedAtMillis DESC, id DESC LIMIT :limit")
+    suspend fun finishedSessionsPage(ownerId: String, dogId: String?, beforeAt: Long?, beforeId: String?, limit: Int): List<WalkSessionRow>
 
     /** 끝났지만 아직 계산 완료되지 않은 것. 오래된 것부터 이어서 처리한다. */
     @Query(

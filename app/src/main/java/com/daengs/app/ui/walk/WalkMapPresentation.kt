@@ -4,6 +4,8 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.territory.TerritorySiteMarkerState
+import com.daengs.app.map.layers.territory.TerritoryMarkerOccupancy
+import com.daengs.app.territory.ClaimCertification
 import com.daengs.app.map.layers.trail.TrailLayerState
 import com.daengs.app.map.layers.trail.toTrailLayerState
 import com.daengs.app.map.shell.MapScene
@@ -16,14 +18,13 @@ internal data class WalkMapPresentation(
 )
 
 /** Walk 상태를 지도 공급자와 무관한 scene으로 투영한다. */
-internal fun WalkUiState.toMapPresentation(
-    formatTime: (Long) -> String,
-): WalkMapPresentation {
+internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
     val route = completion.detail?.route
     val summary = completedSummary
-    val fitBounds = route?.bounds.orEmpty().ifEmpty {
+    val gameSites = territoryGame.sites.associateBy { it.site.id }
+    val fitBounds = (route?.bounds.orEmpty().ifEmpty {
         listOfNotNull(summary?.anchor)
-    }.takeIf { summary != null && it.isNotEmpty() }
+    } + diaryPhotos.map { it.point }).takeIf { summary != null && it.isNotEmpty() }
 
     return WalkMapPresentation(
         scene = composeMapScene(
@@ -33,10 +34,23 @@ internal fun WalkUiState.toMapPresentation(
                     summary == null && location.permissionGranted
                 },
                 territorySites = territory.sites.map { site ->
+                    val gameSite = gameSites[site.id]
+                    val target = if (territoryGame.enabled) site.id == territoryGame.targetId
+                        else site.id == territory.selectedSiteId
                     TerritorySiteMarkerState(
                         id = site.id,
                         point = site.point,
-                        selected = site.id == territory.selectedSiteId,
+                        selected = target,
+                        occupancy = when (gameSite?.claim?.occupancy?.certification) {
+                            null -> TerritoryMarkerOccupancy.NEUTRAL
+                            ClaimCertification.UNVERIFIED -> TerritoryMarkerOccupancy.UNVERIFIED
+                            ClaimCertification.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
+                        },
+                        label = gameSite?.occupancyLabel ?: "미점유",
+                        ready = target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING &&
+                            (territoryGame.canMark || territoryGame.canPhotograph),
+                        feedback = territoryGame.feedback?.takeIf { target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
+                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && !territoryGame.readOnly && target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
                     )
                 },
                 moments = displayedMoments.map { moment ->
@@ -46,7 +60,8 @@ internal fun WalkUiState.toMapPresentation(
                         label = moment.markerLabel,
                         selected = moment.id == map.selectedMomentId,
                     )
-                },
+                } + diaryPhotos.photoMarkers(),
+                stayStamps = completion.detail?.stayStamps ?: tracking.stayStamps,
                 trail = if (completion.detail == null) {
                     tracking.trail.toTrailLayerState()
                 } else {
@@ -54,11 +69,16 @@ internal fun WalkUiState.toMapPresentation(
                 },
                 completedRoute = route?.toCompletedRouteLayerState(
                     selectedPoint = selectedRoutePoint,
-                    formatTime = formatTime,
                 ) ?: CompletedRouteLayerState(),
             ),
             walkActive = trackingActive,
         ),
-        fitBounds = fitBounds,
+        fitBounds = fitBounds ?: territoryGame.target?.takeIf {
+            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory
+        }?.let { listOfNotNull(it.site.point, location.currentPosition) },
     )
+}
+
+internal fun List<com.daengs.app.walk.WalkPhoto>.photoMarkers(): List<MomentMarkerState> = map {
+    MomentMarkerState("photo-${it.id}", it.point, "사진", photoFile = it.file)
 }

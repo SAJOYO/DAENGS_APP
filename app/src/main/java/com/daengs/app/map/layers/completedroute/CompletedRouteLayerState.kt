@@ -26,4 +26,5 @@ data class CompletedRouteLayerState(
     /** 내부 세그먼트 경계의 양쪽 점. 원인을 단정하지 않고 선이 끊겼다는 사실만 표시한다. */
     val gapEndpoints: List<GeoPoint> = emptyList(),
     val selectedPoint: GeoPoint? = null,
+    val speedPaths: List<List<com.daengs.app.map.style.WalkSpeedPoint>> = emptyList(),
 )

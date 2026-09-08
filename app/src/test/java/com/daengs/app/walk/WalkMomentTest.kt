@@ -16,11 +16,11 @@ class WalkMomentTest {
         val update = emptyList<WalkMoment>().addOrGroupMoment(
             sample = sample,
             candidateId = "moment-7",
-            type = WalkMomentType.EXPLORE,
+            type = WalkMomentType.SNIFFING,
             recordedAtMillis = 1_450L,
         )
         val moment = update.moments.single()
-        val action = moment.actions.getValue(WalkMomentType.EXPLORE)
+        val action = moment.actions.getValue(WalkMomentType.SNIFFING)
 
         assertEquals("moment-7", moment.id)
         assertEquals(1_450L, action.recordedAtMillis)
@@ -36,20 +36,20 @@ class WalkMomentTest {
         val initial = emptyList<WalkMoment>().addOrGroupMoment(
             sample = first,
             candidateId = "moment-1",
-            type = WalkMomentType.EXPLORE,
+            type = WalkMomentType.SNIFFING,
             recordedAtMillis = 1_100L,
         )
         val grouped = initial.moments.addOrGroupMoment(
             sample = nearby,
             candidateId = "moment-2",
-            type = WalkMomentType.SOCIAL,
+            type = WalkMomentType.BARKING,
             recordedAtMillis = 2_100L,
         )
 
         assertEquals(false, grouped.groupCreated)
         assertEquals(true, grouped.actionAdded)
         assertEquals("moment-1", grouped.selectedMomentId)
-        assertEquals(setOf(WalkMomentType.EXPLORE, WalkMomentType.SOCIAL), grouped.moments.single().types)
+        assertEquals(setOf(WalkMomentType.SNIFFING, WalkMomentType.BARKING), grouped.moments.single().types)
     }
 
     @Test
@@ -58,13 +58,13 @@ class WalkMomentTest {
         val initial = emptyList<WalkMoment>().addOrGroupMoment(
             sample = sample,
             candidateId = "moment-1",
-            type = WalkMomentType.EXPLORE,
+            type = WalkMomentType.SNIFFING,
             recordedAtMillis = 1_100L,
         )
         val repeated = initial.moments.addOrGroupMoment(
             sample = sample,
             candidateId = "moment-2",
-            type = WalkMomentType.EXPLORE,
+            type = WalkMomentType.SNIFFING,
             recordedAtMillis = 2_100L,
         )
 
@@ -82,13 +82,13 @@ class WalkMomentTest {
         val initial = emptyList<WalkMoment>().addOrGroupMoment(
             sample = first,
             candidateId = "moment-1",
-            type = WalkMomentType.EXPLORE,
+            type = WalkMomentType.SNIFFING,
             recordedAtMillis = 1_100L,
         )
         val separated = initial.moments.addOrGroupMoment(
             sample = far,
             candidateId = "moment-2",
-            type = WalkMomentType.EXPLORE,
+            type = WalkMomentType.SNIFFING,
             recordedAtMillis = 2_100L,
         )
 
@@ -134,21 +134,21 @@ class WalkMomentTest {
     @Test
     fun `저장 행동은 시각 순서로 읽어 현재 반경의 장소로 다시 묶는다`() {
         val groups = listOf(
-            action("late", WalkMomentType.SOCIAL, 2_000L, 37.56651),
-            action("first", WalkMomentType.EXPLORE, 1_000L, 37.56650),
-            action("far", WalkMomentType.SPECIAL, 3_000L, 37.56700),
+            action("late", WalkMomentType.BARKING, 2_000L, 37.56651),
+            action("first", WalkMomentType.SNIFFING, 1_000L, 37.56650),
+            action("far", WalkMomentType.NOTE, 3_000L, 37.56700),
         ).toMomentGroups()
 
         assertEquals(2, groups.size)
         assertEquals("moment-first", groups.first().id)
-        assertEquals(setOf(WalkMomentType.EXPLORE, WalkMomentType.SOCIAL), groups.first().types)
+        assertEquals(setOf(WalkMomentType.SNIFFING, WalkMomentType.BARKING), groups.first().types)
     }
 
     @Test
     fun `같은 장소와 행동이 중복 저장돼도 최초 증언만 화면에 남긴다`() {
         val groups = listOf(
-            action("first", WalkMomentType.EXPLORE, 1_000L, 37.56650),
-            action("repeat", WalkMomentType.EXPLORE, 2_000L, 37.56651),
+            action("first", WalkMomentType.SNIFFING, 1_000L, 37.56650),
+            action("repeat", WalkMomentType.SNIFFING, 2_000L, 37.56651),
         ).toMomentGroups()
 
         assertEquals(1, groups.single().actions.size)

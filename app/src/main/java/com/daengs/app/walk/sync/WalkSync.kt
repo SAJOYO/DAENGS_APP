@@ -26,6 +26,8 @@ class WalkSync(
     private val log: WalkFixLog,
     private val api: WalkApiClient = DefaultWalkApiClient,
     private val now: () -> Long = System::currentTimeMillis,
+    private val entrySync: WalkEntrySync? = null,
+    private val storyboardSync: (suspend (String, String, String) -> Unit)? = null,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -50,9 +52,18 @@ class WalkSync(
      */
     suspend fun syncOnce(accessToken: String?): Unit = withContext(Dispatchers.IO) {
         val token = accessToken ?: return@withContext
-        if (!api.configured) return@withContext
+        if (!api.configured || !ownsToken(token)) return@withContext
         runCatching { pushMutex.withLock { push(token) } }.onFailure { it.warn("올리기") }
         runCatching { pull(token) }.onFailure { it.warn("되찾기") }
+        for (session in log.finishedSessions()) {
+            if (!ownsToken(token)) return@withContext
+            session.serverWalkId?.let { remoteId ->
+                runCatching {
+                    entrySync?.sync(token, session.id, remoteId)
+                    storyboardSync?.invoke(token, session.id, remoteId)
+                }.onFailure { it.warn("기록 맞추기") }
+            }
+        }
     }
 
     /**
@@ -61,20 +72,24 @@ class WalkSync(
      */
     suspend fun syncPendingSession(accessToken: String, sessionId: String): Unit =
         withContext(Dispatchers.IO) {
-            if (!api.configured) return@withContext
+            if (!api.configured || !ownsToken(accessToken)) return@withContext
             pushMutex.withLock {
                 val session = log.session(sessionId) ?: return@withLock
-                if (session.endedAtMillis == null || session.syncState == WalkSyncState.DERIVED) {
+                if (session.endedAtMillis == null) {
                     return@withLock
                 }
-                pushOne(accessToken, session)
+                if (session.syncState != WalkSyncState.DERIVED) pushOne(accessToken, session)
+                log.session(sessionId)?.serverWalkId?.let {
+                    entrySync?.sync(accessToken, sessionId, it)
+                    storyboardSync?.invoke(accessToken, sessionId, it)
+                }
             }
         }
 
     /** 끝났지만 아직 계산 완료되지 않은 것을 현재 단계부터 이어간다. */
     private suspend fun push(token: String) {
         for (session in log.sessionsPendingAnalysis()) {
-            runCatching { pushOne(token, session) }.onFailure {
+            runCatching { if (session.syncState != WalkSyncState.DERIVED) pushOne(token, session) }.onFailure {
                 // 한 건이 실패해도 나머지는 시도한다 — 큰 산책 하나에 다른 기록까지
                 // 볼모가 되면 안 된다.
                 it.warn("산책 ${session.id.take(8)} 동기화")
@@ -83,6 +98,7 @@ class WalkSync(
     }
 
     private suspend fun pushOne(token: String, session: com.daengs.app.walk.RecordedSession) {
+        if (!ownsToken(token)) return
         val fixes = log.fixes(session.id)
         val rememberedWalkId = session.serverWalkId
             ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
@@ -123,10 +139,21 @@ class WalkSync(
             }
             // 목록에는 분석 상태가 없으므로 원본 업로드까지만 확실한 것으로 저장한다.
             // 다음 sync가 finalize를 멱등 호출한다.
-            log.openSession(detail.walk.toSession(rawUploadedAtMillis = now()))
+            if (!ownsToken(token)) return
+            log.restoreSession(detail.walk.toSession(rawUploadedAtMillis = now()).copy(ownerId = tokenOwner(token)))
             for (fix in detail.fixes) log.append(detail.walk.clientSessionId, fix)
         }
     }
+
+    private fun ownsToken(token: String): Boolean {
+        val owner = log.ownerId ?: return true // test logs have no account boundary
+        return owner.isNotEmpty() && tokenOwner(token) == owner
+    }
+
+    private fun tokenOwner(token: String): String? = runCatching {
+            val claims = org.json.JSONObject(String(java.util.Base64.getUrlDecoder().decode(token.split('.')[1])))
+            claims.getString("sub")
+        }.getOrNull()
 
     private fun Throwable.warn(what: String) {
         warn("산책 동기화 — $what 에 실패했다. 다음에 다시 시도한다.", this)

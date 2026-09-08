@@ -15,6 +15,29 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 class PlaceApiAddressTest {
+    @Test fun `echo without per dog result axes is not a complete evaluation`() {
+        val sample = javaClass.getResourceAsStream("/place_search_lab_sample.json")!!.bufferedReader().use {
+            Json.parseToJsonElement(it.readText()).jsonObject.toPlaceSearchResponse()
+        }
+        val dogs = listOf(PlaceDogSnapshot("a"))
+        val request = PlaceSearchRequest(GeoPoint(37.5, 127.0), kinds = listOf(PlaceKind.CAFE), dogs = dogs)
+        assertThrows(SerializationException::class.java) { sample.copy(dogs = dogs).requireDogEcho(request) }
+        val incomplete = sample.copy(dogs = dogs, groups = sample.groups.map { group ->
+            group.copy(results = group.results.map { it.copy(evaluations = PlaceEvaluations(null, dogs = listOf(PerDogEvaluation("a", null, null)))) })
+        })
+        assertThrows(SerializationException::class.java) { incomplete.requireDogEcho(request) }
+    }
+    @Test fun `multi dog snapshots travel on wire and old servers are rejected`() {
+        val request = PlaceSearchRequest(GeoPoint(37.5, 127.0), kinds = listOf(PlaceKind.CAFE),
+            dogs = listOf(PlaceDogSnapshot("a", "v1", weightKg = 9.0), PlaceDogSnapshot("b")))
+        val compatible = Stub("""{"groups":[],"dogs":[{"ref":"a","revision":"v1","dog_weight_kg":9},{"ref":"b"}]}""")
+        val old = Stub()
+        try {
+            assertEquals(request.dogs, runBlocking { PlaceApi({ compatible.base }).search(request) }.dogs)
+            assertEquals(request.toJson()["dogs"], compatible.bodies.single()["dogs"])
+            assertThrows(SerializationException::class.java) { runBlocking { PlaceApi({ old.base }).search(request) } }
+        } finally { compatible.stop(); old.stop() }
+    }
     private class Stub(private val responseBody: String = """{"groups":[]}""") {
         val hits = mutableListOf<String>()
         val bodies = mutableListOf<JsonObject>()

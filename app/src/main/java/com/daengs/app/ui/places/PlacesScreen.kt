@@ -83,6 +83,12 @@ fun PlacesRoute(
     primaryPet: Pet?,
     modifier: Modifier = Modifier,
     viewModel: PlacesViewModel = viewModel(factory = PlacesViewModel.factory(LocalContext.current)),
+    useConnectedSearch: Boolean = false,
+    profileOwnerId: String? = null,
+    profilePets: List<Pet>? = null,
+    profilesBusy: Boolean = false,
+    profilesError: String? = null,
+    onRefreshProfiles: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
@@ -117,13 +123,30 @@ fun PlacesRoute(
             permissionLauncher.launch(LOCATION_PERMISSIONS)
         }
     }
-    LaunchedEffect(primaryPet) {
-        viewModel.updateDogContext(primaryPet.toPlaceDogContext())
+    LaunchedEffect(primaryPet, useConnectedSearch) {
+        viewModel.updateDogContext(if (useConnectedSearch) null else primaryPet.toPlaceDogContext())
+    }
+    LaunchedEffect(profileOwnerId, profilePets, profilesBusy, profilesError, useConnectedSearch) {
+        if (useConnectedSearch) viewModel.updateProfiles(profileOwnerId, profilePets, profilesBusy, profilesError)
+    }
+    LaunchedEffect(profileOwnerId, useConnectedSearch) {
+        if (useConnectedSearch && profileOwnerId != null) onRefreshProfiles()
     }
     DisposableEffect(viewModel) {
         onDispose(viewModel::deactivate)
     }
 
+    if (useConnectedSearch) {
+        ConnectedPlaceSearchScreen(
+            state, viewModel::onAction, onBack,
+            onRequestPermission = { permissionLauncher.launch(LOCATION_PERMISSIONS) },
+            onOpenSettings = { settingsLauncher.launch(appSettingsIntent(context)) },
+            onCall = { dial(context, it) },
+            onOpenHandoff = { openNaverHandoff(context, it) },
+            onRefreshProfiles = onRefreshProfiles,
+        )
+        return
+    }
     PlacesScreen(
         state = state,
         avatarBreed = primaryPet?.breedArt,

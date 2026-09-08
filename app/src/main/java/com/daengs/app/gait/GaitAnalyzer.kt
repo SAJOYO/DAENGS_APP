@@ -20,9 +20,14 @@ interface GaitAnalyzer {
     /**
      * @param video 고르거나 찍은 영상
      * @param onStage 한 단계가 끝날 때마다 불린다. 화면이 이걸로 진행 카드를 다시 그린다
+     * @param title 사용자가 정한 제목. null 이면 정하지 않은 것 — 기본값은 화면이 그린다
      * @return 대화에 남을 기록
      */
-    suspend fun analyze(video: PreparedVideo, onStage: (GaitProgress) -> Unit): Result<GaitRecord>
+    suspend fun analyze(
+        video: PreparedVideo,
+        onStage: (GaitProgress) -> Unit,
+        title: String? = null,
+    ): Result<GaitRecord>
 }
 
 /**
@@ -44,6 +49,7 @@ class MockGaitAnalyzer(
     override suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
+        title: String?,
     ): Result<GaitRecord> = runCatching {
         var progress = GaitProgress.START
         onStage(progress)
@@ -54,12 +60,14 @@ class MockGaitAnalyzer(
         }
         GaitRecord(
             id = "gait-${System.currentTimeMillis()}",
+            // **기록을 만든 날**이다. 영상 파일의 날짜가 아니다 — 서버 구현도 같다.
             date = today(),
             seconds = video.seconds,
             video = video.uri,
             thumbnail = video.thumbnail,
             comparable = video.seconds >= GaitRecord.RECOMMENDED_SECONDS,
             aspect = video.aspect,
+            title = title,
         )
     }
 }
@@ -84,21 +92,28 @@ object GaitSampleRecords {
     )
 
     /**
-     * 비교표에 올릴 지표 세 줄.
+     * 비교표에 올릴 관절 여섯 줄.
      *
-     * 이름은 시안에서 왔고 **셋 다 관절이 어떻게 움직였나만 말한다.** "균형이 나쁘다"
-     * 가 아니라 "좌우 균형에서 약간의 차이" 다 — 차이를 나쁨으로 옮기는 자리가
-     * 없어야 `CONTEXT.md` 8절이 지켜진다.
+     * **서버가 주는 것과 같은 모양이어야 한다.** 표본만 다른 모양이면 화면이 표본에서만
+     * 맞고 진짜 응답에서 어긋난다 — `@Preview` 로 본 것이 실기기와 다른 화면이 된다.
      *
-     * 어느 줄이 [GaitDelta.Slight] 가 될지는 **두 기록의 id 로 정한다.** 무작위로
-     * 뽑으면 같은 조합을 다시 열 때 결과가 바뀌어서, 화면을 보는 사람이 자기가
-     * 뭘 잘못 눌렀나 헷갈린다.
+     * 어느 줄이 어떤 갈래가 될지는 **두 기록의 id 로 정한다.** 무작위로 뽑으면 같은
+     * 조합을 다시 열 때 결과가 바뀌어서, 화면을 보는 사람이 자기가 뭘 잘못 눌렀나
+     * 헷갈린다.
+     *
+     * [GaitJointChange.Unknown] 은 안 뽑는다 — 표본은 "잴 수 있었던 경우" 를 그리는
+     * 자리이고, 못 잰 경우는 `comparable = false` 인 표본이 이미 만든다.
      */
-    fun metricsFor(recent: GaitRecord, past: GaitRecord): List<GaitMetric> {
-        val names = listOf("걸음 리듬", "좌우 균형", "보폭 크기")
-        val differing = (recent.id.hashCode() xor past.id.hashCode()).mod(names.size + 1)
-        return names.mapIndexed { index, name ->
-            GaitMetric(name, if (index == differing) GaitDelta.Slight else GaitDelta.Similar)
+    fun jointStatesFor(recent: GaitRecord, past: GaitRecord): List<GaitJointState> {
+        val seed = recent.id.hashCode() xor past.id.hashCode()
+        val picks = listOf(
+            GaitJointChange.None,
+            GaitJointChange.Horizontal,
+            GaitJointChange.Vertical,
+            GaitJointChange.Both,
+        )
+        return GaitJoint.entries.mapIndexed { index, joint ->
+            GaitJointState(joint, picks[(seed shr index).mod(picks.size)])
         }
     }
 }

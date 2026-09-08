@@ -23,8 +23,8 @@ import androidx.compose.ui.graphics.toArgb
 import com.daengs.app.BuildConfig
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
-import com.daengs.app.map.layers.completedroute.RouteEndpointKind
 import com.daengs.app.map.shell.BaseMapStyle
+import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -39,6 +39,9 @@ import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
 import com.naver.maps.map.overlay.PathOverlay
+import com.naver.maps.map.overlay.MultipartPathOverlay
+import com.daengs.app.map.style.rememberWalkStyle
+import com.daengs.app.map.style.paintWalkSpeedPath
 import com.naver.maps.map.overlay.CircleOverlay
 
 @Composable
@@ -51,6 +54,9 @@ fun NaverMapSurface(
     avatarPhoto: android.graphics.Bitmap? = null,
     /** 아래쪽에서 패널이 가리는 높이(px). 지도의 "가운데"가 그만큼 위로 올라간다. */
     bottomPaddingPx: Int = 0,
+    leftPaddingPx: Int = 0,
+    topPaddingPx: Int = 0,
+    rightPaddingPx: Int = 0,
     /** 여기로 지도를 옮긴다. **사용자가 카드나 마커를 누른 순간에만** 값이 온다. */
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
@@ -66,6 +72,13 @@ fun NaverMapSurface(
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (androidx.compose.ui.platform.LocalInspectionMode.current) {
+        androidx.compose.foundation.layout.Box(modifier) {
+            androidx.compose.material3.Text("지도 · ${scene.moments.size}개 장면")
+        }
+        return
+    }
+    val walkStyle by rememberWalkStyle()
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
@@ -73,7 +86,7 @@ fun NaverMapSurface(
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
-    val latestRouteEndpointCallback by rememberUpdatedState(onSelectRouteEndpoint)
+    val latestMomentCallback by rememberUpdatedState(onSelectMoment)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
@@ -168,8 +181,8 @@ fun NaverMapSurface(
 
     // 화면 아래를 패널이 덮고 있다. 그걸 알려주지 않으면 지도가 **패널 뒤를 가운데로**
     // 삼아서, 고른 장소로 움직여도 그 장소가 패널에 가려 안 보인다.
-    LaunchedEffect(naverMap, bottomPaddingPx) {
-        naverMap?.setContentPadding(0, 0, 0, bottomPaddingPx)
+    LaunchedEffect(naverMap, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
+        naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx)
     }
 
     // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
@@ -188,7 +201,7 @@ fun NaverMapSurface(
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
     // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
-    LaunchedEffect(naverMap, fitBounds) {
+    LaunchedEffect(naverMap, fitBounds, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
         val bounds = LatLngBounds.Builder().apply {
@@ -251,29 +264,8 @@ fun NaverMapSurface(
 
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
     // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.
-    DisposableEffect(naverMap, scene.territorySites) {
-        val map = naverMap
-        val markers = if (map == null) emptyList() else scene.territorySites.map { site ->
-            Marker().apply {
-                position = site.point.toLatLng()
-                captionText = if (site.selected) "점령지" else ""
-                captionMinZoom = 0.0
-                width = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
-                height = if (site.selected) TERRITORY_MARKER_PX_SELECTED else TERRITORY_MARKER_PX
-                anchor = TERRITORY_MARKER_ANCHOR
-                icon = OverlayImage.fromResource(R.drawable.ic_territory_site)
-                zIndex = if (site.selected) SELECTED_MARKER_Z else TERRITORY_MARKER_Z
-                isHideCollidedMarkers = true
-                isHideCollidedSymbols = true
-                setOnClickListener {
-                    onSelectTerritorySite(site.id)
-                    true
-                }
-                this.map = map
-            }
-        }
-        onDispose { markers.forEach { it.map = null } }
-    }
+    NaverTerritoryLayer(naverMap, scene.territorySites, onSelectTerritorySite)
+    NaverStayStampLayer(naverMap, scene.stayStamps)
 
     DisposableEffect(naverMap) {
         val map = naverMap
@@ -285,7 +277,33 @@ fun NaverMapSurface(
 
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
-    DisposableEffect(naverMap, scene.moments) {
+    val photoFiles = scene.moments.mapNotNull { it.photoFile }.distinct()
+    val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
+        val loaded = mutableMapOf<java.io.File, OverlayImage>()
+        for (file in photoFiles) {
+            try {
+                val photo = com.daengs.app.screening.Photo.decodeUpright(context, android.net.Uri.fromFile(file), 96)
+                val pin = android.graphics.Bitmap.createBitmap(104, 112, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(pin)
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                paint.color = Color.WHITE
+                canvas.drawRoundRect(0f, 0f, 104f, 104f, 14f, 14f, paint)
+                val tail = android.graphics.Path().apply { moveTo(42f, 102f); lineTo(52f, 112f); lineTo(62f, 102f); close() }
+                canvas.drawPath(tail, paint)
+                val edge = minOf(photo.width, photo.height)
+                val x = (photo.width - edge) / 2; val y = (photo.height - edge) / 2
+                canvas.drawBitmap(photo, android.graphics.Rect(x, y, x + edge, y + edge),
+                    android.graphics.RectF(6f, 6f, 98f, 98f), paint)
+                photo.recycle()
+                loaded[file] = OverlayImage.fromBitmap(pin)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // 원본 파일을 잃었어도 Pin을 눌러 확인·삭제할 수 있다.
+            }
+        }
+        value = loaded
+    }
+    DisposableEffect(naverMap, scene.moments, photoIcons) {
         val map = naverMap
         val markers = if (map == null) emptyList() else scene.moments.map { moment ->
             Marker().apply {
@@ -295,11 +313,13 @@ fun NaverMapSurface(
                 width = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
                 height = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
                 anchor = MARKER_ANCHOR
-                icon = OverlayImage.fromResource(R.drawable.ic_walk_moment)
-                zIndex = if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
+                icon = photoIcons[moment.photoFile] ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
+                zIndex = if (moment.aboveRouteEndpoints) {
+                    if (moment.selected) 140 else 120
+                } else if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
                 isHideCollidedMarkers = false
                 setOnClickListener {
-                    onSelectMoment(moment.id)
+                    latestMomentCallback(moment.id)
                     true
                 }
                 this.map = map
@@ -308,84 +328,42 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
-    DisposableEffect(naverMap, scene.trail) {
-        val map = naverMap
-        val lines = if (map == null) {
-            emptyList()
-        } else {
-            scene.trail.paths
-                .filter { it.size >= 2 }
-                .map { path ->
-                    // 선 하나가 세그먼트 하나다. **이어 붙이지 않는다** — 일시정지나
-                    // GPS 점프 앞뒤를 한 선으로 합치면 걷지 않은 길을 걸은 것으로 그린다.
-                    PathOverlay().apply {
-                        coords = path.map(GeoPoint::toLatLng)
-                        width = TRAIL_WIDTH
-                        color = TRAIL_COLOR
-                        outlineWidth = TRAIL_OUTLINE_WIDTH
-                        outlineColor = TRAIL_OUTLINE_COLOR
-                        this.map = map
-                    }
-                }
-        }
-        onDispose { lines.forEach { it.map = null } }
+    val speedPaths = remember(scene.trail, scene.completedRoute.paths, scene.completedRoute.speedPaths, walkStyle) {
+        (scene.trail.speedPaths + scene.completedRoute.speedPaths).map { path ->
+            paintWalkSpeedPath(path, walkStyle.policy, walkStyle.themeId)
+        }.filter { it.isNotEmpty() }
     }
-
-    // 완료 경로는 라이브 trail과 별도다. 완료 화면에서 출발·도착과 끊긴 지점을 더해도
-    // 산책 중 갱신되는 경로 객체의 의미와 수명은 바뀌지 않는다.
-    DisposableEffect(naverMap, scene.completedRoute.paths) {
+    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths) {
         val map = naverMap
-        val lines = if (map == null) {
-            emptyList()
-        } else {
-            scene.completedRoute.paths
-                .filter { it.size >= 2 }
-                .map { path ->
-                    PathOverlay().apply {
-                        coords = path.map(GeoPoint::toLatLng)
-                        width = TRAIL_WIDTH
-                        color = TRAIL_COLOR
-                        outlineWidth = TRAIL_OUTLINE_WIDTH
-                        outlineColor = TRAIL_OUTLINE_COLOR
-                        this.map = map
-                    }
+        val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
+        if (map != null) {
+            // One multipart overlay per recording segment keeps pauses and GPS gaps separate.
+            speedPaths.forEach { parts ->
+                lines += MultipartPathOverlay().apply {
+                    coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
+                    colorParts = parts.map { part -> MultipartPathOverlay.ColorPart(part.color, part.color, part.color, part.color) }
+                    width = TRAIL_WIDTH
+                    outlineWidth = 0
+                    this.map = map
                 }
-        }
-        onDispose { lines.forEach { it.map = null } }
-    }
-
-    DisposableEffect(naverMap, scene.completedRoute.start, scene.completedRoute.end) {
-        val map = naverMap
-        val endpointMarkers = if (map == null) {
-            emptyList()
-        } else {
-            listOfNotNull(scene.completedRoute.start, scene.completedRoute.end).map { endpoint ->
-                Marker().apply {
-                    position = endpoint.point.toLatLng()
-                    captionText = endpoint.label
-                    captionMinZoom = 0.0
-                    width = if (endpoint.selected) ROUTE_ENDPOINT_PX_SELECTED else ROUTE_ENDPOINT_PX
-                    height = if (endpoint.selected) ROUTE_ENDPOINT_PX_SELECTED else ROUTE_ENDPOINT_PX
-                    anchor = MARKER_ANCHOR
-                    icon = OverlayImage.fromResource(
-                        when (endpoint.kind) {
-                            RouteEndpointKind.START -> R.drawable.ic_walk_start
-                            RouteEndpointKind.END -> R.drawable.ic_walk_finish
-                            RouteEndpointKind.START_END -> R.drawable.ic_walk_start_finish
-                        },
-                    )
-                    zIndex = if (endpoint.selected) SELECTED_MARKER_Z else ROUTE_ENDPOINT_Z
-                    isHideCollidedMarkers = false
-                    setOnClickListener {
-                        latestRouteEndpointCallback(endpoint.id)
-                        true
-                    }
+            }
+            // Legacy coordinate-only callers have unknown speed, never pretend it is zero.
+            val fallback = (if (scene.trail.speedPaths.isEmpty()) scene.trail.paths else emptyList()) +
+                (if (scene.completedRoute.speedPaths.isEmpty()) scene.completedRoute.paths else emptyList())
+            fallback.filter { it.size >= 2 }.forEach { path ->
+                lines += PathOverlay().apply {
+                    coords = path.map(GeoPoint::toLatLng)
+                    width = TRAIL_WIDTH
+                    color = walkStyle.policy.unknownColor
+                    outlineWidth = 0
                     this.map = map
                 }
             }
         }
-        onDispose { endpointMarkers.forEach { it.map = null } }
+        onDispose { lines.forEach { it.map = null } }
     }
+
+    NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
 
     DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {
         val map = naverMap
@@ -531,12 +509,6 @@ private const val MARKER_PX_SELECTED = 92
 
 private const val MOMENT_MARKER_PX = 64
 
-private const val ROUTE_ENDPOINT_PX = 72
-
-private const val ROUTE_ENDPOINT_PX_SELECTED = 84
-
-private const val ROUTE_ENDPOINT_Z = 80
-
 private const val ROUTE_GAP_Z = 40
 
 private const val ROUTE_GAP_RADIUS_METERS = 4.0
@@ -553,20 +525,19 @@ private const val ROUTE_SELECTED_OUTLINE_WIDTH = 4
 
 private const val MOMENT_MARKER_PX_SELECTED = 82
 
-private const val TERRITORY_MARKER_PX = 60
-
-private const val TERRITORY_MARKER_PX_SELECTED = 76
-
-private const val TERRITORY_MARKER_Z = 30
-
 /** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
 private const val MOMENT_MARKER_Z = 50
 
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun NaverSceneMapPreview() {
+    NaverMapSurface(MapScene(moments = listOf(
+        com.daengs.app.map.layers.moments.MomentMarkerState("scene", GeoPoint(37.5, 127.0), "1 · 7",
+            aboveRouteEndpoints = true))), null, false, onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {})
+}
+
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
-
-/** 전봇대 표시는 핀이 아니라 위치 중심 위에 서는 원형 표식이다. */
-private val TERRITORY_MARKER_ANCHOR = PointF(0.5f, 0.5f)
 
 /** 내 위치 얼굴의 한 변(px)과 흰 테두리 두께. */
 private const val AVATAR_PX = 96

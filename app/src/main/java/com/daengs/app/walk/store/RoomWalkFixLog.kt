@@ -8,12 +8,49 @@ import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
-    override suspend fun openSession(session: RecordedSession) {
+class RoomWalkFixLog(private val dao: WalkDao,
+    private val prunePhotos: suspend () -> Unit = {},
+    private val owner: () -> String = { "" }) : WalkFixLog {
+    // 세션 생성/복원과 탈퇴 삭제를 직렬화한다. 이미 실행 중인 작업의 늦은 응답도 막는다.
+    private val sessionMutex = Mutex()
+    private val forgottenOwners = mutableSetOf<String>()
+
+    override val ownerId: String get() = owner()
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds(), dao.observeAnalysisChanges()) { _, _, _, _ -> Unit }
+
+    override suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> {
+        val expectedOwner = owner()
+        val result = dao.historySearchText(sessionIds, expectedOwner)
+        return if (owner() == expectedOwner) result else emptyMap()
+    }
+
+    override suspend fun restoreSession(session: RecordedSession) = sessionMutex.withLock {
+        val verifiedOwner = requireNotNull(session.ownerId)
+        check(verifiedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
+        val existing = dao.session(session.id)
+        require(existing == null || existing.ownerId.isEmpty() || existing.ownerId == verifiedOwner)
+        if (existing != null && existing.ownerId.isEmpty()) {
+            dao.restoreOwner(session.id, verifiedOwner, requireNotNull(session.serverWalkId))
+        }
+        openSessionLocked(session)
+    }
+
+    override suspend fun openSession(session: RecordedSession) = sessionMutex.withLock {
+        openSessionLocked(session)
+    }
+
+    private suspend fun openSessionLocked(session: RecordedSession) {
+        val capturedOwner = session.ownerId ?: owner()
+        check(capturedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
         val inserted = dao.insertSession(
             WalkSessionRow(
                 id = session.id,
+                ownerId = capturedOwner,
                 startedAtMillis = session.startedAtMillis,
                 endedAtMillis = session.endedAtMillis,
                 weatherCode = session.weather?.weatherCode,
@@ -45,18 +82,19 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         ),
     )
 
-    override suspend fun appendAction(action: RecordedWalkAction) = dao.insertAction(
-        WalkActionRow(
-            id = action.id,
-            sessionId = action.sessionId,
-            typeCode = action.type.behaviorCode,
-            recordedAtMillis = action.recordedAtMillis,
+    override suspend fun appendAction(action: RecordedWalkAction) {
+        if (dao.entry(action.id) != null) return
+        val dog = dao.sessionDogs(action.sessionId).singleOrNull()?.dogId
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry(
+            id = action.id, sessionId = action.sessionId, type = action.type,
+            recordedAtMillis = action.recordedAtMillis, point = action.point,
             locationCapturedAtMillis = action.locationCapturedAtMillis,
-            lat = action.point.latitude,
-            lng = action.point.longitude,
-            accuracyM = action.accuracyMeters,
-        ),
-    )
+            accuracyMeters = action.accuracyMeters, petId = dog,
+        ))
+    }
+
+    override suspend fun hasEntries(sessionId: String): Boolean =
+        dao.entries(sessionId).any { it.payload != null } || dao.hasPhotos(sessionId)
 
     override suspend fun closeSession(sessionId: String, endedAtMillis: Long) =
         dao.closeSession(sessionId, endedAtMillis)
@@ -69,16 +107,33 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
             temperatureC = weather.temperatureC,
         )
 
-    override suspend fun deleteSession(sessionId: String) = dao.deleteSession(sessionId)
+    override suspend fun deleteSession(sessionId: String) {
+        dao.deleteSession(sessionId)
+        prunePhotos()
+    }
 
     override suspend fun forgetDog(dogId: String) {
         // **순서가 중요하다.** 연결을 먼저 떼면 "그 아이와만 나간 산책" 을 찾을 근거가
         // 사라져서, 아무도 안 붙은 산책이 되어 그대로 남는다.
         dao.deleteSessionsOnlyWith(dogId)
         dao.unlinkDog(dogId)
+        prunePhotos()
     }
 
-    override suspend fun forgetEverything() = dao.deleteAllSessions()
+    override suspend fun forgetEverything() {
+        dao.deleteOwnerSessions(owner())
+        prunePhotos()
+    }
+
+    override suspend fun forgetOwner(ownerId: String) = withContext(NonCancellable) {
+        require(ownerId.isNotBlank())
+        sessionMutex.withLock {
+            forgottenOwners.add(ownerId)
+            dao.deleteOwnerSessions(ownerId)
+        }
+        // 삭제와 경합하던 사진 저장까지 끝낸 뒤 고아 파일을 회수한다.
+        prunePhotos()
+    }
 
     override suspend fun unfinishedSessions(): List<RecordedSession> =
         dao.unfinishedSessions().withDogs()
@@ -86,8 +141,12 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
     override suspend fun finishedSessions(): List<RecordedSession> =
         dao.finishedSessions().withDogs()
 
+    override suspend fun finishedSessionsPage(before: com.daengs.app.walk.WalkHistoryCursor?, dogId: String?, limit: Int): List<RecordedSession> =
+        dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
+
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        dao.sessionsPendingAnalysis().withDogs()
+        (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }
+            .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**
      * 아이들을 **한 번에** 붙인다.
@@ -98,7 +157,7 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
     private suspend fun List<WalkSessionRow>.withDogs(): List<RecordedSession> {
         if (isEmpty()) return emptyList()
         val dogs = dao.sessionDogs(map { it.id }).groupBy({ it.sessionId }, { it.dogId })
-        return map { row -> row.toModel(dogs[row.id].orEmpty()) }
+        return filter { it.ownerId == owner() }.map { row -> row.toModel(dogs[row.id].orEmpty()) }
     }
 
     override suspend fun markRawUploaded(
@@ -111,18 +170,23 @@ class RoomWalkFixLog(private val dao: WalkDao) : WalkFixLog {
         dao.markDerived(sessionId, changedAtMillis)
 
     override suspend fun session(sessionId: String): RecordedSession? =
-        dao.session(sessionId)?.toModel(dao.sessionDogs(sessionId).map { it.dogId })
+        dao.session(sessionId)?.takeIf { it.ownerId == owner() }?.toModel(dao.sessionDogs(sessionId).map { it.dogId })
 
     override suspend fun fixes(sessionId: String): List<RecordedFix> =
         dao.fixes(sessionId).map(WalkFixRow::toModel)
 
     override suspend fun actions(sessionId: String): List<RecordedWalkAction> =
-        dao.actions(sessionId).mapNotNull(WalkActionRow::toModel)
+        dao.entries(sessionId).mapNotNull { it.entry() }.sortedBy { it.recordedAtMillis }.filter {
+            it.type != WalkMomentType.NOTE && it.point != null
+        }.map { entry -> RecordedWalkAction(entry.id, entry.sessionId, entry.type,
+            entry.recordedAtMillis, requireNotNull(entry.locationCapturedAtMillis),
+            requireNotNull(entry.point), entry.accuracyMeters) }
 }
 
 fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession = RecordedSession(
     id = id,
     dogIds = dogIds,
+    ownerId = ownerId,
     startedAtMillis = startedAtMillis,
     endedAtMillis = endedAtMillis,
     // 셋 중 하나라도 없으면 날씨를 못 받은 것으로 본다 — 코드가 곧 있고 없고다.

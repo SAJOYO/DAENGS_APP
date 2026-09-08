@@ -8,6 +8,13 @@ package com.daengs.app.walk
  * 저장하고, 표시용 동선과 복구 가능한 증거를 서로 다른 층으로 둔다.
  */
 interface WalkFixLog {
+    val ownerId: String? get() = null
+    val historyChanges: kotlinx.coroutines.flow.Flow<Unit> get() = kotlinx.coroutines.flow.flowOf(Unit)
+    suspend fun restoreSession(session: RecordedSession) = openSession(session)
+    suspend fun hasEntries(sessionId: String): Boolean = actions(sessionId).isNotEmpty()
+    /** Searchable visible text only, without GPS, photos or a generation request. */
+    suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> = emptyMap()
+
     /** 이미 알려진 ID를 다시 열어도 최초 시작 정보는 바꾸지 않는다. */
     suspend fun openSession(session: RecordedSession)
 
@@ -32,6 +39,14 @@ interface WalkFixLog {
 
     /** 끝난 산책만, 최근 것부터. 목록 화면이 쓴다. */
     suspend fun finishedSessions(): List<RecordedSession>
+
+    /** Stable keyset order. Room overrides this to page before fetching any GPS. */
+    suspend fun finishedSessionsPage(before: WalkHistoryCursor?, dogId: String?, limit: Int): List<RecordedSession> =
+        finishedSessions().filter { (dogId == null || dogId in it.dogIds) &&
+            (before == null || it.startedAtMillis < before.startedAtMillis ||
+                (it.startedAtMillis == before.startedAtMillis && it.id < before.sessionId)) }
+            .sortedWith(compareByDescending<RecordedSession> { it.startedAtMillis }.thenByDescending { it.id })
+            .take(limit)
 
     /**
      * 끝났지만 아직 계산 완료되지 않은 것.
@@ -67,6 +82,11 @@ interface WalkFixLog {
      */
     suspend fun forgetEverything()
 
+    /** 탈퇴 요청 시작 때 고정한 계정만 삭제한다. 현재 로그인 상태를 다시 읽지 않는다. */
+    suspend fun forgetOwner(ownerId: String) {
+        error("계정별 산책 삭제를 지원하지 않는 저장소입니다.")
+    }
+
     suspend fun session(sessionId: String): RecordedSession?
 
     suspend fun fixes(sessionId: String): List<RecordedFix>
@@ -76,6 +96,7 @@ interface WalkFixLog {
 
 data class RecordedSession(
     val id: String,
+    val ownerId: String? = null,
     /**
      * 데리고 나간 아이들. **여러 마리다.**
      *

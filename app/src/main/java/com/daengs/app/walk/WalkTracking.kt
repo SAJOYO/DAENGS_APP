@@ -12,6 +12,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class WalkTrackingState(
+    val savedEntryCount: Int = 0,
+    val ownerId: String? = null,
+    /** Service-owned identity and participants; survives screen recreation and map toggles. */
+    val activeSessionId: String? = null,
+    val activeSessionStartedAtMillis: Long? = null,
+    val activeDogIds: List<String> = emptyList(),
     val trail: TrailSnapshot = TrailSnapshot(),
     /** 화면 표시용 최신 원본 fix. 경로 및 행동 좌표의 품질 계약과는 다르다. */
     val lastSample: LocationSample? = null,
@@ -28,6 +34,7 @@ data class WalkTrackingState(
     val finishingSessionId: String? = null,
     /** 저장과 유효성 판정까지 끝나 결과 화면으로 넘길 수 있는 세션. */
     val completedSessionId: String? = null,
+    val stayStamps: List<StayStamp> = emptyList(),
 ) {
     fun elapsedMillisAt(realtimeMillis: Long): Long =
         activeDurationMillis + activeSinceRealtimeMillis

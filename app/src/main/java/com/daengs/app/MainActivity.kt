@@ -37,6 +37,8 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
+import com.daengs.app.dogcard.CardSyncRunner
+import com.daengs.app.dogcard.MissLog
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
@@ -58,6 +60,8 @@ import com.daengs.app.pet.devPets
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
+import com.daengs.app.screening.rememberScreeningHolder
+import com.daengs.app.ui.screening.ScreeningHistoryScreen
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
@@ -107,6 +111,8 @@ private enum class Screen {
     WalkHistory,
     /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
     WalkDetail,
+    /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
+    ScreeningHistory,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -152,6 +158,7 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                val walkHistoryState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
                 val loadingSince = remember { SystemClock.elapsedRealtime() }
@@ -171,10 +178,13 @@ class MainActivity : ComponentActivity() {
                 var session by remember { mutableStateOf(saved) }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
-                // 프로필 사진. **서버에 자리가 없어 이 기기에만 있다**
-                // (`pet/PetPhotos.kt` — GCP 가 정해지면 그쪽으로 옮긴다).
+                // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
+                // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
                 LaunchedEffect(pets.pets) {
+                    // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
+                    // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
+                    // `freshToken` 이 아직 선언되기 전이라 잡히지도 않는다.
                     petPhotos.load(pets.pets.orEmpty().map { it.id })
                 }
                 // 사진을 바꾸는 중인 아이. 홈 위에 덮인다 (배웅 화면과 같은 방식).
@@ -195,10 +205,6 @@ class MainActivity : ComponentActivity() {
                 val shownPetsOrNull: List<Pet>? =
                     if (devHerd.isNotEmpty()) devHerd else pets.pets
                 val shownPets = shownPetsOrNull.orEmpty()
-
-                // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
-                // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
-                val cards = remember { CardHolder(cardStore) }
 
                 // 개발자 패널이 고른 대표 견종. **여기서 들고 있는다** — 홈이 들고
                 // 있었더니 홈 밖으로 못 나가서, 챗봇 얼굴을 보려면 로그인해서 강아지를
@@ -231,6 +237,19 @@ class MainActivity : ComponentActivity() {
                     if (restored != null) session = restored
                     restored?.accessToken
                 }
+                // 피부 변화 기록. **서버가 진짜라 기기에 안 둔다** (`ScreeningHolder`).
+                val screenings = rememberScreeningHolder(freshToken)
+
+                // 뽑아 놓은 카드. **여기서 들고 있는다** — 도감·홈·뽑기 셋이 보고,
+                // 화면이 바뀌어도 안 죽어야 한다 (`outside`, `homeTab` 과 같은 이유).
+                //
+                // **`freshToken` 뒤에 둔다.** 지우기가 서버에도 알려야 하는데, 코틀린은
+                // 앞서 선언된 지역 변수만 잡는다 — 위에 두면 컴파일이 안 된다.
+                val cards = remember { CardHolder(cardStore, freshToken, MissLog(context)) }
+
+                // 카드를 서버와 맞추는 자리. **claimOrphans 뒤에 돈다** — 순서가
+                // 뒤집히면 방금 로그인한 사람의 둘러보기 카드가 안 올라간다.
+                val cardSync = remember { CardSyncRunner(cardStore, app.cardFiles, freshToken) }
                 LaunchedEffect(session?.appUserId, pets.primary?.id) {
                     val petId = pets.primary?.id.takeIf { session != null }
                     chatHistory.selectPet(petId)
@@ -303,7 +322,7 @@ class MainActivity : ComponentActivity() {
                         if (pets.remove(token, pet.id)) {
                             // 사진도 같이 지운다. 남으면 다음에 같은 id 를 받은 아이에게
                             // 남의 얼굴이 붙는다.
-                            petPhotos.clear(pet.id)
+                            petPhotos.clear(pet.id, freshToken())
                             walkRuntime.history.forgetDog(pet.id)
                             todayWalks = walkRuntime.history.todayTotals()
                         }
@@ -376,11 +395,21 @@ class MainActivity : ComponentActivity() {
                     walkRuntime.delivery.enqueuePending()
                     walkRuntime.sync.syncOnce(token)
 
+                    // 프로필 사진도 여기서 맞춘다. **새 폰이면 여기서 받아 오고**,
+                    // 서버가 생기기 전부터 이 폰에 있던 사진은 여기서 올라간다.
+                    // **실패해도 조용하다** — 저장소가 아직 안 켜졌으면 저쪽이 503 인데,
+                    // 그걸 띄우면 사진을 안 쓰는 사람에게 로그인마다 팝업이 뜬다.
+                    petPhotos.sync(pets.pets.orEmpty(), token)
+
                     // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
                     // 남의 카드는 안 건드린다 (`CardDao.claimOrphans`).
                     session?.appUserId?.let { cards.claimOrphans(it) }
                     // 출시본에서는 아무 일도 안 일어난다 — 디버그 소스셋의 시드다.
                     pets.primary?.let { seedCards(context, cardStore, it.id, it.name, it.birthDate) }
+                    // 서버와 맞춘다. **새 폰이면 여기서 카드가 되돌아오고**, 이 폰에만
+                    // 있던 카드는 여기서 올라간다. **실패해도 조용하다** — 도감은
+                    // 기기 것만으로도 온전히 돈다.
+                    cardSync.syncOnce(session?.appUserId)
                     cards.load(session?.appUserId)
                 }
 
@@ -505,7 +534,7 @@ class MainActivity : ComponentActivity() {
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
                         onClearPhoto = editing?.let { pet ->
-                            { scope.launch { petPhotos.clear(pet.id) } }
+                            { scope.launch { petPhotos.clear(pet.id, freshToken()) } }
                         },
                         onSubmit = { draft, photo ->
                             scope.launch {
@@ -526,7 +555,7 @@ class MainActivity : ComponentActivity() {
                                             before = before,
                                             after = pets.pets.orEmpty().map { it.id },
                                         )
-                                        if (id != null) petPhotos.set(id, photo)
+                                        if (id != null) petPhotos.set(id, photo, freshToken())
                                     }
                                     editing = null
                                     screen = Screen.Home
@@ -548,7 +577,7 @@ class MainActivity : ComponentActivity() {
                         PetPhotoPicker { made ->
                             photoFor = null
                             if (made != null) {
-                                scope.launch { petPhotos.set(pet.id, made) }
+                                scope.launch { petPhotos.set(pet.id, made, freshToken()) }
                             }
                         }
                     } else if (farewell != null) {
@@ -733,19 +762,14 @@ class MainActivity : ComponentActivity() {
                                 withdrawBusy = false
                                 result
                                     .onSuccess {
-                                        // 방은 서버에 사본이 없어 이 기기에만 있다.
-                                        // 안 지우면 다음에 로그인한 사람이 남의 방을
-                                        // 물려받는다.
+                                        // 탈퇴 요청 시작 때의 계정을 고정한다. 토큰을 지운 뒤 owner()는 빈 값이다.
+                                        walkController.stop()
                                         app.sessionProvider.clear()
+                                        walkRuntime.history.forgetOwner(old.appUserId)
+                                        // 방은 서버에 사본이 없어 이 기기에서도 지운다.
                                         roomStore.clear()
                                         frameCardId = null
                                         pets.forget()
-                                        // **산책 좌표도 지운다.** 서버는 탈퇴에서
-                                        // 산책까지 지우는데 폰의 Room 에는 원본이
-                                        // 남아 있었다 — 경로는 집과 생활권을 그대로
-                                        // 드러내는 값이라, 그걸 두고 "계정을 지우면
-                                        // 데이터도 지운다" 고 할 수 없다.
-                                        walkRuntime.history.forgetEverything()
                                         todayWalks = walkRuntime.history.todayTotals()
                                         // 뽑은 카드도 이 기기에만 있다. 서버에 사본이
                                         // 없으므로 여기서 안 지우면 다음에 로그인한
@@ -754,6 +778,8 @@ class MainActivity : ComponentActivity() {
                                         // 우리 아이의 진짜 사진이다. 안 지우면 다음에
                                         // 이 폰으로 로그인한 사람이 물려받는다.
                                         petPhotos.forgetEverything()
+                                        // 다음 사람이 남의 피부 사진을 보면 안 된다.
+                                        screenings.forget()
                                         // 방 구성도 이 기기의 것이다. `roomStore.clear()`
                                         // 가 파일을 비우므로 화면이 든 값도 같이 비운다.
                                         hiddenRoomPetIds = emptySet()
@@ -770,6 +796,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onSignOut = {
+                            walkController.stop()
                             val old = session
                             session = null
                             // 다음 사람이 남의 강아지를 보면 안 된다.
@@ -825,14 +852,31 @@ class MainActivity : ComponentActivity() {
                         dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
                         historyCoordinator = chatHistory,
+                        // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.
+                        onOpenScreeningHistory = { screen = Screen.ScreeningHistory }
+                            .takeIf { session != null },
+                    )
+
+                    Screen.ScreeningHistory -> ScreeningHistoryScreen(
+                        holder = screenings,
+                        onBack = { screen = Screen.Chat },
+                        // 대표 아이의 것만 본다. 없으면 전부 — 아이를 아직 등록 안
+                        // 했어도 진단은 할 수 있어서 그 기록이 남아 있다.
+                        petId = pets.primary?.id,
                     )
 
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
                         primaryPet = pets.primary,
+                        useConnectedSearch = BuildConfig.DEBUG,
+                        profileOwnerId = session?.appUserId,
+                        profilePets = pets.pets,
+                        profilesBusy = pets.busy,
+                        profilesError = pets.error,
+                        onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
-                    Screen.WalkHistory -> WalkHistoryScreen(
+                    Screen.WalkHistory -> walkHistoryState.SaveableStateProvider("walk-history") { WalkHistoryScreen(
                         history = walkRuntime.history,
                         // 목록을 열 때 한 번 더. 걷고 나서 지하철에 들어갔던 기록이
                         // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
@@ -846,8 +890,10 @@ class MainActivity : ComponentActivity() {
                         },
                     )
 
+                    }
+
                     Screen.WalkDetail -> openedWalkId?.let { id ->
-                        WalkDetailScreen(
+                        com.daengs.app.ui.walk.WalkDiaryMapScreen(
                             sessionId = id,
                             history = walkRuntime.history,
                             onBack = { screen = Screen.WalkHistory },
@@ -862,8 +908,14 @@ class MainActivity : ComponentActivity() {
                         history = walkRuntime.history,
                         avatarBreed = artBreed,
                         // 지도의 내 위치도 올린 사진을 따른다.
-                        avatarPhoto = shownPets.firstOrNull { it.isPrimary }
-                            ?.let { petPhotos[it.id] }?.asAndroidBitmap(),
+                        //
+                        // **고르는 줄과 같은 목록을 본다.** 아래 `pets` 가 서버 목록인데
+                        // 여기만 `shownPets`(개발자 패널의 가짜 아이가 이기는 목록)를
+                        // 보고 있었다. 그래서 디버그에서 가짜 강아지를 켜면, 고르는 줄엔
+                        // 진짜 아이들이 그대로인데 **지도 위 사진만 사라졌다** — 가짜 아이의
+                        // id 는 `petPhotos` 에 없기 때문이다. 챗봇 화면은 원래
+                        // `pets.primary` 를 쓰고 있어서 거기에 맞춘다.
+                        avatarPhoto = pets.primary?.let { petPhotos[it.id] }?.asAndroidBitmap(),
                         pets = pets.pets.orEmpty(),
                         photoOf = { petPhotos[it] },
                         outside = outside,
@@ -911,6 +963,8 @@ class MainActivity : ComponentActivity() {
                                 },
                                 drawsLeft = cards.drawsLeft(),
                                 onCancel = done,
+                                // 꽝도 하루 한 번을 쓴다. 안 적으면 그 판이 없던 일이 된다.
+                                onMiss = { cards.recordMiss() },
                                 onDrawn = { dog, template, face, core ->
                                     cards.draw(
                                         template = template,

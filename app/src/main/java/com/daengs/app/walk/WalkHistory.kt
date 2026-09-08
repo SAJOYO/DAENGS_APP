@@ -15,6 +15,36 @@ import kotlinx.coroutines.withContext
  * 여기에 원본이 그대로 있으므로 이 클래스 안만 바뀐다.
  */
 class WalkHistory(private val log: WalkFixLog) {
+    val changes get() = log.historyChanges
+
+    /** Fetch only a page plus one eligible lookahead. Skipped short sessions never create empty pages. */
+    suspend fun finishedPage(before: WalkHistoryCursor? = null, dogId: String? = null, size: Int = 5,
+        filter: WalkHistoryFilter = WalkHistoryFilter(), zone: ZoneId = ZoneId.systemDefault()): WalkHistoryPage =
+        withContext(Dispatchers.IO) {
+            require(size in 1..30)
+            val owner = log.ownerId
+            val walks = mutableListOf<WalkSummary>()
+            var cursor = before
+            while (walks.size <= size) {
+                val candidates = log.finishedSessionsPage(cursor, dogId, size + 1)
+                if (candidates.isEmpty()) break
+                val matching = candidates.filter { filter.matches(it, zone) }
+                val text = if (filter.keyword.isBlank()) emptyMap() else log.historySearchText(matching.map { it.id })
+                for (session in candidates) {
+                    cursor = WalkHistoryCursor(session.startedAtMillis, session.id)
+                    if (session !in matching || !filter.matchesText(text[session.id].orEmpty())) continue
+                    val summary = summarize(session, log.fixes(session.id), maxRouteSamples = Int.MAX_VALUE)
+                    if (summary.countsAsWalk || log.hasEntries(session.id)) walks += summary.forHistoryThumbnail()
+                    if (walks.size > size) break
+                }
+                if (candidates.size < size + 1) break
+            }
+            check(log.ownerId == owner) { "산책을 읽는 동안 계정이 변경됐어요." }
+            val visible = walks.take(size)
+            WalkHistoryPage(visible, if (walks.size > size) visible.last().let {
+                WalkHistoryCursor(it.startedAtMillis, it.sessionId)
+            } else null)
+        }
 
     /**
      * 끝난 산책, 최근 것부터.
@@ -33,7 +63,7 @@ class WalkHistory(private val log: WalkFixLog) {
             // 요약을 저장하지 않는 것과 같은 원칙이다 — 규칙이 바뀌면 지난 기록도
             // 같이 바뀌는 것이 맞다. **지우지는 않는다.** 원본은 그대로 있어서
             // 문턱값을 낮추면 다시 보인다.
-            .filter { it.countsAsWalk }
+            .filter { it.countsAsWalk || log.hasEntries(it.sessionId) }
     }
 
     /**
@@ -63,7 +93,7 @@ class WalkHistory(private val log: WalkFixLog) {
      */
     suspend fun keepIfWalk(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         val summary = detail(sessionId) ?: return@withContext false
-        if (summary.countsAsWalk) return@withContext true
+        if (summary.countsAsWalk || log.hasEntries(sessionId)) return@withContext true
         log.deleteSession(sessionId)
         false
     }
@@ -96,6 +126,11 @@ class WalkHistory(private val log: WalkFixLog) {
         log.forgetEverything()
     }
 
+    suspend fun forgetOwner(ownerId: String) = withContext(Dispatchers.IO) {
+        require(ownerId.isNotBlank())
+        log.forgetOwner(ownerId)
+    }
+
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {
         val session = log.session(sessionId) ?: return@withContext null
         summarize(session, log.fixes(sessionId))
@@ -106,11 +141,14 @@ class WalkHistory(private val log: WalkFixLog) {
         val session = log.session(sessionId) ?: return@withContext null
         // 전체 경로는 사용자가 한 세션을 연 이 자리에서만 만든다. 목록과 오늘 합계까지
         // 모든 과거 좌표를 무제한으로 펼치면 기록이 쌓일수록 읽기 비용이 폭증한다.
-        val summary = summarize(session, log.fixes(sessionId), maxRouteSamples = Int.MAX_VALUE)
+        val fixes = log.fixes(sessionId)
+        val summary = summarize(session, fixes, maxRouteSamples = Int.MAX_VALUE)
         WalkSessionDetail(
             summary = summary,
             route = summary.toSessionRoute(),
             moments = log.actions(sessionId).toMomentGroups(),
+            stayStamps = detectStayStamps(fixes),
+            observations = fixes,
         )
     }
 }

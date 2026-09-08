@@ -11,6 +11,7 @@ import com.daengs.app.place.PlaceSearchRepository
 import com.daengs.app.place.supportsParkingPreference
 import com.daengs.app.place.toPlaceFailure
 import com.daengs.app.place.userMessage
+import com.daengs.app.place.overviewHits
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,7 @@ data class PlaceDiscoveryState(
     val selectedPlaceKey: PlaceKey? = null,
     val search: PlaceSearchState = PlaceSearchState.Idle,
     val nameQuery: String = "",
+    val radiusMeters: Int = 3_000,
 ) {
     val response: PlaceSearchResponse?
         get() = when (val current = search) {
@@ -71,10 +73,18 @@ class PlaceDiscoveryController(
     private val mutableState = MutableStateFlow(PlaceDiscoveryState())
     val state: StateFlow<PlaceDiscoveryState> = mutableState.asStateFlow()
 
-    private var lastRequest: PlaceSearchRequest? = null
+    private var lastRequest: List<PlaceSearchRequest>? = null
     private var lastOriginMode = PlaceOriginMode.DEVICE
     private var requestGeneration = 0L
     private var searchJob: Job? = null
+    private var dogs: List<com.daengs.app.place.PlaceDogSnapshot> = emptyList()
+
+    fun updateDogs(value: List<com.daengs.app.place.PlaceDogSnapshot>) {
+        dogs = value.toList()
+        dogContext = null
+        lastRequest = lastRequest?.map { it.copy(dogs = dogs, dogSize = null, dogWeightKg = null, dogAgeYears = null) }
+        lastRequest?.let { submit(it, lastOriginMode) }
+    }
 
     fun updateDogContext(value: DogSearchContext?) {
         dogContext = value
@@ -86,6 +96,7 @@ class PlaceDiscoveryController(
         preferParking: Boolean = false,
         originMode: PlaceOriginMode = PlaceOriginMode.DEVICE,
         nameQuery: String = "",
+        radiusMeters: Int = 3_000,
     ) {
         if (!PlaceSearchArea.contains(origin)) {
             cancel()
@@ -96,23 +107,27 @@ class PlaceDiscoveryController(
                 originMode = originMode,
                 preferParking = preferParking,
                 nameQuery = nameQuery.trim(),
+                radiusMeters = radiusMeters,
                 search = PlaceSearchState.Failed(PlaceFailure.UnsupportedLocation),
             )
             return
         }
+        require(kinds.isNotEmpty() && kinds.distinct().size == kinds.size)
         submit(
-            PlaceSearchRequest(
+            kinds.chunked(6).map { batch -> PlaceSearchRequest(
                 origin = origin,
-                kinds = kinds,
+                kinds = batch,
+                radiusMeters = radiusMeters,
                 nameQuery = nameQuery.trim(),
                 limitPerKind = PLACE_RESULT_LIMIT,
+                dogs = dogs,
                 dogSize = dogContext?.size,
                 dogWeightKg = dogContext?.weightKg,
                 dogAgeYears = dogContext?.ageYears,
                 // 주차 사실 계약이 없는 kind만 요청했다면 선호를 들고 가지 않는다. 화면에서
                 // 칩이 사라진 뒤에도 이전 선택이 몰래 따라붙던 자리다.
                 preferParking = preferParking && kinds.any(PlaceKind::supportsParkingPreference),
-            ),
+            ) },
             originMode,
         )
     }
@@ -147,21 +162,23 @@ class PlaceDiscoveryController(
         mutableState.value = PlaceDiscoveryState()
     }
 
-    private fun submit(request: PlaceSearchRequest, originMode: PlaceOriginMode) {
-        lastRequest = request
+    private fun submit(requests: List<PlaceSearchRequest>, originMode: PlaceOriginMode) {
+        val request = requests.first()
+        lastRequest = requests
         lastOriginMode = originMode
         val generation = ++requestGeneration
         searchJob?.cancel()
         mutableState.value = PlaceDiscoveryState(
-            requestedKinds = request.kinds,
+            requestedKinds = requests.flatMap { it.kinds },
             origin = request.origin,
             originMode = originMode,
             preferParking = request.preferParking,
             nameQuery = request.nameQuery,
+            radiusMeters = request.radiusMeters,
             search = PlaceSearchState.Loading,
         )
         searchJob = scope.launch {
-            runCatching { repository.search(request) }
+            runCatching { com.daengs.app.place.searchPlaceBatches(repository, requests) }
                 .onSuccess { response ->
                     if (generation != requestGeneration) return@onSuccess
                     val resultState = if (response.groups.all { it.results.isEmpty() }) {
@@ -171,7 +188,7 @@ class PlaceDiscoveryController(
                     }
                     mutableState.update {
                         it.copy(
-                            selectedPlaceKey = response.firstPlaceKey(),
+                            selectedPlaceKey = if (requests.sumOf { it.kinds.size } > 1) response.overviewHits(request.preferParking).firstOrNull()?.place?.key else response.firstPlaceKey(),
                             search = resultState,
                         )
                     }

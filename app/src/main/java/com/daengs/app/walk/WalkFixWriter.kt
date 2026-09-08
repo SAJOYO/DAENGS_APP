@@ -40,7 +40,10 @@ class WalkFixWriter(
         }
     }
 
-    fun openSession(session: RecordedSession) = enqueue { log.openSession(session) }
+    fun openSession(session: RecordedSession) {
+        val captured = session.copy(ownerId = session.ownerId ?: log.ownerId)
+        enqueue { log.openSession(captured) }
+    }
 
     fun append(sessionId: String, fix: RecordedFix) = enqueue { log.append(sessionId, fix) }
 

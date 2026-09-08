@@ -99,6 +99,13 @@ fun GaitIntroCard(
     onCapture: () -> Unit,
     onPick: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 저장된 기록끼리 비교(B 진입). **새 영상을 올리지 않아도** 지난 기록 둘을 견준다.
+     *
+     * `null` 이면 줄을 아예 안 그린다 — 비교할 기록이 둘 미만일 때가 그렇다. 눌러도
+     * 고를 것이 없는 버튼을 띄우면 사용자가 자기가 뭘 잘못했나 생각하게 된다.
+     */
+    onCompareSaved: (() -> Unit)? = null,
 ) {
     GaitCard(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -109,7 +116,7 @@ fun GaitIntroCard(
         Text(
             "뒤에서 걷는 모습이 잘 보이는 영상을 준비해주세요.\n" +
                 "쉬지 않고 걷는 모습이 ${GaitRecord.MIN_WALKING_SECONDS}초 이상 담기게, " +
-                    "${GaitRecord.RECOMMENDED_SECONDS}초 넘게 찍어 주세요.",
+                    "${GaitRecord.RECOMMENDED_SECONDS}초 내외로 찍어 주세요.",
             color = TextDark,
             fontSize = 13.sp,
             lineHeight = 20.sp,
@@ -118,7 +125,10 @@ fun GaitIntroCard(
             GaitActionButton(DaengsIcon.Video, "영상 촬영", onCapture, Modifier.weight(1f))
             GaitActionButton(DaengsIcon.VideoLibrary, "불러오기", onPick, Modifier.weight(1f))
         }
-        GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 넘게 권장")
+        GaitHintRow("뒤에서 걷는 모습 / ${GaitRecord.RECOMMENDED_SECONDS}초 내외로 권장")
+        onCompareSaved?.let {
+            GaitActionButton(DaengsIcon.Video, "기록 비교", it, Modifier.fillMaxWidth())
+        }
     }
 }
 
@@ -238,13 +248,20 @@ fun GaitResultCard(
 ) {
     GaitCard(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${record.dateLabel} 보행 기록",
-                color = TextDark,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.weight(1f))
+            // 제목과 날짜를 따로 그린다. 합쳐 두면 제목을 고칠 때 날짜가 같이 움직이는
+            // 것처럼 보이고, 저장할 때도 합친 문자열을 남기게 된다.
+            Column(Modifier.weight(1f)) {
+                Text(
+                    record.displayTitle,
+                    color = TextDark,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(record.dateAndLength, color = TextMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(8.dp))
             GaitBadge(record)
         }
         // **영상 비율을 따른다.** 가로로 박아 두면 세로 영상이 좌우로 텅 빈 채
