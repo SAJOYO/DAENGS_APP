@@ -304,7 +304,6 @@ fun CardDrawScreen(
                     won = null
                     step = DrawStep.Intro
                 },
-                onOpenDex = onOpenDex,
             )
 
             DrawStep.Result -> won?.let { (template, card) ->
@@ -552,7 +551,7 @@ private const val MISS_CARD_RATIO = 1080f / 1440f
  * 앱이 실수한 것처럼 들린다.
  */
 @Composable
-private fun MissBody(left: Int, onAgain: () -> Unit, onOpenDex: () -> Unit) {
+private fun MissBody(left: Int, onAgain: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth(0.72f)
@@ -561,11 +560,18 @@ private fun MissBody(left: Int, onAgain: () -> Unit, onOpenDex: () -> Unit) {
             .background(PinkFaint),
         contentAlignment = Alignment.Center,
     ) {
-        Text("꽝", color = PinkSoft, fontSize = 64.sp, fontWeight = FontWeight.Bold)
+        // **카드가 놓일 자리를 글자 하나로 다 쓴다.** 작게 쓰면 빈 판에 딱지가
+        // 붙은 것처럼 보여서, 뽑기가 고장 난 줄 안다.
+        //
+        // 색은 [DaengPink] 다. 연분홍(`PinkSoft`)을 연분홍 판 위에 올렸더니 실기기에서
+        // 글자가 거의 안 보였다 — 화면에서 보고 알았다.
+        Text("꽝", color = DaengPink, fontSize = 104.sp, fontWeight = FontWeight.Bold)
     }
-    Text("이번엔 꽝이에요", color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    Text("꽝이에요", color = TextDark, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    // **남은 횟수를 여기서 말해 준다.** 꽝도 한 번을 쓰기 때문에, 안 알려 주면
+    // 뽑기가 왜 줄었는지 모른 채 넘어간다.
     Text(
-        "카드는 안 나왔지만 오늘 뽑기는 한 번 썼어요",
+        if (left > 0) "오늘 ${left}번 남았어요" else "오늘 뽑기를 다 썼어요",
         color = TextMuted,
         fontSize = 13.sp,
         lineHeight = 20.sp,
@@ -573,12 +579,13 @@ private fun MissBody(left: Int, onAgain: () -> Unit, onOpenDex: () -> Unit) {
     )
 
     Spacer(Modifier.height(2.dp))
+    // **다 쓴 날에도 눌리는 버튼을 남긴다.** 도감 버튼을 뺐기 때문에, 여기까지
+    // 비활성으로 두면 뒤로가기 말고는 이 화면에서 나갈 길이 없다.
     PinkButton(
-        label = if (left > 0) "한 번 더 (${left}번 남음)" else "오늘 뽑기를 다 썼어요",
-        enabled = left > 0,
+        label = if (left > 0) "한 번 더" else "그만하기",
+        enabled = true,
         onClick = onAgain,
     )
-    QuietButton(label = "도감에서 보기", onClick = onOpenDex)
 }
 
 @Composable
@@ -666,7 +673,7 @@ private fun DrawMissPreview() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MissBody(left = 2, onAgain = {}, onOpenDex = {})
+            MissBody(left = 2, onAgain = {})
         }
     }
 }
@@ -680,7 +687,7 @@ private fun DrawMissEmptyPreview() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MissBody(left = 0, onAgain = {}, onOpenDex = {})
+            MissBody(left = 0, onAgain = {})
         }
     }
 }

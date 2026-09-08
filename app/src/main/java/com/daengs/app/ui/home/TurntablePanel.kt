@@ -6,6 +6,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import com.daengs.app.dogcard.DrawnCard
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,12 +36,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.art.rememberAssetImage
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.ui.dex.DEX_CARDS
 import com.daengs.app.ui.dex.DexCard
+import com.daengs.app.ui.dex.CARD_BGM
 import com.daengs.app.ui.dex.bgmFor
 import com.daengs.app.ui.dex.SceneMusic
 import com.daengs.app.ui.theme.CardWhite
@@ -160,21 +165,34 @@ fun TurntablePanel(
         if (mine.isEmpty()) {
             Empty(onOpenDraw)
         } else {
-            mine.forEach { tune ->
-                TuneRow(
-                    tune = tune,
-                    playing = playing == tune.asset,
-                    onToggle = { playing = if (playing == tune.asset) null else tune.asset },
-                    onSave = {
-                        saving = tune
-                        save.launch("${tune.card.name}.ogg")
-                    },
-                )
-            }
+            // **곡 줄만 스크롤한다. 머리말은 안 움직인다** — `닫기` 가 거기 있어서,
+            // 통째로 스크롤하면 목록을 내린 사람이 닫는 방법을 잃는다.
+            //
+            // **`fill = false` 가 요점이다.** 채우게 두면 곡을 한 장만 가진 사람도
+            // 방을 절반 가리는 흰 판을 보게 된다. 내용이 적으면 그만큼만 커야 한다.
+            Column(
+                Modifier
+                    .weight(1f, fill = false)
+                    .heightIn(max = TUNE_LIST_MAX)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                mine.forEach { tune ->
+                    TuneRow(
+                        tune = tune,
+                        playing = playing == tune.asset,
+                        onToggle = { playing = if (playing == tune.asset) null else tune.asset },
+                        onSave = {
+                            saving = tune
+                            save.launch("${tune.card.name}.ogg")
+                        },
+                    )
+                }
 
-            val left = CARD_TUNES.size - mine.size
-            if (left > 0) {
-                Text("곡이 있는 카드가 ${left}장 더 있어요", color = TextMuted, fontSize = 11.sp)
+                val left = CARD_TUNES.size - mine.size
+                if (left > 0) {
+                    Text("곡이 있는 카드가 ${left}장 더 있어요", color = TextMuted, fontSize = 11.sp)
+                }
             }
         }
         note?.let { Text(it, color = DaengPink, fontSize = 11.sp) }
@@ -244,6 +262,30 @@ private fun Empty(onOpenDraw: (() -> Unit)?) {
     }
 }
 
+/**
+ * 한 번에 보여 줄 곡 줄 수. **화면 비율이 아니라 줄 수로 막는다** — 비율로 두면
+ * 기기마다 보이는 줄 수가 달라지고, 큰 화면에서는 그만큼 방을 더 가린다.
+ *
+ * 넷인 것은 사용자 결정이다(2026-09-08). 여섯 줄이면 방이 통째로 가려서 이 판이
+ * 어디에 떠 있는 것인지 안 보인다.
+ */
+private const val VISIBLE_TUNES = 4
+
+/**
+ * 한 줄의 높이. **[TuneRow] 가 이 높이로 고정된다.**
+ *
+ * 그림(44dp)만 재서 잡았다가 마지막 줄이 반쯤 잘렸다 — 오른쪽 글자가 두 줄(이름·번호)
+ * 이라 실제 줄 높이가 그보다 컸다. 줄을 고정해야 [TUNE_LIST_MAX] 산수가 맞는다.
+ */
+private val TUNE_ROW_HEIGHT = 52.dp
+
+/** 줄 사이 간격. 목록 [Column] 의 `spacedBy` 와 같은 값이다. */
+private val TUNE_ROW_GAP = 10.dp
+
+/** 목록의 최대 높이. 곡이 이보다 적으면 그만큼만 커진다. */
+private val TUNE_LIST_MAX =
+    TUNE_ROW_HEIGHT * VISIBLE_TUNES + TUNE_ROW_GAP * (VISIBLE_TUNES - 1)
+
 /** 목록 그림의 가로 픽셀. 34dp 짜리라 크게 그릴 이유가 없다 (도감 `COPY_THUMB_PX` 와 같다). */
 private const val TUNE_THUMB_PX = 160
 
@@ -267,7 +309,7 @@ private fun TuneRow(
     val catalog = rememberAssetImage(tune.card.art, sample = 4)
     val art = composed ?: catalog
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().height(TUNE_ROW_HEIGHT),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -320,5 +362,33 @@ private fun RoundButton(label: String, fill: Color, onClick: () -> Unit) {
 private fun TurntablePanelPreview() {
     Box(Modifier.background(Color(0xFFEFE3DC))) {
         TurntablePanel(onClose = {})
+    }
+}
+
+/**
+ * **곡을 다 가진 사람.** 실기기에서 목록이 여섯 줄에서 잘리던 것이 여기서 보였어야 했다.
+ *
+ * 단위 테스트로는 못 잡는 종류다 — 곡 경로도 목록도 전부 맞았고(`mine=11`) 잘린 것은
+ * 그리는 쪽이었다. 곡이 늘 때마다 이 미리보기를 열어 본다.
+ */
+@Preview(name = "턴테이블 · 곡을 다 가진 경우", widthDp = 380, heightDp = 420)
+@Composable
+private fun TurntablePanelFullPreview() {
+    Box(Modifier.background(Color(0xFFEFE3DC))) {
+        TurntablePanel(
+            onClose = {},
+            drawn = CARD_BGM.keys.mapIndexed { i, id ->
+                DrawnCard(
+                    id = "preview-$id",
+                    appUserId = "preview-user",
+                    templateId = id,
+                    dogId = null,
+                    dogName = "네옹",
+                    drawnAtMillis = i.toLong(),
+                    codeText = "DG-0824",
+                    core = IntRect.Zero,
+                )
+            },
+        )
     }
 }
