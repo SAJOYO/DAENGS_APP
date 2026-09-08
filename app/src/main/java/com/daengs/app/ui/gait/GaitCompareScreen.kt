@@ -40,7 +40,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitComparison
 import com.daengs.app.gait.GaitJoint
@@ -435,26 +434,6 @@ private fun NoteBox(text: String) {
     }
 }
 
-/**
- * 가운뎃점 하나 + 문장 하나. 주의 상자와 그 아래 진단아님 문구가 **같은 것**을 쓴다 —
- * 점과 간격이 같아야 두 문단의 글자가 한 세로선에서 시작한다.
- *
- * 점만 있으면 한 줄짜리 상자가 허전해서 문장이 떠 보이던 것도 잡힌다. 문장이 여러 줄로
- * 접히면 둘째 줄이 글자 앞으로 들어와 매달린 들여쓰기가 된다.
- */
-@Composable
-private fun DottedLine(
-    text: String,
-    fontSize: TextUnit,
-    lineHeight: TextUnit,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier, verticalAlignment = Alignment.Top) {
-        Text("·", color = TextMuted, fontSize = fontSize, lineHeight = lineHeight)
-        Spacer(Modifier.width(6.dp))
-        Text(text, color = TextMuted, fontSize = fontSize, lineHeight = lineHeight)
-    }
-}
 
 /**
  * [NoteBox] 안쪽 여백. **진단아님 문구도 같은 값을 쓴다** — 상자가 없는 그 문구가 상자 안

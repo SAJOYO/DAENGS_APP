@@ -158,13 +158,15 @@ fun GaitDetailScreen(
 
             DetailSection("기록 정보") { GaitAnalysisSummary(record) }
 
-            Text(
-                "보행 영상은 같은 아이의 시점별 변화를 나란히 보기 위한 기록이에요.\n" +
-                    "건강 상태를 판단하거나 진단하지 않아요.",
-                color = TextMuted,
-                fontSize = 11.sp,
-                lineHeight = 17.sp,
-            )
+            // 위 카드 안 글자와 왼쪽 끝을 맞춘다 — 카드 안쪽 여백과 같은 값(CARD_INSET)을
+            // 쓰고, 비교 화면과 같은 가운뎃점을 줄마다 하나씩 붙인다.
+            Column(
+                Modifier.padding(horizontal = CARD_INSET),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                DottedLine("보행 영상은 같은 아이의 시점별 변화를 나란히 보기 위한 기록이에요.", fontSize = 11.sp, lineHeight = 17.sp)
+                DottedLine("건강 상태를 판단하거나 진단하지 않아요.", fontSize = 11.sp, lineHeight = 17.sp)
+            }
         }
 
         Column(
@@ -244,6 +246,12 @@ private fun tierDotColor(tier: GaitQualityTier?) = when (tier) {
     null -> DaengsColors.BorderNeutral
 }
 
+/**
+ * 카드 안쪽 여백. **카드 밖 진단아님 문구도 같은 값을 쓴다** — 상자가 없는 그 문구가 카드 안
+ * 글자보다 왼쪽에서 시작하면 둘의 왼쪽 끝이 어긋나 보인다.
+ */
+private val CARD_INSET = 14.dp
+
 @Composable
 private fun DetailSection(
     title: String,
@@ -267,7 +275,7 @@ private fun DetailSection(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                Modifier.padding(14.dp),
+                Modifier.padding(CARD_INSET),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 content = content,
             )
