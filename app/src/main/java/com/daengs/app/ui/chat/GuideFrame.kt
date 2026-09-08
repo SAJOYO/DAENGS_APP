@@ -137,9 +137,9 @@ fun GuideFrameScreen(
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
         ) {
             Text(
                 title,
@@ -150,9 +150,14 @@ fun GuideFrameScreen(
 
             // 사진을 **비율 그대로** 채운다. 그래야 화면 좌표와 정규화 좌표가
             // 1:1 이라, 네모를 옮긴 만큼이 그대로 bbox 가 된다.
+            //
+            // ⚠️ **가로에 꽉 채우지 않는다.** `fillMaxWidth` 를 걸면 세로로 긴 사진(폰
+            //    스크린샷은 9:20)이 화면보다 길어져 제목과 버튼이 위아래로 밀려났다 —
+            //    사진을 고르고 얼굴을 맞춰도 누를 것이 없었다. 남은 높이를 상한으로 주고
+            //    비율은 그 안에서 맞춘다. 가로 사진은 전과 같이 가로에 찬다.
             Box(
                 Modifier
-                    .fillMaxWidth()
+                    .weight(1f, fill = false)
                     .aspectRatio(aspect)
                     .clip(RoundedCornerShape(14.dp))
                     .pointerInput(aspect) {
