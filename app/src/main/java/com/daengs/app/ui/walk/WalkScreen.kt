@@ -658,7 +658,11 @@ private fun WalkHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = Color.Black, filled = true)
+        // **순수 검정을 쓰지 않는다.** 이 앱의 어두운 색은 따뜻한 갈색(`TextDark`,
+        // `#4A3B36`)이고 「내 주변」에는 순수 검정이 한 군데도 없다. 여기만 검정이라
+        // 같은 알약 안에서 옆의 회전·설정 아이콘(둘 다 `TextDark`)과 색이 갈렸고,
+        // 산책 화면만 차갑게 보이는 원인이었다.
+        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = TextDark, filled = true)
     }
 }
 
@@ -977,7 +981,9 @@ private fun ModalScrim(content: @Composable () -> Unit) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.34f))
+                // 겹도 순수 검정 대신 앱의 어두운 갈색을 옅게 깐다. 검정이면 방·지도의
+                // 따뜻한 색 위에서 회색빛이 돌아 화면이 갑자기 차가워진다.
+                .background(TextDark.copy(alpha = 0.34f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
