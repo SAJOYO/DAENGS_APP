@@ -96,13 +96,21 @@ fun DateWheel(
 private fun safeDate(year: Int, month: Int, day: Int): LocalDate =
     LocalDate.of(year, month, day.coerceAtMost(YearMonth.of(year, month).lengthOfMonth()))
 
-/** 한 줄. 가운데 칸이 고른 값이다. */
+/**
+ * 한 줄. 가운데 칸이 고른 값이다.
+ *
+ * `internal` 인 이유는 [TimeWheel] 이 같은 줄로 시·분을 굴리기 때문이다 — 날짜와 시각이
+ * 다르게 생기면 같은 폼 안에서 두 가지 다이얼이 된다.
+ *
+ * @param label 칸에 찍을 글자. 분은 `5` 가 아니라 `05` 여야 시계처럼 읽힌다
+ */
 @Composable
-private fun Wheel(
+internal fun Wheel(
     items: List<Int>,
     selected: Int,
     suffix: String,
     width: androidx.compose.ui.unit.Dp,
+    label: (Int) -> String = { "$it$suffix" },
     onSelect: (Int) -> Unit,
 ) {
     val index = items.indexOf(selected).coerceAtLeast(0)
@@ -145,7 +153,7 @@ private fun Wheel(
                 val on = item == selected
                 Box(Modifier.height(row), contentAlignment = Alignment.Center) {
                     Text(
-                        "$item$suffix",
+                        label(item),
                         color = if (on) TextDark else TextMuted,
                         fontSize = if (on) 17.sp else 15.sp,
                         fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,

@@ -2,8 +2,12 @@ package com.daengs.app.pet
 
 import androidx.compose.runtime.Immutable
 import com.daengs.app.miniroom.art.DogBreed
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 /**
  * 등록한 강아지 하나. 계약은 저쪽 `DAENGS_dev` 의 `schemas/pet.py` 다.
@@ -57,6 +61,20 @@ data class Pet(
      * 그대로 비교하는 열쇠라, 파싱하면 형식이 바뀌는 날 조용히 안 맞게 된다.
      */
     val photoUpdatedAt: String? = null,
+    // ── 돌봄 (#200 · 저쪽 #331) ─────────────────────────────────────────
+    // 넷 다 **null 이 '모름'** 이다. 약 칸이 비어 있다고 "약 안 먹는 아이" 가 아니다.
+    // 옛 서버(#331 전)는 이 칸을 아예 안 주므로 기본값이 있어야 파싱이 안 깨진다.
+    /** 자율급식인지 시간제인지. 비서가 "밥 몇 번 줘요?" 류에 이 아이 기준으로 답한다. */
+    val feedingStyle: FeedingStyle? = null,
+    /**
+     * 시간제일 때의 급식 시각. **시간제가 아니면 null 이다** — 서버 CHECK 가 그렇다.
+     * 시간제인데 아직 안 정했으면 null 이고, 빈 목록은 서버가 422 로 막는다 (`min_length=1`).
+     */
+    val feedingTimes: List<LocalTime>? = null,
+    /** 앓는 병. 자유 텍스트, 비서 프롬프트에 그대로 실린다. */
+    val healthConditions: String? = null,
+    /** 정기 복용 약. 비서에는 이름이 아니라 **복약 여부만** 간다 (저쪽 `dog_context.py`). */
+    val medications: String? = null,
 ) {
     /** 이 견종의 얼굴 그림. 모르는 견종(믹스 등)이면 null 이고, 화면이 대체 얼굴을 쓴다. */
     val breedArt: DogBreed? get() = DogBreed.byId(breed)
@@ -80,6 +98,9 @@ data class Pet(
      */
     enum class BirthDateKind { BIRTHDAY, FAMILY_DAY }
 
+    /** 급식 방식. `free` 자율급식 · `scheduled` 시간제 (`feedingTimes` 에 시각). */
+    enum class FeedingStyle { FREE, SCHEDULED }
+
     /**
      * 지금 값을 그대로 담은 초안.
      *
@@ -95,6 +116,10 @@ data class Pet(
         birthDate = birthDate,
         birthDateKind = birthDateKind,
         farewellOn = farewellOn,
+        feedingStyle = feedingStyle,
+        feedingTimes = feedingTimes,
+        healthConditions = healthConditions,
+        medications = medications,
     )
 
     companion object {
@@ -122,7 +147,28 @@ data class Pet(
             updatedAt = json.optStringOrNull("updated_at"),
             hasPhoto = json.optBoolean("has_photo"),
             photoUpdatedAt = json.optStringOrNull("photo_updated_at"),
+            feedingStyle = when (json.optStringOrNull("feeding_style")) {
+                "free" -> FeedingStyle.FREE
+                "scheduled" -> FeedingStyle.SCHEDULED
+                else -> null
+            },
+            feedingTimes = json.optJSONArray("feeding_times")?.let { arr ->
+                // 서버가 `HH:MM` 만 받으므로 못 읽는 값은 없어야 하지만, 하나 때문에 목록이
+                // 통째로 안 뜨느니 그 하나만 버린다.
+                (0 until arr.length()).mapNotNull { i ->
+                    try {
+                        LocalTime.parse(arr.getString(i), FEEDING_TIME)
+                    } catch (_: DateTimeParseException) {
+                        null
+                    }
+                }.takeIf { it.isNotEmpty() }
+            },
+            healthConditions = json.optStringOrNull("health_conditions"),
+            medications = json.optStringOrNull("medications"),
         )
+
+        /** 급식 시각의 모양. 저쪽 `_FEEDING_TIME` (`HH:MM`) 과 같다 — 초는 안 보낸다. */
+        val FEEDING_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
         /** `optString` 은 JSON null 에도 빈 문자열을 준다. 0 과 "없음"을 구분해야 한다. */
         private fun JSONObject.optStringOrNull(key: String): String? =
@@ -148,17 +194,29 @@ data class PetDraft(
      * 안 된다.
      */
     val farewellOn: LocalDate? = null,
+    // 돌봄 (#200). 넷 다 null 이 모름이다 — [Pet] 의 같은 칸 주석 참고.
+    val feedingStyle: Pet.FeedingStyle? = null,
+    /** 빈 목록은 null 로 보낸다 — 서버가 `min_length=1` 이라 `[]` 는 422 다. */
+    val feedingTimes: List<LocalTime>? = null,
+    val healthConditions: String? = null,
+    val medications: String? = null,
 ) {
     /**
      * 보낼 수 있는 상태인가.
      *
      * **날짜와 종류는 같이 있거나 같이 없어야 한다.** 서버도 422 로 막지만, 보내기
      * 전에 알면 화면에서 바로 말해 줄 수 있다.
+     *
+     * **급식 시각은 시간제일 때만** 있을 수 있고, 병·약은 [CARE_TEXT_MAX] 자까지다 —
+     * 둘 다 서버가 같은 규칙으로 422 를 준다.
      */
     val valid: Boolean
         get() = name.isNotBlank() &&
             breed.isNotBlank() &&
-            (birthDate == null) == (birthDateKind == null)
+            (birthDate == null) == (birthDateKind == null) &&
+            (feedingTimes.isNullOrEmpty() || feedingStyle == Pet.FeedingStyle.SCHEDULED) &&
+            healthConditions.orEmpty().trim().length <= CARE_TEXT_MAX &&
+            medications.orEmpty().trim().length <= CARE_TEXT_MAX
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("name", name.trim())
@@ -176,5 +234,27 @@ data class PetDraft(
                 null -> JSONObject.NULL
             },
         )
+        put(
+            "feeding_style",
+            when (feedingStyle) {
+                Pet.FeedingStyle.FREE -> "free"
+                Pet.FeedingStyle.SCHEDULED -> "scheduled"
+                null -> JSONObject.NULL
+            },
+        )
+        put(
+            "feeding_times",
+            feedingTimes?.takeIf { it.isNotEmpty() }
+                ?.let { times -> JSONArray(times.map { it.format(Pet.FEEDING_TIME) }) }
+                ?: JSONObject.NULL,
+        )
+        // 공백만 적은 것은 **모름** 이다. 빈 문자열이 저장되면 비서가 "복약 중" 으로 읽는다.
+        put("health_conditions", healthConditions?.trim()?.takeIf { it.isNotEmpty() } ?: JSONObject.NULL)
+        put("medications", medications?.trim()?.takeIf { it.isNotEmpty() } ?: JSONObject.NULL)
+    }
+
+    companion object {
+        /** 병·약 텍스트의 상한. 저쪽 `CARE_TEXT_MAX` 와 같은 수 — 비서 프롬프트에 실리는 값이라 무한정 안 받는다. */
+        const val CARE_TEXT_MAX = 200
     }
 }
