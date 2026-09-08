@@ -50,6 +50,35 @@ fun StorageComingSoon(modifier: Modifier = Modifier) {
         )
     }
 }
+/**
+ * [StorageComingSoon] 의 작은 판. 저장소 탭에 케어 기록과 대화 보관함이 들어온 뒤로는 탭 전체가
+ * "준비 중" 이 아니라 **사진·영상만** 준비 중이다 — 목록 맨 밑에 한 줄로 남긴다.
+ * 날짜를 말하지 않는 이유는 위와 같다.
+ */
+@Composable
+fun StoragePhotosNotice(modifier: Modifier = Modifier) {
+    Column(
+        modifier.padding(horizontal = 16.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        DaengsIconView(DaengsIcon.Camera, Modifier.size(28.dp), tint = PinkSoft)
+        Spacer(Modifier.height(10.dp))
+        Text("사진과 영상은 준비 중이에요", color = TextDark, fontSize = 14.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "찍은 사진과 영상을 여기 모아 볼 수 있게 만들고 있어요.",
+            color = TextMuted,
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
+@Composable
+private fun StoragePhotosNoticePreview() = DaengsTheme { StoragePhotosNotice() }
+
 @Preview(widthDp = 411, heightDp = 640, showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun StorageComingSoonPreview() {
