@@ -207,7 +207,6 @@ fun GaitDetailScreen(
 @Composable
 private fun GaitAnalysisSummary(record: GaitRecord) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text("이번 기록", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         Text(record.dateAndLength, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
 
         // 등급 줄에만 점이 붙는다. **글자는 검다** — 문장까지 물들이면 주의보로 읽힌다
