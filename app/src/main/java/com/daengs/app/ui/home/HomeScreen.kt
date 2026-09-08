@@ -1,5 +1,10 @@
 package com.daengs.app.ui.home
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Offset
@@ -445,11 +450,14 @@ fun HomeScreen(
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
         // 방은 RoomGeometry.of(width, height) 로 받은 상자에 맞춰 스스로 줄어든다.
-        Column(
-            Modifier
-                .padding(inner)
-                .fillMaxSize(),
-        ) {
+        //
+        // **넓으면 두 칸이다** (폴더블 펼침·태블릿). 세로로 쌓으면 방이 가운데 작게
+        // 뜨고 좌우가 텅 비는데, 나란히 두면 방은 커지고 카드는 제 폭을 찾는다.
+        // 가로모드 이야기가 아니다 — 폴드는 **세로로 펼쳐도** 이 폭이 나온다.
+        BoxWithConstraints(Modifier.padding(inner).fillMaxSize()) {
+            val wide = maxWidth >= WIDE_BREAKPOINT
+
+        val room: @Composable (Modifier) -> Unit = { roomModifier ->
             RoomSection(
                 tourSpots = tourSpots,
                 framePicture = framePicture,
@@ -493,10 +501,14 @@ fun HomeScreen(
                 onAddPet = onAddPet,
                 onToggleEmptyRoom = onToggleEmptyRoom,
                 tourOpen = tourOpen,
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                showTodayCard = !wide,
+                modifier = roomModifier,
             )
-            // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
-            // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
+        }
+
+        // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
+        // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
+        val cards: @Composable ColumnScope.() -> Unit = {
             val slot = Modifier.padding(horizontal = 14.dp).height(CardSlotHeight)
             if (inventoryOpen) {
                 InventoryPanel(
@@ -525,6 +537,38 @@ fun HomeScreen(
                 onOpenWalkHistory,
             )
             Spacer(Modifier.height(10.dp))
+        }
+
+        if (wide) {
+            Row(Modifier.fillMaxSize()) {
+                // **반씩 나눈다.** 방에 0.56 을 줘 봤더니 산책 요약 카드가 눌려서
+                // "볕이 뜨거우니 / 해 지고 / 나가자댕!" 이 세 줄로 쪼개졌다. 방은
+                // 정사각에 가까워 폭을 더 줘도 세로에 먼저 막히므로 덜 아쉽다.
+                room(Modifier.weight(1f).fillMaxHeight())
+                Column(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    // 방 위에 얹혀 모서리를 덮던 카드를 여기로 올린다 (사용자 결정).
+                    TodayCard(
+                        dateLabel = dateLabel,
+                        note = words.today,
+                        icon = weatherIcon(outside),
+                        accent = roomTheme.roomAccent,
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        expanded = weatherOpen,
+                        onToggle = onToggleWeather,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    cards()
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                room(Modifier.fillMaxWidth().weight(1f))
+                cards()
+            }
+        }
         }
     }
 
@@ -620,6 +664,13 @@ private fun RoomSection(
      * ([showsEmptyRoomInvite]).
      */
     tourOpen: Boolean,
+    /**
+     * 방 위에 TODAY 카드를 얹나.
+     *
+     * **넓은 화면에서는 끈다.** 두 칸 배치에서는 이 카드가 오른쪽 칸으로 올라간다 —
+     * 방이 커지면서 카드가 방의 왼쪽 위 모서리를 덮기 때문이다.
+     */
+    showTodayCard: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -733,15 +784,17 @@ private fun RoomSection(
             DoorWalkBadge(spot.translate(-roomOrigin.x, -roomOrigin.y), boxSize) { doorSignal++ }
         }
 
-        TodayCard(
-            dateLabel = dateLabel,
-            note = todayNote,
-            icon = weatherIcon(outside),
-            accent = theme.roomAccent,
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
-            expanded = weatherOpen,
-            onToggle = onToggleWeather,
-        )
+        if (showTodayCard) {
+            TodayCard(
+                dateLabel = dateLabel,
+                note = todayNote,
+                icon = weatherIcon(outside),
+                accent = theme.roomAccent,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
+                expanded = weatherOpen,
+                onToggle = onToggleWeather,
+            )
+        }
         Column(
             Modifier.align(Alignment.TopEnd).padding(end = 14.dp, top = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
