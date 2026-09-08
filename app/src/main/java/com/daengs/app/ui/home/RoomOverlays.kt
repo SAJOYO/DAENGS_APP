@@ -1,6 +1,17 @@
 package com.daengs.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.runtime.remember
+import com.daengs.app.miniroom.art.drawPawStamp
 import kotlin.math.roundToInt
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.graphicsLayer
@@ -182,6 +193,72 @@ fun CameraButton(
  * **누르면 고친다.** [onClick] 이 null 이면 못 누른다 — 로그인 전에는 고쳐도 저장할
  * 곳이 없어서, 눌리는데 아무 일도 안 일어나는 것보다 안 눌리는 편이 낫다.
  */
+
+/**
+ * 문 옆에 붙는 「산책 나가기」 알약.
+ *
+ * **문짝의 흰빛만으로는 부족하다.** 그건 "누를 수 있다" 까지만 말하고 "누르면 산책"
+ * 까지는 못 간다 — 글자가 있어야 뜻이 선다.
+ *
+ * **문 위(벽)에 얹는다.** 문짝을 덮으면 저쪽이 그린 그림을 가리고, 멀찍이 두면 무엇을
+ * 가리키는지 안 보인다. 벽은 무늬가 없어 글자가 제일 잘 읽히는 자리이기도 하다.
+ *
+ * 발자국은 이 앱의 표식이다 (로고·하단 버튼·도감이 다 발자국). 그림을 새로 만들지
+ * 않고 방이 이미 쓰는 [drawPawStamp] 를 그대로 쓴다.
+ *
+ * @param spot 문의 화면 위치. **방이 터치 판정에 쓰는 것과 같은 값이다**
+ *   (`RoomTouchSpots.door`) — 가리키는 곳과 눌리는 곳이 갈라지면 안 된다
+ */
+@Composable
+fun BoxScope.DoorWalkBadge(spot: Rect, boxSize: IntSize, onClick: () -> Unit) {
+    var badgeSize by remember { mutableStateOf(IntSize.Zero) }
+    val gap = with(LocalDensity.current) { 8.dp.toPx() }
+    Surface(
+        shape = RoundedCornerShape(50),
+        // **반투명이다.** 방 그림 위에 얹는 것이라 꽉 찬 흰색이면 그 자리를 도려낸 것처럼
+        // 보인다. 살짝 비치면 얹혀 있는 것으로 읽히고, 글자는 여전히 잘 보인다.
+        color = CardWhite.copy(alpha = 0.70f),
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .offset {
+                // **문 오른쪽 옆, 높이는 문 가운데** — 창틀 바로 아래의 빈 벽이다.
+                //
+                // 문 바로 위에도 얹어 봤는데 TODAY 카드와 부딪힌다. 그 카드가 방 상자
+                // 왼쪽 위에 떠 있어서 문 위는 이미 남의 자리다 (사용자 결정).
+                val x = (spot.right + gap).roundToInt()
+                    .coerceAtMost((boxSize.width - badgeSize.width).coerceAtLeast(0))
+                val y = (spot.center.y - badgeSize.height / 2f).roundToInt()
+                    .coerceIn(0, (boxSize.height - badgeSize.height).coerceAtLeast(0))
+                IntOffset(x, y)
+            }
+            .onSizeChanged { badgeSize = it }
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Canvas(Modifier.size(13.dp)) {
+                drawPawStamp(center = size.center, r = size.minDimension / 3.2f, color = DaengPink)
+            }
+            Text("산책 나가기", color = TextDark, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 300, heightDp = 160)
+@Composable
+private fun DoorWalkBadgePreview() {
+    DaengsTheme {
+        Box(Modifier.fillMaxWidth().height(160.dp).background(DaengsColors.AppBackground)) {
+            // 문이 왼쪽 벽에 있을 때의 자리. 상자 밖으로 안 나가는지 여기서 본다.
+            DoorWalkBadge(Rect(left = 20f, top = 30f, right = 90f, bottom = 210f), IntSize(900, 480)) {}
+        }
+    }
+}
+
 @Composable
 fun NamePlate(label: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     Surface(
