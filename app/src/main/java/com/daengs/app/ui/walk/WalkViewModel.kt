@@ -116,6 +116,7 @@ class WalkViewModel(
     private var trackingErrorJob: Job? = null
     private var observedCompletedSessionId: String? = null
     private val territoryFeedback = com.daengs.app.map.features.territory.TerritoryFeedbackTracker()
+    private val territoryRanges = com.daengs.app.map.features.territory.TerritoryRangeTracker()
     private val nearbyActive = combine(sharedReadsActive, sharedReadsForeground,
         presentation.map { it.map.purpose }.distinctUntilChanged()) { visible, foreground, purpose ->
         territoryGame != null && visible && foreground && purpose == MapPurpose.TERRITORY
@@ -148,7 +149,12 @@ class WalkViewModel(
             nearbyTerritory = nearbyState,
             territoryGame = game.copy(feedback = territoryFeedback.update(game, tracking.activeSessionId,
                 presentationState.map.purpose == MapPurpose.TERRITORY, nowNanos()),
-                nearbyTargetId = nearbyTerritoryTarget(game.sites, nearbyState)),
+                nearbyTargetId = nearbyTerritoryTarget(game.sites, nearbyState),
+                visibleRangeSiteIds = territoryRanges.update(game, nearbyState,
+                    territoryLocationEvidence(tracking,
+                        locationState.permissionGranted && locationState.precisePermission,
+                        nowNanos(), 10_000_000_000L, locationState.sample),
+                    active && sharedReadsForeground.value && presentationState.map.purpose == MapPurpose.TERRITORY)),
             completion = presentationState.completion,
             momentNotice = presentationState.momentNotice,
         )
@@ -394,6 +400,9 @@ class WalkViewModel(
             is WalkAction.AddMoment -> walkController.recordMoment(action.type)
             is WalkAction.SelectMoment -> selectMoment(action.id)
             is WalkAction.SelectTerritorySite -> {
+                // Only an explicitly tapped, currently visible nearby marker enters the board.
+                state.value.territoryGame.takeIf { action.id in it.visibleRangeSiteIds }
+                    ?.sites?.firstOrNull { it.site.id == action.id }?.site?.let(territory::selectNearby)
                 territory.select(action.id)
                 presentation.update { it.copy(map = it.map.copy(
                     frameSelectedTerritory = territory.state.value.selectedSiteId == action.id,
