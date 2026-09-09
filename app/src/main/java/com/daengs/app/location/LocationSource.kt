@@ -14,6 +14,9 @@ data class LocationSample(
     val accuracyMeters: Float? = null,
     val speedMetersPerSecond: Float? = null,
     val isMock: Boolean = false,
+    /** True-north travel course, not the direction the phone is facing. */
+    val bearingDegrees: Float? = null,
+    val bearingAccuracyDegrees: Float? = null,
 )
 
 data class LocationUpdateConfig(
