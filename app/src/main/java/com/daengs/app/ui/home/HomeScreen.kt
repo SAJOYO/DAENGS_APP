@@ -577,10 +577,9 @@ fun HomeScreen(
             WalkSummaryCard(
                 Modifier.padding(horizontal = 14.dp),
                 todayWalks,
-                words.daily,
                 onOpenWalkHistory,
+                territoryHeader = gameContent,
             )
-            gameContent?.invoke()
             Spacer(Modifier.height(10.dp))
         }
 
@@ -981,7 +980,9 @@ private fun RoomSection(
 @Composable
 private fun HomeScreenPreview() {
     DaengsTheme {
-        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE,
+            todayWalks = WalkDayTotals(2, 1_920_000, 2300.0), onOpenWalkHistory = {},
+            gameContent = { HomeGameCard("보리의 이번 시즌", "3곳 · 320점 · 순위 —", {}) })
     }
 }
 
@@ -989,7 +990,9 @@ private fun HomeScreenPreview() {
 @Composable
 private fun HomeScreenSmallPreview() {
     DaengsTheme {
-        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE,
+            todayWalks = WalkDayTotals.EMPTY, onOpenWalkHistory = {},
+            gameContent = { HomeGameCard("점령 현황", "진행 중인 시즌이 없어요", {}) })
     }
 }
 

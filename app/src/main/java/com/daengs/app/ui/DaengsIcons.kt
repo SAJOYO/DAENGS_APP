@@ -34,6 +34,7 @@ import kotlin.math.sin
 enum class DaengsIcon {
     Paw, Home, Book, Bell, Person, Chat, Camera, Clock, Pin, Paws, Send, ChevronRight, CaretDown, Sun, Heart,
     Mic, Gallery, Sound, SoundOff,
+    TerritoryPole, Speedometer,
 
     // 날씨. 해만 있으면 비 오는 날에도 해가 뜬다.
     Moon, Cloud, CloudRain, CloudSnow,
@@ -65,6 +66,8 @@ fun DaengsIconView(
         scale(s, s, pivot = Offset.Zero) {
             when (icon) {
                 DaengsIcon.Paw -> drawPawStamp(Offset(12f, 14f), 6.4f, tint)
+                DaengsIcon.TerritoryPole -> iconTerritoryPole(tint)
+                DaengsIcon.Speedometer -> iconSpeedometer(tint)
                 DaengsIcon.Rotate -> {
                     fun line(x: Float, y: Float, a: Float, b: Float) =
                         drawLine(tint, Offset(x, y), Offset(a, b), 1.7f)
