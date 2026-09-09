@@ -19,6 +19,7 @@ import com.daengs.app.ui.theme.DaengsTheme
 
 /** AI 확정 결과는 서버가 실행한 응답 그대로 그린다. 일반 검색을 다시 호출하면 조건을 잃는다. */
 internal fun PlacesUiState.visibleDiscovery(): PlaceDiscoveryState {
+    if (conversationAvailable) return discovery
     if (!facility.enabled) return discovery
     val lens = facility.confirmedLens
     val response = lens?.search
@@ -46,9 +47,9 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
     val hits = if (facility.enabled || discovery.requestedKinds.size > 1) response?.overviewHits(discovery.preferParking).orEmpty()
         else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
-        facility.enabled && facility.loading -> LabPhase.LOADING
-        facility.enabled && facility.error != null -> LabPhase.ERROR
-        facility.enabled && facility.confirmedLens == null -> LabPhase.EMPTY
+        !conversationAvailable && facility.enabled && facility.loading -> LabPhase.LOADING
+        !conversationAvailable && facility.enabled && facility.error != null -> LabPhase.ERROR
+        !conversationAvailable && facility.enabled && facility.confirmedLens == null -> LabPhase.EMPTY
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
         locationFailed -> LabPhase.ERROR
         discovery.loading || waitingForSearchLocation || profileMismatch -> LabPhase.LOADING
@@ -121,10 +122,15 @@ fun ConnectedPlaceSearchScreen(
             }
         },
         categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
-        resultLabel = if (ai) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
+        resultLabel = if (ai && !state.conversationAvailable) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
         aiConnected = true,
-        conditionContent = if (state.facility.enabled) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
-        emptyMessage = if (ai && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
+        answerContent = if (state.conversationAvailable) ({
+            ConversationPanel(state.conversation, state.facility.error.takeIf { ai }, showAnswer = ai,
+                onRetryAnswer = { onAction(PlacesAction.RetryAi) },
+                onRetrySearch = { onAction(if (ai) PlacesAction.Discover(draft) else PlacesAction.RetrySearch) })
+        }) else null,
+        conditionContent = if (state.facility.enabled && !state.conversationAvailable) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
+        emptyMessage = if (ai && !state.conversationAvailable && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
         onParking = { value ->
             if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
@@ -137,10 +143,11 @@ fun ConnectedPlaceSearchScreen(
             onAction(PlacesAction.Select(key))
         },
         onRetry = {
-            if (ai) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
+            if (ai && state.conversationAvailable) onAction(PlacesAction.Discover(draft))
+            else if (ai) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
             else if (permission) requestPermission() else onAction(PlacesAction.RetrySearch)
         },
-        showRetry = !ai || state.facility.canRetry,
+        showRetry = !ai || (state.conversationAvailable && state.conversation.error != null) || state.facility.canRetry,
         cardActions = { hit ->
             if (ai) state.facility.confirmedLens?.presentations?.firstOrNull { it.key == hit.place.key }?.let { FacilityPresentationDetails(it) }
             hit.place.facts.phone?.let { phone -> TextButton(onClick = { onCall(phone) }) { Text("전화로 확인") } }
