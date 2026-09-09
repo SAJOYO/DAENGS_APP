@@ -63,13 +63,20 @@
 
 ## 검증
 
-아래는 SDK가 있는 환경에서 실행할 검증 명령이다. #221 작업 환경에는 Android SDK와
-Gradle 캐시가 없어 새 회귀 테스트·Compose 렌더·APK 빌드를 실행하지 못했다.
-기존 #161 검증 설명을 #221의 통과 결과로 읽지 않는다.
+2026-09-09에 #221 브랜치에 최신 dev `180e026`을 병합한 `b744554`에서 아래 검증을
+실행했다. Windows, Android SDK 37.0, JBR 25.0.2, Gradle 9.5.0 환경이다.
 
 ```powershell
-./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.map.features.territory.*' --tests 'com.daengs.app.territory.*' --tests '*TerritoryBoardPresentationTest' --tests '*WalkViewModelTest' --tests '*WalkTerritoryUiTest' --tests '*TerritoryFeedbackUiTest' :app:assembleDebug :app:assembleRelease
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.territory.TerritoryOccupancyApiTest' --tests 'com.daengs.app.map.features.territory.ServerTerritoryGameProviderTest' --tests 'com.daengs.app.map.features.territory.TerritoryFeedbackTrackerTest' --tests 'com.daengs.app.ui.walk.TerritoryBoardPresentationTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.ui.walk.WalkTerritoryUiTest' --tests 'com.daengs.app.ui.walk.TerritoryFeedbackUiTest' :app:assembleDebug :app:assembleRelease --console=plain
 ```
+
+- 대상 테스트 **61개 통과, 실패·오류·skip 0개**. 저장소 전체 테스트는 실행하지 않았다.
+- debug APK와 **미서명 release APK** 빌드 성공. release의 `lintVitalRelease`도 통과했다.
+- 생성된 두 BuildConfig에서 `TERRITORY_SERVER_READ=true`, `TERRITORY_SERVER_ACTIONS=false`를 확인했다.
+- Compose 렌더의 점유 조회 성공·실패 카드와 320dp 화면을 육안 확인했다.
+  테스트 시각 `1000ms`가 화면에 1970년으로 표시되는 것은 fixture 값이며 실제 서버 시각이 아니다.
+- 서버 주소·지도 키·릴리스 서명을 넣지 않은 검증용 빌드다. 빌드 성공은 실제 서버 연결이나 배포 가능성을 뜻하지 않는다.
+- `adb devices`에 연결 기기가 없어 설치·Naver 지도·실제 두 계정 조회는 미검증이다.
 
 출시 전 실제 API와 기기에서 다음을 확인한다.
 
