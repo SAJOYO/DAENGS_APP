@@ -558,7 +558,7 @@ class WalkViewModel(
                 }
                 showNotice(
                     when (event.outcome) {
-                        WalkMomentOutcome.CREATED -> "${event.type.label}을 이 장소에 남겼어요."
+                        WalkMomentOutcome.CREATED -> "${event.type.label} 행동을 남겼어요."
                         WalkMomentOutcome.MERGED -> "${event.type.label}을 이 장소에 추가했어요."
                         WalkMomentOutcome.ALREADY_EXISTS ->
                             "이미 이 장소에 ${event.type.label}이 남아 있어요."

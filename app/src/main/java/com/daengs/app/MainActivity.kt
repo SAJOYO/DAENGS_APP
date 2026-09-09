@@ -406,6 +406,7 @@ class MainActivity : ComponentActivity() {
                     // 있어야 하는 기능을 누를 때 청한다([PetNeed]).
                     // 로그인 직후. 끝났지만 전달되지 않은 산책을 durable 작업으로 넘기고,
                     // 새 폰이면 서버의 지난 산책도 되찾는다.
+                    app.walkRuntime.writer.ordered { app.actionPins.recover() }.await()
                     walkRuntime.delivery.enqueuePending()
                     walkRuntime.sync.syncOnce(token)
 

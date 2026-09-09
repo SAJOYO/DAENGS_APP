@@ -64,6 +64,8 @@ class DaengsApp : Application() {
     lateinit var cardStore: CardStore
         private set
 
+    lateinit var actionPins: com.daengs.app.walk.pin.ActionPinStore
+    lateinit var actionPinScheduler: com.daengs.app.walk.pin.ActionPinScheduler
     lateinit var walkEntries: com.daengs.app.walk.store.WalkEntryStore
         private set
     lateinit var walkPhotos: com.daengs.app.walk.store.WalkPhotoStore
@@ -119,6 +121,8 @@ class DaengsApp : Application() {
         applicationScope.launch { walkPhotos.prune() }
         walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
         walkEntryDao = dao
+        actionPins = com.daengs.app.walk.pin.ActionPinStore(dao, { tokenStore.load()?.appUserId.orEmpty() })
+        actionPinScheduler = com.daengs.app.walk.pin.ActionPinScheduler(this, applicationScope)
         walkStoryboardSync = com.daengs.app.walk.sync.WalkStoryboardSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         val writer = WalkFixWriter(
             log = log,
@@ -133,12 +137,15 @@ class DaengsApp : Application() {
             writer = writer,
             log = log,
             history = WalkHistory(log),
-            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao),
+            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
+                v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
-        applicationScope.launch { delivery.enqueuePending() }
+        // Queue recovery before the service can enqueue a new session/action.
+        val recoveredPins = writer.ordered { actionPins.recover() }
+        applicationScope.launch { recoveredPins.await(); delivery.enqueuePending() }
         if (BuildConfig.DEBUG && BuildConfig.TERRITORY_SERVER_ACTIONS) {
             val actions = TerritoryActionSync(TerritoryActionDatabase.open(this).actions(),
                 TerritoryActionApi { BuildConfig.API_BASE_URL }, sessionProvider::freshSession,

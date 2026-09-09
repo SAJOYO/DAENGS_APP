@@ -21,8 +21,16 @@ data class WalkEntryRow(
     val mutationId: String,
     val dirty: Boolean,
     val syncError: String? = null,
+    val pinPayload: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "0") val pinRevision: Int = 0,
+    @androidx.room.ColumnInfo(defaultValue = "0") val isV2: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "0") val pinDirty: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "0") val pinChainIndex: Int = 0,
+    /** Frozen request: retries must not reuse an ID with a changed body. */
+    val pendingRequest: String? = null,
 ) {
     fun entry(): WalkEntry? = payload?.let { WalkEntry.parse(id, sessionId, JSONObject(it)).copy(
+        pin = pinPayload?.let { com.daengs.app.walk.pin.ActionPin(it) }, syncPending = dirty || pinDirty || pendingRequest != null,
         syncError = syncError, baseVersion = com.daengs.app.walk.WalkEntryVersion(revision, mutationId)) }
 }
 
@@ -37,6 +45,8 @@ class WalkEntryStore(private val dao: WalkDao, private val owner: (() -> String)
             "현재 계정의 산책 기록이 아닙니다."
         }
         val content = entry.validate().toJson().toString()
+        require(entry.type == com.daengs.app.walk.WalkMomentType.NOTE || entry.point != null ||
+            dao.entry(entry.id)?.isV2 == true) { "새 행동은 행동 핀 저장 경로를 사용해야 합니다." }
         dao.saveEntryChecked(entry.id, entry.sessionId, content, UUID.randomUUID().toString(),
             entry.baseVersion?.revision, entry.baseVersion?.mutationId, owner?.invoke())
     }
@@ -44,7 +54,7 @@ class WalkEntryStore(private val dao: WalkDao, private val owner: (() -> String)
     suspend fun delete(id: String): String? {
         val row = dao.entry(id) ?: return null
         require(owner == null || dao.session(row.sessionId)?.ownerId == owner.invoke())
-        dao.editEntry(id, null, UUID.randomUUID().toString())
+        dao.deletePinAwareEntry(id, UUID.randomUUID().toString())
         return row.sessionId
     }
     /** 편집창과 Snackbar 모두 같은 삭제/전달 경계를 사용한다. */

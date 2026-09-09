@@ -11,7 +11,7 @@ import androidx.sqlite.execSQL
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
     entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -198,6 +198,18 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /** Keep existing content/revisions/outbox untouched; old records remain v1. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinPayload TEXT")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinRevision INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN isV2 INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinDirty INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinChainIndex INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pendingRequest TEXT")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -211,6 +223,7 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
                 )
                 .build()
     }

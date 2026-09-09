@@ -59,9 +59,10 @@ fun storyboardScenes(walk: WalkSummary, entries: List<WalkEntry>, draft: Storybo
                 append("직접 남긴 기록 · ${e.type.label}")
                 e.note?.let { append("\n메모: $it") }
                 e.petId?.let { append("\n반려견 ID: $it") }
-                append(if (e.point == null) "\n위치 없는 메모" else
-                    "\n위치: ${e.point.latitude}, ${e.point.longitude}")
-            }, storyboardHash(e.toJson().toString()))
+                append(e.pin?.let { "\n${it.label}" } ?: if (e.point == null)
+                    if (e.type == com.daengs.app.walk.WalkMomentType.NOTE) "\n위치 없는 메모" else "\n위치 없는 행동"
+                    else "\n위치: ${e.point.latitude}, ${e.point.longitude}")
+            }, storyboardHash(e.toJson().toString() + (e.pin?.payload ?: "")))
     }
     // A pinless walk still has an honest session summary. No fabricated environment or motion scenes.
     if (walk.endedAtMillis != null) sources += StoryboardScene("end", walk.endedAtMillis,

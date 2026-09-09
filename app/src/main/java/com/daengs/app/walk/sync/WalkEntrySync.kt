@@ -7,8 +7,9 @@ import org.json.JSONObject
 /** 위치 finalize와 별도로 현재 기록을 전송/복원한다. 실패는 Worker에 전달한다. */
 class WalkEntrySync(
     private val dao: WalkDao,
+    private val v2: WalkEntryV2Sync? = null,
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
-        WalkApi.call(token, path, method, body, ::JSONObject).getOrThrow()
+        WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
     },
 ) {
     private val mutex = kotlinx.coroutines.sync.Mutex()
@@ -18,6 +19,7 @@ class WalkEntrySync(
     }
 
     private suspend fun syncLocked(token: String, sessionId: String, walkId: String) {
+        if (v2?.sync(token, sessionId, walkId) == true) return
         for (row in dao.entries(sessionId).filter { it.dirty && it.syncError == null }) {
             val response = try { if (row.payload == null) {
                 request(token, "/$walkId/entries/${row.id}?expected_revision=${row.revision}&mutation_id=${row.mutationId}",
