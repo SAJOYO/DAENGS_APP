@@ -16,6 +16,30 @@ import com.daengs.app.pet.Pet
 enum class StartupTarget { Wait, Home }
 
 /**
+ * 저장된 세션을 되살려 봤나.
+ *
+ * **[Failed] 가 있는 것이 요점이다.** `SessionProvider.freshSession()` 이 `null` 을
+ * 주는 갈래는 넷인데 뜻이 다르다. 토큰이 없거나 refresh 가 만료된 경우는 저장된
+ * 것을 지우므로 랜딩으로 걸러진다. 그런데 **주소가 설정되지 않았거나 refresh 요청
+ * 자체가 실패한 경우**(신호 없음·서버 죽음)는 **토큰을 남긴 채** `null` 이라, 화면
+ * 쪽에서 보면 "성공도 실패도 아닌" 상태가 된다.
+ *
+ * 그 상태를 이름 없이 두었더니 로딩에서 못 나왔다 — 세션이 안 살아나면 강아지
+ * 목록을 부르는 자리가 조용히 끝나고, 목록이 안 오니 [startupTarget] 은 계속
+ * [StartupTarget.Wait] 만 돌려준다. 2026-09-09 실기기에서 그대로 밟았다.
+ */
+enum class SessionRestore {
+    /** 아직 해보는 중. */
+    Pending,
+
+    /** 되살렸거나, 애초에 저장된 세션이 없어 되살릴 것이 없었다. */
+    Ok,
+
+    /** 못 되살렸는데 토큰은 남아 있다. **로그아웃된 것이 아니라 지금 못 닿는 것이다.** */
+    Failed,
+}
+
+/**
  * 저장된 세션으로 켠 앱이 **로딩을 떠나도 되는가.**
  *
  * 예전에는 저장된 토큰이 있으면 곧장 홈으로 갔다. 그런데 강아지 목록은 그때 아직
@@ -28,8 +52,20 @@ enum class StartupTarget { Wait, Home }
  * @param petsError 목록을 못 받은 이유. **이 줄이 없으면 로딩에 갇힌다** — 서버가
  *   죽어 있으면 [pets] 는 영영 `null` 이다. 그때는 홈으로 보낸다. 방이 비어 보이는
  *   것이 정지 화면보다 낫다
+ * @param session 저장된 세션을 되살린 결과. [SessionRestore.Failed] 면 [pets] 는
+ *   영영 안 온다 — 목록을 부르는 자리가 토큰을 못 받아 조용히 끝나기 때문이다.
+ *   **같은 이유로 홈이다.** 이때 사용자는 로그아웃된 것이 아니라 지금 못 닿는
+ *   것이므로, 랜딩으로 보내면 사실이 아닌 말을 하게 된다
  */
-fun startupTarget(pets: List<Pet>?, petsError: String?): StartupTarget = when {
+fun startupTarget(
+    pets: List<Pet>?,
+    petsError: String?,
+    session: SessionRestore = SessionRestore.Ok,
+): StartupTarget = when {
+    // **못 갱신했으면 더 기다릴 것이 없다.** 세션을 못 살렸으면 강아지 목록도 영영
+    // 안 온다 — 그 요청이 토큰을 먼저 받아 오기 때문이다. 여기서 기다리면 로딩이
+    // 끝나지 않는다.
+    session == SessionRestore.Failed -> StartupTarget.Home
     pets == null -> if (petsError != null) StartupTarget.Home else StartupTarget.Wait
     // 빈 목록도 홈이다. **강아지 등록은 더 이상 관문이 아니다** — 방까지 들어와서
     // 보고, 강아지가 필요한 기능을 누를 때 그때 청한다.
