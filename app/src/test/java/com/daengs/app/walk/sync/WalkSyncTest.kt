@@ -285,9 +285,51 @@ class WalkSyncTest {
         fixes = listOf(fix(0), fix(1)),
     )
 
+
+    /**
+     * 액세스 토큰은 **JWE** 다 — 앱이 열 수 없다.
+     *
+     * 예전에는 세 조각 JWT 로 보고 `parts[1]` 을 payload 로 파싱해 `sub` 를 계정과
+     * 맞춰 봤다. JWE 는 다섯 조각이고 그 자리는 `alg="dir"` 에서 빈 문자열이라 늘
+     * 실패했고, 관문이 항상 닫혀 **올리기도 되찾기도 통째로 멈춰 있었다.** 로그도
+     * 안 남아 "기록이 없다" 와 구분되지 않았다.
+     *
+     * 이 판이 없으면 같은 일이 또 조용히 지나간다 — 다른 판들은 계정이 `null`(경계
+     * 없음)이라 관문을 그냥 지나가기 때문이다.
+     */
+    @Test fun `열 수 없는 JWE 토큰이어도 계정이 맞으면 동기화한다`() = runBlocking {
+        // 헤더.빈칸.iv.본문.태그 — 실기기에서 받은 것과 같은 모양이다.
+        val jwe = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..DcQCyIhK2QNc.Zm9vYmFy.Xy1abc"
+        log.owner = "de5f95e5-f2b9-4b13-8565-65626454cfa4"
+        log.sessions += session("done", ended = true)
+
+        sync.syncOnce(jwe)
+
+        assertEquals(1, api.uploadCalls)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single().syncState)
+    }
+
+    /** 로그인 전(빈 계정)에는 아무 것도 올리지 않는다. 아직 누구의 기록도 아니다. */
+    @Test fun `계정이 비어 있으면 올리지 않는다`() = runBlocking {
+        log.owner = ""
+        log.sessions += session("done", ended = true)
+
+        sync.syncOnce("token")
+
+        assertEquals(0, api.uploadCalls)
+    }
+
     private class FakeLog : WalkFixLog {
         val sessions = mutableListOf<RecordedSession>()
         val fixes = mutableMapOf<String, List<RecordedFix>>()
+
+        /**
+         * 로그인한 계정. **기본은 `null` — 계정 경계 없음**이라 대부분의 테스트는
+         * 이걸 안 본다. 그래서 이 값이 실제로 채워진 판을 하나 두지 않으면,
+         * 계정 관문이 통째로 막혀 있어도 테스트가 전부 초록으로 남는다.
+         */
+        var owner: String? = null
+        override val ownerId: String? get() = owner
 
         override suspend fun openSession(session: RecordedSession) {
             sessions += session
