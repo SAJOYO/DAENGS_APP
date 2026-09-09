@@ -103,6 +103,35 @@ class WalkEntryV2SyncTest {
         assertEquals(row, dao.entry(id))
     }
 
+    @Test fun `pin 없는 서버 v2 메모는 426 이후 v1을 반복하지 않고 정정을 보낸다`() = runBlocking {
+        val note = com.daengs.app.walk.WalkEntry(id = id, sessionId = "s", type = WalkMomentType.NOTE,
+            recordedAtMillis = now, note = "local note")
+        val row = WalkEntryRow(id, "s", note.toJson().toString(), 1, UUID.randomUUID().toString(), true)
+        dao.updatePinRow(row)
+        var remote = JSONObject().put("id", id).put("revision", 1).put("pin_revision", 0)
+            .put("mutation_id", UUID.randomUUID().toString()).put("content", note.toJson()).put("pin", JSONObject.NULL)
+        var legacyWrites = 0
+        var v2Writes = 0
+        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
+            if (path == "/entry-capabilities") caps()
+            else if (method == "GET") JSONObject().put("entries", JSONArray().put(remote))
+            else if (!v2) { legacyWrites++; throw WalkHttpException(426, "walk_entry_upgrade_required") }
+            else {
+                v2Writes++
+                assertFalse(body!!.has("pin"))
+                ack(body, 2, 0).also { remote = it }
+            }
+        }
+        sync.sync("token", "s", "walk")
+        assertTrue(dao.entry(id)!!.isV2)
+        WalkEntryStore(dao).save(dao.entry(id)!!.entry()!!.copy(note = "confirmed note"))
+        sync.sync("token", "s", "walk")
+        assertEquals(1, legacyWrites)
+        assertEquals(1, v2Writes)
+        assertFalse(dao.entry(id)!!.dirty)
+        assertEquals("confirmed note", remote.getJSONObject("content").getString("note"))
+    }
+
     @Test fun `쓰기 비활성화는 로컬 기록을 유지하고 v1로 우회하지 않는다`() = runBlocking {
         val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, _ ->
             assertEquals("GET", method)

@@ -82,7 +82,7 @@ class WalkEntryV2Sync(private val dao: WalkDao, private val owner: () -> String,
                         val latest = call("/$walkId/entries", "GET", null).getJSONArray("entries")
                         val remote = (0 until latest.length()).map { latest.getJSONObject(it) }
                             .firstOrNull { it.getString("id") == row.id } ?: throw e
-                        dao.rebaseLegacyEntry(row.id, remote.toString(), account)
+                        dao.rebaseLegacyEntry(row.id, remote.toString(), account, requiresV2 = e.statusCode == 426)
                         return@repeat
                     }
                     dao.acknowledgeEntry(row.id, response.getInt("revision"), row.mutationId)

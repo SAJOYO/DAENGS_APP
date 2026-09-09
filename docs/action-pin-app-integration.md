@@ -25,6 +25,9 @@ latestMomentFix, 점령·사진 인증, 경로 좌표에는 추정 결과를 넣
 동일한 Room 비교 후 갱신을 사용한다. OS가 작업을 늦게 실행해도 원래 관측 기한까지만 계산한다.
 일시정지·종료·위치 수집 중단은 실제 중단 시각까지의 관측으로 종료한다.
 앱 시작과 로그인 복구에서는 현재 계정의 미확정 로컬 핀을 원본 로그로 한 번 종료한다.
+단, 서비스가 소유한 활성 산책은 화면 재생성·인증 갱신으로 복구가 호출되어도 원래 8초
+관측 기한을 유지한다. 기한이 지났으면 deadline으로 종료하고, 서비스가 소유하지 않는
+이전 산책만 recovered로 조기 종료한다.
 다른 기기에서 받은 provisional은 로컬 생성 chain 정보가 없으므로 임의 재계산하지 않는다.
 
 삭제는 content·pin·동결 요청 본문을 함께 지운다. 삭제 뒤 계산/ACK/GET이 도착해도 복원하지 않는다.
@@ -49,7 +52,12 @@ capabilities에서 v2 읽기와 신규 쓰기/정책 지원을 확인한다. 옛
 전송 직전에 mutation ID와 전체 요청을 Room에 동결한다. ACK 유실 시 그대로 재전송한다.
 그사이 내용 정정이나 위치 확정이 발생하면 ACK는 서버 revision만 전진시키며 후속 요청은
 새 mutation ID로 전송한다. 409는 서버 최신 상태와 대조하고 content 충돌은 사용자 확인을 받는다.
+핀 확정 요청 중 발생한 로컬 내용 편집도 동결 당시 내용과 원격 내용을 비교한다. 원격 내용이
+달라졌으면 정정을 보류하고, JSON 순서나 같은 시각의 표기만 달라졌으면 충돌로 취급하지 않는다.
 원격 terminal 핀과 삭제 표식은 최종 상태로 수용한다. 422/426은 원본을 유지하며 기록에 오류를 표시한다.
+
+pin=null인 메모는 그것만으로 v2로 분류하지 않는다. 기존 메모의 분석 stamp와 v1 전송을 유지하고,
+이미 확인된 v2 기록 또는 v1 요청에 대한 서버의 명시적 426 응답을 통해서만 전송 버전을 바꾼다.
 
 일시정지 후 재개 좌표가 이전 행동의 ‘위치 없음’을 거부하지 않도록 terminal pin에 선택 필드
 observation_cutoff_at을 포함한다. DEV #357의 pin_observation_cutoff_supported capability가
@@ -63,6 +71,11 @@ observation_cutoff_at을 포함한다. DEV #357의 pin_observation_cutoff_suppor
 관측 cutoff 보완 후 핀 저장·동기화 19개와 debug 빌드를 다시 검증했다. 마지막 표시/원본 분리에서는
 관련 65개와 debug 빌드를 통과했다. 기존 v1 지난 산책의 장소 묶음도 보존한다. 숫자는 중복 실행을 포함한다.
 서버 cutoff/요청 해시 호환성을 포함한 API 테스트 31개와 변경 Python ruff 검사도 통과했다.
+
+리뷰 보완에서 회귀 사례 8개를 추가했다. ActionPinReviewTest·ActionPinStoreTest·WalkEntryV2SyncTest·
+WalkDaoTest·WalkEntryStoreTest·WalkStoryboardSyncTest를 명시적으로 선택해 총 68개 통과(실패/skip 0),
+debug 빌드 통과를 확인했다. 활성 산책 복구와 기한 만료, 이전 산책 복구, 기존 메모 stamp,
+426 이후 메모 정정, 핀 전송 중 내용 충돌 및 동일 시각 표기의 호환성을 검증한다.
 
 실기기의 FGS/절전·강제 종료·지도 표시와 실제 인증 서버 연동은 아직 검증하지 않았다.
 설치·서버 배포·플래그 활성화는 이번 작업에서 실행하지 않았다. DEV SQL은 사용자 지정 DB에

@@ -121,7 +121,8 @@ class DaengsApp : Application() {
         applicationScope.launch { walkPhotos.prune() }
         walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
         walkEntryDao = dao
-        actionPins = com.daengs.app.walk.pin.ActionPinStore(dao, { tokenStore.load()?.appUserId.orEmpty() })
+        actionPins = com.daengs.app.walk.pin.ActionPinStore(dao, { tokenStore.load()?.appUserId.orEmpty() },
+            activeSessionId = { store.state.value.activeSessionId })
         actionPinScheduler = com.daengs.app.walk.pin.ActionPinScheduler(this, applicationScope)
         walkStoryboardSync = com.daengs.app.walk.sync.WalkStoryboardSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         val writer = WalkFixWriter(

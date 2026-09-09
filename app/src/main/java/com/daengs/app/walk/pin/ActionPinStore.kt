@@ -9,7 +9,8 @@ import java.util.UUID
 
 /** Raw fixes have already passed the ordered writer before this store is called. */
 class ActionPinStore(private val dao: WalkDao, private val owner: () -> String,
-    private val now: () -> Long = System::currentTimeMillis) {
+    private val now: () -> Long = System::currentTimeMillis,
+    private val activeSessionId: () -> String? = { null }) {
     private val estimator = ActionPinEstimator()
 
     suspend fun create(id: String, request: ActionPinRequest, type: WalkMomentType,
@@ -54,7 +55,11 @@ class ActionPinStore(private val dao: WalkDao, private val owner: () -> String,
     }
 
     suspend fun recover() {
-        dao.pendingPinEntries().forEach { finish(it.id, ActionPinReason.RECOVERED) }
+        dao.pendingPinEntries().forEach {
+            // Activity/auth refresh can recover while the service still collects observations.
+            // Only orphaned sessions close early; live ones retain their original deadline.
+            finish(it.id, if (it.sessionId == activeSessionId()) ActionPinReason.DEADLINE else ActionPinReason.RECOVERED)
+        }
     }
 
     private suspend fun observations(session: String, account: String) = dao.fixes(session).map {

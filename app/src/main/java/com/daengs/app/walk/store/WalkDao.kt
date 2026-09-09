@@ -15,13 +15,14 @@ interface WalkDao {
     }
 
     @androidx.room.Transaction
-    suspend fun rebaseLegacyEntry(id: String, response: String, ownerId: String) {
+    suspend fun rebaseLegacyEntry(id: String, response: String, ownerId: String, requiresV2: Boolean = false) {
         val row = entry(id) ?: return
         if (session(row.sessionId)?.ownerId != ownerId) return
         val remote = org.json.JSONObject(response)
         if (remote.optBoolean("deleted")) { acceptDeletedEntry(id, remote.getInt("revision")); return }
         val pin = remote.optJSONObject("pin")
-        val upgraded = pin != null && pin.optString("policy_version") != "legacy-v1"
+        // A null note pin cannot identify its storage version; a v1 426 can.
+        val upgraded = row.isV2 || requiresV2 || (pin != null && pin.optString("policy_version") != "legacy-v1")
         updatePinRow(row.copy(revision = maxOf(row.revision, remote.getInt("revision")),
             mutationId = java.util.UUID.randomUUID().toString(), isV2 = upgraded,
             pinPayload = if (row.payload != null) pin?.toString() else null,
@@ -70,12 +71,18 @@ interface WalkDao {
         val pending = com.daengs.app.walk.sync.PinPending(org.json.JSONObject(sent))
         val remotePin = remote.optJSONObject("pin")
         val terminal = remotePin?.optString("state") != "provisional"
+        // A local edit may have arrived after this pin request was frozen. Compare semantic
+        // content, since server normalization changes JSON field order and timestamp spelling.
+        fun content(payload: String) = com.daengs.app.walk.WalkEntry.parse(id, row.sessionId, org.json.JSONObject(payload))
+        val contentConflict = pending.kind in listOf("create", "content") ||
+            (row.dirty && pending.kind == "pin" &&
+                pending.snapshot?.let(::content) != content(remote.getJSONObject("content").toString()))
         updatePinRow(row.copy(revision = maxOf(row.revision, remote.getInt("revision")),
             pendingRequest = null, mutationId = java.util.UUID.randomUUID().toString(),
             pinRevision = remote.getInt("pin_revision"),
             pinPayload = if (row.payload == null) null else if (terminal) remotePin?.toString() else row.pinPayload,
             pinDirty = row.payload != null && !terminal && row.pinDirty,
-            syncError = if (row.payload != null && pending.kind in listOf("create", "content"))
+            syncError = if (row.payload != null && contentConflict)
                 "다른 기기에서 바뀐 기록이에요. 내용을 확인하고 저장해 주세요." else null))
     }
 
@@ -100,7 +107,7 @@ interface WalkDao {
             remote.getString("mutation_id"), false, pinPayload = pin?.toString(),
             pinRevision = remote.getInt("pin_revision"),
             pinChainIndex = -1,
-            isV2 = row?.isV2 == true || pin?.optString("policy_version") != "legacy-v1")
+            isV2 = row?.isV2 == true || (pin != null && pin.optString("policy_version") != "legacy-v1"))
         if (row == null) insertEntry(fresh) else updatePinRow(fresh.copy(
             payload = if (row.dirty) row.payload else fresh.payload, dirty = row.dirty,
             syncError = if (row.dirty && revision > row.revision)
