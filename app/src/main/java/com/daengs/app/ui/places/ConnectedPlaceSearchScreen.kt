@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.map.features.places.*
 import com.daengs.app.map.shell.MapHost
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.*
 import com.daengs.app.ui.places.lab.*
@@ -82,6 +83,10 @@ fun ConnectedPlaceSearchScreen(
     onOpenHandoff: (String) -> Unit,
     showMap: Boolean = true,
     onRefreshProfiles: () -> Unit = {},
+    /** 지도의 "내 위치" 에 쓸 견종 그림. 없으면 기본 파란 점이 나온다. */
+    avatarBreed: DogBreed? = null,
+    /** 올린 프로필 사진. 있으면 [avatarBreed] 보다 이쪽이 앞선다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
 ) {
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     val ai = state.facility.enabled
@@ -151,6 +156,9 @@ fun ConnectedPlaceSearchScreen(
             if (showMap) MapHost(
                 scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
                 searchOrigin = display.origin, followDevice = follow,
+                // **내 위치는 강아지다.** 안 넘기면 기본 파란 점으로 떨어진다 —
+                // 옛 화면은 넘기고 있었는데 이 화면으로 바뀌면서 빠졌다.
+                avatarRes = avatarBreed?.portraitRes, avatarPhoto = avatarPhoto,
                 onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
                 onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
                 modifier = Modifier.fillMaxSize(),
