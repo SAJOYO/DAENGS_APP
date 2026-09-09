@@ -46,6 +46,108 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test fun `unchanged viewport occupancy survives nearby GPS quality changes`() = runTest {
+        val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val good = WalkTrackingState(ownerId = "user", activeSessionId = "walk", activeDogIds = listOf("dog-1"),
+            trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix)
+        val controller = FakeWalkController().apply { publish(good) }
+        var completedReads = 0
+        var cancelledReads = 0
+        val game = sharedGame { _, ids ->
+            try { kotlinx.coroutines.delay(5_000) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { cancelledReads++; throw cancelled }
+            completedReads++
+            ids.map { com.daengs.app.territory.SharedTerritorySite(it, 1, null) }
+        }
+        val vm = viewModel(controller, CountingLocationSource(), TerritorySiteRepository {
+            val site = if (it.radiusMeters == 300) TerritorySite("near", fix.point, 0.0)
+                else TerritorySite("far", GeoPoint(37.55, 127.0), 0.0)
+            TerritorySitePage(1, false, listOf(site))
+        }, game)
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        vm.onAction(WalkAction.CameraMoved)
+        vm.onAction(WalkAction.SelectTerritorySite("far")); runCurrent()
+        repeat(12) { index ->
+            advanceTimeBy(1_000)
+            controller.publish(good.copy(trail = good.trail.copy(skippedLowAccuracy = if (index % 2 == 0) 1 else 0)))
+            runCurrent()
+        }
+        assertEquals("far", vm.state.value.territoryGame.targetId)
+        assertEquals(true, vm.state.value.territoryGame.target!!.occupancyKnown)
+        assertEquals(0, cancelledReads)
+        assertEquals(2, completedReads)
+    }
+
+    @Test fun `slow occupancy read queues only the latest viewport and never overlaps requests`() = runTest {
+        val pending = mutableListOf<kotlinx.coroutines.CompletableDeferred<Unit>>()
+        val requested = mutableListOf<List<String>>()
+        val game = sharedGame { _, ids ->
+            requested += ids
+            kotlinx.coroutines.CompletableDeferred<Unit>().also(pending::add).await()
+            ids.map { com.daengs.app.territory.SharedTerritorySite(it, 1, null) }
+        }
+        var nextId = "A"
+        val vm = viewModel(FakeWalkController(), CountingLocationSource(), TerritorySiteRepository {
+            TerritorySitePage(1, false, listOf(TerritorySite(nextId, it.origin, 0.0)))
+        }, game)
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        assertEquals(listOf(listOf("A")), requested)
+        vm.onAction(WalkAction.CameraMoved)
+        for ((id, latitude) in listOf("B" to 37.52, "C" to 37.54)) {
+            nextId = id
+            vm.onAction(WalkAction.CameraSettled(GeoPoint(latitude, 127.0)))
+            advanceTimeBy(350); runCurrent()
+        }
+        vm.onAction(WalkAction.SelectTerritorySite("C")); runCurrent()
+        assertEquals("C", vm.state.value.territory.selectedSiteId)
+        assertEquals(1, requested.size)
+        pending[0].complete(Unit); runCurrent()
+        assertEquals(listOf(listOf("A"), listOf("C")), requested)
+        assertFalse(vm.state.value.territoryGame.target!!.occupancyKnown)
+        pending[1].complete(Unit); runCurrent()
+        assertEquals(listOf(listOf("A"), listOf("C")), requested)
+        assertEquals(true, vm.state.value.territoryGame.target!!.occupancyKnown)
+    }
+
+    @Test fun `visibility loss cancels occupancy and discards pending lists before restarting`() = runTest {
+        for (hide in listOf<(WalkViewModel) -> Unit>(
+            { it.updateSharedReadsForeground(false) },
+            { it.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK)) },
+            { it.deactivate() },
+        )) {
+            var requests = 0
+            var cancellations = 0
+            val game = sharedGame { _, _ ->
+                requests++
+                try { awaitCancellation() }
+                finally { cancellations++ }
+            }
+            val vm = viewModel(FakeWalkController(), CountingLocationSource(), TerritorySiteRepository {
+                TerritorySitePage(1, false, listOf(TerritorySite(it.origin.toString(), it.origin, 0.0)))
+            }, game)
+            vm.activate(true, true)
+            vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+            vm.onAction(WalkAction.CameraMoved)
+            vm.onAction(WalkAction.CameraSettled(GeoPoint(37.52, 127.0)))
+            advanceTimeBy(350); runCurrent()
+            hide(vm); runCurrent()
+            advanceTimeBy(30_000); runCurrent()
+            assertEquals(1, requests)
+            assertEquals(1, cancellations)
+            vm.updateSharedReadsForeground(true)
+            vm.activate(true, true)
+            vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+            assertEquals(2, requests)
+            vm.deactivate(); runCurrent()
+        }
+    }
+
+    private fun sharedGame(client: com.daengs.app.territory.TerritoryOccupancyClient) =
+        com.daengs.app.map.features.territory.ServerTerritoryGameProvider(client,
+            { com.daengs.app.auth.Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE) }, { "user" })
+
     @Test fun `nearby candidate cannot become an implicit mark or capture target`() = runTest {
         val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
         val controller = FakeWalkController().apply {

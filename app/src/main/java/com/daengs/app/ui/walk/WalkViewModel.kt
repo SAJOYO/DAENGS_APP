@@ -44,8 +44,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -180,19 +184,31 @@ class WalkViewModel(
             }
         }
         if (territoryGame?.refreshesFromServer == true) runtimeScope.launch {
-            combine(
-                combine(territory.state, nearbyTerritory.state) { board, nearby -> board.withNearby(nearby).sites }.distinctUntilChanged(),
-                presentation.map { it.map.purpose }.distinctUntilChanged(),
-                sharedReadsActive,
-                sharedReadsForeground,
-            ) { sites, purpose, visible, foreground -> sites to (visible && foreground && purpose == MapPurpose.TERRITORY) }
-                .collectLatest { (sites, visible) ->
-                    if (!visible || sites.isEmpty()) territoryGame.invalidate()
-                    else while (true) {
-                        territoryGame.refresh(sites)
-                        delay(15_000)
+            nearbyActive.distinctUntilChanged().collectLatest { visible ->
+                if (!visible) territoryGame.invalidate()
+                else {
+                    var lastReadIds: Set<String>? = null
+                    merge(
+                        combine(territory.state, nearbyTerritory.state) { board, nearby -> board.withNearby(nearby).sites }
+                            .distinctUntilChangedBy { sites -> sites.map { it.id }.toSet() }.map { false },
+                        flow {
+                            while (true) {
+                                delay(15_000)
+                                emit(true)
+                            }
+                        },
+                    ).conflate().collect { periodic ->
+                        // Finish the active read; retain only the latest pending list, never a backlog.
+                        // Visibility changes still cancel the read through the outer collectLatest.
+                        val sites = territory.state.value.withNearby(nearbyTerritory.state.value).sites
+                        val ids = sites.map { it.id }.toSet()
+                        if (periodic || ids != lastReadIds) {
+                            if (sites.isEmpty()) territoryGame.invalidate() else territoryGame.refresh(sites)
+                            lastReadIds = ids
+                        }
                     }
                 }
+            }
         }
         runtimeScope.launch {
             territoryPhotos.collect { presentation.update { p -> p.copy(claimRevision = p.claimRevision + 1) } }

@@ -16,6 +16,11 @@
 한 번만 포함하고 지도 목록의 좌표를 우선한다. 점유 조회는 기존 15초 갱신 루프 하나가 담당한다.
 지도 마커는 기존 지도 목록만 사용하므로 주변 데이터 도착이 화면 영역이나 선택을 바꾸지 않는다.
 
+주변 후보가 빠지거나 바뀌어도 진행 중인 점유 요청은 완료시킨다. 대기 중인 목록은 최신 것
+하나로 합쳐 다음에 조회하며, 같은 장소 ID들의 순서·거리 변화만으로는 요청을 추가하지 않는다.
+15초마다 갱신 신호를 보내고 처리 중이면 그 신호도 최신 목록에 합친다. 화면 이탈·레이어 숨김·
+백그라운드 전환은 진행 중 요청과 대기 목록을 취소한다.
+
 근접 대상은 `IN_RANGE` 우선, 실제 기기 거리, ID 순으로 결정한다. 신뢰할 수 없는 위치와
 현재 위치에서 300m를 넘는 후보는 제외한다. 범위 안 후보가 없으면 `APPROACHING`인 가장
 가까운 후보가 될 수 있다. 서버 응답의 `distance_m`를 실제 기기 거리로 사용하지 않는다.
@@ -37,6 +42,21 @@
   요청 세대로 늦은 응답도 무시한다. 다시 활성화되면 신뢰할 수 있는 위치에서 새로 조회한다.
 
 ## 검증 범위
+
+리뷰에서 점유 응답 5초·GPS 품질 변화 1초 조건으로 먼 카드 조회가 반복 취소되는 결함을
+재현했다. 조회 목록 변경을 직렬 처리하고 화면 활성 상태가 바뀔 때만 취소하도록 고쳤다.
+회귀 테스트는 GPS 변화 중 조회 완료, 느린 요청 뒤 최신 목록만 처리, 화면 이탈 시 취소와
+재진입을 검사한다.
+
+리뷰 수정은 dev `58a072d`를 반영한 뒤 검증했다. 서버 공급자 10개·주변 후보 5개를 통과했고,
+최종 수정 후 ViewModel 22개와 debug 빌드를 다시 통과했다. 이번 수정의 대상은 총 37개이며
+각 클래스의 최종 실패·오류·skip은 없다. 전체 테스트는 실행하지 않았다.
+
+```powershell
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.map.features.territory.ServerTerritoryGameProviderTest' --tests 'com.daengs.app.map.features.territory.TerritoryNearbyControllerTest' :app:assembleDebug --console=plain
+# 대기 신호 처리 보완 후 영향받은 ViewModel 재검증
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkViewModelTest' :app:assembleDebug --console=plain
+```
 
 2026-09-09, dev `2a45a0e` 기준으로 대상 7개 클래스의 **61개 테스트가 모두 통과**했고
 debug 빌드도 성공했다. Windows / JBR 25.0.2 / Android SDK 37.0 / Gradle 9.5.0 환경이다.
