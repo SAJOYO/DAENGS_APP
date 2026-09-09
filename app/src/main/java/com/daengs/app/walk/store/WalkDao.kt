@@ -13,6 +13,9 @@ interface WalkDao {
     @Query("SELECT * FROM walk_photo_sync WHERE sessionId = :sessionId")
     suspend fun photoSync(sessionId: String): WalkPhotoSyncRow?
 
+    @Query("SELECT * FROM walk_photo_sync WHERE sessionId = :sessionId")
+    fun observePhotoSync(sessionId: String): kotlinx.coroutines.flow.Flow<WalkPhotoSyncRow?>
+
     @Query("SELECT * FROM walk_photo WHERE sessionId = :sessionId ORDER BY id")
     suspend fun photos(sessionId: String): List<WalkPhotoRow>
 
@@ -239,7 +242,10 @@ interface WalkDao {
     @androidx.room.Transaction
     suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String): Boolean {
         if (session(row.sessionId)?.ownerId != ownerId) return false
-        if (com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId)) != row.entryStamp) return false
+        val stamp = if (row.entryStamp.startsWith("diary:"))
+            com.daengs.app.walk.sync.diaryInputStamp(entries(row.sessionId), photoSync(row.sessionId), photos(row.sessionId))
+            else com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId))
+        if (stamp != row.entryStamp) return false
         val current = sceneAnalysis(row.sessionId)
         if (current != null && current.generation > row.generation) return false
         // A pending/failed/stale response must not erase the last successful source or relabel it

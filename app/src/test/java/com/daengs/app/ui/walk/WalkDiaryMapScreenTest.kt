@@ -25,6 +25,20 @@ import org.robolectric.annotation.GraphicsMode
 class WalkDiaryMapScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `generation state prevents repeated taps and shows source notice`() {
+        var calls = 0
+        compose.setContent {
+            var busy by remember { mutableStateOf(false) }
+            WalkDiaryMapContent(emptyList(), null, false, null, {}, {}, {}, {}, {}, {}, {},
+                map = { Box(Modifier.fillMaxSize()) }, generationNotice = "남긴 기록을 모았어요.",
+                generating = busy, onGenerate = { calls++; busy = true })
+        }
+        compose.onNodeWithText("일기 생성·갱신").performClick()
+        compose.onNodeWithText("준비 중").assertIsNotEnabled()
+        compose.onNodeWithText("남긴 기록을 모았어요.").assertExists()
+        assertEquals(1, calls)
+    }
+
     @Test fun `scene navigation retains order and edits the source entry`() {
         val a = DiaryScene("s/a", "s", 0, "첫 메모", "내용", null, "직접 남긴 기록", entryId = "a")
         val b = a.copy(id = "s/b", atMillis = 10000, title = "다음 메모", entryId = "b")

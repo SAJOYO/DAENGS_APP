@@ -10,6 +10,7 @@ data class GeoStoryboardBundle(
     val scenes: List<StoryboardScene>, val rawJson: String,
     val selection: StoryboardSelection? = null,
     val title: String? = null,
+    val diary: DiaryGenerationInfo? = null,
 ) {
     companion object {
         const val FORMAT = "walk-storyboard-candidates-v1"
@@ -20,6 +21,7 @@ data class GeoStoryboardBundle(
         fun parse(text: String): GeoStoryboardBundle {
             require(text.toByteArray(Charsets.UTF_8).size <= 1_000_000) { "장면 파일이 너무 커요." }
             val obj = JSONObject(text)
+            if (obj.optString("format") == ServerDiaryBundle.RESPONSE) return ServerDiaryBundle.parse(text)
             val v5 = obj.getString("format") == FORMAT_V5
             val v4 = v5 || obj.getString("format") == FORMAT_V4
             val v3 = v4 || obj.getString("format") == FORMAT_V3
@@ -161,7 +163,7 @@ internal fun JSONObject.strictLong(key: String, min: Long, max: Long): Long {
 private fun JSONArray.strings(): List<String> = (0 until length()).map {
     require(get(it) is String); getString(it)
 }
-private fun canonicalJson(value: Any?): String = when (value) {
+internal fun canonicalJson(value: Any?): String = when (value) {
     is JSONObject -> value.keys().asSequence().toList().sorted().joinToString(",", "{", "}") {
         JSONObject.quote(it)+":"+canonicalJson(value.get(it))
     }

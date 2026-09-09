@@ -16,6 +16,15 @@ import org.robolectric.annotation.Config
 class WalkStoryboardScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `새 일기는 배경과 원본 메모를 분리하고 문구 편집으로 원본을 덮지 않는다`() {
+        val scene = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(
+            com.daengs.app.walk.diary.diaryFixture().toString()).scenes.first()
+        compose.setContent { DiarySceneText("편집한 배경 문장", scene.diary!!) }
+        compose.onNodeWithText("편집한 배경 문장").assertExists()
+        compose.onNodeWithText("직접 남긴 기록").assertExists()
+        compose.onNodeWithText("  두부와 사진을 찍었다.\n다음 기록도 남김  ").assertExists()
+    }
+
     @Test fun `대상 강아지 이름과 조회 부족 이유를 검토 화면에 표시한다`() {
         val before = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(javaClass.getResource("/storyboard/v2-before.json")!!.readText())
         val short = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(javaClass.getResource("/storyboard/v2-short.json")!!.readText())
@@ -72,7 +81,7 @@ class WalkStoryboardScreenTest {
         compose.onNodeWithText("직접 남긴 관찰").assertExists()
     }
 
-    @Test fun `검토 완료를 명시적으로 요청하고 AI 미연결을 표시한다`() {
+    @Test fun `검토 완료를 명시적으로 요청하고 서버 지원에 따른 표시를 안내한다`() {
         var reviewed = false
         compose.setContent {
             StoryboardContent(emptyList(), false, null, false, false, true,
@@ -80,6 +89,6 @@ class WalkStoryboardScreenTest {
         }
         compose.onNodeWithText("이 구성 검토 완료").performScrollTo().performClick()
         assertTrue(reviewed)
-        compose.onNodeWithText("AI 일기 생성 · 연결 준비 중").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("서버가 새 일기를 지원하면 배경 문장과 원본 기록을 나누어 보여줘요.").performScrollTo().assertExists()
     }
 }

@@ -51,10 +51,28 @@ internal fun WalkDiaryMapScreen(
     var editorOpen by remember(sessionId) { mutableStateOf(false) }
     var entryError by remember(sessionId) { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var generating by remember(sessionId) { mutableStateOf(false) }
+    var generationError by remember(sessionId) { mutableStateOf<String?>(null) }
     var photo by remember(sessionId) { mutableStateOf<WalkPhoto?>(null) }
     var storyboardOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val entries by remember(sessionId) { app.walkEntries.observe(sessionId) }.collectAsState(initial = emptyList())
+    LaunchedEffect(sessionId) { app.walkRuntime.delivery.enqueue(sessionId) }
+    fun generate() {
+        if (generating) return
+        generating = true; generationError = null
+        scope.launch {
+            try {
+                val auth = app.sessionProvider.freshSession() ?: error("로그인 후 일기를 만들 수 있어요.")
+                app.walkRuntime.sync.syncPendingSession(auth.accessToken, sessionId, includeStoryboard = false)
+                val remoteId = app.walkEntryDao.session(sessionId)?.serverWalkId ?: error("산책 동기화를 먼저 완료해 주세요.")
+                app.walkStoryboardSync.sync(auth.accessToken, sessionId, remoteId, refresh = true)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                generationError = "일기를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요."
+            } finally { generating = false }
+        }
+    }
     LaunchedEffect(sessionId, history, retry) {
         error = null; loaded = false
         try { history.changes.collect { detail = history.sessionDetail(sessionId); loaded = true } }
@@ -114,6 +132,8 @@ internal fun WalkDiaryMapScreen(
                     } else adding = !adding
                 },
                 onReview = { storyboardOpen = true }, adding = adding,
+                generationNotice = generationError ?: diary?.notice,
+                generating = generating, onGenerate = ::generate,
                 modifier = Modifier.weight(1f), map = {
                     if (bounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
                         Text(if (!loaded) "경로를 불러오고 있어요." else "표시할 위치 기록이 없어요.", color = TextMuted)
@@ -168,6 +188,7 @@ internal fun WalkDiaryMapContent(
     onSelect: (DiaryScene) -> Unit, onClose: () -> Unit, onEdit: (DiaryScene) -> Unit,
     onPhoto: (WalkPhoto) -> Unit, onRetry: () -> Unit, onAdd: () -> Unit, onReview: () -> Unit,
     adding: Boolean = false, modifier: Modifier = Modifier, map: @Composable () -> Unit,
+    generationNotice: String? = null, generating: Boolean = false, onGenerate: (() -> Unit)? = null,
 ) {
     val scroll = rememberLazyListState()
     Column(modifier.fillMaxSize()) {
@@ -180,6 +201,14 @@ internal fun WalkDiaryMapContent(
                     TextButton(onClick = onReview, enabled = !loading && error == null) { Text("스토리보드 검토") }
                 }
                 if (adding) Text("동선에서 기록을 남길 위치를 눌러 주세요.", style = MaterialTheme.typography.bodySmall)
+                onGenerate?.let { action ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        generationNotice?.let { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall) }
+                        TextButton(enabled = !loading && !generating, onClick = action) {
+                            Text(if (generating) "준비 중" else "일기 생성·갱신")
+                        }
+                    }
+                }
                 if (error != null) Row { Text(error, Modifier.weight(1f)); TextButton(onClick = onRetry) { Text("다시 시도") } }
                 if (loading) Text("장면을 불러오고 있어요.")
                 else if (selected == null) {
@@ -213,10 +242,13 @@ internal fun WalkDiaryMapContent(
                     LazyColumn(Modifier.weight(1f)) {
                         item {
                             Text(selected.title, fontWeight = FontWeight.SemiBold)
-                            Text(selected.body, style = MaterialTheme.typography.bodyMedium)
+                            if (selected.content != null) DiarySceneText(selected.body, selected.content)
+                            else Text(selected.body, style = MaterialTheme.typography.bodyMedium)
                             if (selected.point == null) Text("확인된 위치가 없어 지도에 점을 찍지 않았어요.", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             if (selected.needsReview) Text("원본이 바뀌어 다시 검토가 필요한 장면이에요.", style = MaterialTheme.typography.bodySmall)
                             selected.photo?.let { p -> TextButton(onClick = { onPhoto(p) }) { Text("사진 보기") } }
+                            if (selected.content?.photoId != null && selected.photo == null)
+                                Text("사진 파일은 촬영한 기기에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
                             if (selected.entryId != null) TextButton(onClick = { onEdit(selected) }) { Text("기록 편집") }
                         }
                     }

@@ -70,7 +70,7 @@ class DaengsApp : Application() {
         private set
     lateinit var walkPhotos: com.daengs.app.walk.store.WalkPhotoStore
         private set
-    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkStoryboardSync
+    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkDiarySync
         private set
     lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
         private set
@@ -127,7 +127,7 @@ class DaengsApp : Application() {
         actionPins = com.daengs.app.walk.pin.ActionPinStore(dao, { tokenStore.load()?.appUserId.orEmpty() },
             activeSessionId = { store.state.value.activeSessionId })
         actionPinScheduler = com.daengs.app.walk.pin.ActionPinScheduler(this, applicationScope)
-        walkStoryboardSync = com.daengs.app.walk.sync.WalkStoryboardSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
+        walkStoryboardSync = com.daengs.app.walk.sync.WalkDiarySync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         val writer = WalkFixWriter(
             log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.

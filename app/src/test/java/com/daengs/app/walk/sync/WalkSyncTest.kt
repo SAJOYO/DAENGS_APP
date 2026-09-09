@@ -19,6 +19,18 @@ import org.junit.Test
  */
 class WalkSyncTest {
 
+    @Test fun `manual diary refresh synchronizes photos without generating twice`() = runBlocking {
+        val log = FakeLog()
+        val api = FakeApi()
+        log.sessions += session("photos", ended = true)
+        var photos = 0; var scenes = 0
+        val sync = WalkSync(log, api, { NOW }, photoSync = { _, _, _ -> photos++ },
+            storyboardSync = { _, _, _ -> scenes++ }, warn = { _, _ -> })
+        sync.syncPendingSession("token", "photos", includeStoryboard = false)
+        assertEquals(1, photos); assertEquals(0, scenes)
+        assertEquals(1, api.finalizeCalls)
+    }
+
     @Test fun `photo delivery retries before scene synchronization without reuploading GPS`() = runBlocking {
         val log = FakeLog()
         val api = FakeApi()

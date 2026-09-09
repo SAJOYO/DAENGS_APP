@@ -47,6 +47,7 @@ data class DiaryScene(
     val needsReview: Boolean = false,
     val photo: WalkPhoto? = null,
     val entryId: String? = null,
+    val content: DiarySceneContent? = null,
 )
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
@@ -72,19 +73,23 @@ fun diaryWalk(
         val entryId = scene.entryReference?.entryId ?: scene.id.takeIf { it.startsWith("entry:") }
             ?.removePrefix("entry:")
         val entry = localEntries.firstOrNull { it.id == entryId }
-        val point = if (entryId != null) entry?.let { it.pin?.point ?: it.point }
+        val point = if (scene.diary != null) {
+            if (scene.observation != null) index.resolve(scene.observation) else scene.diary.point
+        } else if (entryId != null) entry?.let { it.pin?.point ?: it.point }
             else index.resolve(scene.observation)
+        val image = scene.diary?.photoId?.let { id -> photos.firstOrNull { it.id == id && it.sessionId == walk.sessionId } }
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
-            scene.title, scene.body, point, entry?.pin?.label ?: scene.evidence, scene.needsReview, entryId = entryId)
-    } + photos.filter { it.sessionId == walk.sessionId }.map { photo ->
+            scene.title, scene.body, point, entry?.pin?.label ?: scene.evidence, scene.needsReview,
+            photo = image, entryId = entryId, content = scene.diary)
+    } + photos.filter { photo -> photo.sessionId == walk.sessionId && sources.orEmpty().none { it.diary?.photoId == photo.id } }.map { photo ->
         DiaryScene("${walk.sessionId}/photo:${photo.id}", walk.sessionId, photo.capturedAtMillis,
             "산책 사진", "이날 남긴 사진", photo.point, "촬영할 때 저장한 위치", photo = photo)
     }
-    return DiaryWalk(walk, scenes.sortedWith(compareBy<DiaryScene> { it.atMillis }.thenBy { it.id }),
+    return DiaryWalk(walk, scenes.sortedWith(compareBy<DiaryScene> { it.atMillis }.thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { it.id }),
         analysis.notice, analysis.bundle?.takeIf { it.sessionId == walk.sessionId }?.title)
 }
 
 /** Same coordinate records share a marker; membership stays distinct and chronological. */
 fun diaryLocationGroups(scenes: List<DiaryScene>): List<List<DiaryScene>> = scenes
     .filter { it.point != null }.groupBy { it.point }.values
-    .map { it.sortedWith(compareBy<DiaryScene> { scene -> scene.atMillis }.thenBy { scene -> scene.id }) }
+    .map { it.sortedWith(compareBy<DiaryScene> { scene -> scene.atMillis }.thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { scene -> scene.id }) }
