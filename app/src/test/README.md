@@ -111,6 +111,19 @@ UI 소비자는 `com.daengs.app.ui.walk.WalkDiaryMapScreenTest`,
 `com.daengs.app.ui.walk.WalkStoryboardScreenTest`, `com.daengs.app.ui.walk.WalkHistorySearchScreenTest`다.
 JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소비자도 함께 선택한다.
 
+### 행동 기록으로 산책 비교
+
+서버 응답의 A/B·근거 정합성은 `WalkBehaviorComparisonTest`, HTTP·세션 경계는
+`WalkBehaviorComparisonApiTest`, 지도 선택·빈 결과·위치 없는 근거는
+`WalkBehaviorComparisonScreenTest`가 검증한다. 서버에서 직렬화한 응답 fixture를
+공용 `walk/support/BehaviorComparisonFixtures.kt`를 통해 함께 읽는다.
+실제 Naver 지도 렌더링·서버 데이터 적재는 이 테스트의 범위가 아니다.
+공용 지도 정책을 바꾸면 `com.daengs.app.map.shell.MapScenePolicyTest`도 함께 선택한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonTest' --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonApiTest' --tests 'com.daengs.app.ui.walk.WalkBehaviorComparisonScreenTest'
+```
+
 ## Room·계정·외부 의존성
 
 | 변경 경계 | 확인 범위와 실행 조건 |

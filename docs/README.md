@@ -6,6 +6,7 @@
 | [기능별 테스트 실행 지도](../app/src/test/README.md) | 기능별 Gradle 선택자, Room·동기화 검증 경계, 공용 helper 제공자·소비자 |
 | [walk-photo-sync.md](walk-photo-sync.md) | 산책 사진 메타데이터 전송 — Room 13, 응답 유실/편집 복구, 서버 기능 협상 |
 | [walk-diary-generation.md](walk-diary-generation.md) | 서버 일기 생성·조회, 배경과 원본 분리, 사진·지도 연결 |
+| [walk-behavior-comparison.md](walk-behavior-comparison.md) | 행동 기록 돌아보기 — 전체 산책과 행동 기록 산책의 지도 비교·근거·서버 연결 |
 | [asset-workflow.md](asset-workflow.md) | 미니룸 에셋을 **직접 그릴 때**의 격자 · 카메라 각도 · 기준점 · WebP 변환 |
 | `templates/` | 아이소메트릭 도안 (1x1 · 2x1 · 2x2, PNG + SVG). `uv run tools/isoasset.py template` 로 다시 만들 수 있다 |
 
