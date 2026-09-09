@@ -1,6 +1,7 @@
 package com.daengs.app.map.features.territory
 
 import com.daengs.app.auth.Session
+import com.daengs.app.location.LocationSample
 import com.daengs.app.territory.*
 import com.daengs.app.walk.TrackingState
 import com.daengs.app.walk.WalkTrackingState
@@ -16,6 +17,7 @@ private data class SharedBoard(
     val ownerId: String? = null,
     val sites: Map<String, SharedTerritorySite> = emptyMap(),
     val message: String = "점유 정보를 확인하고 있어요",
+    val readState: TerritoryOccupancyReadState = TerritoryOccupancyReadState.LOADING,
 )
 
 /** Shared read cache with an optional durable action boundary. Failures never become local grants. */
@@ -61,7 +63,8 @@ class ServerTerritoryGameProvider(
             currentCoroutineContext().ensureActive()
             if (request != generation || currentOwner() != owner) return
             if (session == null || owner.isNullOrBlank() || session.appUserId != owner) {
-                board.value = SharedBoard(message = "로그인하면 점유 정보를 볼 수 있어요")
+                board.value = SharedBoard(ownerId = owner, message = "로그인하면 점유 정보를 볼 수 있어요",
+                    readState = TerritoryOccupancyReadState.LOGIN_REQUIRED)
                 return
             }
             val loaded = sites.map { it.id }.distinct().chunked(100).flatMap { ids ->
@@ -69,7 +72,8 @@ class ServerTerritoryGameProvider(
             }
             currentCoroutineContext().ensureActive()
             if (request != generation || currentOwner() != owner) return
-            board.value = SharedBoard(owner, loaded.associateBy { it.siteId }, "점유 정보 · 둘러보기")
+            board.value = SharedBoard(owner, loaded.associateBy { it.siteId }, "점유 정보 · 둘러보기",
+                TerritoryOccupancyReadState.READY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -77,13 +81,16 @@ class ServerTerritoryGameProvider(
             val message = if (error is TerritoryOccupancyApiException && error.status == 401)
                 "로그인 상태를 다시 확인해 주세요"
             else "점유 정보를 불러오지 못했어요 · 잠시 후 다시 확인해요"
-            board.value = SharedBoard(ownerId = owner, message = message)
+            board.value = SharedBoard(ownerId = owner, message = message,
+                readState = if (error is TerritoryOccupancyApiException && error.status == 401)
+                    TerritoryOccupancyReadState.LOGIN_REQUIRED else TerritoryOccupancyReadState.FAILED)
         }
         actions?.photos?.deliverBound()
     }
 
     override fun snapshot(board: TerritoryBoardState, tracking: WalkTrackingState, permitted: Boolean,
-                          petNames: Map<String, String>, nowNanos: Long): TerritoryGameState {
+                          petNames: Map<String, String>, nowNanos: Long, screenSample: LocationSample?): TerritoryGameState {
+        val location = territoryLocationEvidence(tracking, permitted, nowNanos, 10_000_000_000L, screenSample)
         val cached = this.board.value.takeIf { it.ownerId == currentOwner() }
         val live = actions?.receipt?.value?.takeIf { it.operation.ownerId == currentOwner() }
         // Occupancy is durable state, not the last animation event. Include every confirmed
@@ -100,8 +107,13 @@ class ServerTerritoryGameProvider(
             val claim = TerritoryClaimSite(site.id, occupied?.let {
                 TerritoryOccupancy(it.ownerPetId, null, null, it.certification, it.occupiedAtMillis)
             }, shared?.version ?: 0)
-            TerritoryGameSite(site, claim, occupied?.ownerPetName.orEmpty(), null, null, false,
-                occupancyKnown = shared != null)
+            val proximity = location.proximity(site, 20.0)
+            TerritoryGameSite(site, claim, occupied?.ownerPetName.orEmpty(), null, proximity.distanceMeters, false,
+                occupancyKnown = shared != null,
+                occupancyReadState = if (shared != null) TerritoryOccupancyReadState.READY
+                    else cached?.readState ?: if (currentOwner() == null) TerritoryOccupancyReadState.LOGIN_REQUIRED
+                    else TerritoryOccupancyReadState.LOADING,
+                isOwnedByMe = occupied?.isMine, proximity = proximity)
         }
         val base = TerritoryGameState(enabled = true, readOnly = true,
             phase = when {
@@ -110,13 +122,14 @@ class ServerTerritoryGameProvider(
                 else -> TerritoryWalkPhase.WALKING
             },
             sites = sites, targetId = board.selectedSiteId,
-            guidance = cached?.message ?: "로그인하면 점유 정보를 볼 수 있어요")
+            guidance = cached?.message ?: if (currentOwner() == null) "로그인하면 점유 정보를 볼 수 있어요"
+                else "점유 정보를 확인하고 있어요")
         if (actions == null || base.phase == TerritoryWalkPhase.BROWSING) return base
-        return actionSnapshot(base, tracking, permitted, petNames, nowNanos)
+        return actionSnapshot(base, tracking, location, petNames)
     }
 
-    private fun actionSnapshot(base: TerritoryGameState, tracking: WalkTrackingState, permitted: Boolean,
-                               petNames: Map<String, String>, nowNanos: Long): TerritoryGameState {
+    private fun actionSnapshot(base: TerritoryGameState, tracking: WalkTrackingState, location: TerritoryLocationEvidence,
+                               petNames: Map<String, String>): TerritoryGameState {
         val owner = currentOwner()
         if (owner == null || tracking.ownerId != owner) return base.copy(guidance = "로그인 상태를 다시 확인해 주세요")
         val rows = actions!!.operations.value.filter { it.ownerId == owner && it.sessionId == tracking.activeSessionId }
@@ -128,11 +141,7 @@ class ServerTerritoryGameProvider(
         val pet = attempt?.takeIf { locked }?.let { JSONObject(it.body).getString("claiming_pet_id") }
             ?: selectedPets["${tracking.activeSessionId}:${base.targetId}"]?.takeIf { it in tracking.activeDogIds }
             ?: tracking.activeDogIds.firstOrNull()
-        val fix = tracking.latestMomentFix
-        val age = fix?.elapsedRealtimeNanos?.let { nowNanos - it }
-        val trusted = permitted && fix != null && !fix.isMock && tracking.lastSample?.isMock != true &&
-            age != null && age in 0..10_000_000_000L && tracking.errorMessage == null &&
-            tracking.trail.skippedTooFast == 0 && tracking.trail.skippedLowAccuracy == 0
+        val trusted = location.trusted
         val sessionReady = rows.any { it.kind == "REGISTER" && it.state == "CONFIRMED" } &&
             lifecycle.none { it.state != "CONFIRMED" } &&
             lifecycle.lastOrNull()?.let {
@@ -140,18 +149,17 @@ class ServerTerritoryGameProvider(
                 else JSONObject(it.body).getString("phase") == "RECORDING"
             } == true
         val sites = base.sites.map { target ->
-            val distance = fix?.point?.distanceMetersTo(target.site.point)
-            target.copy(distanceMeters = distance, attempted = rows.any { it.kind == "MARK" &&
+            target.copy(attempted = rows.any { it.kind == "MARK" &&
                 JSONObject(it.body).getString("site_id") == target.site.id && !it.canReplaceRejectedMark() },
                 interaction = tracking.activeSessionId?.let { evaluateClaimAccess(it, target.site.id,
-                    base.phase == TerritoryWalkPhase.WALKING, trusted && sessionReady,
-                    distance ?: Double.NaN, fix?.accuracyMeters?.toDouble() ?: Double.NaN, 20.0) })
+                    base.phase == TerritoryWalkPhase.WALKING, trusted,
+                    target.proximity.distanceMeters ?: Double.NaN, target.proximity.accuracyMeters ?: Double.NaN, 20.0) })
         }
         val target = sites.firstOrNull { it.site.id == base.targetId }
         val disposition = target?.let { unverifiedClaimDisposition(it.claim, pet.orEmpty()) }
         val canMark = base.phase == TerritoryWalkPhase.WALKING && sessionReady && !locked && pet != null &&
             target?.occupancyKnown == true && target.interaction?.access == ClaimAccess.READY && disposition == ClaimDisposition.GRANTED
-        val photoRange = target?.distanceMeters?.let { it + (fix?.accuracyMeters?.toDouble() ?: Double.POSITIVE_INFINITY) <= 10.0 } == true
+        val photoRange = target?.let { location.proximity(it.site, 10.0).range == TerritoryProximityRange.IN_RANGE } == true
         val photoAllowed = remoteClaim?.resolutionCode == null && (remoteClaim == null || remoteClaim.photoStatus in
             setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING))
         val canPhotograph = onlinePhotos && base.phase == TerritoryWalkPhase.WALKING && sessionReady && trusted && photoRange &&

@@ -929,6 +929,8 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
+                        // 산책 전 `일기` 는 홈의 `지난 산책` 과 같은 화면으로 간다.
+                        onOpenDiaryList = { screen = Screen.WalkHistory },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
                         history = walkRuntime.history,

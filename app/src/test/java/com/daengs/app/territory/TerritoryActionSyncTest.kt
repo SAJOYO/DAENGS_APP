@@ -152,11 +152,11 @@ class TerritoryActionSyncTest {
         assertEquals("PENDING", dao.all().last().state)
     }
 
-    @Test fun `server writes require an explicit debug flag and release remains disabled`() {
+    @Test fun `server writes require an explicit debug flag and release remains read only`() {
         assertEquals(TerritoryGameMode.LOCAL, territoryGameMode(true, false, false))
         assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true, true, false))
         assertEquals(TerritoryGameMode.SERVER_ACTIONS, territoryGameMode(true, false, true))
-        assertEquals(TerritoryGameMode.DISABLED, territoryGameMode(false, true, true))
+        assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(false, true, true))
     }
 
     @Test fun `server ended session cannot be reopened by an offline resume`() = runTest {
@@ -279,10 +279,15 @@ class TerritoryActionSyncTest {
         fun view() = provider.snapshot(board, state, true, mapOf(DOG to "보리", DOG2 to "두부"), 2_000_000_000)
         provider.refresh(board.sites); runCurrent()
         assertFalse(view().canMark)
+        assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
+        assertEquals(ClaimAccess.READY, view().target!!.interaction!!.access)
+        assertEquals("게임 세션을 연결하고 있어요", view().guidance)
         sync.deliver(); runCurrent()
         assertTrue(view().canMark); assertFalse(view().canPhotograph)
+        assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
         state = state.copy(trail = TrailSnapshot(state = TrackingState.PAUSED))
         assertFalse(view().canMark)
+        assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
         state = walking().copy(latestMomentFix = fix().copy(accuracyMeters = 21f)); assertFalse(view().canMark)
         state = walking(); provider.selectPet(DOG2, SITE, state)
         provider.submitMark(SITE, board, state, true, emptyMap(), 2_000_000_000, 2000); runCurrent()

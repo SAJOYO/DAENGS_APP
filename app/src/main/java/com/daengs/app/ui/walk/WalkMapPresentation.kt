@@ -46,7 +46,8 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
                             ClaimCertification.UNVERIFIED -> TerritoryMarkerOccupancy.UNVERIFIED
                             ClaimCertification.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
                         },
-                        label = gameSite?.occupancyLabel ?: "미점유",
+                        label = gameSite?.occupancyLabel ?: "점유 확인 전",
+                        occupancyKnown = gameSite?.occupancyKnown == true,
                         ready = target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING &&
                             (territoryGame.canMark || territoryGame.canPhotograph),
                         feedback = territoryGame.feedback?.takeIf { target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
@@ -74,7 +75,8 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
             walkActive = trackingActive,
         ),
         fitBounds = fitBounds ?: territoryGame.target?.takeIf {
-            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory
+            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory &&
+                !territoryGame.readOnly
         }?.let { listOfNotNull(it.site.point, location.currentPosition) },
     )
 }

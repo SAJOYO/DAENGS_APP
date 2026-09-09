@@ -116,7 +116,8 @@ class WalkViewModel(
     ) { tracking, locationState, territoryState, presentationState ->
         val game = territoryGame?.snapshot(territoryState, tracking,
             locationState.permissionGranted && locationState.precisePermission,
-            presentationState.selection.pets.associate { it.id to it.name }, nowNanos()) ?: TerritoryGameState()
+            presentationState.selection.pets.associate { it.id to it.name }, nowNanos(),
+            screenSample = locationState.sample) ?: TerritoryGameState()
         WalkUiState(
             // 안내는 **잠깐 떴다 사라진다.** 예전에는 지우는 곳이 아예 없어서, 다시
             // 걸으려고 들어와도 지난 실패가 먼저 붙어 있었다.
@@ -292,7 +293,7 @@ class WalkViewModel(
                 territory.clearSelection()
                 presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
             }
-            WalkAction.OpenEntries, WalkAction.PhotographWalk -> Unit // Route owns diary storage/camera.
+            WalkAction.OpenEntries, WalkAction.OpenDiaryList, WalkAction.PhotographWalk -> Unit // Route owns diary storage/camera/navigation.
             is WalkAction.SelectClaimingPet -> {
                 if (territory.state.value.selectedSiteId == action.siteId) {
                     territoryGame?.selectPet(action.petId, action.siteId, walkController.state.value)

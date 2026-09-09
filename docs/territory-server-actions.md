@@ -11,10 +11,11 @@
 
 | 빌드 설정 | 게임 동작 |
 | --- | --- |
-| 기본 debug | 기존 로컬 점유·페이크 사진 플레이 |
+| 기본 debug | 서버 점유 둘러보기만 (#221에서 기본값 변경) |
+| `-PterritoryServerRead=false` | 로컬 점유·페이크 사진 연습 |
 | `-PterritoryServerRead=true` | 서버 점유 둘러보기만 |
 | `-PterritoryServerActions=true` | 서버 점유 조회 + 게임 세션 + 영역표시 |
-| release | 두 플래그 모두 false, 게임 비활성 |
+| release | 서버 점유 둘러보기, 액션은 비활성 |
 
 Actions가 켜지면 Read를 따로 지정하지 않아도 조회 공급자를 사용한다. 같은 `API_BASE_URL`과
 공용 `SessionProvider`를 사용한다. 서버 준비 후 명시적으로 테스트 빌드한다.
