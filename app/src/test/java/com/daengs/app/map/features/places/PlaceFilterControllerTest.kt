@@ -20,6 +20,35 @@ class PlaceFilterControllerTest {
     }
     private val criteria = PlaceFilterCriteria(listOf(PlaceKind.CAFE), all = listOf(PlaceFilterAtom("p", "operations.parking", "eq", JsonPrimitive(false))))
 
+    @Test fun aiAdoptsExecutedFiltersWithoutCallingEitherSearchAgainAndRejectsStaleBase() = runTest {
+        val repo = Repository()
+        val controller = PlaceDiscoveryController(repo, null, this)
+        controller.search(GeoPoint(37.5, 127.0), listOf(PlaceKind.CAFE)); controller.loadFilterCapabilities(); advanceUntilIdle()
+        controller.applyFilters(criteria); advanceUntilIdle()
+        val base = controller.captureFilterBase()!!
+        val next = criteria.copy(all = emptyList())
+        val executed = filterResponseFixture(PlaceFilterRequest(base.request, next, base.revision + 1))
+        assertTrue(controller.acceptFilterEdit(base, executed))
+        assertEquals(next, controller.state.value.filters)
+        assertSame(executed, controller.state.value.filterResponse)
+        assertEquals(1, repo.filtered.size); assertEquals(1, repo.legacyCalls)
+        assertFalse(controller.acceptFilterEdit(base, executed))
+        val latest = controller.captureFilterBase()!!
+        controller.updateDogs(listOf(PlaceDogSnapshot("dog", "changed"))); advanceUntilIdle()
+        assertFalse(controller.matchesFilterBase(latest))
+    }
+
+    @Test fun initialAiSnapshotPreservesNameParkingAndCannotSilentlyLimitAllCategories() = runTest {
+        val controller = PlaceDiscoveryController(Repository(), null, this)
+        controller.search(GeoPoint(37.5, 127.0), listOf(PlaceKind.CAFE), preferParking = true, nameQuery = "이름")
+        controller.loadFilterCapabilities(); advanceUntilIdle()
+        val base = controller.captureFilterBase()!!
+        assertEquals("이름", base.request.nameQuery); assertEquals(1, base.criteria.preferences.size)
+        assertTrue(controller.matchesFilterBase(base))
+        controller.search(GeoPoint(37.5, 127.0), PlaceKind.entries); advanceUntilIdle()
+        assertNull(controller.captureFilterBase())
+    }
+
     @Test fun filtersCanBeClearedEvenAfterMovingOutsideTheSupportedArea() = runTest {
         val repo = Repository()
         val controller = PlaceDiscoveryController(repo, null, this)

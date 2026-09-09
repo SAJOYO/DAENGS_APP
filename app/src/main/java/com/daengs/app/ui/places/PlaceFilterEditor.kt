@@ -59,6 +59,7 @@ internal fun PlaceFilterEditor(
                 Text("모두 만족해야 하는 조건", style = MaterialTheme.typography.titleSmall)
                 Text("상관없음은 조건 해제입니다. 정보가 없는 곳은 불가·전용 아님에 포함되지 않아요.", style = MaterialTheme.typography.bodySmall)
                 BooleanFilters(draft.all) { draft = draft.copy(all = it) }
+                PurposeFilters(draft.kinds, draft.all) { draft = draft.copy(all = it) }
                 HorizontalDivider()
                 Text("대안 묶음 · 아래 묶음 중 하나 이상 만족", style = MaterialTheme.typography.titleSmall)
                 Text("위의 공통 조건도 함께 만족해야 해요.", style = MaterialTheme.typography.bodySmall)
@@ -68,14 +69,7 @@ internal fun PlaceFilterEditor(
                             Text("묶음 ${index + 1}", Modifier.weight(1f))
                             TextButton(onClick = { draft = draft.copy(any = draft.any.filterNot { it.id == branch.id }) }) { Text("묶음 삭제") }
                         }
-                        val kindAtom = branch.all.firstOrNull { it.capability == "purpose.kind" }
-                        val selected = kindAtom?.value?.jsonArray?.map { PlaceKind.fromWire(it.jsonPrimitive.content) }.orEmpty()
-                        Text("묶음 업종 · 선택하지 않으면 모든 검색 업종", style = MaterialTheme.typography.bodySmall)
-                        FilterKinds(draft.kinds, selected) { kinds ->
-                            val atoms = branch.all.filterNot { it.capability == "purpose.kind" } + if (kinds.isEmpty()) emptyList() else listOf(
-                                PlaceFilterAtom(kindAtom?.id ?: UUID.randomUUID().toString(), "purpose.kind", "in", JsonArray(kinds.map { JsonPrimitive(it.wire) })))
-                            draft = draft.copy(any = draft.any.map { if (it.id == branch.id) it.copy(all = atoms) else it })
-                        }
+                        PurposeFilters(draft.kinds, branch.all) { atoms -> draft = draft.copy(any = draft.any.map { if (it.id == branch.id) it.copy(all = atoms) else it }) }
                         BooleanFilters(branch.all) { atoms -> draft = draft.copy(any = draft.any.map { if (it.id == branch.id) it.copy(all = atoms) else it }) }
                     }
                 }
@@ -89,10 +83,10 @@ internal fun PlaceFilterEditor(
                     }, enabled = draft.kinds.any { it.supportsParkingPreference() })
                     Text("주차 가능하면 우선 · 필수 아님")
                 }
-                draft.preferences.firstOrNull()?.let { preference ->
+                draft.preferences.forEach { preference ->
                     Text("주차 우선을 적용할 업종", style = MaterialTheme.typography.bodySmall)
                     FilterKinds(draft.kinds.filter { it.supportsParkingPreference() }, preference.scopeKinds) { kinds ->
-                        draft = draft.copy(preferences = if (kinds.isEmpty()) emptyList() else listOf(preference.copy(scopeKinds = kinds)))
+                        draft = draft.copy(preferences = draft.preferences.mapNotNull { if (it.atom.id != preference.atom.id) it else if (kinds.isEmpty()) null else it.copy(scopeKinds = kinds) })
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -132,6 +126,9 @@ private fun FilterKinds(available: List<PlaceKind>, selected: List<PlaceKind>, o
 
 @Composable
 private fun BooleanFilters(atoms: List<PlaceFilterAtom>, onChange: (List<PlaceFilterAtom>) -> Unit) {
+    atoms.filter { it.capability != "purpose.kind" }.forEach { atom ->
+        TextButton(onClick = { onChange(atoms.filterNot { it.id == atom.id }) }) { Text("${filterAtomLabel(atom)} · 이 조건 삭제") }
+    }
     listOf("operations.parking" to "주차", "pet_access.exclusive" to "반려동물 전용").forEach { (capability, label) ->
         Text(label, style = MaterialTheme.typography.bodyMedium)
         val current = atoms.firstOrNull { it.capability == capability }?.value?.jsonPrimitive?.boolean
@@ -142,6 +139,27 @@ private fun BooleanFilters(atoms: List<PlaceFilterAtom>, onChange: (List<PlaceFi
         }
     }
 }
+
+@Composable
+private fun PurposeFilters(kinds: List<PlaceKind>, atoms: List<PlaceFilterAtom>, onChange: (List<PlaceFilterAtom>) -> Unit) {
+    atoms.filter { it.capability == "purpose.kind" }.forEach { atom ->
+        Text(filterAtomLabel(atom))
+        Row {
+            TextButton(onClick = { onChange(atoms.map { if (it.id == atom.id) it.copy(op = if (it.op == "in") "not_in" else "in") else it }) }) { Text(if (atom.op == "in") "제외 조건으로 변경" else "포함 조건으로 변경") }
+            TextButton(onClick = { onChange(atoms.filterNot { it.id == atom.id }) }) { Text("업종 조건 삭제") }
+        }
+        FilterKinds(kinds, atom.value.jsonArray.map { PlaceKind.fromWire(it.jsonPrimitive.content) }) { selected ->
+            onChange(atoms.mapNotNull { if (it.id != atom.id) it else if (selected.isEmpty()) null else it.copy(value = JsonArray(selected.map { k -> JsonPrimitive(k.wire) })) })
+        }
+    }
+    if (kinds.isNotEmpty()) TextButton(onClick = {
+        onChange(atoms + PlaceFilterAtom(UUID.randomUUID().toString(), "purpose.kind", "in", JsonArray(listOf(JsonPrimitive(kinds.first().wire)))))
+    }, enabled = atoms.size < 8) { Text("업종 포함·제외 조건 추가") }
+}
+
+@Preview(showBackground = true, widthDp = 390)
+@Composable
+private fun PurposeFiltersPreview() { DaengsTheme { PurposeFilters(listOf(PlaceKind.CAFE, PlaceKind.RESTAURANT), listOf(PlaceFilterAtom("exclude", "purpose.kind", "not_in", JsonArray(listOf(JsonPrimitive("cafe"))))), {}) } }
 
 @Composable
 internal fun PlaceFilterEvidence(evidence: JsonObject) {

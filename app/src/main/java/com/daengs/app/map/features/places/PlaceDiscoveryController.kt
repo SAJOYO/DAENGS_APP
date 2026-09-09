@@ -90,6 +90,38 @@ class PlaceDiscoveryController(
     private var searchJob: Job? = null
     private var dogs: List<com.daengs.app.place.PlaceDogSnapshot> = emptyList()
 
+    /** Capture the exact manual search generation; no selection, location or dog defaults invented. */
+    fun captureFilterBase(): PlaceFilterRequest? {
+        val current = mutableState.value
+        if (current.loading || current.filterEditLoading || current.filterCapabilities == null || current.origin == null || !PlaceSearchArea.contains(current.origin)) return null
+        val requests = lastRequest ?: return null
+        val kinds = requests.flatMap { it.kinds }
+        if (kinds.size !in 1..6) return null
+        val request = requests.first().copy(kinds = kinds, dogs = dogs, dogSize = null, dogWeightKg = null, dogAgeYears = null)
+        val criteria = current.filters ?: PlaceFilterCriteria(kinds, preferences = if (request.preferParking) listOf(
+            com.daengs.app.place.PlaceFilterPreference(com.daengs.app.place.PlaceFilterAtom("manual-parking-preference", "operations.parking", "eq", kotlinx.serialization.json.JsonPrimitive(true)), kinds.filter { it.supportsParkingPreference() })
+        ) else emptyList())
+        return PlaceFilterRequest(request, criteria, requestGeneration)
+    }
+
+    fun matchesFilterBase(base: PlaceFilterRequest): Boolean = captureFilterBase()?.let {
+        it.revision == base.revision && com.daengs.app.place.sameFilterJson(it.state, base.state)
+    } == true
+
+    /** Adopt the already executed shared-engine result, never issue a second legacy search. */
+    fun acceptFilterEdit(base: PlaceFilterRequest, result: PlaceFilterResponse): Boolean {
+        if (!matchesFilterBase(base) || result.request.revision != base.revision + 1) return false
+        requestGeneration++
+        searchJob?.cancel()
+        val next = result.request.request
+        lastRequest = listOf(next)
+        val response = result.results()
+        mutableState.update { it.copy(filters = result.request.criteria, requestedKinds = next.kinds,
+            nameQuery = next.nameQuery, preferParking = next.preferParking, filterResponse = result,
+            filterError = null, selectedPlaceKey = response.firstPlaceKey(), search = response.searchState()) }
+        return true
+    }
+
     fun loadFilterCapabilities() {
         if (mutableState.value.filterCapabilities != null || mutableState.value.filterCapabilitiesLoading) return
         mutableState.update { it.copy(filterCapabilitiesLoading = true, filterError = null) }

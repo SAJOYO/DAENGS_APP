@@ -107,6 +107,14 @@ internal class PlaceSessionCoordinator(
     }
 
     fun loadFilterCapabilities() = discovery.loadFilterCapabilities()
+    fun captureFilterBase() = if (latestIntent.value?.origin == PlaceSearchOrigin.CurrentDevice) null else discovery.captureFilterBase()
+    fun matchesFilterBase(base: com.daengs.app.place.PlaceFilterRequest) = latestIntent.value?.origin != PlaceSearchOrigin.CurrentDevice && discovery.matchesFilterBase(base)
+    fun acceptFilterEdit(base: com.daengs.app.place.PlaceFilterRequest, result: com.daengs.app.place.PlaceFilterResponse): Boolean {
+        if (!matchesFilterBase(base) || !discovery.acceptFilterEdit(base, result)) return false
+        journey.clear()
+        latestIntent.value = currentResolvedIntent()
+        return true
+    }
     fun cancelFilterEdit() = discovery.cancelFilterEdit()
     fun applyFilters(criteria: com.daengs.app.place.PlaceFilterCriteria?) {
         if (latestIntent.value?.origin == PlaceSearchOrigin.CurrentDevice) return

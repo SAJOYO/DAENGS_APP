@@ -95,7 +95,7 @@ fun ConnectedPlaceSearchScreen(
     avatarPhoto: android.graphics.Bitmap? = null,
 ) {
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
-    val ai = state.facility.enabled
+    val ai = state.facility.enabled || state.filterAi.enabled
     var uncertain by remember { mutableStateOf(false) }
     var filterEditor by remember { mutableStateOf(false) }
     var pendingFilters by remember { mutableStateOf<PlaceFilterCriteria?>(null) }
@@ -134,7 +134,7 @@ fun ConnectedPlaceSearchScreen(
         state = ui, live = true, onBack = onBack,
         filterSummary = state.discovery.filters?.description(),
         onEdit = { draft = it }, onAi = {
-            if (!ai && state.discovery.filters != null) notice = "수동 조건을 전체 해제한 뒤 AI 검색으로 전환해 주세요."
+            if (!state.filterAiAvailable && !ai && state.discovery.filters != null) notice = "수동 조건을 전체 해제한 뒤 AI 검색으로 전환해 주세요."
             else { onAction(PlacesAction.SetAiMode(!ai)); notice = null }
         },
         onSubmit = {
@@ -147,10 +147,11 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = { PlacePurposeMenu(category) {
             if (state.discovery.filters != null) editFilters() else search(selected = it)
         } },
-        resultLabel = if (ai) state.facility.confirmedLens?.label ?: "AI 조건 검색" else if (state.discovery.filters != null) if (uncertain) "확인 필요" else "조건 충족" else category.label,
+        resultLabel = if (state.facility.enabled) state.facility.confirmedLens?.label ?: "AI 조건 검색" else if (state.discovery.filters != null) if (uncertain) "확인 필요" else "조건 충족" else category.label,
         aiConnected = true,
         conditionContent = if (state.facility.enabled) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else ({
             Column {
+                if (state.filterAi.enabled) PlaceFilterAiPanel(state.filterAi, { onAction(PlacesAction.ConfirmFilterAi) }, { onAction(PlacesAction.RetryAi) })
                 TextButton(onClick = { editFilters() }) {
                     Text(state.discovery.filters?.let { "적용 조건 · ${it.description()}" } ?: "조건 선택 · 주차·전용 여부를 함께 검색", maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -162,7 +163,7 @@ fun ConnectedPlaceSearchScreen(
                 }
             }
         }),
-        emptyMessage = if (ai && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else if (state.discovery.filters != null) "${if (uncertain) "확인 필요한" else "조건을 만족한"} 결과가 없어요. 조건은 그대로 유지했어요." else "검색 결과가 없어요.",
+        emptyMessage = if (state.facility.enabled && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else if (state.discovery.filters != null) "${if (uncertain) "확인 필요한" else "조건을 만족한"} 결과가 없어요. 조건은 그대로 유지했어요." else "검색 결과가 없어요.",
         onParking = { value ->
             if (state.discovery.filters != null) editFilters()
             else if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
@@ -176,10 +177,10 @@ fun ConnectedPlaceSearchScreen(
             onAction(PlacesAction.Select(key))
         },
         onRetry = {
-            if (ai) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
+            if (state.facility.enabled) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
             else if (permission) requestPermission() else onAction(PlacesAction.RetrySearch)
         },
-        showRetry = !ai || state.facility.canRetry,
+        showRetry = !state.facility.enabled || state.facility.canRetry,
         cardActions = { hit ->
             state.discovery.filterResponse?.evidence(hit.place.key)?.let { PlaceFilterEvidence(it) }
             if (ai) state.facility.confirmedLens?.presentations?.firstOrNull { it.key == hit.place.key }?.let { FacilityPresentationDetails(it) }
