@@ -183,13 +183,18 @@ class WalkDaoTest {
         val uploaded = log.session("s1")
         assertEquals(WalkSyncState.RAW_UPLOADED, uploaded?.syncState)
         assertEquals("walk-1", uploaded?.serverWalkId)
+        assertEquals(listOf("s1"), db.walkDao().sessionsPendingAnalysis().map { it.id })
         assertEquals(listOf("s1"), log.sessionsPendingAnalysis().map { it.id })
 
         log.markDerived("s1", changedAtMillis = 700L)
 
         assertEquals(WalkSyncState.DERIVED, log.session("s1")?.syncState)
         assertEquals(700L, log.session("s1")?.syncedAtMillis)
-        assertTrue(log.sessionsPendingAnalysis().isEmpty())
+        assertTrue(db.walkDao().sessionsPendingAnalysis().isEmpty())
+        // 계산은 끝났지만 이 기기에서 시작한 산책의 빈 사진 목록은 아직 미전송이다.
+        // log의 재시도 목록에는 계산 외에 기록·사진 전송도 포함된다.
+        assertEquals(listOf("s1"), db.walkDao().dirtyPhotoSessions())
+        assertEquals(listOf("s1"), log.sessionsPendingAnalysis().map { it.id })
     }
 
     @Test
