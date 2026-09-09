@@ -20,7 +20,10 @@ fun MapHost(
     rightPaddingPx: Int = 0,
     centerOn: GeoPoint? = null,
     centerZoom: Double? = null,
-    /** Diary sheet: reframe the selected coordinate when the unobscured viewport changes. */
+    /** Explicit camera intent; repeated selection of the same coordinate is also an event. */
+    cameraRequestKey: Int = 0,
+    centerYFraction: Float = .5f,
+    /** Reframe on actual map size changes, not on an overlay's drag position. */
     keepSelectionVisible: Boolean = false,
     fitBounds: List<GeoPoint>? = null,
     onCameraIdle: (GeoPoint) -> Unit,
@@ -42,6 +45,8 @@ fun MapHost(
         leftPaddingPx = leftPaddingPx, topPaddingPx = topPaddingPx, rightPaddingPx = rightPaddingPx,
         centerOn = centerOn,
         centerZoom = centerZoom,
+        cameraRequestKey = cameraRequestKey,
+        centerYFraction = centerYFraction,
         keepSelectionVisible = keepSelectionVisible,
         fitBounds = fitBounds,
         onCameraIdle = onCameraIdle,

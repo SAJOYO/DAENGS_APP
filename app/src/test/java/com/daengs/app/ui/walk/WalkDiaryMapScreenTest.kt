@@ -60,22 +60,28 @@ class WalkDiaryMapScreenTest {
         assertEquals(1, calls)
     }
 
-    @Test fun `reading raises the sheet without recreating the map and dragging it down returns to browsing`() {
+    @Test fun `sheet overlays a fixed map while selecting reading and dragging back to browsing`() {
         val scene = DiaryScene("s/n", "s", 0, "첫 장면", "공원 옆이었다. 직접 남긴 메모", GeoPoint(37.5, 127.0), "",
             content = com.daengs.app.walk.diary.DiarySceneContent("직접 남긴 메모", "note", locationLabel = "기록한 위치"))
         var mounts = 0
-        var inset = 0
+        var viewport: DiaryMapViewport? = null
+        var overviews = 0
         compose.setContent {
             var selected by remember { mutableStateOf<DiaryScene?>(null) }
             WalkDiaryMapContent(listOf(scene), selected, false, null, { selected = it }, { selected = null },
-                {}, {}, {}, {}, map = { padding ->
+                {}, {}, {}, {}, onOverview = { overviews++ }, map = { geometry ->
                     DisposableEffect(Unit) { mounts++; onDispose {} }
-                    SideEffect { inset = padding }
+                    SideEffect { viewport = geometry }
                     Box(Modifier.fillMaxSize().testTag("diary-map"))
                 })
         }
         val peekTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
-        val peekInset = inset
+        val browsingViewport = viewport
+        val mapBounds = compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot
+        // Opening the list itself must not move/resize the map or request an overview.
+        compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeUp(startY = 40f, endY = -450f) }
+        assertEquals(browsingViewport, viewport)
+        assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("첫 장면").performClick()
         compose.onNodeWithText("공원 옆이었다. 직접 남긴 메모").assertIsDisplayed()
         compose.onNodeWithText("직접 남긴 기록").assertDoesNotExist()
@@ -85,11 +91,18 @@ class WalkDiaryMapScreenTest {
         val readingTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         assertTrue(readingTop < peekTop - 100)
         assertTrue(readingTop > 100)
-        assertTrue(inset > peekInset)
+        assertEquals(browsingViewport, viewport)
+        assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
         assertEquals(1, mounts)
         compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeDown(startY = 10f, endY = 500f) }
         compose.onNodeWithText("1개 장면 · 시간순").assertIsDisplayed()
+        assertEquals(browsingViewport, viewport)
+        assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
+        assertEquals(0, overviews)
         assertEquals(1, mounts)
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
+        compose.onNodeWithText("전체 동선 보기").performClick()
+        assertEquals(1, overviews)
     }
 
     @Test fun `next scene starts at its title after reading a long previous scene`() {
