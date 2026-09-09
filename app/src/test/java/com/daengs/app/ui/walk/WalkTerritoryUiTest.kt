@@ -165,7 +165,9 @@ class WalkTerritoryUiTest {
         compose.onNodeWithText("보리").performClick()
         compose.onNodeWithText("두부").performClick()
         assertEquals(WalkAction.SelectClaimingPet("A","p2"), actions.last())
-        compose.onNodeWithContentDescription("산책 기록 목록").performClick()
+        // 걷는 중 도크의 `일기` 는 **이 산책에 남긴 것**을 연다. 목록이 아니다 —
+        // 걷고 있는 산책은 끝나야 목록에 들어간다.
+        compose.onNodeWithContentDescription("이 산책에 남긴 것").performClick()
         assertEquals(WalkAction.OpenEntries, actions.last())
         compose.runOnIdle { state.value = screen(TerritoryWalkPhase.PAUSED) }
         compose.onNodeWithText("지도 둘러보기").performClick()
@@ -236,6 +238,24 @@ class WalkTerritoryUiTest {
         compose.onNodeWithText("닫기").performClick()
         compose.onNodeWithText("산책 시작").assertIsDisplayed()
         screenshot("browsing-good-gps")
+    }
+
+
+    /**
+     * 산책 전 `일기` 는 **목록**으로 나간다.
+     *
+     * 전에는 이 버튼이 걷는 산책에 묶인 편집기를 열어서, 걷기 전에는 묶일 산책이
+     * 없어 늘 "아직 남긴 기록이 없어요" 만 떴다. 실기기에서 DB 에 산책이 두 건
+     * 있는데도 비어 있는 것을 봤다.
+     */
+    @Test fun `산책 전 일기는 기록 편집기가 아니라 목록으로 간다`() {
+        val actions = mutableListOf<WalkAction>()
+        val state = mutableStateOf(screen(TerritoryWalkPhase.BROWSING))
+        compose.setContent { DaengsTheme { WalkScreen(state.value, actions::add, showMap = false) } }
+
+        compose.onNodeWithContentDescription("산책 일기").performClick()
+
+        assertEquals(WalkAction.OpenDiaryList, actions.last())
     }
 
 }

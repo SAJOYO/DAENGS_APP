@@ -92,7 +92,10 @@ internal fun WalkEntryEditorContent(
     val latest = entries.firstOrNull { it.id == current?.id }
     val changed = current?.baseVersion != null && current.baseVersion != latest?.baseVersion
     container(
-        { Text(current?.type?.label ?: "산책 기록") },
+        // **목록(`산책 일기`)과 이름이 갈려야 한다.** 이건 산책 한 건 안에 남긴
+        // 것이고 저건 산책들의 목록이다. "지금" 을 넣지 않는 이유는 이 편집기가
+        // 지난 산책 상세(`WalkDiaryMapScreen`)에서도 열리기 때문이다.
+        { Text(current?.type?.label ?: "이 산책에 남긴 것") },
         {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (current == null) {
