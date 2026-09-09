@@ -24,6 +24,23 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 class ConnectedPlaceSearchUiTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun conversationAnswerSharesExistingMapSearchScreenAndSelectedCard() {
+        val result = conversationFixture("picked").toConversationResult()
+        val state = ready().copy(conversationAvailable = true,
+            facility = FacilityUiState(enabled = true),
+            conversation = ConversationUiState(result = result, selected = result.selected),
+            discovery = PlaceDiscoveryState(requestedKinds = result.kinds, origin = result.origin,
+                selectedPlaceKey = result.selected, search = PlaceSearchState.Content(result.search!!)))
+        compose.setContent { DaengsTheme {
+            ConnectedPlaceSearchScreen(state, {}, {}, {}, {}, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithText(result.answer!!).assertExists()
+        compose.onNodeWithContentDescription("AI 조건 검색 전환").assertIsOn()
+        compose.onNodeWithTag("place-search-field").assertExists()
+        compose.onNodeWithTag("place-category-bar").assertExists()
+        compose.onNodeWithText("검색 방향을 확정하면 장소가 여기에 표시돼요.").assertDoesNotExist()
+        assertEquals(result.selected, state.toConnectedSearchState("", true, result.selected, null).selected)
+    }
     private fun ready() = PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.54,127.05)),
         discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE)))
 

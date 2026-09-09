@@ -255,6 +255,14 @@ internal class PlaceSessionCoordinator(
         discovery.select(key)
     }
 
+    fun acceptConversation(result: com.daengs.app.place.ConversationResult) {
+        invalidatePendingDeviceSearch()
+        discovery.acceptConversation(result)
+        selectedRadius.value = result.radius
+        latestIntent.value = currentResolvedIntent()
+        journey.clear()
+    }
+
     fun loadJourney(origin: GeoPoint?, place: PlaceResult) {
         selectPlace(place.key)
         if (origin == null) {

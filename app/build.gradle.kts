@@ -195,6 +195,8 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField("Boolean", "FACILITY_CONVERSATION",
+                (providers.gradleProperty("facilityConversation").orNull == "true").toString())
             // Browsing is available by default. Explicit false keeps the local practice build.
             buildConfigField("Boolean", "TERRITORY_SERVER_READ",
                 (providers.gradleProperty("territoryServerRead").orNull != "false").toString())
@@ -210,6 +212,7 @@ android {
             buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
+            buildConfigField("Boolean", "FACILITY_CONVERSATION", "false")
             buildConfigField("Boolean", "TERRITORY_SERVER_READ", "true")
             buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS", "false")
             optimization {

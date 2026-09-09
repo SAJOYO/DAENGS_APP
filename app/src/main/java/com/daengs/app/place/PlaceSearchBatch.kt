@@ -11,6 +11,9 @@ suspend fun searchPlaceBatches(
     requests: List<PlaceSearchRequest>,
 ): PlaceSearchResponse = coroutineScope {
     require(requests.isNotEmpty() && requests.size <= 3)
+    if (requests.size > 1 && repository is FacilityConversationRepository) {
+        return@coroutineScope repository.overview(requests)
+    }
     if (requests.size == 1) return@coroutineScope repository.search(requests.single()).also {
         it.requireDogEcho(requests.single())
         if (requests.single().kinds.size > 1 && it.groups.map { group -> group.kind } != requests.single().kinds) {

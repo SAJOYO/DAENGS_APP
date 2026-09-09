@@ -147,6 +147,21 @@ class PlaceDiscoveryController(
         mutableState.update { it.copy(selectedPlaceKey = key) }
     }
 
+    fun acceptConversation(result: com.daengs.app.place.ConversationResult) {
+        cancel()
+        val response = result.search ?: return
+        val request = PlaceSearchRequest(result.origin, result.radius, result.kinds,
+            preferParking = result.parkingFirst, nameQuery = result.nameQuery, dogs = response.dogs)
+        lastRequest = listOf(request)
+        mutableState.value = mutableState.value.copy(
+            requestedKinds = result.kinds, origin = result.origin, radiusMeters = result.radius,
+            nameQuery = result.nameQuery, preferParking = result.parkingFirst,
+            selectedPlaceKey = result.selected,
+            search = if (response.groups.all { it.results.isEmpty() }) PlaceSearchState.Empty(response)
+                else PlaceSearchState.Content(response),
+        )
+    }
+
     fun cancel() {
         requestGeneration++
         searchJob?.cancel()

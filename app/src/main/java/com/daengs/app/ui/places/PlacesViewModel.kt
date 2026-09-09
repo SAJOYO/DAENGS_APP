@@ -31,6 +31,7 @@ import com.daengs.app.place.PlaceKind
 import com.daengs.app.place.PlaceRepository
 import com.daengs.app.place.PlaceResult
 import com.daengs.app.place.PlaceSearchRepository
+import com.daengs.app.place.overviewHits
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,8 @@ data class PlacesUiState(
     val profiles: PlaceProfiles = PlaceProfiles(),
     val waitingForSearchLocation: Boolean = false,
     val facility: FacilityUiState = FacilityUiState(),
+    val conversation: com.daengs.app.place.ConversationUiState = com.daengs.app.place.ConversationUiState(),
+    val conversationAvailable: Boolean = false,
 )
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
@@ -93,6 +96,7 @@ class PlacesViewModel(
     locationSource: LocationSource,
     externalScope: CoroutineScope? = null,
     facilityRepository: FacilityRepository? = null,
+    private val conversationRepository: com.daengs.app.place.FacilityConversationRepository? = null,
 ) : ViewModel() {
     private val runtimeScope = externalScope ?: viewModelScope
     private val facility = FacilitySearchCoordinator(facilityRepository ?: object : FacilityRepository {
@@ -116,7 +120,8 @@ class PlacesViewModel(
         session.state,
         profiles,
         facility.state,
-    ) { location, session, profiles, facility ->
+        conversationRepository?.state ?: MutableStateFlow(com.daengs.app.place.ConversationUiState()),
+    ) { location, session, profiles, facility, conversation ->
         val pending = session.latestIntent?.takeIf { it.origin == PlaceSearchOrigin.CurrentDevice }
         val discovery = pending?.let {
             session.discovery.copy(requestedKinds = it.kinds, nameQuery = it.nameQuery,
@@ -124,7 +129,8 @@ class PlacesViewModel(
                 search = com.daengs.app.map.features.places.PlaceSearchState.Loading,
                 selectedPlaceKey = null)
         } ?: session.discovery
-        PlacesUiState(location, discovery, session.journey, profiles, waitingForSearchLocation = pending != null, facility = facility)
+        PlacesUiState(location, discovery, session.journey, profiles, waitingForSearchLocation = pending != null,
+            facility = facility, conversation = conversation, conversationAvailable = conversationRepository != null)
     }.stateIn(
         scope = runtimeScope,
         started = SharingStarted.Eagerly,
@@ -148,6 +154,7 @@ class PlacesViewModel(
     }
 
     fun deactivate() {
+        conversationRepository?.invalidate()
         facility.enable(false)
         location.deactivate()
         session.deactivate()
@@ -155,6 +162,7 @@ class PlacesViewModel(
 
     fun updatePermission(granted: Boolean, permanentlyDenied: Boolean) {
         if (!granted) {
+            conversationRepository?.invalidate()
             facility.invalidate()
             location.cancelLocate()
             session.clear()
@@ -173,6 +181,7 @@ class PlacesViewModel(
 
     private fun applyProfiles(value: PlaceProfiles) {
         if (value.ownerId != profiles.value.ownerId || value.snapshots() != profiles.value.snapshots()) {
+            conversationRepository?.invalidate()
             facility.invalidate(if (facility.state.value.enabled) "반려견 정보가 바뀌었어요. 조건을 확인하고 다시 검색해 주세요." else null)
         }
         profiles.value = value
@@ -185,10 +194,11 @@ class PlacesViewModel(
 
     fun onAction(action: PlacesAction) {
         if (action is PlacesAction.Search || action is PlacesAction.SearchAt || action is PlacesAction.Locate || action is PlacesAction.SetRadius) {
+            conversationRepository?.cancelPending()
             facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
         }
         when (action) {
-            is PlacesAction.SetAiMode -> facility.enable(action.enabled)
+            is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
             is PlacesAction.Discover -> discover(action.query)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
             PlacesAction.RetryAi -> facility.retry()
@@ -257,6 +267,22 @@ class PlacesViewModel(
             facility.reject("위치를 확인하거나 지도를 움직여 이 지역 검색을 누른 뒤 다시 시도해 주세요."); return
         }
         val kinds = current.discovery.requestedKinds
+        if (conversationRepository != null) {
+            if (kinds.size > 6 || current.discovery.loading || conversationRepository.state.value.result == null) {
+                facility.reject("카테고리를 선택해 주변 장소를 불러온 뒤 입력해 주세요.")
+                return
+            }
+            val visible = current.discovery.response?.overviewHits(current.discovery.preferParking).orEmpty().map { it.place.key }
+            facility.invalidate()
+            runtimeScope.launch {
+                try {
+                    conversationRepository.chat(query, visible)
+                    conversationRepository.state.value.result?.let(session::acceptConversation)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                } catch (_: Exception) { /* The shared conversation state retains the error and prior results. */ }
+            }
+            return
+        }
         facility.search(profiles.value.ownerId, FacilityQuery(query, origin, current.discovery.radiusMeters,
             if (kinds.toSet() == PlaceKind.entries.toSet()) emptyList() else kinds,
             current.discovery.preferParking, profiles.value.snapshots()))
@@ -267,6 +293,7 @@ class PlacesViewModel(
     }
 
     fun selectPlace(key: PlaceKey) {
+        conversationRepository?.select(key)
         facility.select(key)
         session.selectPlace(key)
     }
@@ -304,10 +331,15 @@ class PlacesViewModel(
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     require(modelClass.isAssignableFrom(PlacesViewModel::class.java))
+                    val app = context.applicationContext as com.daengs.app.DaengsApp
+                    val regular = PlaceRepository(PlaceApi(baseUrl = { BuildConfig.API_BASE_URL }))
+                    val conversation = if (BuildConfig.FACILITY_CONVERSATION) com.daengs.app.place.FacilityConversationRepository(
+                        com.daengs.app.place.ConversationApi { BuildConfig.API_BASE_URL }, regular,
+                        app.sessionProvider::freshSession, app.tokenStore::load,
+                    ) else null
                     return PlacesViewModel(
-                        placeRepository = PlaceRepository(
-                            PlaceApi(baseUrl = { BuildConfig.API_BASE_URL }),
-                        ),
+                        placeRepository = conversation ?: regular,
+                        conversationRepository = conversation,
                         journeyRepository = HttpJourneyRepository(
                             JourneyApi(baseUrl = { BuildConfig.API_BASE_URL }),
                         ),
