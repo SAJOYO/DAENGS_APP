@@ -49,13 +49,11 @@ fun evaluateClaimAccess(
     accuracyMeters: Double,
     radiusMeters: Double,
 ): SiteInteraction {
-    require(radiusMeters.isFinite() && radiusMeters > 0)
+    val proximity = evaluateTerritoryProximity(trustedLocation, distanceMeters, accuracyMeters, radiusMeters)
     val reason = when {
         !recording -> ClaimAccessReason.NOT_RECORDING
-        !trustedLocation || !distanceMeters.isFinite() || distanceMeters < 0 ||
-            !accuracyMeters.isFinite() || accuracyMeters < 0 -> ClaimAccessReason.UNTRUSTED_LOCATION
-        distanceMeters > radiusMeters -> ClaimAccessReason.OUT_OF_RANGE
-        distanceMeters + accuracyMeters > radiusMeters -> ClaimAccessReason.UNTRUSTED_LOCATION
+        proximity.range == TerritoryProximityRange.UNAVAILABLE -> ClaimAccessReason.UNTRUSTED_LOCATION
+        proximity.range == TerritoryProximityRange.APPROACHING -> ClaimAccessReason.OUT_OF_RANGE
         else -> null
     }
     return SiteInteraction(

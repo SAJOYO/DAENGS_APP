@@ -1,6 +1,7 @@
 package com.daengs.app.map.features.territory
 
 import com.daengs.app.territory.TerritorySite
+import com.daengs.app.location.LocationSample
 import com.daengs.app.walk.WalkTrackingState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -21,7 +22,7 @@ interface TerritoryGameProvider {
     suspend fun refresh(sites: List<TerritorySite>) {}
     fun invalidate() {}
     fun snapshot(board: TerritoryBoardState, tracking: WalkTrackingState, permitted: Boolean,
-                 petNames: Map<String, String>, nowNanos: Long): TerritoryGameState
+                 petNames: Map<String, String>, nowNanos: Long, screenSample: LocationSample? = null): TerritoryGameState
     fun selectPet(petId: String, siteId: String, tracking: WalkTrackingState) {}
     suspend fun submitMark(siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
         permitted: Boolean, petNames: Map<String, String>, nowNanos: Long, atMillis: Long): String =
