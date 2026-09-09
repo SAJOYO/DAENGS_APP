@@ -190,7 +190,15 @@ internal fun WalkDiaryMapContent(
                                 Text("${index + 1}", Modifier.width(28.dp), fontWeight = FontWeight.Bold)
                                 Column(Modifier.weight(1f)) {
                                     Text(scene.title, color = TextDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${formatWalkClock(scene.atMillis)}${if (scene.point == null) " · 위치 없는 장면" else ""}",
+                                    // 시각만 적는다. **"위치 없는 장면" 을 여기 달지 않는다** —
+                                    // `산책 시작`·`산책 마무리` 는 `storyboardScenes()` 가
+                                    // 좌표를 아예 안 붙이는 장면이라(지어내지 않으려고)
+                                    // 목록의 대부분에 그 꼬리표가 달렸다. 정상인 것이
+                                    // 결함처럼 읽힌다 — "내 위치가 기록이 안 됐나" 로.
+                                    //
+                                    // 정말 알려야 할 때는 이미 아래 상세가 말한다:
+                                    // "확인된 위치가 없어 지도에 점을 찍지 않았어요."
+                                    Text(formatWalkClock(scene.atMillis),
                                         style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                 }
                             }
