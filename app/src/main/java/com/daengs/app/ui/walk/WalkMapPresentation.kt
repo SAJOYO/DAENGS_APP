@@ -1,6 +1,7 @@
 package com.daengs.app.ui.walk
 
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.location.travelHeading
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.territory.TerritorySiteMarkerState
@@ -33,6 +34,9 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
         scene = composeMapScene(
             purpose = map.purpose,
             sources = MapSceneSources(
+                travelHeading = location.sample?.travelHeading().takeIf {
+                    summary == null && location.permissionGranted && location.precisePermission
+                },
                 currentPosition = location.currentPosition.takeIf {
                     summary == null && location.permissionGranted
                 },

@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="64dp"
+    android:viewportWidth="64" android:viewportHeight="64">
+    <!-- Transparent centre keeps the existing location portrait unobscured. -->
+    <path android:fillColor="#E85C88" android:strokeColor="#FFFFFF"
+        android:strokeWidth="2" android:strokeLineJoin="round"
+        android:pathData="M32,2 L43,15 L32,11 L21,15 Z" />
+</vector>

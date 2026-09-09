@@ -170,8 +170,19 @@ fun NaverMapSurface(
     }
 
     DisposableEffect(naverMap) {
-        val overlay: LocationOverlay? = naverMap?.locationOverlay
-        onDispose { overlay?.isVisible = false }
+        val map = naverMap
+        val overlay: LocationOverlay? = map?.locationOverlay
+        // LocationOverlay rotates its main icon with the map. Counteract that rotation
+        // so the portrait stays upright; travel course belongs to the separate arrow.
+        val listener = NaverMap.OnCameraChangeListener { _, _ ->
+            overlay?.bearing = map?.cameraPosition?.bearing?.toFloat() ?: 0f
+        }
+        overlay?.bearing = map?.cameraPosition?.bearing?.toFloat() ?: 0f
+        map?.addOnCameraChangeListener(listener)
+        onDispose {
+            map?.removeOnCameraChangeListener(listener)
+            overlay?.isVisible = false
+        }
     }
 
     LaunchedEffect(naverMap, scene.currentPosition) {
@@ -282,6 +293,8 @@ fun NaverMapSurface(
         }
         onDispose { markers.forEach { it.map = null } }
     }
+
+    NaverTravelHeadingLayer(naverMap, scene.currentPosition, scene.travelHeading)
 
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
     // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.
