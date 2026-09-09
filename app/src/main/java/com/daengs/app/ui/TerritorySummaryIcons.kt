@@ -15,8 +15,6 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.ui.theme.DaengPink
-import kotlin.math.cos
-import kotlin.math.sin
 
 /** The map pole's cap, brackets and safety band simplified for a small monochrome UI icon. */
 internal fun DrawScope.iconTerritoryPole(tint: Color) {
@@ -46,24 +44,11 @@ internal fun DrawScope.iconTerritoryPole(tint: Color) {
     }
 }
 
-internal fun DrawScope.iconSpeedometer(tint: Color) {
-    drawArc(tint, 150f, 240f, false, Offset(2f, 2f), Size(20f, 20f),
-        style = Stroke(1.8f, cap = StrokeCap.Round))
-    for (degrees in listOf(150, 210, 270, 330, 390)) {
-        val radians = Math.toRadians(degrees.toDouble())
-        fun point(radius: Float) = Offset(12f + cos(radians).toFloat() * radius, 12f + sin(radians).toFloat() * radius)
-        drawLine(tint, point(8f), point(10f), 1.5f, StrokeCap.Round)
-    }
-    drawLine(tint, Offset(12f, 12f), Offset(16f, 7f), 1.8f, StrokeCap.Round)
-    drawCircle(tint, 1.6f, Offset(12f, 12f))
-}
-
 @Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun TerritorySummaryIconsPreview() {
     Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         DaengsIconView(DaengsIcon.TerritoryPole, Modifier.size(28.dp), DaengPink)
         DaengsIconView(DaengsIcon.TerritoryPole, Modifier.size(48.dp), DaengPink)
-        DaengsIconView(DaengsIcon.Speedometer, Modifier.size(24.dp), DaengPink)
     }
 }

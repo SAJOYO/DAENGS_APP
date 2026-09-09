@@ -577,6 +577,7 @@ fun HomeScreen(
             WalkSummaryCard(
                 Modifier.padding(horizontal = 14.dp),
                 todayWalks,
+                words.daily,
                 onOpenWalkHistory,
                 territoryHeader = gameContent,
             )
