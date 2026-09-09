@@ -37,6 +37,82 @@ class WalkEntryV2SyncTest {
         Unit
     }
     @After fun close() = db.close()
+
+    @Test fun `임시 v1 산책은 구서버 capabilities를 묻지 않고 저장 조회 수정 삭제한다`() = runBlocking {
+        val store = WalkEntryStore(dao)
+        dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
+        store.save(com.daengs.app.walk.WalkEntry("old", "legacy", WalkMomentType.SNIFFING, now,
+            com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        val calls = mutableListOf<String>()
+        var remote: JSONObject? = null
+        var revision = 0
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, _, _, _, _ -> error("v2 must not be probed") }
+        val sync = WalkEntrySync(dao, v2, temporaryLegacyMode = true) { _, path, method, body ->
+            calls += method
+            assertTrue(path.startsWith("/walk/entries"))
+            if (method == "GET") JSONObject().put("entries", JSONArray().apply { remote?.let { put(it) } })
+            else {
+                revision++
+                if (method == "PUT") { assertFalse(body!!.has("pin")); assertTrue(body.getJSONObject("content").has("location")) }
+                JSONObject().put("id", "old").put("revision", revision)
+                    .put("mutation_id", body?.getString("mutation_id") ?: "deleted")
+                    .put("content", body?.getJSONObject("content") ?: JSONObject.NULL).also { remote = it }
+            }
+        }
+        sync.sync("token", "legacy", "walk")
+        assertFalse(dao.entry("old")!!.dirty)
+        store.save(dao.entry("old")!!.entry()!!.copy(type = WalkMomentType.BARKING))
+        sync.sync("token", "legacy", "walk")
+        assertEquals(WalkMomentType.BARKING, dao.entry("old")!!.entry()!!.type)
+        store.delete("old")
+        sync.sync("token", "legacy", "walk")
+        assertEquals(listOf("PUT", "GET", "PUT", "GET", "DELETE", "GET"), calls)
+        assertNull(dao.entry("old")!!.payload)
+        assertFalse(dao.entry("old")!!.dirty)
+    }
+
+    @Test fun `혼합 산책은 v1부터 전송하고 구서버 실패에도 기존 v2 영수증과 핀을 보존한다`() = runBlocking {
+        dao.preparePinRequest(id, owner)
+        val original = dao.entry(id)!!
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("legacy", "s", WalkMomentType.BARKING, now,
+            com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        var sentLegacy = false
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, _, _, _ ->
+            assertTrue(sentLegacy)
+            assertEquals("/entry-capabilities", path)
+            throw WalkHttpException(404, "missing")
+        }
+        val sync = WalkEntrySync(dao, v2, temporaryLegacyMode = true) { _, path, method, body ->
+            assertEquals("/walk/entries/legacy", path)
+            assertEquals("PUT", method)
+            sentLegacy = true
+            JSONObject().put("revision", 1).put("mutation_id", body!!.getString("mutation_id"))
+        }
+        try { sync.sync("token", "s", "walk"); fail() } catch (_: IOException) { }
+        assertTrue(sentLegacy)
+        assertFalse(dao.entry("legacy")!!.dirty)
+        assertEquals(original, dao.entry(id))
+    }
+
+    @Test fun `임시 v1도 다른 계정 산책을 보내거나 계정 전환 뒤 ACK를 적용하지 않는다`() = runBlocking {
+        dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("old", "legacy", WalkMomentType.SNIFFING, now,
+            com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        var calls = 0
+        val sync = WalkEntrySync(dao, temporaryLegacyMode = true, owner = { owner }) { _, _, _, body ->
+            calls++
+            owner = "other"
+            JSONObject().put("revision", 1).put("mutation_id", body!!.getString("mutation_id"))
+        }
+        owner = "other"
+        sync.sync("token", "legacy", "walk")
+        assertEquals(0, calls)
+        owner = "owner"
+        try { sync.sync("token", "legacy", "walk"); fail() } catch (_: IllegalStateException) { }
+        assertEquals(1, calls)
+        assertTrue(dao.entry("old")!!.dirty)
+        assertEquals(0, dao.entry("old")!!.revision)
+    }
     private fun caps(write: Boolean = true) = JSONObject().put("read_versions", JSONArray(listOf("walk-entry-v2")))
         .put("write_versions", JSONArray(if (write) listOf("walk-entry-v2") else emptyList<String>()))
         .put("active_policy_versions", JSONArray(if (write) listOf("action-pin-policy-v1") else emptyList<String>()))
