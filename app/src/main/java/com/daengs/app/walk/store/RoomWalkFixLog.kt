@@ -39,14 +39,14 @@ class RoomWalkFixLog(private val dao: WalkDao,
         if (existing != null && existing.ownerId.isEmpty()) {
             dao.restoreOwner(session.id, verifiedOwner, requireNotNull(session.serverWalkId))
         }
-        openSessionLocked(session)
+        openSessionLocked(session, originatedHere = false)
     }
 
     override suspend fun openSession(session: RecordedSession) = sessionMutex.withLock {
-        openSessionLocked(session)
+        openSessionLocked(session, originatedHere = true)
     }
 
-    private suspend fun openSessionLocked(session: RecordedSession) {
+    private suspend fun openSessionLocked(session: RecordedSession, originatedHere: Boolean) {
         val capturedOwner = session.ownerId ?: owner()
         check(capturedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
         val inserted = dao.insertSession(
@@ -66,6 +66,8 @@ class RoomWalkFixLog(private val dao: WalkDao,
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
         // 나가지 않은 아이가 그 산책에 섞인다 (시작 시각을 안 덮어쓰는 것과 같은 이유).
         if (inserted == -1L) return
+        if (originatedHere) dao.insertPhotoSync(WalkPhotoSyncRow(session.id, capturedOwner,
+            java.util.UUID.randomUUID().toString()))
         for (dogId in session.dogIds) {
             dao.insertSessionDog(WalkSessionDogRow(sessionId = session.id, dogId = dogId))
         }
@@ -147,7 +149,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }
+        (dao.sessionsPendingAnalysis() + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
             .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**

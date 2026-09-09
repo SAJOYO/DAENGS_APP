@@ -3,6 +3,7 @@
 | 파일 | 내용 |
 | --- | --- |
 | [collaboration.md](collaboration.md) | 협업 규칙 — 우선순위 · Iteration · PR 기준 · 데일리 · 회고 |
+| [walk-photo-sync.md](walk-photo-sync.md) | 산책 사진 메타데이터 전송 — Room 13, 응답 유실/편집 복구, 서버 기능 협상 |
 | [asset-workflow.md](asset-workflow.md) | 미니룸 에셋을 **직접 그릴 때**의 격자 · 카메라 각도 · 기준점 · WebP 변환 |
 | `templates/` | 아이소메트릭 도안 (1x1 · 2x1 · 2x2, PNG + SVG). `uv run tools/isoasset.py template` 로 다시 만들 수 있다 |
 
