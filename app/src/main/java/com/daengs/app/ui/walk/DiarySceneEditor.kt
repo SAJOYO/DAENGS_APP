@@ -27,19 +27,13 @@ internal fun DiarySceneEditor(scene: DiaryScene, busy: Boolean, error: String?,
             OutlinedTextField(title, { title = it }, label = { Text("장면 제목") },
                 enabled = !busy, isError = title.length > 80, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(body, { body = it },
-                label = { Text(if (scene.content != null) "장면 배경" else "장면 내용") },
-                enabled = !busy, minLines = 3, isError = body.length > 2000,
+                label = { Text("장면 내용") },
+                enabled = !busy, minLines = 3, isError = body.length > MAX_DIARY_SCENE_BODY_LENGTH,
                 modifier = Modifier.fillMaxWidth())
-            scene.content?.let {
-                HorizontalDivider()
-                Text(if (it.recordKind.startsWith("observed_")) "이동 기록" else "직접 남긴 기록",
-                    style = MaterialTheme.typography.labelLarge)
-                Text(it.recordText, style = MaterialTheme.typography.bodyLarge)
-            }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         } },
         { TextButton(onClick = { onSave(title.trim(), body) },
-            enabled = !busy && title.isNotBlank() && title.length <= 80 && body.length <= 2000) {
+            enabled = !busy && title.isNotBlank() && title.length <= 80 && body.length <= MAX_DIARY_SCENE_BODY_LENGTH) {
             Text(if (busy) "저장 중" else "저장")
         } },
         { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } })
@@ -49,7 +43,7 @@ internal fun DiarySceneEditor(scene: DiaryScene, busy: Boolean, error: String?,
 @Composable
 private fun DiarySceneEditorPreview() {
     MaterialTheme {
-        DiarySceneEditor(DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원 옆이었다.",
+        DiarySceneEditor(DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원 옆이었다. 두부랑 사진 한 장!",
             null, "", content = DiarySceneContent("두부랑 사진 한 장!", "note", locationLabel = "")),
             false, null, { _, _ -> }, {})
     }

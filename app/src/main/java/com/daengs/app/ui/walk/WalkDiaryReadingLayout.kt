@@ -30,18 +30,21 @@ import com.daengs.app.walk.diary.DiarySceneContent
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
-/** A single persistent map, with a sheet for browsing or reading. Sheet movement never writes data. */
+/** Stable map geometry; sheet position is deliberately not part of this value. */
+internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float)
+
+/** The sheet overlays one fixed map. Swiping it never issues a camera request. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WalkDiaryMapContent(
     scenes: List<DiaryScene>, selected: DiaryScene?, loading: Boolean, error: String?,
     onSelect: (DiaryScene) -> Unit, onClose: () -> Unit, onEdit: (DiaryScene) -> Unit,
     onPhoto: (WalkPhoto) -> Unit, onRetry: () -> Unit, onAdd: () -> Unit,
-    adding: Boolean = false, modifier: Modifier = Modifier, map: @Composable (Int) -> Unit,
+    adding: Boolean = false, modifier: Modifier = Modifier, map: @Composable (DiaryMapViewport) -> Unit,
     generationNotice: String? = null, generating: Boolean = false, onGenerate: (() -> Unit)? = null,
-    onEditRecord: ((DiaryScene) -> Unit)? = null,
     title: String = "산책 일기", subtitle: String = "", onBack: () -> Unit = {},
     mapSettings: @Composable () -> Unit = {},
+    onOverview: () -> Unit = {},
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -66,14 +69,16 @@ internal fun WalkDiaryMapContent(
             IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "산책 목록으로" }) {
                 Text("‹", fontSize = 30.sp, color = TextDark)
             }
-            Text(if (selected == null) subtitle.ifBlank { "산책 일기" } else title,
+            Text(subtitle.ifBlank { "산책 일기" },
                 Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                color = if (selected == null) TextMuted else TextDark)
+                color = TextMuted)
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.semantics { contentDescription = "일기 메뉴" }) {
                     Text("⋯", fontSize = 26.sp, color = TextDark)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("전체 동선 보기") }, enabled = !loading,
+                        onClick = { menu = false; onClose(); onOverview(); scope.launch { sheet.partialExpand() } })
                     DropdownMenuItem(text = { Text("기록 남기기") }, enabled = !loading && error == null,
                         onClick = { menu = false; onAdd() })
                     onGenerate?.let { generate ->
@@ -83,7 +88,7 @@ internal fun WalkDiaryMapContent(
                 }
             }
         }
-        if (selected == null) Text(title,
+        Text(title,
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 14.dp),
             fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
             color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -91,8 +96,10 @@ internal fun WalkDiaryMapContent(
             val mapPeek = (maxHeight * .25f).coerceIn(96.dp, 180.dp).coerceAtMost(maxHeight * .4f)
             val panelHeight = maxHeight - mapPeek
             val peek = (maxHeight * .34f).coerceIn(180.dp, 260.dp).coerceAtMost(panelHeight)
-            // One viewport update at the target state, not a camera animation for every drag pixel.
-            val mapInset = with(LocalDensity.current) { (if (expanded) panelHeight else peek).roundToPx() }
+            // Padding/fit use the browsing viewport even while the sheet covers more of the map.
+            // Only an explicit scene selection uses the upper, still-visible band as its pivot.
+            val viewport = DiaryMapViewport(with(LocalDensity.current) { peek.roundToPx() },
+                (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f))
             BottomSheetScaffold(
                 scaffoldState = scaffold, sheetPeekHeight = peek,
                 sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -173,21 +180,16 @@ internal fun WalkDiaryMapContent(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(selected.title, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
-                                                Text(formatWalkClock(selected.atMillis), fontSize = 13.sp, color = TextMuted)
+                                                Text(listOfNotNull(formatWalkClock(selected.atMillis),
+                                                    selected.content?.address?.takeIf(String::isNotBlank)).joinToString(" · "),
+                                                    fontSize = 13.sp, color = TextMuted)
                                             }
                                             IconButton(onClick = { onEdit(selected) }) {
                                                 Icon(painterResource(R.drawable.ic_diary_edit), "장면 수정", Modifier.size(22.dp))
                                             }
                                         }
                                         Spacer(Modifier.height(16.dp))
-                                        if (selected.content != null) DiarySceneText(selected.body, selected.content,
-                                            onEditRecord = if (selected.entryId != null && onEditRecord != null)
-                                                ({ onEditRecord(selected) }) else null)
-                                        else Text(selected.body, fontSize = 20.sp, lineHeight = 30.sp)
-                                        if (selected.content == null && selected.entryId != null && onEditRecord != null)
-                                            TextButton(onClick = { onEditRecord(selected) }) { Text("원본 기록 수정") }
-                                        if (selected.point == null) Text("위치 정보 없음",
-                                            Modifier.padding(top = 12.dp), fontSize = 13.sp, color = TextMuted)
+                                        DiarySceneText(selected.body)
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
                                             Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
                                         selected.photo?.let { photo -> TextButton(onClick = { onPhoto(photo) }) { Text("사진 보기") } }
@@ -210,7 +212,7 @@ internal fun WalkDiaryMapContent(
                 },
             ) {
                 Box(Modifier.fillMaxSize()) {
-                    map(mapInset)
+                    map(viewport)
                     Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), shape = CircleShape,
                         color = CardWhite, shadowElevation = 2.dp) { mapSettings() }
                 }
@@ -223,7 +225,7 @@ internal fun WalkDiaryMapContent(
 @Preview(showBackground = true, widthDp = 320, heightDp = 640)
 @Composable
 private fun DiaryReadingPreview() {
-    val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다.", null, "",
+    val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다. 두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", null, "",
         content = DiarySceneContent("두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", "note", locationLabel = "기록한 위치"))
     DaengsTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",

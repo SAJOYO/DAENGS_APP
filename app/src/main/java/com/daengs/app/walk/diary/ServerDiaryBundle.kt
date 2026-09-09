@@ -4,7 +4,7 @@ import com.daengs.app.location.GeoPoint
 import org.json.JSONObject
 import java.time.Instant
 
-/** Original record and background stay separate, including after local prose edits. */
+/** Internal source material. Its field boundaries are not the reader/editor layout. */
 data class DiarySceneContent(
     val recordText: String,
     val recordKind: String,
@@ -140,7 +140,7 @@ object ServerDiaryBundle {
             original = "기기 이동 기록 · ${(to - from) / 1000}초 동안의 관측"
             id = identity
         }
-        // Only explicitly named address fields are displayed; never stringify arbitrary dictionaries.
+        // Keep explicit address data; never stringify arbitrary dictionaries for the reader.
         val places = obj.getJSONArray("place_reference")
         val address = (0 until places.length()).mapNotNull {
             val piece = places.getJSONObject(it)

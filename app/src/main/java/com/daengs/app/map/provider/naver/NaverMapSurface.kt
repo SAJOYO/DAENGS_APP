@@ -64,6 +64,8 @@ fun NaverMapSurface(
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
     centerZoom: Double? = null,
+    cameraRequestKey: Int = 0,
+    centerYFraction: Float = .5f,
     keepSelectionVisible: Boolean = false,
     /** 이 점들이 **다 보이게** 화면을 맞춘다. 지난 산책의 경로처럼 범위가 정해진 것에 쓴다. */
     fitBounds: List<GeoPoint>? = null,
@@ -220,7 +222,7 @@ fun NaverMapSurface(
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
     // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
-    LaunchedEffect(naverMap, fitBounds, if (keepSelectionVisible) centerOn else null,
+    LaunchedEffect(naverMap, fitBounds, cameraRequestKey, if (keepSelectionVisible) centerOn else null,
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
         bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
@@ -235,7 +237,7 @@ fun NaverMapSurface(
             map.moveCamera(CameraUpdate.scrollAndZoomTo(bounds.southWest, SELECTED_PLACE_MIN_ZOOM))
         } else if (keepSelectionVisible) {
             // Leave space for the ordinal badge above a coordinate, endpoints below it,
-            // and the settings button. Refit after the diary header changes the actual view size.
+            // and the settings button. Overlay gestures do not change this viewport.
             val visibleHeight = viewportSize.height - topPaddingPx - bottomPaddingPx
             val padding = minOf((48 * density).toInt(), visibleHeight / 5).coerceAtLeast(0)
             map.moveCamera(CameraUpdate.fitBounds(bounds, padding, padding * 2, padding, padding))
@@ -250,7 +252,7 @@ fun NaverMapSurface(
     // **선택 상태가 아니라 "누른 순간"을 본다.** 검색이 끝나면 첫 결과가 저절로
     // 선택되는데, 선택을 보고 움직이면 "내 위치" 를 눌러도 지도가 곧바로 그 첫
     // 결과로 도로 끌려간다.
-    LaunchedEffect(naverMap, centerOn,
+    LaunchedEffect(naverMap, centerOn, cameraRequestKey,
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
         if (keepSelectionVisible) listOf(bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) else emptyList<Int>()) {
         val map = naverMap ?: return@LaunchedEffect
@@ -260,7 +262,9 @@ fun NaverMapSurface(
         // 사용자가 맞춰 놓은 화면을 마음대로 바꾸지 않는다.
         val zoom = centerZoom ?: maxOf(map.cameraPosition.zoom, SELECTED_PLACE_MIN_ZOOM)
         map.moveCamera(
-            CameraUpdate.scrollAndZoomTo(point.toLatLng(), zoom).animate(CameraAnimation.Easing),
+            CameraUpdate.scrollAndZoomTo(point.toLatLng(), zoom)
+                .apply { if (centerYFraction != .5f) pivot(PointF(.5f, centerYFraction.coerceIn(0f, 1f))) }
+                .animate(CameraAnimation.Easing),
         )
     }
 

@@ -132,20 +132,20 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         diaryTitle = walkDiaryTitle(summary, bundle?.title))
     editing?.let { scene ->
         var title by remember(scene.id) { mutableStateOf(scene.title) }
-        var body by remember(scene.id) { mutableStateOf(scene.body) }
+        var body by remember(scene.id) { mutableStateOf(scene.sceneBody()) }
         AlertDialog(onDismissRequest = { if (!busy) editing = null },
             title = { Text("장면 문구 편집") }, text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("원본 행동·메모는 바뀌지 않아요.")
                     OutlinedTextField(title, { if (it.length <= 80) title = it },
                         label = { Text("제목") }, enabled = !busy)
-                    OutlinedTextField(body, { if (it.length <= 2000) body = it },
+                    OutlinedTextField(body, { if (it.length <= MAX_DIARY_SCENE_BODY_LENGTH) body = it },
                         label = { Text("설명·남길 이야기") }, minLines = 3, enabled = !busy)
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             }, confirmButton = {
                 TextButton(enabled = !busy && title.isNotBlank(),
-                    onClick = { save(current.edit(scene, title.trim(), body.trim())) }) { Text("저장") }
+                    onClick = { save(current.edit(scene, title.trim(), body, bodyScope = SceneBodyScope.SCENE)) }) { Text("저장") }
             }, dismissButton = { TextButton(enabled = !busy, onClick = { editing = null }) { Text("취소") } })
     }
     original?.let { entry ->
@@ -215,7 +215,7 @@ internal fun StoryboardContent(
                             if (entry.petId == null) "미지정" else petNames[entry.petId] ?: "이름 확인 필요",
                             style = MaterialTheme.typography.labelMedium)
                     }
-                    if (scene.diary != null) DiarySceneText(scene.body, scene.diary)
+                    if (scene.diary != null) DiarySceneText(scene.sceneBody())
                     else if (scene.body.isNotBlank()) Text(scene.body)
                     if (!scene.available) Text(scene.evidence, color = MaterialTheme.colorScheme.error)
                     else if (scene.needsReview) Text("원본이 바뀌었어요. 문구와 근거를 확인해 주세요.",
@@ -244,8 +244,6 @@ internal fun StoryboardContent(
                 modifier = Modifier.fillMaxWidth()) { Text(if (reviewed) "현재 구성 검토 완료" else "이 구성 검토 완료") }
             Text("검토 완료 시 현재 장면의 사본을 보관해요. 이후 편집해도 이전 검토본은 다음 완료 전까지 유지돼요.",
                 style = MaterialTheme.typography.bodySmall)
-            if (scenes.none { it.diary != null })
-                Text("서버가 새 일기를 지원하면 배경 문장과 원본 기록을 나누어 보여줘요.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
