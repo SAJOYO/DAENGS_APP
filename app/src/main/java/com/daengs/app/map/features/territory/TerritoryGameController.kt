@@ -34,6 +34,7 @@ data class TerritoryGameSite(
     val occupancyReadState: TerritoryOccupancyReadState = if (occupancyKnown) TerritoryOccupancyReadState.READY else TerritoryOccupancyReadState.LOADING,
     val isOwnedByMe: Boolean? = null,
     val proximity: TerritoryProximity = TerritoryProximity(),
+    val sharedState: com.daengs.app.territory.SharedTerritorySite? = null,
 ) {
     val occupancyLabel: String get() = if (!occupancyKnown) when (occupancyReadState) {
         TerritoryOccupancyReadState.FAILED -> "점유 조회 실패"

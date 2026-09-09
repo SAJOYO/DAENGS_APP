@@ -19,6 +19,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.daengs.app.territory.PhotoSimulation
 import com.daengs.app.territory.ClaimPhotoStatus
 import com.daengs.app.territory.TerritoryPhotoJob
+import com.daengs.app.territory.TerritoryCaptureBlocked
 import com.daengs.app.ui.camera.CameraPreview
 import com.daengs.app.ui.camera.hasCameraPermission
 import com.daengs.app.ui.camera.rememberCameraController
@@ -64,12 +65,14 @@ internal fun TerritoryCaptureDialog(
                 Button(enabled = !busy, onClick = {
                     busy = true
                     scope.launch {
+                        message = null
                         val attempt = try { beginCapture() }
                             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                            catch (blocked: TerritoryCaptureBlocked) { message = blocked.message; null }
                             catch (_: Exception) { null }
                         if (attempt == null) {
                             busy = false
-                            message = "촬영할 수 없어요 · 같은 산책에서 해당 장소에 다시 접근해 주세요"
+                            if (message == null) message = "촬영할 수 없어요 · 같은 산책에서 해당 장소에 다시 접근해 주세요"
                         } else {
                             capturing = attempt
                             val file = runCatching {

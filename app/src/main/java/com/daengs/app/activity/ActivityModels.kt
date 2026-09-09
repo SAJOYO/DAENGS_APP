@@ -3,6 +3,8 @@ package com.daengs.app.activity
 import java.math.BigInteger
 import java.util.UUID
 
+data class ActivitySeason(val id: String, val endsMs: Long, val serverNowMs: Long)
+
 /** DEV #281. 기간은 산책 종료 시각 기준 [fromMs, toMs), 단위는 epoch milliseconds. */
 data class ActivityWalkWindow(val fromMs: Long, val toMs: Long, val petId: String? = null) {
     init {

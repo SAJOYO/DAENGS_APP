@@ -148,6 +148,7 @@ fun HomeScreen(
     onOpenWalkHistory: (() -> Unit)? = null,
     /** 오늘 걸은 것. null 이면 아직 못 읽은 것이라 카드가 `-` 로 둔다. */
     todayWalks: WalkDayTotals? = null,
+    gameContent: (@Composable () -> Unit)? = null,
     /**
      * 창밖·문밖의 지금.
      *
@@ -579,6 +580,7 @@ fun HomeScreen(
                 words.daily,
                 onOpenWalkHistory,
             )
+            gameContent?.invoke()
             Spacer(Modifier.height(10.dp))
         }
 

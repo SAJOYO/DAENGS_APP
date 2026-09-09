@@ -113,7 +113,7 @@ class ServerTerritoryGameProvider(
                 occupancyReadState = if (shared != null) TerritoryOccupancyReadState.READY
                     else cached?.readState ?: if (currentOwner() == null) TerritoryOccupancyReadState.LOGIN_REQUIRED
                     else TerritoryOccupancyReadState.LOADING,
-                isOwnedByMe = occupied?.isMine, proximity = proximity)
+                isOwnedByMe = occupied?.isMine, proximity = proximity, sharedState = shared)
         }
         val base = TerritoryGameState(enabled = true, readOnly = true,
             phase = when {
@@ -156,13 +156,22 @@ class ServerTerritoryGameProvider(
                     target.proximity.distanceMeters ?: Double.NaN, target.proximity.accuracyMeters ?: Double.NaN, 20.0) })
         }
         val target = sites.firstOrNull { it.site.id == base.targetId }
-        val disposition = target?.let { unverifiedClaimDisposition(it.claim, pet.orEmpty()) }
+        val disposition = target?.let {
+            val result = unverifiedClaimDisposition(it.claim, pet.orEmpty())
+            if (it.sharedState?.policyVersion == "certified-protection-v2" && result == ClaimDisposition.POLICY_UNDECIDED)
+                ClaimDisposition.PHOTO_REQUIRED else result
+        }
         val canMark = base.phase == TerritoryWalkPhase.WALKING && sessionReady && !locked && pet != null &&
             target?.occupancyKnown == true && target.interaction?.access == ClaimAccess.READY && disposition == ClaimDisposition.GRANTED
         val photoRange = target?.let { location.proximity(it.site, 10.0).range == TerritoryProximityRange.IN_RANGE } == true
-        val photoAllowed = remoteClaim?.resolutionCode == null && (remoteClaim == null || remoteClaim.photoStatus in
-            setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING))
-        val canPhotograph = onlinePhotos && base.phase == TerritoryWalkPhase.WALKING && sessionReady && trusted && photoRange &&
+        val v2 = target?.sharedState?.policyVersion == "certified-protection-v2"
+        val protection = target?.sharedState?.takeIf { it.occupancy?.ownerPetId != pet }
+        val protected = protection?.occupancy?.protectedUntilMillis?.let {
+            protection.serverNowMillis == null || it > protection.serverNowMillis
+        } == true
+        val photoAllowed = (v2 && remoteClaim?.photoStatus != ClaimPhotoStatus.PENDING) || (remoteClaim?.resolutionCode == null && (remoteClaim == null || remoteClaim.photoStatus in
+            setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)))
+        val canPhotograph = !protected && onlinePhotos && base.phase == TerritoryWalkPhase.WALKING && sessionReady && trusted && photoRange &&
             pet != null && target?.occupancyKnown == true && photo?.photoActive() != true && photoAllowed &&
             (attempt == null || attempt.state == "CONFIRMED" || attempt.canReplaceRejectedMark()) &&
             !(disposition == ClaimDisposition.ALREADY_OWNED && target.claim.occupancy?.certification == ClaimCertification.VERIFIED)
@@ -173,7 +182,13 @@ class ServerTerritoryGameProvider(
             sites.any { target -> target.site.id == it.site.siteId && target.claim.version == it.site.version } }
         val guidance = when {
             base.phase == TerritoryWalkPhase.PAUSED -> "산책을 재개하면 영역표시할 수 있어요"
-            remoteClaim?.resolutionCode == "site_changed" -> "점유가 바뀌었어요 · 새 산책에서 다시 방문해 주세요"
+            protected -> {
+                val elapsed = (System.nanoTime() - protection!!.receivedAtNanos).coerceAtLeast(0) / 1_000_000
+                val remaining = ((protection.occupancy!!.protectedUntilMillis!! - (protection.serverNowMillis ?: 0) - elapsed).coerceAtLeast(0) + 999) / 1000
+                if (remaining == 0L) "보호 종료 여부를 확인하고 있어요" else "인증된 영역 보호 중 · %02d:%02d 뒤 도전 가능".format(remaining / 60, remaining % 60)
+            }
+            v2 && canPhotograph && (remoteClaim?.resolutionCode != null || remoteClaim?.photoStatus == ClaimPhotoStatus.VERIFIED) -> "새 사진으로 다시 도전할 수 있어요"
+            remoteClaim?.resolutionCode == "site_changed" -> "다른 강아지가 먼저 점령했어요 · 보호 종료 후 다시 도전해 주세요"
             photo != null && (photo.photoActive() || photo.state == "REJECTED" || photo.failure != null) -> photo.photoGuidance()
             remoteClaim?.photoStatus == ClaimPhotoStatus.VERIFIED -> "사진 인증이 완료됐어요"
             remoteClaim?.photoStatus == ClaimPhotoStatus.REJECTED -> "사진이 부적합해요 · 현장에서 다시 촬영해 주세요"
@@ -234,7 +249,9 @@ class ServerTerritoryGameProvider(
         actions.deliver()
         val mark = actions.rows().firstOrNull { it.kind == "MARK" && it.ownerId == currentOwner() && it.sessionId == session && JSONObject(it.body).getString("site_id") == siteId && it.state == "CONFIRMED" } ?: return null
         val claim = parseTerritoryClaim(checkNotNull(mark.response), mark.body)
-        if (claim.resolutionCode != null || claim.photoStatus !in setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) return null
+        if (current.target?.sharedState?.policyVersion == "certified-protection-v2") {
+            if (actions.photos?.checkAccess(mark) != true) { refresh(board.sites); return null }
+        } else if (claim.resolutionCode != null || claim.photoStatus !in setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) return null
         return TerritoryCaptureTarget(ClaimSession(session, mark.ownerId, JSONObject(mark.body).getString("claiming_pet_id")), siteId, claim.claimId)
     }
 
@@ -248,7 +265,8 @@ class ServerTerritoryGameProvider(
         if (parseTerritoryClaim(checkNotNull(mark.response), mark.body).claimId != target.serverClaimId) return null
         val id = java.util.UUID.randomUUID().toString()
         return actions.photos!!.reserve(tracking, mark, photoCaptureBody(id, mark.sessionId, target.siteId,
-            target.session.claimingPetId, checkNotNull(tracking.latestMomentFix), atMillis))
+            target.session.claimingPetId, checkNotNull(tracking.latestMomentFix), atMillis),
+            current.target?.takeIf { it.sharedState?.policyVersion == "certified-protection-v2" }?.claim?.version)
     }
 
     override fun saveCapture(captureId: String, file: java.io.File) = actions?.photos?.save(captureId, file)

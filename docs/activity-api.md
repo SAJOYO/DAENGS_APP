@@ -21,7 +21,7 @@ val territory = activity.territorySummary(seasonId, petId).getOrThrow()
 
 기간은 산책 **종료 시각** 기준 `[fromMs, toMs)`이며 epoch milliseconds, 최대 366일이다.
 petId 생략은 계정 전체 조회다. 시즌 ID는 호출자가 전달하며 앱이 현재 시즌을 만들거나 추정하지 않는다.
-서버에는 현재 시즌 목록 조회 API가 이 세 경로에 포함되어 있지 않다.
+후속 #205는 `currentSeason()` → GET `/app/activity/seasons/current`로 현재 시즌을 조회한다.
 
 측정값 null은 0으로 바꾸지 않는다. 산책 PENDING, 점령 PENDING/READY/STALE, 제외 이유,
 generation·version·source revision을 응답 그대로 보존한다. 점수의 holdingUnits는 BigInteger이며
@@ -32,8 +32,7 @@ Double로 변환하지 않는다. 사실 통계와 점수, 통계 확정 시각�
 코루틴 취소는 다시 던진다. 로그인 정보가 없으면 HTTP를 보내지 않는다. 조회 중 계정·로그인 세션이
 바뀌면 늦은 결과를 폐기한다. 다른 요청에서 refresh token이 회전한 경우도 보수적으로 폐기한다.
 
-이 연결은 호출 가능한 조회 계층만 등록한다. 시작 시 자동 요청, 폴링, 결과 디스크 캐시, 화면,
-게임 규칙/안내 변경, 서버 flag 전환, 시즌 생성, 시설 AI 변경은 포함하지 않는다.
+후속 #205는 홈의 산책 기록 버튼 아래 `HomeGameRoute`에서 현재 시즌과 선택 강아지의 점수·점령 수를 조회한다. STARTED 화면에서 30초 간격으로 갱신하며 현황을 누르면 상세와 산책 지도 진입을 제공한다. 오류/집계 대기/시즌 없음은 구분하며 서버 flag나 시즌을 생성하지 않는다.
 실제 서버 조회에는 #281 배포·DB 준비 및 서버 `activity_game_enabled` 활성화가 필요하다.
 
 검증 범위: 로컬 HTTP 서버로 세 경로·Bearer 인증·기간/대상 에코·오류 상태·nullable 값·정수 정밀도를
