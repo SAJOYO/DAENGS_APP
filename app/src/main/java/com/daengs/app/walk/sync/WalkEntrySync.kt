@@ -8,6 +8,8 @@ import org.json.JSONObject
 class WalkEntrySync(
     private val dao: WalkDao,
     private val v2: WalkEntryV2Sync? = null,
+    private val temporaryLegacyMode: Boolean = false,
+    private val owner: (() -> String)? = null,
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
         WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
     },
@@ -19,20 +21,31 @@ class WalkEntrySync(
     }
 
     private suspend fun syncLocked(token: String, sessionId: String, walkId: String) {
-        if (v2?.sync(token, sessionId, walkId) == true) return
-        for (row in dao.entries(sessionId).filter { it.dirty && it.syncError == null }) {
+        val account = owner?.invoke()
+        if (owner != null && (account.isNullOrEmpty() || dao.session(sessionId)?.ownerId != account)) return
+        fun checkAccount() { check(owner == null || owner.invoke() == account) { "계정이 변경됐어요." } }
+        suspend fun call(path: String, method: String, body: JSONObject?): JSONObject {
+            checkAccount()
+            val response = request(token, path, method, body)
+            checkAccount()
+            return response
+        }
+        checkAccount()
+        if (!temporaryLegacyMode && v2?.sync(token, sessionId, walkId) == true) return
+        // 임시 모드에서도 기존 v2 원본/삭제/영수증을 v1으로 보내지 않는다.
+        for (row in dao.entries(sessionId).filter { !it.isV2 && it.dirty && it.syncError == null }) {
             val response = try { if (row.payload == null) {
-                request(token, "/$walkId/entries/${row.id}?expected_revision=${row.revision}&mutation_id=${row.mutationId}",
+                call("/$walkId/entries/${row.id}?expected_revision=${row.revision}&mutation_id=${row.mutationId}",
                     "DELETE", null)
             } else {
-                request(token, "/$walkId/entries/${row.id}", "PUT", JSONObject().apply {
+                call("/$walkId/entries/${row.id}", "PUT", JSONObject().apply {
                     put("expected_revision", row.revision)
                     put("mutation_id", row.mutationId)
                     put("content", JSONObject(row.payload))
                 })
             } } catch (e: WalkHttpException) {
                 if (e.statusCode != 409) throw e
-                val latest = request(token, "/$walkId/entries", "GET", null).getJSONArray("entries")
+                val latest = call("/$walkId/entries", "GET", null).getJSONArray("entries")
                 val remote = (0 until latest.length()).map { latest.getJSONObject(it) }
                     .firstOrNull { it.getString("id") == row.id } ?: throw e
                 if (remote.isNull("content")) dao.acceptDeletedEntry(row.id, remote.getInt("revision"))
@@ -47,10 +60,18 @@ class WalkEntrySync(
             // 요청 중 사용자가 다시 수정한 경우 새 payload는 유지하고 서버 버전만 전진시킨다.
             dao.acknowledgeEntry(row.id, response.getInt("revision"), row.mutationId)
         }
-        val result = request(token, "/$walkId/entries", "GET", null)
+        if (dao.entries(sessionId).any { it.isV2 }) {
+            // 혼합 산책은 새 v1 기록부터 전송한다. 기존 v2는 원래 계약으로 재시도하며,
+            // 구서버에서 실패하더라도 이미 승인된 v1 기록까지 막거나 되돌리지 않는다.
+            if (temporaryLegacyMode && v2?.sync(token, sessionId, walkId) == true) return
+            throw java.io.IOException("새 형식의 기존 행동은 기기에 보관 중이며 서버 지원을 기다리고 있어요.")
+        }
+        val result = call("/$walkId/entries", "GET", null)
         val entries = result.getJSONArray("entries")
         for (i in 0 until entries.length()) {
+            checkAccount()
             val entry = entries.getJSONObject(i)
+            if (dao.entry(entry.getString("id"))?.isV2 == true) continue
             val row = WalkEntryRow(entry.getString("id"), sessionId,
                 entry.optJSONObject("content")?.toString(), entry.getInt("revision"),
                 entry.getString("mutation_id"), false)
