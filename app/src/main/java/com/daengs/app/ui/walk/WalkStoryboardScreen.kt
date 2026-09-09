@@ -28,6 +28,8 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
     val entries by entryFlow.collectAsState(initial = null)
     val analysis by remember(sessionId) { app.walkEntryDao.observeSceneAnalysis(sessionId) }.collectAsState(initial = null)
     val rawEntries by remember(sessionId) { app.walkEntryDao.observeEntries(sessionId) }.collectAsState(initial = emptyList())
+    val photoState by remember(sessionId) { app.walkEntryDao.observePhotoSync(sessionId) }.collectAsState(initial = null)
+    val photoRows by remember(sessionId) { app.walkEntryDao.observePhotos(sessionId) }.collectAsState(initial = emptyList())
     var analyzing by remember { mutableStateOf(false) }
     var walk by remember(sessionId) { mutableStateOf<WalkSummary?>(null) }
     var draft by remember(sessionId) { mutableStateOf<StoryboardDraft?>(null) }
@@ -65,9 +67,9 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
             try {
                 requireOwner()
                 val auth = app.sessionProvider.freshSession() ?: error("로그인 후 분석할 수 있어요.")
-                app.walkRuntime.sync.syncPendingSession(auth.accessToken, sessionId)
-                if (refresh) app.walkEntryDao.session(sessionId)?.serverWalkId?.let {
-                    app.walkStoryboardSync.sync(auth.accessToken, sessionId, it, refresh = true)
+                app.walkRuntime.sync.syncPendingSession(auth.accessToken, sessionId, includeStoryboard = false)
+                app.walkEntryDao.session(sessionId)?.serverWalkId?.let {
+                    app.walkStoryboardSync.sync(auth.accessToken, sessionId, it, refresh = refresh)
                 }
                 error = null
             } catch (e: Exception) {
@@ -102,7 +104,7 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         }
         return
     }
-    val analysisView = storyboardAnalysisView(analysis, rawEntries)
+    val analysisView = storyboardAnalysisView(analysis, rawEntries, photoState, photoRows)
     val bundle = analysisView.bundle
     val sources = bundle?.scenes?.map { scene ->
         val id = scene.id.removePrefix("geo:")
@@ -198,7 +200,7 @@ internal fun StoryboardContent(
                 style = MaterialTheme.typography.bodySmall)
             selectionNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             onAnalyze?.let { action ->
-                TextButton(enabled = !busy && !analyzing, onClick = action) { Text(if (analyzing) "분석 중" else "장면 분석 · 다시 시도") }
+                TextButton(enabled = !busy && !analyzing, onClick = action) { Text(if (analyzing) "일기 준비 중" else "일기 만들기 · 다시 시도") }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
@@ -213,7 +215,8 @@ internal fun StoryboardContent(
                             if (entry.petId == null) "미지정" else petNames[entry.petId] ?: "이름 확인 필요",
                             style = MaterialTheme.typography.labelMedium)
                     }
-                    if (scene.body.isNotBlank()) Text(scene.body)
+                    if (scene.diary != null) DiarySceneText(scene.body, scene.diary)
+                    else if (scene.body.isNotBlank()) Text(scene.body)
                     if (!scene.available) Text(scene.evidence, color = MaterialTheme.colorScheme.error)
                     else if (scene.needsReview) Text("원본이 바뀌었어요. 문구와 근거를 확인해 주세요.",
                         color = MaterialTheme.colorScheme.error)
@@ -241,7 +244,8 @@ internal fun StoryboardContent(
                 modifier = Modifier.fillMaxWidth()) { Text(if (reviewed) "현재 구성 검토 완료" else "이 구성 검토 완료") }
             Text("검토 완료 시 현재 장면의 사본을 보관해요. 이후 편집해도 이전 검토본은 다음 완료 전까지 유지돼요.",
                 style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(enabled = false, onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("AI 일기 생성 · 연결 준비 중") }
+            if (scenes.none { it.diary != null })
+                Text("서버가 새 일기를 지원하면 배경 문장과 원본 기록을 나누어 보여줘요.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

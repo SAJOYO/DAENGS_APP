@@ -25,6 +25,35 @@ import org.robolectric.annotation.GraphicsMode
 class WalkDiaryMapScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `inline editor changes title and background without editing the original record`() {
+        val scene = DiaryScene("s/n", "s", 0, "자동 제목", "자동 배경", null, "",
+            content = com.daengs.app.walk.diary.DiarySceneContent("직접 쓴 원본", "note", locationLabel = ""))
+        var saved: Pair<String, String>? = null
+        // Same workaround as WalkEntryEditorTest: Robolectric cannot idle a dialog with text fields.
+        compose.setContent { DiarySceneEditor(scene, false, null, { a, b -> saved = a to b }, {},
+            dialog = { title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() } }) }
+        compose.onNodeWithText("장면 제목").performTextReplacement("내 제목")
+        compose.onNodeWithText("장면 배경").performTextReplacement("내 배경")
+        compose.onNodeWithText("직접 쓴 원본").assertExists()
+        compose.onNodeWithText("저장").performClick()
+        assertEquals("내 제목" to "내 배경", saved)
+        assertEquals("직접 쓴 원본", scene.content!!.recordText)
+    }
+
+    @Test fun `generation state prevents repeated taps and shows source notice`() {
+        var calls = 0
+        compose.setContent {
+            var busy by remember { mutableStateOf(false) }
+            WalkDiaryMapContent(emptyList(), null, false, null, {}, {}, {}, {}, {}, {},
+                map = { Box(Modifier.fillMaxSize()) }, generationNotice = "남긴 기록을 모았어요.",
+                generating = busy, onGenerate = { calls++; busy = true })
+        }
+        compose.onNodeWithText("일기 생성·갱신").performClick()
+        compose.onNodeWithText("준비 중").assertIsNotEnabled()
+        compose.onNodeWithText("남긴 기록을 모았어요.").assertExists()
+        assertEquals(1, calls)
+    }
+
     @Test fun `scene navigation retains order and edits the source entry`() {
         val a = DiaryScene("s/a", "s", 0, "첫 메모", "내용", null, "직접 남긴 기록", entryId = "a")
         val b = a.copy(id = "s/b", atMillis = 10000, title = "다음 메모", entryId = "b")
@@ -32,14 +61,15 @@ class WalkDiaryMapScreenTest {
         compose.setContent {
             var selected by remember { mutableStateOf<DiaryScene?>(null) }
             WalkDiaryMapContent(listOf(a,b), selected, false, null, { selected = it }, { selected = null },
-                { edited = it.entryId }, {}, {}, {}, {}, map = { Box(Modifier.fillMaxSize().testTag("diary-map")) })
+                { edited = it.entryId }, {}, {}, {}, map = { Box(Modifier.fillMaxSize().testTag("diary-map")) })
         }
         compose.onNodeWithText("첫 메모").performClick()
         compose.onNodeWithText("이전").assertIsNotEnabled()
         compose.onNodeWithText("장면 1").assertExists()
         compose.onNodeWithText("다음").performClick()
         compose.onNodeWithText("장면 2").assertExists()
-        compose.onNodeWithText("기록 편집").performClick()
+        compose.onNodeWithText("스토리보드 검토").assertDoesNotExist()
+        compose.onNodeWithContentDescription("장면 수정").performClick()
         assertEquals("b", edited)
         compose.onNodeWithText("‹ 장면 목록").performClick()
         compose.onNodeWithText("2개 장면 · 시간순").assertExists()
@@ -74,7 +104,7 @@ class WalkDiaryMapScreenTest {
         compose.setContent {
             val view = androidx.compose.ui.platform.LocalView.current
             SideEffect { rendered = view.rootView }
-            WalkDiaryMapContent(listOf(scene), scene, false, null, {}, {}, {}, {}, {}, {}, {},
+            WalkDiaryMapContent(listOf(scene), scene, false, null, {}, {}, {}, {}, {}, {},
                 map = { Box(Modifier.fillMaxSize().background(Color(0xFFE1EBDE)).testTag("diary-map")) })
         }
         compose.onNodeWithTag("diary-map").assertIsDisplayed()
@@ -110,7 +140,7 @@ class WalkDiaryMapScreenTest {
         var selected: DiaryScene? by mutableStateOf(null)
         compose.setContent {
             WalkDiaryMapContent(scenes, selected, false, null, { selected = it }, { selected = null },
-                {}, {}, {}, {}, {}, map = {
+                {}, {}, {}, {}, map = {
                     Row { diarySceneMarkers(scenes, selected?.id).forEach { marker ->
                         androidx.compose.material3.TextButton(onClick = { selected = scenes.first { it.id == marker.id } }) {
                             androidx.compose.material3.Text(marker.label)

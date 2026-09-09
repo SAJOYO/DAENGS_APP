@@ -1,0 +1,203 @@
+{
+  "format": "walk-diary-response-v1",
+  "session_id": "00000000-0000-0000-0000-000000000001",
+  "generation": 1,
+  "input_revision": "f3ff1c9e95a0027b9fe09bcd47d8e36abf9e20a176059e30d4b2ba94e53d8dfe",
+  "status": "ready",
+  "entry_revisions": {
+    "note": 1,
+    "action": 1
+  },
+  "photos_status": "complete",
+  "photo_manifest": {
+    "publisher_id": "publisher",
+    "revision": 1
+  },
+  "target_scene_count": 5,
+  "preparation_counts": {
+    "target": 5,
+    "user_records": 3,
+    "initial_deficit": 2,
+    "supplemented": 1,
+    "remaining_deficit": 1,
+    "total": 4
+  },
+  "preparation_limits": [],
+  "bundle": {
+    "format": "walk-diary-bundle-v1",
+    "client_session_id": "00000000-0000-0000-0000-000000000001",
+    "input_revision": "2646069a89c1b9fc29204cddf91b226910d25f6f822b79392ca34f7f0095f9f9",
+    "plan_revision": "c36f4067853fc704414a8ad5f11c892e05b21eff5453daa377ff3e52f042a6e7",
+    "title": "두부와 함께 남긴 아침",
+    "title_origin": "model",
+    "model_status": "accepted",
+    "semantic_status": "not_evaluated",
+    "failure_code": null,
+    "photos_status": "complete",
+    "scenes": [
+      {
+        "id": "stamp:dcbf6f3e87070c679f3078d2c683c705b30d693b82355674fdb10406db5dd6ab",
+        "order": 1,
+        "core": {
+          "identity": "walk_entry:note",
+          "version": "d296307948ff5ccd3a5b52b2fc2d7fdec74b18be39b0fe1a4f966a914a0e0734"
+        },
+        "anchor": {
+          "event_at": "2026-09-09T00:05:00Z",
+          "time_basis": "recorded_at",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:04:55Z",
+          "accuracy_m": null,
+          "position_state": "resolved",
+          "method": "last_known",
+          "source_fixes": []
+        },
+        "user_record": {
+          "kind": "note",
+          "text": "  두부와 사진을 찍었다.\n다음 기록도 남김  "
+        },
+        "observation": null,
+        "place_reference": [],
+        "narration": {
+          "status": "generated",
+          "text": "등록된 카페가 가까이에 있었다.",
+          "evidence_ids": [
+            "piece:af05d222fdffccb48d9086c74c223524bf68ad7b19d09955ac21c9837e099c63"
+          ]
+        }
+      },
+      {
+        "id": "stamp:3b353959de3a4a9e9efdf90ab739b5299edaecbbdcf812c0e1bfdc855ec43067",
+        "order": 2,
+        "core": {
+          "identity": "walk_entry:action",
+          "version": "6b3218ae2fa29ef348f89f87eba6248bf4dcb94fec998890a28ad8da091fb860"
+        },
+        "anchor": {
+          "event_at": "2026-09-09T00:10:00Z",
+          "time_basis": "recorded_at",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:04:55Z",
+          "accuracy_m": null,
+          "position_state": "resolved",
+          "method": "last_known",
+          "source_fixes": []
+        },
+        "user_record": {
+          "kind": "behavior",
+          "code": "sniffing",
+          "pet_id": "dog"
+        },
+        "observation": null,
+        "place_reference": [],
+        "narration": {
+          "status": "no_background",
+          "text": null,
+          "evidence_ids": []
+        }
+      },
+      {
+        "id": "stamp:72aa346bcb5528260d0c96767ab6c62346fc7b189e4a9046aaed7cec024a06b3",
+        "order": 3,
+        "core": {
+          "identity": "observation:dwell",
+          "version": "5c2c7b176cb3f8312afe01ee0b2ddbccb98969464aaaa2a68e1c402dc46f64f3"
+        },
+        "anchor": {
+          "event_at": "2026-09-09T00:20:00Z",
+          "time_basis": "route_observation",
+          "point": {
+            "lat": 37.51,
+            "lng": 127.01
+          },
+          "location_at": "2026-09-09T00:20:00Z",
+          "accuracy_m": null,
+          "position_state": "resolved",
+          "method": "observed",
+          "source_fixes": [
+            {
+              "client_seq": 20,
+              "chain_index": 0,
+              "at": "2026-09-09T00:20:00Z"
+            }
+          ]
+        },
+        "user_record": null,
+        "observation": {
+          "id": "dwell",
+          "version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "analysis_id": "analysis",
+          "kind": "observed_dwell",
+          "subject": "recording_device",
+          "action_meaning": "not_inferred",
+          "started_at": "2026-09-09T00:20:00Z",
+          "ended_at": "2026-09-09T00:21:00Z",
+          "anchor": {
+            "event_at": "2026-09-09T00:20:00Z",
+            "time_basis": "route_observation",
+            "point": {
+              "lat": 37.51,
+              "lng": 127.01
+            },
+            "location_at": "2026-09-09T00:20:00Z",
+            "accuracy_m": null,
+            "position_state": "resolved",
+            "method": "observed",
+            "source_fixes": [
+              {
+                "client_seq": 20,
+                "chain_index": 0,
+                "at": "2026-09-09T00:20:00Z"
+              }
+            ]
+          }
+        },
+        "place_reference": [],
+        "narration": {
+          "status": "no_background",
+          "text": null,
+          "evidence_ids": []
+        }
+      },
+      {
+        "id": "stamp:bdb9d9083590cc438169457446d4f83c678c80b6c47f216da3311ae501ac89af",
+        "order": 4,
+        "core": {
+          "identity": "walk_photo:photo",
+          "version": "f10f810a7c930672c01444dce95047a9543261391551d8f7fed10852ef75de52"
+        },
+        "anchor": {
+          "event_at": "2026-09-09T00:30:00Z",
+          "time_basis": "photo_capture",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:04:55Z",
+          "accuracy_m": null,
+          "position_state": "resolved",
+          "method": "last_known",
+          "source_fixes": []
+        },
+        "user_record": {
+          "kind": "photo",
+          "media_ref": "app-private-photo:photo"
+        },
+        "observation": null,
+        "place_reference": [],
+        "narration": {
+          "status": "no_background",
+          "text": null,
+          "evidence_ids": []
+        }
+      }
+    ]
+  },
+  "error_code": null
+}

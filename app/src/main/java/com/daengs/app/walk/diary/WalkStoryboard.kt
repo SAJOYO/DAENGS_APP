@@ -13,6 +13,7 @@ data class StoryboardScene(
     val sourcePayload: String? = null,
     val entryReference: StoryboardEntryReference? = null,
     val observation: StoryboardObservation? = null,
+    val diary: DiarySceneContent? = null,
 )
 
 data class StoryboardEntryReference(val entryId: String, val revision: Long?, val petId: String?, val isNote: Boolean = false)
@@ -84,7 +85,7 @@ fun applyStoryboardEdits(sources: List<StoryboardScene>, draft: StoryboardDraft)
             "원본 기록이 삭제되었습니다. 작성한 문구는 보존되며 검토본에서 제외됩니다.",
             "deleted", available = false, hidden = edit.hidden, needsReview = true)
     }
-    return scenes.sortedWith(compareBy<StoryboardScene> { it.atMillis }.thenBy { it.id })
+    return scenes.sortedWith(compareBy<StoryboardScene> { it.atMillis }.thenBy { it.diary?.order ?: Int.MAX_VALUE }.thenBy { it.id })
 }
 
 fun storyboardSnapshot(sessionId: String, scenes: List<StoryboardScene>, title: String? = null): String =

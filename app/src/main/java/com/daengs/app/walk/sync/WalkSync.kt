@@ -74,7 +74,7 @@ class WalkSync(
      * WorkManager가 지정한 한 건을 보낸다. [syncOnce]와 달리 실패를 삼키지 않는다 —
      * 호출자가 [androidx.work.ListenableWorker.Result.retry]를 선택해야 하기 때문이다.
      */
-    suspend fun syncPendingSession(accessToken: String, sessionId: String): Unit =
+    suspend fun syncPendingSession(accessToken: String, sessionId: String, includeStoryboard: Boolean = true): Unit =
         withContext(Dispatchers.IO) {
             if (!api.configured || !stillOwned(log.ownerId)) return@withContext
             pushMutex.withLock {
@@ -86,7 +86,7 @@ class WalkSync(
                 log.session(sessionId)?.serverWalkId?.let {
                     entrySync?.sync(accessToken, sessionId, it)
                     photoSync?.invoke(accessToken, sessionId, it)
-                    storyboardSync?.invoke(accessToken, sessionId, it)
+                    if (includeStoryboard) storyboardSync?.invoke(accessToken, sessionId, it)
                 }
             }
         }
