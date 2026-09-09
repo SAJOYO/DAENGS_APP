@@ -14,6 +14,26 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerTerritoryGameProviderTest {
+    @Test fun `read only proximity exists before walking while occupancy and actions stay independent`() = runTest {
+        val provider = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, _ -> listOf(occupied) },
+            { session }, { "user" })
+        val fix = com.daengs.app.location.LocationSample(site.point, 1000, 1_000_000_000L, 3f)
+        fun view(tracking: WalkTrackingState = WalkTrackingState()) =
+            provider.snapshot(board, tracking, true, emptyMap(), 2_000_000_000L, screenSample = fix)
+        assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
+        assertFalse(view().target!!.occupancyKnown)
+        provider.refresh(board.sites)
+        for (state in TrackingState.entries) {
+            val tracking = WalkTrackingState(activeSessionId = "walk", activeDogIds = emptyList(),
+                trail = TrailSnapshot(state = state), latestMomentFix = fix)
+            val result = view(tracking)
+            assertEquals(TerritoryProximityRange.IN_RANGE, result.target!!.proximity.range)
+            assertEquals(0.0, result.target!!.distanceMeters!!, 0.0001)
+            assertFalse(result.canMark); assertFalse(result.canPhotograph)
+            assertNull(result.target!!.interaction)
+        }
+    }
+
     private val site = TerritorySite("territory-site:hex-v1:140:1:2", GeoPoint(37.5, 127.0), 0.0)
     private val board = TerritoryBoardState(sites = listOf(site), selectedSiteId = site.id)
     private val session = Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
