@@ -111,7 +111,7 @@ fun WalkDetailScreen(
     }
 
     if (storyboardOpen) {
-        WalkStoryboardScreen(sessionId, history, pets) { storyboardOpen = false }
+        WalkDiaryMapScreen(sessionId, history, onBack = { storyboardOpen = false }, pets = pets)
         return
     }
     BackHandler(onBack = onBack)
@@ -186,7 +186,7 @@ fun WalkDetailScreen(
                 androidx.compose.material3.Button(
                     onClick = { storyboardOpen = true },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                ) { Text("스토리보드 검토") }
+                ) { Text("산책 일기") }
                 WalkFacts(
                     walk = it,
                     dogNames = dogNames(it.dogIds, pets),

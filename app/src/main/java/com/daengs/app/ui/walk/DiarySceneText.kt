@@ -7,19 +7,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import com.daengs.app.R
 import com.daengs.app.walk.diary.DiarySceneContent
 
 @Composable
-internal fun DiarySceneText(background: String, content: DiarySceneContent) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        content.address?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+internal fun DiarySceneText(background: String, content: DiarySceneContent, onEditRecord: (() -> Unit)? = null) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        content.address?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         if (background.isNotBlank()) Text(background, fontStyle = FontStyle.Italic,
-            style = MaterialTheme.typography.bodyMedium)
+            fontSize = 20.sp, lineHeight = 30.sp)
         HorizontalDivider()
-        Text(if (content.recordKind.startsWith("observed_")) "이동 기록" else "직접 남긴 기록",
-            style = MaterialTheme.typography.labelSmall)
-        Text(content.recordText, style = MaterialTheme.typography.bodyMedium)
-        Text(content.locationLabel, style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (content.recordKind.startsWith("observed_")) "이동 기록" else "직접 남긴 기록",
+                modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+            onEditRecord?.let { edit ->
+                IconButton(onClick = edit) {
+                    Icon(painterResource(R.drawable.ic_diary_edit), contentDescription = "원본 기록 수정")
+                }
+            }
+        }
+        Text(content.recordText, fontSize = 20.sp, lineHeight = 30.sp)
+        Text(content.locationLabel, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

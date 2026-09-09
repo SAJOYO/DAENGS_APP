@@ -48,6 +48,7 @@ data class DiaryScene(
     val photo: WalkPhoto? = null,
     val entryId: String? = null,
     val content: DiarySceneContent? = null,
+    val source: StoryboardScene? = null,
 )
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
@@ -80,10 +81,14 @@ fun diaryWalk(
         val image = scene.diary?.photoId?.let { id -> photos.firstOrNull { it.id == id && it.sessionId == walk.sessionId } }
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
             scene.title, scene.body, point, entry?.pin?.label ?: scene.evidence, scene.needsReview,
-            photo = image, entryId = entryId, content = scene.diary)
-    } + photos.filter { photo -> photo.sessionId == walk.sessionId && sources.orEmpty().none { it.diary?.photoId == photo.id } }.map { photo ->
-        DiaryScene("${walk.sessionId}/photo:${photo.id}", walk.sessionId, photo.capturedAtMillis,
-            "산책 사진", "이날 남긴 사진", photo.point, "촬영할 때 저장한 위치", photo = photo)
+            photo = image, entryId = entryId, content = scene.diary, source = scene)
+    } + photos.filter { photo -> photo.sessionId == walk.sessionId && sources.orEmpty().none { it.diary?.photoId == photo.id } }.mapNotNull { photo ->
+        val source = StoryboardScene("photo:${photo.id}", photo.capturedAtMillis,
+            "산책 사진", "이날 남긴 사진", "촬영할 때 저장한 위치", photo.id)
+        val scene = applyStoryboardEdits(listOf(source), draft).first { it.id == source.id }
+        if (scene.hidden) return@mapNotNull null
+        DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
+            scene.title, scene.body, photo.point, scene.evidence, photo = photo, source = scene)
     }
     return DiaryWalk(walk, scenes.sortedWith(compareBy<DiaryScene> { it.atMillis }.thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { it.id }),
         analysis.notice, analysis.bundle?.takeIf { it.sessionId == walk.sessionId }?.title)

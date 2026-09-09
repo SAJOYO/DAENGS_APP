@@ -279,6 +279,19 @@ interface WalkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStoryboard(row: WalkStoryboardRow)
 
+    /** Merge one inline edit into the latest draft, keeping other scenes and original records. */
+    @androidx.room.Transaction
+    suspend fun saveDiarySceneEdit(sessionId: String, ownerId: String,
+        scene: com.daengs.app.walk.diary.StoryboardScene, title: String, body: String) {
+        check(ownerId.isNotBlank() && session(sessionId)?.let {
+            it.ownerId == ownerId && it.endedAtMillis != null
+        } == true) { "현재 계정의 완료된 산책이 아닙니다." }
+        require(title.isNotBlank() && title.length <= 80 && body.length <= 2000)
+        val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
+        saveStoryboard(WalkStoryboardRow(sessionId,
+            draft.edit(scene, title = title, body = body, acknowledge = true).toJson()))
+    }
+
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
     fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
 

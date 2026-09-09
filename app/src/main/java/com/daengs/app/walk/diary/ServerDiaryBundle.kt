@@ -18,9 +18,8 @@ data class DiarySceneContent(
 data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int) {
     fun description(): String = when (modelStatus) {
         "unavailable" -> "배경 문장을 만들지 못했어요. 남긴 기록은 그대로 볼 수 있고 다시 생성할 수 있어요."
-        "not_requested" -> "남긴 기록을 모았어요. 배경 자료가 있는 장면부터 일기 문장을 붙여요."
-        else -> "장면 배경과 직접 남긴 기록을 함께 모았어요."
-    } + if (missingScenes > 0) " 채울 근거가 부족한 장면은 억지로 만들지 않았어요." else ""
+        else -> ""
+    }
 }
 
 object ServerDiaryBundle {

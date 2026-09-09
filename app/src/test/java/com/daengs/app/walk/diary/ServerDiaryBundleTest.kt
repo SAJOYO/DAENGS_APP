@@ -10,6 +10,12 @@ import java.time.Instant
 fun diaryFixture(): JSONObject = JSONObject(ServerDiaryBundleTest::class.java.getResource("/storyboard/diary-v1.json")!!.readText())
 
 class ServerDiaryBundleTest {
+    @Test fun `completed diary does not explain a scene deficit to the reader`() {
+        assertEquals("", DiaryGenerationInfo("accepted", 2).description())
+        assertEquals("", DiaryGenerationInfo("not_requested", 5).description())
+        assertTrue(DiaryGenerationInfo("unavailable", 2).description().contains("다시 생성"))
+    }
+
     @Test fun `equal timestamp scenes retain server sequence after local editing`() {
         val base = GeoStoryboardBundle.parse(diaryFixture().toString()).scenes.first()
         val first = base.copy(id = "z", diary = base.diary!!.copy(order = 1))
@@ -62,5 +68,18 @@ class ServerDiaryBundleTest {
         val fixture = diaryFixture()
         fixture.getJSONObject("bundle").put("scenes", org.json.JSONArray())
         assertTrue(GeoStoryboardBundle.parse(fixture.toString()).scenes.isEmpty())
+    }
+
+    @Test fun `local photo scene keeps inline edits and hiding before a server bundle exists`() {
+        val walk = WalkSummary("s", emptyList(), 0, 2000, null, 0.0, 2000, emptyList(), null)
+        val image = WalkPhoto("p", "s", 1000, GeoPoint(37.5, 127.0), java.io.File("photo.jpg"))
+        val view = StoryboardAnalysisView(null, false, "")
+        val scene = diaryWalk(walk, emptyList(), listOf(image), StoryboardDraft(), view)
+            .scenes.single { it.photo != null }
+        val draft = StoryboardDraft().edit(requireNotNull(scene.source), title = "직접 붙인 제목")
+        assertEquals("직접 붙인 제목", diaryWalk(walk, emptyList(), listOf(image), draft, view)
+            .scenes.single { it.photo != null }.title)
+        assertFalse(diaryWalk(walk, emptyList(), listOf(image),
+            draft.edit(requireNotNull(scene.source), hidden = true), view).scenes.any { it.photo != null })
     }
 }
