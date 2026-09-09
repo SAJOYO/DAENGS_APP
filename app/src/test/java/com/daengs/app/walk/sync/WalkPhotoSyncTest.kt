@@ -118,10 +118,20 @@ class WalkPhotoSyncTest {
         assertNull(dao.photoSync(session))
     }
 
-    @Test fun `원 촬영 기기의 사진 없는 세션은 빈 목록을 명시적으로 보낼 수 있다`() = runBlocking {
+    @Test fun `계산 완료된 산책도 빈 사진 목록 ACK를 받은 뒤 재시도 목록에서 빠진다`() = runBlocking {
+        val log = RoomWalkFixLog(dao) { owner }
+        assertTrue(dao.sessionsPendingAnalysis().isEmpty())
+        assertTrue(log.sessionsPendingAnalysis().isEmpty())
         dao.insertPhotoSync(WalkPhotoSyncRow(session, owner, UUID.randomUUID().toString()))
-        syncer().sync("token", session, walk)
+        assertEquals(listOf(session), log.sessionsPendingAnalysis().map { it.id })
+        syncer { body ->
+            // HTTP 요청을 보낸 것만으로 완료 처리하지 않는다. ACK 전에는 재시도 대상이다.
+            assertEquals(listOf(session), log.sessionsPendingAnalysis().map { it.id })
+            ack(body)
+        }.sync("token", session, walk)
         assertEquals(0, JSONObject(sent.single()).getJSONArray("photos").length())
+        assertTrue(dao.dirtyPhotoSessions().isEmpty())
+        assertTrue(log.sessionsPendingAnalysis().isEmpty())
     }
 
     @Test fun `로컬 시작만 사진 게시자를 만들고 서버 복원은 만들지 않는다`() = runBlocking {
