@@ -54,6 +54,14 @@ API 주소·지도 키를 넣지 않은 검증용 빌드다.
 ./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.ui.walk.WalkTerritoryUiTest' :app:assembleDebug --console=plain
 ```
 
+마지막으로 #205가 병합된 dev `3fb007e`를 반영한 `123df4e`에서 아래 6개 클래스의
+60개 테스트와 debug 빌드를 통과했다. 인증 보호와 촬영 거절 안내를 유지하면서 주변 후보를
+연결했으며, 모든 실행의 중복을 제외한 **최종 대상은 100개, 실패·오류·skip 0개**다.
+
+```powershell
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.map.features.territory.TerritoryNearbyControllerTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.map.features.territory.ServerTerritoryGameProviderTest' --tests 'com.daengs.app.territory.CertifiedTerritoryPresentationTest' --tests 'com.daengs.app.territory.ServerTerritoryPhotosTest' --tests 'com.daengs.app.territory.TerritoryActionSyncTest' :app:assembleDebug --console=plain
+```
+
 주변 조회의 이동·시간 경계, 실패 재시도, 잘림, 미지원 지역, 취소 후 늦은 응답과 요청 교체를
 대상 테스트로 검증한다. ViewModel에서는 먼 지역 선택 유지, 기기 이동에 따른 근접 대상 교체,
 점유 조회의 목록 합치기, 위치 구독 1개 유지, 위치 만료·권한·화면 생명주기를 확인한다.
