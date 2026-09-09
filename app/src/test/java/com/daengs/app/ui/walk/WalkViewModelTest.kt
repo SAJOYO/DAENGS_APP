@@ -45,6 +45,123 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test fun `nearby candidate cannot become an implicit mark or capture target`() = runTest {
+        val fix = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val controller = FakeWalkController().apply {
+            publish(WalkTrackingState(activeSessionId = "walk", activeDogIds = listOf("dog-1"),
+                trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix))
+        }
+        val claims = InMemoryTerritoryClaimRepository(emptyList())
+        val vm = viewModel(controller, CountingLocationSource(), TerritorySiteRepository {
+            val site = if (it.radiusMeters == 300) TerritorySite("near", fix.point, 0.0)
+                else TerritorySite("far", GeoPoint(37.55, 127.0), 0.0)
+            TerritorySitePage(1, false, listOf(site))
+        }, TerritoryGameController(claims))
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        vm.onAction(WalkAction.SelectTerritorySite("far")); runCurrent()
+        assertEquals("near", vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals("far", vm.state.value.territoryGame.targetId)
+        assertFalse(vm.state.value.territoryGame.canMark)
+        assertFalse(vm.state.value.territoryGame.canPhotograph)
+        vm.onAction(WalkAction.MarkTerritory("near"))
+        vm.onAction(WalkAction.PhotographTerritory("near")); runCurrent()
+        assertEquals(null, claims.attempt("walk", "near"))
+        assertEquals("far", vm.state.value.territoryGame.targetId)
+    }
+
+    @Test fun `nearby feed follows GPS while a distant viewport and manual card stay selected`() = runTest {
+        val a = TerritorySite("A", GeoPoint(37.5, 127.0), 999.0)
+        val b = TerritorySite("B", GeoPoint(37.5004, 127.0), 999.0)
+        val far = TerritorySite("far", GeoPoint(37.55, 127.0), 0.0)
+        val samples = MutableStateFlow(LocationSample(a.point, 1000, 1_000_000_000L, 3f))
+        var subscriptions = 0
+        val source = object : LocationSource {
+            override suspend fun currentLocation() = samples.value
+            override fun locationUpdates(config: LocationUpdateConfig) = flow {
+                subscriptions++
+                samples.collect { emit(it) }
+            }
+        }
+        val requests = mutableListOf<NearbyTerritorySitesRequest>()
+        val occupancyReads = mutableListOf<List<String>>()
+        val session = com.daengs.app.auth.Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+        val game = com.daengs.app.map.features.territory.ServerTerritoryGameProvider(
+            com.daengs.app.territory.TerritoryOccupancyClient { _, ids ->
+                occupancyReads += ids
+                ids.map { com.daengs.app.territory.SharedTerritorySite(it, 1, null) }
+            }, { session }, { "user" })
+        val vm = viewModel(FakeWalkController(), source, TerritorySiteRepository {
+            requests += it
+            val sites = if (it.radiusMeters == 300) listOf(a, b) else listOf(far)
+            TerritorySitePage(sites.size, false, sites)
+        }, game)
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        vm.onAction(WalkAction.CameraMoved)
+        vm.onAction(WalkAction.CameraSettled(far.point))
+        advanceTimeBy(350); runCurrent()
+        vm.onAction(WalkAction.SelectTerritorySite("far")); runCurrent()
+        assertEquals("far", vm.state.value.territoryGame.targetId)
+        assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals(true, vm.state.value.territoryGame.nearbyTarget!!.occupancyKnown)
+        assertEquals(setOf("far", "A", "B"), occupancyReads.last().toSet())
+        assertEquals(1, requests.count { it.radiusMeters == 300 })
+        assertEquals(far.point, vm.state.value.territory.loadedOrigin)
+        samples.value = samples.value.copy(point = b.point)
+        runCurrent()
+        assertEquals("B", vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals("far", vm.state.value.territory.selectedSiteId)
+        assertEquals("far", vm.state.value.territoryGame.targetId)
+        assertEquals(far.point, vm.state.value.territory.loadedOrigin)
+        assertEquals(listOf("far"), vm.state.value.toMapPresentation().scene.territorySites.map { it.id })
+        assertFalse(vm.state.value.territoryGame.canMark)
+        assertFalse(vm.state.value.territoryGame.canPhotograph)
+        assertEquals(1, subscriptions)
+        vm.onAction(WalkAction.ClearTerritory); runCurrent()
+        assertEquals(null, vm.state.value.territoryGame.targetId)
+        assertEquals("B", vm.state.value.territoryGame.nearbyTargetId)
+    }
+
+    @Test fun `nearby target expires without GPS emissions and clears on permission or visibility loss`() = runTest {
+        val sample = LocationSample(GeoPoint(37.5, 127.0), 1000, 1_000_000_000L, 3f)
+        val controller = FakeWalkController()
+        fun tracking(fix: LocationSample) = WalkTrackingState(activeSessionId = "walk", activeDogIds = listOf("dog-1"),
+            trail = TrailSnapshot(state = TrackingState.RECORDING), lastSample = fix, latestMomentFix = fix)
+        controller.publish(tracking(sample))
+        var reads = 0
+        val vm = viewModel(controller, CountingLocationSource(), TerritorySiteRepository {
+            if (it.radiusMeters == 300) reads++
+            TerritorySitePage(1, false, listOf(TerritorySite("A", sample.point, 0.0)))
+        }, TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList())),
+            clock = { 2_000_000_000L + testScheduler.currentTime * 1_000_000 })
+        vm.activate(true, true)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
+        advanceTimeBy(10_001); runCurrent()
+        assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals(1, reads)
+        controller.publish(tracking(sample.copy(elapsedRealtimeNanos = 12_000_000_000L))); runCurrent()
+        assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
+        vm.updatePermission(true, false); runCurrent()
+        assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+        vm.updatePermission(true, true); runCurrent()
+        assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
+        vm.updateSharedReadsForeground(false); runCurrent()
+        val beforeHidden = reads
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals(beforeHidden, reads)
+        vm.updateSharedReadsForeground(true); runCurrent()
+        assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.WALK)); runCurrent()
+        assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+        vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
+        vm.deactivate(); runCurrent()
+        assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+    }
+
     @Test fun `async territory submission never reopens a card closed while saving`() = runTest {
         val stored = kotlinx.coroutines.CompletableDeferred<String>()
         val local = TerritoryGameController(InMemoryTerritoryClaimRepository(emptyList()))
@@ -445,6 +562,7 @@ class WalkViewModelTest {
         },
         game: com.daengs.app.map.features.territory.TerritoryGameProvider? = null,
         photoQueue: com.daengs.app.territory.TerritoryPhotoQueue? = null,
+        clock: () -> Long = { 2_000_000_000L },
     ) = WalkViewModel(
         walkController = controller,
         history = WalkHistory(EmptyWalkFixLog),
@@ -452,7 +570,7 @@ class WalkViewModelTest {
         territoryRepository = territoryRepository,
         externalScope = backgroundScope,
         territoryGame = game,
-        nowNanos = { 2_000_000_000L },
+        nowNanos = clock,
         photoQueue = photoQueue,
     )
 

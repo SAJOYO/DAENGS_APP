@@ -61,6 +61,7 @@ data class WalkUiState(
     val completion: WalkCompletionUiState = WalkCompletionUiState(),
     val momentNotice: String? = null,
     val diaryPhotos: List<com.daengs.app.walk.WalkPhoto> = emptyList(),
+    val nearbyTerritory: com.daengs.app.map.features.territory.TerritoryNearbyState = com.daengs.app.map.features.territory.TerritoryNearbyState(),
 )
 
 val WalkUiState.trackingActive: Boolean
