@@ -44,6 +44,7 @@ fun DaengsTopBar(
     /** 사용자가 올린 프로필 사진. 있으면 견종 그림 대신 이게 뜬다. */
     photo: ImageBitmap? = null,
     modifier: Modifier = Modifier,
+    territoryContent: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier
@@ -53,7 +54,11 @@ fun DaengsTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DaengsLogo()
-        Spacer(Modifier.weight(1f))
+        if (territoryContent == null) {
+            Spacer(Modifier.weight(1f))
+        } else {
+            Box(Modifier.weight(1f).padding(horizontal = 8.dp)) { territoryContent() }
+        }
         Box(
             Modifier
                 .size(44.dp)
@@ -80,5 +85,6 @@ fun DaengsTopBar(
 @Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun DaengsTopBarPreview() {
-    DaengsTheme { DaengsTopBar({}, {}, avatar = HomeDemoData.DOG_BREED) }
+    DaengsTheme { DaengsTopBar({}, {}, avatar = HomeDemoData.DOG_BREED,
+        territoryContent = { HomeGameCard("보리의 이번 시즌", "3곳 · 320점 · 순위 —", {}) }) }
 }

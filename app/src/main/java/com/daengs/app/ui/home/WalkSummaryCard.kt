@@ -70,7 +70,6 @@ fun WalkSummaryCard(
      */
     dailyWord: List<String>,
     onOpenHistory: (() -> Unit)? = null,
-    territoryHeader: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -78,11 +77,6 @@ fun WalkSummaryCard(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
-            if (territoryHeader != null) {
-                territoryHeader()
-                androidx.compose.material3.HorizontalDivider(color = PinkSoft)
-                Spacer(Modifier.height(10.dp))
-            }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -253,7 +247,6 @@ private fun WalkSummaryCardPreview() {
             ),
             dailyWord = homeWeatherWords(OutsideView.DAY_CLEAR, 21f).daily,
             onOpenHistory = {},
-            territoryHeader = { HomeGameCard("보리의 이번 시즌", "3곳 · 320점 · 순위 —", {}) },
         )
     }
 }

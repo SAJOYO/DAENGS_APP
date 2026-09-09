@@ -2,6 +2,7 @@ package com.daengs.app.ui.home
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,6 +13,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -88,17 +90,16 @@ fun HomeGameRoute(repository: ActivityRepository, ownerId: String?, petId: Strin
 
 @Composable
 fun HomeGameCard(title: String, message: String, onOpen: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+    // Match the existing bell's 44dp height so the header cannot take space from the miniroom.
+    Row(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+        .background(PinkFaint)
         .clickable(role = Role.Button, onClickLabel = "점령 현황 보기", onClick = onOpen)
-        .semantics { contentDescription = title }.padding(vertical = 6.dp),
+        .semantics { contentDescription = "$title · $message" }.padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        DaengsIconView(DaengsIcon.TerritoryPole, Modifier.size(28.dp), DaengPinkDeep)
-        Spacer(Modifier.width(6.dp))
-        Text("점령", color = TextDark, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Spacer(Modifier.width(10.dp))
-        Text(message, color = TextDark, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        DaengsIconView(DaengsIcon.TerritoryPole, Modifier.size(24.dp), DaengPinkDeep)
         Spacer(Modifier.width(4.dp))
-        DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(16.dp), TextMuted)
+        Text(message, color = TextDark, fontWeight = FontWeight.Medium, fontSize = 11.sp,
+            lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
     }
 }
 

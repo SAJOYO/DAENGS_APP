@@ -3,6 +3,7 @@ package com.daengs.app.ui.home
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.daengs.app.ui.theme.DaengsTheme
@@ -22,26 +23,34 @@ import org.robolectric.annotation.GraphicsMode
 class HomeSummaryUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun homeKeepsOriginalWalkCardAndAddsTerritoryBelowChat() {
+    @Test fun territoryInTopBarPreservesOriginalMiniroomSpaceAndWalkCard() {
         var territoryOpened = false
         var historyOpened = false
+        val showTerritory = mutableStateOf(false)
         compose.setContent { DaengsTheme {
             HomeScreen(frameTimeMs = 400L, dateLabel = "9월 9일 수요일",
                 todayWalks = WalkDayTotals(2, 1_920_000, 2300.0),
                 onOpenWalkHistory = { historyOpened = true },
-                gameContent = { HomeGameCard("보리의 이번 시즌", "3곳 · 320점 · 순위 —", { territoryOpened = true }) })
+                gameContent = if (showTerritory.value) {
+                    { HomeGameCard("보리의 이번 시즌", "3곳 · 320점 · 순위 —", { territoryOpened = true }) }
+                } else null)
         } }
+        val originalRoom = compose.onNodeWithTag("home-miniroom").fetchSemanticsNode().boundsInRoot
+        val originalChat = compose.onNodeWithText(HomeDemoData.CHAT_TITLE).fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { showTerritory.value = true }
+        assertEquals(originalRoom, compose.onNodeWithTag("home-miniroom").fetchSemanticsNode().boundsInRoot)
+        assertEquals(originalChat, compose.onNodeWithText(HomeDemoData.CHAT_TITLE).fetchSemanticsNode().boundsInRoot)
         val chat = compose.onNodeWithText(HomeDemoData.CHAT_TITLE).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val territory = compose.onNodeWithContentDescription("보리의 이번 시즌").assertIsDisplayed()
+        val territory = compose.onNodeWithContentDescription("보리의 이번 시즌", substring = true).assertIsDisplayed()
         val territoryBounds = territory.fetchSemanticsNode().boundsInRoot
-        assertTrue(chat.bottom < territoryBounds.top)
+        assertTrue(territoryBounds.bottom <= originalRoom.top)
         val summary = compose.onNodeWithText(HomeDemoData.WALK_TITLE).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue(territoryBounds.bottom < summary.top)
+        assertTrue(chat.bottom < summary.top)
         listOf("2회", "32분", "2.3km", HomeDemoData.DAILY_WORD_TITLE).forEach {
             compose.onNodeWithText(it).assertIsDisplayed()
         }
         compose.onNodeWithText("평균 속도").assertDoesNotExist()
-        screenshot("home-original-territory")
+        screenshot("home-top-territory")
         territory.performClick()
         compose.runOnIdle { assertTrue(territoryOpened) }
         compose.onNodeWithText("지난 산책").performClick()
@@ -50,16 +59,22 @@ class HomeSummaryUiTest {
 
     @Test @Config(qualifiers = "w320dp-h640dp")
     fun smallPhoneKeepsOriginalMetricsAndDailyWordVisible() {
+        val showTerritory = mutableStateOf(false)
         compose.setContent { DaengsTheme {
             HomeScreen(frameTimeMs = 400L, todayWalks = WalkDayTotals.EMPTY,
-                onOpenWalkHistory = {}, gameContent = { HomeGameCard("점령 현황", "진행 중인 시즌이 없어요", {}) })
+                onOpenWalkHistory = {}, gameContent = if (showTerritory.value) {
+                    { HomeGameCard("점령 현황", "3곳 · 320점 · 순위 —", {}) }
+                } else null)
         } }
+        val originalRoom = compose.onNodeWithTag("home-miniroom").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { showTerritory.value = true }
+        assertEquals(originalRoom, compose.onNodeWithTag("home-miniroom").fetchSemanticsNode().boundsInRoot)
         listOf("0회", "0분", "0m", HomeDemoData.DAILY_WORD_TITLE).forEach {
             compose.onNodeWithText(it).assertIsDisplayed()
         }
-        compose.onNodeWithText("진행 중인 시즌이 없어요").assertIsDisplayed()
+        compose.onNodeWithText("3곳 · 320점 · 순위 —").assertIsDisplayed()
         compose.onNodeWithText("평균 속도").assertDoesNotExist()
-        screenshot("home-original-territory-small")
+        screenshot("home-top-territory-small")
     }
 
     private fun screenshot(name: String) {

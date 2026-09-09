@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
@@ -419,6 +420,7 @@ fun HomeScreen(
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                     photo = profilePhoto,
+                    territoryContent = if (tab == BottomTab.Home && !myOpen) gameContent else null,
                 )
             }
         },
@@ -546,13 +548,18 @@ fun HomeScreen(
                 onToggleEmptyRoom = onToggleEmptyRoom,
                 tourOpen = tourOpen,
                 showTodayCard = !wide,
-                modifier = roomModifier,
+                modifier = roomModifier.testTag("home-miniroom"),
             )
         }
 
         // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
         // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
         val cards: @Composable ColumnScope.() -> Unit = {
+            // Short landscape layouts hide the top bar; their right-hand column already scrolls.
+            if (compactTop && gameContent != null) {
+                Box(Modifier.padding(horizontal = 14.dp)) { gameContent() }
+                Spacer(Modifier.height(10.dp))
+            }
             val slot = Modifier.padding(horizontal = 14.dp).height(CardSlotHeight)
             if (inventoryOpen) {
                 InventoryPanel(
@@ -579,7 +586,6 @@ fun HomeScreen(
                 todayWalks,
                 words.daily,
                 onOpenWalkHistory,
-                territoryHeader = gameContent,
             )
             Spacer(Modifier.height(10.dp))
         }
