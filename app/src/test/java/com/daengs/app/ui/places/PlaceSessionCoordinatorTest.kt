@@ -30,6 +30,30 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaceSessionCoordinatorTest {
     @Test
+    fun `applying and clearing custom filter kinds updates the resumed radius intent`() = runTest {
+        val requests = mutableListOf<PlaceSearchRequest>()
+        val repo = object : PlaceSearchRepository {
+            override suspend fun search(request: PlaceSearchRequest): PlaceSearchResponse {
+                requests += request
+                return PlaceSearchResponse(null, request.kinds.map { kind -> com.daengs.app.place.PlaceSearchGroup(kind,
+                    com.daengs.app.place.PlaceSort(com.daengs.app.place.PlaceSortType.DISTANCE, emptyList(), emptyList(), null, emptyMap()),
+                    50, false, emptyList()) })
+            }
+            override suspend fun filterCapabilities() = com.daengs.app.place.filterCapabilitiesFixture()
+            override suspend fun searchFiltered(request: com.daengs.app.place.PlaceFilterRequest) = com.daengs.app.place.filterResponseFixture(request)
+        }
+        val session = session(repo)
+        session.searchAt(GeoPoint(37.5, 127.0), PlaceKind.CAFE, false); runCurrent()
+        session.loadFilterCapabilities(); runCurrent()
+        val custom = listOf(PlaceKind.CAFE, PlaceKind.HOSPITAL)
+        session.applyFilters(com.daengs.app.place.PlaceFilterCriteria(custom)); runCurrent()
+        assertEquals(custom, session.state.value.discovery.requestedKinds)
+        session.applyFilters(null); runCurrent()
+        session.radius(5000); runCurrent()
+        assertEquals(custom, requests.last().kinds)
+        assertEquals(5000, requests.last().radiusMeters)
+    }
+    @Test
     fun `first search with a known position uses latest radius chosen without a search`() = runTest {
         val requests = mutableListOf<PlaceSearchRequest>()
         val session = session(PlaceSearchRepository { requests += it; emptyResponse() })

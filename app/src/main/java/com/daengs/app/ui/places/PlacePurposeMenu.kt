@@ -53,6 +53,7 @@ internal val PlaceCategorySelection.label: String
         PlaceCategorySelection.All -> "전체"
         is PlaceCategorySelection.Purpose -> purposePresentation.getValue(purpose).label
         is PlaceCategorySelection.Kind -> categoryLabel(kind)
+        is PlaceCategorySelection.Custom -> "업종 ${kinds.size}개"
     }
 
 @Composable
@@ -81,6 +82,7 @@ internal fun PlacePurposeMenu(selection: PlaceCategorySelection, onSelect: (Plac
                             (option is PlaceCategorySelection.Purpose && option.purpose == selection.parentPurpose)
                         val icon = when (option) {
                             PlaceCategorySelection.All -> null
+                            is PlaceCategorySelection.Custom -> null
                             is PlaceCategorySelection.Purpose -> purposePresentation.getValue(option.purpose).icon
                             is PlaceCategorySelection.Kind -> option.kind
                         }

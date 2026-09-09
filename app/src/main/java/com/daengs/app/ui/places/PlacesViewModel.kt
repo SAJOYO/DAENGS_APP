@@ -50,6 +50,9 @@ data class PlacesUiState(
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
+    data object LoadFilterCapabilities : PlacesAction
+    data object CancelFilterEdit : PlacesAction
+    data class ApplyFilters(val criteria: com.daengs.app.place.PlaceFilterCriteria?) : PlacesAction
     data class SetAiMode(val enabled: Boolean) : PlacesAction
     data class Discover(val query: String) : PlacesAction
     data class ChooseAi(val choice: FacilityChoice) : PlacesAction
@@ -188,7 +191,12 @@ class PlacesViewModel(
             facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
         }
         when (action) {
-            is PlacesAction.SetAiMode -> facility.enable(action.enabled)
+            PlacesAction.LoadFilterCapabilities -> session.loadFilterCapabilities()
+            PlacesAction.CancelFilterEdit -> session.cancelFilterEdit()
+            is PlacesAction.ApplyFilters -> { facility.enable(false); session.applyFilters(action.criteria) }
+            is PlacesAction.SetAiMode -> {
+                if (!action.enabled || (state.value.discovery.filters == null && !state.value.discovery.filterEditLoading)) facility.enable(action.enabled)
+            }
             is PlacesAction.Discover -> discover(action.query)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
             PlacesAction.RetryAi -> facility.retry()
@@ -241,6 +249,9 @@ class PlacesViewModel(
     }
 
     private fun discover(text: String) {
+        if (state.value.discovery.filters != null) {
+            facility.reject("적용한 수동 조건을 해제한 뒤 AI 검색을 시작해 주세요."); return
+        }
         val query = text.trim()
         if (profiles.value.ownerId == null) {
             facility.reject("AI 조건 검색은 로그인 후 사용할 수 있어요."); return

@@ -26,9 +26,12 @@ sealed interface PlaceCategorySelection {
         override val kinds: List<PlaceKind> get() = listOf(kind)
     }
 
+    data class Custom(override val kinds: List<PlaceKind>) : PlaceCategorySelection
+
     val parentPurpose: PlacePurpose?
         get() = when (this) {
             All -> null
+            is Custom -> null
             is Purpose -> purpose
             is Kind -> PlacePurpose.entries.firstOrNull { kind in it.kinds }
         }
@@ -40,7 +43,7 @@ sealed interface PlaceCategorySelection {
             kinds.isEmpty() -> Kind(PlaceKind.CAFE) // 기존 첫 검색 기본값
             kinds.size == 1 -> Kind(kinds.single())
             kinds.toSet() == PlaceKind.entries.toSet() -> All
-            else -> Purpose(PlacePurpose.entries.single { it.kinds.toSet() == kinds.toSet() })
+            else -> PlacePurpose.entries.singleOrNull { it.kinds.toSet() == kinds.toSet() }?.let(::Purpose) ?: Custom(kinds)
         }
     }
 }

@@ -47,6 +47,7 @@ fun PlaceSearchLabScreen(
     aiConnected: Boolean = false,
     emptyMessage: String = "검색 결과가 없어요.",
     showRetry: Boolean = true,
+    filterSummary: String? = null,
     resultLabel: String = state.applied.kind?.let(::categoryLabel) ?: "전체",
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
 ) {
@@ -148,11 +149,12 @@ fun PlaceSearchLabScreen(
         }
     }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("완료") } })
     if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text("검색 조건") }, text = {
-        Column {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
         if (live) listOf(1000, 3000, 5000, 10000, 20000).forEach { meters ->
             TextButton(onClick = { onRadius(meters); filters = false }) { Text("${meters / 1000}km${if (state.applied.radiusMeters == meters) " ✓" else ""}") }
         }
-        Text(if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 장소 상세에서 확인하세요.")
+        Text(filterSummary?.let { "현재 적용 조건: $it\n반경을 바꿔도 위 조건은 유지됩니다." }
+            ?: if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 장소 상세에서 확인하세요.")
         }
     }, confirmButton = { TextButton(onClick = { filters = false }) { Text("완료") } })
 }

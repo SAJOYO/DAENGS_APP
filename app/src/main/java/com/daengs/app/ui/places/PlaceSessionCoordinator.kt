@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 internal sealed interface PlaceSearchOrigin {
     data object CurrentDevice : PlaceSearchOrigin
@@ -75,6 +76,15 @@ internal class PlaceSessionCoordinator(
     private var intentGeneration = 0L
     private var resumeIntent: PlaceSearchIntent? = null
 
+    init {
+        scope.launch {
+            discovery.state.collect { current ->
+                // Applying an edit can change kinds without issuing a legacy category intent.
+                if (current.filterResponse != null) latestIntent.value = currentResolvedIntent()
+            }
+        }
+    }
+
     val state: StateFlow<PlaceSessionState> = combine(
         latestIntent,
         discovery.state,
@@ -94,6 +104,15 @@ internal class PlaceSessionCoordinator(
 
     fun updateDogContext(context: DogSearchContext?) {
         discovery.updateDogContext(context)
+    }
+
+    fun loadFilterCapabilities() = discovery.loadFilterCapabilities()
+    fun cancelFilterEdit() = discovery.cancelFilterEdit()
+    fun applyFilters(criteria: com.daengs.app.place.PlaceFilterCriteria?) {
+        if (latestIntent.value?.origin == PlaceSearchOrigin.CurrentDevice) return
+        latestIntent.value = currentResolvedIntent()
+        journey.clear()
+        discovery.applyFilters(criteria)
     }
 
     fun updateDogs(dogs: List<com.daengs.app.place.PlaceDogSnapshot>) {

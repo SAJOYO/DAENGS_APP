@@ -16,10 +16,15 @@ import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.*
 import com.daengs.app.ui.places.lab.*
 import com.daengs.app.ui.theme.DaengsTheme
+import androidx.compose.ui.text.style.TextOverflow
 
 /** AI 확정 결과는 서버가 실행한 응답 그대로 그린다. 일반 검색을 다시 호출하면 조건을 잃는다. */
-internal fun PlacesUiState.visibleDiscovery(): PlaceDiscoveryState {
-    if (!facility.enabled) return discovery
+internal fun PlacesUiState.visibleDiscovery(uncertain: Boolean = false): PlaceDiscoveryState {
+    if (!facility.enabled) {
+        if (!uncertain || discovery.filterResponse == null) return discovery
+        val response = discovery.filterResponse.results(uncertain = true)
+        return discovery.copy(search = if (response.groups.all { it.results.isEmpty() }) PlaceSearchState.Empty(response) else PlaceSearchState.Content(response))
+    }
     val lens = facility.confirmedLens
     val response = lens?.search
     return discovery.copy(
@@ -36,14 +41,15 @@ internal fun PlacesUiState.visibleDiscovery(): PlaceDiscoveryState {
 }
 
 /** 운영 coordinator의 결과를 새 화면에 투영한다. 네트워크·위치의 별도 상태 소유자는 없다. */
-fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: PlaceKey?, notice: String?): PlaceSearchLabState {
-    val discovery = visibleDiscovery()
+fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: PlaceKey?, notice: String?, uncertain: Boolean = false): PlaceSearchLabState {
+    val discovery = visibleDiscovery(uncertain)
     val response = discovery.response
     val profileMismatch = response != null && response.dogs != profiles.snapshots()
     val locationFailed = waitingForSearchLocation && location is PlaceLocationState.Failed
     val category = PlaceCategorySelection.fromKinds(discovery.requestedKinds)
     val all = category == PlaceCategorySelection.All
-    val hits = if (facility.enabled || discovery.requestedKinds.size > 1) response?.overviewHits(discovery.preferParking).orEmpty()
+    val hits = if (discovery.filterResponse != null) response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
+        else if (facility.enabled || discovery.requestedKinds.size > 1) response?.overviewHits(discovery.preferParking).orEmpty()
         else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
         facility.enabled && facility.loading -> LabPhase.LOADING
@@ -90,13 +96,21 @@ fun ConnectedPlaceSearchScreen(
 ) {
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     val ai = state.facility.enabled
-    val display = state.visibleDiscovery()
+    var uncertain by remember { mutableStateOf(false) }
+    var filterEditor by remember { mutableStateOf(false) }
+    var pendingFilters by remember { mutableStateOf<PlaceFilterCriteria?>(null) }
+    val display = state.visibleDiscovery(uncertain)
     var expanded by remember { mutableStateOf<PlaceKey?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var camera by remember { mutableStateOf(PlaceMapCamera()) }
     var follow by remember { mutableStateOf(true) }
     val keyboard = LocalSoftwareKeyboardController.current
-    val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
+    val ui = state.toConnectedSearchState(draft, ai, expanded, notice, uncertain)
+    LaunchedEffect(state.discovery.filterEditLoading, state.discovery.filterResponse) {
+        if (pendingFilters != null && state.discovery.filters == pendingFilters && !state.discovery.filterEditLoading && state.discovery.filterError == null && state.discovery.filterResponse != null) {
+            pendingFilters = null; filterEditor = false; uncertain = false
+        }
+    }
     LaunchedEffect(state.discovery.response) {
         // A loading frame has no response; only completed results can remove an expanded card.
         if (state.discovery.response != null) expanded = ui.expanded
@@ -109,10 +123,20 @@ fun ConnectedPlaceSearchScreen(
         notice = null
         onAction(PlacesAction.Search(selected, parking, query))
     }
+    fun editFilters() { filterEditor = true; pendingFilters = null; onAction(PlacesAction.LoadFilterCapabilities) }
+    if (filterEditor) PlaceFilterEditor(state.discovery,
+        canApply = !permission && !state.waitingForSearchLocation && !state.discovery.loading && state.discovery.origin != null,
+        onApply = { pendingFilters = it; onAction(PlacesAction.ApplyFilters(it)) },
+        onDismiss = { filterEditor = false; pendingFilters = null; onAction(PlacesAction.CancelFilterEdit) },
+        onRetryCapabilities = { onAction(PlacesAction.LoadFilterCapabilities) })
     BackHandler(onBack = onBack)
     PlaceSearchLabScreen(
         state = ui, live = true, onBack = onBack,
-        onEdit = { draft = it }, onAi = { onAction(PlacesAction.SetAiMode(!ai)); notice = null },
+        filterSummary = state.discovery.filters?.description(),
+        onEdit = { draft = it }, onAi = {
+            if (!ai && state.discovery.filters != null) notice = "수동 조건을 전체 해제한 뒤 AI 검색으로 전환해 주세요."
+            else { onAction(PlacesAction.SetAiMode(!ai)); notice = null }
+        },
         onSubmit = {
             when {
                 ai -> { keyboard?.hide(); onAction(PlacesAction.Discover(draft)) }
@@ -120,13 +144,28 @@ fun ConnectedPlaceSearchScreen(
                 else -> { keyboard?.hide(); search(query = draft.trim()) }
             }
         },
-        categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
-        resultLabel = if (ai) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
+        categoryContent = { PlacePurposeMenu(category) {
+            if (state.discovery.filters != null) editFilters() else search(selected = it)
+        } },
+        resultLabel = if (ai) state.facility.confirmedLens?.label ?: "AI 조건 검색" else if (state.discovery.filters != null) if (uncertain) "확인 필요" else "조건 충족" else category.label,
         aiConnected = true,
-        conditionContent = if (state.facility.enabled) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
-        emptyMessage = if (ai && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
+        conditionContent = if (state.facility.enabled) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else ({
+            Column {
+                TextButton(onClick = { editFilters() }) {
+                    Text(state.discovery.filters?.let { "적용 조건 · ${it.description()}" } ?: "조건 선택 · 주차·전용 여부를 함께 검색", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                state.discovery.filterResponse?.takeIf { it.request.criteria.showUncertain }?.let {
+                    Row {
+                        TextButton(onClick = { uncertain = false; expanded = null }) { Text("${if (!uncertain) "✓ " else ""}조건 충족") }
+                        TextButton(onClick = { uncertain = true; expanded = null }) { Text("${if (uncertain) "✓ " else ""}확인 필요") }
+                    }
+                }
+            }
+        }),
+        emptyMessage = if (ai && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else if (state.discovery.filters != null) "${if (uncertain) "확인 필요한" else "조건을 만족한"} 결과가 없어요. 조건은 그대로 유지했어요." else "검색 결과가 없어요.",
         onParking = { value ->
-            if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
+            if (state.discovery.filters != null) editFilters()
+            else if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
         },
         onRadius = { meters -> onAction(PlacesAction.SetRadius(meters)) },
@@ -142,6 +181,7 @@ fun ConnectedPlaceSearchScreen(
         },
         showRetry = !ai || state.facility.canRetry,
         cardActions = { hit ->
+            state.discovery.filterResponse?.evidence(hit.place.key)?.let { PlaceFilterEvidence(it) }
             if (ai) state.facility.confirmedLens?.presentations?.firstOrNull { it.key == hit.place.key }?.let { FacilityPresentationDetails(it) }
             hit.place.facts.phone?.let { phone -> TextButton(onClick = { onCall(phone) }) { Text("전화로 확인") } }
             PlaceJourneyAction(

@@ -8,12 +8,36 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 
 /** 장소 API 의 표준 클라이언트. 앞으로 생길 장소 화면들이 다 이걸 쓴다. */
 class PlaceApi(
     private val baseUrl: () -> String,
     private val json: Json = Json,
 ) {
+    suspend fun filterCapabilities() = PlaceFilterCapabilities(filterHttp("capabilities"))
+    suspend fun searchFiltered(request: PlaceFilterRequest) = PlaceFilterResponse(filterHttp("search", request.toJson()), request)
+
+    private suspend fun filterHttp(path: String, payload: JsonObject? = null): JsonObject = withContext(Dispatchers.IO) {
+        val connection = (URL("${baseUrl().trimEnd('/')}/v3/places/$path").openConnection() as HttpURLConnection).apply {
+            requestMethod = if (payload == null) "GET" else "POST"
+            connectTimeout = 10_000; readTimeout = 20_000
+            setRequestProperty("Accept", "application/json")
+            if (payload != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+        }
+        try {
+            if (payload != null) connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(payload.toString()) }
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (status !in 200..299) throw PlaceApiException(status, body.take(2000))
+            json.parseToJsonElement(body).jsonObject
+        } finally { connection.disconnect() }
+    }
+
     private val endpoint: String get() = "${baseUrl().trimEnd('/')}/v2/places/search"
 
     suspend fun search(request: PlaceSearchRequest): PlaceSearchResponse =
