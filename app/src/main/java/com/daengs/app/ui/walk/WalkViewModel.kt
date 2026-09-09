@@ -9,6 +9,10 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.location.LocationSource
 import com.daengs.app.map.features.territory.TerritoryBoardController
+import com.daengs.app.map.features.territory.TerritoryNearbyController
+import com.daengs.app.map.features.territory.nearbyTerritoryTarget
+import com.daengs.app.map.features.territory.territoryLocationEvidence
+import com.daengs.app.map.features.territory.withNearby
 import com.daengs.app.map.features.territory.TerritoryGameController
 import com.daengs.app.map.features.territory.TerritoryGameState
 import com.daengs.app.map.features.territory.TerritoryGameProvider
@@ -40,8 +44,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -92,6 +100,7 @@ class WalkViewModel(
     private val runtimeScope = externalScope ?: viewModelScope
     private val location = WalkLocationCoordinator(locationSource, runtimeScope)
     private val territory = TerritoryBoardController(territoryRepository, runtimeScope)
+    private val nearbyTerritory = TerritoryNearbyController(territoryRepository, runtimeScope)
     private val presentation = MutableStateFlow(WalkPresentationState())
     private val effectChannel = Channel<WalkEffect>(Channel.BUFFERED)
     val effects = effectChannel.receiveAsFlow()
@@ -107,14 +116,19 @@ class WalkViewModel(
     private var trackingErrorJob: Job? = null
     private var observedCompletedSessionId: String? = null
     private val territoryFeedback = com.daengs.app.map.features.territory.TerritoryFeedbackTracker()
+    private val nearbyActive = combine(sharedReadsActive, sharedReadsForeground,
+        presentation.map { it.map.purpose }.distinctUntilChanged()) { visible, foreground, purpose ->
+        territoryGame != null && visible && foreground && purpose == MapPurpose.TERRITORY
+    }
 
     val state: StateFlow<WalkUiState> = combine(
         walkController.state,
         location.state,
         territory.state,
         presentation,
-    ) { tracking, locationState, territoryState, presentationState ->
-        val game = territoryGame?.snapshot(territoryState, tracking,
+        nearbyTerritory.state,
+    ) { tracking, locationState, territoryState, presentationState, nearbyState ->
+        val game = territoryGame?.snapshot(territoryState.withNearby(nearbyState), tracking,
             locationState.permissionGranted && locationState.precisePermission,
             presentationState.selection.pets.associate { it.id to it.name }, nowNanos(),
             screenSample = locationState.sample) ?: TerritoryGameState()
@@ -131,8 +145,10 @@ class WalkViewModel(
             selection = presentationState.selection,
             map = presentationState.map,
             territory = territoryState,
+            nearbyTerritory = nearbyState,
             territoryGame = game.copy(feedback = territoryFeedback.update(game, tracking.activeSessionId,
-                presentationState.map.purpose == MapPurpose.TERRITORY, nowNanos())),
+                presentationState.map.purpose == MapPurpose.TERRITORY, nowNanos()),
+                nearbyTargetId = nearbyTerritoryTarget(game.sites, nearbyState)),
             completion = presentationState.completion,
             momentNotice = presentationState.momentNotice,
         )
@@ -144,24 +160,55 @@ class WalkViewModel(
 
     init {
         runtimeScope.launch {
+            combine(walkController.state, location.state, nearbyActive) { tracking, fix, enabled ->
+                Triple(tracking, fix, enabled)
+            }.collectLatest { (tracking, fix, enabled) ->
+                if (!enabled) nearbyTerritory.clear()
+                else while (true) {
+                    val evidence = territoryLocationEvidence(tracking,
+                        fix.permissionGranted && fix.precisePermission, nowNanos(), 10_000_000_000L, fix.sample)
+                    val accuracy = evidence.sample?.accuracyMeters
+                    val origin = evidence.sample?.point?.takeIf {
+                        evidence.trusted && accuracy != null && accuracy.isFinite() && accuracy >= 0
+                    }
+                    nearbyTerritory.update(origin, nowNanos())
+                    // Re-evaluate proximity even when the GPS source stops emitting.
+                    presentation.update { it.copy(claimRevision = it.claimRevision + 1) }
+                    delay(1_000)
+                }
+            }
+        }
+        runtimeScope.launch {
             territoryGame?.changes?.collect {
                 presentation.update { p -> p.copy(claimRevision = p.claimRevision + 1) }
             }
         }
         if (territoryGame?.refreshesFromServer == true) runtimeScope.launch {
-            combine(
-                territory.state.map { it.sites }.distinctUntilChanged(),
-                presentation.map { it.map.purpose }.distinctUntilChanged(),
-                sharedReadsActive,
-                sharedReadsForeground,
-            ) { sites, purpose, visible, foreground -> sites to (visible && foreground && purpose == MapPurpose.TERRITORY) }
-                .collectLatest { (sites, visible) ->
-                    if (!visible || sites.isEmpty()) territoryGame.invalidate()
-                    else while (true) {
-                        territoryGame.refresh(sites)
-                        delay(15_000)
+            nearbyActive.distinctUntilChanged().collectLatest { visible ->
+                if (!visible) territoryGame.invalidate()
+                else {
+                    var lastReadIds: Set<String>? = null
+                    merge(
+                        combine(territory.state, nearbyTerritory.state) { board, nearby -> board.withNearby(nearby).sites }
+                            .distinctUntilChangedBy { sites -> sites.map { it.id }.toSet() }.map { false },
+                        flow {
+                            while (true) {
+                                delay(15_000)
+                                emit(true)
+                            }
+                        },
+                    ).conflate().collect { periodic ->
+                        // Finish the active read; retain only the latest pending list, never a backlog.
+                        // Visibility changes still cancel the read through the outer collectLatest.
+                        val sites = territory.state.value.withNearby(nearbyTerritory.state.value).sites
+                        val ids = sites.map { it.id }.toSet()
+                        if (periodic || ids != lastReadIds) {
+                            if (sites.isEmpty()) territoryGame.invalidate() else territoryGame.refresh(sites)
+                            lastReadIds = ids
+                        }
                     }
                 }
+            }
         }
         runtimeScope.launch {
             territoryPhotos.collect { presentation.update { p -> p.copy(claimRevision = p.claimRevision + 1) } }
@@ -217,12 +264,16 @@ class WalkViewModel(
         territoryGame?.invalidate()
         location.deactivate()
         territory.deactivate()
+        nearbyTerritory.clear()
     }
 
     /** Only server browsing follows Activity visibility; foreground walking keeps recording. */
     fun updateSharedReadsForeground(foreground: Boolean) {
         sharedReadsForeground.value = foreground
-        if (!foreground) territoryGame?.invalidate()
+        if (!foreground) {
+            territoryGame?.invalidate()
+            nearbyTerritory.clear()
+        }
     }
 
     fun updatePermission(granted: Boolean, precise: Boolean) {
@@ -243,6 +294,7 @@ class WalkViewModel(
                 territory.activate(location.state.value.currentPosition)
             }
         }
+        if (!granted || !precise) nearbyTerritory.clear()
     }
 
     fun updatePets(pets: List<Pet>) {

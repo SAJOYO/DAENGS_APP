@@ -70,8 +70,10 @@ data class TerritoryGameState(
     val confirmedMarkSiteId: String? = null,
     val confirmedMarkVerified: Boolean = false,
     val onlinePhotos: Boolean = false,
+    val nearbyTargetId: String? = null,
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
+    val nearbyTarget: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == nearbyTargetId }
 }
 
 /** Map/UI adapter for the step-1 fake. Does not write behavior Pins or call the online API. */
