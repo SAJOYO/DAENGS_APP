@@ -1,5 +1,8 @@
 # 산책 기록 입력과 보관
 
+GPS가 불안정할 때 쓸 순수 계산 모듈과 검증 결과는 [행동 핀 위치 추정기](action-pin-estimator.md)에 있다.
+버튼·저장·동기화에는 아직 연결하지 않았으며, 아래 현재 사용자 흐름은 그대로다.
+
 2026-09-05, [#144](https://github.com/SAJOYO/DAENGS_APP/pull/144). 서버 계약: [DAENGS_dev#251](https://github.com/SAJOYO/DAENGS_dev/pull/251).
 
 ## 사용자 흐름
