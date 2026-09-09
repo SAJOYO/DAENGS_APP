@@ -42,6 +42,8 @@ import com.daengs.app.walk.WalkTrackingController
 @Composable
 fun WalkRoute(
     onBack: () -> Unit,
+    /** 산책 일기 목록으로 나간다. 홈의 `지난 산책` 과 같은 화면이다. */
+    onOpenDiaryList: () -> Unit = onBack,
     onRequestOrientation: (WalkOrientation) -> Unit,
     walkController: WalkTrackingController,
     history: WalkHistory,
@@ -215,6 +217,8 @@ fun WalkRoute(
                 diaryCaptureSession = state.tracking.activeSessionId
             } else if (action == WalkAction.OpenEntries) {
                 initialEntry = null; entryError = null; editorOpen = true
+            } else if (action == WalkAction.OpenDiaryList) {
+                onOpenDiaryList()
             } else if (action is WalkAction.AddMoment && action.type == com.daengs.app.walk.WalkMomentType.NOTE) {
                 entrySessionId?.let { sessionId ->
                     val sample = state.tracking.latestMomentFix?.takeIf {

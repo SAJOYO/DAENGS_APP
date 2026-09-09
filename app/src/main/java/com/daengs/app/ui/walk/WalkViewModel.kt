@@ -293,7 +293,7 @@ class WalkViewModel(
                 territory.clearSelection()
                 presentation.update { it.copy(map = it.map.copy(frameSelectedTerritory = false)) }
             }
-            WalkAction.OpenEntries, WalkAction.PhotographWalk -> Unit // Route owns diary storage/camera.
+            WalkAction.OpenEntries, WalkAction.OpenDiaryList, WalkAction.PhotographWalk -> Unit // Route owns diary storage/camera/navigation.
             is WalkAction.SelectClaimingPet -> {
                 if (territory.state.value.selectedSiteId == action.siteId) {
                     territoryGame?.selectPet(action.petId, action.siteId, walkController.state.value)
