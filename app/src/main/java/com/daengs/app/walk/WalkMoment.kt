@@ -12,6 +12,15 @@ const val WALK_MOMENT_MAX_ACCURACY_METERS = 15f
 /** 마지막으로 신뢰한 좌표가 이보다 오래됐으면 사용자가 지금 있는 자리라고 보지 않는다. */
 const val WALK_MOMENT_MAX_AGE_NANOS = 10_000_000_000L
 
+/** Display projection only. Never turns an estimated pin into original GPS content. */
+fun List<WalkEntry>.toEntryMoments(): List<WalkMoment> = mapNotNull { entry ->
+    (entry.pin?.point ?: entry.point)?.let { point -> WalkMoment(
+        id = "moment-${entry.id}", point = point, locationLabel = entry.pin?.label,
+        actions = mapOf(entry.type to WalkMomentAction(entry.type, entry.recordedAtMillis,
+            entry.locationCapturedAtMillis ?: entry.recordedAtMillis)),
+    ) }
+}
+
 /** 한 장소에서 사용자가 직접 확인한 행동 하나와 그 시각. */
 data class WalkMomentAction(
     val type: WalkMomentType,
@@ -33,6 +42,7 @@ data class WalkMoment(
     val id: String,
     val point: GeoPoint,
     val actions: Map<WalkMomentType, WalkMomentAction>,
+    val locationLabel: String? = null,
 ) {
     val types: Set<WalkMomentType> get() = actions.keys
     val latestRecordedAtMillis: Long get() = actions.values.maxOf { it.recordedAtMillis }
@@ -42,7 +52,7 @@ data class WalkMoment(
             val ordered = WalkMomentType.entries.filter(types::contains)
             return when (ordered.size) {
                 0 -> "산책 순간"
-                1 -> ordered.first().label
+                1 -> ordered.first().label + (locationLabel?.let { " · $it" } ?: "")
                 else -> "${ordered.first().label} 외 ${ordered.size - 1}개"
             }
         }

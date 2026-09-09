@@ -18,6 +18,7 @@ private data class SiteOverlays(val marker: Marker, val ring: CircleOverlay?, va
 @Composable
 internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarkerState>, onSelect: (String) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
     val icons = remember(context) {
         TerritoryMarkerOccupancy.entries.distinctBy(TerritoryPoleArt::resource).associate {
             TerritoryPoleArt.resource(it) to OverlayImage.fromBitmap(territoryMarkerIcon(context, it))
@@ -38,6 +39,14 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                     TerritoryMarkerOccupancy.VERIFIED -> "인증"
                 }
                 captionMinZoom = 0.0
+                if (site.radiusMeters != null) {
+                    if (captionText.isEmpty()) captionText = "전봇대"
+                    val rangeStyle = territoryRangeStyle(site.proximity)
+                    subCaptionText = rangeStyle.label
+                    subCaptionColor = rangeStyle.outlineArgb
+                    subCaptionTextSize = 11f
+                    subCaptionMinZoom = 0.0
+                }
                 val size = TerritoryPoleArt.size(site.selected)
                 width = size.first; height = size.second
                 anchor = PointF(TerritoryPoleArt.ANCHOR_X, TerritoryPoleArt.ANCHOR_Y)
@@ -45,12 +54,14 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                 alpha = if (site.occupancyKnown) 1f else .55f
                 zIndex = if (site.selected) 100 else 30
                 // 성공 발자국이 같은 위치에 떠도 선택한 전봇대가 충돌 숨김 처리되면 안 된다.
-                isHideCollidedMarkers = !site.selected; isHideCollidedSymbols = !site.selected
+                isHideCollidedMarkers = !site.selected && site.radiusMeters == null
+                isHideCollidedSymbols = !site.selected && site.radiusMeters == null
                 setOnClickListener { latestSelect(site.id); true }
                 this.map = map
             }
             val ring = site.radiusMeters?.let { meters -> CircleOverlay().apply {
                 center = point; radius = meters
+                zIndex = -1
                 this.map = map
             } }
             val paw = if (site.selected && site.feedback?.kind in setOf(TerritoryFeedbackKind.MARKED, TerritoryFeedbackKind.VERIFIED)) Marker().apply {
@@ -78,11 +89,10 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
             overlay.marker.width = size.first
             overlay.marker.height = size.second
             overlay.ring?.apply {
-                val highlighted = site.ready || frame.glow > 0f
-                val tint = if (highlighted) accent else Color.rgb(115, 125, 135)
-                color = Color.argb((if (highlighted) 40 + 35 * frame.glow else 20f).toInt(), Color.red(tint), Color.green(tint), Color.blue(tint))
+                val tint = territoryRangeStyle(site.proximity).outlineArgb
+                color = Color.argb((20 + 20 * frame.glow).toInt(), Color.red(tint), Color.green(tint), Color.blue(tint))
                 outlineColor = tint
-                outlineWidth = if (highlighted) (4 + 2 * frame.glow).toInt() else 2
+                outlineWidth = ((2 + frame.glow) * density).toInt().coerceAtLeast(1)
                 // radius는 판정 반경 그대로 둔다. 빛만 바뀌며 점령 범위는 늘어나지 않는다.
             }
             overlay.paw?.apply {
@@ -92,4 +102,10 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
             }
         }
     }
+}
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true, widthDp = 320, heightDp = 620)
+@Composable
+private fun NaverTerritoryLayerPreview() {
+    com.daengs.app.ui.walk.TerritoryRangePreview()
 }

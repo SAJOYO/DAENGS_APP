@@ -23,6 +23,25 @@ import org.junit.Test
 class TerritoryBoardControllerTest {
     private val seoul = GeoPoint(37.5, 127.0)
 
+    @Test fun `explicit nearby selection preserves viewport and survives a pending viewport response`() = runTest {
+        val response = CompletableDeferred<TerritorySitePage>()
+        var calls = 0
+        val controller = TerritoryBoardController(TerritorySiteRepository {
+            if (calls++ == 0) page("old") else response.await()
+        }, this, cameraDebounceMillis = 0)
+        controller.activate(seoul); runCurrent()
+        controller.onCameraSettled(GeoPoint(37.52, 127.0)); runCurrent()
+        val selected = TerritorySite("near", seoul, 0.0)
+        controller.selectNearby(selected)
+        assertEquals(seoul, controller.state.value.loadedOrigin)
+        assertEquals(listOf("old", "near"), controller.state.value.sites.map { it.id })
+        response.complete(page("new")); runCurrent()
+        assertEquals("near", controller.state.value.selectedSiteId)
+        assertEquals(listOf("new", "near"), controller.state.value.sites.map { it.id })
+        controller.clearSelection()
+        assertNull(controller.state.value.selectedSiteId)
+    }
+
     @Test
     fun `activating loads a full read page around the device`() = runTest {
         var captured: NearbyTerritorySitesRequest? = null

@@ -88,6 +88,13 @@ class TerritoryBoardController(
         mutableState.update { it.copy(selectedSiteId = null) }
     }
 
+    /** A deliberate tap promotes one nearby site without replacing the inspected viewport. */
+    internal fun selectNearby(site: TerritorySite) {
+        mutableState.update { current ->
+            current.copy(sites = (current.sites + site).distinctBy { it.id }, selectedSiteId = site.id)
+        }
+    }
+
     private fun refreshIfNeeded(origin: GeoPoint) {
         if (!needsRefresh(origin)) return
         submit(origin)
@@ -122,10 +129,11 @@ class TerritoryBoardController(
                     if (generation != requestGeneration) return@onSuccess
                     mutableState.update { current ->
                         current.copy(
-                            sites = page.sites,
+                            sites = (page.sites + listOfNotNull(current.sites.firstOrNull {
+                                it.id == current.selectedSiteId
+                            })).distinctBy { it.id },
                             loadedOrigin = origin,
-                            selectedSiteId = current.selectedSiteId
-                                ?.takeIf { selected -> page.sites.any { it.id == selected } },
+                            selectedSiteId = current.selectedSiteId,
                             truncated = page.truncated,
                             loading = false,
                             failure = null,

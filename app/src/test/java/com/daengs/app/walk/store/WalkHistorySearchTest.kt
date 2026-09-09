@@ -1,10 +1,11 @@
 package com.daengs.app.walk.store
 
+import com.daengs.app.walk.support.seedSearchWalk
+import com.daengs.app.walk.support.titledDiaryFixture
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.*
-import com.daengs.app.walk.diary.titledDiaryFixture
 import com.daengs.app.walk.sync.storyboardEntryStamp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -14,15 +15,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.*
-
-internal suspend fun seedSearchWalk(log: RoomWalkFixLog, id: String, day: Int) {
-    val at = LocalDate.of(2026, 9, day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    log.openSession(RecordedSession(id, dogIds = listOf("dog"), startedAtMillis = at,
-        weather = RecordedWeather(61, true, 20f)))
-    (0..5).forEach { i -> log.append(id, RecordedFix(i, 0, at + i * 120_000L,
-        37.5 + i * 80.0 / 111195, 127.0, 5f, false)) }
-    log.closeSession(id, at + 600_000)
-}
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)

@@ -11,7 +11,12 @@ suspend fun searchPlaceBatches(
     requests: List<PlaceSearchRequest>,
 ): PlaceSearchResponse = coroutineScope {
     require(requests.isNotEmpty() && requests.size <= 3)
+    if (requests.size > 1 && repository is FacilityConversationRepository) {
+        return@coroutineScope repository.overview(requests)
+    }
     if (requests.size == 1) return@coroutineScope repository.search(requests.single()).also {
+        // Conversation returns the committed scope, which may be the previous scope on failure.
+        if (repository is FacilityConversationRepository && repository.state.value.result?.search === it) return@also
         it.requireDogEcho(requests.single())
         if (requests.single().kinds.size > 1 && it.groups.map { group -> group.kind } != requests.single().kinds) {
             throw SerializationException("Missing or reordered category group")

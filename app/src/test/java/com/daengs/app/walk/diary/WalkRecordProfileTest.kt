@@ -9,6 +9,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WalkRecordProfileTest {
+    @Test fun `v2 위치 없는 행동도 프로필 근거와 횟수에 남는다`() {
+        val json = response().put("contract_version", "walk-entry-v2")
+        json.getJSONArray("evidence").getJSONObject(0).put("location", JSONObject.NULL).put("pin_revision", 2)
+        val profile = WalkRecordProfile.parse(json)
+        assertEquals(1, profile.behaviors.getValue("sniffing").entryCount)
+        assertNull(profile.evidence.single().content.point)
+        assertEquals(2, profile.evidence.single().pinRevision)
+    }
     private fun response(): JSONObject {
         val content = WalkEntry(id = "entry", sessionId = "walk", type = WalkMomentType.SNIFFING,
             recordedAtMillis = 1000, point = GeoPoint(37.5, 127.0), locationCapturedAtMillis = 900,

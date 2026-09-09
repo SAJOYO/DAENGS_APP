@@ -14,6 +14,13 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WalkTrackingTest {
+    @Test fun `첫 GPS 전에도 행동 버튼은 열리고 일시정지와 종료에서만 닫힌다`() {
+        val active = WalkTrackingState(activeSessionId = "s", trail = TrailSnapshot(state = TrackingState.RECORDING))
+        org.junit.Assert.assertTrue(active.canRecordAction)
+        org.junit.Assert.assertFalse(active.copy(trail = TrailSnapshot(state = TrackingState.PAUSED)).canRecordAction)
+        org.junit.Assert.assertFalse(active.copy(trail = TrailSnapshot(state = TrackingState.OFF)).canRecordAction)
+        org.junit.Assert.assertFalse(active.copy(activeSessionId = null).canRecordAction)
+    }
     @Test
     fun `store publishes the complete state atomically`() {
         val store = WalkTrackingStore()

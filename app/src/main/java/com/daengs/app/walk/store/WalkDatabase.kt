@@ -10,8 +10,8 @@ import androidx.sqlite.execSQL
 
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class],
-    version = 11,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class],
+    version = 13,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -198,6 +198,31 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /** Keep existing content/revisions/outbox untouched; old records remain v1. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinPayload TEXT")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinRevision INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN isV2 INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinDirty INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinChainIndex INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pendingRequest TEXT")
+            }
+        }
+
+        /** Only existing photo collections become publishers. Restored empty walks stay unknown. */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_photo_sync (sessionId TEXT NOT NULL, " +
+                    "ownerId TEXT NOT NULL, publisherId TEXT NOT NULL, revision INTEGER NOT NULL, " +
+                    "acknowledgedRevision INTEGER NOT NULL, pendingPayload TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("INSERT OR IGNORE INTO walk_photo_sync " +
+                    "SELECT s.id, s.ownerId, s.id, 1, 0, NULL FROM walk_session s " +
+                    "WHERE EXISTS (SELECT 1 FROM walk_photo p WHERE p.sessionId = s.id AND p.ownerId = s.ownerId)")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -211,6 +236,8 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13,
                 )
                 .build()
     }

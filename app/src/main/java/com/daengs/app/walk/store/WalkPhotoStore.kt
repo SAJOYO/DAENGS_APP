@@ -25,6 +25,7 @@ data class WalkPhotoRow(@PrimaryKey val id: String, val sessionId: String, val o
 
 /** 파일은 앱 전용 영구 디렉터리, Room에는 셔터 위치만 보관한다. */
 class WalkPhotoStore(private val dao: WalkDao, private val directory: File,
+    private val onChanged: (String) -> Unit = {},
     private val owner: () -> String) {
     private val mutex = Mutex()
     private fun file(id: String): File {
@@ -52,10 +53,12 @@ class WalkPhotoStore(private val dao: WalkDao, private val directory: File,
                     source.copyTo(destination)
                     // FK는 저장 중 삭제된 산책에 사진을 붙이지 못하게 한다.
                     check(capture.ownerId == owner()) { "산책 계정이 변경되었어요." }
-                    dao.insertPhoto(WalkPhotoRow(id, capture.sessionId, capture.ownerId,
+                    dao.savePhotoAndQueue(WalkPhotoRow(id, capture.sessionId, capture.ownerId,
                         capture.capturedAtMillis, capture.sample.capturedAtMillis,
                         capture.sample.point.latitude, capture.sample.point.longitude,
                         requireNotNull(capture.sample.accuracyMeters)))
+                    // Queue scheduling failure must never roll back an already stored photo.
+                    runCatching { onChanged(capture.sessionId) }
                     WalkPhoto(id, capture.sessionId, capture.capturedAtMillis, capture.sample.point, destination)
                 } catch (e: Exception) {
                     destination.delete()
@@ -68,8 +71,9 @@ class WalkPhotoStore(private val dao: WalkDao, private val directory: File,
         mutex.withLock {
             val row = dao.photo(id) ?: return@withLock
             check(row.ownerId == owner() && dao.session(row.sessionId)?.ownerId == owner())
-            dao.deletePhoto(id)
+            dao.deletePhotoAndQueue(id, row.ownerId)
             file(id).delete()
+            runCatching { onChanged(row.sessionId) }
         }
     }
 

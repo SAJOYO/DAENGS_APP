@@ -63,6 +63,7 @@ class WalkTrackingService : Service() {
     private var sessionDogIds: List<String> = emptyList()
     private var nextClientSeq = 0
     private var chainIndex = 0
+    private var directPinRef: com.daengs.app.walk.pin.ActionPinSourceRef? = null
     private var activeDurationMillis = 0L
     private var activeSinceRealtimeMillis: Long? = null
 
@@ -149,6 +150,8 @@ class WalkTrackingService : Service() {
             return
         }
         tracker.stop()
+        val cutoff = System.currentTimeMillis()
+        sessionId?.let { id -> writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) } }
         pauseTiming()
         stayRecorder.breakContinuity()
         val trail = recorder.pause()
@@ -163,9 +166,9 @@ class WalkTrackingService : Service() {
         }
         val trail = recorder.resume()
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
-        synchronized(sessionLock) { chainIndex += 1 }
+        synchronized(sessionLock) { chainIndex += 1; directPinRef = null }
         // 일시정지 전에 받은 좌표로 재개 직후 행동을 찍지 않는다. 새 fix가 올 때까지
-        // 행동 버튼은 비활성화된다.
+        // 행동은 fallback으로 저장한다.
         store.publish(trackingState(trail, latestMomentFix = null))
         promote(trail, errorMessage = null)
         tracker.start(locationSource, WALK_OBSERVATION_CONFIG)
@@ -180,6 +183,8 @@ class WalkTrackingService : Service() {
         pauseTiming()
         // 지우려면 어느 세션인지 알아야 하는데, closeSession() 이 비워 버린다.
         val finished = synchronized(sessionLock) { sessionId }
+        val cutoff = System.currentTimeMillis()
+        finished?.let { id -> writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) } }
         closeSession()
         val trail = recorder.stop()
         store.publish(trackingState(trail, finishingSessionId = finished))
@@ -229,67 +234,63 @@ class WalkTrackingService : Service() {
             stopIfInactive(startId)
             return
         }
-        val current = store.state.value
-        val sample = current.latestMomentFix
-        if (sample == null || !sample.isFreshEnoughForMoment(SystemClock.elapsedRealtimeNanos())) {
-            store.publish(WalkEvent.MomentLocationUnavailable)
+        if (type == WalkMomentType.NOTE) return // Notes use the editor, without a GPS gate.
+        if (com.daengs.app.walk.pin.ActionPinRollout.legacyCreation) {
+            recordLegacyMoment(type)
             return
         }
-        val activeSessionId = synchronized(sessionLock) { sessionId }
-        if (activeSessionId == null) {
-            store.publish(WalkEvent.MomentLocationUnavailable)
-            return
-        }
+        val activeSession = sessionId ?: return
+        val capturedOwner = sessionOwnerId.orEmpty()
         val actionId = UUID.randomUUID().toString()
-        val recordedAtMillis = System.currentTimeMillis()
-        val update = current.momentGroups.addOrGroupMoment(
-            sample = sample,
-            candidateId = "moment-$actionId",
-            type = type,
-            recordedAtMillis = recordedAtMillis,
-        )
-        // 마커는 즉시 반응시키되, 성공 문구는 아래 Room 완료 신호 뒤에만 보낸다.
-        store.publish(current.copy(momentGroups = update.moments))
-        if (type != WalkMomentType.NOTE) {
-            // 같은 writer 큐에서 fix와 close 사이에 넣는다. 종료 시 flush가 이 행동까지
-            // 끝낸 뒤 완료 상세를 되읽으므로, 완료 직후와 재실행 뒤가 같은 원본을 본다.
-            val stored = writer.appendAction(
-                RecordedWalkAction(
-                    id = actionId,
-                    sessionId = activeSessionId,
-                    type = type,
-                    recordedAtMillis = recordedAtMillis,
-                    locationCapturedAtMillis = sample.capturedAtMillis,
-                    point = sample.point,
-                    accuracyMeters = sample.accuracyMeters,
-                ),
-            )
-            serviceScope.launch {
-                try {
-                    stored.await()
-                    store.publish(update.recordedEvent(type).copy(
-                        momentId = "moment-$actionId", outcome = WalkMomentOutcome.CREATED,
-                    ))
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    // writer.failure가 기록 화면에 실패를 알리고, flush도 완료 처리를 막는다.
-                }
+        val at = System.currentTimeMillis()
+        val request = com.daengs.app.walk.pin.ActionPinRequest(UUID.randomUUID(), capturedOwner,
+            activeSession, chainIndex, at)
+        val direct = directPinRef.takeIf {
+            store.state.value.latestMomentFix?.isFreshEnoughForMoment(SystemClock.elapsedRealtimeNanos()) == true
+        }
+        val app = application as DaengsApp
+        val stored = writer.ordered {
+            val pin = app.actionPins.create(actionId, request, type, direct) ?: return@ordered
+            store.publish(WalkEvent.MomentRecorded(type, WalkMomentOutcome.CREATED, "moment-$actionId"))
+            if (pin.state == "provisional") {
+                // Scheduling failure must not undo the persisted action. Startup recovery finds it.
+                try { app.actionPinScheduler.schedule(actionId, pin.resolveByMillis) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { Log.w(TAG, "행동 핀 예약은 다음 시작에서 복구합니다.") }
             }
-        } else {
-            store.publish(update.recordedEvent(type).copy(momentId = "moment-$actionId"))
+        }
+        serviceScope.launch {
+            try { stored.await() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* writer.failure reports storage failure. */ }
         }
     }
 
-    private fun WalkMomentUpdate.recordedEvent(type: WalkMomentType) = WalkEvent.MomentRecorded(
-        type = type,
-        outcome = when {
-            groupCreated -> WalkMomentOutcome.CREATED
-            actionAdded -> WalkMomentOutcome.MERGED
-            else -> WalkMomentOutcome.ALREADY_EXISTS
-        },
-        momentId = selectedMomentId,
-    )
+    private fun recordLegacyMoment(type: WalkMomentType) {
+        val activeSession = sessionId ?: return
+        val action = com.daengs.app.walk.pin.legacyWalkAction(
+            store.state.value.latestMomentFix, UUID.randomUUID().toString(), activeSession,
+            type, System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(),
+        )
+        if (action == null) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        // 기존 writer 큐에 넣어 raw GPS 뒤, 세션 종료 전에 저장한다.
+        val capturedOwner = sessionOwnerId.orEmpty()
+        val stored = writer.ordered {
+            check(log.ownerId == capturedOwner) { "계정이 변경됐어요." }
+            log.appendAction(action)
+        }
+        serviceScope.launch {
+            try {
+                stored.await()
+                store.publish(WalkEvent.MomentRecorded(type, WalkMomentOutcome.CREATED, "moment-${action.id}"))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { /* writer.failure reports storage failure. */ }
+        }
+    }
 
     private fun acceptLocation(sample: LocationSample) {
         // A queued fix after pause/stop must not enter either raw history or the detector.
@@ -309,6 +310,13 @@ class WalkTrackingService : Service() {
                     ),
                 )
             }
+        }
+        if (sample.isAccurateEnoughForMoment() && !sample.isMock &&
+            sample.accuracyMeters?.let { it.isFinite() && it > 0 } == true) {
+            directPinRef = com.daengs.app.walk.pin.ActionPinSourceRef(nextClientSeq - 1, chainIndex, sample.capturedAtMillis)
+        } else {
+            // Keep exactly the identity accepted by latestMomentFix, never a display coordinate.
+            if (sample.isAccurateEnoughForMoment()) directPinRef = null
         }
         stayRecorder.add(sample)
         val latestMomentFix = if (sample.isAccurateEnoughForMoment()) {
@@ -333,6 +341,7 @@ class WalkTrackingService : Service() {
             sessionDogIds = dogIds.toList()
             nextClientSeq = 0
             chainIndex = 0
+            directPinRef = null
             writer.openSession(
                 RecordedSession(
                     id = id,
@@ -450,6 +459,8 @@ class WalkTrackingService : Service() {
         // stop 직후 늦게 배달된 feed 실패가 종료된 기록을 다시 foreground로 올리면 안 된다.
         if (recorder.snapshot().state != TrackingState.RECORDING) return
         tracker.stop()
+        val cutoff = System.currentTimeMillis()
+        sessionId?.let { id -> writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) } }
         pauseTiming()
         stayRecorder.breakContinuity()
         val trail = recorder.pause()

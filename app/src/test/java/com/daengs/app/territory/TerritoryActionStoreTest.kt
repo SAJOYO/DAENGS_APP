@@ -1,5 +1,10 @@
 package com.daengs.app.territory
 
+import com.daengs.app.territory.support.ClaimServer
+import com.daengs.app.territory.support.DOG
+import com.daengs.app.territory.support.PhotoServer
+import com.daengs.app.territory.support.SITE
+import com.daengs.app.territory.support.WALK
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.auth.Session

@@ -8,6 +8,8 @@ import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
+import com.daengs.app.walk.toEntryMoments
+import com.daengs.app.walk.toMomentGroups
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -37,14 +39,14 @@ class RoomWalkFixLog(private val dao: WalkDao,
         if (existing != null && existing.ownerId.isEmpty()) {
             dao.restoreOwner(session.id, verifiedOwner, requireNotNull(session.serverWalkId))
         }
-        openSessionLocked(session)
+        openSessionLocked(session, originatedHere = false)
     }
 
     override suspend fun openSession(session: RecordedSession) = sessionMutex.withLock {
-        openSessionLocked(session)
+        openSessionLocked(session, originatedHere = true)
     }
 
-    private suspend fun openSessionLocked(session: RecordedSession) {
+    private suspend fun openSessionLocked(session: RecordedSession, originatedHere: Boolean) {
         val capturedOwner = session.ownerId ?: owner()
         check(capturedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
         val inserted = dao.insertSession(
@@ -64,6 +66,8 @@ class RoomWalkFixLog(private val dao: WalkDao,
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
         // 나가지 않은 아이가 그 산책에 섞인다 (시작 시각을 안 덮어쓰는 것과 같은 이유).
         if (inserted == -1L) return
+        if (originatedHere) dao.insertPhotoSync(WalkPhotoSyncRow(session.id, capturedOwner,
+            java.util.UUID.randomUUID().toString()))
         for (dogId in session.dogIds) {
             dao.insertSessionDog(WalkSessionDogRow(sessionId = session.id, dogId = dogId))
         }
@@ -145,7 +149,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }
+        (dao.sessionsPendingAnalysis() + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
             .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**
@@ -181,6 +185,14 @@ class RoomWalkFixLog(private val dao: WalkDao,
         }.map { entry -> RecordedWalkAction(entry.id, entry.sessionId, entry.type,
             entry.recordedAtMillis, requireNotNull(entry.locationCapturedAtMillis),
             requireNotNull(entry.point), entry.accuracyMeters) }
+
+    override suspend fun moments(sessionId: String): List<com.daengs.app.walk.WalkMoment> {
+        val rows = dao.entries(sessionId)
+        val legacyIds = rows.filter { !it.isV2 }.map { it.id }.toSet()
+        // Keep the pre-existing history grouping for v1; v2 pins retain their action identity.
+        val legacy = actions(sessionId).filter { it.id in legacyIds }.toMomentGroups()
+        return legacy + rows.filter { it.isV2 }.mapNotNull { it.entry() }.toEntryMoments()
+    }
 }
 
 fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession = RecordedSession(

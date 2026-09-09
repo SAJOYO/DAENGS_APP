@@ -17,4 +17,5 @@ data class MapScene(
     val trail: TrailLayerState = TrailLayerState(),
     val completedRoute: CompletedRouteLayerState = CompletedRouteLayerState(),
     val stayStamps: List<com.daengs.app.map.layers.stays.StayStampMarkerState> = emptyList(),
+    val travelHeading: com.daengs.app.location.TravelHeading? = null,
 )

@@ -69,4 +69,34 @@ class WalkStoryboardTest {
             assertNull(dao.storyboard("s"))
         } finally { db.close() }
     }
+
+    @Test fun `장면별 수정은 다른 장면과 원본 기록을 보존하고 재생성 뒤에도 남는다`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        try {
+            val dao = db.walkDao()
+            dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = "owner"))
+            val record = DiarySceneContent("  직접 남긴 기록\n그대로  ", "note", locationLabel = "")
+            val first = StoryboardScene("entry:n", 1000, "첫 장면", "생성된 배경", "", "v1", diary = record)
+            val second = first.copy(id = "other", atMillis = 2000)
+            dao.saveDiarySceneEdit("s", "owner", first, "내 제목", "내가 고친 배경")
+            dao.saveDiarySceneEdit("s", "owner", second, "다른 제목", "다른 배경")
+            assertTrue(runCatching { dao.saveDiarySceneEdit("s", "other-owner", first, "오류", "") }.isFailure)
+            val draft = StoryboardDraft.parse(dao.storyboard("s")!!.payload)
+            assertEquals(2, draft.edits.size)
+            val regenerated = applyStoryboardEdits(listOf(first.copy(body = "재생성", fingerprint = "v2"), second), draft)
+            assertEquals("내 제목", regenerated.first().title)
+            assertEquals("내가 고친 배경", regenerated.first().body)
+            assertEquals("내가 고친 배경", regenerated.first().sceneBody())
+            assertEquals(SceneBodyScope.SCENE, regenerated.first().bodyScope)
+            assertEquals(record, regenerated.first().diary)
+            assertTrue(regenerated.first().needsReview)
+            assertEquals("다른 배경", regenerated.last().body)
+            val longBody = "원본 메모".repeat(400) + " 추가된 장면 배경"
+            dao.saveDiarySceneEdit("s", "owner", first, "긴 장면", longBody)
+            val restored = StoryboardDraft.parse(dao.storyboard("s")!!.payload)
+            assertEquals(longBody, applyStoryboardEdits(listOf(first), restored).first().sceneBody())
+            assertTrue(runCatching { dao.saveDiarySceneEdit("s", "owner", first, "너무 긴 장면",
+                "a".repeat(MAX_DIARY_SCENE_BODY_LENGTH + 1)) }.isFailure)
+        } finally { db.close() }
+    }
 }

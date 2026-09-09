@@ -28,6 +28,7 @@ class WalkSync(
     private val now: () -> Long = System::currentTimeMillis,
     private val entrySync: WalkEntrySync? = null,
     private val storyboardSync: (suspend (String, String, String) -> Unit)? = null,
+    private val photoSync: (suspend (String, String, String) -> Unit)? = null,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -62,6 +63,7 @@ class WalkSync(
             session.serverWalkId?.let { remoteId ->
                 runCatching {
                     entrySync?.sync(token, session.id, remoteId)
+                    photoSync?.invoke(token, session.id, remoteId)
                     storyboardSync?.invoke(token, session.id, remoteId)
                 }.onFailure { it.warn("기록 맞추기") }
             }
@@ -72,7 +74,7 @@ class WalkSync(
      * WorkManager가 지정한 한 건을 보낸다. [syncOnce]와 달리 실패를 삼키지 않는다 —
      * 호출자가 [androidx.work.ListenableWorker.Result.retry]를 선택해야 하기 때문이다.
      */
-    suspend fun syncPendingSession(accessToken: String, sessionId: String): Unit =
+    suspend fun syncPendingSession(accessToken: String, sessionId: String, includeStoryboard: Boolean = true): Unit =
         withContext(Dispatchers.IO) {
             if (!api.configured || !stillOwned(log.ownerId)) return@withContext
             pushMutex.withLock {
@@ -83,7 +85,8 @@ class WalkSync(
                 if (session.syncState != WalkSyncState.DERIVED) pushOne(accessToken, session)
                 log.session(sessionId)?.serverWalkId?.let {
                     entrySync?.sync(accessToken, sessionId, it)
-                    storyboardSync?.invoke(accessToken, sessionId, it)
+                    photoSync?.invoke(accessToken, sessionId, it)
+                    if (includeStoryboard) storyboardSync?.invoke(accessToken, sessionId, it)
                 }
             }
         }
