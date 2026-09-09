@@ -112,10 +112,6 @@ internal fun WalkDiaryMapScreen(
             WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
                 onSelect = { selectedId = it.id }, onClose = { selectedId = null },
                 onEdit = { scene -> editingScene = scene; sceneError = null },
-                onEditRecord = { scene ->
-                    entry = entries.firstOrNull { it.id == scene.entryId }
-                    entryError = null; editorOpen = entry != null
-                },
                 onPhoto = { photo = it }, onRetry = { retry++ },
                 onAdd = {
                     selectedId = null; chosenPoint = null

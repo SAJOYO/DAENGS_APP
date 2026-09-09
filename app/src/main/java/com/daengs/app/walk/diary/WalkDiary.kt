@@ -41,7 +41,7 @@ data class DiaryScene(
     val sessionId: String,
     val atMillis: Long,
     val title: String,
-    val body: String,
+    val body: String, // The complete editable scene, already assembled from internal source pieces.
     val point: GeoPoint?,
     val evidence: String,
     val needsReview: Boolean = false,
@@ -80,7 +80,7 @@ fun diaryWalk(
             else index.resolve(scene.observation)
         val image = scene.diary?.photoId?.let { id -> photos.firstOrNull { it.id == id && it.sessionId == walk.sessionId } }
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
-            scene.title, scene.body, point, entry?.pin?.label ?: scene.evidence, scene.needsReview,
+            scene.title, scene.sceneBody(), point, entry?.pin?.label ?: scene.evidence, scene.needsReview,
             photo = image, entryId = entryId, content = scene.diary, source = scene)
     } + photos.filter { photo -> photo.sessionId == walk.sessionId && sources.orEmpty().none { it.diary?.photoId == photo.id } }.mapNotNull { photo ->
         val source = StoryboardScene("photo:${photo.id}", photo.capturedAtMillis,

@@ -86,9 +86,17 @@ class WalkStoryboardTest {
             val regenerated = applyStoryboardEdits(listOf(first.copy(body = "재생성", fingerprint = "v2"), second), draft)
             assertEquals("내 제목", regenerated.first().title)
             assertEquals("내가 고친 배경", regenerated.first().body)
+            assertEquals("내가 고친 배경", regenerated.first().sceneBody())
+            assertEquals(SceneBodyScope.SCENE, regenerated.first().bodyScope)
             assertEquals(record, regenerated.first().diary)
             assertTrue(regenerated.first().needsReview)
             assertEquals("다른 배경", regenerated.last().body)
+            val longBody = "원본 메모".repeat(400) + " 추가된 장면 배경"
+            dao.saveDiarySceneEdit("s", "owner", first, "긴 장면", longBody)
+            val restored = StoryboardDraft.parse(dao.storyboard("s")!!.payload)
+            assertEquals(longBody, applyStoryboardEdits(listOf(first), restored).first().sceneBody())
+            assertTrue(runCatching { dao.saveDiarySceneEdit("s", "owner", first, "너무 긴 장면",
+                "a".repeat(MAX_DIARY_SCENE_BODY_LENGTH + 1)) }.isFailure)
         } finally { db.close() }
     }
 }

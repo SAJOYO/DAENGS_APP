@@ -39,7 +39,6 @@ internal fun WalkDiaryMapContent(
     onPhoto: (WalkPhoto) -> Unit, onRetry: () -> Unit, onAdd: () -> Unit,
     adding: Boolean = false, modifier: Modifier = Modifier, map: @Composable (Int) -> Unit,
     generationNotice: String? = null, generating: Boolean = false, onGenerate: (() -> Unit)? = null,
-    onEditRecord: ((DiaryScene) -> Unit)? = null,
     title: String = "산책 일기", subtitle: String = "", onBack: () -> Unit = {},
     mapSettings: @Composable () -> Unit = {},
 ) {
@@ -173,21 +172,16 @@ internal fun WalkDiaryMapContent(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(selected.title, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
-                                                Text(formatWalkClock(selected.atMillis), fontSize = 13.sp, color = TextMuted)
+                                                Text(listOfNotNull(formatWalkClock(selected.atMillis),
+                                                    selected.content?.address?.takeIf(String::isNotBlank)).joinToString(" · "),
+                                                    fontSize = 13.sp, color = TextMuted)
                                             }
                                             IconButton(onClick = { onEdit(selected) }) {
                                                 Icon(painterResource(R.drawable.ic_diary_edit), "장면 수정", Modifier.size(22.dp))
                                             }
                                         }
                                         Spacer(Modifier.height(16.dp))
-                                        if (selected.content != null) DiarySceneText(selected.body, selected.content,
-                                            onEditRecord = if (selected.entryId != null && onEditRecord != null)
-                                                ({ onEditRecord(selected) }) else null)
-                                        else Text(selected.body, fontSize = 20.sp, lineHeight = 30.sp)
-                                        if (selected.content == null && selected.entryId != null && onEditRecord != null)
-                                            TextButton(onClick = { onEditRecord(selected) }) { Text("원본 기록 수정") }
-                                        if (selected.point == null) Text("위치 정보 없음",
-                                            Modifier.padding(top = 12.dp), fontSize = 13.sp, color = TextMuted)
+                                        DiarySceneText(selected.body)
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
                                             Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
                                         selected.photo?.let { photo -> TextButton(onClick = { onPhoto(photo) }) { Text("사진 보기") } }
@@ -223,7 +217,7 @@ internal fun WalkDiaryMapContent(
 @Preview(showBackground = true, widthDp = 320, heightDp = 640)
 @Composable
 private fun DiaryReadingPreview() {
-    val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다.", null, "",
+    val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다. 두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", null, "",
         content = DiarySceneContent("두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", "note", locationLabel = "기록한 위치"))
     DaengsTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",

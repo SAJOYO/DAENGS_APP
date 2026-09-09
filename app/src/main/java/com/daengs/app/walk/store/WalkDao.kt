@@ -286,10 +286,12 @@ interface WalkDao {
         check(ownerId.isNotBlank() && session(sessionId)?.let {
             it.ownerId == ownerId && it.endedAtMillis != null
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
-        require(title.isNotBlank() && title.length <= 80 && body.length <= 2000)
+        require(title.isNotBlank() && title.length <= 80 &&
+            body.length <= com.daengs.app.walk.diary.MAX_DIARY_SCENE_BODY_LENGTH)
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId,
-            draft.edit(scene, title = title, body = body, acknowledge = true).toJson()))
+            draft.edit(scene, title = title, body = body, acknowledge = true,
+                bodyScope = com.daengs.app.walk.diary.SceneBodyScope.SCENE).toJson()))
     }
 
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")

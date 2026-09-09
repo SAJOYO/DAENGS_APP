@@ -25,18 +25,21 @@ import org.robolectric.annotation.GraphicsMode
 class WalkDiaryMapScreenTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `inline editor changes title and background without editing the original record`() {
-        val scene = DiaryScene("s/n", "s", 0, "자동 제목", "자동 배경", null, "",
+    @Test fun `one inline editor replaces the complete scene while its source record stays internal`() {
+        val scene = DiaryScene("s/n", "s", 0, "자동 제목", "자동 배경. 직접 쓴 원본", null, "",
             content = com.daengs.app.walk.diary.DiarySceneContent("직접 쓴 원본", "note", locationLabel = ""))
         var saved: Pair<String, String>? = null
         // Same workaround as WalkEntryEditorTest: Robolectric cannot idle a dialog with text fields.
         compose.setContent { DiarySceneEditor(scene, false, null, { a, b -> saved = a to b }, {},
             dialog = { title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() } }) }
         compose.onNodeWithText("장면 제목").performTextReplacement("내 제목")
-        compose.onNodeWithText("장면 배경").performTextReplacement("내 배경")
-        compose.onNodeWithText("직접 쓴 원본").assertExists()
+        compose.onNodeWithText("자동 배경. 직접 쓴 원본").assertExists()
+        compose.onNodeWithText("장면 내용").performTextReplacement("내가 다시 쓴 장면 전체")
+        compose.onNodeWithText("장면 배경").assertDoesNotExist()
+        compose.onNodeWithText("직접 남긴 기록").assertDoesNotExist()
+        compose.onNodeWithText("직접 쓴 원본").assertDoesNotExist()
         compose.onNodeWithText("저장").performClick()
-        assertEquals("내 제목" to "내 배경", saved)
+        assertEquals("내 제목" to "내가 다시 쓴 장면 전체", saved)
         assertEquals("직접 쓴 원본", scene.content!!.recordText)
     }
 
@@ -58,7 +61,7 @@ class WalkDiaryMapScreenTest {
     }
 
     @Test fun `reading raises the sheet without recreating the map and dragging it down returns to browsing`() {
-        val scene = DiaryScene("s/n", "s", 0, "첫 장면", "공원 옆이었다.", GeoPoint(37.5, 127.0), "",
+        val scene = DiaryScene("s/n", "s", 0, "첫 장면", "공원 옆이었다. 직접 남긴 메모", GeoPoint(37.5, 127.0), "",
             content = com.daengs.app.walk.diary.DiarySceneContent("직접 남긴 메모", "note", locationLabel = "기록한 위치"))
         var mounts = 0
         var inset = 0
@@ -74,7 +77,11 @@ class WalkDiaryMapScreenTest {
         val peekTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         val peekInset = inset
         compose.onNodeWithText("첫 장면").performClick()
-        compose.onNodeWithText("직접 남긴 메모").assertIsDisplayed()
+        compose.onNodeWithText("공원 옆이었다. 직접 남긴 메모").assertIsDisplayed()
+        compose.onNodeWithText("직접 남긴 기록").assertDoesNotExist()
+        compose.onNodeWithText("기록한 위치").assertDoesNotExist()
+        compose.onNodeWithContentDescription("원본 기록 수정").assertDoesNotExist()
+        compose.onAllNodesWithContentDescription("장면 수정").assertCountEquals(1)
         val readingTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         assertTrue(readingTop < peekTop - 100)
         assertTrue(readingTop > 100)
