@@ -1,9 +1,11 @@
 # 기능별 테스트 실행 지도
 
-기준은 2026-09-09 `dev`의 `9bf37188bab0841ac7b682dec1714ca58c893b2f`다.
+최초 조사 기준은 2026-09-09 `dev`의 `9bf37188bab0841ac7b682dec1714ca58c893b2f`다.
 이 문서는 변경한 기능에 맞는 테스트를 고르는 지도다. 전체 통과 보고서가 아니다.
 조사 시점에는 Kotlin 테스트 파일 221개에 `@Test` 선언 1,528개가 있었고,
 별도 공용 파일은 `place/FacilityFixtures.kt` 1개였다. 선언 수는 실제 실행 결과와 구분한다.
+2단계 공용 helper 분리는 `dev`의 `9391671`까지 반영한 뒤 진행했다.
+이 시점의 테스트 파일은 226개, `@Test` 선언은 1,543개이며 분리로 추가·삭제한 테스트는 없다.
 
 ## 실행 방법
 
@@ -40,7 +42,7 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 | 장소 검색·자연어 시설 검색 | `com.daengs.app.place.*`, `com.daengs.app.ui.places.*`, `com.daengs.app.map.features.places.*`, `com.daengs.app.map.layers.places.*` | 챗봇 제안은 `com.daengs.app.assistant.PlaceSuggestionsTest`, `com.daengs.app.ui.chat.PlaceSuggestionCardTest`; 경로 인계는 Journey |
 | Journey·지도 인계 | `com.daengs.app.journey.*`, `com.daengs.app.map.features.journey.*` | 장소 선택·상태 복귀를 바꾸면 `com.daengs.app.ui.places.PlaceSessionCoordinatorTest` |
 | 산책 코어·GPS·기록 | `com.daengs.app.walk.*`, `com.daengs.app.location.*` | 화면은 `com.daengs.app.ui.walk.*`; 지도 표현은 다음 행. 핀·사진·일기만 바꾸면 아래 좁은 묶음 사용 |
-| 산책 지도·스타일·공통 지도 상태 | `com.daengs.app.map.style.*`, `com.daengs.app.map.shell.*`, `com.daengs.app.map.layers.trail.*`, `com.daengs.app.map.layers.completedroute.*`, `com.daengs.app.map.layers.stays.*` | 속도·GPS 안내·완료 경로는 `com.daengs.app.ui.walk.WalkSpeedometerTest`, `com.daengs.app.ui.walk.WalkGpsPresentationTest`, `com.daengs.app.ui.walk.WalkCompletedRoutePresentationTest` |
+| 산책 지도·스타일·공통 지도 상태 | `com.daengs.app.map.style.*`, `com.daengs.app.map.shell.*`, `com.daengs.app.map.layers.trail.*`, `com.daengs.app.map.layers.completedroute.*`, `com.daengs.app.map.layers.stays.*`, `com.daengs.app.map.provider.naver.*` | 속도·GPS 안내·완료 경로는 `com.daengs.app.ui.walk.WalkSpeedometerTest`, `com.daengs.app.ui.walk.WalkGpsPresentationTest`, `com.daengs.app.ui.walk.WalkCompletedRoutePresentationTest` |
 | 전봇대 점령·사진 인증·활동 | `com.daengs.app.territory.*`, `com.daengs.app.activity.*`, `com.daengs.app.map.features.territory.*`, `com.daengs.app.map.layers.territory.*` | 화면 상태는 `com.daengs.app.ui.walk.WalkViewModelTest`, `com.daengs.app.ui.walk.WalkTerritoryUiTest`, `com.daengs.app.ui.walk.Territory*` |
 | 대화·어시스턴트·돌봄 | `com.daengs.app.chat.*`, `com.daengs.app.assistant.*`, `com.daengs.app.care.*`, `com.daengs.app.ui.chat.*`, `com.daengs.app.ui.storage.*` | 장소·산책 제안 계약은 해당 기능 소비자도 확인. 서버 모델의 답변 품질은 별도 범위 |
 | 보행·피부 진단 응답 | `com.daengs.app.gait.*`, `com.daengs.app.screening.*` | 촬영/가이드 표현은 `com.daengs.app.ui.chat.GuideFrameScreenTest`, `com.daengs.app.ui.chat.CropGeometryTest`. 실제 진단 모델 정확도는 검증하지 않음 |
@@ -117,7 +119,7 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 | 계정 전환·탈퇴 | 인증은 `auth`/`ui.startup`; 저장·삭제는 `WalkHistoryTest`, `WalkPhotoStoreTest`, `ActionPinStoreTest`; 늦은 ACK는 `WalkPhotoSyncTest`, `WalkEntryV2SyncTest`. 변경한 경계에 해당하는 클래스를 함께 선택 |
 | Room 테스트의 DB | JVM의 Robolectric과 Room/SQLite를 사용. 테스트가 메모리 DB 또는 임시 DB 파일을 만들고 닫는다. 개발 서버 DB 주소·별도 PostgreSQL·Docker 설치는 필요 없음 |
 | HTTP 계약 | 주입한 transport/서버 대역 또는 로컬 HTTP 서버로 요청·응답을 확인. 테스트 통과가 배포 서버의 route 존재·인증·capability 활성화를 보장하지 않음 |
-| Compose | `src/test`의 Robolectric에서 실행. 현재 66개 파일이 Robolectric runner를 쓰며 이 중 29개가 Compose test rule 사용. 순수 Kotlin과 같은 Gradle task에 있으므로 필요한 UI 클래스만 선택 |
+| Compose | `src/test`의 Robolectric에서 실행. 최초 조사 시점에 66개 파일이 Robolectric runner를 쓰며 이 중 29개가 Compose test rule 사용. 순수 Kotlin과 같은 Gradle task에 있으므로 필요한 UI 클래스만 선택 |
 | 앱 초기화 | [robolectric.properties](resources/robolectric.properties)가 `android.app.Application`을 사용. 카카오 SDK·실제 앱 초기화가 성공했다는 뜻이 아님 |
 | 실기기 | `src/androidTest`는 현재 패키지명 확인 예제 1개. GPS 수신·절전/FGS·강제 종료·Naver 지도·실제 CameraX 촬영은 해당 기능의 실기기 검증 기록 필요 |
 
@@ -130,24 +132,33 @@ Room 준비 코드를 정리할 때는 계정·시계·세션·임시 파일과 
 
 ## 공용 helper 제공자와 소비자
 
-현재 테스트 파일 7곳이 다른 테스트에 helper를 제공한다. 아래 경로는
-`java/com/daengs/app/` 기준이며 제공 파일 자체의 테스트도 검증 범위에 포함한다.
+2단계에서는 테스트 파일 7곳의 공용 코드를 기능별 `support` 파일 6개로 분리했다.
+아래 표는 이번 분리 대상과 기존 시설 fixture의 참조 범위다. 경로는
+`java/com/daengs/app/` 기준이며 원래 제공 파일의 테스트도 소비자로 포함한다.
 Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로 import 문 검색만으로는 부족하다.
 
-| 현재 제공 파일 / 공유 항목 | 다른 소비 테스트 |
+| 공용 파일 / 공유 항목 | 소비 테스트 |
 | --- | --- |
-| `walk/pin/ActionPinEstimatorTest.kt` — `PIN_TAP`, `pinRequest`, `pinPoint`, `pinFix` | `walk/pin/ActionPinReplayTest.kt` |
-| `walk/diary/ServerDiaryBundleTest.kt` — `diaryFixture` | `walk/diary/WalkDiaryReaderTest.kt`, `walk/sync/WalkDiarySyncTest.kt` |
-| `walk/diary/WalkDiaryTitleTest.kt` — `titledDiaryFixture` | `walk/diary/WalkDiaryReaderTest.kt`, `walk/store/WalkHistorySearchTest.kt` |
-| `walk/store/WalkHistorySearchTest.kt` — `seedSearchWalk` | `ui/walk/WalkHistorySearchScreenTest.kt` |
-| `territory/TerritoryActionSyncTest.kt` — 식별자 상수, `MemoryActions`, `ClaimServer` | `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionApiTest.kt`, `territory/TerritoryActionStoreTest.kt`, `territory/TerritoryPhotoApiTest.kt`, `ui/walk/WalkTerritoryUiTest.kt`, `ui/walk/TerritoryRangePresentationTest.kt` |
-| `territory/ServerTerritoryPhotosTest.kt` — `PhotoServer` | `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionStoreTest.kt` |
-| `activity/ActivityApiTest.kt` — `ActivityFixtures` | `activity/ActivityRepositoryTest.kt` |
+| [walk/support/PinFixtures.kt](java/com/daengs/app/walk/support/PinFixtures.kt) — `PIN_TAP`, `pinRequest`, `pinPoint`, `pinFix` | `walk/pin/ActionPinEstimatorTest.kt`, `walk/pin/ActionPinReplayTest.kt` |
+| [walk/support/DiaryFixtures.kt](java/com/daengs/app/walk/support/DiaryFixtures.kt) — `diaryFixture` | `walk/diary/ServerDiaryBundleTest.kt`, `walk/diary/WalkDiaryReaderTest.kt`, `walk/sync/WalkDiarySyncTest.kt`, `ui/walk/WalkStoryboardScreenTest.kt` |
+| 같은 `DiaryFixtures.kt` — `titledDiaryFixture` | `walk/diary/WalkDiaryTitleTest.kt`, `walk/diary/WalkDiaryReaderTest.kt`, `walk/store/WalkHistorySearchTest.kt`, `walk/sync/WalkStoryboardSyncTest.kt` |
+| [walk/support/WalkHistoryFixtures.kt](java/com/daengs/app/walk/support/WalkHistoryFixtures.kt) — `seedSearchWalk` | `walk/store/WalkHistorySearchTest.kt`, `ui/walk/WalkHistorySearchScreenTest.kt` |
+| [territory/support/TerritoryFixtures.kt](java/com/daengs/app/territory/support/TerritoryFixtures.kt) — 식별자 상수, `MemoryActions`, `ClaimServer` | `territory/TerritoryActionSyncTest.kt`, `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionApiTest.kt`, `territory/TerritoryActionStoreTest.kt`, `territory/TerritoryPhotoApiTest.kt`; 공용 `territory/support/PhotoServer.kt`도 참조 |
+| [territory/support/PhotoServer.kt](java/com/daengs/app/territory/support/PhotoServer.kt) — `PhotoServer` | `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionStoreTest.kt` |
+| [activity/support/ActivityFixtures.kt](java/com/daengs/app/activity/support/ActivityFixtures.kt) — `ActivityFixtures` | `activity/ActivityApiTest.kt`, `activity/ActivityRepositoryTest.kt` |
 | 이미 분리된 `place/FacilityFixtures.kt` — `facilityQuery`, `facilityJson`, `facilityResponse` | `place/FacilityApiTest.kt`, `ui/places/FacilityViewModelTest.kt`, `ui/places/FacilitySearchCoordinatorTest.kt`, `ui/places/FacilitySearchPanelTest.kt`, `ui/places/FacilityConnectedUiTest.kt` |
 
-2단계는 위 7곳의 공용 준비 코드 분리다. 입력을 만드는 방법은 공유하고,
-시나리오·assertion·기대값은 각 테스트가 소유한다. 이름이 비슷하다는 이유로 검사를 합치거나
-삭제하지 않는다. 각 함수의 인자·기본값·반환값과 기존 호출부를 보존한다.
+각 helper의 이름·가시성·인자·기본값·반환값과 fake 동작을 보존하고 소비자는 `support`에서 import한다.
+일기 JSON은 테스트 클래스 대신 공용 파일의 `DiaryResources`를 기준으로 같은 절대 리소스 경로를 읽는다.
+새 전역 가변 상태나 공통 테스트 부모 클래스는 만들지 않는다.
+
+시나리오·기대값·DB/파일 정리 절차는 기존 테스트에 남아 있다. `PhotoServer`가 이미 수행하던
+업로드 헤더·바이트 검증은 fake와 함께 보존했다. 핀 오차 검증 `assertNear`는 해당 테스트만 쓰므로
+`ActionPinEstimatorTest.kt`에 남겼다. 이름이 비슷하다는 이유로 검사를 합치거나 삭제하지 않는다.
+
+참조를 대조하면서 누락된 일기 소비자 `WalkStoryboardScreenTest`, `WalkStoryboardSyncTest`를 추가했다.
+기존 표의 `WalkTerritoryUiTest`, `TerritoryRangePresentationTest`는 공유 식별자가 아니라
+`MapPurpose.WALK`를 사용하므로 이 helper 검증 범위에서 제외했다.
 
 ## 기준 시점에 확인한 결과
 
@@ -171,8 +182,31 @@ Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로
 컴파일에는 선택 밖 `WalkDiaryMapScreenTest`의 nullable `File.parentFile` 접근 경고가 있었다.
 이 결과는 해당 7개 클래스의 검증이다. 위 기능별 선택표 전체·실기기·배포 서버 검증 결과가 아니다.
 
-지도 작성 단계에서는 Markdown만 변경하고 링크·경로·선택자를 정적으로 확인한다.
+1단계 지도 작성에서는 Markdown만 변경하고 링크·경로·선택자를 정적으로 확인했다.
 레포에 Actions workflow는 없으며 이 문서는 새 CI나 실행기를 추가하지 않는다.
+
+## 2단계 공용 helper 분리 결과
+
+2026-09-09, `dev`의 `9391671`과 1단계 문서를 합친 `9c8738e` 위에서 helper를 분리하고 검증했다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.activity.ActivityApiTest' --tests 'com.daengs.app.activity.ActivityRepositoryTest' --tests 'com.daengs.app.territory.CertifiedTerritoryPresentationTest' --tests 'com.daengs.app.territory.ServerTerritoryPhotosTest' --tests 'com.daengs.app.territory.TerritoryActionApiTest' --tests 'com.daengs.app.territory.TerritoryActionStoreTest' --tests 'com.daengs.app.territory.TerritoryActionSyncTest' --tests 'com.daengs.app.territory.TerritoryPhotoApiTest' --tests 'com.daengs.app.ui.walk.WalkHistorySearchScreenTest' --tests 'com.daengs.app.ui.walk.WalkStoryboardScreenTest' --tests 'com.daengs.app.walk.diary.ServerDiaryBundleTest' --tests 'com.daengs.app.walk.diary.WalkDiaryReaderTest' --tests 'com.daengs.app.walk.diary.WalkDiaryTitleTest' --tests 'com.daengs.app.walk.pin.ActionPinEstimatorTest' --tests 'com.daengs.app.walk.pin.ActionPinReplayTest' --tests 'com.daengs.app.walk.store.WalkHistorySearchTest' --tests 'com.daengs.app.walk.sync.WalkDiarySyncTest' --tests 'com.daengs.app.walk.sync.WalkStoryboardSyncTest' --console=plain
+```
+
+| 범위 | 클래스 수 | 통과 수 |
+| --- | ---: | ---: |
+| 핀·일기·검색과 소비 화면 | 10 | 78 |
+| Territory 동기화·저장·HTTP·표현 | 6 | 32 |
+| Activity HTTP·저장소 | 2 | 18 |
+| 합계 | 18 | 128 |
+
+**128 passed / 0 failed / 0 skipped.** XML 결과의 클래스 목록이 위 선택 목록과 정확히 일치한다.
+Kotlin/Room KSP 컴파일도 성공했다. 변경 전후의 18개 테스트 본문과 7개 공용 코드 블록을
+대조해 입력·기대값·fake 동작·정리 절차가 보존됐음을 확인했다. 바뀐 참조는 import/호출 경로와
+일기 리소스 조회 기준 클래스다. JSON 리소스·앱 실행 코드·Gradle 설정은 바꾸지 않았다.
+
+컴파일에는 기존 `ChatScreen`의 deprecated clipboard API와 `WalkDiaryMapScreenTest`의
+nullable `File.parentFile` 경고가 있었다. 전체 테스트·APK·실기기·배포 서버 검증은 이번 범위에 없다.
 
 ## 갱신 기준
 

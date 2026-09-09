@@ -1,5 +1,6 @@
 package com.daengs.app.walk.sync
 
+import com.daengs.app.walk.support.diaryFixture
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider

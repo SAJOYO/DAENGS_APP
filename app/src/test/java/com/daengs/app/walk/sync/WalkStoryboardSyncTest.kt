@@ -1,5 +1,6 @@
 package com.daengs.app.walk.sync
 
+import com.daengs.app.walk.support.titledDiaryFixture
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -42,7 +43,7 @@ class WalkStoryboardSyncTest {
             val dao = db.walkDao()
             dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
             WalkStoryboardSync(dao, { owner }) { _, _, _ -> response().put("bundle",
-                com.daengs.app.walk.diary.titledDiaryFixture()) }.sync(token, "s", "remote")
+                titledDiaryFixture()) }.sync(token, "s", "remote")
             assertEquals("함께 남긴 산책 기록", storyboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!.title)
             val formats = mutableListOf<String>()
             WalkStoryboardSync(dao, { owner }) { _, _, body ->

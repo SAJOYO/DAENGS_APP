@@ -1,13 +1,12 @@
 package com.daengs.app.walk.diary
 
+import com.daengs.app.walk.support.diaryFixture
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.*
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.Instant
-
-fun diaryFixture(): JSONObject = JSONObject(ServerDiaryBundleTest::class.java.getResource("/storyboard/diary-v1.json")!!.readText())
 
 class ServerDiaryBundleTest {
     @Test fun `completed diary does not explain a scene deficit to the reader`() {

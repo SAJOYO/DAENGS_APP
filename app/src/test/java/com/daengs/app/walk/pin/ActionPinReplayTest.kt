@@ -1,5 +1,9 @@
 package com.daengs.app.walk.pin
 
+import com.daengs.app.walk.support.PIN_TAP
+import com.daengs.app.walk.support.pinFix
+import com.daengs.app.walk.support.pinPoint
+import com.daengs.app.walk.support.pinRequest
 import java.util.Random
 import org.junit.Assert.*
 import org.junit.Test

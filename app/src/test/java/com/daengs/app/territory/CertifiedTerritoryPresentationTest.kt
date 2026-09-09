@@ -1,5 +1,11 @@
 package com.daengs.app.territory
 
+import com.daengs.app.territory.support.DOG
+import com.daengs.app.territory.support.DOG2
+import com.daengs.app.territory.support.MemoryActions
+import com.daengs.app.territory.support.PhotoServer
+import com.daengs.app.territory.support.SITE
+import com.daengs.app.territory.support.WALK
 import com.daengs.app.auth.Session
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample

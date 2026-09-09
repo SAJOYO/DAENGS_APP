@@ -1,5 +1,9 @@
 package com.daengs.app.walk.pin
 
+import com.daengs.app.walk.support.PIN_TAP
+import com.daengs.app.walk.support.pinFix
+import com.daengs.app.walk.support.pinPoint
+import com.daengs.app.walk.support.pinRequest
 import com.daengs.app.location.GeoPoint
 import java.util.UUID
 import org.junit.Assert.*
@@ -306,14 +310,6 @@ class ActionPinEstimatorTest {
     }
 }
 
-internal const val PIN_TAP = 1_700_000_100_000L
-internal fun pinRequest() = ActionPinRequest(UUID.fromString("00000000-0000-4000-8000-000000000001"), "owner", "walk", 0, PIN_TAP)
-internal fun pinPoint(east: Double, north: Double = 0.0) = GeoPoint(
-    Math.toDegrees(north / 6_371_008.8), Math.toDegrees(east / 6_371_008.8),
-)
-internal fun pinFix(seconds: Int, east: Double, north: Double = 0.0) = ActionPinObservation(
-    "owner", "walk", seconds + 100, 0, PIN_TAP + seconds * 1_000L, pinPoint(east, north), 5f,
-)
 internal fun assertNear(east: Double, north: Double, result: ActionPinResolution, tolerance: Double) {
     assertNotNull(result.point)
     val error = pinDistance(pinPoint(east, north), result.point!!)
