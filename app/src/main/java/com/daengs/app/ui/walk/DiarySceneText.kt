@@ -15,17 +15,18 @@ import com.daengs.app.walk.diary.DiarySceneContent
 
 @Composable
 internal fun DiarySceneText(background: String, content: DiarySceneContent, onEditRecord: (() -> Unit)? = null) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         content.address?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         if (background.isNotBlank()) Text(background, fontStyle = FontStyle.Italic,
             fontSize = 20.sp, lineHeight = 30.sp)
-        HorizontalDivider()
+        if (background.isNotBlank()) HorizontalDivider(Modifier.padding(vertical = 4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(if (content.recordKind.startsWith("observed_")) "이동 기록" else "직접 남긴 기록",
                 modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
             onEditRecord?.let { edit ->
                 IconButton(onClick = edit) {
-                    Icon(painterResource(R.drawable.ic_diary_edit), contentDescription = "원본 기록 수정")
+                    Icon(painterResource(R.drawable.ic_diary_edit), contentDescription = "원본 기록 수정",
+                        modifier = Modifier.size(20.dp))
                 }
             }
         }
