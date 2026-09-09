@@ -69,6 +69,7 @@ class PlaceDiscoveryController(
     // identity 가 아니라 값이다 — 서버는 dog_id 를 받지 않는다 (결정 #73).
     private var dogContext: DogSearchContext?,
     private val scope: CoroutineScope,
+    private val onConversationApplied: (com.daengs.app.place.ConversationResult) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(PlaceDiscoveryState())
     val state: StateFlow<PlaceDiscoveryState> = mutableState.asStateFlow()
@@ -149,17 +150,26 @@ class PlaceDiscoveryController(
 
     fun acceptConversation(result: com.daengs.app.place.ConversationResult) {
         cancel()
+        result.search?.let { response ->
+            lastRequest = listOf(PlaceSearchRequest(result.origin, result.radius, result.kinds,
+                preferParking = result.parkingFirst, nameQuery = result.nameQuery, dogs = response.dogs))
+            lastOriginMode = mutableState.value.originMode
+        }
+        applyConversation(result)
+    }
+
+    private fun applyConversation(result: com.daengs.app.place.ConversationResult,
+        originMode: PlaceOriginMode = mutableState.value.originMode) {
         val response = result.search ?: return
-        val request = PlaceSearchRequest(result.origin, result.radius, result.kinds,
-            preferParking = result.parkingFirst, nameQuery = result.nameQuery, dogs = response.dogs)
-        lastRequest = listOf(request)
         mutableState.value = mutableState.value.copy(
             requestedKinds = result.kinds, origin = result.origin, radiusMeters = result.radius,
+            originMode = originMode,
             nameQuery = result.nameQuery, preferParking = result.parkingFirst,
             selectedPlaceKey = result.selected,
             search = if (response.groups.all { it.results.isEmpty() }) PlaceSearchState.Empty(response)
                 else PlaceSearchState.Content(response),
         )
+        onConversationApplied(result)
     }
 
     fun cancel() {
@@ -183,6 +193,7 @@ class PlaceDiscoveryController(
         lastOriginMode = originMode
         val generation = ++requestGeneration
         searchJob?.cancel()
+        val previous = mutableState.value
         mutableState.value = PlaceDiscoveryState(
             requestedKinds = requests.flatMap { it.kinds },
             origin = request.origin,
@@ -196,6 +207,14 @@ class PlaceDiscoveryController(
             runCatching { com.daengs.app.place.searchPlaceBatches(repository, requests) }
                 .onSuccess { response ->
                     if (generation != requestGeneration) return@onSuccess
+                    val conversation = (repository as? com.daengs.app.place.FacilityConversationRepository)?.state?.value
+                    val committed = conversation?.result
+                    if (committed?.search === response) {
+                        val restoredOrigin = committed.origin == previous.origin &&
+                            (committed.failed || conversation?.notice != null)
+                        applyConversation(committed, if (restoredOrigin) previous.originMode else originMode)
+                        return@onSuccess
+                    }
                     val resultState = if (response.groups.all { it.results.isEmpty() }) {
                         PlaceSearchState.Empty(response)
                     } else {
@@ -210,6 +229,11 @@ class PlaceDiscoveryController(
                 }
                 .onFailure { error ->
                     if (generation == requestGeneration) {
+                        val committed = (repository as? com.daengs.app.place.FacilityConversationRepository)?.state?.value?.result
+                        if (error !is kotlinx.coroutines.CancellationException && committed?.search != null) {
+                            applyConversation(committed, previous.originMode)
+                            return@onFailure
+                        }
                         mutableState.update {
                             it.copy(
                                 selectedPlaceKey = null,

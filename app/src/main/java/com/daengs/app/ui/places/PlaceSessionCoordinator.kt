@@ -64,6 +64,7 @@ internal class PlaceSessionCoordinator(
         repository = placeRepository,
         dogContext = null,
         scope = scope,
+        onConversationApplied = ::conversationApplied,
     )
     private val journey = PlaceJourneyController(
         repository = journeyRepository,
@@ -258,6 +259,9 @@ internal class PlaceSessionCoordinator(
     fun acceptConversation(result: com.daengs.app.place.ConversationResult) {
         invalidatePendingDeviceSearch()
         discovery.acceptConversation(result)
+    }
+
+    private fun conversationApplied(result: com.daengs.app.place.ConversationResult) {
         selectedRadius.value = result.radius
         latestIntent.value = currentResolvedIntent()
         journey.clear()

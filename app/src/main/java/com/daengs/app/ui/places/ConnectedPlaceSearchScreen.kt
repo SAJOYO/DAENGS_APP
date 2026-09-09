@@ -124,8 +124,10 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
         resultLabel = if (ai && !state.conversationAvailable) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
         aiConnected = true,
-        answerContent = if (state.facility.enabled && state.conversationAvailable) ({
-            ConversationPanel(state.conversation, state.facility.error)
+        answerContent = if (state.conversationAvailable) ({
+            ConversationPanel(state.conversation, state.facility.error.takeIf { ai }, showAnswer = ai,
+                onRetryAnswer = { onAction(PlacesAction.RetryAi) },
+                onRetrySearch = { onAction(if (ai) PlacesAction.Discover(draft) else PlacesAction.RetrySearch) })
         }) else null,
         conditionContent = if (state.facility.enabled && !state.conversationAvailable) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
         emptyMessage = if (ai && !state.conversationAvailable && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",

@@ -201,7 +201,10 @@ class PlacesViewModel(
             is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
             is PlacesAction.Discover -> discover(action.query)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
-            PlacesAction.RetryAi -> facility.retry()
+            PlacesAction.RetryAi -> {
+                if (conversationRepository != null) runtimeScope.launch { conversationRepository.completeAnswer() }
+                else facility.retry()
+            }
             is PlacesAction.ToggleDog -> applyProfiles(profiles.value.toggle(action.id))
             is PlacesAction.Locate -> locateAndSearch(action.category.kinds, action.preferParking, action.nameQuery)
             is PlacesAction.Search -> searchAtCurrentOrigin(action.category.kinds, action.preferParking, action.nameQuery)
@@ -278,6 +281,7 @@ class PlacesViewModel(
                 try {
                     conversationRepository.chat(query, visible)
                     conversationRepository.state.value.result?.let(session::acceptConversation)
+                    conversationRepository.completeAnswer()
                 } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
                 } catch (_: Exception) { /* The shared conversation state retains the error and prior results. */ }
             }
