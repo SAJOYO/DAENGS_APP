@@ -30,6 +30,10 @@ class RequiredFieldsTest {
         assertFalse("성별" in REQUIRED_FIELDS)
         assertFalse("중성화" in REQUIRED_FIELDS)
         assertFalse("생일" in REQUIRED_FIELDS)
+        // 돌봄 칸(#200)도 선택이다. 모르는 지병을 필수로 하면 아무 말이나 적는다.
+        assertFalse("급식 방식" in REQUIRED_FIELDS)
+        assertFalse("앓는 병" in REQUIRED_FIELDS)
+        assertFalse("먹는 약" in REQUIRED_FIELDS)
     }
 
     @Test

@@ -41,13 +41,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitQualityTier
 import com.daengs.app.gait.GaitRecord
-import com.daengs.app.gait.summaryLines
+import com.daengs.app.gait.effectiveTier
+import com.daengs.app.gait.qualitySentence
+import com.daengs.app.gait.summaryNote
 import com.daengs.app.gait.GaitStage
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
-import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
@@ -130,12 +131,9 @@ fun GaitDetailScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(
-                record.dateAndLength,
-                color = TextMuted,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(start = 4.dp),
-            )
+            // 날짜·길이는 아래 "기록 정보" 카드가 "이번 기록" 라벨과 함께 든다. 제목 밑에
+            // 한 번 더 두면 같은 화면에 같은 줄이 두 번 나온다.
+            //
             // 상세는 **영상을 보러 오는 화면**이라 표지가 아니라 재생기를 놓는다.
             // 컨트롤을 켜서 되감기·일시정지를 손으로 할 수 있게 한다 — 걸음 한
             // 주기를 다시 보려면 되감기가 있어야 한다.
@@ -158,15 +156,17 @@ fun GaitDetailScreen(
                 }
             }
 
-            DetailSection("요약") { GaitAnalysisSummary(record) }
+            DetailSection("기록 정보") { GaitAnalysisSummary(record) }
 
-            Text(
-                "보행 영상은 같은 아이의 시점별 변화를 나란히 보기 위한 기록이에요.\n" +
-                    "건강 상태를 판단하거나 진단하지 않아요.",
-                color = TextMuted,
-                fontSize = 11.sp,
-                lineHeight = 17.sp,
-            )
+            // 위 카드 안 글자와 왼쪽 끝을 맞춘다 — 카드 안쪽 여백과 같은 값(CARD_INSET)을
+            // 쓰고, 비교 화면과 같은 가운뎃점을 줄마다 하나씩 붙인다.
+            Column(
+                Modifier.padding(horizontal = CARD_INSET),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                DottedLine("보행 영상은 같은 아이의 시점별 변화를 나란히 보기 위한 기록이에요.", fontSize = 11.sp, lineHeight = 17.sp)
+                DottedLine("건강 상태를 판단하거나 진단하지 않아요.", fontSize = 11.sp, lineHeight = 17.sp)
+            }
         }
 
         Column(
@@ -193,7 +193,7 @@ fun GaitDetailScreen(
 }
 
 /**
- * 요약. **관찰 문장이 아니라 영상의 사실이다.**
+ * 기록 정보. **관찰 문장이 아니라 영상의 사실이다.**
  *
  * 못 쓰는 영상이면 그 사실을 말해 준다 — 비교에서 왜 지표가 안 나오는지가 여기서
  * 미리 설명돼야, 비교 화면의 "지표가 부족합니다" 가 갑작스럽지 않다.
@@ -208,18 +208,49 @@ fun GaitDetailScreen(
  */
 @Composable
 private fun GaitAnalysisSummary(record: GaitRecord) {
-    val lines = record.summaryLines()
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text(record.dateAndLength, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        lines.forEach { line ->
-            Row(verticalAlignment = Alignment.Top) {
-                Text("·", color = DaengPink, fontSize = 13.sp)
-                Spacer(Modifier.width(7.dp))
-                Text(line, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
-            }
+        // 등급 줄에만 점이 붙는다. **글자는 검다** — 문장까지 물들이면 주의보로 읽힌다
+        // (비교 화면의 관절 줄과 같은 규칙).
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(9.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(tierDotColor(record.effectiveTier)),
+            )
+            Spacer(Modifier.width(9.dp))
+            Text(record.qualitySentence, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+        }
+
+        record.summaryNote?.let {
+            Text(it, color = TextMuted, fontSize = 12.5.sp, lineHeight = 19.sp)
         }
     }
 }
+
+/**
+ * 등급 점의 색. 비교 화면의 관절 점과 **같은 계열**을 쓴다 — 두 화면에서 같은 초록이
+ * 다른 뜻이면 색이 신호 노릇을 못 한다.
+ *
+ * **정도를 매기는 색이 아니다.** 이 영상이 분석에 얼마나 쓸 만했나를 말할 뿐이고,
+ * 강아지 상태에 대한 말이 아니라는 것은 카드 아래 진단아님 문구가 붙들고 있다.
+ */
+private fun tierDotColor(tier: GaitQualityTier?) = when (tier) {
+    GaitQualityTier.Good -> DaengsColors.Success
+    // 한 단계 연한 연두. 같은 초록이면 Good 과 구분이 안 되고, 다른 색이면 갈래가
+    // 하나 더 있는 것처럼 보인다.
+    GaitQualityTier.Ok -> DaengsColors.SuccessLight
+    GaitQualityTier.Low -> DaengsColors.Warning
+    null -> DaengsColors.BorderNeutral
+}
+
+/**
+ * 카드 안쪽 여백. **카드 밖 진단아님 문구도 같은 값을 쓴다** — 상자가 없는 그 문구가 카드 안
+ * 글자보다 왼쪽에서 시작하면 둘의 왼쪽 끝이 어긋나 보인다.
+ */
+private val CARD_INSET = 14.dp
 
 @Composable
 private fun DetailSection(
@@ -238,9 +269,13 @@ private fun DetailSection(
             color = CardWhite,
             shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, PinkSoft),
+            // **폭을 화면에 맞춘다.** 안 주면 카드가 제 내용 길이를 따라가서, 짧은 글만
+            // 든 요약 카드만 좁아진다 — 위아래로 붙어 있는 분석 상태 카드는 안쪽 줄이
+            // `weight(1f)` 라 저절로 꽉 차서, 둘의 오른쪽 끝이 어긋나 보였다.
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                Modifier.padding(14.dp),
+                Modifier.padding(CARD_INSET),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 content = content,
             )

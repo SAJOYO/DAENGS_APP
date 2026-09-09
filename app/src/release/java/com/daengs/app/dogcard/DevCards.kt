@@ -6,7 +6,7 @@ import com.daengs.app.ui.dogcard.CardTemplate
 /**
  * 릴리스용 빈 껍데기. **진짜는 `app/src/debug/` 에 있다.**
  *
- * `SeedCards.kt` · `DeveloperPanel.kt` 와 같은 규칙이다 — `BuildConfig.DEBUG` 로
+ * `DeveloperPanel.kt` 와 같은 규칙이다 — `BuildConfig.DEBUG` 로
  * 감추면 R8 이 꺼져 있어(`release { optimization { enable = false } }`) 코드가
  * 그대로 스토어 APK 에 들어간다. 소스셋으로 가르면 **안 들어간다.**
  *

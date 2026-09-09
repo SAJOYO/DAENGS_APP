@@ -6,6 +6,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.daengs.app.place.PlaceKind
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.features.journey.PlaceJourneyState
 import com.daengs.app.ui.places.PlaceLocationState
 import com.daengs.app.ui.places.PlacesAction
 import com.daengs.app.ui.places.PlacesScreen
@@ -31,18 +32,33 @@ class PlaceSearchUiTest {
                 PlaceCategoryMenu(selected, true, { selected = it; selections += it })
             }
         }
+        // 격자는 접혀 있는 것이 기본이라 먼저 편다.
+        compose.onNodeWithTag("place-kind-bar").performClick()
         compose.onNodeWithText("전체 보기").performClick()
         assertTrue(selections.isEmpty())
         compose.onNodeWithText("전체 카테고리").assertIsDisplayed()
         compose.onNodeWithTag("place-category-list").performScrollToNode(hasText("문예회관"))
         compose.onNodeWithText("문예회관").performClick()
         assertEquals(listOf(PlaceKind.ARTS_CENTER), selections)
-        compose.onNodeWithText("문예회관").assertIsDisplayed().assertIsSelected()
+        // 고르면 격자가 도로 접힌다. 무엇으로 보고 있는지는 막대에 남아야 한다 —
+        // 안 남으면 접힌 뒤에 "왜 이것만 나오지" 를 알 길이 없다.
+        compose.onNodeWithText("전체 보기").assertDoesNotExist()
+        compose.onNodeWithTag("place-kind-bar").assertTextContains("문예회관")
+    }
+
+    @Test fun `category grid stays folded until the bar is tapped`() {
+        compose.setContent { DaengsTheme { PlaceCategoryMenu(PlaceKind.CAFE, true, {}) } }
+        compose.onNodeWithText("펫샵").assertDoesNotExist()
+        compose.onNodeWithTag("place-kind-bar").performClick()
+        compose.onNodeWithText("펫샵").assertIsDisplayed()
+        compose.onNodeWithTag("place-kind-bar").performClick()
+        compose.onNodeWithText("펫샵").assertDoesNotExist()
     }
 
     @Test fun `busy category cannot dispatch another search`() {
         var calls = 0
         compose.setContent { DaengsTheme { PlaceCategoryMenu(PlaceKind.CAFE, false, { calls++ }) } }
+        compose.onNodeWithTag("place-kind-bar").performClick()
         compose.onNodeWithText("펫샵").assertIsNotEnabled().performClick()
         assertEquals(0, calls)
     }
@@ -82,6 +98,7 @@ class PlaceSearchUiTest {
         compose.setContent { DaengsTheme {
             PlacesScreen(PlacesUiState(), {}, {}, {}, { actions += it }, {}, {}, showMap = false)
         } }
+        compose.onNodeWithTag("place-kind-bar").performClick()
         compose.onNodeWithText("펫샵").performClick()
         assertEquals(listOf(PlacesAction.Search(PlaceKind.PET_SHOP, false)), actions)
         compose.onNodeWithContentDescription("장소명 검색").assertExists().assertIsNotEnabled()
@@ -100,6 +117,7 @@ class PlaceSearchUiTest {
         compose.onNodeWithContentDescription("장소명 검색").performTextReplacement("  새이름  ")
         assertTrue(actions.isEmpty())
         compose.onNodeWithText("이름 조건: 홍대").assertIsDisplayed()
+        compose.onNodeWithTag("place-kind-bar").performClick()
         compose.onNodeWithText("펫샵").performClick()
         assertEquals(PlacesAction.Search(PlaceKind.PET_SHOP, false), actions.last())
         compose.onNodeWithContentDescription("장소명 검색").performImeAction()
@@ -122,4 +140,28 @@ class PlaceSearchUiTest {
         compose.onNodeWithContentDescription("장소 검색 실행").assertIsEnabled().performClick()
         assertEquals("홍대", (actions.single() as PlacesAction.Search).nameQuery)
     }
+
+    @Test fun `result panel folds and unfolds by its handle`() {
+        compose.setContent {
+            DaengsTheme {
+                PlaceDiscoveryPanel(
+                    state = PlaceDiscoveryState(
+                        requestedKinds = listOf(PlaceKind.CAFE),
+                        origin = GeoPoint(37.557, 126.924),
+                    ),
+                    journey = PlaceJourneyState(),
+                    onSearch = { _, _ -> }, onRetry = {}, onSelect = {}, onJourney = {},
+                    onRetryJourney = {}, onOpenHandoff = {}, onCall = {},
+                )
+            }
+        }
+        // 접어도 "무엇을 어디서" 는 남고, 목록 쪽만 사라진다.
+        val title = compose.onAllNodes(hasText("주차 가능 우선"))
+        title.assertCountEquals(1)
+        compose.onNodeWithTag("place-panel-handle").performClick()
+        compose.onAllNodes(hasText("주차 가능 우선")).assertCountEquals(0)
+        compose.onNodeWithTag("place-panel-handle").performClick()
+        compose.onAllNodes(hasText("주차 가능 우선")).assertCountEquals(1)
+    }
+
 }

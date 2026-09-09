@@ -66,7 +66,7 @@ class WalkScreenPolicyTest {
             assertTrue(gauge.right <= action.left)
         } else assertTrue(territory.top > gauge.bottom)
         compose.onNodeWithText("색상").assertDoesNotExist()
-        val reading = compose.onNodeWithText("—").fetchSemanticsNode().boundsInRoot
+        val reading = compose.onNodeWithText("0.0").fetchSemanticsNode().boundsInRoot
         val unit = compose.onNodeWithText("m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(reading.right <= unit.left && unit.top < reading.bottom)
         val legend = compose.onNodeWithTag("speedometer").getUnclippedBoundsInRoot()

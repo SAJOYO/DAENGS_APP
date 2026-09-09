@@ -1,5 +1,8 @@
 package com.daengs.app.ui.chat
 
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -136,10 +139,18 @@ fun GuideFrameScreen(
             .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center,
     ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+        // 사진이 차지할 세로의 상한. 절반 남짓이면 자를 자리를 보기에 넉넉하고,
+        // 나머지가 제목·안내·버튼에 돌아간다.
+        //
+        // ⚠️ **여기서 잰다.** `LocalConfiguration.screenHeightDp` 는 배율이 안 걸린
+        //    원본 dp 인데 `DaengsTheme` 이 `LocalDensity` 를 갈아끼우므로 `.dp` 와
+        //    단위가 다르다. 섞으면 기기마다 상한이 어긋난다.
+        val maxPhotoHeight = maxHeight * 0.52f
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
         ) {
             Text(
                 title,
@@ -150,9 +161,18 @@ fun GuideFrameScreen(
 
             // 사진을 **비율 그대로** 채운다. 그래야 화면 좌표와 정규화 좌표가
             // 1:1 이라, 네모를 옮긴 만큼이 그대로 bbox 가 된다.
+            //
+            // ⚠️ **가로에 꽉 채우지 않는다.** `fillMaxWidth` 를 걸면 세로로 긴 사진(폰
+            //    스크린샷은 9:20)이 화면보다 길어져 제목과 버튼이 위아래로 밀려났다 —
+            //    사진을 고르고 얼굴을 맞춰도 누를 것이 없었다. 남은 높이를 상한으로 주고
+            //    비율은 그 안에서 맞춘다. 가로 사진은 전과 같이 가로에 찬다.
             Box(
                 Modifier
-                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    // **사진이 세로를 다 먹지 않게 막는다.** 남은 높이를 그대로 쓰면
+                    // 사진만 커지고 아래 버튼이 화면 끝으로 밀려 누르기 어려웠다.
+                    // 자를 자리를 보는 데는 이만큼이면 넉넉하다.
+                    .heightIn(max = maxPhotoHeight)
                     .aspectRatio(aspect)
                     .clip(RoundedCornerShape(14.dp))
                     .pointerInput(aspect) {
@@ -229,14 +249,20 @@ fun GuideFrameScreen(
                 fontSize = 13.sp,
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                GuideButton("다시 고르기", CardWhite.copy(alpha = 0.14f), CardWhite, onCancel)
+            // **버튼이 줄을 나눠 갖는다.** 150dp 로 못 박아 두었더니 화면에 견주어
+            // 작아서 누르기 어려웠다. 폭이 넓어도 과해지지 않게 상한을 둔다.
+            Row(
+                Modifier.fillMaxWidth().widthIn(max = 460.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                GuideButton("다시 고르기", CardWhite.copy(alpha = 0.14f), CardWhite, Modifier.weight(1f), onCancel)
                 // **밴드 밖이어도 보낼 수 있다.** 막아 버리면 저쪽이 왜 다시 찍어야
                 // 하는지 문장으로 돌려주는 길이 막힌다 — 판단은 서버가 한다.
-                GuideButton(confirmLabel, DaengPink, TextDark) {
+                GuideButton(confirmLabel, DaengPink, TextDark, Modifier.weight(1f)) {
                     onConfirm(floatArrayOf(box.x, box.y, w, h))
                 }
             }
+        }
         }
     }
 }
@@ -279,10 +305,16 @@ private fun GuideOverlay(box: Offset, w: Float, h: Float, bad: Boolean, circle: 
 }
 
 @Composable
-private fun GuideButton(label: String, fill: Color, ink: Color, onClick: () -> Unit) {
-    Surface(color = fill, shape = RoundedCornerShape(24.dp)) {
+private fun GuideButton(
+    label: String,
+    fill: Color,
+    ink: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(color = fill, shape = RoundedCornerShape(24.dp), modifier = modifier) {
         Box(
-            Modifier.width(150.dp).height(48.dp).clickable(onClick = onClick),
+            Modifier.fillMaxWidth().height(54.dp).clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) { Text(label, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
     }

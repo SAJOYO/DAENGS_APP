@@ -11,8 +11,9 @@
 ./gradlew.bat :app:assembleDebug -PterritoryServerActions=true
 ```
 
-기본 debug는 기존 로컬 점령·페이크 판정, `territoryServerRead=true`는 조회만 유지한다.
-서버 액션 모드에서만 새 사진 연결이 켜진다. release의 게임은 계속 비활성이다.
+현재 기본 debug와 release는 서버 점유 조회를 제공한다 (#221).
+로컬 점령·페이크 판정은 debug에 `-PterritoryServerRead=false`를 명시한다.
+서버 액션 모드에서만 새 사진 연결이 켜진다. release의 점령·촬영 액션은 계속 비활성이다.
 
 - 산책 시작 전에는 점유만 읽는다. 대표견 선택과 촬영은 진행 중인 산책의 선택한 전봇대 카드에 있다.
 - 영역표시는 거리와 GPS 오차를 더해 **20m 이내**, 사진 인증은 **10m 이내**다. 촬영 준비와

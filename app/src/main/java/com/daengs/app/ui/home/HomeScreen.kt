@@ -1,5 +1,20 @@
 package com.daengs.app.ui.home
 
+import androidx.compose.foundation.clickable
+import com.daengs.app.ui.PetAvatar
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -353,7 +368,39 @@ fun HomeScreen(
     // 다시 열 때마다 처음부터. `tourOpen` 이 키라 껐다 켜면 1단계로 돌아온다.
     var tourStep by remember(tourOpen) { mutableIntStateOf(0) }
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // **가로면 하단바를 왼쪽 세로 레일로 바꾼다.** 가로에서는 세로 공간이 411dp 뿐이라
+    // 하단바가 설 자리가 없어서, 눕히면 바가 통째로 사라지고 다른 탭으로 갈 방법이
+    // 없었다 (실기기에서 확인). 레일은 세로를 안 먹는다.
+    val rail = usesNavRail(maxWidth, maxHeight)
+    val compactTop = hidesTopBar(maxHeight)
+    Row(Modifier.fillMaxSize()) {
+    if (rail) {
+        DaengsNavRail(
+            selected = tab,
+            onSelect = { picked ->
+                if (myOpen) onCloseMy?.invoke()
+                when (picked) {
+                    BottomTab.Dex -> onOpenDex?.invoke()
+                    BottomTab.Nearby -> onOpenPlaces?.invoke()
+                    else -> onSelectTab(picked)
+                }
+            },
+            // 가운데 버튼은 하단바와 같은 뜻이다 — 챗봇이다 (아래 `onCenter` 참고).
+            onCenter = { onOpenChat?.invoke() },
+            tourSpots = tourSpots,
+            header = if (!compactTop) null else {
+                {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onOpenMy?.invoke() }
+                        .padding(2.dp),
+                ) { PetAvatar(profilePhoto, profileBreed, 34.dp) }
+                }
+            },
+        )
+    }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = CreamBg,
@@ -361,6 +408,10 @@ fun HomeScreen(
         // 방 배경은 상태바 아래까지 흘려보내고 싶기 때문이다.
         contentWindowInsets = WindowInsets(0),
         topBar = {
+            // **세로가 짧으면 상단바를 안 그린다.** 로고가 두 줄이라 가로에서는 이것만
+            // 으로 화면의 3분의 1을 먹었다. 폴더블 세로 펼침은 세로가 넉넉하므로
+            // 레일을 쓰더라도 상단바는 그대로 둔다.
+            if (compactTop) return@Scaffold
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
                     // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
@@ -372,6 +423,7 @@ fun HomeScreen(
             }
         },
         bottomBar = {
+            if (rail) return@Scaffold
             DaengsBottomBar(
                 tourSpots = tourSpots,
                 selected = tab,
@@ -442,11 +494,14 @@ fun HomeScreen(
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
         // 방은 RoomGeometry.of(width, height) 로 받은 상자에 맞춰 스스로 줄어든다.
-        Column(
-            Modifier
-                .padding(inner)
-                .fillMaxSize(),
-        ) {
+        //
+        // **넓으면 두 칸이다** (폴더블 펼침·태블릿). 세로로 쌓으면 방이 가운데 작게
+        // 뜨고 좌우가 텅 비는데, 나란히 두면 방은 커지고 카드는 제 폭을 찾는다.
+        // 가로모드 이야기가 아니다 — 폴드는 **세로로 펼쳐도** 이 폭이 나온다.
+        BoxWithConstraints(Modifier.padding(inner).fillMaxSize()) {
+            val wide = maxWidth >= WIDE_BREAKPOINT
+
+        val room: @Composable (Modifier) -> Unit = { roomModifier ->
             RoomSection(
                 tourSpots = tourSpots,
                 framePicture = framePicture,
@@ -490,10 +545,14 @@ fun HomeScreen(
                 onAddPet = onAddPet,
                 onToggleEmptyRoom = onToggleEmptyRoom,
                 tourOpen = tourOpen,
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                showTodayCard = !wide,
+                modifier = roomModifier,
             )
-            // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
-            // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
+        }
+
+        // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
+        // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
+        val cards: @Composable ColumnScope.() -> Unit = {
             val slot = Modifier.padding(horizontal = 14.dp).height(CardSlotHeight)
             if (inventoryOpen) {
                 InventoryPanel(
@@ -524,6 +583,45 @@ fun HomeScreen(
             gameContent?.invoke()
             Spacer(Modifier.height(10.dp))
         }
+
+        if (wide) {
+            Row(Modifier.fillMaxSize()) {
+                // **반씩 나눈다.** 방에 0.56 을 줘 봤더니 산책 요약 카드가 눌려서
+                // "볕이 뜨거우니 / 해 지고 / 나가자댕!" 이 세 줄로 쪼개졌다. 방은
+                // 정사각에 가까워 폭을 더 줘도 세로에 먼저 막히므로 덜 아쉽다.
+                room(Modifier.weight(1f).fillMaxHeight())
+                // **스크롤을 둔다.** 가로에서는 이 칸의 세로가 411dp 뿐이라 카드 셋
+                // (TODAY·챗봇·산책 요약)이 안 들어가고 마지막 것이 잘렸다. 내용이
+                // 넘치지 않는 폴드 세로에서는 스크롤이 생기지 않아 지금과 같다.
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    // 방 위에 얹혀 모서리를 덮던 카드를 여기로 올린다 (사용자 결정).
+                    TodayCard(
+                        dateLabel = dateLabel,
+                        note = words.today,
+                        icon = weatherIcon(outside),
+                        accent = roomTheme.roomAccent,
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        expanded = weatherOpen,
+                        onToggle = onToggleWeather,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    cards()
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                room(Modifier.fillMaxWidth().weight(1f))
+                cards()
+            }
+        }
+        }
+    }
     }
 
     // **겹은 Scaffold 위에 있다.** 하단바도 가리켜야 하는데 Scaffold 안에 있으면
@@ -618,6 +716,13 @@ private fun RoomSection(
      * ([showsEmptyRoomInvite]).
      */
     tourOpen: Boolean,
+    /**
+     * 방 위에 TODAY 카드를 얹나.
+     *
+     * **넓은 화면에서는 끈다.** 두 칸 배치에서는 이 카드가 오른쪽 칸으로 올라간다 —
+     * 방이 커지면서 카드가 방의 왼쪽 위 모서리를 덮기 때문이다.
+     */
+    showTodayCard: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
@@ -642,7 +747,20 @@ private fun RoomSection(
 
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
-    Box(modifier.onSizeChanged { boxSize = it }) {
+    // 문이 화면 어디에 있나. **방이 터치 판정에 쓰는 것과 같은 값**이라
+    // (`RoomTouchSpots`) 가리키는 곳과 눌리는 곳이 갈라지지 않는다.
+    var doorSpot by remember { mutableStateOf<Rect?>(null) }
+    // 방 상자가 창 안에서 어디에 있나. **`onSpots` 는 창 좌표로 온다**(`toWindow`) —
+    // 둘러보기 겹이 화면 전체를 덮기 때문이다. 알약은 이 상자 안에 있으므로 그만큼 뺀다.
+    var roomOrigin by remember { mutableStateOf(Offset.Zero) }
+    // 알약을 누르면 이 값이 오르고, 방이 그때 문을 연다.
+    var doorSignal by remember { mutableIntStateOf(0) }
+
+    Box(
+        modifier
+            .onSizeChanged { boxSize = it }
+            .onGloballyPositioned { roomOrigin = it.positionInWindow() },
+    ) {
         MiniRoomCanvas(
             state = state,
             catalog = catalog,
@@ -654,11 +772,16 @@ private fun RoomSection(
             modifier = Modifier.fillMaxSize(),
             // **자리를 여기서 다시 계산하지 않는다.** 방이 터치 판정에 쓰는 것과 같은
             // 셈으로 알려 준다 — 가리키는 곳과 눌리는 곳이 갈라지면 안 된다.
-            onSpots = if (tourSpots == null) null else { spots ->
-                tourSpots.put(TourStop.Door, spots.door)
-                tourSpots.put(TourStop.Frame, spots.frame)
-                spots.turntable?.let { tourSpots.put(TourStop.Turntable, it) }
+            // **자리는 언제나 받는다.** 둘러보기가 꺼져 있어도 문 알약이 이 값을 쓴다.
+            onSpots = { spots ->
+                doorSpot = spots.door
+                if (tourSpots != null) {
+                    tourSpots.put(TourStop.Door, spots.door)
+                    tourSpots.put(TourStop.Frame, spots.frame)
+                    spots.turntable?.let { tourSpots.put(TourStop.Turntable, it) }
+                }
             },
+            openDoorSignal = doorSignal,
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —
@@ -701,15 +824,29 @@ private fun RoomSection(
         ) {
             EmptyRoomInvite(onAddPet, Modifier.align(Alignment.Center))
         }
-        TodayCard(
-            dateLabel = dateLabel,
-            note = todayNote,
-            icon = weatherIcon(outside),
-            accent = theme.roomAccent,
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
-            expanded = weatherOpen,
-            onToggle = onToggleWeather,
-        )
+
+        // **문이 산책 나가는 곳이라고 말해 준다.**
+        //
+        // 문짝의 흰빛만으로는 "누를 수 있다" 까지만 읽히고 "누르면 산책" 까지는 못 간다.
+        // 편집 중에는 안 띄운다 — 그때는 문이 산책으로 안 이어진다(`onDoorOpened` 가 null).
+        // 빈 방 안내가 떠 있을 때도 안 띄운다. 그때 할 일은 산책이 아니라 등록이다.
+        val doorBadgeVisible = onOpenWalk != null && !inventoryOpen && !tourOpen &&
+            !showsEmptyRoomInvite(waitsForPet, showDogsLoading, inventoryOpen, tourOpen)
+        doorSpot?.takeIf { doorBadgeVisible }?.let { spot ->
+            DoorWalkBadge(spot.translate(-roomOrigin.x, -roomOrigin.y), boxSize) { doorSignal++ }
+        }
+
+        if (showTodayCard) {
+            TodayCard(
+                dateLabel = dateLabel,
+                note = todayNote,
+                icon = weatherIcon(outside),
+                accent = theme.roomAccent,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp),
+                expanded = weatherOpen,
+                onToggle = onToggleWeather,
+            )
+        }
         Column(
             Modifier.align(Alignment.TopEnd).padding(end = 14.dp, top = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

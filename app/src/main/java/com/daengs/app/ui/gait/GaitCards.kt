@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitProgress
@@ -415,6 +416,26 @@ fun GaitActionButton(
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * 가운뎃점 하나 + 문장 하나. 비교 화면의 주의 상자·진단아님 문구, 상세의 진단아님 문구가
+ * **같은 것**을 쓴다 — 점과 간격이 같아야 위아래 문단의 글자가 한 세로선에서 시작한다.
+ *
+ * 문장이 여러 줄로 접히면 둘째 줄이 글자 앞으로 들어와 매달린 들여쓰기가 된다.
+ */
+@Composable
+internal fun DottedLine(
+    text: String,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.Top) {
+        Text("·", color = TextMuted, fontSize = fontSize, lineHeight = lineHeight)
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = TextMuted, fontSize = fontSize, lineHeight = lineHeight)
     }
 }
 

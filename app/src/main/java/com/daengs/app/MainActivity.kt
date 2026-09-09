@@ -49,7 +49,6 @@ import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.makeDevCard
-import com.daengs.app.dogcard.seedCards
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
@@ -73,6 +72,7 @@ import com.daengs.app.ui.home.needsPet
 import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
+import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
@@ -150,6 +150,8 @@ class MainActivity : ComponentActivity() {
                 // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
                 val chatHistory = remember(scope) { ChatHistoryCoordinator(scope) }
                 val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
+                // 저장소 탭의 오늘의 케어 기록 (#201). 요약 보관함과 같은 생애 — 서버 사본이고 기기에 안 남긴다.
+                val careLog = remember(scope) { CareLogCoordinator(scope) }
                 val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
@@ -167,8 +169,20 @@ class MainActivity : ComponentActivity() {
                 var walkOrientation by rememberSaveable {
                     mutableStateOf(WalkOrientation.PORTRAIT)
                 }
-                LaunchedEffect(screen, walkOrientation) {
+                // 이머시브 무대가 떠 있나. **무대만 가로를 허용한다** — 배경이 좌우로
+                // 펼쳐지는 장면이라 가로가 이득인 유일한 자리다. 나머지는 세로 전용으로
+                // 그려져 있어 눕히면 무너진다 (실기기에서 확인).
+                var immersiveOpen by remember { mutableStateOf(false) }
+                // 무대를 눕혔나. **무대를 닫으면 원래대로 돌아온다** — 세워 둔 채로
+                // 나가면 다음에 들어올 때 이유 없이 누워 있다.
+                var immersiveLandscape by remember { mutableStateOf(false) }
+                // **`immersiveLandscape` 도 키다.** 값만 바뀌고 이 자리가 안 돌면 버튼을 눌러도
+                // 방향이 그대로다 — 실제로 그렇게 안 돌아갔다.
+                LaunchedEffect(screen, walkOrientation, immersiveOpen, immersiveLandscape) {
                     requestedOrientation = when {
+                        screen == Screen.Dex && immersiveOpen ->
+                            if (immersiveLandscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                         screen != Screen.Walk -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                         walkOrientation == WalkOrientation.PORTRAIT ->
                             ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
@@ -404,8 +418,6 @@ class MainActivity : ComponentActivity() {
                     // 둘러보기로 뽑아 둔 카드에 도장을 찍고 목록을 받는다.
                     // 남의 카드는 안 건드린다 (`CardDao.claimOrphans`).
                     session?.appUserId?.let { cards.claimOrphans(it) }
-                    // 출시본에서는 아무 일도 안 일어난다 — 디버그 소스셋의 시드다.
-                    pets.primary?.let { seedCards(context, cardStore, it.id, it.name, it.birthDate) }
                     // 서버와 맞춘다. **새 폰이면 여기서 카드가 되돌아오고**, 이 폰에만
                     // 있던 카드는 여기서 올라간다. **실패해도 조용하다** — 도감은
                     // 기기 것만으로도 온전히 돈다.
@@ -643,6 +655,7 @@ class MainActivity : ComponentActivity() {
                                 petId = pets.primary?.id.takeIf { session != null },
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
+                                careCoordinator = careLog,
                                 accessTokenProvider = freshToken,
                                 onOpenSource = { sessionId ->
                                     scope.launch {
@@ -877,7 +890,16 @@ class MainActivity : ComponentActivity() {
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },
                         primaryPet = pets.primary,
-                        useConnectedSearch = BuildConfig.DEBUG,
+                        // **빌드에 따라 다른 화면을 띄우지 않는다.** 이 값이
+                        // `BuildConfig.DEBUG` 이던 동안, 고쳐 온 내 주변(업종 대·소분류,
+                        // 조건 검색, 결과 패널)이 디버그 APK 에만 나오고 스토어판은
+                        // v1.0.2 의 옛 화면 그대로였다. "고쳤다" 고 한 것이 스토어에서는
+                        // 안 보인다.
+                        //
+                        // 두 화면은 같은 PlacesViewModel·state 를 쓰므로 이 한 줄이 곧
+                        // 릴리스 UI 다. 옛 PlacesScreen 은 이제 아무도 안 부르지만, 새
+                        // 화면이 릴리스로 한 판 나가는 것을 보기 전에는 지우지 않는다.
+                        useConnectedSearch = true,
                         profileOwnerId = session?.appUserId,
                         profilePets = pets.pets,
                         profilesBusy = pets.busy,
@@ -932,6 +954,12 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
+                        onImmersiveChange = {
+                            immersiveOpen = it
+                            if (!it) immersiveLandscape = false
+                        },
+                        immersiveLandscape = immersiveLandscape,
+                        onToggleImmersiveOrientation = { immersiveLandscape = !immersiveLandscape },
                         // **도감 보기는 열어 두고 뽑기만 막는다.** 이미 뽑아 둔 카드를
                         // 못 보게 하면 그게 더 이상하다.
                         onDrawBlocked = if (waitsForPet) {

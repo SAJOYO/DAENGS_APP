@@ -1,5 +1,6 @@
 package com.daengs.app.ui.home
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -109,20 +110,38 @@ fun WalkSummaryCard(
 
             Spacer(Modifier.height(10.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .background(PinkFaint, RoundedCornerShape(18.dp))
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    todayStats(totals).forEachIndexed { i, stat ->
-                        StatItem(stat, StatAccent[i % StatAccent.size])
+            // **좁으면 한 마디를 아래로 내린다.**
+            //
+            // 넓은 화면의 두 칸 배치에서 이 카드가 화면의 절반만 받는데, 그때도 나란히
+            // 두면 한 마디가 세 줄로 쪼개지고 하트와 글자가 겹친다. 나란히 둘 만한
+            // 폭인지를 재서 정한다 — 화면 크기가 아니라 이 카드가 실제로 받은 폭이다.
+            BoxWithConstraints {
+                val sideBySide = maxWidth >= SUMMARY_SIDE_BY_SIDE_MIN
+                val stats: @Composable (Modifier) -> Unit = { m ->
+                    Row(
+                        m
+                            .background(PinkFaint, RoundedCornerShape(18.dp))
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        todayStats(totals).forEachIndexed { i, stat ->
+                            StatItem(stat, StatAccent[i % StatAccent.size])
+                        }
                     }
                 }
-                Spacer(Modifier.width(11.dp))
-                DailyWordNote(dailyWord, Modifier.weight(1f))
+                if (sideBySide) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        stats(Modifier.weight(1f))
+                        Spacer(Modifier.width(11.dp))
+                        DailyWordNote(dailyWord, Modifier.weight(1f))
+                    }
+                } else {
+                    Column {
+                        stats(Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(11.dp))
+                        DailyWordNote(dailyWord, Modifier.fillMaxWidth())
+                    }
+                }
             }
         }
     }
@@ -260,3 +279,12 @@ private fun WalkSummaryCardEmptyPreview() {
         )
     }
 }
+
+/**
+ * 통계 세 칸과 「오늘의 한 마디」를 나란히 둘 수 있는 최소 폭.
+ *
+ * 넓은 화면의 두 칸 배치에서 이 카드가 절반만 받는데, 그 폭(≈300dp)에 나란히 두면
+ * 한 마디가 세 줄로 쪼개지고 하트와 글자가 겹친다. 폰(≈383dp)은 이 선 위라 지금
+ * 모습이 그대로다.
+ */
+private val SUMMARY_SIDE_BY_SIDE_MIN = 340.dp

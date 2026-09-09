@@ -313,7 +313,12 @@ private fun WalkGameOverlay(
                                 if (tracking.trail.state == TrackingState.PAUSED) "산책 재개 메뉴" else "잠시 멈춤",
                                 { if (tracking.trail.state == TrackingState.PAUSED) pausedBrowsing = false else onPause() },
                                 enabled = tracking.finishingSessionId == null,
-                                caption = if (tracking.trail.state == TrackingState.PAUSED) "재개" else "일시정지")
+                                // **여기만 강조한다.** 시간 카드 안에서 유일하게 누르는
+                                // 것인데 나머지 도구와 같은 모양이라 눈에 안 걸렸다.
+                                // 종료가 이 버튼 뒤에만 있어서(`PauseCard`) 못 찾으면
+                                // 산책을 끝낼 방법이 없다.
+                                emphasis = true,
+                                caption = if (tracking.trail.state == TrackingState.PAUSED) "재개" else "멈춤")
                         }
                     }, gpsContent = {
                     val gps = walkGpsPresentation(locationGranted, preciseLocation, locationError,
@@ -332,15 +337,22 @@ private fun WalkGameOverlay(
             val dock: @Composable () -> Unit = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
+                // **걷는 중에 쓰는 도크라 한 칸을 크게 잡는다.** 걸으면서 누르는
+                // 자리라 48dp 로는 손가락이 자주 빗나간다.
                 Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
-                    Row(Modifier.padding(4.dp)) {
+                    Row(Modifier.padding(6.dp)) {
                         WalkToolButton(WalkTool.CAMERA, "산책 사진 촬영", onPhotographWalk,
-                            enabled = tracking.trail.state == TrackingState.RECORDING && tracking.finishingSessionId == null, caption = "사진")
+                            enabled = tracking.trail.state == TrackingState.RECORDING && tracking.finishingSessionId == null,
+                            caption = "사진", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
                         WalkToolButton(WalkTool.RECORD, "행동 기록", {
                             momentsOpen = !momentsOpen; onCloseTerritory()
-                        }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen, caption = "기록")
-                        WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries, caption = "일기")
-                        WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate, enabled = locationGranted && !locating, caption = "내 위치")
+                        }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen,
+                            caption = "기록", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
+                        WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries,
+                            caption = "일기", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
+                        WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate,
+                            enabled = locationGranted && !locating,
+                            caption = "내 위치", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
                     }
                 }
             }
@@ -363,7 +375,16 @@ private fun WalkGameOverlay(
                         if (territory.failure != null) "다시 시도" else null, onRetryTerritory)
                 }
                 if (tracking.trail.state == TrackingState.OFF && summary == null) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
+                    // **일기는 산책 전에도 열린다.** 지난 산책을 보는 화면인데 도크에만
+                    // 두면 산책을 시작해야 지난 기록을 볼 수 있다 — 앞뒤가 바뀐다.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
+                        Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) {
+                            WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries,
+                                caption = "일기", captionBeside = true)
+                        }
+                    }
                 }
                 if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
@@ -637,7 +658,11 @@ private fun WalkHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = Color.Black, filled = true)
+        // **순수 검정을 쓰지 않는다.** 이 앱의 어두운 색은 따뜻한 갈색(`TextDark`,
+        // `#4A3B36`)이고 「내 주변」에는 순수 검정이 한 군데도 없다. 여기만 검정이라
+        // 같은 알약 안에서 옆의 회전·설정 아이콘(둘 다 `TextDark`)과 색이 갈렸고,
+        // 산책 화면만 차갑게 보이는 원인이었다.
+        DaengsIconView(DaengsIcon.Home, Modifier.size(21.dp), tint = TextDark, filled = true)
     }
 }
 
@@ -956,7 +981,9 @@ private fun ModalScrim(content: @Composable () -> Unit) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.34f))
+                // 겹도 순수 검정 대신 앱의 어두운 갈색을 옅게 깐다. 검정이면 방·지도의
+                // 따뜻한 색 위에서 회색빛이 돌아 화면이 갑자기 차가워진다.
+                .background(TextDark.copy(alpha = 0.34f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1148,10 +1175,13 @@ private fun WalkWideAction(
     ) {
         Text(
             label,
+            // 보조 버튼 글자는 **진한 갈색**이다. 연분홍 바탕에 분홍 글자(`DaengPinkDeep`)
+            // 였을 때 대비가 2.49:1 밖에 안 나와서, 실기기에서 「그만두기」가 눌리지
+            // 않는 버튼처럼 보였다. 같은 바탕에 이 색이면 8.77:1 이다.
             color = when {
                 !enabled -> TextMuted
                 accent -> CardWhite
-                else -> DaengPinkDeep
+                else -> TextDark
             },
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
@@ -1159,6 +1189,12 @@ private fun WalkWideAction(
         )
     }
 }
+
+/** 아래 도크 버튼 한 칸의 크기. */
+private val DOCK_BUTTON = 58.dp
+
+/** 그 안의 그림 크기. */
+private val DOCK_ICON = 26.dp
 
 internal fun formatDuration(millis: Long): String {
     val totalSeconds = millis.coerceAtLeast(0L) / 1_000L

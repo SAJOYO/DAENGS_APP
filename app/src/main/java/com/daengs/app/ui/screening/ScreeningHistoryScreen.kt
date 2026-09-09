@@ -176,13 +176,32 @@ private fun RecordRow(
                         lineHeight = 19.sp,
                     )
                 } else {
+                    // 덩어리 경보는 여기서도 제일 위다. 안 뜨면 null 이라 안 그린다.
+                    report.alert?.let { a ->
+                        Text(
+                            listOf(a.text, a.action).filter { it.isNotBlank() }.joinToString(" "),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = accentOf(record),
+                            lineHeight = 20.sp,
+                        )
+                    }
                     Text(report.headline, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = accentOf(record))
+                    report.group?.let {
+                        Text(it.text, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
+                    }
                     Text(report.body, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
                     Text(report.action, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
-                    // 분포는 **1등을 고르지 않고** 있는 그대로 늘어놓는다.
-                    report.stage2.forEach {
+                    // ★ 2026-09-08 — 6종(report.stage2) 대신 **계열 네 묶음**이다.
+                    //   채팅 카드와 같은 것을 그려야 한다. 한쪽만 고치면 같은 결과가
+                    //   화면마다 다르게 보이고, 갈라져도 아무도 모른다.
+                    //
+                    //   ⚠️ **옛 기록은 `groups` 가 없다** — 이 기능 전에 저장된 판정이다.
+                    //      그때는 문장 셋만 남는다. 6종으로 물러서지 않는다: 그 이름을
+                    //      안 보여 주기로 한 것이 이 변경의 이유다.
+                    report.groups.forEach {
                         Text(
-                            "· ${it.nameKo}  ${"%.0f".format(it.percent)}%",
+                            "· ${it.name}  ${"%.0f".format(it.percent)}%",
                             fontSize = 12.sp,
                             color = TextMuted,
                         )

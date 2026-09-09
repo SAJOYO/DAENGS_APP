@@ -41,6 +41,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -101,7 +102,11 @@ class WalkViewModelTest {
             }, { session }, { "user" },
         )
         val controller = FakeWalkController()
-        val vm = viewModel(controller, CountingLocationSource(),
+        val screenLocation = object : LocationSource {
+            override suspend fun currentLocation() = LocationSample(site.point, 1000, 1_000_000_000L, 3f)
+            override fun locationUpdates(config: LocationUpdateConfig) = emptyFlow<LocationSample>()
+        }
+        val vm = viewModel(controller, screenLocation,
             TerritorySiteRepository { TerritorySitePage(1, false, listOf(site)) }, shared)
         vm.activate(true, true)
         runCurrent()
@@ -112,6 +117,11 @@ class WalkViewModelTest {
         runCurrent()
         assertEquals(1, calls)
         assertEquals("두부 · 인증", vm.state.value.territoryGame.target!!.occupancyLabel)
+        assertEquals(com.daengs.app.territory.TerritoryProximityRange.IN_RANGE,
+            vm.state.value.territoryGame.target!!.proximity.range)
+        assertEquals(0.0, vm.state.value.territoryGame.target!!.distanceMeters!!, 0.0001)
+        assertFalse(vm.state.value.territoryGame.canMark)
+        assertFalse(vm.state.value.territoryGame.canPhotograph)
         val marker = vm.state.value.toMapPresentation().scene.territorySites.single()
         assertEquals(TerritoryMarkerOccupancy.VERIFIED, marker.occupancy)
         assertEquals(null, marker.radiusMeters)

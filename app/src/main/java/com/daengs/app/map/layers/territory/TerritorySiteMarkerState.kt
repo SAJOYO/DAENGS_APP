@@ -8,10 +8,11 @@ data class TerritorySiteMarkerState(
     val point: GeoPoint,
     val selected: Boolean = false,
     val occupancy: TerritoryMarkerOccupancy = TerritoryMarkerOccupancy.NEUTRAL,
-    val label: String = "미점유",
+    val label: String = "점유 확인 전",
     val ready: Boolean = false,
     val radiusMeters: Double? = null,
     val feedback: TerritoryFeedback? = null,
+    val occupancyKnown: Boolean = false,
 )
 
 enum class TerritoryMarkerOccupancy { NEUTRAL, UNVERIFIED, VERIFIED }

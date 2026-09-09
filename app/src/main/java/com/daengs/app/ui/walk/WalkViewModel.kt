@@ -116,7 +116,8 @@ class WalkViewModel(
     ) { tracking, locationState, territoryState, presentationState ->
         val game = territoryGame?.snapshot(territoryState, tracking,
             locationState.permissionGranted && locationState.precisePermission,
-            presentationState.selection.pets.associate { it.id to it.name }, nowNanos()) ?: TerritoryGameState()
+            presentationState.selection.pets.associate { it.id to it.name }, nowNanos(),
+            screenSample = locationState.sample) ?: TerritoryGameState()
         WalkUiState(
             // 안내는 **잠깐 떴다 사라진다.** 예전에는 지우는 곳이 아예 없어서, 다시
             // 걸으려고 들어와도 지난 실패가 먼저 붙어 있었다.
@@ -513,7 +514,18 @@ class WalkViewModel(
      * 산책이 어디 갔는지 설명하는 말이라, 토스트처럼 스쳐 지나가면 안 된다.
      */
     private fun scheduleTrackingErrorDismiss(message: String?) {
-        if (message == null || message == presentation.value.dismissedTrackingError) return
+        // **안내가 걷히면 기억도 지운다.**
+        //
+        // 지운 것을 **글자 내용으로** 기억하는데, 그걸 안 비우면 같은 문장은 두 번째부터
+        // 영영 안 뜬다. "너무 짧아서 기록하지 않았어요" 는 짧게 걸을 때마다 나오는
+        // 같은 문장이라, 두 번째 짧은 산책부터는 산책이 왜 사라졌는지 아무 말도 못
+        // 듣게 됐다 (실기기에서 그렇게 보였다).
+        if (message == null) {
+            trackingErrorJob?.cancel()
+            presentation.update { it.copy(dismissedTrackingError = null) }
+            return
+        }
+        if (message == presentation.value.dismissedTrackingError) return
         trackingErrorJob?.cancel()
         trackingErrorJob = runtimeScope.launch {
             delay(trackingErrorMillis)

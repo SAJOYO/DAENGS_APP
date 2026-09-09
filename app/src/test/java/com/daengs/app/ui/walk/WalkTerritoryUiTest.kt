@@ -93,6 +93,7 @@ class WalkTerritoryUiTest {
         kotlinx.coroutines.runBlocking { provider.refresh(listOf(site)) }
         compose.runOnIdle { state.value = snapshot() }
         compose.onNodeWithText("두부 · 인증").assertIsDisplayed()
+        compose.onNodeWithText("점령 시각 · ${territoryOccupiedAtLabel(1000)}").assertIsDisplayed()
         compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
         compose.onNodeWithText("점령 연습 · 점유 정보").assertDoesNotExist()
         screenshot("server-browsing")
@@ -105,9 +106,10 @@ class WalkTerritoryUiTest {
         failing = true
         kotlinx.coroutines.runBlocking { provider.refresh(listOf(site)) }
         compose.runOnIdle { state.value = snapshot() }
-        compose.onNodeWithText("점유 확인 전").assertIsDisplayed()
+        compose.onNodeWithText("점유 조회 실패").assertIsDisplayed()
         compose.onNodeWithText("미점유").assertDoesNotExist()
         compose.onNodeWithText("두부 · 인증").assertDoesNotExist()
+        compose.onNodeWithText("점령 시각", substring = true).assertDoesNotExist()
         compose.onNodeWithText("점유 정보를 불러오지 못했어요 · 잠시 후 다시 확인해요").assertIsDisplayed()
         screenshot("server-error")
     }

@@ -32,7 +32,7 @@ private fun TerritoryPoleLab() {
     val states = listOf(firstState, TerritoryMarkerOccupancy.UNVERIFIED, TerritoryMarkerOccupancy.VERIFIED)
     val sites = states.mapIndexed { index, occupancy ->
         TerritorySiteMarkerState("pole-$index", GeoPoint(center.latitude, center.longitude + (index - 1) * .00025),
-            selected = selected == "pole-$index", occupancy = occupancy,
+            selected = selected == "pole-$index", occupancy = occupancy, occupancyKnown = true,
             label = when (occupancy) {
                 TerritoryMarkerOccupancy.NEUTRAL -> "기본"
                 TerritoryMarkerOccupancy.UNVERIFIED -> "점령 · 미인증"

@@ -14,6 +14,26 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerTerritoryGameProviderTest {
+    @Test fun `read only proximity exists before walking while occupancy and actions stay independent`() = runTest {
+        val provider = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, _ -> listOf(occupied) },
+            { session }, { "user" })
+        val fix = com.daengs.app.location.LocationSample(site.point, 1000, 1_000_000_000L, 3f)
+        fun view(tracking: WalkTrackingState = WalkTrackingState()) =
+            provider.snapshot(board, tracking, true, emptyMap(), 2_000_000_000L, screenSample = fix)
+        assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
+        assertFalse(view().target!!.occupancyKnown)
+        provider.refresh(board.sites)
+        for (state in TrackingState.entries) {
+            val tracking = WalkTrackingState(activeSessionId = "walk", activeDogIds = emptyList(),
+                trail = TrailSnapshot(state = state), latestMomentFix = fix)
+            val result = view(tracking)
+            assertEquals(TerritoryProximityRange.IN_RANGE, result.target!!.proximity.range)
+            assertEquals(0.0, result.target!!.distanceMeters!!, 0.0001)
+            assertFalse(result.canMark); assertFalse(result.canPhotograph)
+            assertNull(result.target!!.interaction)
+        }
+    }
+
     private val site = TerritorySite("territory-site:hex-v1:140:1:2", GeoPoint(37.5, 127.0), 0.0)
     private val board = TerritoryBoardState(sites = listOf(site), selectedSiteId = site.id)
     private val session = Session("user", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
@@ -35,6 +55,8 @@ class ServerTerritoryGameProviderTest {
             assertTrue(result.readOnly)
             assertEquals("두부 · 인증", result.target!!.occupancyLabel)
             assertEquals(4L, result.target!!.claim.version)
+            assertEquals(1000L, result.target!!.claim.occupancy!!.occupiedAtMillis)
+            assertEquals(false, result.target!!.isOwnedByMe)
             assertNull(result.target!!.claim.occupancy!!.sourceSessionId)
             assertNull(result.target!!.claim.occupancy!!.sourceAttemptId)
             assertFalse(result.canMark); assertFalse(result.canPhotograph)
@@ -54,7 +76,8 @@ class ServerTerritoryGameProviderTest {
         provider.refresh(listOf(site))
         val failed = snapshot(provider)
         assertFalse(failed.target!!.occupancyKnown)
-        assertEquals("점유 확인 전", failed.target!!.occupancyLabel)
+        assertEquals("점유 조회 실패", failed.target!!.occupancyLabel)
+        assertEquals(TerritoryOccupancyReadState.FAILED, failed.target!!.occupancyReadState)
         assertTrue(failed.guidance.contains("불러오지 못했어요"))
         assertFalse(failed.guidance.contains("secret"))
         fail = false
@@ -69,6 +92,7 @@ class ServerTerritoryGameProviderTest {
         loggedOut.refresh(listOf(site))
         assertEquals(0, calls)
         assertTrue(snapshot(loggedOut).guidance.contains("로그인"))
+        assertEquals("로그인 필요", snapshot(loggedOut).target!!.occupancyLabel)
         val signedIn = ServerTerritoryGameProvider(api, { session }, { "user" })
         signedIn.refresh(listOf(site))
         assertEquals("미점유", snapshot(signedIn).target!!.occupancyLabel)
@@ -111,7 +135,7 @@ class ServerTerritoryGameProviderTest {
         assertEquals("미점유", snapshot(provider).target!!.occupancyLabel)
     }
 
-    @Test fun `query is batched at one hundred and local mode stays the default`() = runTest {
+    @Test fun `query is batched at one hundred`() = runTest {
         val sizes = mutableListOf<Int>()
         val sites = (0..204).map { site.copy(id = "territory-site:hex-v1:140:$it:2") }
         val provider = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, ids ->
@@ -119,8 +143,45 @@ class ServerTerritoryGameProviderTest {
         }, { session }, { "user" })
         provider.refresh(sites)
         assertEquals(listOf(100, 100, 5), sizes)
+    }
+
+    @Test fun `browsing is the default and release never enables practice or actions`() {
+        assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true))
         assertEquals(TerritoryGameMode.LOCAL, territoryGameMode(true, false))
         assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true, true))
-        assertEquals(TerritoryGameMode.DISABLED, territoryGameMode(false, true))
+        assertEquals(TerritoryGameMode.SERVER_ACTIONS, territoryGameMode(true, true, true))
+        for (read in listOf(false, true)) for (actions in listOf(false, true)) {
+            assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(false, read, actions))
+        }
+    }
+
+    @Test fun `a far selected site can be read without GPS or a walk`() = runTest {
+        val far = site.copy(id = "territory-site:hex-v1:140:200:300", point = GeoPoint(35.0, 129.0),
+            distanceMeters = 300_000.0)
+        var calls = 0
+        val provider = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, ids ->
+            calls++
+            assertEquals(listOf(site.id, far.id), ids)
+            listOf(occupied, occupied.copy(siteId = far.id,
+                occupancy = occupied.occupancy!!.copy(ownerPetName = "보리", isMine = true)))
+        }, { session }, { "user" })
+        provider.refresh(listOf(site, far))
+        val remoteBoard = board.copy(sites = listOf(site, far), selectedSiteId = far.id)
+        val result = provider.snapshot(remoteBoard, WalkTrackingState(), false, emptyMap(), 0)
+        assertEquals("보리 · 인증", result.target!!.occupancyLabel)
+        assertEquals(true, result.target!!.isOwnedByMe)
+        assertEquals(TerritoryWalkPhase.BROWSING, result.phase)
+        assertFalse(result.canMark); assertFalse(result.canPhotograph)
+        assertNull(result.target!!.interaction)
+        assertEquals(1, calls)
+    }
+
+    @Test fun `authentication failure asks for login instead of showing vacant ownership`() = runTest {
+        val provider = ServerTerritoryGameProvider(TerritoryOccupancyClient { _, _ ->
+            throw TerritoryOccupancyApiException(401)
+        }, { session }, { "user" })
+        provider.refresh(listOf(site))
+        assertEquals("로그인 필요", snapshot(provider).target!!.occupancyLabel)
+        assertFalse(snapshot(provider).target!!.occupancyKnown)
     }
 }

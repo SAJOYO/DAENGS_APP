@@ -17,7 +17,7 @@ class CertifiedTerritoryPresentationTest {
     @Test fun `camera is blocked by server protection and same walk retry opens after fresh expiry read`() = runTest {
         val auth = Session("owner", "token", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
         val fix = LocationSample(GeoPoint(37.5, 127.0), 2000, 2_000_000_000, 2f)
-        val state = WalkTrackingState(ownerId = "owner", activeSessionId = WALK,
+        var state = WalkTrackingState(ownerId = "owner", activeSessionId = WALK,
             activeSessionStartedAtMillis = 1000, activeDogIds = listOf(DOG),
             trail = TrailSnapshot(state = TrackingState.RECORDING), latestMomentFix = fix)
         val dao = MemoryActions(); val server = PhotoServer()
@@ -37,6 +37,10 @@ class CertifiedTerritoryPresentationTest {
             fun view() = provider.snapshot(board, state, true, mapOf(DOG to "보리"), 2_000_000_000)
             provider.refresh(board.sites)
             assertFalse(view().canPhotograph)
+            assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
+            assertEquals(TerritoryOccupancyReadState.READY, view().target!!.occupancyReadState)
+            assertEquals(false, view().target!!.isOwnedByMe)
+            assertEquals(remote, view().target!!.sharedState)
             assertTrue(view().guidance.contains("보호 중"))
             // A stale cached countdown cannot authorize capture even when its local timer elapsed.
             remote = remote.copy(receivedAtNanos = System.nanoTime() - 700_000_000_000)
@@ -46,6 +50,14 @@ class CertifiedTerritoryPresentationTest {
             provider.refresh(board.sites)
             assertTrue(view().canPhotograph)
             assertTrue(view().guidance.contains("새 사진"))
+            // Ending protection does not turn the 20m approach boundary into photo permission.
+            state = state.copy(latestMomentFix = fix.copy(accuracyMeters = 11f))
+            assertEquals(TerritoryProximityRange.IN_RANGE, view().target!!.proximity.range)
+            assertFalse(view().canPhotograph)
+            state = state.copy(latestMomentFix = fix.copy(accuracyMeters = -1f))
+            assertEquals(TerritoryProximityRange.UNAVAILABLE, view().target!!.proximity.range)
+            assertFalse(view().canPhotograph)
+            state = state.copy(latestMomentFix = fix)
             remote = remote.copy(occupancy = remote.occupancy!!.copy(certification = ClaimCertification.UNVERIFIED, protectedUntilMillis = null), serverNowMillis = 2000)
             provider.refresh(board.sites)
             assertTrue(view().canPhotograph)
