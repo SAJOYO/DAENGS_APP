@@ -29,6 +29,7 @@ data class MapSceneSources(
     val trail: TrailLayerState = TrailLayerState(),
     val completedRoute: CompletedRouteLayerState = CompletedRouteLayerState(),
     val stayStamps: List<com.daengs.app.walk.StayStamp> = emptyList(),
+    val travelHeading: com.daengs.app.location.TravelHeading? = null,
 )
 
 data class MapDisplayPolicy(
@@ -60,6 +61,9 @@ fun composeMapScene(
         ),
         baseMapStyle = policy.baseMapStyle,
         currentPosition = sources.currentPosition,
+        travelHeading = sources.travelHeading.takeIf {
+            sources.currentPosition != null && purpose != MapPurpose.PLACE_SEARCH
+        },
         places = sources.places.takeIf { policy.showPlaces }.orEmpty(),
         territorySites = sources.territorySites.takeIf { policy.showTerritorySites }.orEmpty(),
         moments = sources.moments.takeIf { policy.showMoments }.orEmpty(),

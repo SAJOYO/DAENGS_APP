@@ -39,6 +39,14 @@ internal fun WalkDiaryMapScreen(
     var error by remember(sessionId) { mutableStateOf<String?>(null) }
     var retry by remember { mutableIntStateOf(0) }
     var selectedId by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
+    // Camera intent is independent of sheet/card selection. Clearing a card must not reframe the map.
+    var cameraLatitude by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
+    var cameraLongitude by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
+    var cameraRequest by rememberSaveable(sessionId) { mutableIntStateOf(0) }
+    val cameraTarget = cameraLatitude?.let { lat -> cameraLongitude?.let { lng -> GeoPoint(lat, lng) } }
+    fun requestCamera(point: GeoPoint?) {
+        cameraLatitude = point?.latitude; cameraLongitude = point?.longitude; cameraRequest++
+    }
     var adding by rememberSaveable(sessionId) { mutableStateOf(false) }
     var chosenPoint by remember(sessionId) { mutableStateOf<WalkRoutePoint?>(null) }
     var entry by remember(sessionId) { mutableStateOf<WalkEntry?>(null) }
@@ -94,6 +102,10 @@ internal fun WalkDiaryMapScreen(
     BackHandler { when { adding -> { adding = false; chosenPoint = null }; selectedId != null -> selectedId = null; else -> onBack() } }
     val scenes = diary?.scenes.orEmpty()
     val selected = scenes.firstOrNull { it.id == selectedId }
+    fun selectScene(scene: DiaryScene) {
+        selectedId = scene.id
+        scene.point?.let(::requestCamera)
+    }
     val route = detail?.route
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
@@ -110,12 +122,8 @@ internal fun WalkDiaryMapScreen(
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
-                onSelect = { selectedId = it.id }, onClose = { selectedId = null },
+                onSelect = ::selectScene, onClose = { selectedId = null },
                 onEdit = { scene -> editingScene = scene; sceneError = null },
-                onEditRecord = { scene ->
-                    entry = entries.firstOrNull { it.id == scene.entryId }
-                    entryError = null; editorOpen = entry != null
-                },
                 onPhoto = { photo = it }, onRetry = { retry++ },
                 onAdd = {
                     selectedId = null; chosenPoint = null
@@ -131,14 +139,16 @@ internal fun WalkDiaryMapScreen(
                 title = detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
                 subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
                 onBack = onBack, mapSettings = { WalkMapSettingsButton() },
-                modifier = Modifier.weight(1f), map = { bottomInset ->
+                onOverview = { requestCamera(null) },
+                modifier = Modifier.weight(1f), map = { viewport ->
                     if (bounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
                         Text(if (!loaded) "경로를 불러오고 있어요." else "표시할 위치 기록이 없어요.", color = TextMuted)
                     } else MapHost(scene = mapScene, searchOrigin = null, followDevice = false,
-                        fitBounds = bounds, centerOn = chosenPoint?.point ?: selected?.point,
-                        bottomPaddingPx = bottomInset, keepSelectionVisible = true,
+                        fitBounds = bounds, centerOn = cameraTarget,
+                        cameraRequestKey = cameraRequest, centerYFraction = viewport.selectionYFraction,
+                        bottomPaddingPx = viewport.bottomPaddingPx, keepSelectionVisible = true,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                        onSelectMoment = { selectedId = it },
+                        onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let(::selectScene) },
                         onMapTap = { point -> if (adding) chosenPoint = route?.nearestPointTo(point, 30.0) },
                         modifier = Modifier.fillMaxSize())
                 })

@@ -14,23 +14,31 @@ data class StoryboardScene(
     val entryReference: StoryboardEntryReference? = null,
     val observation: StoryboardObservation? = null,
     val diary: DiarySceneContent? = null,
+    val bodyScope: SceneBodyScope = SceneBodyScope.SOURCE,
 )
+
+/** Old drafts edit source/background prose; new diary drafts edit the assembled scene. */
+enum class SceneBodyScope { SOURCE, SCENE }
+const val MAX_DIARY_SCENE_BODY_LENGTH = 4000 // A 2000-character note plus generated scene prose.
 
 data class StoryboardEntryReference(val entryId: String, val revision: Long?, val petId: String?, val isNote: Boolean = false)
 
 data class SceneEdit(val id: String, val title: String, val body: String, val hidden: Boolean,
-                     val sourceFingerprint: String, val atMillis: Long) {
+                     val sourceFingerprint: String, val atMillis: Long,
+                     val bodyScope: SceneBodyScope = SceneBodyScope.SOURCE) {
     fun toJson() = JSONObject().put("id", id).put("title", title).put("body", body)
         .put("hidden", hidden).put("source", sourceFingerprint).put("at", atMillis)
+        .put("body_scope", bodyScope.name)
 }
 
 data class StoryboardDraft(val edits: List<SceneEdit> = emptyList(), val reviewed: String? = null) {
     fun edit(scene: StoryboardScene, title: String = scene.title, body: String = scene.body,
-             hidden: Boolean = scene.hidden, acknowledge: Boolean = false) = copy(
+             hidden: Boolean = scene.hidden, acknowledge: Boolean = false,
+             bodyScope: SceneBodyScope = scene.bodyScope) = copy(
         edits = edits.filterNot { it.id == scene.id } + SceneEdit(scene.id, title, body, hidden,
             if (acknowledge) scene.fingerprint else
                 edits.firstOrNull { it.id == scene.id }?.sourceFingerprint ?: scene.fingerprint,
-            scene.atMillis))
+            scene.atMillis, bodyScope))
 
     fun toJson(): String = JSONObject().put("version", 1)
         .put("edits", JSONArray().apply { edits.forEach { put(it.toJson()) } })
@@ -45,7 +53,8 @@ data class StoryboardDraft(val edits: List<SceneEdit> = emptyList(), val reviewe
             return StoryboardDraft((0 until array.length()).map { i ->
                 val e = array.getJSONObject(i)
                 SceneEdit(e.getString("id"), e.getString("title"), e.getString("body"),
-                    e.getBoolean("hidden"), e.getString("source"), e.getLong("at"))
+                    e.getBoolean("hidden"), e.getString("source"), e.getLong("at"),
+                    SceneBodyScope.valueOf(e.optString("body_scope", SceneBodyScope.SOURCE.name)))
             }, if (obj.isNull("reviewed")) null else obj.getString("reviewed"))
         }
     }
@@ -77,13 +86,13 @@ fun applyStoryboardEdits(sources: List<StoryboardScene>, draft: StoryboardDraft)
     val scenes = sources.map { source ->
         draft.edits.firstOrNull { it.id == source.id }?.let { edit ->
             source.copy(title = edit.title, body = edit.body, hidden = edit.hidden,
-                needsReview = edit.sourceFingerprint != source.fingerprint)
+                needsReview = edit.sourceFingerprint != source.fingerprint, bodyScope = edit.bodyScope)
         } ?: source
     }.toMutableList()
     draft.edits.filter { it.id !in byId }.forEach { edit ->
         scenes += StoryboardScene(edit.id, edit.atMillis, edit.title, edit.body,
             "원본 기록이 삭제되었습니다. 작성한 문구는 보존되며 검토본에서 제외됩니다.",
-            "deleted", available = false, hidden = edit.hidden, needsReview = true)
+            "deleted", available = false, hidden = edit.hidden, needsReview = true, bodyScope = edit.bodyScope)
     }
     return scenes.sortedWith(compareBy<StoryboardScene> { it.atMillis }.thenBy { it.diary?.order ?: Int.MAX_VALUE }.thenBy { it.id })
 }
@@ -92,7 +101,7 @@ fun storyboardSnapshot(sessionId: String, scenes: List<StoryboardScene>, title: 
     JSONObject().put("version", 1).put("session_id", sessionId).put("scenes", JSONArray().apply {
         scenes.filter { it.available && !it.hidden }.forEach { scene ->
             put(JSONObject().put("id", scene.id).put("at", scene.atMillis).put("title", scene.title)
-                .put("body", scene.body).put("evidence", scene.evidence).put("source", scene.fingerprint)
+                .put("body", scene.sceneBody()).put("evidence", scene.evidence).put("source", scene.fingerprint)
                 .put("source_payload", scene.sourcePayload?.let { JSONObject(it) } ?: JSONObject.NULL))
         }
     }).apply { title?.let { put("diary_title", it) } }.toString()
