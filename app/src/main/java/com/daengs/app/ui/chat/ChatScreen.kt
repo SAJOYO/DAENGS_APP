@@ -1800,7 +1800,16 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                                     Spacer(Modifier.width(8.dp))
                                     Text(g.percent.percentText(), color = TextMuted, fontSize = 11.sp)
                                 }
-                                MeterBar(g.percent / 100f, PinkSoft)
+                                // ⚠️ **[PinkSoft] 를 쓰지 않는다.** 막대 바탕이 [PinkFaint]
+                                //    (#F7EEEA) 인데 PinkSoft 는 #FBE4E0 라 **대비가
+                                //    1.06:1** 이다 — 실기기에서 막대가 배경과 안 갈렸다
+                                //    (2026-09-09 확인). [DaengPink] 는 2.12:1 이다.
+                                //
+                                //    네 줄 **모두 같은 색**인 것은 그대로다 — 1등을
+                                //    강조하지 않는다는 규칙은 색이 진해져도 안 깨진다.
+                                //    1단계 막대([DaengPinkDeep], 2.65:1)보다는 한 단계
+                                //    옅게 둬서 무엇이 주인지도 남긴다.
+                                MeterBar(g.percent / 100f, DaengPink)
                             }
                         }
                     }
