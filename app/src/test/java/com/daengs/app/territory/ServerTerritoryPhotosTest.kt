@@ -28,6 +28,10 @@ internal class PhotoServer : TerritoryActionClient, TerritoryPhotoUploader {
     var siteChanged = false
     var rejectBinding: String? = null
     var uploadedBytes: ByteArray? = null
+    var admissionFailure: String? = null
+    var accessAction = "PHOTO_UPGRADE"
+    var accessReason: String? = null
+    var afterAdmission: (() -> Unit)? = null
     private fun ticket(photo: Photo) = JSONObject(photo.body)
         .put("attempt_id", photo.id).put("status", photo.status)
         .put("upload_url", if (photo.status == "PENDING_UPLOAD") "https://storage.invalid/${photo.id}?ticket=${calls.size}" else JSONObject.NULL)
@@ -53,6 +57,13 @@ internal class PhotoServer : TerritoryActionClient, TerritoryPhotoUploader {
     }
     override suspend fun request(token: String, method: String, path: String, body: String?): String {
         calls += Triple(method, path, body)
+        if (path.endsWith("/photo-access")) return JSONObject().put("allowed_action", accessAction)
+            .put("reason", accessReason ?: JSONObject.NULL).toString()
+        if (path.contains("/challenges/")) {
+            admissionFailure?.let { throw TerritoryActionException(409, it) }
+            afterAdmission?.invoke()
+            return JSONObject().put("challenge_id", path.substringAfterLast('/')).toString()
+        }
         if (path == "/attempts") {
             val captureId = JSONObject(body!!).getString("client_capture_id")
             val photo = photos.getOrPut(captureId) { Photo(UUID.randomUUID().toString(), body) }
@@ -95,6 +106,73 @@ internal class PhotoServer : TerritoryActionClient, TerritoryPhotoUploader {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerTerritoryPhotosTest {
+    @Test fun `failed token refresh releases admission draft for a fresh retry`() = runTest {
+        val dao = MemoryActions(); val server = PhotoServer(); val state = walking(); val dir = directory()
+        try {
+            val sync = TerritoryActionSync(dao, server, { auth }, { "owner" }, { state }, backgroundScope, {})
+            val photos = ServerTerritoryPhotos(sync, server, server, File(dir, "proof"), { throw IOException("refresh offline") }, { "owner" }, { state }, backgroundScope, {})
+            sync.photos = photos
+            val mark = mark(sync, state)
+            assertFalse(photos.checkAccess(mark))
+            val id = UUID.randomUUID().toString()
+            assertNull(photos.reserve(state, mark, photoCaptureBody(id, WALK, SITE, DOG, fix(), 3100), 1))
+            assertFalse(dao.all().single { it.kind == "PHOTO" }.photoActive())
+            assertTrue(server.photos.isEmpty())
+        } finally { dir.deleteRecursively() }
+    }
+    @Test fun `changing walks while admission is pending cancels capture`() = runTest {
+        val dao = MemoryActions(); val server = PhotoServer(); var state = walking(); val dir = directory()
+        try {
+            val sync = TerritoryActionSync(dao, server, { auth }, { "owner" }, { state }, backgroundScope, {})
+            val photos = ServerTerritoryPhotos(sync, server, server, File(dir, "proof"), { auth }, { "owner" }, { state }, backgroundScope, {})
+            sync.photos = photos
+            val mark = mark(sync, state)
+            server.afterAdmission = { state = state.copy(activeSessionId = UUID.randomUUID().toString()) }
+            val id = UUID.randomUUID().toString()
+            assertNull(photos.reserve(state, mark, photoCaptureBody(id, WALK, SITE, DOG, fix(), 3100), 1))
+            assertFalse(dao.all().single { it.kind == "PHOTO" }.photoActive())
+            assertTrue(server.photos.isEmpty())
+        } finally { dir.deleteRecursively() }
+    }
+    @Test fun `v2 refuses protected admission before capture and keeps reason distinct from upload failure`() = runTest {
+        val dao = MemoryActions(); val server = PhotoServer(); val state = walking(); val dir = directory()
+        try {
+            val sync = TerritoryActionSync(dao, server, { auth }, { "owner" }, { state }, backgroundScope, {})
+            val photos = ServerTerritoryPhotos(sync, server, server, File(dir, "proof"), { auth }, { "owner" }, { state }, backgroundScope, {})
+            sync.photos = photos
+            val mark = mark(sync, state)
+            server.accessAction = "WAIT"
+            server.accessReason = "protected"
+            val accessError = runCatching { photos.checkAccess(mark) }.exceptionOrNull()
+            assertTrue(accessError is TerritoryCaptureBlocked)
+            assertTrue(accessError!!.message!!.contains("보호"))
+            server.admissionFailure = "protected"
+            val id = UUID.randomUUID().toString()
+            val error = runCatching { photos.reserve(state, mark, photoCaptureBody(id, WALK, SITE, DOG, fix(), 3100), 1) }.exceptionOrNull()
+            assertTrue(error is TerritoryCaptureBlocked)
+            assertTrue(error!!.message!!.contains("보호"))
+            val refused = dao.all().single { it.kind == "PHOTO" }
+            assertFalse(refused.photoActive())
+            assertEquals("protected", refused.failure)
+            assertFalse(refused.photoGuidance().contains("전송"))
+            assertTrue(server.photos.isEmpty())
+            assertNull(server.uploadedBytes)
+            server.admissionFailure = null; server.accessAction = "PHOTO_UPGRADE"; server.accessReason = null
+            assertTrue(photos.checkAccess(mark))
+            val retry = UUID.randomUUID().toString()
+            assertEquals(retry, photos.reserve(state, mark, photoCaptureBody(retry, WALK, SITE, DOG, fix(), 3100), 2))
+            val admission = server.calls.last()
+            assertTrue(admission.second.endsWith("/challenges/$retry"))
+            assertEquals(2L, JSONObject(admission.third!!).getLong("expected_site_version"))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun `protected verified verdict is a game rejection rather than a broken transfer`() {
+        val row = TerritoryOperation(identity = "photo:x", ownerId = "owner", sessionId = WALK,
+            kind = "PHOTO", body = "{}", state = "CONFIRMED", response = """{"stage":"COMPLETE"}""", failure = "protected")
+        assertTrue(row.photoGuidance().contains("인증은 완료"))
+        assertFalse(row.photoGuidance().contains("전송을 복구"))
+    }
     @Test fun `pending verdict does not delay a fresh mark until photo retry`() = runTest {
         val dao = MemoryActions(); val server = PhotoServer(); val state = walking(); val dir = directory()
         try {

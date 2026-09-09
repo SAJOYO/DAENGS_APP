@@ -9,6 +9,8 @@ class ActivityRepository(
     private val freshSession: suspend () -> Session?,
     private val currentSession: () -> Session?,
 ) {
+    suspend fun currentSeason(): Result<ActivitySeason?> = read { client.currentSeason(it.accessToken) }
+
     suspend fun sessionLink(clientSessionId: String): Result<ActivitySessionLink> = read {
         client.sessionLink(it.accessToken, clientSessionId)
     }
