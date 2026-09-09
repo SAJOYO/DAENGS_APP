@@ -171,6 +171,13 @@ class WalkViewModelTest {
         vm.onAction(WalkAction.PhotographTerritory("near")); runCurrent()
         assertEquals(null, claims.attempt("walk", "near"))
         assertEquals("far", vm.state.value.territoryGame.targetId)
+        assertEquals(setOf("near"), vm.state.value.territoryGame.visibleRangeSiteIds)
+        vm.onAction(WalkAction.SelectTerritorySite("near")); runCurrent()
+        assertEquals("near", vm.state.value.territoryGame.targetId)
+        assertEquals(listOf("far", "near"), vm.state.value.territory.sites.map { it.id })
+        assertEquals(true, vm.state.value.territoryGame.canMark)
+        vm.onAction(WalkAction.MarkTerritory("near")); runCurrent()
+        assertEquals(true, claims.attempt("walk", "near") != null)
     }
 
     @Test fun `nearby feed follows GPS while a distant viewport and manual card stay selected`() = runTest {
@@ -217,7 +224,8 @@ class WalkViewModelTest {
         assertEquals("far", vm.state.value.territory.selectedSiteId)
         assertEquals("far", vm.state.value.territoryGame.targetId)
         assertEquals(far.point, vm.state.value.territory.loadedOrigin)
-        assertEquals(listOf("far"), vm.state.value.toMapPresentation().scene.territorySites.map { it.id })
+        assertEquals(listOf("far", "A", "B"), vm.state.value.toMapPresentation().scene.territorySites.map { it.id })
+        assertEquals(setOf("A", "B"), vm.state.value.territoryGame.visibleRangeSiteIds)
         assertFalse(vm.state.value.territoryGame.canMark)
         assertFalse(vm.state.value.territoryGame.canPhotograph)
         assertEquals(1, subscriptions)
@@ -243,6 +251,7 @@ class WalkViewModelTest {
         assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
         advanceTimeBy(10_001); runCurrent()
         assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals(emptySet<String>(), vm.state.value.territoryGame.visibleRangeSiteIds)
         assertEquals(1, reads)
         controller.publish(tracking(sample.copy(elapsedRealtimeNanos = 12_000_000_000L))); runCurrent()
         assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
@@ -263,6 +272,7 @@ class WalkViewModelTest {
         assertEquals("A", vm.state.value.territoryGame.nearbyTargetId)
         vm.deactivate(); runCurrent()
         assertEquals(null, vm.state.value.territoryGame.nearbyTargetId)
+        assertEquals(emptySet<String>(), vm.state.value.territoryGame.visibleRangeSiteIds)
     }
 
     @Test fun `photo preflight rejection displays policy message without opening camera`() = runTest {
@@ -343,7 +353,9 @@ class WalkViewModelTest {
         assertFalse(vm.state.value.territoryGame.canPhotograph)
         val marker = vm.state.value.toMapPresentation().scene.territorySites.single()
         assertEquals(TerritoryMarkerOccupancy.VERIFIED, marker.occupancy)
-        assertEquals(null, marker.radiusMeters)
+        assertEquals(20.0, marker.radiusMeters)
+        assertEquals(com.daengs.app.territory.TerritoryProximityRange.IN_RANGE, marker.proximity)
+        assertFalse(marker.ready)
         assertEquals(null, marker.feedback)
         assertEquals(null, controller.state.value.activeSessionId)
         advanceTimeBy(15_000); runCurrent()

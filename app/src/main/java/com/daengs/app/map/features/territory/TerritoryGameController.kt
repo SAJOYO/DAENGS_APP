@@ -71,6 +71,8 @@ data class TerritoryGameState(
     val confirmedMarkVerified: Boolean = false,
     val onlinePhotos: Boolean = false,
     val nearbyTargetId: String? = null,
+    /** Automatically exposed map ranges; never a selection or an action target. */
+    val visibleRangeSiteIds: Set<String> = emptySet(),
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
     val nearbyTarget: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == nearbyTargetId }
