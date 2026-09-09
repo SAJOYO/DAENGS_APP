@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.walk.support.diaryFixture
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -19,7 +20,7 @@ class WalkStoryboardScreenTest {
 
     @Test fun `내부 배경과 메모는 하나의 장면 본문으로 표시된다`() {
         val scene = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(
-            com.daengs.app.walk.diary.diaryFixture().toString()).scenes.first()
+            diaryFixture().toString()).scenes.first()
         compose.setContent { DiarySceneText(scene.sceneBody()) }
         compose.onNodeWithText("등록된 카페가 가까이에 있었다.   두부와 사진을 찍었다.\n다음 기록도 남김  ").assertExists()
         compose.onNodeWithText("직접 남긴 기록").assertDoesNotExist()

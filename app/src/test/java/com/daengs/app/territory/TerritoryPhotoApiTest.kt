@@ -1,5 +1,10 @@
 package com.daengs.app.territory
 
+import com.daengs.app.territory.support.CLAIM
+import com.daengs.app.territory.support.DOG
+import com.daengs.app.territory.support.DOG2
+import com.daengs.app.territory.support.SITE
+import com.daengs.app.territory.support.WALK
 import java.io.File
 import java.net.ServerSocket
 import kotlin.concurrent.thread

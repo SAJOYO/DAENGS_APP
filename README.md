@@ -207,6 +207,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Windows 에서는 `gradlew.bat` 을 쓴다.
+기능 변경의 테스트만 확인할 때는 [실행 지도](app/src/test/README.md)에 따라 `--tests`로 범위를 선택한다.
 
 ### 스토어에 올릴 빌드
 
@@ -257,7 +258,7 @@ app/          안드로이드 앱 (Kotlin + Jetpack Compose)
     ui/         홈 화면, 인벤토리, 개발자 패널
     walk/       산책 기록 코어·Foreground Service·Room 저장 계약
   src/main/res/drawable-nodpi/   픽셀 아트 (WebP)
-  src/test/     단위 테스트 84개
+  src/test/     Kotlin·Room·Compose 테스트 (실행 범위는 이 폴더의 README.md)
 tools/        파이썬 도구 (에셋 반입·가공)
 docs/         에셋 제작 워크플로, 아이소메트릭 템플릿
 design/       화면 시안
@@ -345,9 +346,14 @@ gh api "repos/frankie516c/dog-training-rag/contents/<경로>?ref=<브랜치>" \
 
 ## 테스트
 
+변경한 기능에 맞는 클래스와 공용 helper 소비자를
+[기능별 테스트 실행 지도](app/src/test/README.md)에서 선택한다.
+한 클래스만 확인하려면 다음처럼 실행한다. Windows에서는 `gradlew.bat`을 쓴다.
+
 ```bash
-./gradlew :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest --tests 'com.daengs.app.walk.store.WalkDaoTest'
 ```
 
-단위 테스트 84개가 좌표 변환·배치·앞뒤 정렬·문 터치·견종 규격·창밖 매핑을 잡는다.
-**그림이 예쁜지는 테스트가 못 잡는다** — 그건 실기기에서 본다.
+전체 검증이 필요한 경우에는 `--tests` 없이 `:app:testDebugUnitTest`를 실행한다.
+테스트는 좌표·배치뿐 아니라 API 계약, Room 저장·마이그레이션, 핀·사진 동기화와
+Compose 화면도 확인한다. 실제 GPS·지도 SDK·촬영·그림은 실기기에서 별도로 본다.
