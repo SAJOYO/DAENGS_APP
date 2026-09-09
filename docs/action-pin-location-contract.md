@@ -1,6 +1,6 @@
 # 행동 핀 위치 추정 — APP 연결 계약
 
-상태: 1단위 명세 초안. 버튼·Kotlin·Room·API 동작은 아직 바뀌지 않았다.
+이 문서는 1단위 설계 당시의 연결 지점을 기록한다. 현재 구현과 검증은 [4단위 앱 연결](action-pin-app-integration.md)에서 확인한다.
 작성/정적 대조: 2026-09-09, APP dev `7cec8a6`, DEV dev `b041ce4`.
 카드: [APP #227](https://github.com/SAJOYO/DAENGS_APP/pull/227),
 [공통 계약 DEV #354](https://github.com/SAJOYO/DAENGS_dev/pull/354).

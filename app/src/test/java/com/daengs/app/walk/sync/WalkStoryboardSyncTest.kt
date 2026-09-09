@@ -16,6 +16,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WalkStoryboardSyncTest {
+    @Test fun `기존 기록의 분석 stamp는 마이그레이션 후에도 그대로다`() {
+        val row = WalkEntryRow("e", "s", "content", 3, "mutation", false)
+        val old = org.json.JSONArray().put(org.json.JSONArray(listOf("e", 3, "mutation", false, null))).toString()
+        assertEquals(com.daengs.app.walk.diary.storyboardHash(old), storyboardEntryStamp(listOf(row)))
+    }
     @Test fun `v4 source GPS identity survives Room storage`() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
         try {

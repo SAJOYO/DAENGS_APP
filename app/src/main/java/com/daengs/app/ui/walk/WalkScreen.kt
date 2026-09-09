@@ -84,7 +84,6 @@ import com.daengs.app.walk.MIN_WALK_MILLIS
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.countsAsWalk
 import com.daengs.app.walk.WalkTrackingState
-import com.daengs.app.walk.isFreshEnoughForMoment
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -278,8 +277,7 @@ private fun WalkGameOverlay(
             tracking.trail.state == TrackingState.PAUSED -> "산책이 잠시 멈춰 있어요"
             else -> "산책을 시작하면 지나온 동선이 지도에 남아요"
         }
-        val momentEnabled = tracking.latestMomentFix
-            ?.isFreshEnoughForMoment(realtimeMillis * 1_000_000L) == true
+        val momentEnabled = tracking.canRecordAction
 
         Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
             val landscape = layoutMode == WalkLayoutMode.LANDSCAPE

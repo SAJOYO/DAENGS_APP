@@ -71,10 +71,11 @@ fun diaryWalk(
         else applyStoryboardEdits(sources, draft)).filter { it.available && !it.hidden }.map { scene ->
         val entryId = scene.entryReference?.entryId ?: scene.id.takeIf { it.startsWith("entry:") }
             ?.removePrefix("entry:")
-        val point = if (entryId != null) localEntries.firstOrNull { it.id == entryId }?.point
+        val entry = localEntries.firstOrNull { it.id == entryId }
+        val point = if (entryId != null) entry?.let { it.pin?.point ?: it.point }
             else index.resolve(scene.observation)
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
-            scene.title, scene.body, point, scene.evidence, scene.needsReview, entryId = entryId)
+            scene.title, scene.body, point, entry?.pin?.label ?: scene.evidence, scene.needsReview, entryId = entryId)
     } + photos.filter { it.sessionId == walk.sessionId }.map { photo ->
         DiaryScene("${walk.sessionId}/photo:${photo.id}", walk.sessionId, photo.capturedAtMillis,
             "산책 사진", "이날 남긴 사진", photo.point, "촬영할 때 저장한 위치", photo = photo)

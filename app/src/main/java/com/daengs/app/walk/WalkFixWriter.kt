@@ -75,6 +75,9 @@ class WalkFixWriter(
         check(commands.trySend(command).isSuccess) { "walk fix writer is unavailable" }
     }
 
+    /** Submit an action-pin transaction between raw fixes and session close. */
+    fun ordered(command: suspend () -> Unit): Deferred<Unit> = enqueueAwait(command)
+
     private fun enqueueAwait(command: suspend () -> Unit): Deferred<Unit> {
         val completion = CompletableDeferred<Unit>()
         enqueue {

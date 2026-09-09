@@ -36,6 +36,8 @@ data class WalkTrackingState(
     val completedSessionId: String? = null,
     val stayStamps: List<StayStamp> = emptyList(),
 ) {
+    val canRecordAction: Boolean get() = trail.state == TrackingState.RECORDING && activeSessionId != null
+
     fun elapsedMillisAt(realtimeMillis: Long): Long =
         activeDurationMillis + activeSinceRealtimeMillis
             ?.let { (realtimeMillis - it).coerceAtLeast(0L) }
@@ -66,7 +68,7 @@ interface WalkTrackingController {
 
     fun stop()
 
-    /** 화면은 행동 종류만 보낸다. 좌표 선택과 5m 묶음 판정은 산책 서비스가 한다. */
+    /** 화면은 행동 종류만 보낸다. 서비스가 원본 저장과 별도의 핀 추정을 예약한다. */
     fun recordMoment(type: WalkMomentType)
 
     /** 결과 화면을 닫은 뒤 같은 완료 결과가 다시 뜨지 않게 소비한다. */

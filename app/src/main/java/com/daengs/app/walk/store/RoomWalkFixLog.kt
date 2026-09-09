@@ -8,6 +8,8 @@ import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
+import com.daengs.app.walk.toEntryMoments
+import com.daengs.app.walk.toMomentGroups
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -181,6 +183,14 @@ class RoomWalkFixLog(private val dao: WalkDao,
         }.map { entry -> RecordedWalkAction(entry.id, entry.sessionId, entry.type,
             entry.recordedAtMillis, requireNotNull(entry.locationCapturedAtMillis),
             requireNotNull(entry.point), entry.accuracyMeters) }
+
+    override suspend fun moments(sessionId: String): List<com.daengs.app.walk.WalkMoment> {
+        val rows = dao.entries(sessionId)
+        val legacyIds = rows.filter { !it.isV2 }.map { it.id }.toSet()
+        // Keep the pre-existing history grouping for v1; v2 pins retain their action identity.
+        val legacy = actions(sessionId).filter { it.id in legacyIds }.toMomentGroups()
+        return legacy + rows.filter { it.isV2 }.mapNotNull { it.entry() }.toEntryMoments()
+    }
 }
 
 fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession = RecordedSession(

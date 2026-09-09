@@ -149,11 +149,12 @@ object WalkApi {
         path: String,
         method: String,
         body: JSONObject? = null,
+        v2: Boolean = false,
         parse: (String) -> T,
     ): Result<T> = withContext(Dispatchers.IO) {
         runCatching {
             check(configured) { "서버 주소가 없습니다. local.properties 의 daengs.apiBaseUrl 을 채우세요." }
-            val conn = (URL("${BuildConfig.API_BASE_URL.trimEnd('/')}/app/walks$path")
+            val conn = (URL("${BuildConfig.API_BASE_URL.trimEnd('/')}/app/${if (v2) "v2/" else ""}walks$path")
                 .openConnection() as HttpURLConnection).apply {
                 requestMethod = method
                 connectTimeout = TIMEOUT_MS

@@ -13,14 +13,19 @@ import org.json.JSONObject
 import java.io.IOException
 
 fun storyboardEntryStamp(rows: List<WalkEntryRow>): String = storyboardHash(JSONArray().apply {
-    rows.sortedBy { it.id }.forEach { put(JSONArray(listOf(it.id, it.revision, it.mutationId, it.dirty, it.syncError))) }
+    rows.sortedBy { it.id }.forEach {
+        val stamp = JSONArray(listOf(it.id, it.revision, it.mutationId, it.dirty, it.syncError))
+        // Keep pre-migration v1 analysis stamps byte-for-byte compatible.
+        if (it.isV2) stamp.put(it.pinRevision).put(it.pinPayload).put(it.pinDirty)
+        put(stamp)
+    }
 }.toString())
 
 class WalkStoryboardSync(
     private val dao: WalkDao,
     private val owner: () -> String,
     private val request: suspend (String, String, JSONObject) -> JSONObject = { token, path, body ->
-        WalkApi.call(token, path, "POST", body, ::JSONObject).getOrThrow()
+        WalkApi.call(token, path, "POST", body, parse = ::JSONObject).getOrThrow()
     },
 ) {
     private val mutex = Mutex()
@@ -48,6 +53,8 @@ class WalkStoryboardSync(
         if (account.isEmpty() || tokenOwner != account || dao.session(sessionId)?.ownerId != account) return@withLock
         val rows = dao.entries(sessionId)
         if (rows.any { it.dirty || it.syncError != null }) throw IOException("행동 기록 동기화를 먼저 완료해야 해요.")
+        // Server storyboard still consumes v1 original GPS. Do not feed it inferred positions.
+        if (rows.any { it.isV2 && it.payload != null }) return@withLock
         val stamp = storyboardEntryStamp(rows)
         val previous = dao.sceneAnalysis(sessionId)
         val pending = WalkSceneAnalysisRow(sessionId, previous?.generation ?: 0, stamp,

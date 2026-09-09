@@ -19,10 +19,15 @@ data class WalkEntry(
     val syncError: String? = null,
     /** 로컬 편집 시작 버전. 서버 content에는 직렬화하지 않는다. */
     val baseVersion: WalkEntryVersion? = null,
+    /** Pin display is independent from the immutable original GPS content. */
+    val pin: com.daengs.app.walk.pin.ActionPin? = null,
+    val syncPending: Boolean = false,
 ) {
     fun validate(): WalkEntry {
         require(type != WalkMomentType.NOTE || (!note.isNullOrBlank() && note.length <= 2000))
-        require(type == WalkMomentType.NOTE || (point != null && locationCapturedAtMillis != null && note == null))
+        require(type == WalkMomentType.NOTE || note == null)
+        require((point == null) == (locationCapturedAtMillis == null))
+        require(point != null || accuracyMeters == null)
         return this
     }
 

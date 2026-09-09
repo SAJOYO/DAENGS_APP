@@ -12,13 +12,14 @@ data class StoryboardAnalysisView(
 
 /** A cached source is readable after failure, but only a successful current attempt can be reviewed. */
 fun storyboardAnalysisView(analysis: WalkSceneAnalysisRow?, entries: List<WalkEntryRow>): StoryboardAnalysisView {
-    val clean = entries.none { it.dirty || it.syncError != null }
+    val clean = entries.none { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null }
     val stamp = storyboardEntryStamp(entries)
     // Do not resurrect deleted/changed actions from the old bundle while showing current entries.
     val bundle = if (clean && analysis?.bundleEntryStamp == stamp)
         analysis.bundle?.let { runCatching { GeoStoryboardBundle.parse(it) }.getOrNull() } else null
     val current = bundle != null && analysis?.status == "ready" && analysis.entryStamp == stamp
     val notice = when {
+        entries.any { it.isV2 && it.payload != null } -> "직접 남긴 행동과 위치를 보여줘요. 새 행동 기록의 장면 분석 연결을 준비하고 있어요."
         bundle != null && !current -> if (analysis?.status == "running")
             "최신 분석을 확인하고 있어요. 이전에 저장한 장면을 보여줘요."
             else "최신 분석을 확인하지 못했어요. 이전에 저장한 장면이며, 다시 분석한 뒤 검토를 완료할 수 있어요."
