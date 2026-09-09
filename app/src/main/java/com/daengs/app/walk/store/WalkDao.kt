@@ -7,6 +7,59 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPhotoSync(row: WalkPhotoSyncRow): Long
+
+    @Query("SELECT * FROM walk_photo_sync WHERE sessionId = :sessionId")
+    suspend fun photoSync(sessionId: String): WalkPhotoSyncRow?
+
+    @Query("SELECT * FROM walk_photo WHERE sessionId = :sessionId ORDER BY id")
+    suspend fun photos(sessionId: String): List<WalkPhotoRow>
+
+    @Query("SELECT sessionId FROM walk_photo_sync WHERE revision > acknowledgedRevision OR pendingPayload IS NOT NULL")
+    suspend fun dirtyPhotoSessions(): List<String>
+
+    @Query("UPDATE walk_photo_sync SET revision = revision + 1 WHERE sessionId = :sessionId AND ownerId = :ownerId")
+    suspend fun touchPhotoSync(sessionId: String, ownerId: String)
+
+    @androidx.room.Transaction
+    suspend fun savePhotoAndQueue(row: WalkPhotoRow) {
+        check(session(row.sessionId)?.ownerId == row.ownerId)
+        insertPhoto(row)
+        insertPhotoSync(WalkPhotoSyncRow(row.sessionId, row.ownerId, java.util.UUID.randomUUID().toString()))
+        touchPhotoSync(row.sessionId, row.ownerId)
+    }
+
+    @androidx.room.Transaction
+    suspend fun deletePhotoAndQueue(id: String, ownerId: String) {
+        val row = photo(id) ?: return
+        check(row.ownerId == ownerId && session(row.sessionId)?.ownerId == ownerId)
+        // Also covers photos present before migration or saved by an earlier app version.
+        insertPhotoSync(WalkPhotoSyncRow(row.sessionId, ownerId, java.util.UUID.randomUUID().toString()))
+        deletePhoto(id)
+        touchPhotoSync(row.sessionId, ownerId)
+    }
+
+    @androidx.room.Transaction
+    suspend fun photoUploadSnapshot(sessionId: String, ownerId: String, walkId: String): WalkPhotoUploadSnapshot? {
+        val walk = session(sessionId) ?: return null
+        if (walk.ownerId != ownerId || walk.endedAtMillis == null || walk.serverWalkId != walkId) return null
+        val state = photoSync(sessionId) ?: return null
+        if (state.ownerId != ownerId) return null
+        val photos = photos(sessionId)
+        check(photos.all { it.ownerId == ownerId })
+        return WalkPhotoUploadSnapshot(state, photos)
+    }
+
+    @Query("UPDATE walk_photo_sync SET pendingPayload = :payload WHERE sessionId = :sessionId " +
+        "AND ownerId = :ownerId AND revision = :revision AND pendingPayload IS NULL")
+    suspend fun freezePhotoUpload(sessionId: String, ownerId: String, revision: Long, payload: String): Int
+
+    @Query("UPDATE walk_photo_sync SET acknowledgedRevision = :revision, pendingPayload = NULL " +
+        "WHERE sessionId = :sessionId AND ownerId = :ownerId AND pendingPayload = :payload " +
+        "AND acknowledgedRevision < :revision")
+    suspend fun acknowledgePhotoUpload(sessionId: String, ownerId: String, revision: Long, payload: String): Int
+
     @androidx.room.Transaction
     suspend fun rejectPinRequest(id: String, sent: String, ownerId: String, message: String) {
         val row = entry(id) ?: return

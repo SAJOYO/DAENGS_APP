@@ -114,7 +114,10 @@ class DaengsApp : Application() {
 
         val store = WalkTrackingStore()
         val dao = WalkDatabase.open(this).walkDao()
-        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos")) {
+        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos"),
+            onChanged = { sessionId -> applicationScope.launch {
+                runCatching { walkRuntime.delivery.enqueue(sessionId) }
+            } }) {
             tokenStore.load()?.appUserId.orEmpty()
         }
         val log = RoomWalkFixLog(dao, prunePhotos = walkPhotos::prune) { tokenStore.load()?.appUserId.orEmpty() }
@@ -131,6 +134,7 @@ class DaengsApp : Application() {
             scope = applicationScope,
         )
         val delivery = WorkManagerWalkDeliveryScheduler(this, log)
+        val photoSync = com.daengs.app.walk.sync.WalkPhotoSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         walkRuntime = WalkRuntime(
             locationSource = FusedLocationSource(this),
             store = store,
@@ -140,6 +144,7 @@ class DaengsApp : Application() {
             history = WalkHistory(log),
             sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
                 v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
+                photoSync = photoSync::sync,
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,
         )
