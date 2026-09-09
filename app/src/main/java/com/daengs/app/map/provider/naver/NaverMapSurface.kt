@@ -15,6 +15,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -61,6 +64,7 @@ fun NaverMapSurface(
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
     centerZoom: Double? = null,
+    keepSelectionVisible: Boolean = false,
     /** 이 점들이 **다 보이게** 화면을 맞춘다. 지난 산책의 경로처럼 범위가 정해진 것에 쓴다. */
     fitBounds: List<GeoPoint>? = null,
     onCameraIdle: (GeoPoint) -> Unit,
@@ -83,6 +87,8 @@ fun NaverMapSurface(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current.density
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
@@ -134,7 +140,7 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = modifier,
+        modifier = if (keepSelectionVisible) modifier.onSizeChanged { viewportSize = it } else modifier,
     )
 
     LaunchedEffect(naverMap, searchOrigin) {
@@ -181,8 +187,10 @@ fun NaverMapSurface(
 
     // 화면 아래를 패널이 덮고 있다. 그걸 알려주지 않으면 지도가 **패널 뒤를 가운데로**
     // 삼아서, 고른 장소로 움직여도 그 장소가 패널에 가려 안 보인다.
-    LaunchedEffect(naverMap, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
-        naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx)
+    LaunchedEffect(naverMap, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx, keepSelectionVisible) {
+        // The diary explicitly reframes below. Do not also shift its target to preserve the old
+        // visible map area: that padding-induced camera move can displace the new fit/selection.
+        naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx, keepSelectionVisible)
     }
 
     // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
@@ -201,8 +209,12 @@ fun NaverMapSurface(
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
     // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
-    LaunchedEffect(naverMap, fitBounds, bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
+    LaunchedEffect(naverMap, fitBounds, if (keepSelectionVisible) centerOn else null,
+        if (keepSelectionVisible) viewportSize else IntSize.Zero,
+        bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
+        if (keepSelectionVisible && centerOn != null) return@LaunchedEffect
+        if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
         val bounds = LatLngBounds.Builder().apply {
             points.forEach { include(it.toLatLng()) }
@@ -210,6 +222,12 @@ fun NaverMapSurface(
         // 한 점뿐이면 경계가 넓이 0 이라 SDK 가 거부한다. 그때는 그 점으로 간다.
         if (bounds.southWest == bounds.northEast) {
             map.moveCamera(CameraUpdate.scrollAndZoomTo(bounds.southWest, SELECTED_PLACE_MIN_ZOOM))
+        } else if (keepSelectionVisible) {
+            // Leave space for the ordinal badge above a coordinate, endpoints below it,
+            // and the settings button. Refit after the diary header changes the actual view size.
+            val visibleHeight = viewportSize.height - topPaddingPx - bottomPaddingPx
+            val padding = minOf((48 * density).toInt(), visibleHeight / 5).coerceAtLeast(0)
+            map.moveCamera(CameraUpdate.fitBounds(bounds, padding, padding * 2, padding, padding))
         } else {
             map.moveCamera(CameraUpdate.fitBounds(bounds, FIT_PADDING_PX))
         }
@@ -221,8 +239,11 @@ fun NaverMapSurface(
     // **선택 상태가 아니라 "누른 순간"을 본다.** 검색이 끝나면 첫 결과가 저절로
     // 선택되는데, 선택을 보고 움직이면 "내 위치" 를 눌러도 지도가 곧바로 그 첫
     // 결과로 도로 끌려간다.
-    LaunchedEffect(naverMap, centerOn) {
+    LaunchedEffect(naverMap, centerOn,
+        if (keepSelectionVisible) viewportSize else IntSize.Zero,
+        if (keepSelectionVisible) listOf(bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) else emptyList<Int>()) {
         val map = naverMap ?: return@LaunchedEffect
+        if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val point = centerOn ?: return@LaunchedEffect
         // 너무 멀리서 보고 있었으면 당겨 준다. 이미 가까우면 배율은 안 건드린다 —
         // 사용자가 맞춰 놓은 화면을 마음대로 바꾸지 않는다.
@@ -303,17 +324,20 @@ fun NaverMapSurface(
         }
         value = loaded
     }
-    DisposableEffect(naverMap, scene.moments, photoIcons) {
+    val badgeDensity = LocalDensity.current.density
+    DisposableEffect(naverMap, scene.moments, photoIcons, badgeDensity) {
         val map = naverMap
         val markers = if (map == null) emptyList() else scene.moments.map { moment ->
             Marker().apply {
                 position = moment.point.toLatLng()
-                captionText = moment.label
+                val badge = moment.sequenceLabel?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
+                captionText = if (badge == null) moment.label else ""
                 captionMinZoom = 12.0
-                width = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                height = if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                anchor = MARKER_ANCHOR
-                icon = photoIcons[moment.photoFile] ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
+                width = badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                height = badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                anchor = if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
+                icon = badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
+                    ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
                 zIndex = if (moment.aboveRouteEndpoints) {
                     if (moment.selected) 140 else 120
                 } else if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z

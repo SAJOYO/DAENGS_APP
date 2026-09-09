@@ -3,9 +3,6 @@ package com.daengs.app.ui.walk
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -13,13 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.daengs.app.R
 import com.daengs.app.DaengsApp
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
@@ -107,23 +98,15 @@ internal fun WalkDiaryMapScreen(
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
     val mapScene = remember(completed, markers, detail?.stayStamps) {
-        composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
-            stayStamps = detail?.stayStamps.orEmpty()))
+        diaryDisplayScene(composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
+            stayStamps = detail?.stayStamps.orEmpty())))
     }
     val bounds = remember(route, detail?.summary?.anchor, scenes) {
         route?.bounds.orEmpty().ifEmpty { listOfNotNull(detail?.summary?.anchor) } + scenes.mapNotNull { it.point }
     }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ 목록") }
-            Spacer(Modifier.weight(1f))
-            WalkMapSettingsButton()
-        }
-        Text(detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
-            fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, color = TextDark,
-            maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (loaded && detail == null) {
+            TextButton(onClick = onBack) { Text("‹ 산책 목록") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
@@ -145,11 +128,15 @@ internal fun WalkDiaryMapScreen(
                 adding = adding,
                 generationNotice = generationError ?: diary?.notice,
                 generating = generating, onGenerate = ::generate,
-                modifier = Modifier.weight(1f), map = {
+                title = detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
+                subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
+                onBack = onBack, mapSettings = { WalkMapSettingsButton() },
+                modifier = Modifier.weight(1f), map = { bottomInset ->
                     if (bounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
                         Text(if (!loaded) "경로를 불러오고 있어요." else "표시할 위치 기록이 없어요.", color = TextMuted)
                     } else MapHost(scene = mapScene, searchOrigin = null, followDevice = false,
                         fitBounds = bounds, centerOn = chosenPoint?.point ?: selected?.point,
+                        bottomPaddingPx = bottomInset, keepSelectionVisible = true,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
                         onSelectMoment = { selectedId = it },
                         onMapTap = { point -> if (adding) chosenPoint = route?.nearestPointTo(point, 30.0) },
@@ -208,111 +195,20 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): L
     return diaryLocationGroups(scenes).map { group ->
         val chosen = group.firstOrNull { it.id == selectedId } ?: group.first()
         MomentMarkerState(chosen.id, requireNotNull(chosen.point), group.joinToString(" · ") { order[it.id].toString() },
-            selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true)
+            selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true,
+            sequenceLabel = if (group.size <= 3) group.joinToString(" · ") { order[it.id].toString() }
+                else (group.take(2) + listOfNotNull(group.firstOrNull { it.id == selectedId }))
+                    .distinctBy { it.id }.sortedBy { order[it.id] }.joinToString(" · ") { order[it.id].toString() } + " …")
     }
 }
 
-@Composable
-internal fun WalkDiaryMapContent(
-    scenes: List<DiaryScene>, selected: DiaryScene?, loading: Boolean, error: String?,
-    onSelect: (DiaryScene) -> Unit, onClose: () -> Unit, onEdit: (DiaryScene) -> Unit,
-    onPhoto: (WalkPhoto) -> Unit, onRetry: () -> Unit, onAdd: () -> Unit,
-    adding: Boolean = false, modifier: Modifier = Modifier, map: @Composable () -> Unit,
-    generationNotice: String? = null, generating: Boolean = false, onGenerate: (() -> Unit)? = null,
-    onEditRecord: ((DiaryScene) -> Unit)? = null,
-) {
-    val scroll = rememberLazyListState()
-    Column(modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().weight(1f)) { map() }
-        Surface(Modifier.fillMaxWidth().weight(1f), color = CardWhite) {
-            Column(Modifier.padding(horizontal = 14.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onAdd, enabled = !loading && error == null) { Text(if (adding) "위치 선택 취소" else "＋ 기록") }
-                    Spacer(Modifier.weight(1f))
-                    onGenerate?.let { action ->
-                        TextButton(enabled = !loading && !generating, onClick = action) {
-                            Text(if (generating) "준비 중" else "일기 생성·갱신")
-                        }
-                    }
-                }
-                if (adding) Text("동선에서 기록을 남길 위치를 눌러 주세요.", style = MaterialTheme.typography.bodySmall)
-                generationNotice?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
-                }
-                if (error != null) Row { Text(error, Modifier.weight(1f)); TextButton(onClick = onRetry) { Text("다시 시도") } }
-                if (loading) Text("장면을 불러오고 있어요.")
-                else if (selected == null) {
-                    Text("${scenes.size}개 장면 · 시간순", color = TextMuted, style = MaterialTheme.typography.labelLarge)
-                    LazyColumn(state = scroll, modifier = Modifier.weight(1f)) {
-                        itemsIndexed(scenes, key = { _, scene -> scene.id }) { index, scene ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { onSelect(scene) }, modifier = Modifier.weight(1f)) {
-                                Text("${index + 1}", Modifier.width(32.dp), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Column(Modifier.weight(1f)) {
-                                    Text(scene.title, color = TextDark, fontSize = 18.sp, lineHeight = 26.sp,
-                                        fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    // 시각만 적는다. **"위치 없는 장면" 을 여기 달지 않는다** —
-                                    // `산책 시작`·`산책 마무리` 는 `storyboardScenes()` 가
-                                    // 좌표를 아예 안 붙이는 장면이라(지어내지 않으려고)
-                                    // 목록의 대부분에 그 꼬리표가 달렸다. 정상인 것이
-                                    // 결함처럼 읽힌다 — "내 위치가 기록이 안 됐나" 로.
-                                    //
-                                    // 정말 알려야 할 때는 이미 아래 상세가 말한다:
-                                    // "확인된 위치가 없어 지도에 점을 찍지 않았어요."
-                                    Text(formatWalkClock(scene.atMillis),
-                                        style = MaterialTheme.typography.bodyMedium, color = TextMuted)
-                                }
-                            }
-                            IconButton(onClick = { onEdit(scene) }) {
-                                Icon(painterResource(R.drawable.ic_diary_edit), contentDescription = "장면 ${index + 1} 수정")
-                            }
-                            }
-                        }
-                    }
-                } else {
-                    val index = scenes.indexOfFirst { it.id == selected.id }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onClose) { Text("‹ 장면 목록") }
-                        Text("장면 ${index + 1}", style = MaterialTheme.typography.labelMedium)
-                    }
-                    LazyColumn(Modifier.weight(1f)) {
-                        item {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(selected.title, Modifier.weight(1f), fontSize = 22.sp, lineHeight = 30.sp,
-                                    fontWeight = FontWeight.Bold)
-                                IconButton(onClick = { onEdit(selected) }) {
-                                    Icon(painterResource(R.drawable.ic_diary_edit), contentDescription = "장면 수정")
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            if (selected.content != null) DiarySceneText(selected.body, selected.content,
-                                onEditRecord = if (selected.entryId != null && onEditRecord != null)
-                                    ({ onEditRecord(selected) }) else null)
-                            else Text(selected.body, fontSize = 20.sp, lineHeight = 30.sp)
-                            if (selected.content == null && selected.entryId != null && onEditRecord != null)
-                                TextButton(onClick = { onEditRecord(selected) }) { Text("원본 기록 수정") }
-                            if (selected.point == null) Text("확인된 위치가 없어 지도에 점을 찍지 않았어요.", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                            if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.", style = MaterialTheme.typography.bodyMedium)
-                            selected.photo?.let { p -> TextButton(onClick = { onPhoto(p) }) { Text("사진 보기") } }
-                            if (selected.content?.photoId != null && selected.photo == null)
-                                Text("사진 파일은 촬영한 기기에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(enabled = index > 0, onClick = { scenes.getOrNull(index - 1)?.let(onSelect) }) { Text("이전") }
-                        Text("${index + 1} / ${scenes.size}", Modifier.align(Alignment.CenterVertically), color = TextMuted)
-                        TextButton(enabled = index in 0 until scenes.lastIndex, onClick = { scenes.getOrNull(index + 1)?.let(onSelect) }) { Text("다음") }
-                    }
-                }
-            }
-        }
-    }
-}
 
-@Preview(showBackground = true, widthDp = 390, heightDp = 780)
-@Composable
-private fun DiaryMapPreview() {
-    val scene = DiaryScene("s/n", "s", 0, "벤치 옆에서 남긴 메모", "함께 걸었던 하루", null, "사용자 기록", entryId = "n")
-    DaengsTheme { WalkDiaryMapContent(listOf(scene), scene, false, null, {}, {}, {}, {}, {}, {},
-        map = { Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) { Text("산책 지도") } }) }
-}
+/** Display-only suppression at the same observed position; route and stay data stay intact. */
+internal fun diaryDisplayScene(scene: MapScene): MapScene = scene.copy(
+    completedRoute = scene.completedRoute.copy(
+        start = scene.completedRoute.start?.copy(compact = true),
+        end = scene.completedRoute.end?.copy(compact = true)),
+    stayStamps = scene.stayStamps.filterNot { stay ->
+        scene.moments.any { it.point.distanceTo(stay.point) <= 1.0 }
+    },
+)

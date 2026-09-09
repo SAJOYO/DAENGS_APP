@@ -20,6 +20,8 @@ fun MapHost(
     rightPaddingPx: Int = 0,
     centerOn: GeoPoint? = null,
     centerZoom: Double? = null,
+    /** Diary sheet: reframe the selected coordinate when the unobscured viewport changes. */
+    keepSelectionVisible: Boolean = false,
     fitBounds: List<GeoPoint>? = null,
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
@@ -40,6 +42,7 @@ fun MapHost(
         leftPaddingPx = leftPaddingPx, topPaddingPx = topPaddingPx, rightPaddingPx = rightPaddingPx,
         centerOn = centerOn,
         centerZoom = centerZoom,
+        keepSelectionVisible = keepSelectionVisible,
         fitBounds = fitBounds,
         onCameraIdle = onCameraIdle,
         onCameraGesture = onCameraGesture,

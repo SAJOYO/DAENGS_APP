@@ -48,10 +48,55 @@ class WalkDiaryMapScreenTest {
                 map = { Box(Modifier.fillMaxSize()) }, generationNotice = "남긴 기록을 모았어요.",
                 generating = busy, onGenerate = { calls++; busy = true })
         }
+        compose.onNodeWithText("일기 생성·갱신").assertDoesNotExist()
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
         compose.onNodeWithText("일기 생성·갱신").performClick()
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
         compose.onNodeWithText("준비 중").assertIsNotEnabled()
         compose.onNodeWithText("남긴 기록을 모았어요.").assertExists()
         assertEquals(1, calls)
+    }
+
+    @Test fun `reading raises the sheet without recreating the map and dragging it down returns to browsing`() {
+        val scene = DiaryScene("s/n", "s", 0, "첫 장면", "공원 옆이었다.", GeoPoint(37.5, 127.0), "",
+            content = com.daengs.app.walk.diary.DiarySceneContent("직접 남긴 메모", "note", locationLabel = "기록한 위치"))
+        var mounts = 0
+        var inset = 0
+        compose.setContent {
+            var selected by remember { mutableStateOf<DiaryScene?>(null) }
+            WalkDiaryMapContent(listOf(scene), selected, false, null, { selected = it }, { selected = null },
+                {}, {}, {}, {}, map = { padding ->
+                    DisposableEffect(Unit) { mounts++; onDispose {} }
+                    SideEffect { inset = padding }
+                    Box(Modifier.fillMaxSize().testTag("diary-map"))
+                })
+        }
+        val peekTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        val peekInset = inset
+        compose.onNodeWithText("첫 장면").performClick()
+        compose.onNodeWithText("직접 남긴 메모").assertIsDisplayed()
+        val readingTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(readingTop < peekTop - 100)
+        assertTrue(readingTop > 100)
+        assertTrue(inset > peekInset)
+        assertEquals(1, mounts)
+        compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeDown(startY = 10f, endY = 500f) }
+        compose.onNodeWithText("1개 장면 · 시간순").assertIsDisplayed()
+        assertEquals(1, mounts)
+    }
+
+    @Test fun `next scene starts at its title after reading a long previous scene`() {
+        val first = DiaryScene("s/a", "s", 0, "첫 장면", "긴 기록. ".repeat(200), null, "")
+        val second = first.copy(id = "s/b", title = "다음 장면", body = "짧은 메모")
+        compose.setContent {
+            var selected by remember { mutableStateOf<DiaryScene?>(first) }
+            WalkDiaryMapContent(listOf(first, second), selected, false, null, { selected = it },
+                { selected = null }, {}, {}, {}, {}, map = { Box(Modifier.fillMaxSize()) })
+        }
+        compose.onNodeWithTag("diary-scene-body").performTouchInput { swipeUp() }
+        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음 장면").assertIsDisplayed()
+        compose.onNodeWithText("짧은 메모").assertIsDisplayed()
     }
 
     @Test fun `scene navigation retains order and edits the source entry`() {
@@ -128,6 +173,34 @@ class WalkDiaryMapScreenTest {
         assertEquals(c.id,markers.single().id)
         assertTrue(markers.single().selected)
         assertTrue(markers.single().aboveRouteEndpoints)
+        assertEquals("2 · 3", markers.single().sequenceLabel)
+    }
+
+    @Test fun `large same-position group keeps complete order and includes the selected ordinal in its badge`() {
+        val scenes = (1..20).map { DiaryScene("s/$it", "s", it.toLong(), "장면", "", GeoPoint(37.5, 127.0), "") }
+        val marker = diarySceneMarkers(scenes, "s/17").single()
+        assertEquals((1..20).joinToString(" · "), marker.label)
+        assertEquals("1 · 2 · 17 …", marker.sequenceLabel)
+        assertEquals(scenes.first().point, marker.point)
+    }
+
+    @Test fun `diary removes only a coincident stay picture and preserves original endpoints and paths`() {
+        val point = GeoPoint(37.5, 127.0)
+        val far = GeoPoint(37.5002, 127.0)
+        val route = com.daengs.app.map.layers.completedroute.CompletedRouteLayerState(paths = listOf(listOf(point, far)),
+            start = com.daengs.app.map.layers.completedroute.RouteEndpointMarkerState("start", point, "출발",
+                com.daengs.app.map.layers.completedroute.RouteEndpointKind.START))
+        val source = com.daengs.app.map.shell.MapScene(completedRoute = route,
+            moments = listOf(com.daengs.app.map.layers.moments.MomentMarkerState("n", point, "1")),
+            stayStamps = listOf(com.daengs.app.map.layers.stays.StayStampMarkerState(1, point),
+                com.daengs.app.map.layers.stays.StayStampMarkerState(2, far)))
+        val rendered = diaryDisplayScene(source)
+        assertEquals(listOf(2), rendered.stayStamps.map { it.id })
+        assertEquals(2, source.stayStamps.size)
+        assertEquals(route.paths, rendered.completedRoute.paths)
+        assertEquals(point, rendered.completedRoute.start!!.point)
+        assertTrue(rendered.completedRoute.start!!.compact)
+        assertFalse(source.completedRoute.start!!.compact)
     }
 
     @Test fun `server GPS anchors select numbered cards and gap navigation clears marker selection`() {

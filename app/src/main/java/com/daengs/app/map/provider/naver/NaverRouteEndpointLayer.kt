@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -38,24 +39,26 @@ internal fun NaverRouteEndpointLayer(
         return
     }
     val context = LocalContext.current
+    val density = LocalDensity.current.density
     val latestSelect by rememberUpdatedState(onSelect)
-    DisposableEffect(map, endpoints, context.resources.configuration.densityDpi) {
+    DisposableEffect(map, endpoints, context.resources.configuration.densityDpi, density) {
         val markers = if (map == null) emptyList() else endpoints.map { endpoint ->
             val resource = endpoint.kind.iconRes
             // Vector intrinsic dimensions are dp-aware and are also used by Preview.
             val art = requireNotNull(context.getDrawable(resource))
+            val compact = if (endpoint.compact) diaryPinBitmap(endpoint.label, endpoint.selected, density, endpoint = true) else null
             Marker().apply {
                 position = LatLng(endpoint.point.latitude, endpoint.point.longitude)
-                width = art.intrinsicWidth
-                height = art.intrinsicHeight
-                anchor = PointF(0.5f, 0.5f)
-                icon = OverlayImage.fromResource(resource)
-                captionText = endpoint.label.takeIf { endpoint.selected }.orEmpty()
+                width = compact?.width ?: art.intrinsicWidth
+                height = compact?.height ?: art.intrinsicHeight
+                anchor = PointF(0.5f, if (compact == null) 0.5f else 0f)
+                icon = compact?.let(OverlayImage::fromBitmap) ?: OverlayImage.fromResource(resource)
+                captionText = endpoint.label.takeIf { endpoint.selected && !endpoint.compact }.orEmpty()
                 captionMinZoom = 0.0
                 zIndex = if (endpoint.selected) 100 else 80
                 isHideCollidedMarkers = false
                 setOnClickListener {
-                    captionText = if (captionText.isEmpty()) endpoint.label else ""
+                    if (!endpoint.compact) captionText = if (captionText.isEmpty()) endpoint.label else ""
                     if (endpoint.id != LIVE_ROUTE_START_ID) latestSelect(endpoint.id)
                     true
                 }

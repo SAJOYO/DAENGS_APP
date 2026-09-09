@@ -10,4 +10,6 @@ data class MomentMarkerState(
     val selected: Boolean = false,
     val photoFile: java.io.File? = null,
     val aboveRouteEndpoints: Boolean = false,
+    /** Optional ordinal badge for a diary. label retains the complete same-position sequence. */
+    val sequenceLabel: String? = null,
 )
