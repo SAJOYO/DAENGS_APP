@@ -53,6 +53,7 @@ data class PlacesUiState(
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
+    data class ApplyFilters(val edit: com.daengs.app.place.ConversationFilterEdit) : PlacesAction
     data class SetAiMode(val enabled: Boolean) : PlacesAction
     data class Discover(val query: String) : PlacesAction
     data class ChooseAi(val choice: FacilityChoice) : PlacesAction
@@ -198,6 +199,18 @@ class PlacesViewModel(
             facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
         }
         when (action) {
+            is PlacesAction.ApplyFilters -> {
+                val repository = conversationRepository ?: return
+                facility.invalidate()
+                runtimeScope.launch {
+                    try {
+                        if (repository.applyFilters(action.edit)) {
+                            repository.state.value.result?.let(session::acceptConversation)
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                    } catch (_: Exception) { /* Retain committed filters and expose retry. */ }
+                }
+            }
             is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
             is PlacesAction.Discover -> discover(action.query)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)

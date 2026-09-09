@@ -45,6 +45,8 @@ fun PlaceSearchLabScreen(
     categoryContent: (@Composable () -> Unit)? = null,
     conditionContent: (@Composable () -> Unit)? = null,
     answerContent: (@Composable () -> Unit)? = null,
+    onSearchFilters: (() -> Unit)? = null,
+    searchFilterCount: Int = 0,
     aiConnected: Boolean = false,
     emptyMessage: String = "검색 결과가 없어요.",
     showRetry: Boolean = true,
@@ -59,7 +61,7 @@ fun PlaceSearchLabScreen(
         header = {
             PlaceSearchHeader(state.draft,
                 if (state.aiMode) "AI에게 원하는 장소를 말해보세요" else if (live) "장소명 검색" else "장소명·주소 검색",
-                state.aiMode, onEdit, onSubmit, onAi, onBack)
+                state.aiMode, onEdit, onSubmit, onAi, onBack, onSearchFilters, searchFilterCount)
             if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
             answerContent?.invoke()
         },
@@ -149,12 +151,14 @@ fun PlaceSearchLabScreen(
             }
         }
     }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("완료") } })
-    if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text("검색 조건") }, text = {
+    if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(if (live) "검색 반경" else "검색 조건") }, text = {
         Column {
         if (live) listOf(1000, 3000, 5000, 10000, 20000).forEach { meters ->
             TextButton(onClick = { onRadius(meters); filters = false }) { Text("${meters / 1000}km${if (state.applied.radiusMeters == meters) " ✓" else ""}") }
         }
-        Text(if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 장소 상세에서 확인하세요.")
+        Text(if (live && onSearchFilters != null) "‘주차 우선’은 정렬 설정이에요. 필수 조건은 검색창의 필터에서 확인하세요."
+            else if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요."
+            else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 장소 상세에서 확인하세요.")
         }
     }, confirmButton = { TextButton(onClick = { filters = false }) { Text("완료") } })
 }

@@ -43,6 +43,7 @@ data class ConversationUiState(
     val notice: String? = null,
     val answerBusy: Boolean = false,
     val answerError: String? = null,
+    val filterRetry: ConversationFilterEdit? = null,
 )
 
 fun JsonObject.toConversationResult(): ConversationResult {
@@ -166,6 +167,21 @@ class FacilityConversationRepository(
         run(session, "chat", query = query, visibleOrder = visibleOrder)
     }
 
+    suspend fun applyFilters(edit: ConversationFilterEdit): Boolean {
+        val session = freshSession() ?: throw FacilityException(401)
+        if (owner != session.appUserId) {
+            invalidate()
+            throw FacilityException(401)
+        }
+        val before = mutable.value.result
+        if (before?.sessionId != edit.sessionId || before.revision != edit.revision) {
+            mutable.value = mutable.value.copy(notice = "검색 조건이 바뀌었어요. 현재 조건을 확인한 뒤 다시 선택해 주세요.")
+            return false
+        }
+        run(session, "filters", filterEdit = edit)
+        return true
+    }
+
     /** Called only after the committed state has reached the map and filters. */
     suspend fun completeAnswer() {
         val before = mutable.value.result ?: return
@@ -197,15 +213,18 @@ class FacilityConversationRepository(
         }
     }
 
-    private fun publish(result: ConversationResult, notice: String? = null): ConversationResult {
+    private fun publish(result: ConversationResult, notice: String? = null,
+        filterRetry: ConversationFilterEdit? = null): ConversationResult {
         mutable.value = ConversationUiState(result = result, selected = result.selected,
-            notice = if (result.failed) "검색을 변경하지 못해 이전 조건과 결과를 유지했어요." else notice)
+            notice = if (result.failed) "검색을 변경하지 못해 이전 조건과 결과를 유지했어요." else notice,
+            filterRetry = filterRetry)
         return result
     }
 
     private suspend fun run(
         session: Session, mode: String, manual: JsonObject? = null,
         query: String = "", visibleOrder: List<PlaceKey> = emptyList(),
+        filterEdit: ConversationFilterEdit? = null,
     ): ConversationResult {
         if (owner != null && owner != session.appUserId) invalidate()
         owner = session.appUserId
@@ -217,6 +236,7 @@ class FacilityConversationRepository(
                 put("session_id", before.sessionId); put("expected_revision", before.revision)
             }
             manual?.let { put("manual", it) }
+            filterEdit?.let { put("remove_filters", it.toJson()) }
             if (mode == "chat") mutable.value.selected?.let { key ->
                 put("visible_selected", buildJsonObject { put("source", key.source); put("ref", key.ref) })
             }
@@ -230,11 +250,13 @@ class FacilityConversationRepository(
         // The exact request is retried, including its old revision and visible-card references.
         val payload = retry?.takeIf {
             it["mode"]?.jsonPrimitive?.content == "restore" ||
-                (it["mode"] == next["mode"] && it["manual"] == next["manual"] && it["query"] == next["query"]) ||
+                (it["mode"] == next["mode"] && it["manual"] == next["manual"] && it["query"] == next["query"] &&
+                    it["remove_filters"] == next["remove_filters"]) ||
                 before == null
         } ?: next
         pending = payload
-        mutable.value = mutable.value.copy(busy = true, error = null, notice = null, answerBusy = false, answerError = null)
+        mutable.value = mutable.value.copy(busy = true, error = null, notice = null, answerBusy = false,
+            answerError = null, filterRetry = filterEdit)
         try {
             var notice: String? = if (payload !== next && (payload["mode"]?.jsonPrimitive?.content == "restore" ||
                 payload["manual"] != next["manual"] || payload["query"] != next["query"]))
@@ -269,7 +291,7 @@ class FacilityConversationRepository(
             }
             checkLive(mine, session)
             pending = null
-            return publish(result, notice)
+            return publish(result, notice, if (result.failed) filterEdit?.copy(revision = result.revision) else null)
         } catch (error: Exception) {
             if (mine == generation) mutable.value = mutable.value.copy(
                 busy = false, error = when {

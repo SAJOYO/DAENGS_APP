@@ -10,6 +10,7 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.features.places.PlaceDiscoveryState
 import com.daengs.app.map.features.places.PlaceSearchState
 import com.daengs.app.place.*
+import com.daengs.app.place.support.filteredConversationFixture
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
@@ -24,6 +25,63 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 class ConnectedPlaceSearchUiTest {
     @get:Rule val compose = createComposeRule()
+    private fun captureWindow(name: String) {
+        compose.runOnIdle {
+            val view = android.view.inspector.WindowInspector.getGlobalWindowViews().last { it.width > 0 && it.height > 0 }
+            val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+            view.draw(android.graphics.Canvas(bitmap))
+            val directory = java.io.File("build/reports/conversation").apply { mkdirs() }
+            java.io.File(directory, name).outputStream().use {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            bitmap.recycle()
+        }
+    }
+    @Config(qualifiers = "w320dp-h844dp")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun filtersRemainVisibleWithAiOffAndRemovalPreservesOrGrouping() {
+        val result = filteredConversationFixture().toConversationResult()
+        val actions = mutableListOf<PlacesAction>()
+        val state = ready().copy(conversationAvailable = true,
+            conversation = ConversationUiState(result = result),
+            discovery = PlaceDiscoveryState(requestedKinds = result.kinds, origin = result.origin,
+                search = PlaceSearchState.Content(result.search!!)))
+        compose.setContent { DaengsTheme {
+            ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithContentDescription("검색 필터").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithText("주차 가능한 곳만 · 조합 조건 1개").assertIsDisplayed()
+        captureWindow("filters-screen.png")
+        compose.onNodeWithContentDescription("검색 필터").performClick()
+        compose.onNodeWithText("위 조건을 충족하면서, 다음 조합 중 하나").assertIsDisplayed()
+        compose.onNodeWithText("또는").assertIsDisplayed()
+        compose.onNodeWithText("주차 우선: 꺼짐 · 주차 필수 조건의 적용 여부와는 별개예요.").assertExists()
+        captureWindow("filters-dialog.png")
+        compose.onNodeWithContentDescription("주차 가능한 곳만 해제").performClick()
+        assertEquals(PlacesAction.ApplyFilters(ConversationFilterEdit(result.sessionId, result.revision, removeAll = listOf("parking"))), actions.single())
+        // No optimistic removal: the dialog continues showing the committed condition.
+        compose.onNodeWithContentDescription("주차 가능한 곳만 해제").assertExists()
+        compose.onNodeWithText("조합 조건 해제").performClick()
+        assertEquals(PlacesAction.ApplyFilters(ConversationFilterEdit(result.sessionId, result.revision, removeAny = listOf("shop", "pet"))), actions.last())
+    }
+
+    @Test fun staleResultCanBeRefreshedWithoutAiAndFilterRetryKeepsItsOperation() {
+        val result = filteredConversationFixture().toConversationResult().let {
+            it.copy(receipt = JsonObject(it.receipt + ("result_matches_filters" to JsonPrimitive(false))))
+        }
+        val retry = ConversationFilterEdit(result.sessionId, result.revision, removeAll = listOf("parking"))
+        val actions = mutableListOf<PlacesAction>()
+        val state = ready().copy(conversationAvailable = true,
+            conversation = ConversationUiState(result = result, error = "해제 실패", filterRetry = retry))
+        compose.setContent { DaengsTheme {
+            ConnectedPlaceSearchScreen(state, actions::add, {}, {}, {}, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithText("현재 목록은 변경 전 조건의 결과예요.").assertIsDisplayed()
+        compose.onNodeWithText("현재 조건으로 검색").performClick()
+        assertEquals(PlacesAction.ApplyFilters(ConversationFilterEdit(result.sessionId, result.revision)), actions.last())
+        compose.onNodeWithText("검색 다시 시도").performClick()
+        assertEquals(PlacesAction.ApplyFilters(retry), actions.last())
+    }
     @Test fun recoveryNoticeAndRetryRemainVisibleWithAiOff() {
         val result = conversationFixture("manual").toConversationResult()
         val actions = mutableListOf<PlacesAction>()

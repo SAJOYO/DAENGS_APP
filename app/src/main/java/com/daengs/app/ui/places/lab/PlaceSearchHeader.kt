@@ -25,7 +25,8 @@ import com.daengs.app.ui.places.PlaceSearchStyle
 
 @Composable
 internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
-    onEdit: (String) -> Unit, onSubmit: () -> Unit, onAi: () -> Unit, onBack: (() -> Unit)?) {
+    onEdit: (String) -> Unit, onSubmit: () -> Unit, onAi: () -> Unit, onBack: (() -> Unit)?,
+    onFilters: (() -> Unit)? = null, filterCount: Int = 0) {
     val shape = RoundedCornerShape(12.dp)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onBack != null) IconButton(onClick = onBack, modifier = Modifier.size(48.dp).semantics { contentDescription = "뒤로가기" }) {
@@ -48,6 +49,15 @@ internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
                         input()
                     }
                 })
+                if (onFilters != null) IconButton(onClick = onFilters,
+                    modifier = Modifier.size(48.dp).semantics {
+                        contentDescription = "검색 필터"
+                        stateDescription = "필수 조건 ${filterCount}개 적용"
+                    }) {
+                    BadgedBox(badge = { if (filterCount > 0) Badge { Text(filterCount.toString()) } }) {
+                        FilterSearchIcon(Modifier.size(22.dp), active = filterCount > 0)
+                    }
+                }
                 IconButton(onClick = onSubmit, modifier = Modifier.size(48.dp).semantics { contentDescription = "검색 실행" }) {
                     SearchActionIcon(Modifier.size(22.dp))
                 }

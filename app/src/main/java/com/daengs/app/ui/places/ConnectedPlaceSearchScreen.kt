@@ -96,6 +96,8 @@ fun ConnectedPlaceSearchScreen(
     var notice by remember { mutableStateOf<String?>(null) }
     var camera by remember { mutableStateOf(PlaceMapCamera()) }
     var follow by remember { mutableStateOf(true) }
+    var filtersOpen by remember { mutableStateOf(false) }
+    val appliedFilters = state.conversation.result?.appliedPlaceFilters()
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
     LaunchedEffect(state.discovery.response) {
@@ -111,6 +113,13 @@ fun ConnectedPlaceSearchScreen(
         onAction(PlacesAction.Search(selected, parking, query))
     }
     BackHandler(onBack = onBack)
+    fun retryConversationSearch() {
+        val filterRetry = state.conversation.filterRetry
+        onAction(if (filterRetry != null) PlacesAction.ApplyFilters(filterRetry)
+            else if (ai) PlacesAction.Discover(draft) else PlacesAction.RetrySearch)
+    }
+    if (filtersOpen && state.conversationAvailable) ConversationFiltersDialog(state.conversation,
+        onApply = { onAction(PlacesAction.ApplyFilters(it)) }, onDismiss = { filtersOpen = false })
     PlaceSearchLabScreen(
         state = ui, live = true, onBack = onBack,
         onEdit = { draft = it }, onAi = { onAction(PlacesAction.SetAiMode(!ai)); notice = null },
@@ -124,10 +133,17 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
         resultLabel = if (ai && !state.conversationAvailable) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
         aiConnected = true,
+        onSearchFilters = if (state.conversationAvailable) ({ filtersOpen = true }) else null,
+        searchFilterCount = appliedFilters?.count ?: 0,
         answerContent = if (state.conversationAvailable) ({
             ConversationPanel(state.conversation, state.facility.error.takeIf { ai }, showAnswer = ai,
                 onRetryAnswer = { onAction(PlacesAction.RetryAi) },
-                onRetrySearch = { onAction(if (ai) PlacesAction.Discover(draft) else PlacesAction.RetrySearch) })
+                onRetrySearch = ::retryConversationSearch,
+                onApplyCurrentFilters = { state.conversation.result?.let {
+                    onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
+                } },
+                filterSummary = appliedFilters?.summary.orEmpty(),
+                onOpenFilters = { filtersOpen = true })
         }) else null,
         conditionContent = if (state.facility.enabled && !state.conversationAvailable) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
         emptyMessage = if (ai && !state.conversationAvailable && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
@@ -143,7 +159,7 @@ fun ConnectedPlaceSearchScreen(
             onAction(PlacesAction.Select(key))
         },
         onRetry = {
-            if (ai && state.conversationAvailable) onAction(PlacesAction.Discover(draft))
+            if (state.conversationAvailable) retryConversationSearch()
             else if (ai) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
             else if (permission) requestPermission() else onAction(PlacesAction.RetrySearch)
         },
