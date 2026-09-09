@@ -60,6 +60,11 @@ interface WalkDao {
         "AND acknowledgedRevision < :revision")
     suspend fun acknowledgePhotoUpload(sessionId: String, ownerId: String, revision: Long, payload: String): Int
 
+    // A definitive 422 did not write a server revision. Preserve edits and the last ACK.
+    @Query("UPDATE walk_photo_sync SET pendingPayload = NULL WHERE sessionId = :sessionId " +
+        "AND ownerId = :ownerId AND pendingPayload = :payload AND acknowledgedRevision = :expectedRevision")
+    suspend fun rejectPhotoUpload(sessionId: String, ownerId: String, expectedRevision: Long, payload: String): Int
+
     @androidx.room.Transaction
     suspend fun rejectPinRequest(id: String, sent: String, ownerId: String, message: String) {
         val row = entry(id) ?: return

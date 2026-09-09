@@ -168,4 +168,87 @@ class WalkPhotoSyncTest {
         assertEquals(0L, dao.photoSync(session)!!.acknowledgedRevision)
         assertNotNull(dao.photoSync(session)!!.pendingPayload)
     }
+
+    private suspend fun seedPhotos(count: Int): List<String> = List(count) { UUID.randomUUID().toString() }.also { ids ->
+        ids.forEach { dao.savePhotoAndQueue(WalkPhotoRow(it, session, owner, 2000, 1900, 37.5, 127.0, 5f)) }
+    }
+
+    @Test fun `전송 상한을 넘으면 요청을 고정하지 않고 삭제 뒤 최신 목록을 보낸다`() = runBlocking {
+        val ids = seedPhotos(201)
+        assertTrue(runCatching { syncer().sync("token", session, walk) }.isFailure)
+        assertTrue(sent.isEmpty())
+        assertNull(dao.photoSync(session)!!.pendingPayload)
+        dao.deletePhotoAndQueue(ids.last(), owner)
+        syncer().sync("token", session, walk)
+        assertEquals(200, JSONObject(sent.single()).getJSONArray("photos").length())
+        assertTrue(dao.dirtyPhotoSessions().isEmpty())
+    }
+
+    @Test fun `이전 앱이 고정한 초과 요청도 거절을 확인한 뒤 이미 편집된 목록으로 복구한다`() = runBlocking {
+        val ids = seedPhotos(201)
+        val snapshot = dao.photoUploadSnapshot(session, owner, walk)!!
+        val oldPayload = photoManifest(snapshot).toString()
+        dao.freezePhotoUpload(session, owner, snapshot.state.revision, oldPayload)
+        dao.deletePhotoAndQueue(ids.last(), owner)
+        syncer { body ->
+            if (body.getJSONArray("photos").length() > 200) throw WalkHttpException(422, "max_records=200")
+            assertEquals(0L, body.getLong("expected_revision"))
+            ack(body)
+        }.sync("token", session, walk)
+        assertEquals(listOf(201, 200), sent.map { JSONObject(it).getJSONArray("photos").length() })
+        assertTrue(dao.dirtyPhotoSessions().isEmpty())
+    }
+
+    @Test fun `확정 거절 뒤 삭제하면 마지막 성공 버전에서 이어 보낸다`() = runBlocking {
+        val first = photo()
+        syncer().sync("token", session, walk)
+        val lastAck = dao.photoSync(session)!!.acknowledgedRevision
+        val invalid = photo()
+        assertTrue(runCatching { syncer { throw WalkHttpException(422, "outside walk") }.sync("token", session, walk) }.isFailure)
+        assertNull(dao.photoSync(session)!!.pendingPayload)
+        assertEquals(lastAck, dao.photoSync(session)!!.acknowledgedRevision)
+        store.delete(invalid.id)
+        db.close(); reopen()
+        syncer().sync("token", session, walk)
+        val corrected = JSONObject(sent.last())
+        assertEquals(lastAck, corrected.getLong("expected_revision"))
+        assertEquals(first.id, corrected.getJSONArray("photos").getJSONObject(0).getString("id"))
+        assertTrue(dao.dirtyPhotoSessions().isEmpty())
+    }
+
+    @Test fun `거절 응답을 기다리는 중 편집했으면 같은 실행에서 이어 보낸다`() = runBlocking {
+        val removed = photo()
+        var first = true
+        syncer { body ->
+            if (first) { first = false; store.delete(removed.id); throw WalkHttpException(422, "invalid") }
+            assertEquals(0L, body.getLong("expected_revision"))
+            ack(body)
+        }.sync("token", session, walk)
+        assertEquals(listOf(1, 0), sent.map { JSONObject(it).getJSONArray("photos").length() })
+        assertTrue(dao.dirtyPhotoSessions().isEmpty())
+    }
+
+    @Test fun `권한 충돌 서버 오류는 고정 요청을 지우지 않는다`() = runBlocking {
+        photo()
+        listOf(401, 403, 404, 409, 429, 500).forEach { status ->
+            assertTrue(runCatching { syncer { throw WalkHttpException(status, "rejected") }.sync("token", session, walk) }.isFailure)
+            assertEquals(sent.first(), dao.photoSync(session)!!.pendingPayload)
+            assertEquals(0L, dao.photoSync(session)!!.acknowledgedRevision)
+        }
+    }
+
+    @Test fun `거절 뒤 계정이 바뀌거나 이미 교체된 요청이면 대기 상태를 지우지 않는다`() = runBlocking {
+        photo()
+        runCatching { syncer { owner = "b"; throw WalkHttpException(422, "invalid") }.sync("token", session, walk) }
+        val oldPayload = dao.photoSync(session)!!.pendingPayload!!
+        assertEquals(0, dao.rejectPhotoUpload(session, "b", 0, oldPayload))
+        owner = "a"
+        assertEquals(1, dao.rejectPhotoUpload(session, owner, 0, oldPayload))
+        photo()
+        val latest = dao.photoUploadSnapshot(session, owner, walk)!!
+        val newPayload = photoManifest(latest).toString()
+        dao.freezePhotoUpload(session, owner, latest.state.revision, newPayload)
+        assertEquals(0, dao.rejectPhotoUpload(session, owner, 0, oldPayload))
+        assertEquals(newPayload, dao.photoSync(session)!!.pendingPayload)
+    }
 }
