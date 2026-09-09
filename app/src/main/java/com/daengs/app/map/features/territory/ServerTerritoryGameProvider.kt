@@ -16,6 +16,7 @@ private data class SharedBoard(
     val ownerId: String? = null,
     val sites: Map<String, SharedTerritorySite> = emptyMap(),
     val message: String = "점유 정보를 확인하고 있어요",
+    val readState: TerritoryOccupancyReadState = TerritoryOccupancyReadState.LOADING,
 )
 
 /** Shared read cache with an optional durable action boundary. Failures never become local grants. */
@@ -61,7 +62,8 @@ class ServerTerritoryGameProvider(
             currentCoroutineContext().ensureActive()
             if (request != generation || currentOwner() != owner) return
             if (session == null || owner.isNullOrBlank() || session.appUserId != owner) {
-                board.value = SharedBoard(message = "로그인하면 점유 정보를 볼 수 있어요")
+                board.value = SharedBoard(ownerId = owner, message = "로그인하면 점유 정보를 볼 수 있어요",
+                    readState = TerritoryOccupancyReadState.LOGIN_REQUIRED)
                 return
             }
             val loaded = sites.map { it.id }.distinct().chunked(100).flatMap { ids ->
@@ -69,7 +71,8 @@ class ServerTerritoryGameProvider(
             }
             currentCoroutineContext().ensureActive()
             if (request != generation || currentOwner() != owner) return
-            board.value = SharedBoard(owner, loaded.associateBy { it.siteId }, "점유 정보 · 둘러보기")
+            board.value = SharedBoard(owner, loaded.associateBy { it.siteId }, "점유 정보 · 둘러보기",
+                TerritoryOccupancyReadState.READY)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -77,7 +80,9 @@ class ServerTerritoryGameProvider(
             val message = if (error is TerritoryOccupancyApiException && error.status == 401)
                 "로그인 상태를 다시 확인해 주세요"
             else "점유 정보를 불러오지 못했어요 · 잠시 후 다시 확인해요"
-            board.value = SharedBoard(ownerId = owner, message = message)
+            board.value = SharedBoard(ownerId = owner, message = message,
+                readState = if (error is TerritoryOccupancyApiException && error.status == 401)
+                    TerritoryOccupancyReadState.LOGIN_REQUIRED else TerritoryOccupancyReadState.FAILED)
         }
         actions?.photos?.deliverBound()
     }
@@ -101,7 +106,11 @@ class ServerTerritoryGameProvider(
                 TerritoryOccupancy(it.ownerPetId, null, null, it.certification, it.occupiedAtMillis)
             }, shared?.version ?: 0)
             TerritoryGameSite(site, claim, occupied?.ownerPetName.orEmpty(), null, null, false,
-                occupancyKnown = shared != null)
+                occupancyKnown = shared != null,
+                occupancyReadState = if (shared != null) TerritoryOccupancyReadState.READY
+                    else cached?.readState ?: if (currentOwner() == null) TerritoryOccupancyReadState.LOGIN_REQUIRED
+                    else TerritoryOccupancyReadState.LOADING,
+                isOwnedByMe = occupied?.isMine)
         }
         val base = TerritoryGameState(enabled = true, readOnly = true,
             phase = when {
@@ -110,7 +119,8 @@ class ServerTerritoryGameProvider(
                 else -> TerritoryWalkPhase.WALKING
             },
             sites = sites, targetId = board.selectedSiteId,
-            guidance = cached?.message ?: "로그인하면 점유 정보를 볼 수 있어요")
+            guidance = cached?.message ?: if (currentOwner() == null) "로그인하면 점유 정보를 볼 수 있어요"
+                else "점유 정보를 확인하고 있어요")
         if (actions == null || base.phase == TerritoryWalkPhase.BROWSING) return base
         return actionSnapshot(base, tracking, permitted, petNames, nowNanos)
     }

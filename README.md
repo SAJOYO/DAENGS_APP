@@ -195,6 +195,12 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 
 ### 빌드 · 테스트 · 설치
 
+점령지 둘러보기는 기본 debug와 release 모두 서버에서 점령 정보를 읽는다. 로그인과
+`GET /app/territory/occupancies`가 배포된 API가 필요하다. 먼 지역의 전봇대를 선택해도
+산책 시작 없이 강아지·인증·점령 시각을 볼 수 있다. 조회 실패는 미점유로 표시하지 않는다.
+로컬 연습은 debug에 `-PterritoryServerRead=false`, 온라인 액션 테스트는
+`-PterritoryServerActions=true`를 명시한다. [설정과 검증](docs/territory-server-browsing.md).
+
 ```bash
 ./gradlew :app:assembleDebug :app:testDebugUnitTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk

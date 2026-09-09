@@ -6,21 +6,25 @@
 
 ## 켜지는 범위
 
+현재 기본값은 [APP #221](https://github.com/SAJOYO/DAENGS_APP/pull/221)에서 바뀌었다.
+공유 점유 조회는 산책 액션과 독립적으로 일반 앱에서도 제공한다.
+
 | 빌드 | 공급자 | 동작 |
 | --- | --- | --- |
-| 일반 debug | 기존 메모리 점유·페이크 사진 | 지금의 로컬 플레이 유지 |
-| debug + `-PterritoryServerRead=true` | 서버 점유 조회 | 산책 전/중 점유 읽기만 제공 |
-| release | 게임 비활성화 | 이번 조회 실험을 출시 빌드에 노출하지 않음 |
+| 일반 debug | 서버 점유 조회 | 산책 전/중 점유 읽기만 제공 |
+| debug + `-PterritoryServerRead=false` | 메모리 점유·페이크 사진 | 명시적으로 선택하는 로컬 연습 |
+| debug + `-PterritoryServerActions=true` | 서버 점유 조회·액션 | 기존 온라인 영역표시·촬영 테스트 |
+| release | 서버 점유 조회 | 둘러보기 제공, 점령·촬영 액션 비활성 |
 
 기존 `API_BASE_URL`과 `SessionProvider.freshSession()`을 사용한다. 로그인해야 공유 점유를
 읽을 수 있으며 비로그인 상태에서는 HTTP를 보내지 않고 로그인 안내를 표시한다. 일반 산책·일기
 촬영은 기존 정책을 따른다. 서버 모드에서 점유 조회 실패가 로컬 점령 성공으로 바뀌는 fallback은 없다.
 
 ```powershell
-# 기본 로컬 플레이
+# 기본 서버 둘러보기 (명시적인 territoryServerRead=true도 동일)
 ./gradlew.bat :app:assembleDebug
-# DB 적용/배포 후 실제 조회를 켜서 검증할 빌드
-./gradlew.bat :app:assembleDebug -PterritoryServerRead=true
+# 서버 없는 로컬 연습
+./gradlew.bat :app:assembleDebug -PterritoryServerRead=false
 ```
 
 플래그는 커맨드에만 주고 `local.properties`나 운영 환경을 변경하지 않는다. 테스트에서도
@@ -36,10 +40,17 @@
   지도 이동으로 장소 목록이 바뀌면 다시 요청한다. 선택 변경만으로는 요청하지 않는다.
 - 레이어 숨기기·화면 이탈·Activity 백그라운드에서 조회를 중단하고 돌아오면 새로 조회한다.
   서버 조회 상태만 멈추며 Foreground Service의 산책 기록은 계속된다.
-- 로딩·실패는 `점유 확인 전`, 서버가 명시적으로 null을 반환한 경우만 `미점유`다. 갱신 중에는
+- 초기 로딩은 `점유 확인 전`, 통신 실패는 `점유 조회 실패`, 인증이 없으면 `로그인 필요`다.
+  서버가 명시적으로 null을 반환한 경우만 `미점유`다. 갱신 중에는
   같은 계정/요청 장소의 직전 결과를 유지하고, 조회가 실패하면 오래된 소유권을 지운다.
-- 서버 모드는 산책 중에도 대표견 선택·점령·인증 촬영·접근 링을 열지 않는다. 일반 일기 카메라는
-  계속 사용할 수 있다. 장소 카드에 서버가 준 강아지 이름과 인증 상태가 표시된다.
+- 조회되지 않은 지도 마커는 55% 불투명도와 `확인 전` 문구로 구분한다. 선택하면 구체적인
+  조회 상태가 보인다. 공급자가 없는 지도도 미점유로 바꾸지 않는다.
+- 서버 조회 전용 모드는 산책 중에도 대표견 선택·점령·인증 촬영·접근 링을 열지 않는다.
+  일반 일기 카메라는 계속 사용할 수 있다. 장소 카드에 강아지 이름·인증 상태·점령 시각과
+  내 점령 여부를 표시한다. 점령 시각은 서버의 occupied_at을 기기 시간대로 표현한다.
+- 먼 지역도 지도에 불러온 장소를 선택하면 같은 정보를 읽는다. 점유 조회는 현재 GPS의
+  거리·신뢰도나 산책 세션을 요구하지 않는다. 장소 목록의 지도 이동·권한 정책은 유지한다.
+  조회 전용 모드에서 선택할 때 내 위치까지 포함해 지도를 축소하지 않고 보고 있던 지역을 유지한다.
 - 공유 응답에는 타인의 원본 세션/시도 ID가 없다. `TerritoryOccupancy`의 해당 필드를 nullable로
   만들어 없는 값을 그대로 표현한다. 임의 ID를 만들어 채우거나 남의 점유 갱신을 내 성공 효과로
   재생하지 않는다. 로컬 판정 구현은 계속 실제 ID를 사용한다.
@@ -52,9 +63,30 @@
 
 ## 검증
 
+2026-09-09에 #221 브랜치에 최신 dev `180e026`을 병합한 `b744554`에서 아래 검증을
+실행했다. Windows, Android SDK 37.0, JBR 25.0.2, Gradle 9.5.0 환경이다.
+
 ```powershell
-./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.map.features.territory.*' --tests 'com.daengs.app.territory.*' --tests '*WalkViewModelTest' --tests '*WalkTerritoryUiTest' --tests '*TerritoryFeedbackUiTest' :app:assembleDebug
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.territory.TerritoryOccupancyApiTest' --tests 'com.daengs.app.map.features.territory.ServerTerritoryGameProviderTest' --tests 'com.daengs.app.map.features.territory.TerritoryFeedbackTrackerTest' --tests 'com.daengs.app.ui.walk.TerritoryBoardPresentationTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.ui.walk.WalkTerritoryUiTest' --tests 'com.daengs.app.ui.walk.TerritoryFeedbackUiTest' :app:assembleDebug :app:assembleRelease --console=plain
 ```
+
+- 대상 테스트 **61개 통과, 실패·오류·skip 0개**. 저장소 전체 테스트는 실행하지 않았다.
+- debug APK와 **미서명 release APK** 빌드 성공. release의 `lintVitalRelease`도 통과했다.
+- 생성된 두 BuildConfig에서 `TERRITORY_SERVER_READ=true`, `TERRITORY_SERVER_ACTIONS=false`를 확인했다.
+- Compose 렌더의 점유 조회 성공·실패 카드와 320dp 화면을 육안 확인했다.
+  테스트 시각 `1000ms`가 화면에 1970년으로 표시되는 것은 fixture 값이며 실제 서버 시각이 아니다.
+- 서버 주소·지도 키·릴리스 서명을 넣지 않은 검증용 빌드다. 빌드 성공은 실제 서버 연결이나 배포 가능성을 뜻하지 않는다.
+- `adb devices`에 연결 기기가 없어 설치·Naver 지도·실제 두 계정 조회는 미검증이다.
+
+출시 전 실제 API와 기기에서 다음을 확인한다.
+
+1. debug와 release가 각각 의도한 API 주소를 사용하고 인증된 `GET /app/territory/occupancies`가 정상 응답하는지 확인한다.
+2. 계정 A의 실제 점유가 계정 B의 먼 지역 선택 카드에 강아지·인증·점령 시각으로 보이는지 확인한다.
+3. 통신 실패·로그아웃 때 기존 점령자와 점령 시각이 사라지고 미점유로 바뀌지 않는지 확인한다.
+4. 산책 시작 전과 먼 지역에서도 조회되며 조회 전용 빌드에 점령/촬영 버튼이 열리지 않는지 확인한다.
+
+이 PR은 운영 DB·서버 배포·회원 API에 접근하지 않았다. 기존 점유 API와 데이터가 있는
+서버로 새 APK를 빌드·설치해야 실제 점령자가 보인다. 주변 자동 접근 안내는 다음 작업이다.
 
 새 테스트는 실제 localhost HTTP의 인증 헤더·GET·쿼리·JSON 계약, 로그인 없음, 조회 실패/복구,
 지연 응답·계정 변경·장소 요청 교체, 100개 묶음, 모드 기본값, 화면 이탈/백그라운드의 조회 중단을

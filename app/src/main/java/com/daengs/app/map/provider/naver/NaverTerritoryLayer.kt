@@ -32,7 +32,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
             val point = LatLng(site.point.latitude, site.point.longitude)
             val marker = Marker().apply {
                 position = point
-                captionText = if (site.selected) site.label else when (site.occupancy) {
+                captionText = if (site.selected) site.label else if (!site.occupancyKnown) "확인 전" else when (site.occupancy) {
                     TerritoryMarkerOccupancy.NEUTRAL -> ""
                     TerritoryMarkerOccupancy.UNVERIFIED -> "미인증"
                     TerritoryMarkerOccupancy.VERIFIED -> "인증"
@@ -42,6 +42,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                 width = size.first; height = size.second
                 anchor = PointF(TerritoryPoleArt.ANCHOR_X, TerritoryPoleArt.ANCHOR_Y)
                 icon = icons.getValue(TerritoryPoleArt.resource(site.occupancy))
+                alpha = if (site.occupancyKnown) 1f else .55f
                 zIndex = if (site.selected) 100 else 30
                 // 성공 발자국이 같은 위치에 떠도 선택한 전봇대가 충돌 숨김 처리되면 안 된다.
                 isHideCollidedMarkers = !site.selected; isHideCollidedSymbols = !site.selected
