@@ -45,6 +45,15 @@ debug 빌드도 성공했다. Windows / JBR 25.0.2 / Android SDK 37.0 / Gradle 9
 ./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.map.features.territory.TerritoryNearbyControllerTest' --tests 'com.daengs.app.map.features.territory.TerritoryBoardControllerTest' --tests 'com.daengs.app.map.features.territory.TerritoryLocationEvidenceTest' --tests 'com.daengs.app.map.features.territory.ServerTerritoryGameProviderTest' --tests 'com.daengs.app.map.features.territory.TerritoryFeedbackTrackerTest' --tests 'com.daengs.app.ui.walk.TerritoryBoardPresentationTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest' :app:assembleDebug --console=plain
 ```
 
+이후 #224가 병합된 dev `58ae6b5`를 반영한 `68cf061`에서 변경 경계의 ViewModel·산책 화면
+테스트 30개와 debug 빌드를 다시 통과했다. 두 실행의 중복을 제외한 대상은 **73개**이며,
+각 클래스의 최종 결과에 실패·오류·skip은 없다. 전체 테스트와 release 빌드는 실행하지 않았다.
+API 주소·지도 키를 넣지 않은 검증용 빌드다.
+
+```powershell
+./gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.ui.walk.WalkTerritoryUiTest' :app:assembleDebug --console=plain
+```
+
 주변 조회의 이동·시간 경계, 실패 재시도, 잘림, 미지원 지역, 취소 후 늦은 응답과 요청 교체를
 대상 테스트로 검증한다. ViewModel에서는 먼 지역 선택 유지, 기기 이동에 따른 근접 대상 교체,
 점유 조회의 목록 합치기, 위치 구독 1개 유지, 위치 만료·권한·화면 생명주기를 확인한다.
