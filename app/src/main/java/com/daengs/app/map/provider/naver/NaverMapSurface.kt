@@ -295,6 +295,7 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
+    NaverWalkTraceLayer(naverMap, scene.traceTiles)
     NaverTravelHeadingLayer(naverMap, scene.currentPosition, scene.travelHeading)
     NaverSpatialDiaryLayer(naverMap, scene.spatialCells)
 

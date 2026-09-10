@@ -21,6 +21,7 @@
         tools:targetApi="28">
         <activity android:name=".ui.walk.TerritoryPoleLabActivity" android:exported="true" android:label="전봇대 표시 검토" />
         <activity android:name=".ui.walk.GeoStoryboardLabActivity" android:exported="true" android:label="geo 스토리보드 검토" />
+        <activity android:name=".ui.walk.WalkTraceBrushLabActivity" android:exported="true" android:label="산책 흔적 표시 검토" />
         <activity android:name=".ui.places.lab.PlaceSearchLabActivity" android:exported="true" android:label="시설 검색 UI 검토" />
         <activity android:name=".ui.places.lab.PlaceSearchLiveActivity" android:exported="true" android:label="시설 검색 API 검토" />
     </application>
