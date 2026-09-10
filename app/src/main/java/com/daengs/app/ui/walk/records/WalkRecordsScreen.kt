@@ -81,6 +81,7 @@ fun WalkRecordsScreen(
     modifier: Modifier = Modifier,
     sampleLabel: String? = null,
     today: LocalDate = LocalDate.now(),
+    petsLoaded: Boolean = true,
 ) {
     var dogId by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
@@ -132,8 +133,8 @@ fun WalkRecordsScreen(
             error = "산책 기록을 불러오지 못했어요."
         }
     }
-    LaunchedEffect(pets) {
-        if (dogId != null && pets.none { it.id == dogId }) dogId = null
+    LaunchedEffect(pets, petsLoaded) {
+        if (petsLoaded && dogId != null && pets.none { it.id == dogId }) dogId = null
     }
     LaunchedEffect(selection) {
         selection?.let { current ->
