@@ -1,7 +1,6 @@
 package com.daengs.app.care
 
 import com.daengs.app.auth.AuthApi
-import com.daengs.app.member.MemberIdentity
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -32,8 +31,11 @@ data class CareEvent(
     val occurredAtMs: Long,
     val note: String?,
     val clientEventId: String,
-    /** 기록 당시 행동한 사람. 옛 응답에는 필드 자체가 없을 수 있다. */
-    val actor: MemberIdentity? = null,
+    /**
+     * 기록 당시 행동한 사람. 옛 응답에는 필드 자체가 없을 수 있고, 필드가 있어도
+     * **속이 비어 있을 수 있다** ([CareActor] 머리말).
+     */
+    val actor: CareActor? = null,
 ) {
     companion object {
         fun parse(json: JSONObject): CareEvent = CareEvent(
@@ -43,7 +45,7 @@ data class CareEvent(
             occurredAtMs = json.getString("occurred_at").toEpochMillis(),
             note = json.optStringOrNull("note"),
             clientEventId = json.getString("client_event_id"),
-            actor = json.optJSONObject("actor")?.let(MemberIdentity::parse),
+            actor = json.optJSONObject("actor")?.let(CareActor::parse),
         )
     }
 }

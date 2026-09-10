@@ -6,13 +6,13 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.daengs.app.care.CareActor
 import com.daengs.app.care.CareDaySummary
 import com.daengs.app.care.CareEvent
 import com.daengs.app.care.CareKind
 import com.daengs.app.care.CareLogState
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.chat.ChatLoadState
-import com.daengs.app.member.MemberIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -120,11 +120,15 @@ class CareLogSectionTest {
 
     @Test
     fun `돌보미는 자신이 쓴 기록만 지울 수 있다`() {
-        val mine = event().copy(actor = MemberIdentity("me", "나"))
-        val others = event().copy(id = "event-2", actor = MemberIdentity("other", "키키"))
+        val mine = event().copy(actor = CareActor("me", "나"))
+        val others = event().copy(id = "event-2", actor = CareActor("other", "키키"))
+        // 작성자를 모르는 기록(옛 기록·탈퇴자)을 "모르니까 내 것" 으로 치면 안 된다.
+        val nameless = event().copy(id = "event-3", actor = CareActor(null, null))
         assertEquals(true, canDeleteCareEvent(mine, currentUserId = "me", petIsOwner = false))
         assertEquals(false, canDeleteCareEvent(others, currentUserId = "me", petIsOwner = false))
+        assertEquals(false, canDeleteCareEvent(nameless, currentUserId = "me", petIsOwner = false))
         assertEquals(true, canDeleteCareEvent(others, currentUserId = "me", petIsOwner = true))
+        assertEquals(true, canDeleteCareEvent(nameless, currentUserId = "me", petIsOwner = true))
 
         compose.setContent {
             CareLogSection(

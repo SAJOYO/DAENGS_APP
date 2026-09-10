@@ -3,6 +3,7 @@ package com.daengs.app.pet
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetSocketAddress
@@ -25,8 +26,9 @@ class PetMemberApiTest {
             assertEquals("Bearer sample-token", stub.authorization)
             assertEquals("p1", result.petId)
             assertEquals(2, result.members.size)
-            assertEquals("아빠", result.members[0].identity.displayName)
-            assertEquals("이전 보호자", result.members[1].identity.displayName)
+            assertEquals("아빠", result.members[0].nickname)
+            assertTrue(result.members[0].isOwner)
+            assertNull(result.members[1].nickname)
         } finally {
             stub.stop()
         }
