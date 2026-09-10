@@ -5,6 +5,7 @@ import com.daengs.app.location.LocationSample
 import com.daengs.app.map.layers.traces.TraceBrush
 import com.daengs.app.map.layers.traces.TraceOverlapPalette
 import com.daengs.app.map.layers.traces.TraceRasterTile
+import com.daengs.app.map.layers.traces.WalkTraceProvenance
 import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.diary.SpatialDiaryCellId
@@ -191,6 +192,31 @@ class WalkRecordsTracesTest {
         assertNotNull(index.unavailableReason)
         assertFalse(index.hasOverlap(2))
         assertTrue(index.walkIds(2).isEmpty())
+    }
+
+    @Test
+    fun `sealed provenance permits matching policies across analyses and disables only mixed policy overlap`() = runBlocking {
+        val cells = setOf(SpatialDiaryCellId(0, 0))
+        val policy = WalkTraceProvenance("analysis-a", "sheet-a", "paint-a", 2, "hex-v1", "profile-a", 1.5)
+        val a = record("a", cells).let { it.copy(trace = it.trace!!.copy(provenance = policy)) }
+        val b = record("b", cells).let { it.copy(trace = it.trace!!.copy(provenance =
+            policy.copy(analysisId = "analysis-b", sheetFingerprint = "sheet-b"))) }
+        val matching = prepareWalkRecordsTraces(selection(a, b))
+        assertTrue(matching.hasOverlap(2))
+        assertEquals(setOf("a", "b"), matching.hitTestOverlap(GeoPoint(0.0, 0.0), 2)!!.walkIds)
+        val original = matching.compose(minimumOverlapWalks = 2)
+        matching.compose(setOf("b"), minimumOverlapWalks = 2)
+        assertSameTiles(original, matching.compose(minimumOverlapWalks = 2))
+
+        for (different in listOf(null, policy.copy(paintFingerprint = "paint-b"),
+            policy.copy(profileFingerprint = "profile-b"), policy.copy(sampleStepMeters = 3.0))) {
+            val mixed = prepareWalkRecordsTraces(selection(a, b.copy(trace = b.trace!!.copy(provenance = different))))
+            assertNotNull(mixed.overlapUnavailableReason)
+            assertFalse(mixed.hasOverlap(2))
+            assertTrue(mixed.compose().isNotEmpty())
+            assertNull(mixed.hitTestOverlap(GeoPoint(0.0, 0.0), 2))
+            assertTrue(runCatching { mixed.compose(minimumOverlapWalks = 2) }.exceptionOrNull() is IllegalArgumentException)
+        }
     }
 
     @Test

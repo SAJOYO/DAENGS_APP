@@ -24,6 +24,7 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.walk.records.WalkRecordsScreen
 import com.daengs.app.ui.walk.records.WalkRecordsOverview
+import com.daengs.app.ui.walk.records.ReconcileWalkRecordsOverlapPoint
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.diary.SpatialDiaryHexGrid
@@ -198,6 +199,81 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
     }
 
+    @Test fun `trace loading and retry preserve local behavior pins and never refetch on tab changes`() {
+        val sample = behaviorRecords().map { it.copy(trace = null, traceState = WalkTraceState.NOT_REQUESTED) }
+        val calls = AtomicInteger()
+        val release = CompletableDeferred<Unit>()
+        val source = object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selectWalkRecords(sample, query)
+            override suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection {
+                if (calls.incrementAndGet() == 1) {
+                    release.await()
+                    error("trace request failed")
+                }
+                return WalkRecordsSelection(selection.query, selection.records.map { record ->
+                    when (record.summary.sessionId) {
+                        "record-1" -> record.copy(trace = WalkTraceSheet("record-1",
+                            cells = setOf(SpatialDiaryCellId(832649, 375728))), traceState = WalkTraceState.READY)
+                        "record-2" -> record.copy(traceState = WalkTraceState.ANALYSIS_PENDING)
+                        else -> record.copy(traceState = WalkTraceState.EMPTY)
+                    }
+                })
+            }
+        }
+        show(source)
+        waitText("1 페이지")
+        assertEquals(0, calls.get())
+        chooseBehavior("sniffing")
+        waitText("흔적을 불러오고 있어요.")
+        compose.onNodeWithTag("records-behavior-count").assertTextEquals("행동 기록 4건 · 관련 산책 3회")
+        compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
+        compose.onNodeWithTag("records-view-walks").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        assertEquals(1, calls.get())
+        release.complete(Unit)
+        compose.onNodeWithTag("records-view-overview").performClick()
+        waitText("흔적을 불러오지 못했어요. 산책 기록과 행동 위치는 그대로 볼 수 있어요.")
+        compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
+        compose.onNodeWithTag("records-traces-refresh").performClick()
+        waitText("흔적 없음 1회 · 계산 대기 1회")
+        compose.onNodeWithTag("records-behavior-view-traces").performClick()
+        waitText("관련 산책 흔적 표시 1개")
+        compose.onNodeWithTag("records-view-walks").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        waitText("관련 산책 흔적 표시 1개")
+        assertEquals(2, calls.get())
+    }
+
+    @Test fun `late trace responses cannot replace a newer local selection`() {
+        val sample = records.map { it.copy(trace = null, traceState = WalkTraceState.NOT_REQUESTED) }
+        val delayed = AtomicReference<Pair<WalkRecordsSelection, Continuation<WalkRecordsSelection>>?>()
+        val source = object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selectWalkRecords(sample, query)
+            override suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection =
+                if (selection.query.filter.keyword.isBlank()) suspendCoroutine { delayed.set(selection to it) }
+                else WalkRecordsSelection(selection.query, selection.records.map { it.copy(traceState = WalkTraceState.EMPTY) })
+        }
+        show(source)
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        waitText("흔적을 불러오고 있어요.")
+        compose.waitUntil(10_000) { delayed.get() != null }
+        compose.onNodeWithTag("records-search").performTextReplacement("기록-8")
+        waitText("선택 산책 1회 · 표시 흔적 0개")
+        compose.runOnIdle { delayed.get()!!.let { (selection, continuation) ->
+            continuation.resume(WalkRecordsSelection(selection.query, selection.records.map { record ->
+                record.copy(trace = WalkTraceSheet(record.summary.sessionId,
+                    cells = setOf(SpatialDiaryCellId(832649, 375728))), traceState = WalkTraceState.READY)
+            }))
+        } }
+        compose.waitForIdle()
+        compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 1회 · 표시 흔적 0개")
+        compose.onNodeWithTag("records-map-record-record-8").assertExists()
+        compose.onNodeWithTag("records-map-record-record-1").assertDoesNotExist()
+        compose.onNodeWithTag("records-search").assertTextContains("기록-8")
+    }
+
     @Test fun `map selection hide detail and recreation preserve the full query until conditions change`() {
         val sample = (1..3).map { number ->
             val entry = record(number)
@@ -336,18 +412,36 @@ class WalkRecordsScreenTest {
     @Test fun `overlap inspection lists exact related walks including hidden evidence without changing base counts`() {
         val cell = SpatialDiaryCellId(832649, 375728)
         val sample = (1..3).map { n -> record(n).copy(trace = WalkTraceSheet("record-$n",
-            cells = setOf(if (n <= 2) cell else SpatialDiaryCellId(cell.q + 10, cell.r)))) }
+            cells = setOf(if (n <= 2) cell else SpatialDiaryCellId(cell.q + 10, cell.r))),
+            traceState = WalkTraceState.READY) }
         val selection = WalkRecordsSelection(WalkRecordsQuery(), sample)
-        val prepared = runBlocking { prepareWalkRecordsTraces(selection) }
         val hidden = setOf("record-1")
-        val tiles = runBlocking { prepared.compose(hidden, minimumOverlapWalks = 2) }
-        val initialHit = prepared.hitTestOverlap(SpatialDiaryHexGrid.center(cell, 8.0), 2)!!
+        val stages = listOf(selection,
+            WalkRecordsSelection(selection.query, sample.map { it.copy(trace = null, traceState = WalkTraceState.LOADING) }),
+            WalkRecordsSelection(selection.query, sample.map { it.copy(trace = null, traceState = WalkTraceState.FAILED) }),
+            WalkRecordsSelection(selection.query, sample.mapIndexed { index, record ->
+                if (index == 0) record else record.copy(trace = null, traceState = WalkTraceState.ANALYSIS_PENDING)
+            }),
+            WalkRecordsSelection(selection.query, sample.map { it.copy(trace = null, traceState = WalkTraceState.EMPTY) }))
+        val preparedStages = runBlocking { stages.map { prepareWalkRecordsTraces(it) } }
+        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2) } }
+        val initialPoint = preparedStages.first().hitTestOverlap(SpatialDiaryHexGrid.center(cell, 8.0), 2)!!.point
+        val stage = mutableStateOf(0)
+        val selectedPoint = mutableStateOf<GeoPoint?>(initialPoint)
         val opened = AtomicReference<String>()
         compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
-            var hit by remember { mutableStateOf<WalkTraceOverlapHit?>(initialHit) }
-            WalkRecordsOverview(selection, pets, prepared, tiles, null, {}, "record-1", hidden,
+            val prepared = preparedStages[stage.value]
+            val current = stages[stage.value]
+            val hit = selectedPoint.value?.let { prepared.hitTestOverlap(it, 2, snapRadiusU = 0.0) }
+            val loading = stage.value == 1
+            val error = "흔적 조회 실패".takeIf { stage.value == 2 }
+            ReconcileWalkRecordsOverlapPoint(current, loading, error, prepared, selectedPoint.value, hit,
+                onClear = { selectedPoint.value = null })
+            WalkRecordsOverview(current, pets, prepared, tileStages[stage.value], null, {}, "record-1", hidden,
                 {}, {}, {}, {}, { opened.set(it) }, rememberLazyListState(), null, {}, prepared.bounds, 0,
-                overlapOnly = true, overlapHit = hit, onClearOverlap = { hit = null }, modifier = Modifier.fillMaxSize())
+                overlapOnly = true, overlapHit = hit, onClearOverlap = { selectedPoint.value = null },
+                traceLoading = loading, traceError = error, onReloadTraces = { stage.value = 1 },
+                modifier = Modifier.fillMaxSize())
         } } }
         compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 3회 · 겹침 표시 1회")
         compose.onNodeWithTag("records-inspection-summary").assertTextContains("3회 중 2회 겹침", substring = true)
@@ -357,6 +451,31 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-hide-record-1").assertTextEquals("지도에 다시 표시")
         compose.onNodeWithTag("records-map-open-record-1").performScrollTo().performClick()
         assertEquals("record-1", opened.get())
+        compose.onNodeWithTag("records-traces-refresh").performClick()
+        waitText("흔적을 불러오고 있어요.")
+        compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
+        compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 3회 · 겹침 표시 0회")
+        compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-3"))
+        compose.onNodeWithTag("records-map-record-record-3").assertExists()
+        compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 2 }
+        waitText("흔적 조회 실패")
+        compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 3 }
+        waitText("계산 대기 2회")
+        compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
+        // A partial response cannot disprove the remembered area. The same ready sheets restore it.
+        compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 0 }
+        waitText("선택 산책 3회 · 겹침 표시 1회")
+        compose.onNodeWithTag("records-inspection-summary").assertTextContains("3회 중 2회 겹침", substring = true)
+        compose.onNodeWithTag("records-map-record-record-3").assertDoesNotExist()
+        // Successfully checked empty sheets do prove removal; a later load must not resurrect it.
+        compose.runOnIdle { stage.value = 4 }
+        waitText("흔적 없음 3회")
+        compose.runOnIdle { assertEquals(null, selectedPoint.value); stage.value = 0 }
+        waitText("선택 산책 3회 · 겹침 표시 1회")
+        compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
+        compose.runOnIdle { selectedPoint.value = initialPoint }
+        compose.onNodeWithTag("records-inspection-summary").assertTextContains("3회 중 2회 겹침", substring = true)
         compose.onNodeWithTag("records-overlap-clear").performClick()
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-3"))
         compose.onNodeWithTag("records-map-record-record-3").assertExists()

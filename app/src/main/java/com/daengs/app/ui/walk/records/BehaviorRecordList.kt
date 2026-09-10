@@ -27,6 +27,7 @@ import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.WalkRouteThumbnail
 import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.walk.records.WalkBehaviorRecord
+import com.daengs.app.walk.records.WalkTraceState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -95,7 +96,10 @@ private fun BehaviorRecordCard(
                     maxLines = 1, overflow = TextOverflow.Ellipsis, color = TextMuted)
                 Text(status, style = MaterialTheme.typography.labelSmall,
                     color = if (hidden || isSelected) DaengPinkDeep else TextMuted)
-                if (!canHide && isSelected) Text(if (availabilityChecked) "지도에 표시할 위치·흔적 없음" else "지도 표시 확인 전",
+                if (walk.traceState != null && walk.effectiveTraceState != WalkTraceState.READY) {
+                    Text(traceStateLabel(walk.effectiveTraceState), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                }
+                if (!canHide && isSelected && walk.traceState == null) Text(if (availabilityChecked) "지도에 표시할 위치·흔적 없음" else "지도 표시 확인 전",
                     style = MaterialTheme.typography.labelSmall, color = TextMuted)
             }
         }

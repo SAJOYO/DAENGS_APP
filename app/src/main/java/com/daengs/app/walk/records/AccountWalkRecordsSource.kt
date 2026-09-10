@@ -12,15 +12,19 @@ fun accountWalkRecordsSource(
     database: WalkDatabase,
     sessions: SessionProvider,
     zone: ZoneId = ZoneId.systemDefault(),
+    sheetsApi: WalkRecordSheetsApi = WalkRecordSheetsApi(),
 ): WalkRecordsSource? {
     val scope = sessions.accountScope.value
     val ownerId = scope.ownerId ?: return null
     val stored = RoomWalkRecordsSource(database, ownerId, currentOwner = {
         ownerId.takeIf { sessions.accountScope.value == scope }.orEmpty()
     }, zone = zone)
-    return object : WalkRecordsSource {
+    val local = object : WalkRecordsSource {
         // A mismatch already present when this collector starts must also invalidate the source.
         override val changes = merge(stored.changes, sessions.accountScope.filter { it != scope }.map { Unit })
         override suspend fun select(query: WalkRecordsQuery) = stored.select(query)
     }
+    return TraceLoadingWalkRecordsSource(local, ownerId,
+        isCurrentAccount = { sessions.accountScope.value == scope },
+        freshSession = sessions::freshSession, fetch = sheetsApi::query)
 }

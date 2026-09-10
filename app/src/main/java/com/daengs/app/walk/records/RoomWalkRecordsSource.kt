@@ -44,7 +44,10 @@ class RoomWalkRecordsSource(
                     maxRouteSamples = Int.MAX_VALUE)
                 // Match the existing history's accepted records, including short action/photo walks.
                 if (!summary.countsAsWalk && input.entries.isEmpty() && !input.hasPhotos) return@mapNotNull null
-                WalkRecord(summary.forHistoryThumbnail(), title = input.title, notes = input.notes, entries = input.entries)
+                WalkRecord(summary.forHistoryThumbnail(), title = input.title, notes = input.notes, entries = input.entries,
+                    serverWalkId = input.session.serverWalkId,
+                    traceState = if (input.session.serverWalkId == null) WalkTraceState.NOT_UPLOADED
+                        else WalkTraceState.NOT_REQUESTED)
             }
             val selected = selectWalkRecords(records, selectedQuery, zone)
             currentCoroutineContext().ensureActive()

@@ -62,6 +62,9 @@ internal fun WalkRecordsOverview(
     overlapMiss: Boolean = false,
     onMapTap: (GeoPoint) -> Unit = {},
     onClearOverlap: () -> Unit = {},
+    traceLoading: Boolean = false,
+    traceError: String? = null,
+    onReloadTraces: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
@@ -79,6 +82,10 @@ internal fun WalkRecordsOverview(
     val visibleCount = displayIds?.count { it !in hiddenIds }
     val relatedRecords = overlapHit?.let { hit -> selection.records.filter { it.summary.sessionId in hit.walkIds } }
         ?: selection.records
+    val remoteTraces = selection.records.any { it.traceState != null }
+    val partialTraces = selection.records.any {
+        it.effectiveTraceState != WalkTraceState.READY && it.effectiveTraceState != WalkTraceState.EMPTY
+    }
     Column(modifier.fillMaxWidth()) {
         WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
             Modifier.padding(horizontal = 18.dp))
@@ -93,11 +100,15 @@ internal fun WalkRecordsOverview(
                 }
             }
         }
+        WalkRecordsTraceStatus(selection.records, traceLoading, traceError, onReloadTraces)
+        if (overlapOnly && partialTraces) Text("불러온 흔적 기준 · 아직 준비되지 않은 산책은 겹침에 포함되지 않아요.",
+            Modifier.padding(horizontal = 18.dp).testTag("records-overlap-partial"),
+            style = MaterialTheme.typography.labelSmall, color = TextMuted)
         if (prepared != null) {
             val missing = selection.records.size - prepared.availableWalkIds.size
-            if (missing > 0 || hiddenCount > 0) Text(
+            if ((!remoteTraces && missing > 0) || hiddenCount > 0) Text(
                 listOfNotNull("숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
-                    "흔적 없음 ${missing}회".takeIf { missing > 0 }).joinToString(" · ") + " · 목록에는 모두 남아 있어요.",
+                    "흔적 없음 ${missing}회".takeIf { !remoteTraces && missing > 0 }).joinToString(" · ") + " · 목록에는 모두 남아 있어요.",
                 Modifier.padding(start = 18.dp, end = 18.dp, bottom = 6.dp).testTag("records-map-status"),
                 style = MaterialTheme.typography.labelSmall, color = TextMuted)
         }
@@ -145,7 +156,9 @@ internal fun WalkRecordsOverview(
                             val message = when {
                                 error != null -> error
                                 tiles == null -> "흔적 표시를 바꾸고 있어요."
-                                overlapOnly && !prepared.hasOverlap(minimumWalks) -> "${minimumWalks}회 이상 겹친 구간이 없어요."
+                                traceLoading && visibleCount == 0 -> "흔적을 불러오는 동안 산책 카드를 살펴보세요."
+                                overlapOnly && !prepared.hasOverlap(minimumWalks) ->
+                                    (if (partialTraces) "불러온 흔적에는 " else "") + "${minimumWalks}회 이상 겹친 구간이 없어요."
                                 overlapOnly && visibleCount == 0 -> "겹친 구간의 산책 흔적을 모두 숨겼어요."
                                 visibleCount == 0 && hiddenCount > 0 -> "산책 흔적을 모두 숨겼어요."
                                 visibleCount == 0 -> "표시할 산책 흔적이 없어요."
@@ -177,6 +190,61 @@ internal fun WalkRecordsOverview(
             }
         }
     }
+}
+
+/** Network availability is separate from brush rendering and never replaces the local record list. */
+@Composable
+internal fun WalkRecordsTraceStatus(
+    records: List<WalkRecord>,
+    loading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (records.none { it.traceState != null } && error == null) return
+    val counts = records.groupingBy { it.effectiveTraceState }.eachCount()
+    val details = listOf(
+        WalkTraceState.NOT_REQUESTED to "확인 전",
+        WalkTraceState.LOADING to "불러오는 중",
+        WalkTraceState.EMPTY to "흔적 없음",
+        WalkTraceState.NOT_UPLOADED to "전송 확인 필요",
+        WalkTraceState.ANALYSIS_PENDING to "계산 대기",
+        WalkTraceState.UNSUPPORTED to "지원 안 됨",
+        WalkTraceState.FAILED to "불러오기 실패",
+    ).mapNotNull { (state, label) -> counts[state]?.takeIf { it > 0 }?.let { "$label ${it}회" } }
+    Row(modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(when {
+            error != null -> error
+            loading -> "흔적을 불러오고 있어요."
+            details.isNotEmpty() -> details.joinToString(" · ")
+            else -> "산책 흔적을 불러왔어요."
+        }, Modifier.weight(1f).testTag("records-traces-status"),
+            style = MaterialTheme.typography.labelSmall, color = TextMuted)
+        TextButton(onClick = onRefresh, enabled = !loading,
+            modifier = Modifier.testTag("records-traces-refresh")) {
+            Text(if (error != null || WalkTraceState.FAILED in counts) "다시 불러오기" else "새로고침")
+        }
+    }
+}
+
+internal fun traceStateLabel(state: WalkTraceState): String = when (state) {
+    WalkTraceState.NOT_REQUESTED -> "흔적 확인 전"
+    WalkTraceState.LOADING -> "흔적 불러오는 중"
+    WalkTraceState.READY -> "흔적 준비됨"
+    WalkTraceState.EMPTY -> "지도 흔적 없음"
+    WalkTraceState.NOT_UPLOADED -> "산책 전송 확인이 필요해요"
+    WalkTraceState.ANALYSIS_PENDING -> "서버에서 흔적 계산 중"
+    WalkTraceState.UNSUPPORTED -> "이 흔적은 아직 지원하지 않아요"
+    WalkTraceState.FAILED -> "흔적을 불러오지 못했어요"
+}
+
+@Preview(name = "일부 흔적 대기", showBackground = true, widthDp = 390)
+@Composable
+private fun WalkRecordsTraceStatusPreview() {
+    val sample = listOf(WalkTraceState.ANALYSIS_PENDING, WalkTraceState.NOT_UPLOADED, WalkTraceState.FAILED)
+        .mapIndexed { index, state -> WalkRecord(previewDiarySummary().copy(sessionId = "walk-$index"), traceState = state) }
+    DaengsTheme { WalkRecordsTraceStatus(sample, false, null, {}) }
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 580)
