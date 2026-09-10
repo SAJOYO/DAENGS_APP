@@ -2042,9 +2042,19 @@ class ReceiptConfirmScreenTest {
   - `possibleDuplicate` → `"같은 날 같은 금액의 기록이 이미 있어요."`
   - 전화 모양 오류 → `"전화번호 모양이 올바르지 않아요."`
   - `UPLOADING`·`EXTRACTING` → `"영수증을 읽고 있어요"`
-- 사유 드롭다운은 `androidx.compose.material3.ExposedDropdownMenuBox` 를 쓴다.
-  이 저장소에 아직 드롭다운 공용 컴포넌트가 없다 — **여기서 만들되 이 파일 안에 private
-  로 둔다.** 두 번째 쓰는 자리가 생기면 그때 `ui/common` 으로 올린다.
+- 사유는 **접힌 드롭다운이 아니라 칩**으로 편다 (구현 중 바꾼 것). 제안이 못 믿을 값이라
+  유저가 실제로 다시 고르는 것이 이 화면의 목적인데, 접어 두면 "이미 골라져 있다" 로
+  읽혀 그냥 넘어간다.
+
+  ⚠️ **다만 전부 펼치지 않는다.** 실제 사유는 17개라 411dp 폭에서 다섯 줄이 되고 그만큼
+  [확인] 이 아래로 밀린다 — `PetFormScreen` 의 `BreedGrid` 가 견종 28종에서 이미 같은
+  결론을 내고 **"일곱 줄이면 폼의 절반이 견종이 된다"** 고 적어 뒀다. 그쪽처럼 높이를
+  묶고 안에서 스크롤하며, 안쪽 스크롤이 바깥 폼을 밀지 않게 `ui/common/KeepScrollInside`
+  를 붙인다 (그 파일은 원래 `PetFormScreen` 의 private 였고 두 번째 쓰임이 생겨 올렸다).
+
+  ⚠️ **테스트는 칩을 좌표로 누르지 못한다.** 안쪽 스크롤이 있으면 `performScrollTo` 가
+  바깥 폼을 안 움직여서 칩이 화면 밖에 있는 채로 눌린다 — 클릭이 조용히 빗나간다.
+  `performSemanticsAction(SemanticsActions.OnClick)` 으로 누른다.
 - [확인] 버튼은 `DaengsWideButton(label = "확인", accent = true, busy = step == ReceiptStep.CONFIRMING, enabled = valid)`.
   `valid = reasonCode != null && totalText.isNotBlank() && phoneLooksValid(hospitalPhone)`
 - `onConfirm` 에 넘길 때 병원 세 칸과 `reasonDetail` 은 **`trim().takeIf { it.isNotEmpty() }`**
@@ -2261,7 +2271,20 @@ val vetVisits = remember(scope) { VetVisitCoordinator(scope) }
   선택된 요약으로 스크롤할 때 더하는 값이다 — 안 올리면 스크롤이 한 칸 어긋난다.
   (그 파일에 이미 경고 주석이 있다.)
 - 영수증을 고르는 중이면 `ReceiptPicker` 를, `vetState.receipt != null` 이면
-  `ReceiptConfirmScreen` 을 목록 **위에 덮는다** (사진 바꾸기 화면과 같은 방식).
+  `ReceiptConfirmScreen` 을 목록 **위에 덮는다.**
+
+  ⚠️ **"사진 바꾸기와 같은 방식" 이 아니다** (계획을 쓸 때 잘못 적었다). `PetPhotoPicker`
+  는 `MainActivity` 에서 홈을 **교체**하지만 여기는 `Box` 안에서 **겹친다** — 아래 목록이
+  컴포지션에 남아 히트테스트를 받는다. 그래서 두 오버레이의 루트에 **터치를 먹는 계층**을
+  둬야 하고(`pointerInput` 으로 이벤트를 소비), 인셋 패딩보다 앞에 둬야 상태바 자리까지
+  덮는다. 안 두면 빈 자리를 눌렀을 때 그 좌표의 [삭제]나 전화번호가 눌린다.
+
+  ⚠️ **둘 다 `BackHandler` 를 단다.** 이 저장소에서 전면을 덮는 화면은 예외 없이 back 을
+  잡는다 (`PetPhotoPicker`·`SkinCaptureScreen`·`ImmersiveScreen`). 안 잡으면 홈이 받아서
+  오버레이는 그대로인 채 뒤에서 화면이 바뀐다.
+
+  ⚠️ **사진은 화면이 아니라 `ReceiptFlow` 가 든다.** 저장소 탭을 잠깐 벗어나면 route 의
+  `remember` 가 날아가서, 돌아왔을 때 대조할 원본이 없는 확인 화면이 뜬다.
 
 - [ ] **Step 6: 배선이 깨지지 않았는지 본다**
 
