@@ -211,7 +211,7 @@ fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession 
     syncedAtMillis = syncedAtMillis,
 )
 
-private fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
+internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     clientSeq = clientSeq,
     chainIndex = chainIndex,
     atMillis = atMillis,

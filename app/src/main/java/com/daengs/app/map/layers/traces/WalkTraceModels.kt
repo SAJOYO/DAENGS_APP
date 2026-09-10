@@ -27,10 +27,28 @@ data class WalkTraceSheet(
     val walkId: String,
     val radiusU: Double = 8.0,
     val cells: Set<SpatialDiaryCellId>,
+    val provenance: WalkTraceProvenance? = null,
 ) {
     init {
         require(walkId.isNotBlank())
         require(radiusU.isFinite() && radiusU > 0 && radiusU <= 64)
+    }
+}
+
+/** Identity of a sealed server sheet; display weights never replace its original paint policy. */
+data class WalkTraceProvenance(
+    val analysisId: String,
+    val sheetFingerprint: String,
+    val paintFingerprint: String,
+    val paintVersion: Int,
+    val gridVersion: String,
+    val profileFingerprint: String,
+    val sampleStepMeters: Double,
+) {
+    init {
+        require(analysisId.isNotBlank() && sheetFingerprint.isNotBlank() && paintFingerprint.isNotBlank())
+        require(paintVersion > 0 && gridVersion.isNotBlank() && profileFingerprint.isNotBlank())
+        require(sampleStepMeters.isFinite() && sampleStepMeters > 0)
     }
 }
 

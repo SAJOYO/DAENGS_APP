@@ -24,11 +24,19 @@ class TerritoryGameRulesTest {
         var maps = 0
         val dog = previewGamePet()
         compose.setContent { DaengsTheme {
-            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, false,
+            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0,
                 { exits++ }, { maps++ }, {}, {})
         } }
         compose.onNodeWithText("회원·시즌별 100점", substring = true).assertDoesNotExist()
         compose.onNodeWithTag("game-rules-open").performClick()
+        compose.onNodeWithText("가까이 가기").assertIsDisplayed()
+        compose.onNodeWithText("강아지 사진 인증").assertIsDisplayed()
+        compose.onNodeWithText("누적 100점까지").assertIsDisplayed()
+        compose.onNodeWithText("기본 한도: 회원·장소·시즌당 100점", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("game-guide-pole").assertDoesNotExist()
+        compose.onNodeWithTag("game-rules-tab-1").assertDoesNotExist()
+        screenshot("game-rules-summary")
+        compose.onNodeWithTag("game-rules-example-open").performClick()
         compose.onNodeWithTag("game-guide-previous").assertIsNotEnabled()
         compose.onNodeWithTag("game-guide-next").performClick()
         screenshot("game-rules-select")
@@ -59,6 +67,7 @@ class TerritoryGameRulesTest {
 
     @Test fun takeoverUsesPhotoBeforeOwnershipChangesAndExplainsConditional120Points() {
         compose.setContent { DaengsTheme { TerritoryGameRulesDialog({}) } }
+        compose.onNodeWithTag("game-rules-example-open").performClick()
         compose.onNodeWithTag("game-guide-TAKEOVER").performClick()
         compose.onNodeWithTag("game-guide-owner").assertTextEquals("초코의 전봇대")
         compose.onNodeWithTag("game-guide-next").performClick()
@@ -81,18 +90,32 @@ class TerritoryGameRulesTest {
         val restoration = StateRestorationTester(compose)
         val dog = previewGamePet()
         restoration.setContent { DaengsTheme {
-            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, false, {}, {}, {}, {})
+            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, {}, {}, {}, {})
         } }
         compose.onNodeWithTag("game-rules-open").performClick()
+        compose.onNodeWithTag("game-rules-example-open").performClick()
         compose.onNodeWithTag("game-guide-TAKEOVER").performClick()
         repeat(3) { compose.onNodeWithTag("game-guide-next").performClick() }
-        compose.onNodeWithTag("game-rules-tab-1").performClick()
+        compose.onNodeWithTag("game-rules-summary-back").performClick()
+        compose.onNodeWithTag("game-rules-details-open").performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithTag("game-rules-tab-1").assertIsSelected()
-        compose.onNodeWithTag("game-rules-tab-0").performClick()
+        compose.runOnIdle { ShadowDialog.getLatestDialog().onBackPressed() }
+        compose.onNodeWithTag("game-rules-example-open").performClick()
         compose.onNodeWithTag("game-guide-next").assertTextContains("촬영하고 산책 계속")
         compose.onNodeWithTag("game-guide-owner").assertTextEquals("초코의 전봇대")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("game-guide-next").assertTextContains("촬영하고 산책 계속")
         compose.onNodeWithTag("game-rules-close").performClick()
+        compose.onNodeWithText("1,240 점").assertIsDisplayed()
+        compose.onNodeWithTag("game-rules-open").performClick()
+        compose.onNodeWithTag("game-rules-example-open").performClick()
+        compose.onNodeWithTag("game-guide-previous").assertIsNotEnabled()
+        compose.onNodeWithTag("game-guide-owner").assertTextEquals("아직 주인이 없어요")
+        compose.runOnIdle { ShadowDialog.getLatestDialog().onBackPressed() }
+        compose.onNodeWithTag("game-rules-details-open").assertIsDisplayed()
+        compose.runOnIdle { ShadowDialog.getLatestDialog().onBackPressed() }
+        compose.onNodeWithTag("game-rules-dialog").assertDoesNotExist()
         compose.onNodeWithText("1,240 점").assertIsDisplayed()
     }
 

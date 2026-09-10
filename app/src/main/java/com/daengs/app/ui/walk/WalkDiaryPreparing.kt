@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun WalkDiaryPreparing(onBack: () -> Unit, onRefresh: () -> Unit, error: String? = null) {
     Column(Modifier.fillMaxSize()) {
-        TextButton(onClick = onBack) { Text("‹ 산책 목록") }
+        TextButton(onClick = onBack) { Text("‹ 산책 기록") }
         Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             if (error == null) CircularProgressIndicator(Modifier.size(32.dp))

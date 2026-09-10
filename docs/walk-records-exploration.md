@@ -6,8 +6,11 @@ Step2에서 공통 선택 계약과 실제 화면을 합성 기록으로 연결�
 같은 Step3 범위에 `전체 흔적 / 겹친 구간`과 지도에서 구간을 골라 관련 산책을 읽는
 확장을 추가했다. 이 확장의 확인 결과는 아래 이전 Step3 결과와 구분하여 기록한다.
 Step4에서 같은 화면의 행동 기록 탐색을 구현했다. 겹침 색 표현에 이어 Step5에서 전체 조작
-시연과 마감 리뷰까지 수행했다. 사용자 기록을 읽는 Room·서버 공급부와 일반 사용자 화면의
-진입점은 별도 후속이다.
+시연과 마감 리뷰까지 수행했다. 실제 데이터 연결 1단계에서 현재 로그인 계정의 Room 기록
+공급부를 추가했다. 2단계에서는 서버의 봉인 원판을 모아보기의 기존 브러시에 연결했다.
+3단계에서는 홈과 산책 화면의 기록 진입점을 이 화면으로 교체하고 기존 산책 상세에 연결했다.
+계정별 상태 보관과 상세 복귀 정책은 아래 실제 데이터 연결 3단계에 적는다. 과거 시연의
+완료·미검증 기록은 각각 당시 기준이며, 배포 API·사용자 기록의 실기기 확인과 구분한다.
 
 ## 명칭과 화면 구조
 
@@ -38,8 +41,179 @@ Step4에서 같은 화면의 행동 기록 탐색을 구현했다. 겹침 색 �
 
 키워드는 화면에서 최대 200자를 입력받고, 비어 있지 않을 때 250ms 지연 후 조회한다.
 제목·메모 외의 세션 ID, 원본 JSON, 공간 셀이나 행동 코드를 검색 텍스트로 섞지 않는다.
-기존 제목 유효성·삭제된 메모 제외·계정 소유권 확인은 실제 공급부를 연결할 때 지켜야 할
-계약이며, 이번 합성 공급부가 그 저장소 검증까지 구현한 것은 아니다.
+Room 공급부는 기존 제목 유효성·삭제된 메모 제외·계정 소유권 확인을 거친 실제 저장
+텍스트를 제공한다. 일반 사용자 진입점은 실제 공급부를 사용하고, debug 시연용 합성
+공급부는 별도 Activity에서만 사용한다.
+
+## 실제 데이터 연결 1단계 · Room 기록 공급
+
+`DaengsApp.walkRecordsSource()`는 현재 로그인에 고정된 `WalkRecordsSource`를 만든다.
+미로그인·빈 회원 ID에서는 null이다. 호출 화면은 로그인 scope별로 한 번 만들어 보관하고,
+계정이 바뀌면 화면 저장 상태까지 새 scope로 분리한다. 1단계 당시에는 공급부만 추가했고,
+일반 사용자 진입점 교체는 아래 3단계에서 연결했다.
+
+- `RoomWalkRecordsSource`는 완료된 해당 계정의 산책 전체를 읽는다. 강아지·기간·계절·
+  날씨·현재 제목·메모 조건을 적용한 결과를 확정한 뒤 화면에서 페이지를 나눈다.
+- 산책·강아지 연결·행동·사진·사진 동기화 상태·분석·GPS는 한 Room transaction의 snapshot이다.
+  조건에 맞는 산책만 경로를 요약하며, 요약과 썸네일 축약은 기존 기록 목록 규칙을 재사용한다.
+- 현재 행동 행의 변환을 그대로 사용한다. 삭제 행은 노출하지 않고 위치 없는 행동과 추정·정정된
+  핀은 원본의 상태를 보존한다. 짧아도 행동·메모·사진이 남은 산책은 기존 기록 기준으로 유지한다.
+- 제목은 현재 행동과 사진의 지문에 유효한 분석 결과만 사용한다. 예전 제목이나 삭제된 메모가
+  검색으로 되살아나지 않으며, 사진 동기화 ACK만 바뀌어도 다시 판정한다.
+- 공급부의 `changes`는 최초 조회와 7개 입력 테이블의 변경을 알린다. 화면은 같은 조건으로
+  재조회하며, 읽는 동안 이전 결과를 비우고 취소된 조회 결과를 게시하지 않는다.
+- 로그인·로그아웃 세대 변경도 Room 변경과 무관하게 조회를 무효화한다. 같은 회원으로
+  재로그인해도 이전 공급부는 다시 유효해지지 않는다. 정상 토큰 refresh는 이 세대를 바꾸지 않는다.
+
+로컬 `select()`의 `trace`는 null이다. 1단계에서는 원판 조회 없이 Room 기록만 제공했다.
+2단계의 별도 조회에서도 GPS 경로로 공간 원판을 지어내지 않는다.
+
+### 실제 데이터 연결 1단계 검증 · 2026-09-10
+
+로컬 대상 고유 테스트 35개가 통과했다. `SessionProviderTest` 6개,
+`RoomWalkRecordsSourceTest` 8개, `WalkRecordsSelectionTest` 10개,
+`WalkRecordsScreenTest` 11개이며 실패·오류·skip은 0개다. 구독 시작 시 이미 달라진
+계정 scope도 무효화하도록 보강한 뒤 Room 공급부 8개를 다시 실행해 통과했다.
+
+35회 산책 전체와 5건 페이지 분리, 공통 조건·현지 날짜 경계, 현재 제목·메모,
+사진 상태 변경에 따른 제목 무효화, 위치 없는 행동·정정 핀·삭제·개별 강아지 귀속,
+계정 소유권·로그아웃·같은 회원 재로그인, 화면 재조회와 오류 회복을 확인했다.
+DB 검증은 메모리 Room을 사용한다. 새 DB 설치나 팀원별 설정은 필요 없다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.auth.SessionProviderTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' -PslimAbi=x86_64 --console=plain
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' -PslimAbi=x86_64 --console=plain
+```
+
+독립 코드 리뷰와 자체 점검을 수행했다. 사용자 폰의 저장 기록·운영 화면 진입·실제 공간
+원판·대규모 이력 부하는 아직 검증하지 않았다. 전체 테스트와 원격 CI는 실행하지 않았다.
+
+## 실제 데이터 연결 2단계 · 산책별 원판 공급
+
+모아보기를 처음 열면 로컬에서 확정한 산책 집합 S의 전송된 `client_session_id`만
+`POST /app/walks/spatial-diary/sheets/query`로 보낸다. 서버가 강아지·기간 조건을 다시
+해석하지 않는다. 원판과 서버 Walk ID를 요청 당시 Room 매핑과 대조한 뒤 로컬 sessionId로
+브러시에 전달한다. 목록 페이지·행동 기록·선택 집합은 원판 조회로 바뀌지 않는다.
+
+- 서버는 현재 계정의 산책당 최신 봉인 원판 한 장을 같은 read-only REPEATABLE READ
+  snapshot에서 읽는다. fingerprint와 중복 메타데이터를 검증하고 기존 payload를 반환한다.
+  미봉인은 `pending`, 현재 계정에서 찾을 수 없는 산책은 `unavailable`이다. 봉인됐지만
+  원판이 손상된 경우에는 오류를 반환하며 이전 원판으로 대신하지 않는다.
+- 앱은 응답 순서·소속·버전·정수 셀 좌표·중복·범위·양수 peak를 검증한다. occupancy가
+  0이어도 peak가 양수인 셀은 남긴다. 농도 값을 다시 계산하지 않고 기존 브러시의 고정
+  알파·겹침 색을 사용한다. 생성 정책이 다르면 개별 표시만 허용하고 겹침 비교는 막는다.
+- 원판 준비 중에도 로컬 경로·행동 위치·카드는 유지한다. 조회 대기·빈 원판·전송 확인 필요·
+  서버 계산 대기·미지원·실패를 구분하고, 실패한 결과를 ‘흔적 없음’으로 표시하지 않는다.
+- 같은 선택의 탭 왕복은 재조회하지 않는다. 새로고침은 서버 원판을 다시 읽으며 예전
+  원판을 최신 결과처럼 유지하지 않는다. 조회 중 로그아웃·같은 회원 재로그인·로컬 기록
+  수정/삭제/서버 ID 변경이 일어나면 늦은 응답을 게시하지 않는다.
+- 요청은 최대 400개, 서버 원시 셀 합계는 100,000개다. 앱은 현재 paint 2·hex-v1·반지름
+  4–64u·원판당 5,000셀을 지원한다. 기존 브러시의 타일/범위 상한도 유지한다.
+  초과 결과를 조용히 일부만 잘라 보여주지 않는다.
+
+APP [#271](https://github.com/SAJOYO/DAENGS_APP/pull/271)은 Room 공급부
+[#269](https://github.com/SAJOYO/DAENGS_APP/pull/269) 위에 쌓았다. 서버 API는
+DEV [#422](https://github.com/SAJOYO/DAENGS_dev/pull/422)에 있다. 이 단계는 DB
+스키마·마이그레이션·전송/분석 작업을 바꾸지 않으며 배포를 포함하지 않는다.
+2단계 당시에는 운영 진입점과 실제 산책 상세 연결을 후속으로 남겼다. 이 연결은 아래
+3단계에서 구현하며, 배포 API로 실제 원판을 확인하는 검증은 별도로 기록한다.
+
+### 실제 데이터 연결 2단계 검증 · 2026-09-10
+
+앱 대상 고유 테스트 **56개 통과 / 실패·오류·skip 0개**. Room 공급부 9개, 원판
+조회 수명 7개, HTTP 2개, 실제 서버 fixture 파서 4개, 기존 선택 10개, 브러시·겹침 11개,
+화면 13개다. 첫 실행의 테스트용 JSON 호출 두 곳을 Android API에 맞춰 수정했고,
+화면 대기 순서를 보정한 뒤 화면 13개를 다시 실행해 통과했다.
+
+독립 리뷰에서 요청 상한을 전체 로컬 기록 수가 아닌 전송된 요청 수에 적용하도록 수정했다.
+새로고침 중 로딩·실패·부분 원판 때문에 저장한 겹침 구간을 잃지 않도록 보강하고,
+정상 응답에서 구간이 복원되는지와 모든 원판을 확인한 뒤 실제 사라진 구간만 해제하는지도
+기존 화면 회귀에서 검증했다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.records.WalkRecordSheetsTest' --tests 'com.daengs.app.walk.records.WalkRecordSheetsApiTest' --tests 'com.daengs.app.walk.records.TraceLoadingWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.WalkRecordsTracesTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' -PslimAbi=x86_64 --console=plain
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' -PslimAbi=x86_64 --console=plain
+```
+
+서버 대응 PR #422는 공간 조회·원판 codec 대상 49개와 ruff·공통 check를 통과했다.
+서버 DAO 검증은 mock과 PostgreSQL SQL 컴파일이며 실제 DB의 격리/대표 선택 실행을
+검증한 것은 아니다. 이번 단계에서는 전체 테스트·CI·실DB·배포·APK 설치·실기기 검증을
+수행하지 않았다. 앱의 Room 검증과 로컬 HTTP 대역에는 팀원별 DB 설치가 필요 없다.
+
+## 실제 데이터 연결 3단계 · 일반 화면 진입과 상세 복귀
+
+홈의 산책 기록 카드와 산책 화면의 기록 버튼이 모두 `WalkRecordsRoute`를 연다.
+`산책별` 목록의 카드를 누르거나 모아보기·행동 목록의 `이 산책 보기`를 누르면 기존
+`WalkDiaryMapScreen`에 해당 로컬 sessionId를 전달한다. 일반 진입에서는 합성 상세 창을
+사용하지 않는다. 상세의 뒤로 동작으로 동일한 산책 기록 화면에 돌아온다.
+
+- Main은 `SessionProvider.accountScope`의 회원 ID와 로그인 세대를 기준으로 실제 공급부와
+  화면 상태 보관자를 만든다. 기록·상세 분기보다 위에서 보관하므로 같은 로그인 동안
+  홈·기록·상세를 오가도 공유 조건과 표시 상태를 사용할 수 있다.
+- 정상 토큰 갱신이나 강아지 이름 갱신은 이 scope를 바꾸지 않는다. 로그아웃·다른 계정
+  로그인·같은 회원의 재로그인은 이전 공급부와 필터·선택·숨김·카메라·열린 상세를 초기화한다.
+  미로그인·빈 회원 ID·공급부 없음은 상세 ID보다 먼저 검사하여 로그인 안내를 표시한다.
+- 상세를 열거나 기록 화면에서 나가기 직전에 저장 가능한 UI 상태를 보관한다. 기록 화면과
+  지도는 실제로 composition에서 내려간다. 복귀하면 조건·페이지·탭·행동 보기·선택·숨김·
+  스크롤·카메라를 복원하고 현재 Room 기록을 다시 읽는다. 기존 선택이 삭제되었으면 현재
+  조회 결과의 정합성 규칙을 적용한다. 원판·조회 결과나 SDK 지도 객체를 저장하는 캐시는 아니다.
+- `RetainedWalkRecords`는 별도 `SaveableStateRegistry`만 제공한다. native 지도를
+  `SaveableStateHolder`의 `ReusableContent`로 감싸지 않고 lifecycle·saved-state owner도
+  교체하지 않는다. Activity가 상태를 저장하면 현재 등록된 최신 UI 값을 읽으며, 상세가
+  열린 동안에는 나가기 직전에 보관한 값을 사용한다. dispose 시점의 빈 값으로 덮지 않는다.
+- 같은 프로세스의 Activity 구성 변경·회전 재생성에는 상태를 복원한다. 프로세스가 새로
+  시작되면 UI 조건과 열린 상세는 초기화한다. 로그인 세대가 새 프로세스에서 0부터 다시
+  시작하므로, 회원 ID·세대뿐 아니라 프로세스 식별자를 대조하는 보수적인 복원 정책이다.
+  저장된 산책 자체를 삭제하는 동작은 아니다.
+- 강아지 목록이 아직 `null`이어도 로컬 기록을 열 수 있다. `petsLoaded=false` 동안에는
+  복원한 강아지 조건을 목록에서 찾을 수 없다는 이유로 지우지 않는다. 목록을 받은 뒤 실제로
+  해당 강아지가 없을 때만 전체 조건으로 되돌린다. 프로필 로딩이 기록 조회를 막지 않는다.
+- 기록 화면 진입 시 현재 scope를 확인하고 기존 동기화를 비동기로 시도한다. 기록 조회는
+  이 완료를 기다리지 않는다. 보고된 동기화 오류는 안내로 표시하고 로컬 기록과 조건을
+  유지한다. 동기화로 Room이 바뀌면 공급부의 기존 변경 알림으로 같은 조건을 다시 읽는다.
+
+APP [#274](https://github.com/SAJOYO/DAENGS_APP/pull/274)의 연결 범위다. DB 스키마·
+동기화 계약·원판 생성 정책을 변경하지 않는다. 실제 배포 API와 native 지도 확인은 JVM
+화면 테스트 결과만으로 완료 처리하지 않는다.
+
+### 실제 데이터 연결 3단계 검증 범위
+
+`WalkRecordsRouteStateTest`는 상세로 실제 unmount한 뒤 복귀·Activity 저장 시점·계정과
+프로세스 경계의 상태 복원을 확인한다. `ui.walk.records.WalkRecordsRouteTest`는 기록
+화면을 실제로 내렸다 다시 만드는 상세 대역을 사용하여 목록·모아보기·행동 보기 복귀,
+프로필 로딩·미로그인·계정 변경·늦은 응답과 동기화 오류의 로컬 기록 유지를 확인한다.
+`WalkRecordsScreenTest`와 `WalkDiaryMapScreenTest`는 기존 화면 소비자 범위다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkDiaryMapScreenTest' -PslimAbi=x86_64 --console=plain
+```
+
+2026-09-10 위 네 클래스의 로컬 고유 테스트 **33개 통과**, 실패·오류·skip은 0개다.
+RouteState 4개, Route 3개, RecordsScreen 13개, DiaryMapScreen 13개를 실행했다.
+새 테스트의 잘못된 import 한 줄을 수정한 뒤 같은 범위를 실행했으며 전체 테스트로 넓히지 않았다.
+Robolectric의 inspection 지도와 상세 대역은 실제 Naver 지도 생성·MainActivity 초기화·
+배포 서버 통신·사용자 폰의 기록을 검증하지 않는다. 전체 테스트·원격 CI는 이 범위에 없다.
+
+`assembleDebug -PslimAbi=x86_64 -PversionName=records-live-274` 빌드와
+`emulator-5554` 설치가 성공했고 설치된 versionName도 확인했다. debug Lab의 실제 Naver
+지도에서 한 산책을 숨긴 뒤 상세를 열어 기록 화면과 MapView를 제거했다. 상세에서 가로·
+세로 회전을 거쳐 돌아왔을 때 선택 카드·숨김 1회·표시 흔적 10개와 카메라 위치·50m 축척이
+유지됐다. 복귀 직후 배경 타일은 다시 로드됐고, 완료 후 같은 지형과 브러시를 확인했다.
+확인 화면은 `before-detail.png`, `after-detail-loaded.png`다. 가상 기록을 쓰는 지도
+생명주기 시연이며, 실제 계정의 Room→배포 API→실제 상세 검증을 대신하지 않는다.
+
+같은 APK의 MainActivity에서도 `둘러보기 → 홈의 지난 산책 → 로그인 안내 → 로그인
+랜딩`을 직접 확인했다. 에뮬레이터 빌드에는 카카오 로그인 설정이 없으므로 인증된 실제
+계정의 기록 왕복은 미실시다. 물리 폰과 서버 DB는 이 단계에서 조작하지 않았다.
+
+완료 전 `dev`에 #270(`3f27624`, 내 점령지 화면)이 들어와 MainActivity의 enum과
+산책 복귀 분기 충돌을 통합했다. 점령지 진입·복귀는 dev 변경 그대로 유지했다.
+통합 후 Route 3개·OwnedTerritoryRoute 1개·산책 기록 버튼 1개가 통과했고 실패·오류·
+skip은 0개다. 디버그 APK도 다시 빌드·설치했다. 앞선 33개와 중복을 뺀 고유 검증은 35개다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.game.owned.OwnedTerritoryRouteTest' --tests 'com.daengs.app.ui.walk.WalkTerritoryUiTest.산책 전 기록 버튼은 편집기가 아니라 목록으로 간다' :app:assembleDebug -PslimAbi=x86_64 -PversionName=records-live-274 --console=plain
+```
 
 ## 조건 편집과 상태 유지
 
@@ -61,8 +235,9 @@ Step4에서 같은 화면의 행동 기록 탐색을 구현했다. 겹침 색 �
   고른 산책과 숨김 상태도 비운다. 선택한 보기 자체는 유지한다. 이전 조건의 기록이 새
   조건 아래 잠깐 나타나지 않도록 결과 상태도 함께 초기화한다. 서로 다른 조회 조건의
   표시 상태를 무제한으로 보관하는 조건별 캐시는 아니다.
-- 로딩·오류·결과 없음에서도 검색과 조건 편집을 사용할 수 있다. 선택한 강아지가 현재
-  강아지 목록에서 사라지면 강아지 조건을 전체로 되돌린다.
+- 로딩·오류·결과 없음에서도 검색과 조건 편집을 사용할 수 있다. 현재 강아지 목록을 받은 뒤
+  선택한 강아지가 사라진 것을 확인하면 강아지 조건을 전체로 되돌린다. 목록 확인 전에는
+  복원한 강아지 조건을 유지한다.
 
 ## 전체 선택과 페이지
 
@@ -114,7 +289,7 @@ Step4에서 같은 화면의 행동 기록 탐색을 구현했다. 겹침 색 �
 | 선택한 카드 다시 누르기 / 강조 해제 | 카드 선택과 경로 강조를 해제한다. | 카메라 위치·배율, 배경 흔적 |
 | 지도에서 숨기기 | 해당 산책의 흔적과 경로 강조를 지도에서 숨기고, 카드에는 숨김 상태를 표시한다. | 검색 결과·선택 산책 수·관련 목록·카메라 |
 | 지도에 다시 표시 / 모두 표시 | 숨김을 해제하여 해당 흔적을 합성에 다시 포함한다. | 조회 조건·목록·카메라 |
-| 이 산책 보기 | 선택 카드의 `onOpen(sessionId)`를 호출한다. | 뒤에 남아 있는 탐색 화면의 조건·선택·숨김·스크롤·카메라 |
+| 이 산책 보기 | 선택 카드의 `onOpen(sessionId)`로 산책 상세를 연다. | 복귀할 탐색 화면의 조건·선택·숨김·스크롤·카메라 |
 
 카드를 누르는 것과 상세를 여는 것은 별개다. 숨긴 카드를 골라도 숨김을 자동으로 풀지 않고,
 그 선택 때문에 지도를 이동시키지 않는다. 표시 중인 카드의 명시적인 선택만 해당 실제
@@ -199,13 +374,14 @@ B 바깥쪽은 2–3회가 공유되도록 구성해 최소 횟수에 따라 다
 않는다. 배경 지도는 실제 지도 SDK를 사용하므로 지도 인증과 네트워크는 별도다.
 산책별 목록의 카드 또는 모아보기에서 `이 산책 보기`를 누르면 기존 debug 시연용
 `SampleWalkRecordDialog`가 합성 기록의 경로·요약·메모를 보여준다. 실제 산책 상세 화면과의
-연결을 완료했다는 의미가 아니다.
+연결을 검증하는 화면은 아니다. 실제 데이터 연결 3단계의 일반 진입은 이 Activity를 거치지
+않고 `WalkRecordsRoute`에서 기존 `WalkDiaryMapScreen`으로 이동한다.
 
 ```powershell
 adb shell am start -n com.daengs.app/.ui.walk.WalkRecordsLabActivity
 ```
 
-## 후속 단계와 확인 범위
+## 시연 단계의 기록과 후속 확인 범위
 
 Step3의 지도·목록·강조·숨김에 겹침 구간 탐색을 연결하고 자동 검증과 실제 지도 시연을
 마쳤다. 새 확장의 확인 범위는 아래에 따로 기록한다. 이전 Step3 테스트·캡처는 당시 기본 탐색의
@@ -215,8 +391,9 @@ Step4의 **행동 검색**은 환경처럼 산책 전체에 붙은 조건과 달
 찾는다. 위치 없는 행동도 결과에 남기며 핀·기록 카드·관련 산책 흔적을 연결한다.
 제목·메모 검색과 행동 선택은 별개의 조건이고, 이 탐색은 행동 비교 보고서나 성향 추론이 아니다.
 
-실데이터 연결은 여전히 후속 작업이다. Room·서버에서 현재 계정이 볼 수 있는 기록을 읽고,
-현재 제목·메모·공간 원판을 같은 선택 기준에 연결하는 공급부와 일반 화면 진입점이 필요하다.
+아래 시연 단계 당시에는 실제 공급부와 일반 화면 진입점을 후속으로 남겼다. 현재는 앞의
+실제 데이터 연결 1–3단계에서 Room 기록·서버 원판·일반 진입과 상세를 연결했다. 사용자
+기록으로 배포 API와 native 지도를 확인하는 범위는 각 단계의 검증 기록과 구분한다.
 
 ### Step5 전체 흐름 · 2026-09-10 확인 결과
 
