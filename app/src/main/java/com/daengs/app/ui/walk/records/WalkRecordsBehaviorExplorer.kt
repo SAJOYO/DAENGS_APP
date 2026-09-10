@@ -50,6 +50,9 @@ internal fun WalkRecordsBehaviorExplorer(
     onView: (BehaviorRecordsView) -> Unit,
     modifier: Modifier = Modifier,
     state: WalkRecordsBehaviorState = rememberWalkRecordsBehaviorState(),
+    traceLoading: Boolean = false,
+    traceError: String? = null,
+    onReloadTraces: () -> Unit = {},
 ) {
     var selectedEntryKey by state.selectedEntryKey
     var hiddenWalkIds by state.hiddenWalkIds
@@ -87,6 +90,8 @@ internal fun WalkRecordsBehaviorExplorer(
                     }
                 })
             }
+            // Pin inspection becomes available before any brush work completes.
+            initialBounds = entryAndRouteBounds
             val ready = prepareWalkRecordsTraces(result.related)
             currentCoroutineContext().ensureActive()
             prepared = ready
@@ -143,9 +148,8 @@ internal fun WalkRecordsBehaviorExplorer(
                 addAll(prepared?.availableWalkIds.orEmpty())
             }.toSet()
     }
-    LaunchedEffect(hideableIds, initialBounds) {
-        if (initialBounds != null) hiddenWalkIds = hiddenWalkIds.intersect(hideableIds)
-    }
+    // A pending or failed trace is not a deleted walk. Keep its visibility choice for a retry;
+    // the result effect above removes IDs only when they leave the related walk selection.
     val onSelect: (String, Boolean) -> Unit = { key, scrollToRecord ->
         val record = result.records.firstOrNull { it.key == key }
         if (record != null) {
@@ -172,6 +176,7 @@ internal fun WalkRecordsBehaviorExplorer(
     val visibleTraces = prepared?.availableWalkIds?.count { it !in hidden }
     val missingLocations = result.records.count { it.point == null }
     val missingTraces = prepared?.let { result.related.records.size - it.availableWalkIds.size }
+    val remoteTraces = result.related.records.any { it.traceState != null }
 
     Column(modifier.fillMaxWidth()) {
         BehaviorViewControls(view, onView, Modifier.padding(horizontal = 18.dp))
@@ -189,9 +194,10 @@ internal fun WalkRecordsBehaviorExplorer(
             if (hiddenCount > 0) TextButton(onClick = { hiddenWalkIds = emptySet() },
                 modifier = Modifier.testTag("records-behavior-restore-all")) { Text("모두 표시") }
         }
+        WalkRecordsTraceStatus(result.related.records, traceLoading, traceError, onReloadTraces)
         val omissions = listOfNotNull(
             "위치 없음 ${missingLocations}건".takeIf { missingLocations > 0 },
-            missingTraces?.takeIf { it > 0 }?.let { "흔적 없음 ${it}회" },
+            missingTraces?.takeIf { !remoteTraces && it > 0 }?.let { "흔적 없음 ${it}회" },
             "산책 숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
         ).joinToString(" · ")
         Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 20.dp)) {
@@ -248,9 +254,12 @@ internal fun WalkRecordsBehaviorExplorer(
                                     }
                                 } else when {
                                     error != null -> error
+                                    traceLoading && visibleTraces == 0 -> "흔적을 불러오는 동안 기록 위치와 목록을 볼 수 있어요."
                                     tiles == null -> "관련 산책 흔적을 준비하고 있어요."
                                     visibleTraces == 0 && hiddenCount > 0 -> "관련 산책 흔적을 모두 숨겼어요."
-                                    visibleTraces == 0 -> "관련 산책의 흔적이 없어요. 기록 위치와 목록은 유지해요."
+                                    visibleTraces == 0 -> if (remoteTraces)
+                                        "현재 불러온 흔적이 없어요. 기록 위치와 목록은 유지해요."
+                                        else "관련 산책의 흔적이 없어요. 기록 위치와 목록은 유지해요."
                                     else -> null
                                 }
                                 if (message != null) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),

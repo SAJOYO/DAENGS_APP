@@ -454,6 +454,12 @@ interface WalkDao {
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
 
+    /** Complete account-owned selection for records exploration, before UI pagination. */
+    @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
+        "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +
+        "ORDER BY startedAtMillis DESC, id DESC")
+    suspend fun finishedRecordSessions(ownerId: String, dogId: String?): List<WalkSessionRow>
+
     @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
         "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +
         "AND (:beforeAt IS NULL OR startedAtMillis < :beforeAt OR (startedAtMillis = :beforeAt AND id < :beforeId)) " +

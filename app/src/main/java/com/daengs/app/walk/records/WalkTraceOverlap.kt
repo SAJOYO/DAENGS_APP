@@ -120,6 +120,14 @@ internal class WalkTraceOverlap private constructor(
         fun create(sheets: List<WalkTraceSheet>, checkCancelled: () -> Unit): WalkTraceOverlap {
             val radii = sheets.map { it.radiusU }.distinct()
             if (radii.size > 1) return unavailable("공간 격자 크기가 다른 산책이 있어 겹친 곳을 비교할 수 없어요.")
+            // Different analyses may share a paint policy, but different policies must never
+            // silently become comparable just because their cells have the same radius.
+            // Existing synthetic sheets are comparable only to other synthetic sheets.
+            val policies = sheets.map { sheet -> sheet.provenance?.let {
+                listOf(it.paintFingerprint, it.paintVersion, it.gridVersion,
+                    it.profileFingerprint, it.sampleStepMeters)
+            } }.distinct()
+            if (policies.size > 1) return unavailable("흔적을 만든 기준이 다른 산책이 있어 겹친 곳을 비교할 수 없어요.")
             val radius = radii.singleOrNull() ?: return empty()
             // prepareWalkRecordsTraces already enforces the default brush's minimum 2u pixel size.
             if (radius < 2.0) return unavailable("이 공간 격자는 겹침 조회를 지원하지 않아요.")
