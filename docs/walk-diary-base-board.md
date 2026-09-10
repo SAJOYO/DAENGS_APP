@@ -35,8 +35,8 @@ Room의 생성 결과와 사용자 draft는 기존처럼 따로 저장된다.
 
 ## 범위와 확인 자료
 
-이번 변경은 기본 보드 소비 연결이다. 종료 직후 준비 시작, 전체 10초 마감,
-준비 중 상세 공개를 막는 화면 정책은 후속 작업이다. 현재 생성 트리거는 유지한다.
+이 문서는 기본 보드 소비 연결(#273)을 설명한다. 종료 직후 준비, 전체 10초 예산과
+완성된 보드만 공개하는 후속 정책은 [단일 공개](walk-diary-publication.md)에 있다.
 
 DEV가 합성 동선으로 생성한 `backend/evals/walk-diary/board-v1.json`을
 `app/src/test/resources/storyboard/diary-board-v1.json`에 그대로 보존한다.

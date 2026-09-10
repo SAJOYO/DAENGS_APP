@@ -196,7 +196,8 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 `walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과
 빈 결과를, `WalkRecordSheetsApiTest`는 인증된 batch HTTP 요청과 미배포/인증 실패를 확인한다.
 `TraceLoadingWalkRecordsSourceTest`는 조회 지연·실패·재시도·계정/기록 변경 중 늦은 응답을,
-`RoomWalkRecordsSourceTest`는 실제 SQLite의 업로드 ID 전달을 확인한다.
+`RoomWalkRecordsSourceTest`는 실제 SQLite의 업로드 ID 전달과 보드 확정 시 목록 갱신,
+준비 중·늦은 AI 제목의 검색 제외를 확인한다.
 브러시 연결/겹침 정책은 `WalkRecordsTracesTest`, 화면 소비자는
 `ui/walk/WalkRecordsScreenTest`로 좁혀 실행한다. 실제 서버·DB 접속은 필요하지 않다.
 
