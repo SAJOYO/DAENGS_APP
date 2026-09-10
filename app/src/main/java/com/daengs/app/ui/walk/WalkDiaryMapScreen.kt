@@ -99,7 +99,18 @@ internal fun WalkDiaryMapScreen(
             finally { busy = false }
         }
     }
-    BackHandler { when { adding -> { adding = false; chosenPoint = null }; selectedId != null -> selectedId = null; else -> onBack() } }
+    LaunchedEffect(loaded, detail == null) {
+        if (loaded && detail == null) {
+            selectedId = null; adding = false; chosenPoint = null
+            entry = null; editorOpen = false; editingScene = null; photo = null
+        }
+    }
+    BackHandler { when {
+        loaded && detail == null -> onBack()
+        adding -> { adding = false; chosenPoint = null }
+        selectedId != null -> selectedId = null
+        else -> onBack()
+    } }
     val scenes = diary?.scenes.orEmpty()
     val selected = scenes.firstOrNull { it.id == selectedId }
     fun selectScene(scene: DiaryScene) {
@@ -118,7 +129,7 @@ internal fun WalkDiaryMapScreen(
     }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null) {
-            TextButton(onClick = onBack) { Text("‹ 산책 목록") }
+            TextButton(onClick = onBack) { Text("‹ 산책 기록") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
@@ -154,6 +165,8 @@ internal fun WalkDiaryMapScreen(
                 })
         }
     }
+    // A removed walk must not keep an already-open editor or photo above the unavailable state.
+    if (loaded && detail == null) return
     if (adding && chosenPoint != null && !editorOpen) {
         val point = requireNotNull(chosenPoint)
         AlertDialog(onDismissRequest = { chosenPoint = null }, title = { Text("이 지점에 기록 남기기") },
