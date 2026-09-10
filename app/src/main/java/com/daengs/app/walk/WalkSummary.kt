@@ -190,4 +190,3 @@ private fun RecordedFix.toSample(): LocationSample = LocationSample(
     accuracyMeters = accuracyM,
     isMock = isMock,
 )
-

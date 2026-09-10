@@ -169,4 +169,3 @@ data class RecordedFix(
     val provider: String? = null,
     val recordingEligible: Boolean? = null,
 )
-

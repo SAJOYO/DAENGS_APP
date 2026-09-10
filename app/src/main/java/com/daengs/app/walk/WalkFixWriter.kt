@@ -99,4 +99,3 @@ class WalkFixWriter(
         return completion
     }
 }
-

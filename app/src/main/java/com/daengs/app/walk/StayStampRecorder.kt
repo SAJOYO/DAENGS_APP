@@ -115,4 +115,3 @@ fun detectStayStamps(fixes: List<RecordedFix>): List<StayStamp> {
     }
     return recorder.snapshot()
 }
-

@@ -270,4 +270,3 @@ private fun WalkActionRow.toModel(): RecordedWalkAction? {
         accuracyMeters = accuracyM,
     )
 }
-

@@ -67,4 +67,3 @@ class ActionPinStore(private val dao: WalkDao, private val owner: () -> String,
             GeoPoint(it.lat, it.lng), it.accuracyM, it.isMock)
     }
 }
-

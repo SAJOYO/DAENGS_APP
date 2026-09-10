@@ -356,4 +356,3 @@ class WalkMigrationTest {
         const val V5_IDENTITY_HASH = "63387eabb3336c05e5d738962113b772"
     }
 }
-

@@ -118,4 +118,3 @@ class WalkRuntime internal constructor(
     /** 끝난 산책의 서버 전달을 Android에 맡기는 자리. */
     internal val delivery: WalkDeliveryScheduler,
 )
-

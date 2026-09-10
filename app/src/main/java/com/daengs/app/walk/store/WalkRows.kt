@@ -123,4 +123,3 @@ data class WalkActionRow(
     val lng: Double,
     val accuracyM: Float?,
 )
-

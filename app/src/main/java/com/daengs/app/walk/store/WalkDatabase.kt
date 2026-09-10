@@ -274,4 +274,3 @@ abstract class WalkDatabase : RoomDatabase() {
                 .build()
     }
 }
-

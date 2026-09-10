@@ -690,4 +690,3 @@ class WalkTrackingService : Service() {
             Intent(context, WalkTrackingService::class.java).setAction(action)
     }
 }
-
