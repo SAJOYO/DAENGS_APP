@@ -8,6 +8,9 @@ private object DiaryResources
 
 fun diaryFixture(): JSONObject = JSONObject(DiaryResources::class.java.getResource("/storyboard/diary-v1.json")!!.readText())
 
+/** Byte-identical to DEV backend/evals/walk-diary/board-v1.json. */
+fun diaryBoardFixture(): JSONObject = JSONObject(DiaryResources::class.java.getResource("/storyboard/diary-board-v1.json")!!.readText())
+
 internal fun titledDiaryFixture(): JSONObject {
     val value = JSONObject(DiaryResources::class.java.getResource("/storyboard/v2-short.json")!!.readText())
         .put("format", GeoStoryboardBundle.FORMAT_V3).put("session_id", "s").put("synthetic", false)
