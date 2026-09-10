@@ -93,7 +93,27 @@ data class ScreeningReport(
      *    붙이면 말한 것의 절반이 한 단계 부풀려진다 (저쪽 실측 과잉 52.4%).
      */
     @Immutable
-    data class GroupLine(val name: String, val percent: Float, val text: String, val caveat: String)
+    data class GroupLine(
+        val name: String,
+        val percent: Float,
+        val text: String,
+        val caveat: String,
+        /**
+         * 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
+         * 이름만으로는 자기 개 사진과 대조가 안 된다 — `표면 변화` 는 뜻이 안 잡히고
+         * `딱지, 둥근 비늘, 검어진 피부` 는 바로 보인다. 계열 줄 **바로 아래**에 띄운다.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val feature: String = "",
+        /**
+         * 수의학적 의미 (primary/secondary 등). **"자세히 보기" 안에만** 띄운다.
+         *
+         * ⚠️ 본문에 올리면 안 된다. 그 축은 *진단 순서*의 축이지 *보호자에게 뭐라고
+         *    부를지*의 축이 아니고, 저쪽에서 그 축으로 묶었다가 **과잉 분류 88.4%** 로
+         *    기각했다. 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val detail: String = "",
+    )
 
     /**
      * "덩어리가 의심됩니다" — **계약에서 유일하게 병변 이름을 말하는 자리**다.
@@ -173,6 +193,8 @@ data class ScreeningReport(
                         percent = it.optDouble("percent", 0.0).toFloat(),
                         text = text,
                         caveat = it.optString("caveat"),
+                        feature = it.optString("feature"),
+                        detail = it.optString("detail"),
                     )
                 },
                 alert = al?.let {
