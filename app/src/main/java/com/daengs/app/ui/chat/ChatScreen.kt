@@ -1879,7 +1879,7 @@ private fun ReportBubblePreview() {
         contractVersion = "1.0",
         verdict = ScreeningReport.Verdict.ABNORMAL,
         headline = "피부에 이상 소견이 보입니다.",
-        body = "어떤 병변인지까지는 이 사진만으로 판단할 수 없습니다.",
+        body = "무엇 때문인지까지는 이 사진만으로 알 수 없습니다.",
         action = "수의사 진료를 받아보시기를 권합니다.",
         stage1 = ScreeningReport.Stage1(83.0f, 14.7f, calibrated = true),
         stage2 = emptyList(),
@@ -1919,7 +1919,7 @@ private fun ReportBubblePreview() {
                     ),
                     ScreeningReport.Alert(
                         "A6", "덩어리가 의심됩니다.", "빠른 진료를 권합니다.",
-                        "진단이 아닙니다. 덩어리처럼 보이는 다른 병변일 수 있습니다.",
+                        "진단이 아닙니다. 덩어리처럼 보이는 다른 것일 수 있습니다.",
                         0.72f, 0.40f,
                     ),
                 ),
