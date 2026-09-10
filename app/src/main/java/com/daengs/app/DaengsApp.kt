@@ -64,11 +64,13 @@ class DaengsApp : Application() {
     lateinit var cardStore: CardStore
         private set
 
+    lateinit var actionPins: com.daengs.app.walk.pin.ActionPinStore
+    lateinit var actionPinScheduler: com.daengs.app.walk.pin.ActionPinScheduler
     lateinit var walkEntries: com.daengs.app.walk.store.WalkEntryStore
         private set
     lateinit var walkPhotos: com.daengs.app.walk.store.WalkPhotoStore
         private set
-    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkStoryboardSync
+    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkDiarySync
         private set
     lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
         private set
@@ -112,20 +114,27 @@ class DaengsApp : Application() {
 
         val store = WalkTrackingStore()
         val dao = WalkDatabase.open(this).walkDao()
-        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos")) {
+        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos"),
+            onChanged = { sessionId -> applicationScope.launch {
+                runCatching { walkRuntime.delivery.enqueue(sessionId) }
+            } }) {
             tokenStore.load()?.appUserId.orEmpty()
         }
         val log = RoomWalkFixLog(dao, prunePhotos = walkPhotos::prune) { tokenStore.load()?.appUserId.orEmpty() }
         applicationScope.launch { walkPhotos.prune() }
         walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
         walkEntryDao = dao
-        walkStoryboardSync = com.daengs.app.walk.sync.WalkStoryboardSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
+        actionPins = com.daengs.app.walk.pin.ActionPinStore(dao, { tokenStore.load()?.appUserId.orEmpty() },
+            activeSessionId = { store.state.value.activeSessionId })
+        actionPinScheduler = com.daengs.app.walk.pin.ActionPinScheduler(this, applicationScope)
+        walkStoryboardSync = com.daengs.app.walk.sync.WalkDiarySync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         val writer = WalkFixWriter(
             log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
             scope = applicationScope,
         )
         val delivery = WorkManagerWalkDeliveryScheduler(this, log)
+        val photoSync = com.daengs.app.walk.sync.WalkPhotoSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         walkRuntime = WalkRuntime(
             locationSource = FusedLocationSource(this),
             store = store,
@@ -133,12 +142,18 @@ class DaengsApp : Application() {
             writer = writer,
             log = log,
             history = WalkHistory(log),
-            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao),
+            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
+                temporaryLegacyMode = com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
+                owner = { tokenStore.load()?.appUserId.orEmpty() },
+                v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
+                photoSync = photoSync::sync,
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
-        applicationScope.launch { delivery.enqueuePending() }
+        // Queue recovery before the service can enqueue a new session/action.
+        val recoveredPins = writer.ordered { actionPins.recover() }
+        applicationScope.launch { recoveredPins.await(); delivery.enqueuePending() }
         if (BuildConfig.DEBUG && BuildConfig.TERRITORY_SERVER_ACTIONS) {
             val actions = TerritoryActionSync(TerritoryActionDatabase.open(this).actions(),
                 TerritoryActionApi { BuildConfig.API_BASE_URL }, sessionProvider::freshSession,

@@ -28,6 +28,7 @@ class WalkSync(
     private val now: () -> Long = System::currentTimeMillis,
     private val entrySync: WalkEntrySync? = null,
     private val storyboardSync: (suspend (String, String, String) -> Unit)? = null,
+    private val photoSync: (suspend (String, String, String) -> Unit)? = null,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -52,14 +53,17 @@ class WalkSync(
      */
     suspend fun syncOnce(accessToken: String?): Unit = withContext(Dispatchers.IO) {
         val token = accessToken ?: return@withContext
-        if (!api.configured || !ownsToken(token)) return@withContext
+        // 시작할 때의 계정을 붙잡아 두고, 단계마다 그대로인지 본다.
+        val owner = log.ownerId
+        if (!api.configured || !stillOwned(owner)) return@withContext
         runCatching { pushMutex.withLock { push(token) } }.onFailure { it.warn("올리기") }
-        runCatching { pull(token) }.onFailure { it.warn("되찾기") }
+        runCatching { pull(token, owner) }.onFailure { it.warn("되찾기") }
         for (session in log.finishedSessions()) {
-            if (!ownsToken(token)) return@withContext
+            if (!stillOwned(owner)) return@withContext
             session.serverWalkId?.let { remoteId ->
                 runCatching {
                     entrySync?.sync(token, session.id, remoteId)
+                    photoSync?.invoke(token, session.id, remoteId)
                     storyboardSync?.invoke(token, session.id, remoteId)
                 }.onFailure { it.warn("기록 맞추기") }
             }
@@ -70,9 +74,9 @@ class WalkSync(
      * WorkManager가 지정한 한 건을 보낸다. [syncOnce]와 달리 실패를 삼키지 않는다 —
      * 호출자가 [androidx.work.ListenableWorker.Result.retry]를 선택해야 하기 때문이다.
      */
-    suspend fun syncPendingSession(accessToken: String, sessionId: String): Unit =
+    suspend fun syncPendingSession(accessToken: String, sessionId: String, includeStoryboard: Boolean = true): Unit =
         withContext(Dispatchers.IO) {
-            if (!api.configured || !ownsToken(accessToken)) return@withContext
+            if (!api.configured || !stillOwned(log.ownerId)) return@withContext
             pushMutex.withLock {
                 val session = log.session(sessionId) ?: return@withLock
                 if (session.endedAtMillis == null) {
@@ -81,7 +85,8 @@ class WalkSync(
                 if (session.syncState != WalkSyncState.DERIVED) pushOne(accessToken, session)
                 log.session(sessionId)?.serverWalkId?.let {
                     entrySync?.sync(accessToken, sessionId, it)
-                    storyboardSync?.invoke(accessToken, sessionId, it)
+                    photoSync?.invoke(accessToken, sessionId, it)
+                    if (includeStoryboard) storyboardSync?.invoke(accessToken, sessionId, it)
                 }
             }
         }
@@ -98,7 +103,9 @@ class WalkSync(
     }
 
     private suspend fun pushOne(token: String, session: com.daengs.app.walk.RecordedSession) {
-        if (!ownsToken(token)) return
+        // 이 세션의 주인이 지금 로그인한 사람인지 본다. 올리다가 계정이 바뀌면
+        // 남의 계정으로 남의 산책을 올리게 된다.
+        if (!stillOwned(session.ownerId ?: log.ownerId)) return
         val fixes = log.fixes(session.id)
         val rememberedWalkId = session.serverWalkId
             ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
@@ -123,7 +130,7 @@ class WalkSync(
     }
 
     /** 서버에 있는데 이 기기에 없는 것을 내려받는다. */
-    private suspend fun pull(token: String) {
+    private suspend fun pull(token: String, owner: String?) {
         val remote = api.list(token).getOrElse {
             it.warn("목록 받기")
             return
@@ -139,21 +146,35 @@ class WalkSync(
             }
             // 목록에는 분석 상태가 없으므로 원본 업로드까지만 확실한 것으로 저장한다.
             // 다음 sync가 finalize를 멱등 호출한다.
-            if (!ownsToken(token)) return
-            log.restoreSession(detail.walk.toSession(rawUploadedAtMillis = now()).copy(ownerId = tokenOwner(token)))
+            if (!stillOwned(owner)) return
+            log.restoreSession(detail.walk.toSession(rawUploadedAtMillis = now()).copy(ownerId = owner))
             for (fix in detail.fixes) log.append(detail.walk.clientSessionId, fix)
         }
     }
 
-    private fun ownsToken(token: String): Boolean {
-        val owner = log.ownerId ?: return true // test logs have no account boundary
-        return owner.isNotEmpty() && tokenOwner(token) == owner
-    }
-
-    private fun tokenOwner(token: String): String? = runCatching {
-            val claims = org.json.JSONObject(String(java.util.Base64.getUrlDecoder().decode(token.split('.')[1])))
-            claims.getString("sub")
-        }.getOrNull()
+    /**
+     * 시작할 때 붙잡아 둔 계정이 그대로인가.
+     *
+     * **토큰을 열어 보지 않는다.** 예전에는 액세스 토큰을 세 조각 JWT 로 보고
+     * `parts[1]` 을 payload 로 파싱해 `sub` 를 꺼냈는데, 저쪽이 발급하는 것은
+     * **JWE** 다 (`SAJOYO/DAENGS_dev` 의 `core/token.py` · D-015 · `alg="dir"` ·
+     * `enc="A256GCM"`). JWE 는 다섯 조각이고 그 자리는 암호화 키 칸이라 `dir` 에서는
+     * **빈 문자열**이다. 본문은 서버 키로만 열린다 — 앱이 `sub` 를 읽는 것은 원래
+     * 불가능하다.
+     *
+     * 그래서 파싱이 늘 실패했고, 이 관문이 **항상 false** 라 올리기도 되찾기도 통째로
+     * 멈춰 있었다. 로그도 안 남아서 "기록이 없다" 와 구분되지 않았다. 산책이 서버에
+     * 한 건도 쌓이지 않은 채로 `v1.0.2` 까지 나갔다.
+     *
+     * 계정은 로그인 응답의 `app_user_id` 로 이미 받아 `TokenStore` 에 넣어 두었다.
+     * 관문의 목적("작업 도중 계정이 바뀌면 남의 기록을 섞지 않는다")은 그것으로
+     * 그대로 지켜진다. **토큰에서 뭔가 꺼내 쓰고 싶어지면 그 자리는 틀렸다.**
+     *
+     * `null` 은 계정 경계가 없는 것이다 (테스트용 log). 빈 문자열은 로그인 전이라
+     * 아직 누구의 기록도 아니다 — 그때는 동기화하지 않는다.
+     */
+    private fun stillOwned(owner: String?): Boolean =
+        owner == null || (owner.isNotEmpty() && log.ownerId == owner)
 
     private fun Throwable.warn(what: String) {
         warn("산책 동기화 — $what 에 실패했다. 다음에 다시 시도한다.", this)

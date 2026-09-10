@@ -13,19 +13,28 @@ import org.json.JSONObject
 import java.io.IOException
 
 fun storyboardEntryStamp(rows: List<WalkEntryRow>): String = storyboardHash(JSONArray().apply {
-    rows.sortedBy { it.id }.forEach { put(JSONArray(listOf(it.id, it.revision, it.mutationId, it.dirty, it.syncError))) }
+    rows.sortedBy { it.id }.forEach {
+        val stamp = JSONArray(listOf(it.id, it.revision, it.mutationId, it.dirty, it.syncError))
+        // Keep pre-migration v1 analysis stamps byte-for-byte compatible.
+        if (it.isV2) stamp.put(it.pinRevision).put(it.pinPayload).put(it.pinDirty)
+        put(stamp)
+    }
 }.toString())
 
 class WalkStoryboardSync(
     private val dao: WalkDao,
     private val owner: () -> String,
+    private val capabilities: suspend (String) -> JSONObject = { token ->
+        WalkApi.call(token, "/entry-capabilities", "GET", null, parse = ::JSONObject).getOrThrow()
+    },
     private val request: suspend (String, String, JSONObject) -> JSONObject = { token, path, body ->
-        WalkApi.call(token, path, "POST", body, ::JSONObject).getOrThrow()
+        WalkApi.call(token, path, "POST", body, parse = ::JSONObject).getOrThrow()
     },
 ) {
     private val mutex = Mutex()
-    private suspend fun compatibleRequest(token: String, path: String, body: JSONObject): JSONObject {
-        val formats = listOf(GeoStoryboardBundle.FORMAT_V4, GeoStoryboardBundle.FORMAT_V3, GeoStoryboardBundle.FORMAT_V2)
+    private suspend fun compatibleRequest(token: String, path: String, body: JSONObject, pins: Boolean): JSONObject {
+        val formats = if (pins) listOf(GeoStoryboardBundle.FORMAT_V5) else
+            listOf(GeoStoryboardBundle.FORMAT_V4, GeoStoryboardBundle.FORMAT_V3, GeoStoryboardBundle.FORMAT_V2)
         for (format in formats) {
             try { return request(token, path, body.put("bundle_format", format)) }
             catch (e: WalkHttpException) {
@@ -43,11 +52,19 @@ class WalkStoryboardSync(
     }
     suspend fun sync(token: String, sessionId: String, walkId: String, refresh: Boolean = false) = mutex.withLock {
         val account = owner()
-        val tokenOwner = runCatching { JSONObject(String(java.util.Base64.getUrlDecoder()
-            .decode(token.split('.')[1]))).getString("sub") }.getOrNull()
-        if (account.isEmpty() || tokenOwner != account || dao.session(sessionId)?.ownerId != account) return@withLock
+        // Tokens are opaque (the server uses JWE); ownership comes from the authenticated session.
+        if (account.isEmpty() || dao.session(sessionId)?.ownerId != account) return@withLock
         val rows = dao.entries(sessionId)
-        if (rows.any { it.dirty || it.syncError != null }) throw IOException("행동 기록 동기화를 먼저 완료해야 해요.")
+        if (rows.any { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null ||
+                it.pinPayload?.let { pin -> JSONObject(pin).optString("state") == "provisional" } == true })
+            throw IOException("행동 기록과 위치 확정을 먼저 동기화해야 해요.")
+        val pins = rows.any { it.isV2 && it.payload != null }
+        if (pins) {
+            val formats = capabilities(token).optJSONArray("storyboard_formats")
+            if (owner() != account) return@withLock
+            if (formats == null || (0 until formats.length()).none { formats.optString(it) == GeoStoryboardBundle.FORMAT_V5 })
+                throw IOException("행동은 저장됐어요. 서버의 새 장면 분석 지원을 기다리고 있어요.")
+        }
         val stamp = storyboardEntryStamp(rows)
         val previous = dao.sceneAnalysis(sessionId)
         val pending = WalkSceneAnalysisRow(sessionId, previous?.generation ?: 0, stamp,
@@ -57,7 +74,8 @@ class WalkStoryboardSync(
             val expected = JSONObject().apply { rows.forEach { put(it.id, it.revision) } }
             val body = JSONObject()
                 .put("expected_entries", expected).put("refresh", refresh)
-            val response = compatibleRequest(token, "/$walkId/storyboard", body)
+            if (owner() != account) return@withLock
+            val response = compatibleRequest(token, "/$walkId/storyboard", body, pins)
             require(response.getString("session_id") == sessionId)
             val remoteEntries = response.getJSONObject("entry_revisions")
             require(remoteEntries.keys().asSequence().toSet() == rows.map { it.id }.toSet() &&
@@ -68,6 +86,7 @@ class WalkStoryboardSync(
             val payload = if (status == "ready") response.getJSONObject("bundle").toString().also {
                 val parsed = GeoStoryboardBundle.parse(it)
                 require(!parsed.synthetic && parsed.sessionId == sessionId)
+                if (pins) require(JSONObject(it).getString("format") == GeoStoryboardBundle.FORMAT_V5)
             } else null
             if (owner() != account) return@withLock
             val accepted = dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, generation, stamp,

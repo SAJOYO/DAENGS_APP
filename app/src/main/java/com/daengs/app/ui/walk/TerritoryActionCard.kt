@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import com.daengs.app.map.features.territory.*
 import com.daengs.app.territory.ClaimPhotoStatus
 import com.daengs.app.ui.theme.*
@@ -29,8 +30,14 @@ internal fun TerritoryActionCard(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("전봇대", Modifier.weight(1f), color = TextDark, fontSize = 13.sp)
-                Text(target.occupancyLabel, color = TextMuted, fontSize = 11.sp)
                 WalkToolButton(WalkTool.CLOSE, "점령지 선택 닫기", onClose)
+            }
+            Text(target.occupancyLabel, color = TextDark, fontSize = 13.sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (target.occupancyKnown) target.claim.occupancy?.let { occupancy ->
+                if (target.isOwnedByMe == true) Text("우리 강아지의 점령지", color = TextMuted, fontSize = 11.sp)
+                Text("점령 시각 · ${territoryOccupiedAtLabel(occupancy.occupiedAtMillis)}",
+                    color = TextMuted, fontSize = 11.sp)
             }
             if (game.readOnly) {
                 Text(game.guidance, color = TextMuted, fontSize = 11.sp)
@@ -100,4 +107,28 @@ private fun SharedTerritoryCardPreview() {
         targetId = "A", guidance = "점유 정보 · 둘러보기",
         sites = listOf(TerritoryGameSite(site, com.daengs.app.territory.TerritoryClaimSite("A", owner),
             "두부", null, null, false))), {}) }
+}
+
+internal fun territoryOccupiedAtLabel(millis: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+    java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd HH:mm", java.util.Locale.KOREA)
+        .format(java.time.Instant.ofEpochMilli(millis).atZone(zone))
+
+@Preview(showBackground = true, widthDp = 320)
+@Composable
+private fun TerritoryReadStatesPreview() {
+    val site = com.daengs.app.territory.TerritorySite("A", com.daengs.app.location.GeoPoint(37.5, 127.0), 0.0)
+    DaengsTheme {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(TerritoryOccupancyReadState.LOADING, TerritoryOccupancyReadState.FAILED,
+                TerritoryOccupancyReadState.LOGIN_REQUIRED).forEach { readState ->
+                TerritoryActionCard(TerritoryGameState(enabled = true, readOnly = true, targetId = "A",
+                    guidance = when (readState) {
+                        TerritoryOccupancyReadState.FAILED -> "점유 정보를 불러오지 못했어요 · 잠시 후 다시 확인해요"
+                        TerritoryOccupancyReadState.LOGIN_REQUIRED -> "로그인하면 점유 정보를 볼 수 있어요"
+                        else -> "점유 정보를 확인하고 있어요"
+                    }, sites = listOf(TerritoryGameSite(site, com.daengs.app.territory.TerritoryClaimSite("A"),
+                        "", null, null, false, occupancyKnown = false, occupancyReadState = readState))), {})
+            }
+        }
+    }
 }

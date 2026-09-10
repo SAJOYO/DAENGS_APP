@@ -87,12 +87,14 @@ class FusedLocationSource(context: Context) : LocationSource {
     }
 }
 
-private fun Location.toSample(): LocationSample = LocationSample(
+internal fun Location.toSample(): LocationSample = LocationSample(
     point = GeoPoint(latitude = latitude, longitude = longitude),
     capturedAtMillis = time,
     elapsedRealtimeNanos = elapsedRealtimeNanos,
     accuracyMeters = accuracy.takeIf { hasAccuracy() },
     speedMetersPerSecond = speed.takeIf { hasSpeed() },
+    bearingDegrees = bearing.takeIf { hasBearing() },
+    bearingAccuracyDegrees = bearingAccuracyDegrees.takeIf { hasBearingAccuracy() },
     // 일부 AVD의 `adb emu geo fix`는 플랫폼 mock 표식 없이 내려온다. 그 값만 믿으면
     // 검증 산책이 실제 기기 증거로 저장·업로드되므로 실행 환경까지 함께 판정한다.
     isMock = isMockEvidence(

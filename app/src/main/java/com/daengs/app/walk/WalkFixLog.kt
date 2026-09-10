@@ -92,6 +92,8 @@ interface WalkFixLog {
     suspend fun fixes(sessionId: String): List<RecordedFix>
 
     suspend fun actions(sessionId: String): List<RecordedWalkAction>
+
+    suspend fun moments(sessionId: String): List<WalkMoment> = actions(sessionId).toMomentGroups()
 }
 
 data class RecordedSession(

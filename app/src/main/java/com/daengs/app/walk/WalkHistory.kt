@@ -146,7 +146,7 @@ class WalkHistory(private val log: WalkFixLog) {
         WalkSessionDetail(
             summary = summary,
             route = summary.toSessionRoute(),
-            moments = log.actions(sessionId).toMomentGroups(),
+            moments = log.moments(sessionId),
             stayStamps = detectStayStamps(fixes),
             observations = fixes,
         )

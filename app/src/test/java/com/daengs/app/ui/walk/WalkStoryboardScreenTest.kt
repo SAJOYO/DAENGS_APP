@@ -1,9 +1,11 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.walk.support.diaryFixture
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.daengs.app.walk.diary.StoryboardScene
+import com.daengs.app.walk.diary.sceneBody
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -15,6 +17,15 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class WalkStoryboardScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun `내부 배경과 메모는 하나의 장면 본문으로 표시된다`() {
+        val scene = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(
+            diaryFixture().toString()).scenes.first()
+        compose.setContent { DiarySceneText(scene.sceneBody()) }
+        compose.onNodeWithText("등록된 카페가 가까이에 있었다.   두부와 사진을 찍었다.\n다음 기록도 남김  ").assertExists()
+        compose.onNodeWithText("직접 남긴 기록").assertDoesNotExist()
+        compose.onNodeWithText(scene.diary!!.locationLabel).assertDoesNotExist()
+    }
 
     @Test fun `대상 강아지 이름과 조회 부족 이유를 검토 화면에 표시한다`() {
         val before = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(javaClass.getResource("/storyboard/v2-before.json")!!.readText())
@@ -72,7 +83,7 @@ class WalkStoryboardScreenTest {
         compose.onNodeWithText("직접 남긴 관찰").assertExists()
     }
 
-    @Test fun `검토 완료를 명시적으로 요청하고 AI 미연결을 표시한다`() {
+    @Test fun `기존 검토 완료는 유지하되 내부 출력 구분을 사용자 안내로 보여주지 않는다`() {
         var reviewed = false
         compose.setContent {
             StoryboardContent(emptyList(), false, null, false, false, true,
@@ -80,6 +91,6 @@ class WalkStoryboardScreenTest {
         }
         compose.onNodeWithText("이 구성 검토 완료").performScrollTo().performClick()
         assertTrue(reviewed)
-        compose.onNodeWithText("AI 일기 생성 · 연결 준비 중").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("서버가 새 일기를 지원하면 배경 문장과 원본 기록을 나누어 보여줘요.").assertDoesNotExist()
     }
 }

@@ -44,6 +44,7 @@ fun PlaceSearchLabScreen(
     cardActions: (@Composable (PlaceSearchHit) -> Unit)? = null,
     categoryContent: (@Composable () -> Unit)? = null,
     conditionContent: (@Composable () -> Unit)? = null,
+    answerContent: (@Composable () -> Unit)? = null,
     aiConnected: Boolean = false,
     emptyMessage: String = "검색 결과가 없어요.",
     showRetry: Boolean = true,
@@ -60,6 +61,7 @@ fun PlaceSearchLabScreen(
                 if (state.aiMode) "AI에게 원하는 장소를 말해보세요" else if (live) "장소명 검색" else "장소명·주소 검색",
                 state.aiMode, onEdit, onSubmit, onAi, onBack)
             if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
+            answerContent?.invoke()
         },
         categories = {
             if (categoryContent != null) categoryContent() else LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

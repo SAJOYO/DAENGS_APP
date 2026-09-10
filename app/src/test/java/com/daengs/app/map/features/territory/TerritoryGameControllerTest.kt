@@ -51,6 +51,22 @@ class TerritoryGameControllerTest {
         assertTrue(browsing.eligiblePets.isEmpty())
     }
 
+    @Test fun `local proximity needs no pet or walk but action authorization still does`() {
+        val controller = game()
+        for (tracking in listOf(WalkTrackingState(), this.tracking.copy(activeDogIds = emptyList()),
+            this.tracking.copy(trail = TrailSnapshot(state = TrackingState.PAUSED)))) {
+            val result = controller.snapshot(board, tracking, true, names, 2_000_000_000L, screenSample = fix)
+            assertEquals(com.daengs.app.territory.TerritoryProximityRange.IN_RANGE, result.target!!.proximity.range)
+            assertFalse(result.canMark); assertFalse(result.canPhotograph)
+        }
+        val repo = InMemoryTerritoryClaimRepository(emptyList())
+        val owner = game(repo)
+        owner.mark("A", board, this.tracking, true, names, 2_000_000_000L, 2000)
+        val marked = snapshot(owner)
+        assertEquals(com.daengs.app.territory.TerritoryProximityRange.IN_RANGE, marked.target!!.proximity.range)
+        assertFalse(marked.canMark)
+    }
+
     @Test
     fun `different sites allow different dogs but existing attempt stays pinned`() {
         val repo = InMemoryTerritoryClaimRepository(emptyList())

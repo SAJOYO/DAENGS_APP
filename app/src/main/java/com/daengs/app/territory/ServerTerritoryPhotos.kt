@@ -27,7 +27,8 @@ class ServerTerritoryPhotos(
     private val saves = Mutex()
     private val liveCaptures = ConcurrentHashMap.newKeySet<String>()
 
-    suspend fun reserve(expected: WalkTrackingState, mark: TerritoryOperation, capture: String): String? {
+    suspend fun reserve(expected: WalkTrackingState, mark: TerritoryOperation, capture: String, expectedVersion: Long? = null): String? {
+        val startedNanos = System.nanoTime()
         val id = JSONObject(capture).getString("client_capture_id")
         try {
             val saved = actions.mutate { dao ->
@@ -38,8 +39,9 @@ class ServerTerritoryPhotos(
                 val rows = dao.all()
                 val latest = rows.firstOrNull { it.identity == mark.identity && it.state == "CONFIRMED" } ?: return@mutate false
                 val claim = parseTerritoryClaim(checkNotNull(latest.response), latest.body)
-                if (claim.resolutionCode != null || claim.photoStatus !in setOf(ClaimPhotoStatus.NOT_SUBMITTED,
-                        ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) return@mutate false
+                if (claim.photoStatus == ClaimPhotoStatus.PENDING) return@mutate false
+                if (expectedVersion == null && (claim.resolutionCode != null || claim.photoStatus !in setOf(ClaimPhotoStatus.NOT_SUBMITTED,
+                        ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING))) return@mutate false
                 if (rows.any { it.kind == "PHOTO" && it.ownerId == mark.ownerId && it.photoMarkIdentity() == mark.identity && it.photoActive() }) return@mutate false
                 val body = JSONObject().put("mark_identity", mark.identity).put("claim_id", claim.claimId)
                     .put("capture", capture).toString()
@@ -48,12 +50,58 @@ class ServerTerritoryPhotos(
             }
             currentCoroutineContext().ensureActive()
             if (!saved) return null
+            if (expectedVersion != null) {
+                val auth = freshSession()
+                if (auth?.appUserId != mark.ownerId || currentOwner() != mark.ownerId) { cancelSaved(id); return null }
+                val claim = parseTerritoryClaim(checkNotNull(mark.response), mark.body)
+                try {
+                    val response = JSONObject(api.request(auth.accessToken, "PUT", "/claims/${claim.claimId}/challenges/$id",
+                        JSONObject().put("expected_site_version", expectedVersion).toString()))
+                    require(response.getString("challenge_id") == id)
+                    val current = tracking()
+                    if (currentOwner() != mark.ownerId || current.ownerId != mark.ownerId ||
+                        current.activeSessionId != expected.activeSessionId || current.activeDogIds != expected.activeDogIds ||
+                        current.trail.state != TrackingState.RECORDING) { cancelSaved(id); return null }
+                    // Capture metadata was sampled before admission. Do not shoot with an old
+                    // sample after a slow auth/network roundtrip; server tolerates only 5s.
+                    if (System.nanoTime() - startedNanos > 5_000_000_000L) {
+                        cancelSaved(id, "challenge_expired")
+                        throw TerritoryCaptureBlocked("challenge_expired")
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (blocked: TerritoryCaptureBlocked) { throw blocked }
+                catch (error: TerritoryActionException) {
+                    cancelSaved(id, error.code ?: "capture_failed")
+                    throw TerritoryCaptureBlocked(error.code)
+                }
+                catch (_: Exception) { cancelSaved(id); return null }
+            }
             liveCaptures += id
             return id
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { cancelSaved(id) }
             throw cancelled
+        } catch (blocked: TerritoryCaptureBlocked) {
+            throw blocked
+        } catch (_: Exception) {
+            cancelSaved(id)
+            return null
         }
+    }
+
+    suspend fun checkAccess(mark: TerritoryOperation): Boolean {
+        return try {
+            val auth = freshSession() ?: return false
+            if (auth.appUserId != mark.ownerId || currentOwner() != mark.ownerId) return false
+            val claim = parseTerritoryClaim(checkNotNull(mark.response), mark.body)
+            val value = JSONObject(api.request(auth.accessToken, "GET", "/claims/${claim.claimId}/photo-access", null))
+            if (currentOwner() != mark.ownerId) return false
+            if (value.getString("allowed_action") !in setOf("PHOTO_TAKEOVER", "PHOTO_UPGRADE"))
+                throw TerritoryCaptureBlocked(value.optString("reason"))
+            true
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (blocked: TerritoryCaptureBlocked) { throw blocked }
+        catch (_: Exception) { false }
     }
 
     /** Application-owned copy/commit survives a dismissed or recreated camera screen. */
@@ -92,9 +140,9 @@ class ServerTerritoryPhotos(
     }
 
     fun cancel(captureId: String) { scope.launch { saves.withLock { cancelSaved(captureId) }; wake() } }
-    private suspend fun cancelSaved(captureId: String) = actions.mutate { dao ->
+    private suspend fun cancelSaved(captureId: String, reason: String = "capture_failed") = actions.mutate { dao ->
         dao.all().firstOrNull { it.identity == "photo:$captureId" && it.state == "CAPTURING" }?.let {
-            dao.update(it.copy(state = "REJECTED", failure = "capture_failed"))
+            dao.update(it.copy(state = "REJECTED", failure = reason))
             file(captureId).delete()
         }
     }
@@ -220,7 +268,14 @@ internal fun TerritoryOperation.photoProgress(): JSONObject = response?.let(::JS
 internal fun TerritoryOperation.photoStage(): String = photoProgress().optString("stage")
 internal fun TerritoryOperation.photoActive(): Boolean = state in setOf("CAPTURING", "PENDING") || (state == "CONFIRMED" && photoStage() != "COMPLETE")
 internal fun TerritoryOperation.photoGuidance(): String = when {
-    failure == "site_changed" || failure == "superseded" -> "점유가 바뀌었어요 · 새 산책에서 다시 방문해 주세요"
+    failure == "protected" -> if (state == "CONFIRMED" && photoStage() == "COMPLETE") "사진 인증은 완료됐지만 보호 중이라 점령하지 못했어요 · 보호 종료 후 다시 도전해 주세요"
+        else "인증된 영역 보호 중이에요 · 보호 종료 후 새 사진으로 도전해 주세요"
+    failure == "already_certified" -> "이미 우리 강아지가 인증한 영역이에요"
+    failure == "season_ended" -> "시즌이 끝나 점령하지 못했어요 · 다음 시즌을 확인해 주세요"
+    failure == "new_session_required" -> "이 도전은 이전 규칙으로 처리됐어요 · 새 산책에서 도전해 주세요"
+    failure == "challenge_expired" -> "촬영 접수 시간이 지났어요 · 현장에서 새 사진으로 도전해 주세요"
+    failure == "challenge_required" -> "도전 접수를 다시 확인해 주세요 · 현장에서 새 사진으로 도전해 주세요"
+    failure == "site_changed" || failure == "superseded" -> "다른 강아지가 먼저 점령했어요 · 보호 종료 후 다시 도전해 주세요"
     state == "CAPTURING" -> "인증 사진을 저장하고 있어요"
     photoActive() && failure != null -> "사진은 보관 중이에요 · 연결되면 다시 전송해요"
     state == "PENDING" -> "사진 인증을 접수하고 있어요"
@@ -229,3 +284,13 @@ internal fun TerritoryOperation.photoGuidance(): String = when {
     photoStage() in setOf("BOUND", "UPLOADED", "CONFIRMING") -> "인증 사진 전송 중 · 산책을 계속해도 돼요"
     else -> "사진 확인 중 · 산책을 계속해도 돼요"
 }
+
+/** Only fixed, public policy messages reach the camera; server bodies are never displayed. */
+class TerritoryCaptureBlocked(code: String?) : IllegalStateException(when (code) {
+    "protected" -> "인증된 영역 보호 중이에요 · 보호가 끝난 뒤 다시 도전해 주세요"
+    "already_certified" -> "이미 우리 강아지가 인증한 영역이에요"
+    "site_changed" -> "점령 상태가 바뀌었어요 · 지도로 돌아가 다시 확인해 주세요"
+    "season_ended", "policy_unavailable" -> "지금은 진행 중인 점령 시즌이 없어요"
+    "challenge_expired" -> "촬영 접수 시간이 지났어요 · 다시 도전해 주세요"
+    else -> "촬영 가능 상태를 확인하지 못했어요 · 잠시 후 다시 시도해 주세요"
+})

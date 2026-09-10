@@ -1,0 +1,117 @@
+{
+  "contract_version": "1.0",
+  "verdict": "abnormal",
+  "headline": "피부에 이상 소견이 보입니다.",
+  "body": "어떤 병변인지는 이 사진만으로 판단할 수 없습니다. 아래는 모델이 비슷하다고 본 정도이며, 진단이 아닙니다.",
+  "action": "수의사 진료를 받아보시기를 권합니다.",
+  "stage1": {
+    "abnormal_prob": 0.9065,
+    "abnormal_percent": 90.7,
+    "threshold": 0.1466,
+    "calibrated": true
+  },
+  "stage2": {
+    "shown": true,
+    "distribution": [
+      {
+        "code": "A1",
+        "name_ko": "구진·플라크",
+        "name_en": "Papule / Plaque",
+        "prob": 0.4838,
+        "percent": 48.4
+      },
+      {
+        "code": "A4",
+        "name_ko": "농포·여드름",
+        "name_en": "Pustule / Acne",
+        "prob": 0.2312,
+        "percent": 23.1
+      },
+      {
+        "code": "A3",
+        "name_ko": "태선화·과다색소침착",
+        "name_en": "Lichenification / Hyperpigmentation",
+        "prob": 0.0796,
+        "percent": 8.0
+      },
+      {
+        "code": "A2",
+        "name_ko": "비듬·각질·상피성잔고리",
+        "name_en": "Scale / Crust / Epidermal collarette",
+        "prob": 0.0678,
+        "percent": 6.8
+      },
+      {
+        "code": "A6",
+        "name_ko": "결절·종괴",
+        "name_en": "Nodule / Mass",
+        "prob": 0.0199,
+        "percent": 2.0
+      },
+      {
+        "code": "A5",
+        "name_ko": "미란·궤양",
+        "name_en": "Erosion / Ulcer",
+        "prob": 0.0165,
+        "percent": 1.6
+      }
+    ],
+    "groups": [
+      {
+        "name": "융기·발진",
+        "prob": 0.715,
+        "percent": 71.5
+      },
+      {
+        "name": "표면 변화",
+        "prob": 0.1475,
+        "percent": 14.7
+      },
+      {
+        "name": "결절·종괴",
+        "prob": 0.0199,
+        "percent": 2.0
+      },
+      {
+        "name": "미란·궤양",
+        "prob": 0.0165,
+        "percent": 1.6
+      }
+    ],
+    "group": {
+      "name": "융기·발진",
+      "prob": 0.715,
+      "percent": 71.5,
+      "confidence": 0.6482,
+      "text": "모양만 보면 융기·발진 계열에 가깝습니다.",
+      "caveat": "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
+    },
+    "alert": null
+  },
+  "text": "🔎 **피부에 이상 소견이 보입니다.** (이상 가능성 91%)\n\n모양만 보면 **융기·발진** 계열에 가깝습니다.\n**어떤 병변인지까지는 이 사진만으로 판단할 수 없습니다.**\n\n    융기·발진   72%  ██████████████\n    표면 변화   15%  ███\n    결절·종괴    2%  \n    미란·궤양    2%  \n\n→ **수의사 진료를 받아보시기를 권합니다.**\n\n_사진을 더 선명하게 다시 찍으면 결과가 달라질 수 있습니다._\n\n_이 결과는 수의학적 진단이 아니며, 수의사의 진료를 대체하지 않습니다. 참고용 스크리닝 정보로만 사용해 주세요._",
+  "disclaimer": "이 결과는 수의학적 진단이 아니며, 수의사의 진료를 대체하지 않습니다. 참고용 스크리닝 정보로만 사용해 주세요.",
+  "meta": {
+    "mock": false,
+    "stage1_crop": "f320",
+    "stage2_crop": "m2.5",
+    "stage1_temperature": 0.9225252866744995,
+    "box_source": "user",
+    "crop_note": "가이드 프레임을 bbox 로 써서 학습과 **같은 함수**로 잘랐습니다. 다만 사용자가 맞춘 네모는 라벨러가 그린 네모와 분포가 다릅니다 — 2단계는 네모 크기로 배율이 정해지므로 영향을 받습니다.",
+    "guide": {
+      "ok": true,
+      "reason": "",
+      "width_frac": 0.44,
+      "center_off": 0.0
+    },
+    "stage2_arms": 3,
+    "stage2_crops": [
+      "m2.5",
+      "f320",
+      "m2.5"
+    ],
+    "stage2_low_confidence": false,
+    "stage2_top_prob": 0.4838,
+    "stage2_abstain_threshold": 0.45,
+    "elapsed_ms": 4470.6
+  }
+}

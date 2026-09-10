@@ -84,7 +84,6 @@ import com.daengs.app.walk.MIN_WALK_MILLIS
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.countsAsWalk
 import com.daengs.app.walk.WalkTrackingState
-import com.daengs.app.walk.isFreshEnoughForMoment
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -170,6 +169,7 @@ fun WalkScreen(
             onCloseTerritory = { onAction(WalkAction.ClearTerritory) },
             onSelectClaimingPet = { site, pet -> onAction(WalkAction.SelectClaimingPet(site, pet)) },
             onOpenEntries = { onAction(WalkAction.OpenEntries) },
+            onOpenDiaryList = { onAction(WalkAction.OpenDiaryList) },
             onPhotographWalk = { onAction(WalkAction.PhotographWalk) },
             onMarkTerritory = { onAction(WalkAction.MarkTerritory(it)) },
             onPhotographTerritory = { onAction(WalkAction.PhotographTerritory(it)) },
@@ -219,6 +219,12 @@ private fun WalkGameOverlay(
     onCloseTerritory: () -> Unit = {},
     onSelectClaimingPet: (String, String) -> Unit = { _, _ -> },
     onOpenEntries: () -> Unit = {},
+    /**
+     * 산책 일기 **목록**으로 나간다. [onOpenEntries] 와 다른 자리다 — 저쪽은 지금
+     * 걷는 산책 한 건에 남긴 것이고, 이쪽은 지난 산책들의 목록이다. 걷는 중인
+     * 산책은 아직 목록에 없어서(끝나야 들어간다) 둘을 하나로 합칠 수 없다.
+     */
+    onOpenDiaryList: () -> Unit = {},
     onPhotographWalk: () -> Unit = {},
     onMarkTerritory: (String) -> Unit = {},
     onPhotographTerritory: (String) -> Unit = {},
@@ -271,8 +277,7 @@ private fun WalkGameOverlay(
             tracking.trail.state == TrackingState.PAUSED -> "산책이 잠시 멈춰 있어요"
             else -> "산책을 시작하면 지나온 동선이 지도에 남아요"
         }
-        val momentEnabled = tracking.latestMomentFix
-            ?.isFreshEnoughForMoment(realtimeMillis * 1_000_000L) == true
+        val momentEnabled = tracking.canRecordAction
 
         Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
             val landscape = layoutMode == WalkLayoutMode.LANDSCAPE
@@ -348,7 +353,7 @@ private fun WalkGameOverlay(
                             momentsOpen = !momentsOpen; onCloseTerritory()
                         }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen,
                             caption = "기록", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
-                        WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries,
+                        WalkToolButton(WalkTool.ENTRIES, "이 산책에 남긴 것", onOpenEntries,
                             caption = "일기", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
                         WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate,
                             enabled = locationGranted && !locating,
@@ -375,13 +380,15 @@ private fun WalkGameOverlay(
                         if (territory.failure != null) "다시 시도" else null, onRetryTerritory)
                 }
                 if (tracking.trail.state == TrackingState.OFF && summary == null) {
-                    // **일기는 산책 전에도 열린다.** 지난 산책을 보는 화면인데 도크에만
-                    // 두면 산책을 시작해야 지난 기록을 볼 수 있다 — 앞뒤가 바뀐다.
+                    // **산책 전에는 목록으로 간다.** 도크의 `일기` 는 지금 걷는 산책에
+                    // 묶여 있어서(`activeSessionId ?: completedSessionId`), 걷기 전에
+                    // 누르면 묶일 산책이 없어 늘 빈 창이 떴다. 여기서 사람이 보고 싶은
+                    // 것은 지난 일기다 — 홈의 `지난 산책` 과 같은 화면으로 보낸다.
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) {
-                            WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries,
+                            WalkToolButton(WalkTool.ENTRIES, "산책 일기", onOpenDiaryList,
                                 caption = "일기", captionBeside = true)
                         }
                     }

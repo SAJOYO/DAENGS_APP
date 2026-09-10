@@ -52,6 +52,7 @@ import com.daengs.app.dogcard.makeDevCard
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
+import com.daengs.app.ui.startup.SessionRestore
 import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
@@ -190,6 +191,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 var session by remember { mutableStateOf(saved) }
+                /**
+                 * 저장된 세션을 되살려 봤나. **로딩을 떠나는 판정이 이걸 본다.**
+                 *
+                 * 저장된 것이 없으면 되살릴 일도 없으니 처음부터 [SessionRestore.Ok] 다.
+                 */
+                var sessionRestore by remember {
+                    mutableStateOf(if (saved == null) SessionRestore.Ok else SessionRestore.Pending)
+                }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
                 // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
@@ -392,7 +401,15 @@ class MainActivity : ComponentActivity() {
                         roomName = null
                         return@LaunchedEffect
                     }
-                    val token = freshToken() ?: return@LaunchedEffect
+                    // **조용히 끝내지 않는다.** 못 받았으면 못 받았다고 남겨야
+                    // 로딩이 그걸 보고 나간다. 예전에는 여기서 그냥 돌아가서 `pets`
+                    // 도 `petsError` 도 안 채워졌고, 판정은 계속 기다리기만 했다.
+                    val token = freshToken()
+                    if (token == null) {
+                        sessionRestore = SessionRestore.Failed
+                        return@LaunchedEffect
+                    }
+                    sessionRestore = SessionRestore.Ok
                     pets.refresh(token)
                     // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
                     AuthApi.me(token).onSuccess { roomName = it.roomName; nickname = it.nickname }
@@ -406,6 +423,7 @@ class MainActivity : ComponentActivity() {
                     // 있어야 하는 기능을 누를 때 청한다([PetNeed]).
                     // 로그인 직후. 끝났지만 전달되지 않은 산책을 durable 작업으로 넘기고,
                     // 새 폰이면 서버의 지난 산책도 되찾는다.
+                    app.walkRuntime.writer.ordered { app.actionPins.recover() }.await()
                     walkRuntime.delivery.enqueuePending()
                     walkRuntime.sync.syncOnce(token)
 
@@ -433,9 +451,9 @@ class MainActivity : ComponentActivity() {
                 // 읽혔다. 기다리는 길이는 **로딩이 뜬 시각에서** 잰다 — 이 블록은 목록이
                 // 바뀔 때마다 다시 도는데, 그때마다 새로 700 을 세면 목록이 여러 번
                 // 갱신되는 날에 몇 초씩 잡혀 있는다.
-                LaunchedEffect(screen, pets.pets, pets.error) {
+                LaunchedEffect(screen, pets.pets, pets.error, sessionRestore) {
                     if (screen != Screen.Loading) return@LaunchedEffect
-                    val next = when (startupTarget(pets.pets, pets.error)) {
+                    val next = when (startupTarget(pets.pets, pets.error, sessionRestore)) {
                         StartupTarget.Wait -> return@LaunchedEffect
                         StartupTarget.Home -> Screen.Home
                     }
@@ -447,11 +465,24 @@ class MainActivity : ComponentActivity() {
                     if (saved != null) {
                         val restored = app.sessionProvider.freshSession()
                         when {
-                            restored != null -> session = restored
+                            restored != null -> {
+                                session = restored
+                                sessionRestore = SessionRestore.Ok
+                            }
                             store.load() == null -> {
                                 session = null
+                                sessionRestore = SessionRestore.Ok
                                 screen = Screen.Landing
                             }
+                            // **여기가 비어 있었다.** 못 갱신했는데 토큰은 남아 있는
+                            // 경우다 — 신호가 없거나 서버가 죽었을 때다. 두 갈래 다
+                            // 안 타니 화면은 로딩인 채로, 세션은 옛 값 그대로 남아
+                            // 아래 목록 불러오기가 조용히 끝났고, 그래서 로딩에서
+                            // 영영 못 나왔다.
+                            //
+                            // **로그아웃시키지 않는다.** 토큰은 살아 있고 지금 못
+                            // 닿을 뿐이라, 랜딩으로 보내면 사실이 아닌 말을 하게 된다.
+                            else -> sessionRestore = SessionRestore.Failed
                         }
                     }
                 }
@@ -677,6 +708,15 @@ class MainActivity : ComponentActivity() {
                         onOpenWalk = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
                         todayWalks = todayWalks,
+                        gameContent = {
+                            com.daengs.app.ui.home.HomeGameRoute(
+                                repository = app.activityRepository,
+                                ownerId = session?.appUserId,
+                                petId = pets.primary?.id,
+                                petName = pets.primary?.name,
+                                onOpenGame = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
+                            )
+                        },
                         signedIn = session != null,
                         nickname = nickname,
                         // 「마이」의 "고치기". 이름 확인 화면과 **같은 칸**을 띄운다 —
@@ -891,6 +931,10 @@ class MainActivity : ComponentActivity() {
                         // 릴리스 UI 다. 옛 PlacesScreen 은 이제 아무도 안 부르지만, 새
                         // 화면이 릴리스로 한 판 나가는 것을 보기 전에는 지우지 않는다.
                         useConnectedSearch = true,
+                        // 지도의 내 위치도 올린 사진을 따른다. 산책 지도와 같은
+                        // 목록(`pets.primary`)을 본다 — `shownPets` 를 보면 개발자
+                        // 패널의 가짜 아이를 켰을 때 사진만 사라진다.
+                        avatarPhoto = pets.primary?.let { petPhotos[it.id] }?.asAndroidBitmap(),
                         profileOwnerId = session?.appUserId,
                         profilePets = pets.pets,
                         profilesBusy = pets.busy,
@@ -925,6 +969,8 @@ class MainActivity : ComponentActivity() {
 
                     Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
+                        // 산책 전 `일기` 는 홈의 `지난 산책` 과 같은 화면으로 간다.
+                        onOpenDiaryList = { screen = Screen.WalkHistory },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
                         history = walkRuntime.history,

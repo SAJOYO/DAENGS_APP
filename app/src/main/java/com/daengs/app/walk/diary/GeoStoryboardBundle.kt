@@ -10,16 +10,20 @@ data class GeoStoryboardBundle(
     val scenes: List<StoryboardScene>, val rawJson: String,
     val selection: StoryboardSelection? = null,
     val title: String? = null,
+    val diary: DiaryGenerationInfo? = null,
 ) {
     companion object {
         const val FORMAT = "walk-storyboard-candidates-v1"
         const val FORMAT_V2 = "walk-storyboard-candidates-v2"
         const val FORMAT_V3 = "walk-storyboard-candidates-v3"
         const val FORMAT_V4 = "walk-storyboard-candidates-v4"
+        const val FORMAT_V5 = "walk-storyboard-candidates-v5"
         fun parse(text: String): GeoStoryboardBundle {
             require(text.toByteArray(Charsets.UTF_8).size <= 1_000_000) { "장면 파일이 너무 커요." }
             val obj = JSONObject(text)
-            val v4 = obj.getString("format") == FORMAT_V4
+            if (obj.optString("format") == ServerDiaryBundle.RESPONSE) return ServerDiaryBundle.parse(text)
+            val v5 = obj.getString("format") == FORMAT_V5
+            val v4 = v5 || obj.getString("format") == FORMAT_V4
             val v3 = v4 || obj.getString("format") == FORMAT_V3
             val v2 = v3 || obj.getString("format") == FORMAT_V2
             require(v2 || obj.getString("format") == FORMAT) { "지원하지 않는 장면 형식이에요." }
@@ -31,7 +35,7 @@ data class GeoStoryboardBundle(
             require(obj.get("synthetic") is Boolean)
             val array = obj.getJSONArray("scenes")
             require(array.length() in 1..250)
-            val scenes = (0 until array.length()).map { i -> parseScene(array.getJSONObject(i), v2, v4, obj.getBoolean("synthetic")) }
+            val scenes = (0 until array.length()).map { i -> parseScene(array.getJSONObject(i), v2, v4, v5, obj.getBoolean("synthetic")) }
             require(scenes.map { it.id }.distinct().size == scenes.size) { "장면 ID가 중복됐어요." }
             require(scenes.zipWithNext().all { (a, b) -> a.atMillis <= b.atMillis }) {
                 "장면이 시간순으로 정렬되지 않았어요."
@@ -56,10 +60,11 @@ data class GeoStoryboardBundle(
                 if (v2) StoryboardSelection.parse(obj.getJSONObject("selection")) else null, title)
         }
 
-        private fun parseScene(obj: JSONObject, v2: Boolean, v4: Boolean, synthetic: Boolean): StoryboardScene {
+        private fun parseScene(obj: JSONObject, v2: Boolean, v4: Boolean, v5: Boolean, synthetic: Boolean): StoryboardScene {
             obj.exactKeys(*(listOf("id", "revision", "started_at", "ended_at", "route", "reasons", "title", "facts", "sources") +
                 (if (v2) listOf("entry") else emptyList()) +
-                (if (v4) listOf("observation") else emptyList())).toTypedArray())
+                (if (v4) listOf("observation") else emptyList()) +
+                (if (v5) listOf("pin") else emptyList())).toTypedArray())
             val id = obj.requiredText("id", 100)
             val revision = obj.requiredText("revision", 100)
             val start = Instant.parse(obj.getString("started_at")).toEpochMilli()
@@ -88,6 +93,9 @@ data class GeoStoryboardBundle(
                     require(entry == null && "observation_gap" !in reasons)
                     require("session_boundary" in reasons || it.atMillis in start..end)
                 }
+            val pin = if (!v5 || obj.isNull("pin")) null else StoryboardPin.parse(obj.getJSONObject("pin")).also {
+                require(entry != null && observation == null && it.targetAtMillis == start)
+            }
             val sources = obj.getJSONArray("sources")
             require(sources.length() in 1..20)
             val sourceIds = mutableSetOf<String>()
@@ -124,6 +132,7 @@ data class GeoStoryboardBundle(
                 append("\n\n관측 사실\n"+texts.joinToString("\n"))
                 append("\n\n출처\n"+sourceTexts.joinToString("\n\n"))
                 observation?.let { append("\n\n지도 위치: 원본 관측 ${it.clientSeq} · ${Instant.ofEpochMilli(it.atMillis)}") }
+                pin?.let { append("\n\n행동 위치: ${it.label} · 핀 버전 ${it.revision}") }
             }
             // Include actual payload as well as producer revision to detect incorrectly reused revisions.
             return StoryboardScene("geo:$id", start, obj.requiredText("title", 80),
@@ -154,7 +163,7 @@ internal fun JSONObject.strictLong(key: String, min: Long, max: Long): Long {
 private fun JSONArray.strings(): List<String> = (0 until length()).map {
     require(get(it) is String); getString(it)
 }
-private fun canonicalJson(value: Any?): String = when (value) {
+internal fun canonicalJson(value: Any?): String = when (value) {
     is JSONObject -> value.keys().asSequence().toList().sorted().joinToString(",", "{", "}") {
         JSONObject.quote(it)+":"+canonicalJson(value.get(it))
     }

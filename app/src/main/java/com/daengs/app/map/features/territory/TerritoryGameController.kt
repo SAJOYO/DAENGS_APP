@@ -9,6 +9,8 @@ import com.daengs.app.territory.InMemoryTerritoryClaimRepository
 import com.daengs.app.territory.SiteInteraction
 import com.daengs.app.territory.TerritoryClaimSite
 import com.daengs.app.territory.TerritorySite
+import com.daengs.app.territory.TerritoryProximity
+import com.daengs.app.location.LocationSample
 import com.daengs.app.territory.evaluateClaimAccess
 import com.daengs.app.walk.TrackingState
 import com.daengs.app.walk.WalkTrackingState
@@ -19,6 +21,8 @@ data class TerritoryGamePolicy(val radiusMeters: Double = 20.0, val maxFixAgeNan
 
 data class TerritoryCaptureTarget(val session: ClaimSession, val siteId: String, val serverClaimId: String? = null)
 
+enum class TerritoryOccupancyReadState { LOADING, READY, FAILED, LOGIN_REQUIRED }
+
 data class TerritoryGameSite(
     val site: TerritorySite,
     val claim: TerritoryClaimSite,
@@ -27,8 +31,16 @@ data class TerritoryGameSite(
     val distanceMeters: Double?,
     val attempted: Boolean,
     val occupancyKnown: Boolean = true,
+    val occupancyReadState: TerritoryOccupancyReadState = if (occupancyKnown) TerritoryOccupancyReadState.READY else TerritoryOccupancyReadState.LOADING,
+    val isOwnedByMe: Boolean? = null,
+    val proximity: TerritoryProximity = TerritoryProximity(),
+    val sharedState: com.daengs.app.territory.SharedTerritorySite? = null,
 ) {
-    val occupancyLabel: String get() = if (!occupancyKnown) "점유 확인 전" else when (claim.occupancy?.certification) {
+    val occupancyLabel: String get() = if (!occupancyKnown) when (occupancyReadState) {
+        TerritoryOccupancyReadState.FAILED -> "점유 조회 실패"
+        TerritoryOccupancyReadState.LOGIN_REQUIRED -> "로그인 필요"
+        else -> "점유 확인 전"
+    } else when (claim.occupancy?.certification) {
         null -> "미점유"
         ClaimCertification.UNVERIFIED -> "$ownerLabel · 미인증"
         ClaimCertification.VERIFIED -> "$ownerLabel · 인증"
@@ -58,8 +70,12 @@ data class TerritoryGameState(
     val confirmedMarkSiteId: String? = null,
     val confirmedMarkVerified: Boolean = false,
     val onlinePhotos: Boolean = false,
+    val nearbyTargetId: String? = null,
+    /** Automatically exposed map ranges; never a selection or an action target. */
+    val visibleRangeSiteIds: Set<String> = emptySet(),
 ) {
     val target: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == targetId }
+    val nearbyTarget: TerritoryGameSite? get() = sites.firstOrNull { it.site.id == nearbyTargetId }
 }
 
 /** Map/UI adapter for the step-1 fake. Does not write behavior Pins or call the online API. */
@@ -81,29 +97,29 @@ class TerritoryGameController(
         permitted: Boolean,
         petNames: Map<String, String>,
         nowNanos: Long,
+        screenSample: LocationSample?,
     ): TerritoryGameState {
         repository.registerSites(board.sites.map { TerritoryClaimSite(it.id) })
         val session = session(tracking, board.selectedSiteId)
-        val fix = tracking.latestMomentFix
-        val age = fix?.elapsedRealtimeNanos?.let { nowNanos - it }
-        val trusted = permitted && fix != null && !fix.isMock && tracking.lastSample?.isMock != true && age != null &&
-            age in 0..policy.maxFixAgeNanos && tracking.trail.skippedTooFast == 0 &&
-            tracking.trail.skippedLowAccuracy == 0 && tracking.errorMessage == null
+        val location = territoryLocationEvidence(tracking, permitted, nowNanos, policy.maxFixAgeNanos, screenSample)
+        val trusted = location.trusted
         val sites = board.sites.map { site ->
             val claim = repository.site(site.id)
-            val distance = fix?.point?.distanceMetersTo(site.point)
+            val proximity = location.proximity(site, policy.radiusMeters)
+            val distance = proximity.distanceMeters
             TerritoryGameSite(
                 site, claim,
                 claim.occupancy?.ownerPetId?.let { petNames[it] ?: "다른 강아지" }.orEmpty(),
                 session?.let {
                     evaluateClaimAccess(
                         it.clientSessionId, site.id, tracking.trail.state == TrackingState.RECORDING,
-                        trusted, distance ?: Double.NaN, fix?.accuracyMeters?.toDouble() ?: Double.NaN,
+                        trusted, distance ?: Double.NaN, proximity.accuracyMeters ?: Double.NaN,
                         policy.radiusMeters,
                     )
                 },
                 distance,
                 session?.let { repository.attempt(it.clientSessionId, site.id) != null } ?: false,
+                proximity = proximity,
             )
         }
         val target = sites.firstOrNull { it.site.id == board.selectedSiteId }

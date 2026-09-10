@@ -195,9 +195,11 @@ android {
 
     buildTypes {
         debug {
-            // Explicit test build only; ordinary debug stays local, release stays disabled.
+            buildConfigField("Boolean", "FACILITY_CONVERSATION",
+                (providers.gradleProperty("facilityConversation").orNull == "true").toString())
+            // Browsing is available by default. Explicit false keeps the local practice build.
             buildConfigField("Boolean", "TERRITORY_SERVER_READ",
-                (providers.gradleProperty("territoryServerRead").orNull == "true").toString())
+                (providers.gradleProperty("territoryServerRead").orNull != "false").toString())
             buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS",
                 (providers.gradleProperty("territoryServerActions").orNull == "true").toString())
             // 개발 서버. `http://` 라서 디버그 소스셋의 usesCleartextTraffic 이 필요하다
@@ -210,7 +212,8 @@ android {
             buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
-            buildConfigField("Boolean", "TERRITORY_SERVER_READ", "false")
+            buildConfigField("Boolean", "FACILITY_CONVERSATION", "false")
+            buildConfigField("Boolean", "TERRITORY_SERVER_READ", "true")
             buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS", "false")
             optimization {
                 enable = false

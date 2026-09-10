@@ -8,10 +8,13 @@ data class TerritorySiteMarkerState(
     val point: GeoPoint,
     val selected: Boolean = false,
     val occupancy: TerritoryMarkerOccupancy = TerritoryMarkerOccupancy.NEUTRAL,
-    val label: String = "미점유",
+    val label: String = "점유 확인 전",
     val ready: Boolean = false,
     val radiusMeters: Double? = null,
     val feedback: TerritoryFeedback? = null,
+    val occupancyKnown: Boolean = false,
+    /** Physical range, independent of ready/claim/session state. */
+    val proximity: com.daengs.app.territory.TerritoryProximityRange = com.daengs.app.territory.TerritoryProximityRange.UNAVAILABLE,
 )
 
 enum class TerritoryMarkerOccupancy { NEUTRAL, UNVERIFIED, VERIFIED }

@@ -19,8 +19,8 @@ class WalkDiaryReader(
         if (sessionIds.isEmpty()) return flowOf(emptyMap())
         val expectedOwner = owner()
         val records = combine(sessionIds.distinct().map { id ->
-            combine(dao.observeEntries(id), dao.observeSceneAnalysis(id)) { entries, analysis ->
-                id to storyboardAnalysisView(analysis, entries).bundle?.takeIf { it.sessionId == id }?.title
+            combine(dao.observeEntries(id), dao.observeSceneAnalysis(id), dao.observePhotoSync(id), dao.observePhotos(id)) { entries, analysis, state, images ->
+                id to storyboardAnalysisView(analysis, entries, state, images).bundle?.takeIf { it.sessionId == id }?.title
             }
         }) { it.toList() }
         return combine(records, dao.observeSessions()) { titles, sessions ->
@@ -34,14 +34,17 @@ class WalkDiaryReader(
         if (walks.isEmpty()) return flowOf(emptyList())
         val expectedOwner = owner()
         return combine(walks.map { walk ->
+            val photoSource = combine(dao.observePhotoSync(walk.sessionId), dao.observePhotos(walk.sessionId), photos.observe(walk.sessionId)) {
+                state, rows, images -> Triple(state, rows, images)
+            }
             combine(dao.observeEntries(walk.sessionId), dao.observeSceneAnalysis(walk.sessionId),
-                dao.observeStoryboard(walk.sessionId), photos.observe(walk.sessionId),
+                dao.observeStoryboard(walk.sessionId), photoSource,
                 dao.observeSessions()) { entries, analysis, draft, images, sessions ->
                 if (owner() != expectedOwner || sessions.none {
                         it.id == walk.sessionId && it.ownerId == expectedOwner && it.endedAtMillis != null
                     }) null
-                else diaryWalk(walk, entries.mapNotNull { it.entry() }, images,
-                    StoryboardDraft.parse(draft?.payload), storyboardAnalysisView(analysis, entries),
+                else diaryWalk(walk, entries.mapNotNull { it.entry() }, images.third,
+                    StoryboardDraft.parse(draft?.payload), storyboardAnalysisView(analysis, entries, images.first, images.second),
                     observations[walk.sessionId].orEmpty())
             }
         }) { records -> records.filterNotNull() }.flowOn(Dispatchers.IO)
