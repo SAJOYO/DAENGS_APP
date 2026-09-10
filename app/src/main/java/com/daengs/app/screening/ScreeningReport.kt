@@ -56,6 +56,20 @@ data class ScreeningReport(
     enum class Verdict { NORMAL, ABNORMAL, RETAKE }
 
     /**
+     * 권고 줄([action])을 화면에 띄우나. **정상이면 안 띄운다** (2026-09-11).
+     *
+     * 정상의 [body] 가 이미 "평소와 다른 행동이 있다면 결과와 무관하게 병원에
+     * 가보시는 것을 권합니다" 로 끝난다. 그 바로 아래 권고 줄이 "평소와 다른 점이
+     * 있으면 진료를 받아보세요" 라고 **같은 말을 한 번 더** 했다 (실기기에서 확인).
+     *
+     * 이상·재촬영은 그대로다 — 거기서는 권고 줄이 카드의 **유일한 행동**이다.
+     *
+     * ⚠️ [action] 은 계약에 그대로 오고 파싱도 그대로 한다. 화면에서 뺀 것이지
+     *    지운 게 아니다. 채팅 카드와 지난 기록이 **같은 규칙**을 쓰도록 여기 둔다.
+     */
+    val showsAction: Boolean get() = verdict != Verdict.NORMAL && action.isNotBlank()
+
+    /**
      * 1단계(정상/이상) 확률.
      *
      * [abnormalPercent] 는 **없을 수 있다** — 사진을 아예 못 읽어 재촬영으로 돌아온
