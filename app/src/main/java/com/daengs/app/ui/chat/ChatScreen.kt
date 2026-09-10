@@ -1763,6 +1763,15 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 report.group?.let { g ->
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(g.text, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                        // ★ 병원에서 쓰는 이름 (2026-09-10). `솟아오른 변화` 만 들고 가면
+                        //    수의사가 못 알아듣는다. ⚠️ 순서는 코드순 고정이라 확률과 무관하고,
+                        //    단정이 아니라 용어 풀이다.
+                        if (g.labels.isNotBlank()) {
+                            Text(
+                                "(${g.labels})",
+                                color = TextDark, fontSize = 12.sp, lineHeight = 18.sp,
+                            )
+                        }
                         // ★ 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
                         //    이름만 띄우면 자기 개 사진과 대조할 방법이 없다 —
                         //    `표면 변화` 는 뜻이 안 잡히고 `딱지, 둥근 비늘` 은 바로 보인다.
