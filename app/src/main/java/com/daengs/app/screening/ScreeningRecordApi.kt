@@ -1,7 +1,6 @@
 package com.daengs.app.screening
 
 import com.daengs.app.BuildConfig
-import com.daengs.app.member.MemberIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -232,7 +231,12 @@ data class ScreeningRecord(
     val contractVersion: String?,
     /** **단건 조회에서만 온다.** 목록은 안 싣는다 — N 장마다 저장소를 두드리게 된다. */
     val photoUrl: String?,
-    val createdBy: MemberIdentity? = null,
+    /**
+     * 만든 사람의 이름표. **id 가 아니라 문자열 한 줄이다** — 저쪽 `schemas/screening.py`
+     * 가 `created_by: str | None` 이다. 지금도 그 아이의 구성원일 때만 닉네임이 실리고,
+     * 아이를 지정하지 않은 개인 기록은 "구성원" 개념이 없어 항상 null 이다.
+     */
+    val createdBy: String? = null,
     val canConfirm: Boolean? = null,
     val canDelete: Boolean? = null,
 ) {
@@ -252,7 +256,7 @@ data class ScreeningRecord(
             report = json.optJSONObject("result")?.let(ScreeningReport::parse),
             contractVersion = json.optStringOrNull("contract_version"),
             photoUrl = json.optStringOrNull("photo_url"),
-            createdBy = json.optJSONObject("created_by")?.let(MemberIdentity::parse),
+            createdBy = json.optStringOrNull("created_by"),
             canConfirm = json.optBooleanOrNull("can_confirm"),
             canDelete = json.optBooleanOrNull("can_delete"),
         )

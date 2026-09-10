@@ -2,7 +2,6 @@ package com.daengs.app.gait
 
 import android.graphics.Bitmap
 import android.net.Uri
-import com.daengs.app.member.MemberIdentity
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -82,8 +81,13 @@ data class GaitRecord(
      * 그대로다. 날짜를 제목 문자열에 섞어 저장하지 않는다.
      */
     val title: String? = null,
+    /**
+     * 누가 올렸나. **id 가 아니라 이름표 한 줄이다** — 저쪽 `schemas/gait.py` 가
+     * `created_by: str | None` 이고, 지금도 그 아이의 구성원일 때만 닉네임이 실린다.
+     * 아니면 null 이라 화면이 사람 이름을 지어내지 않는다.
+     */
+    val createdBy: String? = null,
     /** 서버가 판정한 현재 사용자의 권한. null은 이 필드가 없던 서버 응답이다. */
-    val createdBy: MemberIdentity? = null,
     val canConfirm: Boolean? = null,
     val canDelete: Boolean? = null,
 ) {

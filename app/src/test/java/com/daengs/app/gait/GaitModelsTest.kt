@@ -809,22 +809,37 @@ class GaitModelsTest {
         assertEquals(LocalDate.of(2026, 9, 7), r.date)
     }
 
+    /**
+     * **`created_by` 는 객체가 아니라 이름표 한 줄이다** — 저쪽 `schemas/gait.py` 가
+     * `created_by: str | None` 이다. 예전에 `{app_user_id, nickname}` 로 읽었는데,
+     * 그러면 `optJSONObject` 가 문자열 앞에서 조용히 null 을 주어 작성자가 통째로
+     * 사라진다. 여기 JSON 은 배포된 서버가 실제로 내보내는 모양이다.
+     */
     @Test
-    fun `목록에서 작성자와 현재 사용자의 권한을 읽는다`() {
+    fun `목록에서 작성자 이름표와 현재 사용자의 권한을 읽는다`() {
         val summary = GaitSummary.parse(
             JSONObject(
-                """{"record_id":"r","status":"DONE","created_by":{"app_user_id":"u1","nickname":"키키"},
+                """{"record_id":"r","status":"DONE","created_by":"키키",
                     "can_confirm":true,"can_delete":false}""",
             ),
         )
-        assertEquals("u1", summary.createdBy?.appUserId)
-        assertEquals("키키", summary.createdBy?.displayName)
+        assertEquals("키키", summary.createdBy)
         assertEquals(true, summary.canConfirm)
         assertEquals(false, summary.canDelete)
         val record = summary.toRecord()
-        assertEquals("u1", record.createdBy?.appUserId)
+        assertEquals("키키", record.createdBy)
         assertEquals(true, record.canConfirm)
         assertEquals(false, record.canDelete)
+    }
+
+    /** 내보내진·탈퇴한 사람이 올린 기록. 이름표만 빠지고 나머지는 그대로 읽혀야 한다. */
+    @Test
+    fun `구성원이 아닌 사람이 올린 보행은 이름표가 null 로 온다`() {
+        val summary = GaitSummary.parse(
+            JSONObject("""{"record_id":"r","status":"DONE","created_by":null,"can_confirm":false,"can_delete":false}"""),
+        )
+        assertEquals(null, summary.createdBy)
+        assertEquals(false, summary.canDelete)
     }
 
     @Test
