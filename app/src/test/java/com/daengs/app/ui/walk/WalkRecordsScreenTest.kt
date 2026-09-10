@@ -246,8 +246,10 @@ class WalkRecordsScreenTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("선택 산책 3회 · 표시 흔적 2개")
+        compose.onNodeWithTag("records-overlap-legend").assertDoesNotExist()
         compose.onNodeWithTag("records-traces-overlap").performClick()
         waitText("선택 산책 3회 · 겹침 표시 2회")
+        assertFixedOverlapLegend()
         chooseMapRecord("record-1")
         compose.onNodeWithTag("records-map-hide-record-1").performScrollTo().performClick()
         waitText("선택 산책 3회 · 겹침 표시 1회")
@@ -255,6 +257,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithText("2회 이상 겹친 구간이 없어요.").assertDoesNotExist()
         compose.onNodeWithTag("records-overlap-min-5").performClick()
         waitText("5회 이상 겹친 구간이 없어요.")
+        // A stricter display threshold never renames or rescales the fixed count colors.
+        assertFixedOverlapLegend()
         compose.onNodeWithTag("records-overview-map").assertExists()
         compose.onNodeWithTag("records-view-walks").performClick()
         waitText("1 페이지")
@@ -265,12 +269,24 @@ class WalkRecordsScreenTest {
         assertEquals(1, queries.size)
         restore.emulateSavedInstanceStateRestore()
         waitText("5회 이상 겹친 구간이 없어요.")
+        assertFixedOverlapLegend()
         compose.onNodeWithTag("records-overlap-min-2").performClick()
         waitText("선택 산책 3회 · 겹침 표시 1회")
         compose.onNodeWithTag("records-search").performTextReplacement("기록")
         waitText("선택 산책 3회 · 표시 흔적 2개")
         compose.onNodeWithTag("records-traces-all").assertIsSelected()
+        compose.onNodeWithTag("records-overlap-legend").assertDoesNotExist()
         compose.onNodeWithTag("records-map-restore-all").assertDoesNotExist()
+    }
+
+    private fun assertFixedOverlapLegend() {
+        compose.onNodeWithTag("records-overlap-legend").assertIsDisplayed()
+        compose.onNodeWithTag("records-overlap-legend-2").assertTextEquals("2회")
+            .assertContentDescriptionEquals("2회 청록")
+        compose.onNodeWithTag("records-overlap-legend-3-4").assertTextEquals("3–4회")
+            .assertContentDescriptionEquals("3–4회 노랑")
+        compose.onNodeWithTag("records-overlap-legend-5").assertTextEquals("5회 이상")
+            .assertContentDescriptionEquals("5회 이상 주황")
     }
 
     @Test fun `overlap inspection lists exact related walks including hidden evidence without changing base counts`() {

@@ -131,6 +131,12 @@ Step4에서 같은 화면의 행동 기록 탐색을 구현하고 대상 검증�
 `최소 2회 / 3회 / 5회`를 선택한다. 기본 알파는 0.14, 최종 픽셀 상한은 0.40으로 고정하고
 산책 수나 조회 최대값으로 정규화하지 않는다.
 
+전체 흔적은 기존 단색을 유지한다. 겹친 구간은 **2회 청록 / 3–4회 노랑 / 5회 이상 주황**의
+고정 색 기준을 사용하며 화면에 범례를 표시한다. 최소 횟수를 바꿔도 같은 구간의 색을
+재정규화하지 않는다. 원본 셀의 색 사이를 부드럽게 보간하며, 정확한 산책 수는 구간을
+눌렀을 때 원본 근거에서 읽는다. 색의 의미는 반복 산책이지 체류·선호·행동 빈도가 아니다.
+숨김은 표시 알파와 영역에만 관여하고, 전체 조회에서 정한 색 기준을 바꾸지 않는다.
+
 겹침 횟수는 전체 조회의 같은 반지름 원본 셀에 연결된 서로 다른 산책 ID 수다. 최소
 횟수를 만족하면서 **그 셀의 원본 참여 산책이 하나라도 표시 중인 셀**의 부드러운 마스크로
 표시 합성을 제한한다. 참여 산책을 모두 숨긴 셀에 주변 브러시가 번져 남지 않게 한다.
@@ -210,6 +216,31 @@ Step4의 **행동 검색**은 환경처럼 산책 전체에 붙은 조건과 달
 
 실데이터 연결은 여전히 후속 작업이다. Room·서버에서 현재 계정이 볼 수 있는 기록을 읽고,
 현재 제목·메모·공간 원판을 같은 선택 기준에 연결하는 공급부와 일반 화면 진입점이 필요하다.
+
+### 겹침 색 표현 · 2026-09-10 확인 결과
+
+- `TraceBrushTest` 10개, `WalkRecordsTracesTest` 10개, `WalkRecordsScreenTest.overlap*` 2개,
+  총 **22개 통과, failures 0·errors 0·skip 0**. 전체 테스트·원격 CI는 실행하지 않았다.
+- 색 보간의 타일 경계 연속성·빈 공간 가장자리, 기존 alpha의 정확한 유지, 2/3/4/5회 색,
+  숨김과 최소 횟수 변경 후 RGB 고정, 반환 배열 수정의 캐시 오염 방지, 취소·입력 제한,
+  범례 노출과 저장 상태 복원을 검증했다. 기존 두 코어 파일에 각 1개 사례를 추가하고
+  기존 회귀를 확장했으며 새 테스트 파일은 만들지 않았다.
+- `:app:assembleDebug -PslimAbi=x86_64 -PversionName=records-colors-266` 성공.
+  `emulator-5554` 설치 `Success`와 실행 버전 `records-colors-266`을 확인했다.
+- 같은 합성 산책 12회·흔적 11개에서 전체 흔적의 기존 단색을 확인했다. 겹친 구간 2회에서는
+  청록·노랑·주황이 나타나고, 3회에서는 청록 구간이 제외되며 5회에서는 주황 구간 위주로
+  표시 범위가 줄었다. 범례는 세 기준 모두 동일했다. 색 경계는 보간 표현이다.
+- 5회 기준 구간을 누르자 `12회 중 10회 겹침`과 해당 산책 목록이 나타났다. 첫 산책을
+  선택하고 숨기면 전체 12회·근거 10회는 유지되고 표시 산책만 11회에서 10회로 줄었다.
+- 캡처: `records-colors-all.png`, `records-colors-2.png`, `records-colors-3.png`,
+  `records-colors-5.png`, `records-colors-hit.png`, `records-colors-hidden.png`.
+  독립 코드 리뷰에서 추가 확정 결함은 발견하지 못했다. 물리 폰·실데이터·서버 연결·
+  대규모 산책 부하와 모든 지도 배경에서의 색 구분 검증은 포함하지 않았다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.map.layers.traces.TraceBrushTest' --tests 'com.daengs.app.walk.records.WalkRecordsTracesTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest.overlap*' -PslimAbi=x86_64 -PversionName=records-colors-266 --console=plain
+.\gradlew.bat :app:assembleDebug -PslimAbi=x86_64 -PversionName=records-colors-266 --console=plain
+```
 
 ### 겹침 확장 · 2026-09-10 확인 결과
 

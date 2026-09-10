@@ -2,6 +2,8 @@ package com.daengs.app.walk.records
 
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
+import com.daengs.app.map.layers.traces.TraceBrush
+import com.daengs.app.map.layers.traces.TraceOverlapPalette
 import com.daengs.app.map.layers.traces.TraceRasterTile
 import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.WalkSummary
@@ -15,6 +17,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.floor
+import kotlin.math.sqrt
 
 class WalkRecordsTracesTest {
     @Test
@@ -215,6 +219,60 @@ class WalkRecordsTracesTest {
         assertSameTiles(original, activeElsewhere.compose(minimumOverlapWalks = 2))
     }
 
+    @Test
+    fun `overlap colours use original distinct counts while hiding and thresholds preserve the fixed colour field`() = runBlocking {
+        val two = SpatialDiaryCellId(0, 0)
+        val three = SpatialDiaryCellId(8, 0)
+        val four = SpatialDiaryCellId(16, 0)
+        val five = SpatialDiaryCellId(24, 0)
+        val cells = setOf(two, three, four, five)
+        val prepared = prepareWalkRecordsTraces(selection(record("a", cells), record("b", cells),
+            record("c", setOf(three, four, five)), record("d", setOf(four, five)), record("e", setOf(five))))
+        val overall = prepared.compose()
+        val colored = prepared.compose(minimumOverlapWalks = 2)
+        val byTile = colored.associateBy { it.tileX to it.tileY }
+        val originalColors = byTile.mapValues { requireNotNull(it.value.rgb).copyOf() }
+        assertTrue(overall.all { it.rgb == null })
+        mapOf(two to TraceOverlapPalette.TEAL_RGB, three to TraceOverlapPalette.YELLOW_RGB,
+            four to TraceOverlapPalette.YELLOW_RGB, five to TraceOverlapPalette.ORANGE_RGB).forEach { (cell, color) ->
+            val (tile, index) = pixelAt(colored, cell)
+            assertTrue(tile.alpha[index] > 0f)
+            assertEquals(color, requireNotNull(tile.rgb)[index])
+        }
+
+        // Colour is an extra field: the pre-existing source-over * eligibility alpha is unchanged.
+        val eligibility = TraceBrush.mask(WalkTraceSheet("eligibility", cells = cells)).tiles.associateBy { it.tileX to it.tileY }
+        overall.forEach { tile ->
+            val region = eligibility.getValue(tile.tileX to tile.tileY)
+            val expectedAlpha = FloatArray(tile.alpha.size) { i -> tile.alpha[i] * region.alpha[i] }
+            assertArrayEquals(expectedAlpha, byTile.getValue(tile.tileX to tile.tileY).alpha, 0f)
+        }
+        val hidden = prepared.compose(setOf("b", "c", "d", "e"), minimumOverlapWalks = 2)
+        assertTrue(hidden.all { tile -> tile.alpha.all { it <= 0.14f } })
+        hidden.forEach { tile -> assertArrayEquals(originalColors.getValue(tile.tileX to tile.tileY), requireNotNull(tile.rgb)) }
+        val minimumFive = prepared.compose(minimumOverlapWalks = 5)
+        minimumFive.forEach { tile -> assertArrayEquals(originalColors.getValue(tile.tileX to tile.tileY), requireNotNull(tile.rgb)) }
+        assertTrue(minimumFive.all { tile -> tile.alpha.all { it <= 0.40f } })
+        assertEquals(5, prepared.hitTestOverlap(SpatialDiaryHexGrid.center(five, 8.0), 5,
+            hiddenIds = setOf("b", "c", "d", "e"))!!.walkIds.size)
+        assertTrue(prepared.compose(setOf("a", "b", "c", "d", "e"), minimumOverlapWalks = 2).isEmpty())
+
+        colored.forEach { requireNotNull(it.rgb).fill(0) }
+        prepared.compose(minimumOverlapWalks = 2).forEach { tile ->
+            assertArrayEquals(originalColors.getValue(tile.tileX to tile.tileY), requireNotNull(tile.rgb))
+        }
+    }
+
+    private fun pixelAt(tiles: List<TraceRasterTile>, cell: SpatialDiaryCellId): Pair<TraceRasterTile, Int> {
+        val first = tiles.first()
+        val x = floor(8.0 * sqrt(3.0) * (cell.q + cell.r / 2.0) / first.pixelU).toInt()
+        val y = floor(8.0 * 1.5 * cell.r / first.pixelU).toInt()
+        val tile = tiles.single { it.tileX == Math.floorDiv(x, first.size) && it.tileY == Math.floorDiv(y, first.size) }
+        val row = (tile.tileY + 1) * tile.size - 1 - y
+        val col = x - tile.tileX * tile.size
+        return tile to row * tile.size + col
+    }
+
     private fun record(id: String, cells: Set<SpatialDiaryCellId>? = null, route: List<GeoPoint> = emptyList()): WalkRecord {
         val segments = if (route.isEmpty()) emptyList() else listOf(route.mapIndexed { index, point ->
             LocationSample(point, index.toLong())
@@ -227,6 +285,10 @@ class WalkRecordsTracesTest {
 
     private fun assertSameTiles(expected: List<TraceRasterTile>, actual: List<TraceRasterTile>) {
         assertEquals(expected.map { it.tileX to it.tileY }, actual.map { it.tileX to it.tileY })
-        expected.zip(actual).forEach { (before, after) -> assertArrayEquals(before.alpha, after.alpha, 0f) }
+        expected.zip(actual).forEach { (before, after) ->
+            assertArrayEquals(before.alpha, after.alpha, 0f)
+            assertEquals(before.rgb == null, after.rgb == null)
+            if (before.rgb != null) assertArrayEquals(before.rgb, requireNotNull(after.rgb))
+        }
     }
 }
