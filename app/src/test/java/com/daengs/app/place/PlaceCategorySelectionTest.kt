@@ -4,6 +4,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaceCategorySelectionTest {
+    @Test fun mixedParentsToggleWithoutLosingOtherKindsAndLastRemovalIsEmpty() {
+        val cafe = PlaceCategorySelection.Kind(PlaceKind.CAFE)
+        val mixed = cafe.toggleKinds(listOf(PlaceKind.HOTEL))!!
+        assertEquals(listOf(PlaceKind.CAFE, PlaceKind.HOTEL), mixed.kinds)
+        assertNull(mixed.parentPurpose)
+        assertEquals(cafe, mixed.toggleKinds(listOf(PlaceKind.HOTEL)))
+        assertEquals(PlaceCategorySelection.None, cafe.toggleKinds(listOf(PlaceKind.CAFE)))
+        assertEquals(PlaceCategorySelection.None, PlaceCategorySelection.fromKinds(emptyList()))
+    }
+
+    @Test fun sixKindLimitRejectsWholeAdditionWithoutRemovingExistingSelection() {
+        val kinds = PlacePurpose.CULTURE.kinds + PlacePurpose.DINING.kinds
+        val selection = PlaceCategorySelection.fromKinds(kinds)
+        assertNull(selection.toggleKinds(PlacePurpose.LODGING.kinds))
+        assertEquals(kinds, selection.kinds)
+        assertEquals(PlaceCategorySelection.Purpose(PlacePurpose.CULTURE), selection.toggleKinds(PlacePurpose.DINING.kinds))
+    }
+
     @Test fun catalogMatchesDevPurposeIdsAndCoversEveryKindExactlyOnce() {
         assertEquals(listOf("healthcare", "pet_care", "shopping", "dining", "outing", "culture", "lodging"),
             PlacePurpose.entries.map { it.id })

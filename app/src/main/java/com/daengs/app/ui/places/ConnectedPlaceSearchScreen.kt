@@ -7,6 +7,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.map.features.places.*
@@ -21,15 +22,16 @@ import com.daengs.app.ui.theme.DaengsTheme
 internal fun PlacesUiState.visibleDiscovery(): PlaceDiscoveryState {
     if (conversationAvailable) return discovery
     if (!facility.enabled) return discovery
-    val lens = facility.confirmedLens
-    val response = lens?.search
+    val lens = facility.confirmedLens ?: return discovery
+    val response = lens.search
     return discovery.copy(
-        origin = facility.response?.request?.origin ?: discovery.origin,
-        preferParking = lens?.parking ?: discovery.preferParking,
+        requestedKinds = lens.kinds,
+        origin = facility.confirmedResponse?.request?.origin ?: discovery.origin,
+        radiusMeters = facility.confirmedResponse?.request?.radiusMeters ?: discovery.radiusMeters,
+        nameQuery = "",
+        preferParking = lens.parking,
         selectedPlaceKey = facility.selectedPlaceKey,
         search = when {
-            facility.loading -> PlaceSearchState.Loading
-            facility.error != null || response == null -> PlaceSearchState.Idle
             response.groups.all { it.results.isEmpty() } -> PlaceSearchState.Empty(response)
             else -> PlaceSearchState.Content(response)
         },
@@ -47,9 +49,6 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
     val hits = if (facility.enabled || discovery.requestedKinds.size > 1) response?.overviewHits(discovery.preferParking).orEmpty()
         else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
-        !conversationAvailable && facility.enabled && facility.loading -> LabPhase.LOADING
-        !conversationAvailable && facility.enabled && facility.error != null -> LabPhase.ERROR
-        !conversationAvailable && facility.enabled && facility.confirmedLens == null -> LabPhase.EMPTY
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
         locationFailed -> LabPhase.ERROR
         discovery.loading || waitingForSearchLocation || profileMismatch -> LabPhase.LOADING
@@ -88,6 +87,8 @@ fun ConnectedPlaceSearchScreen(
     avatarBreed: DogBreed? = null,
     /** 올린 프로필 사진. 있으면 [avatarBreed] 보다 이쪽이 앞선다. */
     avatarPhoto: android.graphics.Bitmap? = null,
+    /** SDK를 띄우지 않는 Preview의 명시적인 지도 좌표. 운영에서는 SDK projection만 쓴다. */
+    previewAvatarPosition: Offset? = null,
 ) {
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     val ai = state.facility.enabled
@@ -97,62 +98,74 @@ fun ConnectedPlaceSearchScreen(
     var camera by remember { mutableStateOf(PlaceMapCamera()) }
     var follow by remember { mutableStateOf(true) }
     var filtersOpen by remember { mutableStateOf(false) }
+    var avatarPosition by remember { mutableStateOf<Offset?>(null) }
+    var dogOpen by rememberSaveable { mutableStateOf(false) }
+    var dogAsked by rememberSaveable { mutableStateOf(false) }
+    var dogQuery by rememberSaveable { mutableStateOf("") }
     val appliedFilters = state.conversation.result?.appliedPlaceFilters()
     val keyboard = LocalSoftwareKeyboardController.current
-    val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
+    val ui = state.toConnectedSearchState(draft, false, expanded, notice)
     LaunchedEffect(state.discovery.response) {
         // A loading frame has no response; only completed results can remove an expanded card.
         if (state.discovery.response != null) expanded = ui.expanded
     }
-    val category = PlaceCategorySelection.fromKinds(state.discovery.requestedKinds)
+    val category = PlaceCategorySelection.fromKinds(display.requestedKinds)
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
-    fun search(selected: PlaceCategorySelection = category, parking: Boolean = state.discovery.preferParking, query: String? = null) {
+    fun search(selected: PlaceCategorySelection = category, parking: Boolean = display.preferParking, query: String? = null) {
         if (permission) { requestPermission(); return }
         notice = null
+        dogOpen = false
+        dogAsked = false
+        if (ai) onAction(PlacesAction.SetAiMode(false))
         onAction(PlacesAction.Search(selected, parking, query))
     }
     BackHandler(onBack = onBack)
     fun retryConversationSearch() {
         val filterRetry = state.conversation.filterRetry
         onAction(if (filterRetry != null) PlacesAction.ApplyFilters(filterRetry)
-            else if (ai) PlacesAction.Discover(draft) else PlacesAction.RetrySearch)
+            else if (ai) PlacesAction.Discover(dogQuery) else PlacesAction.RetrySearch)
     }
     if (filtersOpen && state.conversationAvailable) ConversationFiltersDialog(state.conversation,
         onApply = { onAction(PlacesAction.ApplyFilters(it)) }, onDismiss = { filtersOpen = false })
     PlaceSearchLabScreen(
         state = ui, live = true, onBack = onBack,
-        onEdit = { draft = it }, onAi = { onAction(PlacesAction.SetAiMode(!ai)); notice = null },
+        onEdit = { draft = it }, showAiToggle = false,
         onSubmit = {
             when {
-                ai -> { keyboard?.hide(); onAction(PlacesAction.Discover(draft)) }
                 !isValidPlaceNameQuery(draft) -> notice = "장소명은 120자까지 입력할 수 있어요."
                 else -> { keyboard?.hide(); search(query = draft.trim()) }
             }
         },
-        categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
+        categoryContent = {
+            PlacePurposeMenu(category, onLimit = { notice = "카테고리는 6개까지 함께 검색할 수 있어요." }) { search(selected = it) }
+            PlaceSearchQueue(category,
+                filterSummary = if (state.conversationAvailable) appliedFilters?.summary.orEmpty()
+                    else state.facility.confirmedLens?.let { "검색 방향 · ${it.label}" }.orEmpty(),
+                nameQuery = display.nameQuery,
+                onOpenFilters = { if (state.conversationAvailable) filtersOpen = true else dogOpen = true }) { search(selected = it) }
+        },
         resultLabel = if (ai && !state.conversationAvailable) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
         aiConnected = true,
         onSearchFilters = if (state.conversationAvailable) ({ filtersOpen = true }) else null,
         searchFilterCount = appliedFilters?.count ?: 0,
-        answerContent = if (state.conversationAvailable) ({
-            ConversationPanel(state.conversation, state.facility.error.takeIf { ai }, showAnswer = ai,
+        answerContent = if (state.conversationAvailable && !ai &&
+            (state.conversation.error != null || state.conversation.notice != null || state.conversation.result?.matches == false)) ({
+            ConversationPanel(state.conversation.copy(busy = false, answerBusy = false), showAnswer = false,
                 onRetryAnswer = { onAction(PlacesAction.RetryAi) },
                 onRetrySearch = ::retryConversationSearch,
                 onApplyCurrentFilters = { state.conversation.result?.let {
                     onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
                 } },
-                filterSummary = appliedFilters?.summary.orEmpty(),
                 onOpenFilters = { filtersOpen = true })
         }) else null,
-        conditionContent = if (state.facility.enabled && !state.conversationAvailable) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
-        emptyMessage = if (ai && !state.conversationAvailable && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
+        emptyMessage = if (category == PlaceCategorySelection.None) "카테고리를 담으면 주변 장소를 찾아드려요." else "검색 결과가 없어요.",
         onParking = { value ->
             if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
         },
-        onRadius = { meters -> onAction(PlacesAction.SetRadius(meters)) },
-        onDog = { id -> onAction(PlacesAction.ToggleDog(id)) },
+        onRadius = { meters -> dogOpen = false; dogAsked = false; onAction(PlacesAction.SetRadius(meters)) },
+        onDog = { id -> dogOpen = false; dogAsked = false; onAction(PlacesAction.ToggleDog(id)) },
         onRefreshProfiles = onRefreshProfiles,
         onToggle = { key ->
             expanded = key.takeUnless { it == expanded }
@@ -182,6 +195,7 @@ fun ConnectedPlaceSearchScreen(
                 // **내 위치는 강아지다.** 안 넘기면 기본 파란 점으로 떨어진다 —
                 // 옛 화면은 넘기고 있었는데 이 화면으로 바뀌면서 빠졌다.
                 avatarRes = avatarBreed?.portraitRes, avatarPhoto = avatarPhoto,
+                onAvatarPosition = { avatarPosition = it },
                 onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
                 onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
                 modifier = Modifier.fillMaxSize(),
@@ -189,15 +203,39 @@ fun ConnectedPlaceSearchScreen(
             val candidate = camera.searchPoint(state.discovery.origin)
             PlaceMapControls(candidate != null,
                 onMapSearch = { candidate?.let { point ->
-                    follow = false; camera = camera.submitted()
+                    follow = false; camera = camera.submitted(); dogOpen = false; dogAsked = false
+                    if (ai) onAction(PlacesAction.SetAiMode(false))
                     onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking))
                 } },
                 onDeviceSearch = {
                     if (permission) requestPermission() else {
-                        follow = true; camera = camera.submitted()
+                        follow = true; camera = camera.submitted(); dogOpen = false; dogAsked = false
+                        if (ai) onAction(PlacesAction.SetAiMode(false))
                         onAction(PlacesAction.Locate(category, state.discovery.preferParking))
                     }
                 })
+            PlaceDogAssistant(
+                anchor = if (showMap) avatarPosition else previewAvatarPosition,
+                busy = if (state.conversationAvailable) state.conversation.busy || state.conversation.answerBusy else state.facility.loading,
+                replyAvailable = dogAsked || (ai && (state.conversation.result?.answer != null || state.facility.response != null)),
+                open = dogOpen, onOpen = { dogOpen = it },
+                onSubmit = { query ->
+                    dogAsked = true; dogQuery = query
+                    if (!ai) onAction(PlacesAction.SetAiMode(true))
+                    onAction(PlacesAction.Discover(query))
+                },
+                onCancel = { onAction(PlacesAction.CancelAi) },
+                onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,
+            ) {
+                if (state.conversationAvailable) {
+                    ConversationPanel(state.conversation, state.facility.error,
+                        onRetryAnswer = { onAction(PlacesAction.RetryAi) }, onRetrySearch = ::retryConversationSearch,
+                        onApplyCurrentFilters = { state.conversation.result?.let {
+                            onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
+                        } })
+                } else FacilitySearchPanel(state.facility,
+                    { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) })
+            }
             }
         },
     )

@@ -33,12 +33,17 @@ class FacilityConnectedUiTest {
                 assertEquals(FacilityChoice.Confirm("lens:cafe"), action.choice)
                 state.value = state.value.copy(facility = state.value.facility.copy(response = result.copy(confirmedLensId = "lens:cafe", revision = 2)))
             }
-        }, {}, {}, {}, {}, {}, showMap = false) } }
+        }, {}, {}, {}, {}, {}, showMap = false, previewAvatarPosition = androidx.compose.ui.geometry.Offset(150f, 100f)) } }
         val name = result.lenses.single().search.overviewHits(true).first().place.name
         compose.onNodeWithText(name).assertDoesNotExist()
+        compose.onNodeWithContentDescription("강아지에게 검색 조건 말하기").performClick()
         capture("nearby-ai-interpretation.png")
         compose.onNodeWithText(actionLabel).performScrollTo().performClick()
         compose.onNodeWithText(name).assertExists()
+        compose.onNodeWithText("#카페 · 적용한 검색 방향").assertExists()
+        compose.onNodeWithText("닫기").performClick()
+        compose.onNodeWithText("조건 ▾").performClick()
+        compose.onNodeWithText("검색 방향 · 카페").performClick()
         compose.onNodeWithText("#카페 · 적용한 검색 방향").assertExists()
         capture("nearby-ai-confirmed.png")
     }

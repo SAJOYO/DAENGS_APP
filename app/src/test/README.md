@@ -52,6 +52,25 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 시설 검색의 적용 조건 표시·해제
 
+### 카테고리 다중 선택과 지도 위 말풍선
+
+`PlaceCategorySelectionTest`, `PlacePurposeSearchTest`는 다른 대분류의 종류 조합,
+6개 제한과 마지막 선택 해제/늦은 응답을 확인한다.
+`DogBubblePlacementTest`는 화면 끝·키보드 크기의 창에서 방향 전환과 꼬리 좌표를,
+`PlaceDogAssistantUiTest`는 입력 → 생각 → 답변 전환과 같은 머리 위치 유지를 확인한다.
+`ConversationUndoTest`는 서버 restore, 실패 시 현재 결과 보존, 같은 ID 재시도,
+취소한 복원이 새 수동 검색을 덮지 않는지를 다룬다.
+`ConnectedPlaceSearchUiTest`, `FacilityConnectedUiTest`, `FacilitySearchCoordinatorTest`는
+연결 화면/기존 제안 경로의 소비자다. 실제 SDK/IME 검토 방법과 계약 경계는
+[말풍선 문서](../../../docs/place-dog-bubbles.md)에 있다.
+
+아래처럼 변경한 클래스만 선택한다. 공용 대화 저장소 수정 시에는
+`FacilityConversationTest`, `ConversationFiltersTest`, `ConversationConnectedTest`도 포함한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true --tests 'com.daengs.app.ui.places.PlaceDogAssistantUiTest' --tests 'com.daengs.app.ui.places.DogBubblePlacementTest'
+```
+
 `ConversationFiltersTest`는 조건 ID/revision 전달, 늦은 조작 거부, 실패 시 필터 보존,
 동일 요청 재시도를 확인한다. `AppliedPlaceFiltersTest`는 필수/선호·AND/OR·부정값 표시,
 `ConversationConnectedTest`는 기존 ViewModel 반영, `ConnectedPlaceSearchUiTest`는 AI를

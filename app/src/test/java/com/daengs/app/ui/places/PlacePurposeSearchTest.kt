@@ -13,6 +13,23 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlacePurposeSearchTest {
+    @Test fun clearingLastKindCancelsLateResultsAndDoesNotRequestAnEmptySearch() = runTest {
+        val pending = CompletableDeferred<PlaceSearchResponse>()
+        var requests = 0
+        val controller = PlaceDiscoveryController(PlaceSearchRepository {
+            requests++
+            withContext(NonCancellable) { pending.await() }
+        }, null, backgroundScope)
+        controller.search(point, listOf(PlaceKind.CAFE)); runCurrent()
+        controller.search(point, emptyList()); runCurrent()
+        assertEquals(1, requests)
+        assertTrue(controller.state.value.requestedKinds.isEmpty())
+        assertNull(controller.state.value.response)
+        pending.complete(response(PlaceSearchRequest(point, kinds = listOf(PlaceKind.CAFE)))); runCurrent()
+        assertTrue(controller.state.value.requestedKinds.isEmpty())
+        assertNull(controller.state.value.response)
+    }
+
     private val dining = PlaceCategorySelection.Purpose(PlacePurpose.DINING)
     private val point = GeoPoint(37.54, 127.05)
     private fun sample() = javaClass.getResourceAsStream("/place_search_lab_sample.json")!!.bufferedReader().use {
