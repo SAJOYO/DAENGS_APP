@@ -100,8 +100,10 @@ fun PlaceSearchLabScreen(
         map = {
             Box(Modifier.fillMaxSize()) {
                 map()
+                // 지도 높이가 줄어도 안내가 강아지/위치 버튼을 덮지 않도록 오른쪽을 비운다.
                 PlaceFloatingNotices(listOfNotNull(state.notice, state.profileMessage.takeIf { live }).distinct(),
-                    Modifier.align(Alignment.TopCenter).padding(start = 16.dp, end = 16.dp, top = 52.dp))
+                    Modifier.align(Alignment.TopCenter).padding(start = 16.dp,
+                        end = if (live) 128.dp else 16.dp, top = 52.dp))
             }
         },
         results = {

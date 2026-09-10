@@ -50,14 +50,27 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
 
+## 점령 게임 성적 화면·규칙 팝업
+
+`ui/game/TerritoryGameScreenTest`는 홈 진입·조회 강아지 교체·성적 상태·팝업 복귀·320dp 큰 글자를,
+`ui/game/TerritoryGameRulesTest`는 전봇대를 누르는 두 로컬 예시·인증 구도·점수 차액·닫기/뒤로·상태 복원을 확인한다.
+팝업은 실제 점령·카메라·GPS·서버 요청을 실행하지 않는다. 점수 조회 모델을 고치면
+`TerritoryGameOverviewTest`, API/저장소를 고치면 위 activity 소비자를 추가한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.game.TerritoryGameScreenTest' --tests 'com.daengs.app.ui.game.TerritoryGameRulesTest'
+```
+
 ## 시설 검색의 적용 조건 표시·해제
 
 ### 카테고리 다중 선택과 지도 위 말풍선
 
 `PlaceCategorySelectionTest`, `PlacePurposeSearchTest`는 다른 대분류의 종류 조합,
 6개 제한과 마지막 선택 해제/늦은 응답을 확인한다.
-`DogBubblePlacementTest`는 화면 끝·키보드 크기의 창에서 방향 전환과 꼬리 좌표를,
-`PlaceDogAssistantUiTest`는 입력 → 생각 → 답변 전환과 같은 머리 위치 유지를 확인한다.
+`DogBubblePlacementTest`는 화면 끝·키보드 크기의 창에서 머리 위 배치와 꼬리 좌표를,
+`PlaceDogAssistantUiTest`는 입력 → 생각 → 답변 전환과 고정된 48dp 버튼을 확인한다.
+`ConnectedPlaceSearchUiTest`는 GPS 미확인/먼 검색 중심에서도 입구 유지, 반경 표시,
+짧은 지도에서 안내에 가리지 않는 버튼 터치와 기존 검색 액션을 확인한다.
 `ConversationUndoTest`는 서버 restore, 실패 시 현재 결과 보존, 같은 ID 재시도,
 취소한 복원이 새 수동 검색을 덮지 않는지를 다룬다.
 `ConnectedPlaceSearchUiTest`, `FacilityConnectedUiTest`, `FacilitySearchCoordinatorTest`는

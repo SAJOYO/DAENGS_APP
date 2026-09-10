@@ -93,7 +93,43 @@ data class ScreeningReport(
      *    붙이면 말한 것의 절반이 한 단계 부풀려진다 (저쪽 실측 과잉 52.4%).
      */
     @Immutable
-    data class GroupLine(val name: String, val percent: Float, val text: String, val caveat: String)
+    data class GroupLine(
+        val name: String,
+        val percent: Float,
+        val text: String,
+        val caveat: String,
+        /**
+         * 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
+         * 이름만으로는 자기 개 사진과 대조가 안 된다 — `표면 변화` 는 뜻이 안 잡히고
+         * `딱지, 둥근 비늘, 검어진 피부` 는 바로 보인다. 계열 줄 **바로 아래**에 띄운다.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val feature: String = "",
+        /**
+         * 그 묶음이 담는 **라벨 이름** — `구진·플라크·농포·여드름` (2026-09-10).
+         *
+         * `솟아오른 변화` 만 들고 병원에 가면 **수의사가 못 알아듣는다.** 보호자가
+         * 전달할 말이 있어야 하고, 그건 데이터 라벨의 이름이다. 계열 이름 옆에
+         * 괄호로 띄운다.
+         *
+         * ⚠️ **"1등 병변" 이 아니다.** 금지된 것은 *"이 개는 구진입니다"* 라고
+         *    하나를 골라 단정하는 것이다(저쪽 holdout 46.3% 틀림). 이건 *"이 묶음은
+         *    이런 것들을 담는다"* 는 **용어 풀이**라 정확도 문제가 안 걸린다.
+         * ⚠️ 순서는 **코드순(A1→A6) 고정**이라 확률과 무관하다. 확률순으로 두면
+         *    첫 이름이 "1등" 으로 읽혀서 그때는 진짜 top1 부활이다.
+         *    ⚠️ **막대 4개의 순서는 확률순 그대로다** — 그건 당연하고 건드리지 않는다.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val labels: String = "",
+        /**
+         * 수의학적 의미 (primary/secondary 등). **"자세히 보기" 안에만** 띄운다.
+         *
+         * ⚠️ 본문에 올리면 안 된다. 그 축은 *진단 순서*의 축이지 *보호자에게 뭐라고
+         *    부를지*의 축이 아니고, 저쪽에서 그 축으로 묶었다가 **과잉 분류 88.4%** 로
+         *    기각했다. 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val detail: String = "",
+    )
 
     /**
      * "덩어리가 의심됩니다" — **계약에서 유일하게 병변 이름을 말하는 자리**다.
@@ -173,6 +209,9 @@ data class ScreeningReport(
                         percent = it.optDouble("percent", 0.0).toFloat(),
                         text = text,
                         caveat = it.optString("caveat"),
+                        feature = it.optString("feature"),
+                        labels = it.optString("labels"),
+                        detail = it.optString("detail"),
                     )
                 },
                 alert = al?.let {

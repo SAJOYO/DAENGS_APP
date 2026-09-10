@@ -13,12 +13,23 @@ PR #256은 기존 대분류/소분류를 유지하면서 카테고리 탐색과 
 
 ## 강아지와 입력/응답
 
-지도 SDK의 기존 프로필 사진/견종 그림이 입구다. 얼굴을 별도로 복제하지 않는다.
-Naver projection이 준 화면 좌표 위에 터치 영역을 얹고 같은 위치에서 Popup을 배치한다.
+PR #257부터 검색 도우미는 지도의 오른쪽 아래에 고정된다. 기존 ‘내 주변 검색’
+자리에 48dp 강아지 버튼과 48dp 위치 아이콘을 8dp 간격으로 둔다. 프로필 사진을
+우선 사용하고, 없으면 선택한 견종 그림, 견종도 없으면 기본 비글을 표시한다.
+지도상의 실제 내 위치는 SDK의 기본 점으로 표시한다. 강아지가 중복으로 나오지 않는다.
 
-입력 말풍선은 최대 340dp, 응답은 최대 280dp다. 머리 아래에 공간이 없으면 위로 옮기고,
-가장자리/키보드에 맞춰 높이를 제한한다. 머리에 붙은 꼬리를 기준으로 나타난다.
-검색과 설명 생성을 기다리는 동안에는 머리 위의 두 작은 생각 원과 점 세 개를 표시한다.
+지도를 먼 지역으로 옮기거나 GPS를 받지 못해도 강아지를 누를 수 있다.
+지도 좌표를 화면 좌표로 바꾸던 콜백과 투명 터치 영역은 제거했다.
+위치·프로필 안내는 오른쪽 버튼 영역을 비워, 짧아진 지도에서도 터치를 가로막지 않는다.
+
+입력 말풍선은 최대 340dp, 응답은 최대 280dp다. 버튼의 실제 화면 경계 바로 위에
+Popup을 붙이고, 창 가장자리/키보드에 맞춰 높이를 제한한다. 꼬리가 머리를 향한 채
+나타나며 검색과 설명 생성을 기다리는 동안에는 왼쪽 위로 생각 원과 점 세 개가 이어진다.
+
+AI는 현재 확정된 검색 중심과 조건을 사용한다. 지도 이동만으로 검색 중심을 바꾸지
+않는다. 먼 지역은 지도를 옮긴 뒤 ‘이 주변 검색’으로 확정하고 강아지에게 조건을 말한다.
+말풍선에는 현재 검색 반경을 표시하고, 검색 중심이 없으면 지역을 먼저 정하도록 안내한다.
+자연어 지명으로 지도를 이동하는 새로운 기능은 이 변경에 포함하지 않는다.
 
 ‘대기 그만’은 앱의 응답 대기를 취소한다. 이미 서버가 처리한 요청까지 취소했다고
 주장하지 않는다. 이후 검색은 기존 세션 revision/복구 규칙을 따른다.
@@ -44,7 +55,6 @@ v2에서 마지막 AI 응답이 필터를 실제로 변경하고 결과까지 �
 
 직접 필터 해제는 앱 #247의 커밋 `1c2f0bf`를 포함한다.
 서버 [#389](https://github.com/SAJOYO/DAENGS_dev/pull/389)의 filters 모드가 필요하다.
-#247 및 서버 #389는 이 작업 시점에 아직 병합되지 않았다.
 
 활성화 설정은 바꾸지 않는다. v2는 debug에서 `-PfacilityConversation=true`일 때만
 켜지며 release는 기존 v1 경로다. v1은 확정된 검색 방향을 직접 카테고리 검색으로
@@ -53,12 +63,21 @@ v2에서 마지막 AI 응답이 필터를 실제로 변경하고 결과까지 �
 ## 검증
 
 기능별 선택자는 [테스트 실행 지도](../app/src/test/README.md)에 있다.
-첫 실행은 변경 경계의 16개 클래스/80개 항목을 통과했다. 말풍선 전환 검증을 추가한 뒤
+PR #256의 첫 실행은 변경 경계의 16개 클래스/80개 항목을 통과했다. 말풍선 전환 검증을 추가한 뒤
 최종 UI/대화 8개 클래스/36개 항목, 마지막 검색 방향 큐 수정은 연결 화면 2개 클래스로
 재검증했다. 중복을 제외한 검증 항목은 81개다. 전체 테스트는 실행하지 않았다.
 
-Debug에만 `PlaceDogBubbleLabActivity`를 추가했다. **예시 응답 · 서버 미연결**을
-명시하며 실제 Naver MapView의 projection, 머리 터치, 입력, 생각, 답변, 키보드를 확인한다.
+PR #257은 위치 이동의 변경 경계만 다시 실행했다. 배치/말풍선, 연결 화면, 기존 v1 제안,
+지도 검색 카메라, 결과 시트의 6개 클래스에서 **26개 통과, 실패·건너뜀 0개**다.
+처음 드러난 짧은 지도에서의 안내 카드/강아지 터치 충돌을 수정하고 재검증했다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true --tests 'com.daengs.app.ui.places.DogBubblePlacementTest' --tests 'com.daengs.app.ui.places.PlaceDogAssistantUiTest' --tests 'com.daengs.app.ui.places.ConnectedPlaceSearchUiTest' --tests 'com.daengs.app.ui.places.FacilityConnectedUiTest' --tests 'com.daengs.app.ui.places.PlaceMapCameraTest' --tests 'com.daengs.app.ui.places.PlaceResultsSheetTest'
+```
+
+Debug에만 있는 `PlaceDogBubbleLabActivity`는 **예시 응답 · 서버 미연결**을 명시한다.
+실제 Naver MapView의 위치 점, 고정 버튼 터치, 입력, 생각, 답변, 키보드를 확인한다.
+‘먼 지역’은 검토 카메라를 성수에서 부산으로 옮긴다. 검색 API는 실행하지 않는다.
 
 ```powershell
 adb shell am start -n com.daengs.app/com.daengs.app.ui.places.lab.PlaceDogBubbleLabActivity
@@ -66,14 +85,18 @@ adb shell am start -n com.daengs.app/com.daengs.app.ui.places.lab.PlaceDogBubble
 
 에뮬레이터 검토 APK는 로컬 init script로 별도 패키지 `com.daengs.app.dogbubbles`에
 설치했다. 저장소의 applicationId는 변경하지 않는다. 설치 출력의 Success를 확인했다.
-지도 키가 없는 환경이므로 타일은 빈 격자로 표시되지만 실제 SDK의 아바타/projection은 동작한다.
+지도 키가 없는 환경이므로 타일은 빈 격자로 표시되지만 실제 SDK의 위치 점/카메라는 동작한다.
 
 실물 폰, 로그인한 실제 LLM/filters 서버, 회전/접근성 글자 배율은 별도 확인 범위다.
 에뮬레이터의 예시 응답을 실제 서버 응답 검증으로 세지 않는다.
 
 아래 말풍선 이미지는 에뮬레이터의 실제 SDK/Compose 화면이며 응답은 검토용 예시다.
 검색 큐 이미지는 Robolectric의 320dp 합성 화면이다.
+먼 지역 카메라 이동 전후에도 버튼 경계는 에뮬레이터에서 `[912,2106][1038,2232]`로
+같았고 위치 점만 화면 밖으로 사라졌다. 이동 후 생각/응답 말풍선도 같은 버튼에 붙었다.
 
 | 검색 큐 (합성) | 생각 (에뮬레이터) | 응답 (에뮬레이터) | 키보드 (에뮬레이터) |
 | --- | --- | --- | --- |
 | <img src="place-dog-bubbles/queue.png" width="200"> | <img src="place-dog-bubbles/thinking.png" width="200"> | <img src="place-dog-bubbles/reply.png" width="200"> | <img src="place-dog-bubbles/keyboard.png" width="200"> |
+
+<img src="place-dog-bubbles/far.png" width="200" alt="먼 지역으로 이동해도 오른쪽 아래에 남는 강아지">
