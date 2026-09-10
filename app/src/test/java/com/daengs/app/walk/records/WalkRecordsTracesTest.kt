@@ -10,6 +10,9 @@ import com.daengs.app.walk.diary.SpatialDiaryHexGrid
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,8 +27,8 @@ class WalkRecordsTracesTest {
         val originalPixels = original.map { it.alpha.copyOf() }
         val one = prepared.compose(setOf("b"))
 
-        assertEquals(0.4816f, original.maxOf { tile -> tile.alpha.max() }, 0.000001f)
-        assertEquals(0.28f, one.maxOf { tile -> tile.alpha.max() }, 0.000001f)
+        assertEquals(0.2604f, original.maxOf { tile -> tile.alpha.max() }, 0.000001f)
+        assertEquals(0.14f, one.maxOf { tile -> tile.alpha.max() }, 0.000001f)
         // Returned tiles belong to the composition, not to the cached per-walk masks.
         original.forEach { it.alpha.fill(0f) }
         val restored = prepared.compose()
@@ -116,6 +119,100 @@ class WalkRecordsTracesTest {
             assertTrue(edge.first().longitude < edge.last().longitude)
             assertTrue(edge.all { it.longitude in -180.0..180.0 })
         }
+    }
+
+    @Test
+    fun `overlap thresholds and snapped hits retain original cell membership while hidden walks change only ink`() = runBlocking {
+        val five = SpatialDiaryCellId(0, 0)
+        val two = SpatialDiaryCellId(8, 0)
+        val single = SpatialDiaryCellId(60, 0)
+        val near = SpatialDiaryCellId(1, 0)
+        val selected = selection(record("a", setOf(five, two, single, near)),
+            record("b", setOf(five, two)), record("c", setOf(five)), record("d", setOf(five)), record("e", setOf(five)))
+        val prepared = prepareWalkRecordsTraces(selected)
+        val allIds = setOf("a", "b", "c", "d", "e")
+        val atFive = SpatialDiaryHexGrid.center(five, 8.0)
+        val atTwo = SpatialDiaryHexGrid.center(two, 8.0)
+        assertNull(prepared.overlapUnavailableReason)
+        listOf(2, 3, 5).forEach { assertTrue(prepared.hasOverlap(it)) }
+        assertEquals(allIds, prepared.overlapWalkIds(5))
+        assertEquals(setOf("a", "b"), prepared.hitTestOverlap(atTwo, 2, snapRadiusU = 0.0)!!.walkIds)
+        assertNull(prepared.hitTestOverlap(atTwo, 3, snapRadiusU = 0.0))
+        val snapped = prepared.hitTestOverlap(SpatialDiaryHexGrid.center(near, 8.0), 5)!!
+        assertEquals(five, snapped.cell)
+        assertEquals(atFive, snapped.point)
+        assertEquals(allIds, snapped.walkIds)
+        assertNull(prepared.hitTestOverlap(SpatialDiaryHexGrid.center(SpatialDiaryCellId(3, 0), 8.0), 5))
+        assertNull(prepared.hitTestOverlap(GeoPoint(Double.NaN, 0.0), 2))
+        assertEquals(allIds, prepared.hitTestOverlap(atFive, 5, hiddenIds = setOf("b", "c", "d", "e"))!!.walkIds)
+        assertNull(prepared.hitTestOverlap(atFive, 5, hiddenIds = allIds))
+        val original = prepared.compose(minimumOverlapWalks = 2)
+        assertTrue(prepared.compose().any { it.tileX >= 3 })
+        assertTrue(original.none { it.tileX >= 3 })
+        assertTrue(original.all { tile -> tile.alpha.all { it <= 0.40f } })
+        val hidden = prepared.compose(setOf("b", "c", "d", "e"), minimumOverlapWalks = 5)
+        assertTrue(hidden.isNotEmpty())
+        assertTrue(hidden.all { tile -> tile.alpha.all { it <= 0.14f } })
+        assertTrue(prepared.compose(allIds, minimumOverlapWalks = 5).isEmpty())
+        assertTrue(prepared.hasOverlap(5))
+        assertEquals(allIds, prepared.overlapWalkIds(5))
+        assertSameTiles(original, prepared.compose(minimumOverlapWalks = 2))
+        assertEquals(5, selected.records.size)
+    }
+
+    @Test
+    fun `neighbour blur is not overlap evidence and different cell radii disable only overlap mode`() = runBlocking {
+        val near = prepareWalkRecordsTraces(selection(record("a", setOf(SpatialDiaryCellId(0, 0))),
+            record("b", setOf(SpatialDiaryCellId(1, 0)))))
+        assertTrue(near.compose().isNotEmpty())
+        assertFalse(near.hasOverlap(2))
+        assertTrue(near.compose(minimumOverlapWalks = 2).isEmpty())
+        assertNull(near.hitTestOverlap(GeoPoint(0.0, 0.0), 2))
+        val b = record("b", setOf(SpatialDiaryCellId(0, 0)))
+        val mixed = prepareWalkRecordsTraces(selection(record("a", setOf(SpatialDiaryCellId(0, 0))),
+            b.copy(trace = b.trace!!.copy(radiusU = 16.0))))
+        assertNotNull(mixed.overlapUnavailableReason)
+        assertFalse(mixed.hasOverlap(2))
+        assertTrue(mixed.compose().isNotEmpty())
+        assertNull(mixed.hitTestOverlap(GeoPoint(0.0, 0.0), 2))
+        assertTrue(runCatching { mixed.compose(minimumOverlapWalks = 2) }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun `overlap evidence limits return an explicit unavailable state without partial membership`() {
+        val wide = (0..49).flatMap { q -> (0..99).map { r -> SpatialDiaryCellId(q, r) } }.toSet()
+        val extra = setOf(SpatialDiaryCellId(200, 0), SpatialDiaryCellId(201, 0))
+        val index = WalkTraceOverlap.create(listOf(WalkTraceSheet("a", cells = wide),
+            WalkTraceSheet("b", cells = wide), WalkTraceSheet("c", cells = extra), WalkTraceSheet("d", cells = extra))) {}
+        assertNotNull(index.unavailableReason)
+        assertFalse(index.hasOverlap(2))
+        assertTrue(index.walkIds(2).isEmpty())
+    }
+
+    @Test
+    fun `neighbouring ink cannot revive an overlap area after all of its contributors are hidden`() = runBlocking {
+        val a = SpatialDiaryCellId(0, 0)
+        val neighbour = SpatialDiaryCellId(1, 0)
+        val far = SpatialDiaryCellId(30, 0)
+        val hidden = setOf("a", "b")
+        val onlyHiddenArea = prepareWalkRecordsTraces(selection(record("a", setOf(a)),
+            record("b", setOf(a)), record("c", setOf(neighbour))))
+        assertTrue(onlyHiddenArea.hasOverlap(2))
+        assertEquals(hidden, onlyHiddenArea.overlapWalkIds(2))
+        assertTrue(onlyHiddenArea.compose(hidden).isNotEmpty())
+        assertTrue(onlyHiddenArea.compose(hidden, minimumOverlapWalks = 2).isEmpty())
+        assertNull(onlyHiddenArea.hitTestOverlap(GeoPoint(0.0, 0.0), 2, hiddenIds = hidden))
+
+        // c is a legitimate contributor elsewhere, so filtering whole-walk IDs alone is not enough.
+        val activeElsewhere = prepareWalkRecordsTraces(selection(record("a", setOf(a)), record("b", setOf(a)),
+            record("c", setOf(neighbour, far)), record("d", setOf(far))))
+        val original = activeElsewhere.compose(minimumOverlapWalks = 2)
+        val visible = activeElsewhere.compose(hidden, minimumOverlapWalks = 2)
+        assertTrue(visible.isNotEmpty())
+        assertTrue(visible.all { it.tileX == 1 })
+        assertEquals(setOf("a", "b", "c", "d"), activeElsewhere.overlapWalkIds(2))
+        assertNull(activeElsewhere.hitTestOverlap(GeoPoint(0.0, 0.0), 2, hiddenIds = hidden))
+        assertSameTiles(original, activeElsewhere.compose(minimumOverlapWalks = 2))
     }
 
     private fun record(id: String, cells: Set<SpatialDiaryCellId>? = null, route: List<GeoPoint> = emptyList()): WalkRecord {

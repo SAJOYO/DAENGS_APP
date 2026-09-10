@@ -85,7 +85,12 @@ fun WalkRecordsScreen(
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     var selectedId by rememberSaveable(query) { mutableStateOf<String?>(null) }
     var hiddenIds by rememberSaveable(query, stateSaver = HiddenWalkIdsSaver) { mutableStateOf(emptySet<String>()) }
-    val overviewScroll = key(query) { rememberLazyListState() }
+    var overlapOnly by rememberSaveable(query) { mutableStateOf(false) }
+    var minimumWalks by rememberSaveable(query) { mutableIntStateOf(2) }
+    var overlapPoint by rememberSaveable(query, stateSaver = OverlapPointSaver) { mutableStateOf<GeoPoint?>(null) }
+    var overlapSelectionRequest by rememberSaveable(query) { mutableIntStateOf(0) }
+    var overlapMiss by remember(query, overlapOnly, minimumWalks) { mutableStateOf(false) }
+    val overviewScroll = key(query, overlapPoint, overlapSelectionRequest) { rememberLazyListState() }
     var focusBounds by remember(query) { mutableStateOf<List<GeoPoint>?>(null) }
     var cameraRequest by remember(query) { mutableIntStateOf(0) }
     val focusManager = LocalFocusManager.current
@@ -135,19 +140,32 @@ fun WalkRecordsScreen(
             mapError = "선택한 산책의 흔적을 표시하지 못했어요. 기간이나 조건을 좁혀 다시 확인해 주세요."
         }
     }
-    // Selection only highlights a route. Hide/restore only recomposes cached masks.
-    var tiles by remember(prepared, hiddenIds) { mutableStateOf<List<TraceRasterTile>?>(null) }
-    var compositionError by remember(prepared, hiddenIds) { mutableStateOf<String?>(null) }
+    // The area is an inspection of the full query, independent of hidden display layers.
+    val overlapHit = remember(prepared, overlapPoint, overlapOnly, minimumWalks) {
+        overlapPoint?.takeIf { overlapOnly }?.let { prepared?.hitTestOverlap(it, minimumWalks, snapRadiusU = 0.0) }
+    }
+    LaunchedEffect(prepared, overlapHit) {
+        if (prepared != null && overlapPoint != null && overlapHit == null) overlapPoint = null
+        if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
+    }
+    // Any display change clears old ink before the next asynchronous composition can publish.
+    val overlapMinimum = minimumWalks.takeIf { overlapOnly }
+    var tiles by remember(prepared, hiddenIds, overlapMinimum) { mutableStateOf<List<TraceRasterTile>?>(null) }
+    var compositionError by remember(prepared, hiddenIds, overlapMinimum) { mutableStateOf<String?>(null) }
     var composeRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(prepared, hiddenIds, composeRetry) {
+    LaunchedEffect(prepared, hiddenIds, overlapMinimum, composeRetry) {
         val ready = prepared ?: return@LaunchedEffect
         tiles = null
         compositionError = null
         try {
-            tiles = ready.compose(hiddenIds)
+            val composed = ready.compose(hiddenIds, minimumOverlapWalks = overlapMinimum)
+            currentCoroutineContext().ensureActive()
+            tiles = composed
         } catch (failure: Exception) {
             if (failure is CancellationException) throw failure
-            compositionError = "산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
+            compositionError = if (overlapOnly) ready.overlapUnavailableReason
+                ?: "겹친 구간을 표시하지 못했어요. 조건을 좁히거나 전체 흔적으로 돌아가 주세요."
+                else "산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
         }
     }
 
@@ -211,6 +229,23 @@ fun WalkRecordsScreen(
                         } },
                         onRestoreAll = { hiddenIds = emptySet() },
                         onClearSelection = { selectedId = null },
+                        overlapOnly = overlapOnly, minimumWalks = minimumWalks,
+                        onOverlapOnly = { next -> if (next != overlapOnly) {
+                            overlapOnly = next; overlapPoint = null; selectedId = null; overlapMiss = false
+                        } },
+                        onMinimumWalks = { next -> if (next != minimumWalks) {
+                            minimumWalks = next; overlapPoint = null; selectedId = null; overlapMiss = false
+                        } },
+                        overlapHit = overlapHit, overlapMiss = overlapMiss,
+                        onMapTap = { point ->
+                            val ready = prepared
+                            if (overlapOnly && ready != null && tiles != null && compositionError == null && mapError == null) {
+                                val hit = ready.hitTestOverlap(point, minimumWalks, hiddenIds = hiddenIds)
+                                overlapPoint = hit?.point; overlapMiss = hit == null; selectedId = null
+                                overlapSelectionRequest++
+                            }
+                        },
+                        onClearOverlap = { overlapPoint = null; overlapMiss = false; selectedId = null },
                         onOpen = onOpen, listState = overviewScroll,
                         camera = camera, onCamera = { camera = it },
                         fitBounds = focusBounds ?: prepared?.bounds.orEmpty(), cameraRequest = cameraRequest,
@@ -242,6 +277,11 @@ private const val PAGE_SIZE = 5
 
 private val HiddenWalkIdsSaver = listSaver<Set<String>, String>(
     save = { it.sorted() }, restore = { it.toSet() },
+)
+
+private val OverlapPointSaver = Saver<GeoPoint?, List<Double>>(
+    save = { point -> point?.let { listOf(it.latitude, it.longitude) } ?: emptyList() },
+    restore = { values -> values.takeIf { it.size == 2 }?.let { GeoPoint(it[0], it[1]) } },
 )
 
 private val CameraSnapshotSaver = Saver<MapCameraSnapshot?, List<Double>>(

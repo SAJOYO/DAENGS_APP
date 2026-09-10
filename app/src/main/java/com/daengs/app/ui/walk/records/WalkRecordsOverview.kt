@@ -54,20 +54,37 @@ internal fun WalkRecordsOverview(
     onCamera: (MapCameraSnapshot) -> Unit,
     fitBounds: List<GeoPoint>,
     cameraRequest: Int,
+    overlapOnly: Boolean = false,
+    minimumWalks: Int = 2,
+    onOverlapOnly: (Boolean) -> Unit = {},
+    onMinimumWalks: (Int) -> Unit = {},
+    overlapHit: WalkTraceOverlapHit? = null,
+    overlapMiss: Boolean = false,
+    onMapTap: (GeoPoint) -> Unit = {},
+    onClearOverlap: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
     val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
-    val route = remember(highlighted) {
+    val selectedRoute = remember(highlighted) {
         highlighted?.summary?.toSessionRoute()?.toCompletedRouteLayerState()?.let { layer ->
             layer.copy(start = layer.start?.copy(compact = true), end = layer.end?.copy(compact = true))
         } ?: CompletedRouteLayerState()
     }
+    val route = selectedRoute.copy(selectedPoint = overlapHit?.takeIf { hit ->
+        tiles != null && error == null && hit.walkIds.any { it !in hiddenIds }
+    }?.point)
     val hiddenCount = prepared?.availableWalkIds?.count { it in hiddenIds } ?: 0
-    val visibleCount = prepared?.availableWalkIds?.size?.minus(hiddenCount)
+    val displayIds = if (overlapOnly) prepared?.overlapWalkIds(minimumWalks) else prepared?.availableWalkIds
+    val visibleCount = displayIds?.count { it !in hiddenIds }
+    val relatedRecords = overlapHit?.let { hit -> selection.records.filter { it.summary.sessionId in hit.walkIds } }
+        ?: selection.records
     Column(modifier.fillMaxWidth()) {
+        WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
+            Modifier.padding(horizontal = 18.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (visibleCount == null) "지도 흔적을 준비하고 있어요."
+                else if (overlapOnly) "선택 산책 ${selection.records.size}회 · 겹침 표시 ${visibleCount}회"
                 else "선택 산책 ${selection.records.size}회 · 표시 흔적 ${visibleCount}개",
                 Modifier.weight(1f).testTag("records-map-count"), style = MaterialTheme.typography.labelMedium)
             if (hiddenCount > 0) {
@@ -90,12 +107,17 @@ internal fun WalkRecordsOverview(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(when {
+                overlapHit != null -> "이 구간: ${selection.records.size}회 중 ${overlapHit.walkIds.size}회 겹침\n아래에서 관련 산책을 살펴보세요."
+                overlapMiss -> "이곳에는 ${minimumWalks}회 이상 겹친 흔적이 없어요."
+                selected == null && overlapOnly -> "겹친 구간을 누르면 관련 산책을 볼 수 있어요."
                 selected == null -> "카드를 눌러 산책 경로를 살펴보세요."
                 selected.summary.sessionId in hiddenIds -> "고른 산책은 지도에서 숨김"
                 route.paths.none { it.isNotEmpty() } -> "이 산책에는 강조할 경로가 없어요."
                 else -> "고른 산책 경로"
-            }, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-            if (selected != null) TextButton(onClick = onClearSelection, modifier = Modifier.testTag("records-map-clear-selection")) {
+            }, Modifier.weight(1f).testTag("records-inspection-summary"), style = MaterialTheme.typography.labelSmall)
+            if (overlapHit != null) TextButton(onClick = onClearOverlap, modifier = Modifier.testTag("records-overlap-clear")) {
+                Text("전체 목록")
+            } else if (selected != null) TextButton(onClick = onClearSelection, modifier = Modifier.testTag("records-map-clear-selection")) {
                 Text("강조 해제")
             }
         }
@@ -118,10 +140,13 @@ internal fun WalkRecordsOverview(
                                 fitBounds = fitBounds, cameraRequestKey = cameraRequest,
                                 initialCamera = camera, onCameraSnapshot = onCamera,
                                 onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
+                                onMapTap = onMapTap,
                                 modifier = Modifier.fillMaxSize())
                             val message = when {
                                 error != null -> error
                                 tiles == null -> "흔적 표시를 바꾸고 있어요."
+                                overlapOnly && !prepared.hasOverlap(minimumWalks) -> "${minimumWalks}회 이상 겹친 구간이 없어요."
+                                overlapOnly && visibleCount == 0 -> "겹친 구간의 산책 흔적을 모두 숨겼어요."
                                 visibleCount == 0 && hiddenCount > 0 -> "산책 흔적을 모두 숨겼어요."
                                 visibleCount == 0 -> "표시할 산책 흔적이 없어요."
                                 else -> null
@@ -139,7 +164,7 @@ internal fun WalkRecordsOverview(
                 }
             }
             val records: @Composable (Modifier) -> Unit = { listModifier ->
-                WalkRecordsMapList(selection.records, pets, selectedId, hiddenIds, prepared?.availableWalkIds,
+                WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, prepared?.availableWalkIds,
                     onSelect, onToggleHidden, onOpen, listModifier, listState)
             }
             if (wide) Row(Modifier.fillMaxSize()) {
@@ -160,5 +185,5 @@ private fun WalkRecordsOverviewPreview() {
     val record = WalkRecord(previewDiarySummary(), "숲길을 걸었어요")
     DaengsTheme { WalkRecordsOverview(WalkRecordsSelection(WalkRecordsQuery(), listOf(record)),
         emptyList(), null, null, null, {}, record.summary.sessionId, emptySet(), {}, {}, {}, {}, {},
-        rememberLazyListState(), null, {}, emptyList(), 0, Modifier.fillMaxSize()) }
+        rememberLazyListState(), null, {}, emptyList(), 0, modifier = Modifier.fillMaxSize()) }
 }

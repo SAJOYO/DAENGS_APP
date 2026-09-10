@@ -9,6 +9,8 @@ import com.daengs.app.walk.diary.SpatialDiaryHexGrid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** One prepared full selection. Visibility changes reuse its private masks and fixed bounds. */
@@ -16,21 +18,67 @@ class PreparedWalkRecordsTraces internal constructor(
     private val masks: List<WalkTraceMask>,
     bounds: List<GeoPoint>,
     private val baseAlpha: Double,
+    private val overlap: WalkTraceOverlap = WalkTraceOverlap.empty(),
 ) {
     val availableWalkIds: Set<String> = masks.map { it.walkId }.toSet()
     val bounds: List<GeoPoint> = bounds.toList()
+    val overlapUnavailableReason: String? get() = overlap.unavailableReason
+    private val eligibilityMutex = Mutex()
+    private val eligibilityCache = linkedMapOf<EligibilityKey, WalkTraceMask>()
+
+    fun hasOverlap(minimumWalks: Int): Boolean = overlap.hasOverlap(minimumWalks)
+    fun overlapWalkIds(minimumWalks: Int): Set<String> = overlap.walkIds(minimumWalks)
+    fun hitTestOverlap(
+        point: GeoPoint, minimumWalks: Int, snapRadiusU: Double = 12.0,
+        hiddenIds: Set<String> = emptySet(),
+    ): WalkTraceOverlapHit? = overlap.hit(point, minimumWalks, snapRadiusU, hiddenIds)
 
     /** Hidden IDs affect display only. Unknown IDs and records without a mask have no effect. */
-    suspend fun compose(hiddenIds: Set<String> = emptySet()): List<TraceRasterTile> {
+    suspend fun compose(
+        hiddenIds: Set<String> = emptySet(), minimumOverlapWalks: Int? = null,
+    ): List<TraceRasterTile> {
         val hidden = hiddenIds.toSet()
         return withContext(Dispatchers.Default) {
             val context = currentCoroutineContext()
             context.ensureActive()
-            TraceBrush.compose(masks.filterNot { it.walkId in hidden }, baseAlpha) {
+            if (minimumOverlapWalks != null) {
+                require(overlapUnavailableReason == null) { overlapUnavailableReason.orEmpty() }
+                if (!hasOverlap(minimumOverlapWalks)) return@withContext emptyList()
+            }
+            val contributors = minimumOverlapWalks?.let(::overlapWalkIds)
+            val visible = TraceBrush.compose(masks.filter {
+                it.walkId !in hidden && (contributors == null || it.walkId in contributors)
+            }, baseAlpha) {
                 context.ensureActive()
+            }
+            if (minimumOverlapWalks == null || visible.isEmpty()) return@withContext visible
+            val eligibility = eligibilityMask(minimumOverlapWalks, hidden).tiles.associateBy { it.tileX to it.tileY }
+            visible.mapNotNull { tile ->
+                context.ensureActive()
+                val region = eligibility[tile.tileX to tile.tileY] ?: return@mapNotNull null
+                val clipped = FloatArray(tile.alpha.size) { i ->
+                    if (i % 4_096 == 0) context.ensureActive()
+                    tile.alpha[i] * region.alpha[i]
+                }
+                if (clipped.any { it > 0f }) tile.copy(alpha = clipped) else null
             }
         }
     }
+
+    private suspend fun eligibilityMask(minimumWalks: Int, hiddenIds: Set<String>): WalkTraceMask = eligibilityMutex.withLock {
+        val key = EligibilityKey(minimumWalks, hiddenIds.intersect(overlapWalkIds(minimumWalks)))
+        eligibilityCache[key]?.let { return@withLock it }
+        val context = currentCoroutineContext()
+        val mask = TraceBrush.mask(overlap.sheet(minimumWalks, key.hiddenIds), TraceBrushPolicy()) { context.ensureActive() }
+        // Cache threshold/visibility states without retaining unbounded empty states or tiles.
+        while (eligibilityCache.size >= 6 || eligibilityCache.values.sumOf { it.tiles.size } + mask.tiles.size > 256) {
+            eligibilityCache.remove(eligibilityCache.keys.first())
+        }
+        eligibilityCache[key] = mask
+        mask
+    }
+
+    private data class EligibilityKey(val minimumWalks: Int, val hiddenIds: Set<String>)
 }
 
 /** Focus the selected record's actual route without changing the full selection's bounds. */
@@ -75,7 +123,8 @@ suspend fun prepareWalkRecordsTraces(selection: WalkRecordsSelection): PreparedW
                 }
             }
         }
-        PreparedWalkRecordsTraces(masks.toList(), bounds.points(), policy.baseAlpha)
+        val overlap = WalkTraceOverlap.create(sheets) { context.ensureActive() }
+        PreparedWalkRecordsTraces(masks.toList(), bounds.points(), policy.baseAlpha, overlap)
     }
 
 private class TraceSelectionBounds {

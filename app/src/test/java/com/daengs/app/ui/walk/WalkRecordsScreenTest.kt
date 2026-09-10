@@ -2,6 +2,10 @@ package com.daengs.app.ui.walk
 
 import android.app.Application
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,9 +23,12 @@ import com.daengs.app.location.LocationSample
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.walk.records.WalkRecordsScreen
+import com.daengs.app.ui.walk.records.WalkRecordsOverview
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.SpatialDiaryCellId
+import com.daengs.app.walk.diary.SpatialDiaryHexGrid
 import com.daengs.app.walk.records.*
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -224,6 +231,76 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-restore-all").performClick()
         waitText("선택 산책 1회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-map-hide-record-1").assertTextEquals("지도에서 숨기기")
+    }
+
+    @Test fun `overlap display thresholds and hidden walks survive tabs but reset with the query`() {
+        val cell = SpatialDiaryCellId(832649, 375728)
+        val sample = (1..3).map { n -> record(n).copy(trace = if (n <= 2)
+            WalkTraceSheet("record-$n", cells = setOf(cell)) else null) }
+        val queries = Collections.synchronizedList(mutableListOf<WalkRecordsQuery>())
+        val source = WalkRecordsSource { query -> queries.add(query); selectWalkRecords(sample, query) }
+        val restore = StateRestorationTester(compose)
+        restore.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsScreen(source, pets, {}, {}, today = today)
+        } } }
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        waitText("선택 산책 3회 · 표시 흔적 2개")
+        compose.onNodeWithTag("records-traces-overlap").performClick()
+        waitText("선택 산책 3회 · 겹침 표시 2회")
+        chooseMapRecord("record-1")
+        compose.onNodeWithTag("records-map-hide-record-1").performScrollTo().performClick()
+        waitText("선택 산책 3회 · 겹침 표시 1회")
+        // Hiding leaves two original walks in the overlap evidence, so this is still visible.
+        compose.onNodeWithText("2회 이상 겹친 구간이 없어요.").assertDoesNotExist()
+        compose.onNodeWithTag("records-overlap-min-5").performClick()
+        waitText("5회 이상 겹친 구간이 없어요.")
+        compose.onNodeWithTag("records-overview-map").assertExists()
+        compose.onNodeWithTag("records-view-walks").performClick()
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        compose.onNodeWithTag("records-traces-overlap").assertIsSelected()
+        compose.onNodeWithTag("records-overlap-min-5").assertIsSelected()
+        assertEquals(1, queries.size)
+        restore.emulateSavedInstanceStateRestore()
+        waitText("5회 이상 겹친 구간이 없어요.")
+        compose.onNodeWithTag("records-overlap-min-2").performClick()
+        waitText("선택 산책 3회 · 겹침 표시 1회")
+        compose.onNodeWithTag("records-search").performTextReplacement("기록")
+        waitText("선택 산책 3회 · 표시 흔적 2개")
+        compose.onNodeWithTag("records-traces-all").assertIsSelected()
+        compose.onNodeWithTag("records-map-restore-all").assertDoesNotExist()
+    }
+
+    @Test fun `overlap inspection lists exact related walks including hidden evidence without changing base counts`() {
+        val cell = SpatialDiaryCellId(832649, 375728)
+        val sample = (1..3).map { n -> record(n).copy(trace = WalkTraceSheet("record-$n",
+            cells = setOf(if (n <= 2) cell else SpatialDiaryCellId(cell.q + 10, cell.r)))) }
+        val selection = WalkRecordsSelection(WalkRecordsQuery(), sample)
+        val prepared = runBlocking { prepareWalkRecordsTraces(selection) }
+        val hidden = setOf("record-1")
+        val tiles = runBlocking { prepared.compose(hidden, minimumOverlapWalks = 2) }
+        val initialHit = prepared.hitTestOverlap(SpatialDiaryHexGrid.center(cell, 8.0), 2)!!
+        val opened = AtomicReference<String>()
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            var hit by remember { mutableStateOf<WalkTraceOverlapHit?>(initialHit) }
+            WalkRecordsOverview(selection, pets, prepared, tiles, null, {}, "record-1", hidden,
+                {}, {}, {}, {}, { opened.set(it) }, rememberLazyListState(), null, {}, prepared.bounds, 0,
+                overlapOnly = true, overlapHit = hit, onClearOverlap = { hit = null }, modifier = Modifier.fillMaxSize())
+        } } }
+        compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 3회 · 겹침 표시 1회")
+        compose.onNodeWithTag("records-inspection-summary").assertTextContains("3회 중 2회 겹침", substring = true)
+        compose.onNodeWithTag("records-map-record-record-1").assertExists()
+        compose.onNodeWithTag("records-map-record-record-2").assertExists()
+        compose.onNodeWithTag("records-map-record-record-3").assertDoesNotExist()
+        compose.onNodeWithTag("records-map-hide-record-1").assertTextEquals("지도에 다시 표시")
+        compose.onNodeWithTag("records-map-open-record-1").performScrollTo().performClick()
+        assertEquals("record-1", opened.get())
+        compose.onNodeWithTag("records-overlap-clear").performClick()
+        compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-3"))
+        compose.onNodeWithTag("records-map-record-record-3").assertExists()
+        compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 3회 · 겹침 표시 1회")
     }
 
     private fun chooseMapRecord(id: String) {
