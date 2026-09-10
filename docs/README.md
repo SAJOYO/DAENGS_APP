@@ -2,6 +2,7 @@
 
 | 파일 | 내용 |
 | --- | --- |
+| [gps-motion-policy-architecture.md](gps-motion-policy-architecture.md) | GPS 정책층 1차 설계 — 원본 수집·저장·구간 판단·숫자 유지·종료와 복구 계약 (구현 전) |
 | [collaboration.md](collaboration.md) | 협업 규칙 — 우선순위 · Iteration · PR 기준 · 데일리 · 회고 |
 | [기능별 테스트 실행 지도](../app/src/test/README.md) | 기능별 Gradle 선택자, Room·동기화 검증 경계, 공용 helper 제공자·소비자 |
 | [walk-photo-sync.md](walk-photo-sync.md) | 산책 사진 메타데이터 전송 — Room 13, 응답 유실/편집 복구, 서버 기능 협상 |
