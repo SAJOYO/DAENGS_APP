@@ -109,4 +109,32 @@ class PetPhotoSyncTest {
             ),
         )
     }
+
+    @Test
+    fun `공동 돌봄 아이의 기기 사진은 서버로 올리지 않는다`() {
+        assertEquals(
+            PhotoAction.DOWNLOAD,
+            photoActionFor(
+                serverHasPhoto = true,
+                serverUpdatedAt = "2026-09-10T10:00:00Z",
+                localExists = true,
+                localStamp = null,
+                canUpload = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `공동 돌봄 아이의 서버 사진이 없어지면 기기에서도 지운다`() {
+        assertEquals(
+            PhotoAction.DELETE_LOCAL,
+            photoActionFor(
+                serverHasPhoto = false,
+                serverUpdatedAt = null,
+                localExists = true,
+                localStamp = null,
+                canUpload = false,
+            ),
+        )
+    }
 }

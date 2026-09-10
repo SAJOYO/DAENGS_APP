@@ -748,7 +748,7 @@ class MainActivity : ComponentActivity() {
                         outside = outside,
                         pets = shownPets,
                         photoOf = { petPhotos[it] },
-                        onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
+                        onEditPhoto = { pets.primary?.takeIf(Pet::isOwner)?.let { pet -> photoFor = pet } },
                         hiddenRoomPetIds = hiddenRoomPetIds,
                         onToggleRoomPet = { pet ->
                             hiddenRoomPetIds = if (pet.id in hiddenRoomPetIds) {
@@ -765,8 +765,8 @@ class MainActivity : ComponentActivity() {
                         onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
-                        onEditPet = { editing = it; screen = Screen.Onboarding },
-                        onFarewell = { farewell = it },
+                        onEditPet = { pet -> if (pet.isOwner) { editing = pet; screen = Screen.Onboarding } },
+                        onFarewell = { pet -> if (pet.isOwner) farewell = pet },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
