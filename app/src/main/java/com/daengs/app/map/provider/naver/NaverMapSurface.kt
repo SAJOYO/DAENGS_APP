@@ -298,6 +298,7 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
+    NaverWalkTraceLayer(naverMap, scene.traceTiles)
     NaverTravelHeadingLayer(naverMap, scene.currentPosition, scene.travelHeading)
 
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
