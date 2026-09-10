@@ -74,6 +74,11 @@ class DaengsApp : Application() {
         private set
     lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
         private set
+    private lateinit var walkDatabase: WalkDatabase
+
+    /** Keep the returned source for this login; request a new one after accountScope changes. */
+    fun walkRecordsSource(): com.daengs.app.walk.records.WalkRecordsSource? =
+        com.daengs.app.walk.records.accountWalkRecordsSource(walkDatabase, sessionProvider)
 
     /** CameraX 완료 뒤 저장은 화면 회전/이탈보다 오래 살아야 한다. */
     fun saveWalkPhoto(capture: com.daengs.app.walk.WalkPhotoCapture, file: java.io.File) = applicationScope.async {
@@ -113,7 +118,8 @@ class DaengsApp : Application() {
         )
 
         val store = WalkTrackingStore()
-        val dao = WalkDatabase.open(this).walkDao()
+        walkDatabase = WalkDatabase.open(this)
+        val dao = walkDatabase.walkDao()
         walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos"),
             onChanged = { sessionId -> applicationScope.launch {
                 runCatching { walkRuntime.delivery.enqueue(sessionId) }

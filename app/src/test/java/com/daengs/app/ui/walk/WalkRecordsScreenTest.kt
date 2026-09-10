@@ -29,6 +29,9 @@ import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.diary.SpatialDiaryHexGrid
 import com.daengs.app.walk.records.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -152,6 +155,47 @@ class WalkRecordsScreenTest {
         waitText("조건에 맞는 산책이 없어요.")
         compose.onNodeWithTag("records-search").assertTextContains("실패")
         assertEquals(2, failures.get())
+    }
+
+    @Test fun `saved record changes reload the same query and clear old results on failure`() {
+        val revisions = MutableStateFlow(0)
+        val saved = AtomicReference(records)
+        val pending = AtomicReference<CompletableDeferred<Unit>?>(null)
+        val fail = java.util.concurrent.atomic.AtomicBoolean(false)
+        val source = object : WalkRecordsSource {
+            override val changes = revisions.map { Unit }
+            override suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection {
+                pending.get()?.await()
+                check(!fail.get()) { "account is no longer current" }
+                return selectWalkRecords(saved.get(), query)
+            }
+        }
+        show(source)
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-search").performTextReplacement("기록-8")
+        waitCard("기록-8")
+
+        val release = CompletableDeferred<Unit>()
+        compose.runOnIdle {
+            pending.set(release)
+            saved.set(records.filter { it.summary.sessionId != "record-8" })
+            revisions.value++
+        }
+        waitText("산책 기록을 찾고 있어요.")
+        compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
+        release.complete(Unit)
+        waitText("조건에 맞는 산책이 없어요.")
+        compose.onNodeWithTag("records-search").assertTextContains("기록-8")
+
+        compose.runOnIdle { pending.set(null); saved.set(records); revisions.value++ }
+        waitCard("기록-8")
+        compose.runOnIdle { fail.set(true); revisions.value++ }
+        waitText("산책 기록을 불러오지 못했어요.")
+        compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
+        // Later storage changes can recover without losing the search or restarting the screen.
+        compose.runOnIdle { fail.set(false); revisions.value++ }
+        waitCard("기록-8")
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
     }
 
     @Test fun `map selection hide detail and recreation preserve the full query until conditions change`() {
