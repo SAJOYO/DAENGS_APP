@@ -4,6 +4,8 @@ import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkSummary
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import java.time.ZoneId
 
 data class WalkRecordsQuery(
@@ -66,6 +68,8 @@ class WalkRecordsSelection(query: WalkRecordsQuery, records: List<WalkRecord>) {
 }
 
 fun interface WalkRecordsSource {
+    /** Emit once on subscription and again when the saved inputs or account scope change. */
+    val changes: Flow<Unit> get() = flowOf(Unit)
     suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection
 }
 

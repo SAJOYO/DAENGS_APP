@@ -64,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -109,12 +110,22 @@ fun WalkRecordsScreen(
     LaunchedEffect(source, query, retry) {
         try {
             if (query.filter.keyword.isNotBlank()) delay(250)
-            val loaded = withContext(Dispatchers.Default) { source.select(query) }
-            currentCoroutineContext().ensureActive()
-            require(loaded.query == query) { "조회 조건과 결과 조건이 달라요." }
-            selection = loaded
+            source.changes.collectLatest {
+                selection = null
+                error = null
+                try {
+                    val loaded = withContext(Dispatchers.Default) { source.select(query) }
+                    currentCoroutineContext().ensureActive()
+                    require(loaded.query == query) { "조회 조건과 결과 조건이 달라요." }
+                    selection = loaded
+                } catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    error = "산책 기록을 불러오지 못했어요."
+                }
+            }
         } catch (failure: Exception) {
             if (failure is CancellationException) throw failure
+            selection = null
             error = "산책 기록을 불러오지 못했어요."
         }
     }
