@@ -18,4 +18,13 @@ data class MapScene(
     val completedRoute: CompletedRouteLayerState = CompletedRouteLayerState(),
     val stayStamps: List<com.daengs.app.map.layers.stays.StayStampMarkerState> = emptyList(),
     val travelHeading: com.daengs.app.location.TravelHeading? = null,
+    val spatialCells: List<com.daengs.app.map.layers.spatial.SpatialDiaryPaintCell> = emptyList(),
+    val allowRegionalOverview: Boolean = false,
 )
+
+/** Multiple historical walks may span cities; active and single-walk maps keep their local zoom. */
+internal fun MapScene.minimumZoom(): Double = when {
+    allowRegionalOverview -> 5.0
+    baseMapStyle == BaseMapStyle.TERRITORY_FOCUSED -> 13.0
+    else -> 11.0
+}
