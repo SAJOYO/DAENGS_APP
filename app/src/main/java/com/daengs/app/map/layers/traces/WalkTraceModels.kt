@@ -3,7 +3,8 @@ package com.daengs.app.map.layers.traces
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 
-const val DEFAULT_TRACE_BASE_ALPHA = 0.28
+const val DEFAULT_TRACE_BASE_ALPHA = 0.14
+const val MAX_TRACE_COMPOSITE_ALPHA = 0.40
 
 /** One walk's positive support. Time, peak and repeat-pass weights are deliberately absent. */
 data class WalkTraceSheet(

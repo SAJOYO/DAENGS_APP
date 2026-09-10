@@ -88,7 +88,7 @@ object TraceBrush {
         ).map { (key, pixels) -> tile(key, policy.tileSize, policy.pixelU, pixels) })
     }
 
-    /** Same-colour source-over. Deselecting a walk means leaving its cached mask out of this call. */
+    /** Same-colour source-over capped at 40%; individual mask coverage remains untouched. */
     fun compose(
         masks: List<WalkTraceMask>, baseAlpha: Double = DEFAULT_TRACE_BASE_ALPHA, checkCancelled: () -> Unit = {},
     ): List<TraceRasterTile> {
@@ -120,7 +120,7 @@ object TraceBrush {
                     val coverage = source.alpha[i]
                     require(coverage.isFinite() && coverage in 0f..1f)
                     val alpha = coverage * baseAlpha
-                    target[i] = (1 - (1 - target[i]) * (1 - alpha)).toFloat()
+                    target[i] = min(MAX_TRACE_COMPOSITE_ALPHA, 1 - (1 - target[i]) * (1 - alpha)).toFloat()
                 }
             }
         }
