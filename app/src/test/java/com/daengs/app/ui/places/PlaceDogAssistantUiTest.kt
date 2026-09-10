@@ -1,10 +1,7 @@
 package com.daengs.app.ui.places
 
-import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -27,12 +24,14 @@ class PlaceDogAssistantUiTest {
         val open = mutableStateOf(false)
         val queries = mutableListOf<String>()
         compose.setContent { DaengsTheme {
-            Box(Modifier.fillMaxSize()) {
-                PlaceDogAssistant(Offset(160f, 300f), busy.value, available.value, open.value, { open.value = it },
+            PlaceMapControls(false, {}, {}) {
+                PlaceDogAssistant(busy.value, available.value, open.value, { open.value = it },
                     { queries += it; busy.value = true }, { busy.value = false }) { Text("서버가 돌려준 답변") }
             }
         } }
         val before = compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("place-dog-anchor").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithContentDescription("내 주변 검색").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
         compose.onNodeWithTag("place-dog-anchor").performClick()
         compose.onNodeWithTag("place-dog-input").performTextInput("카페 찾아줘")
         assertTrue(queries.isEmpty())

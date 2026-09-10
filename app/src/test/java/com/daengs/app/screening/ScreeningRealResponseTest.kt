@@ -66,8 +66,10 @@ class ScreeningRealResponseTest {
         assertTrue("서버가 준 문장을 그대로 씁니다", line.text.isNotBlank())
         // ★ 실서버가 특징을 같이 보내는가 (2026-09-10). 이름만 오면 보호자가
         //    자기 개 사진과 대조할 방법이 없습니다.
-        assertEquals("돌기, 넓게 솟은 부위, 고름이 찬 병변", line.feature)
+        assertEquals("돌기, 넓게 솟은 부위, 고름이 찬 자리", line.feature)
         assertTrue("자세히 보기 내용이 옵니다", line.detail.isNotBlank())
+        // ★ 병원에서 쓰는 이름이 오는가 (2026-09-10). 없으면 보호자가 전할 말이 없습니다.
+        assertEquals("구진·플라크·농포·여드름", line.labels)
         assertTrue("단서를 빼지 않습니다", line.caveat.isNotBlank())
         // ⚠️ 긴급도 문구가 서버에서 딸려 오면 안 됩니다 (과잉 52.4%).
         assertTrue(

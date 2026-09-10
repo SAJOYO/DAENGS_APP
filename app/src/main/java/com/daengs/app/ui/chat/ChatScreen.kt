@@ -1763,6 +1763,15 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 report.group?.let { g ->
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(g.text, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                        // ★ 병원에서 쓰는 이름 (2026-09-10). `솟아오른 변화` 만 들고 가면
+                        //    수의사가 못 알아듣는다. ⚠️ 순서는 코드순 고정이라 확률과 무관하고,
+                        //    단정이 아니라 용어 풀이다.
+                        if (g.labels.isNotBlank()) {
+                            Text(
+                                "(${g.labels})",
+                                color = TextDark, fontSize = 12.sp, lineHeight = 18.sp,
+                            )
+                        }
                         // ★ 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
                         //    이름만 띄우면 자기 개 사진과 대조할 방법이 없다 —
                         //    `표면 변화` 는 뜻이 안 잡히고 `딱지, 둥근 비늘` 은 바로 보인다.
@@ -1775,10 +1784,13 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                         if (g.caveat.isNotBlank()) {
                             Text(g.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
                         }
-                        // ★ 수의학적 의미는 **접어 둔다.** primary/secondary 는 *진단 순서*의
-                        //    축이지 *보호자에게 뭐라고 부를지*의 축이 아니고, 저쪽에서 그 축으로
-                        //    묶었다가 **과잉 분류 88.4%** 로 기각했다. 궁금한 사람만 펴 본다.
-                        if (g.detail.isNotBlank()) {
+                        // ★ "자세히 보기" 에는 **한 문단만** 둔다 (2026-09-10).
+                        //    ⚠️ `g.detail`(수의학적 의미)을 **여기 안 그린다.** 그건 "주로 일차
+                        //       병변…" 같은 말이라 보호자가 읽을 문장이 아니고, 바로 위 `caveat`
+                        //       와 겹쳐 같은 말("진단이 아니다")이 두 번이 된다. 접어 뒀다고 해서
+                        //       아무 말이나 넣어도 되는 자리가 아니다.
+                        //    ⚠️ `detail` 은 계약에 그대로 있다 — **관리자 콘솔**이 쓴다.
+                        run {
                             val open = remember { mutableStateOf(false) }
                             Text(
                                 if (open.value) "접기" else "자세히 보기",
@@ -1786,10 +1798,6 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                                 modifier = Modifier.clickable { open.value = !open.value },
                             )
                             if (open.value) {
-                                Text(
-                                    g.detail,
-                                    color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
-                                )
                                 Text(
                                     "이 결과는 사진에서 관찰되는 피부 형태를 분류한 스크리닝 " +
                                         "정보이며 질병을 진단하지 않습니다. 정확한 원인 확인에는 " +
@@ -1879,7 +1887,7 @@ private fun ReportBubblePreview() {
         contractVersion = "1.0",
         verdict = ScreeningReport.Verdict.ABNORMAL,
         headline = "피부에 이상 소견이 보입니다.",
-        body = "어떤 병변인지까지는 이 사진만으로 판단할 수 없습니다.",
+        body = "무엇 때문인지까지는 이 사진만으로 알 수 없습니다.",
         action = "수의사 진료를 받아보시기를 권합니다.",
         stage1 = ScreeningReport.Stage1(83.0f, 14.7f, calibrated = true),
         stage2 = emptyList(),
@@ -1919,7 +1927,7 @@ private fun ReportBubblePreview() {
                     ),
                     ScreeningReport.Alert(
                         "A6", "덩어리가 의심됩니다.", "빠른 진료를 권합니다.",
-                        "진단이 아닙니다. 덩어리처럼 보이는 다른 병변일 수 있습니다.",
+                        "진단이 아닙니다. 덩어리처럼 보이는 다른 것일 수 있습니다.",
                         0.72f, 0.40f,
                     ),
                 ),
