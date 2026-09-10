@@ -59,7 +59,9 @@ fun HomeGameRoute(repository: ActivityRepository, ownerId: String?, petId: Strin
                         val minutes = ((season.endsMs - season.serverNowMs).coerceAtLeast(0) + 59_999) / 60_000
                         val end = if (minutes >= 1440) "${minutes / 1440}일" else if (minutes >= 60) "${minutes / 60}시간" else "${minutes}분"
                         detail = "시즌 종료까지 $end · ${summary.statistics?.takeoverCount ?: "—"}회 탈취\n" +
-                            "보유 시간 점수는 서버 정산 기준이며 실시간 점수와 차이가 있을 수 있어요."
+                            (score?.let(::activityScoreBreakdown)?.let { "$it\n" } ?: "") +
+                            (summary.finalRank?.let { "최종 ${it}위\n" } ?: "") +
+                            "보유 시간 점수는 서버 정산 기준이에요."
                     }
                 }
                 delay(30_000)

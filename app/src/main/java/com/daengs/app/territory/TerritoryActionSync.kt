@@ -133,6 +133,50 @@ class TerritoryActionSync(
         return message
     }
 
+    /** A renewal is a new onsite action; retries keep its UUID and request exactly. */
+    suspend fun submitRenewal(expected: WalkTrackingState, mark: TerritoryOperation, evidence: String, version: Long): String {
+        val message = try {
+            writes.withLock {
+                val now = tracking()
+                val owner = currentOwner()
+                val request = JSONObject(evidence)
+                if (owner == null || owner != mark.ownerId || now.ownerId != owner || expected.ownerId != owner ||
+                    now.activeSessionId != mark.sessionId || expected.activeSessionId != now.activeSessionId ||
+                    now.activeDogIds != expected.activeDogIds || now.trail.state != TrackingState.RECORDING ||
+                    request.getString("claiming_pet_id") !in now.activeDogIds)
+                    return@withLock "산책 상태가 바뀌었어요 · 다시 확인해 주세요"
+                recordTracking(now)
+                val rows = dao.all()
+                val current = rows.firstOrNull { it.identity == mark.identity && it.ownerId == owner && it.state == "CONFIRMED" }
+                    ?: return@withLock "점유 상태를 다시 확인해 주세요"
+                if (rows.any { it.ownerId == owner && it.kind == "RENEW" && it.renewalMarkIdentity() == mark.identity && it.state == "PENDING" })
+                    return@withLock "저장한 연장 결과를 확인하고 있어요"
+                if (rows.any { it.ownerId == owner && it.kind == "PHOTO" && it.photoMarkIdentity() == mark.identity && it.photoActive() })
+                    return@withLock "사진 판정이 끝난 뒤 연장해 주세요"
+                val claim = parseTerritoryClaim(checkNotNull(current.response), current.body)
+                val original = JSONObject(current.body)
+                require(request.getString("client_session_id") == mark.sessionId &&
+                    request.getString("site_id") == original.getString("site_id") &&
+                    request.getString("claiming_pet_id") == original.getString("claiming_pet_id") && version >= 0)
+                val id = UUID.randomUUID().toString()
+                val envelope = JSONObject().put("renewal_id", id).put("claim_id", claim.claimId)
+                    .put("mark_identity", mark.identity)
+                    .put("request", request.put("expected_site_version", version).toString()).toString()
+                dao.insert(TerritoryOperation(identity = "renew:$id", ownerId = owner, sessionId = mark.sessionId,
+                    kind = "RENEW", body = envelope))
+                _storageFailed.value = false
+                "유지 연장을 저장했어요 · 연장 보상 0점"
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { _storageFailed.value = true; "연장을 저장하지 못했어요 · 다시 시도해 주세요" }
+        scope.launch {
+            try { deliver() } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Durable outbox is retried by WorkManager. */ }
+        }
+        schedule()
+        return message
+    }
+
     private suspend fun schedule() {
         // A scheduling failure leaves committed rows for the next startup/foreground reconciliation.
         try { enqueue() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { }
@@ -173,6 +217,22 @@ class TerritoryActionSync(
                 // Commit before HTTP. Crash at either side of this line replays the same operation.
                 writes.withLock { dao.update(sentRow.copy(sent = true, failure = null)) }
                 if (currentOwner() != owner) return@withLock true
+                if (row.kind == "RENEW") {
+                    val renewal = deliverTerritoryRenewal(sentRow, api, auth.accessToken)
+                    writes.withLock { dao.update(sentRow.copy(sent = true, state = "CONFIRMED", response = renewal)) }
+                    // A replayed renewal receipt is history. Read current occupancy before displaying it.
+                    if (currentOwner() == owner) {
+                        try {
+                            val mark = dao.all().first { it.identity == row.renewalMarkIdentity() && it.ownerId == owner }
+                            val claimId = JSONObject(row.body).getString("claim_id")
+                            val refreshed = api.request(auth.accessToken, "GET", "/claims/$claimId", null)
+                            require(parseTerritoryClaim(refreshed, mark.body).claimId == claimId)
+                            writes.withLock { dao.update(mark.copy(response = refreshed)) }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* Confirmed renewal stays confirmed; occupancy refresh recovers. */ }
+                    }
+                    return@repeat
+                }
                 if (row.kind == "PHOTO") {
                     val progress = checkNotNull(photos).bind(sentRow, auth.accessToken)
                     writes.withLock { dao.update(sentRow.copy(sent = true, state = "CONFIRMED", response = progress)) }
