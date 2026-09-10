@@ -37,7 +37,6 @@ fun MapHost(
     /** Only read when the map is created; later snapshots must not drive the camera. */
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
-    onAvatarPosition: ((androidx.compose.ui.geometry.Offset?) -> Unit)? = null,
 ) {
     NaverMapSurface(
         scene = scene,
@@ -63,6 +62,5 @@ fun MapHost(
         modifier = modifier,
         initialCamera = initialCamera,
         onCameraSnapshot = onCameraSnapshot,
-        onAvatarPosition = onAvatarPosition,
     )
 }

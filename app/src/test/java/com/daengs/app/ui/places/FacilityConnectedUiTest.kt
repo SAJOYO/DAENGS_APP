@@ -33,7 +33,7 @@ class FacilityConnectedUiTest {
                 assertEquals(FacilityChoice.Confirm("lens:cafe"), action.choice)
                 state.value = state.value.copy(facility = state.value.facility.copy(response = result.copy(confirmedLensId = "lens:cafe", revision = 2)))
             }
-        }, {}, {}, {}, {}, {}, showMap = false, previewAvatarPosition = androidx.compose.ui.geometry.Offset(150f, 100f)) } }
+        }, {}, {}, {}, {}, {}, showMap = false) } }
         val name = result.lenses.single().search.overviewHits(true).first().place.name
         compose.onNodeWithText(name).assertDoesNotExist()
         compose.onNodeWithContentDescription("강아지에게 검색 조건 말하기").performClick()
