@@ -13,66 +13,30 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.daengs.app.activity.*
-import java.math.BigDecimal
-import java.math.RoundingMode
 import kotlinx.coroutines.delay
 
-/** Recreated on account/dog changes. Failed or unprocessed reads never become a zero score. */
+/** Home is a compact entry point; the full overview owns score details and game rules. */
 @Composable
 fun HomeGameRoute(repository: ActivityRepository, ownerId: String?, petId: String?, petName: String?, onOpenGame: () -> Unit) {
-    if (ownerId == null || petId == null) return
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     key(ownerId, petId) {
-        var message by remember { mutableStateOf("시즌 현황을 불러오고 있어요") }
-        var retry by remember { mutableIntStateOf(0) }
-        var expanded by remember { mutableStateOf(false) }
-        var detail by remember { mutableStateOf("") }
-        LaunchedEffect(ownerId, petId, retry, lifecycle) {
-          lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                val seasonResult = repository.currentSeason()
-                val error = seasonResult.exceptionOrNull()
-                val season = seasonResult.getOrNull()
-                if (error != null) {
-                    message = if (error is ActivityHttpException && error.code == "activity_disabled") "시즌 게임을 준비하고 있어요" else "시즌 현황을 불러오지 못했어요"
-                    detail = ""
-                    break
+        var overview by remember { mutableStateOf(com.daengs.app.ui.game.TerritoryGameOverview()) }
+        LaunchedEffect(repository, ownerId, petId, lifecycle) {
+            if (ownerId != null && petId != null) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    overview = com.daengs.app.ui.game.loadGameOverview(repository, petId)
+                    delay(30_000)
                 }
-                if (season == null) {
-                    message = "진행 중인 시즌이 없어요"
-                    detail = ""
-                } else {
-                    val result = repository.territorySummary(season.id, petId)
-                    val summary = result.getOrNull()
-                    if (summary == null) {
-                        message = "점령 현황을 불러오지 못했어요"
-                        detail = ""
-                    } else {
-                        val score = summary.score
-                        val points = score?.let {
-                            BigDecimal(it.holdingUnits).divide(BigDecimal("36000000000"), 1, RoundingMode.DOWN)
-                                .add(BigDecimal.valueOf(it.bonus)).stripTrailingZeros().toPlainString()
-                        } ?: if (summary.status == ActivityTerritoryStatus.READY && summary.statistics?.acquisitionCount == 0L) "0" else "—"
-                        val owned = score?.currentCount ?: summary.statistics?.ownedSiteCount
-                        message = "$points 점 · 점령 ${owned?.toString() ?: "—"}곳" +
-                            if (summary.status != ActivityTerritoryStatus.READY) " · 집계 중" else ""
-                        val minutes = ((season.endsMs - season.serverNowMs).coerceAtLeast(0) + 59_999) / 60_000
-                        val end = if (minutes >= 1440) "${minutes / 1440}일" else if (minutes >= 60) "${minutes / 60}시간" else "${minutes}분"
-                        detail = "시즌 종료까지 $end · ${summary.statistics?.takeoverCount ?: "—"}회 탈취\n" +
-                            (score?.let(::activityScoreBreakdown)?.let { "$it\n" } ?: "") +
-                            (summary.finalRank?.let { "최종 ${it}위\n" } ?: "") +
-                            "보유 시간 점수는 서버 정산 기준이에요."
-                    }
-                }
-                delay(30_000)
             }
-          }
         }
-        HomeGameCard("${petName ?: "우리 강아지"}의 이번 시즌", message, { expanded = true })
-        if (expanded) AlertDialog(onDismissRequest = { expanded = false }, title = { Text("이번 시즌 점령 현황") },
-            text = { Text(message + if (detail.isNotBlank()) "\n\n$detail" else "") },
-            confirmButton = { TextButton(onClick = { expanded = false; onOpenGame() }) { Text("산책 지도 보기") } },
-            dismissButton = { TextButton(onClick = { retry++ }) { Text("새로고침") } })
+        val message = when {
+            ownerId == null -> "로그인하고 시즌 성적 보기"
+            petId == null -> "우리 강아지와 점령을 시작해요"
+            overview.status == com.daengs.app.ui.game.GameOverviewStatus.READY ->
+                "${overview.points ?: "—"} 점 · 점령 ${overview.owned ?: "—"}곳" + if (overview.aggregating) " · 집계 중" else ""
+            else -> overview.message
+        }
+        HomeGameCard(petName?.takeIf { ownerId != null }?.let { "${it}의 이번 시즌" } ?: "점령 게임", message, onOpenGame)
     }
 }
 
