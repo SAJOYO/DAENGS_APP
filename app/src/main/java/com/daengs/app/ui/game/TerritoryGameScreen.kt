@@ -32,7 +32,7 @@ import java.math.BigInteger
 @Composable
 internal fun TerritoryGameScreen(
     overview: TerritoryGameOverview, pet: Pet?, pets: List<Pet>, photoOf: (String) -> ImageBitmap?,
-    nowNanos: Long, walkActive: Boolean,
+    nowNanos: Long,
     onBack: () -> Unit, onOpenMap: () -> Unit, onSelectPet: (String) -> Unit, onRetry: () -> Unit,
     onAddPet: () -> Unit = onBack, onSignIn: () -> Unit = onBack,
 ) {
@@ -78,7 +78,7 @@ internal fun TerritoryGameScreen(
                 val label = when (overview.status) {
                     GameOverviewStatus.SIGN_IN -> "로그인하기"
                     GameOverviewStatus.NO_PET -> "강아지 등록하기"
-                    else -> if (walkActive) "산책 지도로 돌아가기" else "점령 지도 보기"
+                    else -> "점령 지도 보기"
                 }
                 Button(onClick = when (overview.status) {
                     GameOverviewStatus.SIGN_IN -> onSignIn
@@ -187,12 +187,12 @@ internal fun previewGameOverview() = TerritoryGameOverview(GameOverviewStatus.RE
 @Composable
 private fun TerritoryGameScreenPreview() = DaengsTheme {
     val dog = previewGamePet()
-    TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, false, {}, {}, {}, {})
+    TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, {}, {}, {}, {})
 }
 
 @Preview(showBackground = true, widthDp = 320, heightDp = 720)
 @Composable
 private fun TerritoryGamePreparingPreview() = DaengsTheme {
     val dog = previewGamePet()
-    TerritoryGameScreen(TerritoryGameOverview(GameOverviewStatus.PREPARING), dog, listOf(dog), { null }, 0, false, {}, {}, {}, {})
+    TerritoryGameScreen(TerritoryGameOverview(GameOverviewStatus.PREPARING), dog, listOf(dog), { null }, 0, {}, {}, {}, {})
 }

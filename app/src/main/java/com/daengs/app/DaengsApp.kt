@@ -51,6 +51,9 @@ class DaengsApp : Application() {
     lateinit var activityRepository: com.daengs.app.activity.ActivityRepository
         private set
 
+    lateinit var ownedTerritoryRepository: com.daengs.app.territory.owned.OwnedTerritoryRepository
+        private set
+
     lateinit var walkRuntime: WalkRuntime
         private set
 
@@ -109,6 +112,9 @@ class DaengsApp : Application() {
         sessionProvider = SessionProvider(tokenStore)
         activityRepository = com.daengs.app.activity.ActivityRepository(
             com.daengs.app.activity.ActivityApi(), sessionProvider::freshSession, tokenStore::load,
+        )
+        ownedTerritoryRepository = com.daengs.app.territory.owned.OwnedTerritoryRepository(
+            com.daengs.app.territory.owned.OwnedTerritoryApi(), sessionProvider::freshSession, tokenStore::load,
         )
 
         cardFiles = CardFiles(this)

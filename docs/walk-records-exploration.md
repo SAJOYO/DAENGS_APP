@@ -206,6 +206,15 @@ Robolectric의 inspection 지도와 상세 대역은 실제 Naver 지도 생성�
 랜딩`을 직접 확인했다. 에뮬레이터 빌드에는 카카오 로그인 설정이 없으므로 인증된 실제
 계정의 기록 왕복은 미실시다. 물리 폰과 서버 DB는 이 단계에서 조작하지 않았다.
 
+완료 전 `dev`에 #270(`3f27624`, 내 점령지 화면)이 들어와 MainActivity의 enum과
+산책 복귀 분기 충돌을 통합했다. 점령지 진입·복귀는 dev 변경 그대로 유지했다.
+통합 후 Route 3개·OwnedTerritoryRoute 1개·산책 기록 버튼 1개가 통과했고 실패·오류·
+skip은 0개다. 디버그 APK도 다시 빌드·설치했다. 앞선 33개와 중복을 뺀 고유 검증은 35개다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.game.owned.OwnedTerritoryRouteTest' --tests 'com.daengs.app.ui.walk.WalkTerritoryUiTest.산책 전 기록 버튼은 편집기가 아니라 목록으로 간다' :app:assembleDebug -PslimAbi=x86_64 -PversionName=records-live-274 --console=plain
+```
+
 ## 조건 편집과 상태 유지
 
 `조건` 시트는 현재 조건의 **편집본**을 별도로 가진다. 강아지·기간·계절·출발 날씨를

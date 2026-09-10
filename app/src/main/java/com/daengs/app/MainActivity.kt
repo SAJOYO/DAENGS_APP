@@ -113,6 +113,8 @@ private enum class Screen {
     WalkHistory,
     /** 홈 하단의 시즌 안내에서 여는 점령 현황과 규칙. */
     TerritoryGame,
+    /** 현재 보유한 영역만 살펴보는 조회 전용 지도와 목록. */
+    OwnedTerritories,
     /** 이전 저장 화면값의 복원 호환용. 새 상세 선택은 기록 route가 보관한다. */
     WalkDetail,
     /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
@@ -169,7 +171,6 @@ class MainActivity : ComponentActivity() {
                 val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
                 val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
                 val gameScreenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
-                var walkReturnToGame by rememberSaveable { mutableStateOf(false) }
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
                 val loadingSince = remember { SystemClock.elapsedRealtime() }
@@ -198,7 +199,6 @@ class MainActivity : ComponentActivity() {
                         else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     }
                 }
-                var requestedWalkPurpose by rememberSaveable { mutableStateOf<com.daengs.app.map.shell.MapPurpose?>(null) }
                 var session by remember { mutableStateOf(saved) }
                 /**
                  * 저장된 세션을 되살려 봤나. **로딩을 떠나는 판정이 이걸 본다.**
@@ -712,7 +712,7 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },
-                        onOpenWalk = { askPetThen(PetNeed.Walk) { walkReturnToGame = false; screen = Screen.Walk } },
+                        onOpenWalk = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
                         onOpenWalkHistory = { screen = Screen.WalkHistory },
                         todayWalks = todayWalks,
                         gameContent = {
@@ -972,39 +972,33 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Screen.TerritoryGame -> gameScreenState.SaveableStateProvider("territory-game:${session?.appUserId}") {
-                        val tracking by walkController.state.collectAsState()
                         com.daengs.app.ui.game.TerritoryGameRoute(
                             repository = app.activityRepository, ownerId = session?.appUserId,
                             pets = pets.pets, photoOf = { petPhotos[it] }, petsError = pets.error != null,
                             onRefreshPets = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
-                            walkActive = tracking.ownerId == session?.appUserId && tracking.activeSessionId != null &&
-                                tracking.trail.state != com.daengs.app.walk.TrackingState.OFF,
                             onBack = { screen = Screen.Home },
-                            onOpenMap = {
-                                askPetThen(PetNeed.Walk) {
-                                    walkReturnToGame = true
-                                    requestedWalkPurpose = com.daengs.app.map.shell.MapPurpose.TERRITORY
-                                    screen = Screen.Walk
-                                }
-                            },
+                            onOpenMap = { screen = Screen.OwnedTerritories },
                             onAddPet = { editing = null; screen = Screen.Onboarding },
                             onSignIn = { screen = Screen.Landing },
                         )
                     }
 
+                    Screen.OwnedTerritories -> gameScreenState.SaveableStateProvider("owned-territories:${session?.appUserId}") {
+                        com.daengs.app.ui.game.owned.OwnedTerritoryRoute(
+                            repository = app.ownedTerritoryRepository, ownerId = session?.appUserId,
+                            pets = pets.pets, photoOf = { petPhotos[it] },
+                            onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
+                        )
+                    }
+
                     Screen.Walk -> WalkRoute(
-                        onBack = {
-                            screen = if (walkReturnToGame) Screen.TerritoryGame else Screen.Home
-                            walkReturnToGame = false
-                        },
-                        onHome = { walkReturnToGame = false; screen = Screen.Home },
+                        onBack = { screen = Screen.Home },
+                        onHome = { screen = Screen.Home },
                         // 산책 기록은 홈 카드와 같은 산책별/모아보기 화면으로 간다.
                         onOpenDiaryList = { screen = Screen.WalkHistory },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
                         history = walkRuntime.history,
-                        requestedMapPurpose = requestedWalkPurpose,
-                        onMapPurposeConsumed = { requestedWalkPurpose = null },
                         avatarBreed = artBreed,
                         // 지도의 내 위치도 올린 사진을 따른다.
                         //
