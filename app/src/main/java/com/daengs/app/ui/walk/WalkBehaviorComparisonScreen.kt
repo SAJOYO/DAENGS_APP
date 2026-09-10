@@ -37,12 +37,41 @@ import kotlin.coroutines.coroutineContext
 internal fun WalkBehaviorComparisonScreen(pets: List<Pet>, onBack: () -> Unit, onOpen: (String) -> Unit) {
     val app = LocalContext.current.applicationContext as DaengsApp
     val api = remember { WalkBehaviorComparisonApi() }
+    WalkBehaviorComparisonBrowser(pets, onBack, onOpen, load = { query ->
+        val owner = app.tokenStore.load()?.appUserId
+        val loaded = loadBehaviorComparison(query, { app.tokenStore.load()?.appUserId },
+            app.sessionProvider::freshSession, api::query)
+        coroutineContext.ensureActive()
+        check(app.tokenStore.load()?.appUserId == owner) { "로그인 정보를 다시 확인해 주세요." }
+        val available = loaded.evidence.mapNotNull { evidence -> evidence.clientSessionId?.let { it to evidence.walkId } }
+            .distinct().mapNotNull { (id, walkId) ->
+                id.takeIf { app.walkEntryDao.session(id)?.let { it.ownerId == owner && it.serverWalkId == walkId } == true }
+            }.toSet()
+        coroutineContext.ensureActive()
+        check(app.tokenStore.load()?.appUserId == owner) { "로그인 정보를 다시 확인해 주세요." }
+        LoadedBehaviorComparison(loaded, available)
+    })
+}
+
+internal data class LoadedBehaviorComparison(
+    val comparison: WalkBehaviorComparison,
+    val localSessions: Set<String> = emptySet(),
+)
+
+@Composable
+internal fun WalkBehaviorComparisonBrowser(
+    pets: List<Pet>, onBack: () -> Unit, onOpen: (String) -> Unit,
+    load: suspend (WalkBehaviorComparisonQuery) -> LoadedBehaviorComparison,
+    today: LocalDate = LocalDate.now(ZoneId.of("Asia/Seoul")),
+    map: @Composable (WalkBehaviorComparison, Boolean, Modifier) -> Unit = { view, matching, size ->
+        BehaviorComparisonMap(view, matching, size)
+    },
+) {
     var petId by rememberSaveable { mutableStateOf(pets.firstOrNull { it.isPrimary }?.id ?: pets.firstOrNull()?.id) }
     var behaviorName by rememberSaveable { mutableStateOf(WalkMomentType.SNIFFING.name) }
     var days by rememberSaveable { mutableIntStateOf(30) }
     var reload by remember { mutableIntStateOf(0) }
     val behavior = WalkMomentType.valueOf(behaviorName)
-    val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
     val query = petId?.let { WalkBehaviorComparisonQuery(SpatialDiaryQuery(it, today.minusDays(days - 1L), today,
         metric = SpatialDiaryMetric.WALK_UTILIZATION), behavior) }
     var result by remember(query) { mutableStateOf<WalkBehaviorComparison?>(null) }
@@ -57,18 +86,9 @@ internal fun WalkBehaviorComparisonScreen(pets: List<Pet>, onBack: () -> Unit, o
         if (query == null) return@LaunchedEffect
         loading = true
         try {
-            val owner = app.tokenStore.load()?.appUserId
-            val loaded = loadBehaviorComparison(query, { app.tokenStore.load()?.appUserId },
-                app.sessionProvider::freshSession, api::query)
+            val loaded = load(query)
             coroutineContext.ensureActive()
-            check(app.tokenStore.load()?.appUserId == owner) { "로그인 정보를 다시 확인해 주세요." }
-            val available = loaded.evidence.mapNotNull { evidence -> evidence.clientSessionId?.let { it to evidence.walkId } }
-                .distinct().mapNotNull { (id, walkId) ->
-                    id.takeIf { app.walkEntryDao.session(id)?.let { it.ownerId == owner && it.serverWalkId == walkId } == true }
-                }.toSet()
-            coroutineContext.ensureActive()
-            check(app.tokenStore.load()?.appUserId == owner) { "로그인 정보를 다시 확인해 주세요." }
-            result = loaded; localSessions = available
+            result = loaded.comparison; localSessions = loaded.localSessions
         } catch (failure: Exception) {
             if (failure is CancellationException) throw failure
             coroutineContext.ensureActive()
@@ -93,14 +113,19 @@ internal fun WalkBehaviorComparisonScreen(pets: List<Pet>, onBack: () -> Unit, o
                     FilterChip(behavior == type, { behaviorName = type.name }, { Text(type.label) })
                 }
             }
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(30, 90).forEach { count -> FilterChip(days == count, { days = count }, { Text("최근 ${count}일") }) }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1, 7, 30, 90).forEach { count ->
+                        FilterChip(days == count, { days = count }, { Text("최근 ${count}일") })
+                    }
+                }
                 TextButton(onClick = { reload++ }, enabled = !loading) { Text("새로고침") }
             }
             Text("${query?.spatial?.since} ~ ${query?.spatial?.until} · 서버에 반영된 기록 기준",
                 Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelSmall, color = TextMuted)
             WalkBehaviorComparisonContent(result, loading, error, { reload++ }, onOpen, localSessions,
-                Modifier.weight(1f))
+                Modifier.weight(1f), map = map)
         }
     }
 }

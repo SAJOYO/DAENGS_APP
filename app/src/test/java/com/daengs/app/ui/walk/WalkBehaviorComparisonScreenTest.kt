@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.support.behaviorComparisonFixture
@@ -17,11 +18,55 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w390dp-h900dp", application = Application::class)
 class WalkBehaviorComparisonScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    @Config(qualifiers = "w320dp-h900dp")
+    fun `an oversized query can recover with a shorter period on a narrow screen`() {
+        val view = WalkBehaviorComparison.parse(behaviorComparisonFixture())
+        val pet = Pet(id = view.query.spatial.petId, name = "댕이", breed = "믹스",
+            sex = null, neutered = null, weightKg = null, birthDate = null,
+            birthDateKind = null, isPrimary = true)
+        val today = LocalDate.of(2026, 9, 2)
+        val requested = mutableListOf<WalkBehaviorComparisonQuery>()
+        val tooLarge = "결과 Cell은 최대 5000개입니다. 필터를 좁혀 주세요."
+        compose.setContent { DaengsTheme {
+            WalkBehaviorComparisonBrowser(listOf(pet), {}, {}, today = today,
+                load = { query ->
+                    requested += query
+                    if (requireNotNull(query.spatial.since).isBefore(LocalDate.of(2026, 8, 27))) {
+                        throw SpatialDiaryHttpException(413, "spatial_diary_result_cell_limit", tooLarge)
+                    }
+                    LoadedBehaviorComparison(view.copy(query = query))
+                },
+                map = { _, _, modifier -> Box(modifier) { Text("비교 지도") } })
+        } }
+        compose.onNodeWithText(tooLarge).assertExists()
+        compose.onNodeWithText("최근 30일").performScrollTo().assertIsSelected()
+        compose.onNodeWithText("최근 90일").performScrollTo().performClick()
+        compose.onNodeWithText(tooLarge).assertExists()
+        // The refresh action remains outside the horizontally scrolling period choices.
+        compose.onNodeWithText("새로고침").assertIsDisplayed()
+
+        compose.onNodeWithText("최근 7일").performScrollTo().performClick()
+        compose.onNodeWithText("최근 7일").assertIsSelected()
+        compose.onNodeWithText(tooLarge).assertDoesNotExist()
+        compose.onNodeWithText("기록 2건 · 서로 다른 1일").assertExists()
+        compose.onNodeWithText("최근 1일").performScrollTo().performClick()
+        compose.onNodeWithText("최근 1일").assertIsSelected()
+        compose.onNodeWithText("기록 2건 · 서로 다른 1일").assertExists()
+        compose.runOnIdle {
+            assertEquals(listOf("2026-08-04", "2026-06-05", "2026-08-27", "2026-09-02"),
+                requested.map { it.spatial.since.toString() })
+            assertTrue(requested.all { it.spatial.until == today &&
+                it.spatial.petId == pet.id && it.behavior == view.query.behavior })
+        }
+    }
 
     @Test fun `server fixture reaches both map selections and unlocated evidence without inventing a local walk`() {
         val view = WalkBehaviorComparison.parse(behaviorComparisonFixture())
