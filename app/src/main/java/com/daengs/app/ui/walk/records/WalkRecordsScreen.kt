@@ -235,7 +235,12 @@ fun WalkRecordsScreen(
                             selectedId = id.takeIf { it != selectedId }
                             if (selectedId != null && id !in hiddenIds) {
                                 val points = walkRecordFocusBounds(current.records.first { it.summary.sessionId == id })
-                                if (points.isNotEmpty()) { focusBounds = points; cameraRequest++ }
+                                if (points.isNotEmpty()) {
+                                    // A choice made before MapHost mounts overrides its saved camera.
+                                    if (prepared == null) camera = null
+                                    focusBounds = points
+                                    cameraRequest++
+                                }
                             }
                         },
                         onToggleHidden = { id -> if (id in prepared?.availableWalkIds.orEmpty()) {
