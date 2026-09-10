@@ -94,6 +94,7 @@ fun NaverMapSurface(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
     val cameraToRestore = remember(mapView) { initialCamera }
+    val initialCameraRequest = remember(mapView) { cameraRequestKey }
     var cameraRestored by remember(mapView) { mutableStateOf(false) }
     var reportCamera by remember(mapView) { mutableStateOf(false) }
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
@@ -238,7 +239,8 @@ fun NaverMapSurface(
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
         bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
-        if (!cameraRestored && cameraToRestore != null && centerOn == null && searchOrigin == null) {
+        if (!cameraRestored && cameraToRestore != null && initialCameraRequest == cameraRequestKey &&
+            centerOn == null && searchOrigin == null) {
             cameraRestored = true
             reportCamera = true
             map.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(
@@ -247,6 +249,8 @@ fun NaverMapSurface(
             )))
             return@LaunchedEffect
         }
+        // A selection made while getMapAsync was pending takes precedence over the old snapshot.
+        cameraRestored = true
         if (keepSelectionVisible && centerOn != null) return@LaunchedEffect
         if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect

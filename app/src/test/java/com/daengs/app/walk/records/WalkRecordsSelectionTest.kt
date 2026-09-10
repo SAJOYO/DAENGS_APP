@@ -1,15 +1,22 @@
 package com.daengs.app.walk.records
 
+import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkDepartureWeather
+import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkHistoryFilter
+import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSeason
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.diary.SpatialDiaryCellId
+import com.daengs.app.walk.pin.ActionPin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -119,18 +126,117 @@ class WalkRecordsSelectionTest {
         val selection = selectWalkRecords(listOf(existing), WalkRecordsQuery(), KST)
         assertThrows(IllegalArgumentException::class.java) { selection.page(-1) }
         assertThrows(IllegalArgumentException::class.java) { selection.page(0, 0) }
+        val action = entry("action", "walk")
+        assertThrows(IllegalArgumentException::class.java) { existing.copy(entries = listOf(action.copy(sessionId = "other"))) }
+        assertThrows(IllegalArgumentException::class.java) { existing.copy(entries = listOf(action, action)) }
+        assertThrows(IllegalArgumentException::class.java) { existing.copy(entries = listOf(action.copy(id = ""))) }
+    }
+
+    @Test
+    fun `behavior query matches the entry dog exactly and never treats notes as actions`() {
+        val actions = listOf(
+            entry("mine", "shared"),
+            entry("other", "shared", petId = "other"),
+            entry("unassigned", "shared", petId = null),
+            entry("bark", "shared", type = WalkMomentType.BARKING),
+            entry("excretion", "shared", type = WalkMomentType.EXCRETION),
+            entry("note", "shared", type = WalkMomentType.NOTE),
+        )
+        val candidate = record("shared", dogs = listOf("dog", "other"), entries = actions)
+        val baseline = selectWalkRecords(listOf(candidate), WalkRecordsQuery("dog"), KST)
+        val sniffing = selectWalkRecordBehaviors(baseline, WalkMomentType.SNIFFING)
+
+        assertSame(baseline, sniffing.baseline)
+        assertEquals(listOf("mine"), sniffing.records.map { it.entry.id })
+        assertEquals(listOf("bark"), selectWalkRecordBehaviors(baseline, WalkMomentType.BARKING).records.map { it.entry.id })
+        assertEquals(listOf("excretion"), selectWalkRecordBehaviors(baseline, WalkMomentType.EXCRETION).records.map { it.entry.id })
+        val allDogs = selectWalkRecords(listOf(candidate), WalkRecordsQuery(), KST)
+        assertEquals(setOf("mine", "other", "unassigned"),
+            selectWalkRecordBehaviors(allDogs, WalkMomentType.SNIFFING).records.map { it.entry.id }.toSet())
+        assertThrows(IllegalArgumentException::class.java) { selectWalkRecordBehaviors(baseline, WalkMomentType.NOTE) }
+    }
+
+    @Test
+    fun `entry results retain missing locations and traces while related walks keep baseline order`() {
+        // This selected walk crosses midnight. Its action is still part of S on the following day.
+        val lateAt = Instant.parse("2026-09-10T15:01:00Z").toEpochMilli()
+        val earlyAt = Instant.parse("2026-09-10T04:00:00Z").toEpochMilli()
+        val source = mutableListOf(entry("late", "older", at = lateAt), entry("early", "older", at = earlyAt))
+        val olderStart = record("older", entries = source)
+        val older = olderStart.copy(summary = olderStart.summary.copy(endedAtMillis = lateAt + 1_000))
+        val newer = record("newer", at = "2026-09-10T06:00:00Z", entries = listOf(entry("middle", "newer", at = earlyAt + 1)))
+        val without = record("without")
+        val baseline = selectWalkRecords(listOf(older, newer, without), WalkRecordsQuery(filter = WalkHistoryFilter(
+            from = LocalDate.of(2026, 9, 10), through = LocalDate.of(2026, 9, 10))), KST)
+        source.clear()
+        val selected = selectWalkRecordBehaviors(baseline, WalkMomentType.SNIFFING)
+
+        assertEquals(listOf("newer", "without", "older"), baseline.sessionIds)
+        assertEquals(listOf("late", "middle", "early"), selected.records.map { it.entry.id })
+        assertEquals(listOf("newer", "older"), selected.related.sessionIds)
+        assertEquals(baseline.query, selected.related.query)
+        assertTrue(selected.records.all { it.point == null && it.walk.trace == null })
+        assertEquals(2, baseline.records.single { it.summary.sessionId == "older" }.entries.size)
+        assertTrue(selectWalkRecordBehaviors(baseline, WalkMomentType.BARKING).related.records.isEmpty())
+    }
+
+    @Test
+    fun `behavior identity uses the walk and entry tuple and ties have stable ordering`() {
+        val baseline = selectWalkRecords(listOf(
+            record("a:b", entries = listOf(entry("c", "a:b"))),
+            record("a", entries = listOf(entry("b:c", "a"), entry("c", "a"))),
+        ), WalkRecordsQuery(), KST)
+        val selected = selectWalkRecordBehaviors(baseline, WalkMomentType.SNIFFING)
+        val left = selected.records.single { it.entry.sessionId == "a:b" }
+        val right = selected.records.single { it.entry.id == "b:c" }
+
+        assertNotEquals(left.key, right.key)
+        assertEquals(3, selected.records.map { it.key }.toSet().size)
+        assertEquals(selected.records.map { it.key }.sorted(), selected.records.map { it.key })
+        assertEquals(selected.records.map { it.key }, selectWalkRecordBehaviors(
+            WalkRecordsSelection(baseline.query, baseline.records.reversed()), WalkMomentType.SNIFFING).records.map { it.key })
+    }
+
+    @Test
+    fun `behavior display prefers the estimated pin and retains original or missing location labels`() {
+        val original = GeoPoint(37.5, 127.0)
+        val estimate = GeoPoint(37.501, 127.001)
+        val gps = entry("gps", "walk").copy(point = original, locationCapturedAtMillis = 1)
+        val estimated = gps.copy(id = "estimated", pin = ActionPin(
+            """{"state":"final","method":"estimated","point":{"lat":37.501,"lng":127.001}}"""))
+        val unlocated = gps.copy(id = "unlocated", pin = ActionPin(
+            """{"state":"unlocated","method":"none","point":null}"""))
+        val baseline = selectWalkRecords(listOf(record("walk", entries = listOf(gps, estimated, unlocated,
+            entry("missing", "walk")))), WalkRecordsQuery(), KST)
+        val records = selectWalkRecordBehaviors(baseline, WalkMomentType.SNIFFING).records.associateBy { it.entry.id }
+
+        assertEquals(estimate, records.getValue("estimated").point)
+        assertEquals("추정 위치", records.getValue("estimated").locationLabel)
+        assertEquals(original, records.getValue("estimated").entry.point)
+        assertEquals(original, records.getValue("gps").point)
+        assertEquals("위치와 함께 남긴 기록", records.getValue("gps").locationLabel)
+        assertEquals(original, records.getValue("unlocated").entry.point)
+        listOf("missing", "unlocated").forEach { id ->
+            assertNull(records.getValue(id).point)
+            assertEquals("위치 없이 남긴 행동", records.getValue(id).locationLabel)
+        }
     }
 
     private fun record(
         id: String, at: String = "2026-09-10T03:00:00Z", dogs: List<String> = listOf("dog"),
         weatherCode: Int? = 0, ended: Boolean = true, title: String? = null,
         notes: List<String> = emptyList(), trace: WalkTraceSheet? = null,
+        entries: List<WalkEntry> = emptyList(),
     ): WalkRecord {
         val start = Instant.parse(at).toEpochMilli()
         return WalkRecord(WalkSummary(id, dogs, start, if (ended) start + 10_000 else null,
             weatherCode?.let { RecordedWeather(it, true, 20f) }, 0.0, 0L, emptyList(), null),
-            title, notes, trace)
+            title, notes, trace, entries)
     }
+
+    private fun entry(id: String, walkId: String, type: WalkMomentType = WalkMomentType.SNIFFING,
+        petId: String? = "dog", at: Long = 1L) = WalkEntry(id = id, sessionId = walkId,
+        type = type, recordedAtMillis = at, petId = petId, note = if (type == WalkMomentType.NOTE) "메모" else null)
 
     private fun trace(id: String) = WalkTraceSheet(id, cells = setOf(SpatialDiaryCellId(0, 0)))
     private companion object { val KST: ZoneId = ZoneId.of("Asia/Seoul") }
