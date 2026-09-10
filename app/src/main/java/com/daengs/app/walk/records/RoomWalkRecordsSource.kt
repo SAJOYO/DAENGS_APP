@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.countsAsWalk
 import com.daengs.app.walk.diary.storyboardAnalysisView
+import com.daengs.app.walk.diary.GeoStoryboardBundle
 import com.daengs.app.walk.forHistoryThumbnail
 import com.daengs.app.walk.store.WalkDatabase
 import com.daengs.app.walk.store.WalkEntryRow
@@ -28,7 +29,7 @@ class RoomWalkRecordsSource(
 ) : WalkRecordsSource {
     override val changes: Flow<Unit> = database.invalidationTracker.createFlow(
         "walk_session", "walk_session_dog", "walk_fix", "walk_entry",
-        "walk_scene_analysis", "walk_photo", "walk_photo_sync", emitInitialState = true,
+        "walk_scene_analysis", "walk_photo", "walk_photo_sync", "walk_diary_publication", emitInitialState = true,
     ).map { Unit }
 
     override suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection {
@@ -76,8 +77,10 @@ class RoomWalkRecordsSource(
                 val photos = dao.photos(session.id)
                 val visibleEntries = rows.mapNotNull(WalkEntryRow::entry)
                 // Deleted rows still belong to the source stamp, but never return as visible entries.
-                val title = storyboardAnalysisView(analyses[session.id], rows, photoSync, photos)
-                    .bundle?.takeIf { it.sessionId == session.id }?.title
+                val publication = dao.diaryPublication(session.id)
+                val board = if (publication != null) publication.publishedBundle?.let(GeoStoryboardBundle::parse)
+                    else storyboardAnalysisView(analyses[session.id], rows, photoSync, photos).bundle
+                val title = board?.takeIf { it.sessionId == session.id }?.title
                 val notes = visibleEntries.mapNotNull { it.note }
                 // Read GPS only after the current title/notes match, within the same DB snapshot.
                 if (!query.filter.matchesText(listOfNotNull(title) + notes)) continue

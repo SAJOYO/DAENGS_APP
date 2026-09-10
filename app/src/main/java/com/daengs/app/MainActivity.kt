@@ -12,6 +12,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
@@ -75,8 +76,8 @@ import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
-import com.daengs.app.ui.walk.WalkDetailScreen
-import com.daengs.app.ui.walk.WalkHistoryScreen
+import com.daengs.app.ui.walk.records.WalkRecordsRoute
+import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkRoute
 import com.daengs.app.walk.WalkDayTotals
@@ -108,13 +109,13 @@ private enum class Screen {
     Places,
     /** 산책. **미니룸의 문으로 들어온다** — 탭이 아니다. */
     Walk,
-    /** 지난 산책 목록. 홈의 산책 요약 카드에서 들어온다. */
+    /** 산책별 목록과 모아보기. 홈 카드와 산책 화면의 기록 버튼에서 들어온다. */
     WalkHistory,
     /** 홈 하단의 시즌 안내에서 여는 점령 현황과 규칙. */
     TerritoryGame,
     /** 현재 보유한 영역만 살펴보는 조회 전용 지도와 목록. */
     OwnedTerritories,
-    /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
+    /** 이전 저장 화면값의 복원 호환용. 새 상세 선택은 기록 route가 보관한다. */
     WalkDetail,
     /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
     ScreeningHistory,
@@ -165,7 +166,10 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
-                val walkHistoryState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+                // Login lifetime, not a token refresh or a pet-name update, owns record navigation.
+                val recordsAccount by app.sessionProvider.accountScope.collectAsState()
+                val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
+                val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
                 val gameScreenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
@@ -285,8 +289,6 @@ class MainActivity : ComponentActivity() {
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
-                /** 목록에서 고른 산책. 상세 화면은 id 만 받아 스스로 읽어 온다. */
-                var openedWalkId by remember { mutableStateOf<String?>(null) }
 
                 /** 홈 카드의 오늘치. null 은 **아직 못 읽은 것**이라 카드가 `-` 로 둔다. */
                 var todayWalks by remember { mutableStateOf<WalkDayTotals?>(null) }
@@ -949,28 +951,25 @@ class MainActivity : ComponentActivity() {
                         onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
-                    Screen.WalkHistory -> walkHistoryState.SaveableStateProvider("walk-history") { WalkHistoryScreen(
-                        history = walkRuntime.history,
-                        // 목록을 열 때 한 번 더. 걷고 나서 지하철에 들어갔던 기록이
-                        // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
-                        onSync = { scope.launch { walkRuntime.sync.syncOnce(freshToken()) } },
-                        onBack = { screen = Screen.Home },
-                        pets = pets.pets.orEmpty(),
-                        photoOf = { petPhotos[it] },
-                        onOpen = { id ->
-                            openedWalkId = id
-                            screen = Screen.WalkDetail
-                        },
-                    )
-
-                    }
-
-                    Screen.WalkDetail -> openedWalkId?.let { id ->
-                        com.daengs.app.ui.walk.WalkDiaryMapScreen(
-                            sessionId = id,
-                            history = walkRuntime.history,
-                            onBack = { screen = Screen.WalkHistory },
-                            pets = pets.pets.orEmpty(),
+                    Screen.WalkHistory, Screen.WalkDetail -> key(recordsAccount) {
+                        WalkRecordsRoute(
+                            accountScope = recordsAccount,
+                            source = recordsSource,
+                            state = recordsRouteState,
+                            pets = pets.pets,
+                            onBack = { screen = Screen.Home },
+                            onSignIn = { screen = Screen.Landing },
+                            onSync = {
+                                val auth = app.sessionProvider.freshSession()
+                                if (auth != null && auth.appUserId == recordsAccount.ownerId &&
+                                    app.sessionProvider.accountScope.value == recordsAccount) {
+                                    walkRuntime.sync.syncOnce(auth.accessToken)
+                                }
+                            },
+                            detailContent = { id, backToRecords ->
+                                com.daengs.app.ui.walk.WalkDiaryMapScreen(id, walkRuntime.history,
+                                    onBack = backToRecords, pets = pets.pets.orEmpty())
+                            },
                         )
                     }
 
@@ -997,7 +996,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
                         onHome = { screen = Screen.Home },
-                        // 산책 전 `일기` 는 홈의 `지난 산책` 과 같은 화면으로 간다.
+                        // 산책 기록은 홈 카드와 같은 산책별/모아보기 화면으로 간다.
                         onOpenDiaryList = { screen = Screen.WalkHistory },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,

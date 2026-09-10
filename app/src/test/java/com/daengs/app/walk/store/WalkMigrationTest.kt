@@ -55,6 +55,9 @@ class WalkMigrationTest {
     @Test
     fun `12의 기존 사진은 전송 대상으로 남고 사진 없는 복원 세션은 게시자가 되지 않는다`() = verifyPhotoUpgrade(12)
 
+    @Test
+    fun `13의 보드와 사용자 수정은 보존하며 기존 세션을 다시 준비하지 않는다`() = verifyPhotoUpgrade(13)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -81,11 +84,16 @@ class WalkMigrationTest {
             }
             if (version == 11) old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL,'original-stamp')")
             if (version == 12) old.execSQL("INSERT INTO walk_session (id,ownerId,startedAtMillis,endedAtMillis) VALUES ('restored','owner',1000,2000)")
+            if (version == 13) {
+                old.execSQL("INSERT INTO walk_photo_sync VALUES ('s1','owner','publisher',1,0,NULL)")
+                old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL,'original-stamp')")
+            }
             old.version = version
         }
         val db = openLatest()
         try {
             val dao = db.walkDao()
+            assertEquals(null, dao.diaryPublication("s1"))
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
             assertEquals(1, dao.fixes("s1").size)
@@ -102,7 +110,7 @@ class WalkMigrationTest {
             assertEquals(if (version >= 9) 0L else null, dao.photoSync("s1")?.acknowledgedRevision)
             assertEquals(null, dao.photoSync("restored"))
             assertEquals(if (version >= 8) "reviewed-story" else null, dao.storyboard("s1")?.payload)
-            if (version == 11) {
+            if (version == 11 || version == 13) {
                 assertEquals("saved-bundle", dao.sceneAnalysis("s1")!!.bundle)
                 assertEquals("original-stamp", dao.sceneAnalysis("s1")!!.bundleEntryStamp)
             }
@@ -329,6 +337,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_10_11,
                 WalkDatabase.MIGRATION_11_12,
                 WalkDatabase.MIGRATION_12_13,
+                WalkDatabase.MIGRATION_13_14,
             )
             .build()
 

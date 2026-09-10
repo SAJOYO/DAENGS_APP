@@ -11,15 +11,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.daengs.app.auth.AccountScope
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.walk.records.RetainedWalkRecords
 import com.daengs.app.ui.walk.records.WalkRecordsScreen
+import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.walk.records.WalkRecord
 
 /** Uses the real explorer and map renderer with an explicitly labelled synthetic source. */
@@ -32,12 +31,15 @@ class WalkRecordsLabActivity : ComponentActivity() {
 
 @Composable
 private fun WalkRecordsLab(onBack: () -> Unit = {}) {
-    var openedId by rememberSaveable { mutableStateOf<String?>(null) }
-    WalkRecordsScreen(source = WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
-        onBack = onBack, onOpen = { openedId = it },
-        sampleLabel = "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
-    WalkRecordsLabFixture.records.firstOrNull { it.summary.sessionId == openedId }?.let { record ->
-        SampleWalkRecordDialog(record, onDismiss = { openedId = null })
+    val state = rememberWalkRecordsRouteState(AccountScope("records-lab", 0))
+    val opened = WalkRecordsLabFixture.records.firstOrNull { it.summary.sessionId == state.openedSessionId }
+    if (opened != null) {
+        // Unmount the actual MapView, matching production navigation while keeping synthetic data.
+        SampleWalkRecordDialog(opened, onDismiss = state::closeDetail)
+    } else RetainedWalkRecords(state) {
+        WalkRecordsScreen(source = WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
+            onBack = { state.captureRecords(); onBack() }, onOpen = state::open,
+            sampleLabel = "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
     }
 }
 
