@@ -1,10 +1,13 @@
 package com.daengs.app.ui.storage
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -36,6 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -61,6 +68,7 @@ import com.daengs.app.care.VetVisitDraft
 import com.daengs.app.care.phoneLooksValid
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.ui.common.DaengsTextAction
+import com.daengs.app.ui.common.KeepScrollInside
 import com.daengs.app.ui.common.DaengsWideButton
 import com.daengs.app.ui.common.DateWheel
 import com.daengs.app.ui.theme.CardWhite
@@ -100,8 +108,13 @@ import java.util.Locale
  *
  * **사유를 접힌 드롭다운이 아니라 칩으로 편다.** 제안이 못 믿을 값이라 유저가 실제로
  * 다시 고르는 것이 이 화면의 목적인데, 접어 두면 "이미 골라져 있다" 로 읽혀 그냥
- * 넘어간다. 칩이면 대안이 눈에 보이고 한 번에 눌린다. 집에서 쓰던 `FlowRow` + 칩
- * (`PetFormScreen` 의 견종 고르기) 과 같은 모양이라 새 관용구도 아니다.
+ * 넘어간다. 칩이면 대안이 눈에 보이고 한 번에 눌린다.
+ *
+ * ⚠️ **다만 전부 펼치지는 않는다.** 실제 사유는 17개라 411dp 폭에서 다섯 줄이 되고,
+ *    그만큼 [확인] 이 아래로 밀린다 — `PetFormScreen` 의 `BreedGrid` 가 견종 27종에서
+ *    이미 같은 결론을 내고 "일곱 줄이면 폼의 절반이 견종이 된다" 고 적어 뒀다. 그래서
+ *    높이를 묶고 그 안에서 스크롤한다. 서버가 `reason_options` 를 **이 강아지가 최근 쓴
+ *    사유 먼저**로 정렬해 주므로 두세 줄이면 정답이 대개 첫 화면에 있다.
  */
 @Composable
 fun ReceiptConfirmScreen(
@@ -116,9 +129,14 @@ fun ReceiptConfirmScreen(
     onDismiss: () -> Unit = {},
     today: LocalDate = LocalDate.now(),
 ) {
+    // 전면을 덮는 화면은 back 을 잡는다 (`PetPhotoPicker` 와 같은 규칙).
+    BackHandler(onBack = onDismiss)
+
     Column(
         modifier
             .fillMaxSize()
+            // 아래 저장소 목록으로 터치가 새지 않게 (`ReceiptPicker` 와 같은 이유).
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
             .background(CreamBg)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
@@ -188,7 +206,9 @@ private fun ReceiptForm(
 
     draft.noticeText()?.let { ReceiptNotice(it, TextMuted) }
     if (draft.possibleDuplicate) {
-        ReceiptNotice("같은 날 같은 금액의 기록이 이미 있어요.", DaengsColors.Error)
+        // **빨강이 아니다.** 막는 게 아니라 되묻는 것이라(같은 날 두 번 갈 수 있다),
+        // 오류색으로 그리면 유저가 [확인] 을 안 누른다.
+        ReceiptNotice("같은 날 같은 금액의 기록이 이미 있어요.", TextMuted)
     }
     // 초안은 받았는데 확정이 실패했다. **여기는 재추출이 아니라 [확인] 을 다시 누르는
     // 자리다** — 재추출하면 아래에서 고친 값이 초안 미리 채움으로 되돌아간다.
@@ -205,9 +225,23 @@ private fun ReceiptForm(
     TextInput(address, { address = it }, "주소", label = "병원 주소", maxLength = MAX_HOSPITAL_ADDRESS)
     TextInput(phone, { phone = it }, "02-000-0000", KeyboardType.Phone, "병원 전화", maxLength = 32)
     if (!phoneOk) Text("전화번호 모양이 올바르지 않아요.", color = DaengsColors.Error, fontSize = 13.sp)
+    if (amount != null && amount > MAX_TOTAL_KRW) {
+        // 안 그러면 왜 [확인] 이 안 눌리는지 아무 말도 없이 죽는다.
+        Text("금액이 너무 커요. 다시 확인해 주세요.", color = DaengsColors.Error, fontSize = 13.sp)
+    }
 
     FieldLabel("무엇 때문에 갔나")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        Modifier
+            .fillMaxWidth()
+            .height(REASON_ROWS_HEIGHT)
+            .verticalScroll(rememberScrollState())
+            // 안쪽이 끝에 닿아도 바깥 폼이 따라 움직이지 않게 남은 스크롤을 먹는다.
+            // 안 붙이면 두 스크롤이 서로 밀고, 테스트의 클릭도 엉뚱한 자리에 떨어진다.
+            .nestedScroll(KeepScrollInside),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         options.forEach { option ->
             Chip(option.label, option.code == reason) { reason = option.code }
         }
@@ -338,8 +372,12 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) PinkSoft else CardWhite)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            // **읽어 주는 쪽이 무엇이 골라졌는지 알아야 한다.** clickable 만 두면
+            // TalkBack 이 17개를 다 "버튼" 으로만 읽고, 눈으로도 옅은 색 하나가 유일한
+            // 표시가 된다.
+            .selectable(selected, role = Role.RadioButton, onClick = onClick)
+            .defaultMinSize(minHeight = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
     )
 }
 
@@ -350,7 +388,8 @@ private fun ToggleRow(label: String, on: Boolean, onToggle: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(if (on) PinkSoft else CardWhite)
-            .clickable(onClick = onToggle)
+            .toggleable(on, role = Role.Switch, onValueChange = { onToggle() })
+            .defaultMinSize(minHeight = 48.dp)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -364,6 +403,14 @@ private val WON = NumberFormat.getIntegerInstance(Locale.KOREA)
 private fun wonOf(amount: Int): String = "${WON.format(amount)}원"
 
 private fun String.blankToNull(): String? = trim().takeIf { it.isNotEmpty() }
+
+/**
+ * 사유 칩 블록의 높이.
+ *
+ * 두 줄이 온전히 보이고 **세 번째 줄이 살짝 걸친다** — `BreedGrid` 가 같은 이유로 잡아 둔
+ * 규칙이다. 딱 두 줄로 끊으면 아래에 더 있다는 게 안 보여서 스크롤할 생각을 못 한다.
+ */
+private val REASON_ROWS_HEIGHT = 128.dp
 
 private const val READ_FAILED = "영수증을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요."
 private const val SAVE_FAILED = "기록을 저장하지 못했어요. 다시 시도해 주세요."

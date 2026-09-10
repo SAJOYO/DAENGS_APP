@@ -54,6 +54,11 @@ import java.util.Locale
 fun VetVisitSection(
     state: VetVisitState,
     modifier: Modifier = Modifier,
+    /**
+     * 사진은 찍었는데 흐름을 못 연 경우의 한 줄. **침묵하면 안 된다** — 세션이 만료된
+     * 폰에서는 찍고 화면이 닫히고 아무 일도 안 일어나는 것으로 보인다.
+     */
+    startError: String? = null,
     onPickReceipt: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onConfirmDelete: (VetVisit) -> Unit = {},
@@ -70,6 +75,7 @@ fun VetVisitSection(
 
         DaengsWideButton(label = "영수증 찍기", onClick = onPickReceipt, accent = true)
 
+        startError?.let { VetActionError(it, label = "닫기", onDismissError) }
         state.deleteError?.let { error ->
             VetActionError(error.message ?: "기록을 지우지 못했어요.", label = "닫기", onDismissError)
         }

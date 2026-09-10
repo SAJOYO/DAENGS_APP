@@ -1,5 +1,6 @@
 package com.daengs.app.care
 
+import android.graphics.Bitmap
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.chat.ChatLoadState
 import kotlinx.coroutines.CancellationException
@@ -42,6 +43,12 @@ data class ReceiptFlow(
     val draftId: String? = null,
     val draft: VetVisitDraft? = null,
     val error: ChatApiError? = null,
+    /**
+     * 확인 화면이 보여 줄 그림. **흐름이 들고 있다** — 화면이 들면 저장소 탭을 잠깐
+     * 벗어나는 순간 사진만 사라져서, 돌아왔을 때 대조할 원본이 없는 확인 화면이 뜬다.
+     * 흐름과 함께 나고 함께 사라지므로 확정 뒤에 남지도 않는다.
+     */
+    val thumbnail: Bitmap? = null,
 )
 
 /** 유저가 확인 화면에서 고친 값. `client_event_id` 는 화면이 모른다 — 흐름이 들고 있다. */
@@ -186,11 +193,11 @@ class VetVisitCoordinator(
      * 사진을 찍었다. **여기서 `client_event_id` 가 생긴다** — 업로드 버튼을 누를 때가
      * 아니다. 화면이 얼어 보여 두 번 눌려도 같은 키여야 초안이 하나다.
      */
-    fun beginReceipt(accessToken: String, jpeg: ByteArray): Boolean {
+    fun beginReceipt(accessToken: String, jpeg: ByteArray, thumbnail: Bitmap? = null): Boolean {
         val petId = mutableState.value.selectedPetId ?: return false
         if (mutableState.value.receipt != null) return false
         pendingJpeg = jpeg
-        val flow = ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING)
+        val flow = ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING, thumbnail = thumbnail)
         mutableState.update { it.copy(receipt = flow) }
         runReceipt(accessToken, petId, flow, fromStart = true)
         return true
@@ -225,7 +232,8 @@ class VetVisitCoordinator(
         // 사진이 어디까지 갔는지 모르는 실패는 **새 키로 새 초안**이다.
         val restart = flow.draftId == null || flow.error?.code == PHOTO_NOT_UPLOADED
         val next = if (restart) {
-            ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING)
+            // 새 초안이어도 사진은 처음 찍은 그것이다 — 다시 올릴 바이트도 그것이다.
+            ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING, thumbnail = flow.thumbnail)
         } else {
             // **초안을 비우고 간다.** 안 비우면 `failed` 초안이 그대로 남아, 도는 동안
             // 다시 눌렀을 때 위의 `serverFailed` 가 또 참이 되어 진행 중인 추출을 끊는다.
@@ -307,10 +315,24 @@ class VetVisitCoordinator(
         mutableState.update { it.copy(deleteError = null) }
     }
 
-    /** 저장소 화면이 사라질 때 네트워크 작업과 늦은 결과를 함께 무효화한다. */
+    /**
+     * 저장소 화면이 사라질 때 목록·삭제를 접는다.
+     *
+     * ⚠️ **처리 중인 영수증은 안 끊는다.** 추출은 Gemini 를 태워 60초까지 걸리는데, 그
+     *    사이에 홈 탭을 한 번 눌렀다 오는 건 특별한 조작이 아니다. 여기서 [receiptJob] 을
+     *    끊으면 돌아왔을 때 `receipt` 는 살아 있고 그 일을 하던 코루틴만 죽어 있어서,
+     *    **빠져나올 수 없는 "읽고 있어요" 화면**이 된다 (오류가 없어 재시도도 거부된다).
+     *    이미 만든 초안·올린 사진·지불한 Gemini 호출까지 통째로 버려진다.
+     *
+     * ⚠️ **[petGeneration] 도 안 올린다.** 올리면 안 끊은 영수증의 결과가 [isCurrentPet]
+     *    에서 버려져 같은 화면이 된다. 늦은 결과를 막는 진짜 문은 [selectPet] 이고, 거기서는
+     *    강아지가 실제로 바뀐다 — 화면이 잠깐 사라진 것은 그 이유가 못 된다.
+     *
+     * 코디네이터는 `MainActivity` 의 scope 에 살아서 탭과 무관하게 계속 돈다.
+     */
     fun cancelPending() {
-        cancelAll()
-        petGeneration++
+        loadJob?.cancel()
+        deleteJob?.cancel()
         mutableState.update { it.copy(deletingVisitId = null) }
     }
 

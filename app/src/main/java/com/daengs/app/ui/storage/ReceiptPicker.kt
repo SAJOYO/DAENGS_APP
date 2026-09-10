@@ -2,6 +2,7 @@ package com.daengs.app.ui.storage
 
 import android.Manifest
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -47,7 +49,6 @@ import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 import java.io.File
-import java.util.UUID
 
 /**
  * 영수증 사진의 긴 변.
@@ -83,6 +84,10 @@ fun ReceiptPicker(onDone: (PreparedPhoto?) -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var cameraGranted by remember { mutableStateOf(hasCameraPermission(context)) }
 
+    // 전면을 덮는 화면은 back 을 잡는다 (`PetPhotoPicker` 와 같은 규칙). 안 잡으면
+    // 뒤로가기를 홈이 받아서, 오버레이는 그대로인 채 뒤에서 화면이 바뀐다.
+    BackHandler { onDone(null) }
+
     /** 고른 자리에서 바이트까지. 실패하면 화면에 남아 다시 고를 수 있다. */
     fun bake(uri: Uri) {
         busy = true
@@ -108,6 +113,11 @@ fun ReceiptPicker(onDone: (PreparedPhoto?) -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            // **아래 목록으로 터치가 새는 것을 막는다.** 이 화면은 저장소 목록을
+            // 교체하는 게 아니라 그 위에 겹치므로, 안 막으면 빈 자리를 눌렀을 때
+            // 그 좌표에 있던 [삭제]나 전화번호가 눌린다. 인셋 패딩보다 앞에 둬야
+            // 상태바 자리까지 덮는다.
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
             .background(CreamBg)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(16.dp),
@@ -177,17 +187,23 @@ fun ReceiptPicker(onDone: (PreparedPhoto?) -> Unit) {
                     pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
                 enabled = !busy,
-                busy = busy,
             )
         }
     }
 }
 
-/** 캐시 안의 한 자리. 못 만들면 null 이다 — 저장 공간이 없는 기기가 있다. */
+/**
+ * 캐시 안의 한 자리. 못 만들면 null 이다 — 저장 공간이 없는 기기가 있다.
+ *
+ * **이름을 고정한다.** 찍을 때마다 새 이름을 만들면 캐시가 계속 는다 —
+ * `Photo.kt` 가 같은 이유로 이미 그렇게 하고 있고, CameraX 는 가장 큰 해상도로 찍어서
+ * 한 장이 3~8MB 다. 영수증은 굽고 나면 다시 쓸 일이 없는 파일이라 남길 이유가 없다.
+ * 덮어쓰기는 `takePicture` 가 앞에서 `file.delete()` 를 해 주므로 안전하다.
+ */
 private fun receiptFile(cacheDir: File): File? = runCatching {
     val directory = File(cacheDir, "receipts")
     check(directory.isDirectory || directory.mkdirs())
-    File(directory, "${UUID.randomUUID()}.jpg")
+    File(directory, "capture.jpg")
 }.getOrNull()
 
 /**

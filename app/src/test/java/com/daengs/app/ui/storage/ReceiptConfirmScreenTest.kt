@@ -5,7 +5,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import com.daengs.app.care.ExtractionStatus
@@ -58,13 +60,19 @@ class ReceiptConfirmScreenTest {
 
     @Test
     fun `제안이 없으면 사유를 고르기 전까지 확인이 안 눌린다`() {
-        compose.setContent { screen(okDraft(suggested = null)) }
+        var confirmed: ReceiptEdits? = null
+        compose.setContent { screen(okDraft(suggested = null), onConfirm = { confirmed = it }) }
 
         compose.onNodeWithText("확인").assertIsNotEnabled()
-
-        compose.onNodeWithText("피부").performScrollTo().performClick()
-
+        // performClick 은 비활성 노드에도 성공한다 — 주입일 뿐이다. 그래서 눌러 보고
+        // **아무것도 안 나갔다**는 것까지 봐야 이 테스트가 무언가를 잡는다.
         compose.onNodeWithText("확인").performScrollTo().performClick()
+        assertNull("사유를 고르기 전에는 안 나간다", confirmed)
+
+        pickReason("피부")
+        compose.onNodeWithText("확인").performScrollTo().performClick()
+
+        assertEquals("skin", confirmed?.reasonCode)
     }
 
     @Test
@@ -85,7 +93,7 @@ class ReceiptConfirmScreenTest {
         var confirmed: ReceiptEdits? = null
         compose.setContent { screen(okDraft(suggested = "vaccination"), onConfirm = { confirmed = it }) }
 
-        compose.onNodeWithText("피부").performScrollTo().performClick()
+        pickReason("피부")
         compose.onNodeWithText("확인").performScrollTo().performClick()
 
         assertEquals("skin", confirmed?.reasonCode)
@@ -125,10 +133,15 @@ class ReceiptConfirmScreenTest {
 
     @Test
     fun `같은 날 같은 금액이 이미 있으면 막지 않고 한 줄 알려 준다`() {
-        compose.setContent { screen(okDraft(suggested = "skin").copy(possibleDuplicate = true)) }
+        var confirmed: ReceiptEdits? = null
+        compose.setContent {
+            screen(okDraft(suggested = "skin").copy(possibleDuplicate = true), onConfirm = { confirmed = it })
+        }
 
         compose.onNodeWithText("같은 날 같은 금액의 기록이 이미 있어요.").assertExists()
         compose.onNodeWithText("확인").performScrollTo().performClick()
+
+        assertEquals("막는 게 아니라 되묻는 것이다", "skin", confirmed?.reasonCode)
     }
 
     @Test
@@ -156,6 +169,19 @@ class ReceiptConfirmScreenTest {
     }
 
     // -- 배관 -----------------------------------------------------------
+
+    /**
+     * 사유 칩 하나를 고른다.
+     *
+     * **좌표가 아니라 semantics 로 누른다.** 칩은 높이를 묶은 안쪽 스크롤 안에 있어서
+     * (17개를 다 펼치면 [확인] 이 화면 두 개 아래로 밀린다) `performScrollTo` 를 걸면
+     * **안쪽**만 움직이고 바깥 폼은 그대로다 — 칩이 화면 밖에 있는 채로 눌려서 클릭이
+     * 조용히 빗나간다. 여기서 재려는 것은 "칩이 눌리면 그 사유가 확정에 실린다" 이고,
+     * 칩이 화면 어디에 놓이는가는 실기기가 본다.
+     */
+    private fun pickReason(label: String) {
+        compose.onNodeWithText(label).performSemanticsAction(SemanticsActions.OnClick)
+    }
 
     @androidx.compose.runtime.Composable
     private fun screen(

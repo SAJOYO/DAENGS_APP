@@ -44,7 +44,6 @@ import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
-import com.daengs.app.screening.PreparedPhoto
 import kotlinx.coroutines.launch
 
 /**
@@ -76,10 +75,10 @@ fun ChatSummaryRoute(
     /** 영수증을 고르는 중. 확인 화면이 뜨기 전 단계다. */
     var pickingReceipt by remember { mutableStateOf(false) }
     /**
-     * 방금 찍은 영수증 그림. **응답의 `receipt_image_url` 을 안 쓴다** — 그 그림이 이미
-     * 우리 손에 있어서 받아 올 이유가 없다 (이미지 로더를 안 들이는 이유이기도 하다).
+     * 사진은 찍었는데 흐름을 못 연 경우. **침묵하면 안 된다** — 세션이 만료된 폰에서는
+     * 찍고 화면이 닫히고 아무 일도 안 일어나는 것으로 보인다.
      */
-    var receiptPhoto by remember { mutableStateOf<PreparedPhoto?>(null) }
+    var receiptStartError by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(petId, coordinator, careCoordinator, vetCoordinator) {
@@ -141,10 +140,17 @@ fun ChatSummaryRoute(
             if (petId != null) {
                 VetVisitSection(
                     state = vetState,
-                    onPickReceipt = { pickingReceipt = true },
+                    startError = receiptStartError,
+                    onPickReceipt = {
+                        receiptStartError = null
+                        pickingReceipt = true
+                    },
                     onRetryLoad = { withToken { vetCoordinator.load(it) } },
                     onConfirmDelete = { visit -> withToken { vetCoordinator.delete(it, visit.id) } },
-                    onDismissError = { vetCoordinator.clearErrors() },
+                    onDismissError = {
+                        receiptStartError = null
+                        vetCoordinator.clearErrors()
+                    },
                     onCallHospital = { phone -> dial(context, phone) },
                 )
             }
@@ -198,14 +204,21 @@ fun ChatSummaryRoute(
         ReceiptPicker { prepared ->
             pickingReceipt = false
             if (prepared != null) {
-                receiptPhoto = prepared
-                withToken { vetCoordinator.beginReceipt(it, prepared.jpeg) }
+                scope.launch {
+                    val token = accessTokenProvider()
+                    // beginReceipt 이 false 면 강아지가 없거나 이미 처리 중인 영수증이 있다.
+                    if (token == null ||
+                        !vetCoordinator.beginReceipt(token, prepared.jpeg, prepared.thumbnail)
+                    ) {
+                        receiptStartError = "지금은 영수증을 올릴 수 없어요. 다시 로그인한 뒤 시도해 주세요."
+                    }
+                }
             }
         }
     }
     vetState.receipt?.let { flow ->
         ReceiptConfirmScreen(
-            photo = receiptPhoto?.thumbnail,
+            photo = flow.thumbnail,
             draft = flow.draft,
             options = vetState.reasonOptions,
             step = flow.step,
@@ -214,10 +227,7 @@ fun ChatSummaryRoute(
             // ⚠️ 확정이 실패한 뒤에는 여기가 아니라 [확인] 을 다시 누르는 자리다 —
             //    코디네이터의 재시도 표대로다. 그쪽이 거절하면 아무 일도 안 일어난다.
             onRetry = { withToken { vetCoordinator.retryReceipt(it) } },
-            onDismiss = {
-                receiptPhoto = null
-                vetCoordinator.dismissReceipt()
-            },
+            onDismiss = { vetCoordinator.dismissReceipt() },
         )
     }
     }
