@@ -24,6 +24,30 @@ import org.robolectric.annotation.Config
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp")
 class WalkTerritoryUiTest {
+    @Test fun firstSeasonRenewalButtonsShowZeroRewardAndLease() {
+        val base = screen(TerritoryWalkPhase.WALKING).territoryGame
+        val occupancy = TerritoryOccupancy("p1", null, null, ClaimCertification.UNVERIFIED, 1000)
+        val target = base.target!!.copy(ownerLabel = "보리", isOwnedByMe = true,
+            claim = base.target!!.claim.copy(occupancy = occupancy), leaseLabel = "점령 유지 · 2일 3시간 남음")
+        val game = mutableStateOf(base.copy(sites = listOf(target), canMark = true, canPhotograph = false,
+            onlinePhotos = true, actionLabel = "유지 연장 · 0점", guidance = "현장에서 유지 시간을 연장할 수 있어요 · 연장 보상 0점"))
+        var selected: String? = null
+        compose.setContent { DaengsTheme { TerritoryActionCard(game.value, { selected = it }) } }
+        compose.onNodeWithText("보리 · 미인증").assertIsDisplayed()
+        compose.onNodeWithText("미점유").assertDoesNotExist()
+        compose.onNodeWithText("점령 유지 · 2일 3시간 남음").assertIsDisplayed()
+        compose.onNodeWithText("유지 연장 · 0점").assertIsEnabled().performClick()
+        assertEquals(target.site.id, selected)
+        screenshot("first-season-gps-renewal")
+        compose.runOnIdle { game.value = game.value.copy(canMark = false, canPhotograph = true,
+            sites = listOf(target.copy(claim = target.claim.copy(occupancy = occupancy.copy(certification = ClaimCertification.VERIFIED)))),
+            photoActionLabel = "사진으로 유지 연장", guidance = "새 사진으로 유지 시간을 연장할 수 있어요 · 연장 보상 0점") }
+        compose.onNodeWithText("보리 · 인증").assertIsDisplayed()
+        compose.onNodeWithText("사진으로 유지 연장").assertIsEnabled()
+        compose.onNodeWithText("유지 연장 · 0점").assertDoesNotExist()
+        screenshot("first-season-photo-renewal")
+    }
+
     @Test fun onlineCameraExplainsRealPhotoAndHidesSimulationControls() {
         compose.setContent { DaengsTheme { TerritoryCaptureDialog("internal-site-id", { null },
             { _, _, _ -> kotlinx.coroutines.CompletableDeferred(false) }, {}, online = true) } }

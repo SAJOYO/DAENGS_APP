@@ -22,6 +22,7 @@ internal object ActivityJson {
         field(key).let { if (it == JsonNull) null else parse(it) }
     private fun JsonObject.nullableUuid(key: String) = nullable(key) { it.text().also(::requireActivityUuid) }
     private fun JsonObject.nullableLong(key: String) = nullable(key) { it.integer().toLong() }
+    private fun JsonObject.optionalLong(key: String) = if (containsKey(key)) nullableLong(key) else null
     private fun <T> JsonObject.items(key: String, parse: (JsonElement) -> T) = field(key).jsonArray.map(parse)
 
     fun session(body: String): ActivitySessionLink = root(body).run {
@@ -62,10 +63,17 @@ internal object ActivityJson {
             nullable("score") { it.jsonObject.run {
                 ActivityScore(number("bonus"), BigInteger(field("holding_units").integer()), number("held_site_ms"),
                     number("current_count"), number("scoring_count"), number("peak"), number("claims"),
-                    number("takeovers"), number("last_ms"))
+                    number("takeovers"), number("last_ms"), optionalLong("base_bonus"), optionalLong("takeover_bonus"))
+                    .also { score ->
+                        if (score.baseBonus != null || score.takeoverBonus != null) {
+                            require(score.baseBonus != null && score.takeoverBonus != null)
+                            require(score.baseBonus >= 0 && score.takeoverBonus >= 0 &&
+                                BigInteger.valueOf(score.baseBonus) + BigInteger.valueOf(score.takeoverBonus) == BigInteger.valueOf(score.bonus))
+                        }
+                    }
             } }, nullableLong("score_as_of_ms"),
             items("sources") { it.jsonObject.run {
                 ActivityHoldingSource(uuid("period_id"), text("site_id"), nullableUuid("claim_id"), nullableUuid("game_session_id"))
-            } })
+            } }, optionalLong("final_rank")?.also { require(it > 0) })
     }
 }

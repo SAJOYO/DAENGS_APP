@@ -18,11 +18,12 @@ data class SharedTerritoryOccupancy(
     val certification: ClaimCertification,
     val occupiedAtMillis: Long,
     val protectedUntilMillis: Long? = null,
+    val expiresAtMillis: Long? = null,
 )
 
 data class SharedTerritorySite(val siteId: String, val version: Long, val occupancy: SharedTerritoryOccupancy?,
     val serverNowMillis: Long? = null, val policyVersion: String? = null,
-    val receivedAtNanos: Long = System.nanoTime())
+    val receivedAtNanos: Long = System.nanoTime(), val seasonId: String? = null)
 
 fun interface TerritoryOccupancyClient {
     suspend fun fetch(accessToken: String, siteIds: List<String>): List<SharedTerritorySite>
@@ -81,11 +82,13 @@ internal fun parseSharedTerritories(body: String, requested: List<String>): List
             SharedTerritoryOccupancy(petId, value.getString("owner_pet_name"), mine,
                 ClaimCertification.valueOf(value.getString("certification")),
                 Instant.parse(value.getString("occupied_at")).toEpochMilli(),
-                if (value.has("protected_until") && !value.isNull("protected_until")) Instant.parse(value.getString("protected_until")).toEpochMilli() else null)
+                if (value.has("protected_until") && !value.isNull("protected_until")) Instant.parse(value.getString("protected_until")).toEpochMilli() else null,
+                if (value.has("expires_at") && !value.isNull("expires_at")) Instant.parse(value.getString("expires_at")).toEpochMilli() else null)
         }
         SharedTerritorySite(row.getString("site_id"), version.toLong(), occupancy,
             if (row.has("server_now") && !row.isNull("server_now")) Instant.parse(row.getString("server_now")).toEpochMilli() else null,
-            if (row.has("policy_version") && !row.isNull("policy_version")) row.getString("policy_version") else null)
+            if (row.has("policy_version") && !row.isNull("policy_version")) row.getString("policy_version") else null,
+            seasonId = if (row.has("season_id") && !row.isNull("season_id")) row.getString("season_id") else null)
     }
     require(sites.map { it.siteId }.toSet() == requested.toSet() && sites.size == requested.size) {
         "점유 응답의 장소 목록이 요청과 다릅니다"

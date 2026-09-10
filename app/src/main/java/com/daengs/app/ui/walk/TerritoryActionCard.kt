@@ -39,6 +39,7 @@ internal fun TerritoryActionCard(
                 Text("점령 시각 · ${territoryOccupiedAtLabel(occupancy.occupiedAtMillis)}",
                     color = TextMuted, fontSize = 11.sp)
             }
+            target.leaseLabel?.let { Text(it, color = TextMuted, fontSize = 11.sp) }
             if (game.readOnly) {
                 Text(game.guidance, color = TextMuted, fontSize = 11.sp)
             } else when (game.phase) {
@@ -67,12 +68,12 @@ internal fun TerritoryActionCard(
                     TerritoryFeedbackLine(game)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (game.canMark) Button(onClick = { onMark(target.site.id) }, modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = TextDark)) { Text("영역표시", fontSize = 12.sp) }
+                            colors = ButtonDefaults.buttonColors(containerColor = TextDark)) { Text(game.actionLabel, fontSize = 12.sp) }
                         if (game.canPhotograph) {
                             if (game.canMark) WalkToolButton(WalkTool.CAMERA, "영역표시 인증 촬영", { onPhotograph(target.site.id) })
                             else Button(onClick = { onPhotograph(target.site.id) }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
-                                Text(if (game.photoStatus in setOf(ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) "다시 촬영" else "영역표시 인증 촬영", fontSize = 12.sp)
+                                Text(if (game.photoStatus in setOf(ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) "다시 촬영" else game.photoActionLabel, fontSize = 12.sp)
                             }
                         }
                     }
@@ -130,5 +131,21 @@ private fun TerritoryReadStatesPreview() {
                         "", null, null, false, occupancyKnown = false, occupancyReadState = readState))), {})
             }
         }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+private fun FirstSeasonRenewalPreview() {
+    val site = com.daengs.app.territory.TerritorySite("A", com.daengs.app.location.GeoPoint(37.5, 127.0), 0.0)
+    val owner = com.daengs.app.territory.TerritoryOccupancy("p", null, null,
+        com.daengs.app.territory.ClaimCertification.UNVERIFIED, 0)
+    val target = TerritoryGameSite(site, com.daengs.app.territory.TerritoryClaimSite("A", owner),
+        "두부", null, null, false, isOwnedByMe = true, leaseLabel = "점령 유지 · 2일 3시간 남음")
+    DaengsTheme {
+        TerritoryActionCard(TerritoryGameState(enabled = true, phase = TerritoryWalkPhase.WALKING,
+            sites = listOf(target), targetId = "A", representativeLabel = "두부", eligiblePets = mapOf("p" to "두부"),
+            canMark = true, actionLabel = "유지 연장 · 0점", onlinePhotos = true,
+            guidance = "현장에서 유지 시간을 연장할 수 있어요 · 연장 보상 0점"), {})
     }
 }
