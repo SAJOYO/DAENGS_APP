@@ -74,6 +74,7 @@ import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.care.CareLogCoordinator
+import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.WalkDetailScreen
 import com.daengs.app.ui.walk.WalkHistoryScreen
@@ -153,6 +154,8 @@ class MainActivity : ComponentActivity() {
                 val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
                 // 저장소 탭의 오늘의 케어 기록 (#201). 요약 보관함과 같은 생애 — 서버 사본이고 기기에 안 남긴다.
                 val careLog = remember(scope) { CareLogCoordinator(scope) }
+                // 저장소 탭의 진료비 (#258). 케어 기록과 같은 생애다.
+                val vetVisits = remember(scope) { VetVisitCoordinator(scope) }
                 val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
@@ -277,6 +280,7 @@ class MainActivity : ComponentActivity() {
                     val petId = pets.primary?.id.takeIf { session != null }
                     chatHistory.selectPet(petId)
                     chatSummaries.selectPet(petId)
+                    vetVisits.selectPet(petId)
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
@@ -687,6 +691,7 @@ class MainActivity : ComponentActivity() {
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
                                 careCoordinator = careLog,
+                                vetCoordinator = vetVisits,
                                 accessTokenProvider = freshToken,
                                 onOpenSource = { sessionId ->
                                     scope.launch {
