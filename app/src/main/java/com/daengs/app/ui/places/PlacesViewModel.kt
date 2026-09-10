@@ -53,10 +53,13 @@ data class PlacesUiState(
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
+    data class ApplyFilters(val edit: com.daengs.app.place.ConversationFilterEdit) : PlacesAction
     data class SetAiMode(val enabled: Boolean) : PlacesAction
     data class Discover(val query: String) : PlacesAction
     data class ChooseAi(val choice: FacilityChoice) : PlacesAction
     data object RetryAi : PlacesAction
+    data object CancelAi : PlacesAction
+    data object UndoAi : PlacesAction
     data class ToggleDog(val id: String) : PlacesAction
     data class Locate(val category: PlaceCategorySelection, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction {
         constructor(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) :
@@ -198,7 +201,29 @@ class PlacesViewModel(
             facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
         }
         when (action) {
+            is PlacesAction.ApplyFilters -> {
+                val repository = conversationRepository ?: return
+                facility.invalidate()
+                runtimeScope.launch {
+                    try {
+                        if (repository.applyFilters(action.edit)) {
+                            repository.state.value.result?.let(session::acceptConversation)
+                        }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                    } catch (_: Exception) { /* Retain committed filters and expose retry. */ }
+                }
+            }
             is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
+            PlacesAction.CancelAi -> { conversationRepository?.cancelPending(); facility.cancelPending() }
+            PlacesAction.UndoAi -> {
+                val repository = conversationRepository ?: return
+                runtimeScope.launch {
+                    try {
+                        if (repository.undo()) repository.state.value.result?.let(session::acceptConversation)
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                    } catch (_: Exception) { /* 현재 결과를 유지하고 말풍선에서 재시도한다. */ }
+                }
+            }
             is PlacesAction.Discover -> discover(action.query)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
             PlacesAction.RetryAi -> {
@@ -271,7 +296,7 @@ class PlacesViewModel(
         }
         val kinds = current.discovery.requestedKinds
         if (conversationRepository != null) {
-            if (kinds.size > 6 || current.discovery.loading || conversationRepository.state.value.result == null) {
+            if (kinds.isEmpty() || kinds.size > 6 || current.discovery.loading || conversationRepository.state.value.result == null) {
                 facility.reject("카테고리를 선택해 주변 장소를 불러온 뒤 입력해 주세요.")
                 return
             }

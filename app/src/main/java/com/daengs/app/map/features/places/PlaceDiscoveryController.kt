@@ -99,6 +99,13 @@ class PlaceDiscoveryController(
         nameQuery: String = "",
         radiusMeters: Int = 3_000,
     ) {
+        if (kinds.isEmpty()) {
+            cancel()
+            lastRequest = null
+            mutableState.value = PlaceDiscoveryState(origin = origin, originMode = originMode,
+                preferParking = preferParking, nameQuery = nameQuery.trim(), radiusMeters = radiusMeters)
+            return
+        }
         if (!PlaceSearchArea.contains(origin)) {
             cancel()
             lastRequest = null

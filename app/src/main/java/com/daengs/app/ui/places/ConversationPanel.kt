@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import com.daengs.app.place.ConversationUiState
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
@@ -15,9 +16,13 @@ import com.daengs.app.ui.theme.DaengsTheme
 /** A single answer channel; internal notices are never appended here. */
 @Composable
 internal fun ConversationPanel(state: ConversationUiState, validationError: String? = null,
-    showAnswer: Boolean = true, onRetryAnswer: () -> Unit = {}, onRetrySearch: () -> Unit = {}) {
+    showAnswer: Boolean = true, onRetryAnswer: () -> Unit = {}, onRetrySearch: () -> Unit = {},
+    onApplyCurrentFilters: () -> Unit = {}, filterSummary: String = "", onOpenFilters: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (filterSummary.isNotEmpty()) TextButton(onClick = onOpenFilters) {
+            Text(filterSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
         if (state.busy || (showAnswer && state.answerBusy)) LinearProgressIndicator(Modifier.fillMaxWidth())
         val error = state.error ?: validationError
         if (error != null) Text(error, color = DaengsColors.Error)
@@ -30,7 +35,10 @@ internal fun ConversationPanel(state: ConversationUiState, validationError: Stri
             state.answerError?.let { Text(it) }
             TextButton(onClick = onRetryAnswer) { Text("설명 다시 받기") }
         }
-        if (state.result?.matches == false) Text("현재 목록은 변경 전 조건의 결과예요.")
+        if (state.result?.matches == false) {
+            Text("현재 목록은 변경 전 조건의 결과예요.")
+            TextButton(enabled = !state.busy, onClick = onApplyCurrentFilters) { Text("현재 조건으로 검색") }
+        }
     }
 }
 

@@ -50,6 +50,37 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
 
+## 시설 검색의 적용 조건 표시·해제
+
+### 카테고리 다중 선택과 지도 위 말풍선
+
+`PlaceCategorySelectionTest`, `PlacePurposeSearchTest`는 다른 대분류의 종류 조합,
+6개 제한과 마지막 선택 해제/늦은 응답을 확인한다.
+`DogBubblePlacementTest`는 화면 끝·키보드 크기의 창에서 방향 전환과 꼬리 좌표를,
+`PlaceDogAssistantUiTest`는 입력 → 생각 → 답변 전환과 같은 머리 위치 유지를 확인한다.
+`ConversationUndoTest`는 서버 restore, 실패 시 현재 결과 보존, 같은 ID 재시도,
+취소한 복원이 새 수동 검색을 덮지 않는지를 다룬다.
+`ConnectedPlaceSearchUiTest`, `FacilityConnectedUiTest`, `FacilitySearchCoordinatorTest`는
+연결 화면/기존 제안 경로의 소비자다. 실제 SDK/IME 검토 방법과 계약 경계는
+[말풍선 문서](../../../docs/place-dog-bubbles.md)에 있다.
+
+아래처럼 변경한 클래스만 선택한다. 공용 대화 저장소 수정 시에는
+`FacilityConversationTest`, `ConversationFiltersTest`, `ConversationConnectedTest`도 포함한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true --tests 'com.daengs.app.ui.places.PlaceDogAssistantUiTest' --tests 'com.daengs.app.ui.places.DogBubblePlacementTest'
+```
+
+`ConversationFiltersTest`는 조건 ID/revision 전달, 늦은 조작 거부, 실패 시 필터 보존,
+동일 요청 재시도를 확인한다. `AppliedPlaceFiltersTest`는 필수/선호·AND/OR·부정값 표시,
+`ConversationConnectedTest`는 기존 ViewModel 반영, `ConnectedPlaceSearchUiTest`는 AI를
+꺼도 조건 확인·해제·현재 조건 검색이 가능한지를 검증한다. `-PfacilityConversation=true`로
+기존 `FacilityConversationTest`, `PlaceSearchBatchTest`, `PlaceSessionCoordinatorTest`,
+`PlacesViewModelTest`와 함께 실행한다. 실제 서버/지도·실기기 검증은 별도다.
+
+화면 테스트의 320dp 합성 렌더는 `app/build/reports/conversation/filters-screen.png`,
+`filters-dialog.png`에 저장한다. 테스트 창을 그린 이미지이며 실제 폰 캡처가 아니다.
+
 ## 산책에서 함께 확인할 경계
 
 ### 측정·원본 저장
@@ -161,6 +192,7 @@ Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로
 | [territory/support/PhotoServer.kt](java/com/daengs/app/territory/support/PhotoServer.kt) — `PhotoServer` | `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionStoreTest.kt` |
 | [activity/support/ActivityFixtures.kt](java/com/daengs/app/activity/support/ActivityFixtures.kt) — `ActivityFixtures` | `activity/ActivityApiTest.kt`, `activity/ActivityRepositoryTest.kt` |
 | 이미 분리된 `place/FacilityFixtures.kt` — `facilityQuery`, `facilityJson`, `facilityResponse` | `place/FacilityApiTest.kt`, `ui/places/FacilityViewModelTest.kt`, `ui/places/FacilitySearchCoordinatorTest.kt`, `ui/places/FacilitySearchPanelTest.kt`, `ui/places/FacilityConnectedUiTest.kt` |
+| [place/support/ConversationFixtures.kt](java/com/daengs/app/place/support/ConversationFixtures.kt) — `filteredConversationFixture` (기존 `conversationFixture` 응답 사용) | `place/ConversationFiltersTest.kt`, `ui/places/AppliedPlaceFiltersTest.kt`, `ui/places/ConversationConnectedTest.kt`, `ui/places/ConnectedPlaceSearchUiTest.kt` |
 
 각 helper의 이름·가시성·인자·기본값·반환값과 fake 동작을 보존하고 소비자는 `support`에서 import한다.
 일기 JSON은 테스트 클래스 대신 공용 파일의 `DiaryResources`를 기준으로 같은 절대 리소스 경로를 읽는다.
