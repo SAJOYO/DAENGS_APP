@@ -1763,8 +1763,41 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 report.group?.let { g ->
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(g.text, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                        // ★ 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
+                        //    이름만 띄우면 자기 개 사진과 대조할 방법이 없다 —
+                        //    `표면 변화` 는 뜻이 안 잡히고 `딱지, 둥근 비늘` 은 바로 보인다.
+                        if (g.feature.isNotBlank()) {
+                            Text(
+                                "${g.feature} 같은 모습이 보이는 상태예요.",
+                                color = TextDark, fontSize = 12.sp, lineHeight = 18.sp,
+                            )
+                        }
                         if (g.caveat.isNotBlank()) {
                             Text(g.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                        }
+                        // ★ 수의학적 의미는 **접어 둔다.** primary/secondary 는 *진단 순서*의
+                        //    축이지 *보호자에게 뭐라고 부를지*의 축이 아니고, 저쪽에서 그 축으로
+                        //    묶었다가 **과잉 분류 88.4%** 로 기각했다. 궁금한 사람만 펴 본다.
+                        if (g.detail.isNotBlank()) {
+                            val open = remember { mutableStateOf(false) }
+                            Text(
+                                if (open.value) "접기" else "자세히 보기",
+                                color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                modifier = Modifier.clickable { open.value = !open.value },
+                            )
+                            if (open.value) {
+                                Text(
+                                    g.detail,
+                                    color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                )
+                                Text(
+                                    "이 결과는 사진에서 관찰되는 피부 형태를 분류한 스크리닝 " +
+                                        "정보이며 질병을 진단하지 않습니다. 정확한 원인 확인에는 " +
+                                        "수의사의 신체검사와 피부 세포검사, 피부 긁기 검사 또는 " +
+                                        "조직검사 등이 필요할 수 있습니다.",
+                                    color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                )
+                            }
                         }
                     }
                 }
@@ -1857,22 +1890,22 @@ private fun ReportBubblePreview() {
     )
 
     val surface = listOf(
-        ScreeningReport.Group("표면 변화", 75.0f),
-        ScreeningReport.Group("융기·발진", 17.0f),
-        ScreeningReport.Group("미란·궤양", 5.0f),
-        ScreeningReport.Group("결절·종괴", 3.0f),
+        ScreeningReport.Group("피부 표면·색·두께 변화", 75.0f),
+        ScreeningReport.Group("솟아오른 변화", 17.0f),
+        ScreeningReport.Group("벗겨지거나 패인 상처", 5.0f),
+        ScreeningReport.Group("깊거나 단단한 혹", 3.0f),
     )
     val lump = listOf(
-        ScreeningReport.Group("결절·종괴", 62.0f),
-        ScreeningReport.Group("표면 변화", 25.0f),
-        ScreeningReport.Group("융기·발진", 9.0f),
-        ScreeningReport.Group("미란·궤양", 4.0f),
+        ScreeningReport.Group("깊거나 단단한 혹", 62.0f),
+        ScreeningReport.Group("피부 표면·색·두께 변화", 25.0f),
+        ScreeningReport.Group("솟아오른 변화", 9.0f),
+        ScreeningReport.Group("벗겨지거나 패인 상처", 4.0f),
     )
     val flat = listOf(
-        ScreeningReport.Group("표면 변화", 39.0f),
-        ScreeningReport.Group("융기·발진", 37.0f),
-        ScreeningReport.Group("미란·궤양", 13.0f),
-        ScreeningReport.Group("결절·종괴", 11.0f),
+        ScreeningReport.Group("피부 표면·색·두께 변화", 39.0f),
+        ScreeningReport.Group("솟아오른 변화", 37.0f),
+        ScreeningReport.Group("벗겨지거나 패인 상처", 13.0f),
+        ScreeningReport.Group("깊거나 단단한 혹", 11.0f),
     )
     val caveat = "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
 
@@ -1882,7 +1915,7 @@ private fun ReportBubblePreview() {
                 report(
                     lump,
                     ScreeningReport.GroupLine(
-                        "결절·종괴", 62.0f, "모양만 보면 결절·종괴 계열에 가깝습니다.", caveat,
+                        "깊거나 단단한 혹", 62.0f, "모양만 보면 깊거나 단단한 혹에 가깝습니다.", caveat,
                     ),
                     ScreeningReport.Alert(
                         "A6", "덩어리가 의심됩니다.", "빠른 진료를 권합니다.",
@@ -1896,7 +1929,7 @@ private fun ReportBubblePreview() {
                 report(
                     surface,
                     ScreeningReport.GroupLine(
-                        "표면 변화", 75.0f, "모양만 보면 표면 변화 계열에 가깝습니다.", caveat,
+                        "피부 표면·색·두께 변화", 75.0f, "모양만 보면 피부 표면·색·두께 변화에 가깝습니다.", caveat,
                     ),
                     null,
                 ),
