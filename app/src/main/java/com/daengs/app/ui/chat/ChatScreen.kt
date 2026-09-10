@@ -1775,10 +1775,13 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                         if (g.caveat.isNotBlank()) {
                             Text(g.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
                         }
-                        // ★ 수의학적 의미는 **접어 둔다.** primary/secondary 는 *진단 순서*의
-                        //    축이지 *보호자에게 뭐라고 부를지*의 축이 아니고, 저쪽에서 그 축으로
-                        //    묶었다가 **과잉 분류 88.4%** 로 기각했다. 궁금한 사람만 펴 본다.
-                        if (g.detail.isNotBlank()) {
+                        // ★ "자세히 보기" 에는 **한 문단만** 둔다 (2026-09-10).
+                        //    ⚠️ `g.detail`(수의학적 의미)을 **여기 안 그린다.** 그건 "주로 일차
+                        //       병변…" 같은 말이라 보호자가 읽을 문장이 아니고, 바로 위 `caveat`
+                        //       와 겹쳐 같은 말("진단이 아니다")이 두 번이 된다. 접어 뒀다고 해서
+                        //       아무 말이나 넣어도 되는 자리가 아니다.
+                        //    ⚠️ `detail` 은 계약에 그대로 있다 — **관리자 콘솔**이 쓴다.
+                        run {
                             val open = remember { mutableStateOf(false) }
                             Text(
                                 if (open.value) "접기" else "자세히 보기",
@@ -1786,10 +1789,6 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                                 modifier = Modifier.clickable { open.value = !open.value },
                             )
                             if (open.value) {
-                                Text(
-                                    g.detail,
-                                    color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
-                                )
                                 Text(
                                     "이 결과는 사진에서 관찰되는 피부 형태를 분류한 스크리닝 " +
                                         "정보이며 질병을 진단하지 않습니다. 정확한 원인 확인에는 " +
