@@ -48,6 +48,7 @@ fun PlaceSearchLabScreen(
     onSearchFilters: (() -> Unit)? = null,
     searchFilterCount: Int = 0,
     aiConnected: Boolean = false,
+    showAiToggle: Boolean = true,
     emptyMessage: String = "검색 결과가 없어요.",
     showRetry: Boolean = true,
     resultLabel: String = state.applied.kind?.let(::categoryLabel) ?: "전체",
@@ -61,7 +62,7 @@ fun PlaceSearchLabScreen(
         header = {
             PlaceSearchHeader(state.draft,
                 if (state.aiMode) "AI에게 원하는 장소를 말해보세요" else if (live) "장소명 검색" else "장소명·주소 검색",
-                state.aiMode, onEdit, onSubmit, onAi, onBack, onSearchFilters, searchFilterCount)
+                state.aiMode, onEdit, onSubmit, onAi, onBack, onSearchFilters, searchFilterCount, showAiToggle)
             if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
             answerContent?.invoke()
         },
@@ -99,8 +100,10 @@ fun PlaceSearchLabScreen(
         map = {
             Box(Modifier.fillMaxSize()) {
                 map()
+                // 지도 높이가 줄어도 안내가 강아지/위치 버튼을 덮지 않도록 오른쪽을 비운다.
                 PlaceFloatingNotices(listOfNotNull(state.notice, state.profileMessage.takeIf { live }).distinct(),
-                    Modifier.align(Alignment.TopCenter).padding(start = 16.dp, end = 16.dp, top = 52.dp))
+                    Modifier.align(Alignment.TopCenter).padding(start = 16.dp,
+                        end = if (live) 128.dp else 16.dp, top = 52.dp))
             }
         },
         results = {

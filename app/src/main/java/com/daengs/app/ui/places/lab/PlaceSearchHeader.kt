@@ -26,7 +26,7 @@ import com.daengs.app.ui.places.PlaceSearchStyle
 @Composable
 internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
     onEdit: (String) -> Unit, onSubmit: () -> Unit, onAi: () -> Unit, onBack: (() -> Unit)?,
-    onFilters: (() -> Unit)? = null, filterCount: Int = 0) {
+    onFilters: (() -> Unit)? = null, filterCount: Int = 0, showAiToggle: Boolean = true) {
     val shape = RoundedCornerShape(12.dp)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (onBack != null) IconButton(onClick = onBack, modifier = Modifier.size(48.dp).semantics { contentDescription = "뒤로가기" }) {
@@ -61,7 +61,7 @@ internal fun PlaceSearchHeader(draft: String, placeholder: String, ai: Boolean,
                 IconButton(onClick = onSubmit, modifier = Modifier.size(48.dp).semantics { contentDescription = "검색 실행" }) {
                     SearchActionIcon(Modifier.size(22.dp))
                 }
-                IconToggleButton(checked = ai, onCheckedChange = { onAi() },
+                if (showAiToggle) IconToggleButton(checked = ai, onCheckedChange = { onAi() },
                     modifier = Modifier.size(48.dp).semantics {
                         contentDescription = "AI 조건 검색 전환"
                         stateDescription = if (ai) "켜짐" else "꺼짐"

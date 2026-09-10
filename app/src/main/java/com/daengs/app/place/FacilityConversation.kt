@@ -44,6 +44,7 @@ data class ConversationUiState(
     val answerBusy: Boolean = false,
     val answerError: String? = null,
     val filterRetry: ConversationFilterEdit? = null,
+    val canUndo: Boolean = false,
 )
 
 fun JsonObject.toConversationResult(): ConversationResult {
@@ -129,10 +130,15 @@ class FacilityConversationRepository(
     private var owner: String? = null
     // Cancellation/timeout says nothing about whether the server committed. Keep its identity.
     private var pending: JsonObject? = null
+    private data class Undo(val filters: JsonObject, val sessionId: String, val revision: Int)
+    private var undo: Undo? = null
 
     fun cancelPending() {
         generation++
-        mutable.value = mutable.value.copy(busy = false, answerBusy = false)
+        // Undo restores into a new session. An abandoned restore must not replace a new manual intent.
+        if (undo != null && pending?.get("mode")?.jsonPrimitive?.content == "restore") pending = null
+        undo = null
+        mutable.value = mutable.value.copy(busy = false, answerBusy = false, canUndo = false)
     }
 
     fun invalidate() {
@@ -140,6 +146,7 @@ class FacilityConversationRepository(
         mutable.value = ConversationUiState()
         owner = null
         pending = null
+        undo = null
     }
 
     fun select(key: PlaceKey) {
@@ -164,7 +171,45 @@ class FacilityConversationRepository(
     suspend fun chat(query: String, visibleOrder: List<PlaceKey>) {
         val session = freshSession() ?: throw FacilityException(401)
         require(mutable.value.result != null) { "먼저 카테고리를 선택해 주변 장소를 검색해 주세요." }
-        run(session, "chat", query = query, visibleOrder = visibleOrder)
+        val before = mutable.value.result
+        val result = run(session, "chat", query = query, visibleOrder = visibleOrder)
+        if (before != null && !result.failed && result.matches && result.filters != before.filters &&
+            result.sessionId == before.sessionId && result.revision == before.revision + 1 &&
+            mutable.value.notice == null) {
+            undo = Undo(before.filters, result.sessionId, result.revision)
+            mutable.value = mutable.value.copy(canUndo = true)
+        }
+    }
+
+    /** 마지막 AI 변경 한 번만 되돌린다. 기존 restore 계약으로 서버에서 다시 검색한다. */
+    suspend fun undo(): Boolean {
+        val target = undo ?: return false
+        if (mutable.value.busy) return false
+        val before = mutable.value.result ?: return false
+        if (before.sessionId != target.sessionId || before.revision != target.revision) return false
+        val session = freshSession() ?: throw FacilityException(401)
+        if (owner != session.appUserId) { invalidate(); throw FacilityException(401) }
+        val mine = ++generation
+        val payload = pending?.takeIf { it["mode"]?.jsonPrimitive?.content == "restore" && it["restore_filters"] == target.filters }
+            ?: buildJsonObject {
+                put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
+                put("restore_filters", target.filters)
+            }
+        pending = payload
+        mutable.value = mutable.value.copy(busy = true, answerBusy = false, error = null)
+        try {
+            val result = client.exchange(session.accessToken, payload).toConversationResult()
+            checkLive(mine, session)
+            require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
+            require(result.filters == target.filters && result.sessionId != before.sessionId && result.matches && !result.failed)
+            pending = null; undo = null
+            publish(result, "이전 검색 조건으로 되돌렸어요.")
+            return true
+        } catch (error: Exception) {
+            if (mine == generation) mutable.value = mutable.value.copy(busy = false,
+                error = if (error is CancellationException) null else "되돌리지 못했어요. 현재 조건을 유지했으니 다시 시도해 주세요.")
+            throw error
+        }
     }
 
     suspend fun applyFilters(edit: ConversationFilterEdit): Boolean {
@@ -230,6 +275,7 @@ class FacilityConversationRepository(
         owner = session.appUserId
         val before = mutable.value.result
         val mine = ++generation
+        undo = null
         val next = buildJsonObject {
             put("client_request_id", UUID.randomUUID().toString()); put("mode", mode); put("query", query)
             if (before != null) {
@@ -256,7 +302,7 @@ class FacilityConversationRepository(
         } ?: next
         pending = payload
         mutable.value = mutable.value.copy(busy = true, error = null, notice = null, answerBusy = false,
-            answerError = null, filterRetry = filterEdit)
+            answerError = null, filterRetry = filterEdit, canUndo = false)
         try {
             var notice: String? = if (payload !== next && (payload["mode"]?.jsonPrimitive?.content == "restore" ||
                 payload["manual"] != next["manual"] || payload["query"] != next["query"]))

@@ -51,7 +51,7 @@ internal fun WalkHistorySearchLayout(
                 Text(if (hasAny) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
                     fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(10.dp))
-                Text(if (hasAny) "다른 검색어나 조건으로 찾아보세요." else "산책을 마치면 동선과 일기가 이곳에 쌓여요.",
+                Text(if (hasAny) "다른 검색어나 조건으로 찾아보세요." else "산책을 마치면 동선과 기록이 이곳에 쌓여요.",
                     color = TextMuted, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
                 if (hasAny) TextButton(onClick = onReset) { Text("전체 기록 보기") }
             }

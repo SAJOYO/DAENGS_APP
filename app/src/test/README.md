@@ -50,7 +50,47 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
 
+## 점령 게임 성적 화면·규칙 팝업
+
+### 전봇대 북마크 (#278)
+
+`com.daengs.app.territory.bookmarks.*`는 HTTP·목록 계약과 로그인 생애를,
+`com.daengs.app.ui.game.bookmarks.*`는 중복 탭·타임아웃 재조회·목록/지도·위치 없음·작은 화면을 검증한다.
+게임 진입 메뉴와 공용 별 연결을 변경하면 `TerritoryGameScreenTest`,
+`ui.game.owned.OwnedTerritoryScreenTest`, `ui.walk.WalkTerritoryUiTest`를 함께 선택한다.
+실기기 가상 데이터 확인은 실제 서버에 북마크가 저장됐다는 근거가 아니다.
+
+`ui/game/TerritoryGameScreenTest`는 홈 진입·조회 강아지 교체·성적 상태·팝업 복귀·320dp 큰 글자를,
+`ui/game/TerritoryGameRulesTest`는 전봇대를 누르는 두 로컬 예시·인증 구도·점수 차액·닫기/뒤로·상태 복원을 확인한다.
+팝업은 실제 점령·카메라·GPS·서버 요청을 실행하지 않는다. 점수 조회 모델을 고치면
+`TerritoryGameOverviewTest`, API/저장소를 고치면 위 activity 소비자를 추가한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.game.TerritoryGameScreenTest' --tests 'com.daengs.app.ui.game.TerritoryGameRulesTest'
+```
+
 ## 시설 검색의 적용 조건 표시·해제
+
+### 카테고리 다중 선택과 지도 위 말풍선
+
+`PlaceCategorySelectionTest`, `PlacePurposeSearchTest`는 다른 대분류의 종류 조합,
+6개 제한과 마지막 선택 해제/늦은 응답을 확인한다.
+`DogBubblePlacementTest`는 화면 끝·키보드 크기의 창에서 머리 위 배치와 꼬리 좌표를,
+`PlaceDogAssistantUiTest`는 입력 → 생각 → 답변 전환과 고정된 48dp 버튼을 확인한다.
+`ConnectedPlaceSearchUiTest`는 GPS 미확인/먼 검색 중심에서도 입구 유지, 반경 표시,
+짧은 지도에서 안내에 가리지 않는 버튼 터치와 기존 검색 액션을 확인한다.
+`ConversationUndoTest`는 서버 restore, 실패 시 현재 결과 보존, 같은 ID 재시도,
+취소한 복원이 새 수동 검색을 덮지 않는지를 다룬다.
+`ConnectedPlaceSearchUiTest`, `FacilityConnectedUiTest`, `FacilitySearchCoordinatorTest`는
+연결 화면/기존 제안 경로의 소비자다. 실제 SDK/IME 검토 방법과 계약 경계는
+[말풍선 문서](../../../docs/place-dog-bubbles.md)에 있다.
+
+아래처럼 변경한 클래스만 선택한다. 공용 대화 저장소 수정 시에는
+`FacilityConversationTest`, `ConversationFiltersTest`, `ConversationConnectedTest`도 포함한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true --tests 'com.daengs.app.ui.places.PlaceDogAssistantUiTest' --tests 'com.daengs.app.ui.places.DogBubblePlacementTest'
+```
 
 `ConversationFiltersTest`는 조건 ID/revision 전달, 늦은 조작 거부, 실패 시 필터 보존,
 동일 요청 재시도를 확인한다. `AppliedPlaceFiltersTest`는 필수/선호·AND/OR·부정값 표시,
@@ -122,6 +162,56 @@ parser/표현 모델은 `walk.diary`, 서버 반영은 세 sync 클래스, 캐�
 UI 소비자는 `com.daengs.app.ui.walk.WalkDiaryMapScreenTest`,
 `com.daengs.app.ui.walk.WalkStoryboardScreenTest`, `com.daengs.app.ui.walk.WalkHistorySearchScreenTest`다.
 JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소비자도 함께 선택한다.
+
+### 행동 기록으로 산책 비교
+
+서버 응답의 A/B·근거 정합성은 `WalkBehaviorComparisonTest`, HTTP·세션 경계는
+`WalkBehaviorComparisonApiTest`, 지도 선택·빈 결과·위치 없는 근거는
+`WalkBehaviorComparisonScreenTest`가 검증한다. 이 화면 테스트는 320dp에서 413 오류 뒤
+7일·1일 선택이 실제 조회 기간과 성공 화면에 반영되는 흐름도 검증한다. 서버에서 직렬화한 응답 fixture를
+공용 `walk/support/BehaviorComparisonFixtures.kt`를 통해 함께 읽는다.
+실제 Naver 지도 렌더링·서버 데이터 적재는 이 테스트의 범위가 아니다.
+공용 지도 정책을 바꾸면 `com.daengs.app.map.shell.MapScenePolicyTest`도 함께 선택한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonTest' --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonApiTest' --tests 'com.daengs.app.ui.walk.WalkBehaviorComparisonScreenTest'
+```
+
+## 산책 기록의 일반 진입·상세 복귀
+
+홈·산책 화면의 기록 진입점은 `WalkRecordsRoute`에서 실제 공급부와 기존
+`WalkDiaryMapScreen`을 연결한다. 화면 연결만 바꾸면 아래 네 클래스를 선택한다.
+
+- `ui/walk/WalkRecordsRouteStateTest`: 기록 화면을 실제로 내린 뒤 상태 복원,
+  Activity 저장 시점, 같은 회원 재로그인·다른 계정·프로세스 경계의 초기화.
+- `ui/walk/records/WalkRecordsRouteTest`: 기록·모아보기·행동 보기의 상세 왕복,
+  홈으로 나갔다 복귀, nullable 프로필 로딩 중 조건 유지, 미로그인 안내,
+  계정 변경 중 늦은 응답 배제와 동기화 오류에도 로컬 기록 유지.
+- `ui/walk/WalkRecordsScreenTest`: 공통 조건·페이지·지도 선택·행동 보기의 기존 소비자.
+- `ui/walk/WalkDiaryMapScreenTest`: 기존 상세 표시·뒤로 동작의 소비자.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkDiaryMapScreenTest' -PslimAbi=x86_64 --console=plain
+```
+
+이 절은 실행 지도이며 통과 결과가 아니다. Route 테스트는 실제 기록 화면을 unmount하는
+상세 대역과 inspection 지도를 사용한다. MainActivity 초기화·native Naver 지도·배포 서버·
+사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
+경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
+
+## 산책 기록의 실제 원판 조회
+
+`walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과
+빈 결과를, `WalkRecordSheetsApiTest`는 인증된 batch HTTP 요청과 미배포/인증 실패를 확인한다.
+`TraceLoadingWalkRecordsSourceTest`는 조회 지연·실패·재시도·계정/기록 변경 중 늦은 응답을,
+`RoomWalkRecordsSourceTest`는 실제 SQLite의 업로드 ID 전달과 보드 확정 시 목록 갱신,
+준비 중·늦은 AI 제목의 검색 제외를 확인한다.
+브러시 연결/겹침 정책은 `WalkRecordsTracesTest`, 화면 소비자는
+`ui/walk/WalkRecordsScreenTest`로 좁혀 실행한다. 실제 서버·DB 접속은 필요하지 않다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.records.WalkRecordSheetsTest' --tests 'com.daengs.app.walk.records.WalkRecordSheetsApiTest' --tests 'com.daengs.app.walk.records.TraceLoadingWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.WalkRecordsTracesTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --console=plain
+```
 
 ## Room·계정·외부 의존성
 

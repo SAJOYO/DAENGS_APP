@@ -14,6 +14,10 @@ enum class PlacePurpose(val id: String, val kinds: List<PlaceKind>) {
 sealed interface PlaceCategorySelection {
     val kinds: List<PlaceKind>
 
+    data object None : PlaceCategorySelection {
+        override val kinds: List<PlaceKind> = emptyList()
+    }
+
     data object All : PlaceCategorySelection {
         override val kinds: List<PlaceKind> = PlaceKind.entries
     }
@@ -26,21 +30,35 @@ sealed interface PlaceCategorySelection {
         override val kinds: List<PlaceKind> get() = listOf(kind)
     }
 
+    data class Multiple(override val kinds: List<PlaceKind>) : PlaceCategorySelection {
+        init { require(kinds.isNotEmpty() && kinds.distinct().size == kinds.size && kinds.size <= 6) }
+    }
+
     val parentPurpose: PlacePurpose?
         get() = when (this) {
-            All -> null
+            All, None -> null
             is Purpose -> purpose
             is Kind -> PlacePurpose.entries.firstOrNull { kind in it.kinds }
+            is Multiple -> PlacePurpose.entries.firstOrNull { it.kinds.containsAll(kinds) }
         }
 
     companion object {
         fun fromKind(kind: PlaceKind?): PlaceCategorySelection = kind?.let(::Kind) ?: All
 
         fun fromKinds(kinds: List<PlaceKind>): PlaceCategorySelection = when {
-            kinds.isEmpty() -> Kind(PlaceKind.CAFE) // 기존 첫 검색 기본값
+            kinds.isEmpty() -> None
             kinds.size == 1 -> Kind(kinds.single())
             kinds.toSet() == PlaceKind.entries.toSet() -> All
-            else -> Purpose(PlacePurpose.entries.single { it.kinds.toSet() == kinds.toSet() })
+            else -> PlacePurpose.entries.singleOrNull { it.kinds.toSet() == kinds.toSet() }
+                ?.let(::Purpose) ?: Multiple(kinds.distinct())
         }
     }
+}
+
+/** Browsing a purpose does not call this. Only tapping a leaf or its local All changes the query. */
+fun PlaceCategorySelection.toggleKinds(items: List<PlaceKind>): PlaceCategorySelection? {
+    val current = if (this == PlaceCategorySelection.All) emptyList() else kinds
+    val remove = items.all { it in current }
+    val next = if (remove) current.filterNot { it in items } else (current + items).distinct()
+    return if (next.size > 6) null else PlaceCategorySelection.fromKinds(next)
 }

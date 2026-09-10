@@ -29,6 +29,8 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
+import com.daengs.app.map.shell.MapCameraSnapshot
+import com.daengs.app.map.shell.minimumZoom
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.DaengPinkDeep
@@ -36,6 +38,7 @@ import com.naver.maps.geometry.LatLng
 import com.naver.maps.geometry.LatLngBounds
 import com.naver.maps.map.CameraAnimation
 import com.naver.maps.map.CameraUpdate
+import com.naver.maps.map.CameraPosition
 import com.naver.maps.map.MapView
 import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.LocationOverlay
@@ -77,6 +80,8 @@ fun NaverMapSurface(
     onSelectRouteEndpoint: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
+    initialCamera: MapCameraSnapshot? = null,
+    onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -88,6 +93,10 @@ fun NaverMapSurface(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
+    val cameraToRestore = remember(mapView) { initialCamera }
+    val initialCameraRequest = remember(mapView) { cameraRequestKey }
+    var cameraRestored by remember(mapView) { mutableStateOf(false) }
+    var reportCamera by remember(mapView) { mutableStateOf(false) }
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current.density
@@ -95,6 +104,7 @@ fun NaverMapSurface(
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
     val latestMomentCallback by rememberUpdatedState(onSelectMoment)
+    val latestSnapshotCallback by rememberUpdatedState(onCameraSnapshot)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
@@ -135,6 +145,13 @@ fun NaverMapSurface(
                         if (reason == CameraUpdate.REASON_GESTURE) latestGestureCallback()
                     }
                     map.addOnCameraIdleListener {
+                        if (reportCamera) {
+                            val camera = map.cameraPosition
+                            latestSnapshotCallback?.invoke(MapCameraSnapshot(
+                                GeoPoint(camera.target.latitude, camera.target.longitude),
+                                camera.zoom, camera.bearing, camera.tilt,
+                            ))
+                        }
                         if (!lastCameraReason.intValue.isUserDriven()) return@addOnCameraIdleListener
                         val target = map.cameraPosition.target
                         latestCameraCallback(GeoPoint(target.latitude, target.longitude))
@@ -154,15 +171,11 @@ fun NaverMapSurface(
         )
     }
 
-    LaunchedEffect(naverMap, scene.baseMapStyle) {
+    LaunchedEffect(naverMap, scene.baseMapStyle, scene.allowRegionalOverview) {
         val map = naverMap ?: return@LaunchedEffect
         // 점령지는 3km 원 하나만 읽는다. 더 멀리 축소하면 화면은 넓어지는데 데이터는
         // 늘지 않아 빈 곳처럼 거짓말하게 되므로, 그 모드에서만 도시 단위 줌을 막는다.
-        map.minZoom = if (scene.baseMapStyle == BaseMapStyle.TERRITORY_FOCUSED) {
-            TERRITORY_MIN_ZOOM
-        } else {
-            MIN_ZOOM
-        }
+        map.minZoom = scene.minimumZoom()
     }
 
     LaunchedEffect(naverMap, scene.currentPosition, followDevice) {
@@ -226,9 +239,22 @@ fun NaverMapSurface(
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
         bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
+        if (!cameraRestored && cameraToRestore != null && initialCameraRequest == cameraRequestKey &&
+            centerOn == null && searchOrigin == null) {
+            cameraRestored = true
+            reportCamera = true
+            map.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(
+                cameraToRestore.target.toLatLng(), cameraToRestore.zoom,
+                cameraToRestore.tilt, cameraToRestore.bearing,
+            )))
+            return@LaunchedEffect
+        }
+        // A selection made while getMapAsync was pending takes precedence over the old snapshot.
+        cameraRestored = true
         if (keepSelectionVisible && centerOn != null) return@LaunchedEffect
         if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+        reportCamera = true
         val bounds = LatLngBounds.Builder().apply {
             points.forEach { include(it.toLatLng()) }
         }.build()
@@ -298,7 +324,9 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
+    NaverWalkTraceLayer(naverMap, scene.traceTiles)
     NaverTravelHeadingLayer(naverMap, scene.currentPosition, scene.travelHeading)
+    NaverSpatialDiaryLayer(naverMap, scene.spatialCells)
 
     // 점령지는 시설 검색 핀을 재사용하지 않는다. 원천 종류가 무엇이든 앱에서는 같은
     // 게임 지점이고, 장소 검색이 갱신돼도 이 레이어의 생애에는 영향을 주지 않는다.

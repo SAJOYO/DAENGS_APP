@@ -58,6 +58,29 @@ class StartupGateTest {
         assertEquals(StartupTarget.Home, startupTarget(listOf(pet("a")), "지난 실패"))
         assertEquals(StartupTarget.Home, startupTarget(emptyList(), "지난 실패"))
     }
+
+    /**
+     * 세션을 못 되살렸으면 **기다리지 않는다.**
+     *
+     * 갱신이 실패하면 강아지 목록을 부르는 자리가 토큰을 못 받아 조용히 끝나고,
+     * `pets` 도 `petsError` 도 영영 안 채워진다. 그때 `Wait` 를 돌려주면 로딩
+     * 화면에서 나갈 길이 없다 — 사용자에게는 앱이 죽은 것으로 보인다.
+     * 2026-09-09 실기기에서 그대로 밟았다 (닿지 않는 서버, 40초 넘게 로딩).
+     */
+    @Test fun `세션 갱신이 실패하면 기다리지 않고 홈으로 나간다`() {
+        assertEquals(
+            StartupTarget.Home,
+            startupTarget(pets = null, petsError = null, session = SessionRestore.Failed),
+        )
+    }
+
+    /** 되살리는 중에는 기존대로 기다린다. 실패가 아직 아니다. */
+    @Test fun `세션을 되살리는 중이면 기다린다`() {
+        assertEquals(
+            StartupTarget.Wait,
+            startupTarget(pets = null, petsError = null, session = SessionRestore.Pending),
+        )
+    }
 }
 
 /**
@@ -99,4 +122,5 @@ class LoadingHoldTest {
         // 하루에 여러 번 켜는 앱이라 너무 길면 그것대로 답답하다.
         assertTrue("$MIN_LOADING_MS ms", MIN_LOADING_MS <= 1_000L)
     }
+
 }

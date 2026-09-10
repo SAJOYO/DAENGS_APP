@@ -12,6 +12,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
@@ -52,6 +53,7 @@ import com.daengs.app.dogcard.makeDevCard
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
+import com.daengs.app.ui.startup.SessionRestore
 import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
@@ -74,8 +76,8 @@ import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
-import com.daengs.app.ui.walk.WalkDetailScreen
-import com.daengs.app.ui.walk.WalkHistoryScreen
+import com.daengs.app.ui.walk.records.WalkRecordsRoute
+import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.ui.walk.WalkOrientation
 import com.daengs.app.ui.walk.WalkRoute
 import com.daengs.app.walk.WalkDayTotals
@@ -107,9 +109,14 @@ private enum class Screen {
     Places,
     /** 산책. **미니룸의 문으로 들어온다** — 탭이 아니다. */
     Walk,
-    /** 지난 산책 목록. 홈의 산책 요약 카드에서 들어온다. */
+    /** 산책별 목록과 모아보기. 홈 카드와 산책 화면의 기록 버튼에서 들어온다. */
     WalkHistory,
-    /** 산책 하나. 목록에서 고른 것이라 어느 세션인지는 [MainActivity] 가 들고 있다. */
+    /** 홈 하단의 시즌 안내에서 여는 점령 현황과 규칙. */
+    TerritoryGame,
+    /** 현재 보유한 영역만 살펴보는 조회 전용 지도와 목록. */
+    OwnedTerritories,
+    TerritoryBookmarks,
+    /** 이전 저장 화면값의 복원 호환용. 새 상세 선택은 기록 route가 보관한다. */
     WalkDetail,
     /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
     ScreeningHistory,
@@ -129,6 +136,7 @@ class MainActivity : ComponentActivity() {
         val walkController = walkRuntime.controller
         setContent {
             DaengsTheme {
+              com.daengs.app.ui.game.bookmarks.TerritoryBookmarkProvider(app.sessionProvider) {
                 // 화면이 넷이 됐지만 **네비게이션 라이브러리는 아직 안 넣는다.**
                 // 흐름이 갈래 없이 일직선(랜딩 → 홈 ⇄ 도감)이고, 딥링크도 백스택
                 // 복원도 필요 없다. 산책 게임이 붙어 옆길이 생기면 그때가 맞다.
@@ -160,7 +168,11 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
-                val walkHistoryState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+                // Login lifetime, not a token refresh or a pet-name update, owns record navigation.
+                val recordsAccount by app.sessionProvider.accountScope.collectAsState()
+                val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
+                val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
+                val gameScreenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
                 val loadingSince = remember { SystemClock.elapsedRealtime() }
@@ -190,6 +202,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 var session by remember { mutableStateOf(saved) }
+                /**
+                 * 저장된 세션을 되살려 봤나. **로딩을 떠나는 판정이 이걸 본다.**
+                 *
+                 * 저장된 것이 없으면 되살릴 일도 없으니 처음부터 [SessionRestore.Ok] 다.
+                 */
+                var sessionRestore by remember {
+                    mutableStateOf(if (saved == null) SessionRestore.Ok else SessionRestore.Pending)
+                }
                 var busy by remember { mutableStateOf(false) }
                 val pets = rememberPetHolder()
                 // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
@@ -271,8 +291,6 @@ class MainActivity : ComponentActivity() {
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
-                /** 목록에서 고른 산책. 상세 화면은 id 만 받아 스스로 읽어 온다. */
-                var openedWalkId by remember { mutableStateOf<String?>(null) }
 
                 /** 홈 카드의 오늘치. null 은 **아직 못 읽은 것**이라 카드가 `-` 로 둔다. */
                 var todayWalks by remember { mutableStateOf<WalkDayTotals?>(null) }
@@ -392,7 +410,15 @@ class MainActivity : ComponentActivity() {
                         roomName = null
                         return@LaunchedEffect
                     }
-                    val token = freshToken() ?: return@LaunchedEffect
+                    // **조용히 끝내지 않는다.** 못 받았으면 못 받았다고 남겨야
+                    // 로딩이 그걸 보고 나간다. 예전에는 여기서 그냥 돌아가서 `pets`
+                    // 도 `petsError` 도 안 채워졌고, 판정은 계속 기다리기만 했다.
+                    val token = freshToken()
+                    if (token == null) {
+                        sessionRestore = SessionRestore.Failed
+                        return@LaunchedEffect
+                    }
+                    sessionRestore = SessionRestore.Ok
                     pets.refresh(token)
                     // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
                     AuthApi.me(token).onSuccess { roomName = it.roomName; nickname = it.nickname }
@@ -434,9 +460,9 @@ class MainActivity : ComponentActivity() {
                 // 읽혔다. 기다리는 길이는 **로딩이 뜬 시각에서** 잰다 — 이 블록은 목록이
                 // 바뀔 때마다 다시 도는데, 그때마다 새로 700 을 세면 목록이 여러 번
                 // 갱신되는 날에 몇 초씩 잡혀 있는다.
-                LaunchedEffect(screen, pets.pets, pets.error) {
+                LaunchedEffect(screen, pets.pets, pets.error, sessionRestore) {
                     if (screen != Screen.Loading) return@LaunchedEffect
-                    val next = when (startupTarget(pets.pets, pets.error)) {
+                    val next = when (startupTarget(pets.pets, pets.error, sessionRestore)) {
                         StartupTarget.Wait -> return@LaunchedEffect
                         StartupTarget.Home -> Screen.Home
                     }
@@ -448,11 +474,24 @@ class MainActivity : ComponentActivity() {
                     if (saved != null) {
                         val restored = app.sessionProvider.freshSession()
                         when {
-                            restored != null -> session = restored
+                            restored != null -> {
+                                session = restored
+                                sessionRestore = SessionRestore.Ok
+                            }
                             store.load() == null -> {
                                 session = null
+                                sessionRestore = SessionRestore.Ok
                                 screen = Screen.Landing
                             }
+                            // **여기가 비어 있었다.** 못 갱신했는데 토큰은 남아 있는
+                            // 경우다 — 신호가 없거나 서버가 죽었을 때다. 두 갈래 다
+                            // 안 타니 화면은 로딩인 채로, 세션은 옛 값 그대로 남아
+                            // 아래 목록 불러오기가 조용히 끝났고, 그래서 로딩에서
+                            // 영영 못 나왔다.
+                            //
+                            // **로그아웃시키지 않는다.** 토큰은 살아 있고 지금 못
+                            // 닿을 뿐이라, 랜딩으로 보내면 사실이 아닌 말을 하게 된다.
+                            else -> sessionRestore = SessionRestore.Failed
                         }
                     }
                 }
@@ -684,7 +723,7 @@ class MainActivity : ComponentActivity() {
                                 ownerId = session?.appUserId,
                                 petId = pets.primary?.id,
                                 petName = pets.primary?.name,
-                                onOpenGame = { askPetThen(PetNeed.Walk) { screen = Screen.Walk } },
+                                onOpenGame = { screen = Screen.TerritoryGame },
                             )
                         },
                         signedIn = session != null,
@@ -912,34 +951,57 @@ class MainActivity : ComponentActivity() {
                         onRefreshProfiles = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                     )
 
-                    Screen.WalkHistory -> walkHistoryState.SaveableStateProvider("walk-history") { WalkHistoryScreen(
-                        history = walkRuntime.history,
-                        // 목록을 열 때 한 번 더. 걷고 나서 지하철에 들어갔던 기록이
-                        // 여기서 올라가고, 다른 기기에서 한 산책이 여기서 내려온다.
-                        onSync = { scope.launch { walkRuntime.sync.syncOnce(freshToken()) } },
-                        onBack = { screen = Screen.Home },
-                        pets = pets.pets.orEmpty(),
-                        photoOf = { petPhotos[it] },
-                        onOpen = { id ->
-                            openedWalkId = id
-                            screen = Screen.WalkDetail
-                        },
-                    )
-
-                    }
-
-                    Screen.WalkDetail -> openedWalkId?.let { id ->
-                        com.daengs.app.ui.walk.WalkDiaryMapScreen(
-                            sessionId = id,
-                            history = walkRuntime.history,
-                            onBack = { screen = Screen.WalkHistory },
-                            pets = pets.pets.orEmpty(),
+                    Screen.WalkHistory, Screen.WalkDetail -> key(recordsAccount) {
+                        WalkRecordsRoute(
+                            accountScope = recordsAccount,
+                            source = recordsSource,
+                            state = recordsRouteState,
+                            pets = pets.pets,
+                            onBack = { screen = Screen.Home },
+                            onSignIn = { screen = Screen.Landing },
+                            onSync = {
+                                val auth = app.sessionProvider.freshSession()
+                                if (auth != null && auth.appUserId == recordsAccount.ownerId &&
+                                    app.sessionProvider.accountScope.value == recordsAccount) {
+                                    walkRuntime.sync.syncOnce(auth.accessToken)
+                                }
+                            },
+                            detailContent = { id, backToRecords ->
+                                com.daengs.app.ui.walk.WalkDiaryMapScreen(id, walkRuntime.history,
+                                    onBack = backToRecords, pets = pets.pets.orEmpty())
+                            },
                         )
                     }
 
+                    Screen.TerritoryGame -> gameScreenState.SaveableStateProvider("territory-game:${session?.appUserId}") {
+                        com.daengs.app.ui.game.TerritoryGameRoute(
+                            repository = app.activityRepository, ownerId = session?.appUserId,
+                            pets = pets.pets, photoOf = { petPhotos[it] }, petsError = pets.error != null,
+                            onRefreshPets = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
+                            onBack = { screen = Screen.Home },
+                            onOpenMap = { screen = Screen.OwnedTerritories },
+                            onOpenBookmarks = { screen = Screen.TerritoryBookmarks },
+                            onAddPet = { editing = null; screen = Screen.Onboarding },
+                            onSignIn = { screen = Screen.Landing },
+                        )
+                    }
+
+                    Screen.OwnedTerritories -> gameScreenState.SaveableStateProvider("owned-territories:${session?.appUserId}") {
+                        com.daengs.app.ui.game.owned.OwnedTerritoryRoute(
+                            repository = app.ownedTerritoryRepository, ownerId = session?.appUserId,
+                            pets = pets.pets, photoOf = { petPhotos[it] },
+                            onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
+                        )
+                    }
+
+                    Screen.TerritoryBookmarks -> com.daengs.app.ui.game.bookmarks.TerritoryBookmarksRoute(
+                        onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
+                    )
+
                     Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
-                        // 산책 전 `일기` 는 홈의 `지난 산책` 과 같은 화면으로 간다.
+                        onHome = { screen = Screen.Home },
+                        // 산책 기록은 홈 카드와 같은 산책별/모아보기 화면으로 간다.
                         onOpenDiaryList = { screen = Screen.WalkHistory },
                         onRequestOrientation = { walkOrientation = it },
                         walkController = walkController,
@@ -1045,6 +1107,7 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { petNeed = null },
                     )
                 }
+              }
             }
         }
     }

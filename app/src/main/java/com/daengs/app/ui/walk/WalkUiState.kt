@@ -94,7 +94,7 @@ sealed interface WalkAction {
     data object OpenEntries : WalkAction
 
     /**
-     * 산책 일기 **목록**으로 나간다.
+     * 산책 기록 **목록**으로 나간다.
      *
      * [OpenEntries] 와 다른 자리다 — 저쪽은 지금 걷는 산책 한 건에 남긴 것이고,
      * 이쪽은 지난 산책들의 목록이다. 걷는 중인 산책은 끝나야 목록에 들어가므로

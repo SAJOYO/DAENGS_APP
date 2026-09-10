@@ -58,6 +58,8 @@ sealed interface PlacesAction {
     data class Discover(val query: String) : PlacesAction
     data class ChooseAi(val choice: FacilityChoice) : PlacesAction
     data object RetryAi : PlacesAction
+    data object CancelAi : PlacesAction
+    data object UndoAi : PlacesAction
     data class ToggleDog(val id: String) : PlacesAction
     data class Locate(val category: PlaceCategorySelection, val preferParking: Boolean, val nameQuery: String? = null) : PlacesAction {
         constructor(kind: PlaceKind?, preferParking: Boolean, nameQuery: String? = null) :
@@ -212,6 +214,16 @@ class PlacesViewModel(
                 }
             }
             is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
+            PlacesAction.CancelAi -> { conversationRepository?.cancelPending(); facility.cancelPending() }
+            PlacesAction.UndoAi -> {
+                val repository = conversationRepository ?: return
+                runtimeScope.launch {
+                    try {
+                        if (repository.undo()) repository.state.value.result?.let(session::acceptConversation)
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                    } catch (_: Exception) { /* 현재 결과를 유지하고 말풍선에서 재시도한다. */ }
+                }
+            }
             is PlacesAction.Discover -> discover(action.query)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
             PlacesAction.RetryAi -> {
@@ -284,7 +296,7 @@ class PlacesViewModel(
         }
         val kinds = current.discovery.requestedKinds
         if (conversationRepository != null) {
-            if (kinds.size > 6 || current.discovery.loading || conversationRepository.state.value.result == null) {
+            if (kinds.isEmpty() || kinds.size > 6 || current.discovery.loading || conversationRepository.state.value.result == null) {
                 facility.reject("카테고리를 선택해 주변 장소를 불러온 뒤 입력해 주세요.")
                 return
             }
