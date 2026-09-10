@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.daengs.app.ui.theme.TextMuted
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -71,14 +74,31 @@ fun HomeGameRoute(repository: ActivityRepository, ownerId: String?, petId: Strin
     }
 }
 
+/**
+ * 홈의 시즌 한 줄.
+ *
+ * **한 줄이다.** 전에는 제목과 본문을 쌓아서, `시즌 현황을 불러오고 있어요` 나
+ * `준비 중` 한 마디만 띄우는 동안에도 두 줄 높이를 먹었다. 홈은 미니룸이 주인공인
+ * 화면이라 그 자리를 돌려준다.
+ *
+ * 제목은 안 지운다 — 누구의 시즌인지가 사라지면 숫자만 남는다. 대신 좁으면 제목이
+ * 먼저 줄고(`weight`), 본문은 자기 길이만큼만 차지한다.
+ */
 @Composable
 fun HomeGameCard(title: String, message: String, onOpen: () -> Unit) {
-    TextButton(onClick = onOpen, modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.labelMedium)
-            Text(message, style = MaterialTheme.typography.bodyMedium)
+    TextButton(
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.labelMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Text(message, style = MaterialTheme.typography.labelMedium,
+                color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text("현황 ›")
+        Text("현황 ›", style = MaterialTheme.typography.labelMedium)
     }
 }
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.ui.theme.DaengPink
@@ -41,6 +43,17 @@ import kotlin.math.roundToInt
  * 무슨 야채가 나올지는 아직 정해지지 않았다(`drawNow()` 에서 뽑는다). 그래서 카드
  * 모양이 아니라 **원 하나만** 둔다 — 어차피 구멍은 열두 장 다 타원이다.
  */
+/**
+ * 얼굴 맞추는 상자의 최대 폭.
+ *
+ * 411dp 폭 기기에서 바깥 여백 20dp 를 빼면 371dp 가 남는데, 그때도 이 값이 걸려
+ * 조금 작아진다 — 사진이 너무 크다는 이야기가 그 전에도 있었다. 넓은 화면에서는
+ * 이 값이 그대로 상한이 된다.
+ */
+internal const val FACE_FRAME_TAG = "face-frame"
+
+private val MAX_FRAME = 300.dp
+
 @Composable
 fun FaceFrameStep(
     face: Bitmap,
@@ -51,6 +64,19 @@ fun FaceFrameStep(
     val image: ImageBitmap = face.asImageBitmap()
     Box(
         modifier
+            // **넓은 화면에서 무한정 커지지 않는다.** 이 상자는 폭만 한 정사각형이라
+            // 폭이 넓어지면 그만큼 키도 커진다. 펼친 폴드에서는 화면을 다 먹어서
+            // 아래 `이 얼굴로 뽑기` · `다시 자르기` 가 밀려났고, **카드를 못 뽑았다.**
+            //
+            // ⚠️ **"스크롤 되니까 괜찮다" 가 여기서는 성립하지 않는다.** 이 상자는
+            // 크롭 손짓(핀치·이동)을 받는 자리라 세로 끌기를 가져간다. 상자가 화면을
+            // 거의 덮으면 스크롤을 시작할 자리 자체가 없다 — 버튼이 **첫 화면에**
+            // 보여야 한다. 이 상한을 키우려는 사람은 이 줄을 먼저 읽을 것.
+            //
+            // 폭만 묶는다. 감싼 쪽이 세로로 스크롤되는 `Column` 이라 거기서는 남은
+            // 높이를 잴 수 없다(`BoxWithConstraints` 의 maxHeight 가 무한이다).
+            .testTag(FACE_FRAME_TAG)
+            .widthIn(max = MAX_FRAME)
             .fillMaxWidth()
             .aspectRatio(1f)
             .background(PinkFaint)
