@@ -208,7 +208,7 @@ fun ChatSummaryRoute(
                     val token = accessTokenProvider()
                     // beginReceipt 이 false 면 강아지가 없거나 이미 처리 중인 영수증이 있다.
                     if (token == null ||
-                        !vetCoordinator.beginReceipt(token, prepared.jpeg, prepared.thumbnail)
+                        !vetCoordinator.beginReceipt(token, prepared.jpeg, prepared)
                     ) {
                         receiptStartError = "지금은 영수증을 올릴 수 없어요. 다시 로그인한 뒤 시도해 주세요."
                     }
@@ -218,7 +218,7 @@ fun ChatSummaryRoute(
     }
     vetState.receipt?.let { flow ->
         ReceiptConfirmScreen(
-            photo = flow.thumbnail,
+            photo = flow.photo,
             draft = flow.draft,
             options = vetState.reasonOptions,
             step = flow.step,

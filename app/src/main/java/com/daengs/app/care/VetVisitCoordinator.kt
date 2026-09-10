@@ -1,6 +1,6 @@
 package com.daengs.app.care
 
-import android.graphics.Bitmap
+import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.chat.ChatLoadState
 import kotlinx.coroutines.CancellationException
@@ -44,11 +44,14 @@ data class ReceiptFlow(
     val draft: VetVisitDraft? = null,
     val error: ChatApiError? = null,
     /**
-     * 확인 화면이 보여 줄 그림. **흐름이 들고 있다** — 화면이 들면 저장소 탭을 잠깐
-     * 벗어나는 순간 사진만 사라져서, 돌아왔을 때 대조할 원본이 없는 확인 화면이 뜬다.
-     * 흐름과 함께 나고 함께 사라지므로 확정 뒤에 남지도 않는다.
+     * 확인 화면이 보여 줄 사진 — 미리보기용 썸네일과 **크게 볼 때 풀 원본 바이트**를
+     * 같이 든다 (썸네일만 들면 늘렸을 때 글자를 못 읽는다).
+     *
+     * **흐름이 들고 있다** — 화면이 들면 저장소 탭을 잠깐 벗어나는 순간 사진만 사라져서,
+     * 돌아왔을 때 대조할 원본이 없는 확인 화면이 뜬다. 흐름과 함께 나고 함께 사라지므로
+     * 확정 뒤에 남지도 않는다. 올릴 바이트([pendingJpeg])와 같은 배열을 가리킨다.
      */
-    val thumbnail: Bitmap? = null,
+    val photo: PreparedPhoto? = null,
 )
 
 /** 유저가 확인 화면에서 고친 값. `client_event_id` 는 화면이 모른다 — 흐름이 들고 있다. */
@@ -193,11 +196,11 @@ class VetVisitCoordinator(
      * 사진을 찍었다. **여기서 `client_event_id` 가 생긴다** — 업로드 버튼을 누를 때가
      * 아니다. 화면이 얼어 보여 두 번 눌려도 같은 키여야 초안이 하나다.
      */
-    fun beginReceipt(accessToken: String, jpeg: ByteArray, thumbnail: Bitmap? = null): Boolean {
+    fun beginReceipt(accessToken: String, jpeg: ByteArray, photo: PreparedPhoto? = null): Boolean {
         val petId = mutableState.value.selectedPetId ?: return false
         if (mutableState.value.receipt != null) return false
         pendingJpeg = jpeg
-        val flow = ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING, thumbnail = thumbnail)
+        val flow = ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING, photo = photo)
         mutableState.update { it.copy(receipt = flow) }
         runReceipt(accessToken, petId, flow, fromStart = true)
         return true
@@ -233,7 +236,7 @@ class VetVisitCoordinator(
         val restart = flow.draftId == null || flow.error?.code == PHOTO_NOT_UPLOADED
         val next = if (restart) {
             // 새 초안이어도 사진은 처음 찍은 그것이다 — 다시 올릴 바이트도 그것이다.
-            ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING, thumbnail = flow.thumbnail)
+            ReceiptFlow(clientEventId = newId(), step = ReceiptStep.UPLOADING, photo = flow.photo)
         } else {
             // **초안을 비우고 간다.** 안 비우면 `failed` 초안이 그대로 남아, 도는 동안
             // 다시 눌렀을 때 위의 `serverFailed` 가 또 참이 되어 진행 중인 추출을 끊는다.

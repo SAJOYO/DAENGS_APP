@@ -1,6 +1,6 @@
 package com.daengs.app.ui.storage
 
-import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +46,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -67,6 +69,7 @@ import com.daengs.app.care.VetReasonOption
 import com.daengs.app.care.VetVisitDraft
 import com.daengs.app.care.phoneLooksValid
 import com.daengs.app.chat.ChatApiError
+import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.ui.common.DaengsTextAction
 import com.daengs.app.ui.common.KeepScrollInside
 import com.daengs.app.ui.common.DaengsWideButton
@@ -103,8 +106,14 @@ import java.util.Locale
  * ⚠️ **`isOncology` 는 유저만 켠다.** 영수증에 찍힌 글자가 아니라 임상 판단이라 저쪽
  *    추출 스키마에 칸 자체가 없다 — 여기서도 기계가 미리 켜 주지 않는다.
  *
- * 영수증 그림은 **방금 찍은 로컬 비트맵**이다. 응답의 `receipt_image_url` 을 안 쓴다 —
+ * 영수증 그림은 **방금 찍은 로컬 사진**이다. 응답의 `receipt_image_url` 을 안 쓴다 —
  * 그 그림이 이미 우리 손에 있어서 받아 올 이유가 없다.
+ *
+ * ⚠️ **눌러서 크게 볼 수 있어야 한다.** 실물 영수증은 세로로 길어서(1170×2532 실측)
+ *    작은 미리보기에 `Fit` 으로 넣으면 폭이 100dp 밖에 안 되고 글자를 못 읽는다 — 폴드
+ *    673dp 에서 특히 그렇다. **기계가 채운 값을 사람이 대조하는 화면인데 대조할 원본이
+ *    장식이 된다.** 그래서 미리보기는 폭을 꽉 채워 윗부분(병원·날짜가 찍힌 자리)을 보이고,
+ *    누르면 [PreparedPhoto.jpeg] 의 원본 바이트를 화면 폭에 맞춰 풀어 전체로 띄운다.
  *
  * **사유를 접힌 드롭다운이 아니라 칩으로 편다.** 제안이 못 믿을 값이라 유저가 실제로
  * 다시 고르는 것이 이 화면의 목적인데, 접어 두면 "이미 골라져 있다" 로 읽혀 그냥
@@ -118,7 +127,7 @@ import java.util.Locale
  */
 @Composable
 fun ReceiptConfirmScreen(
-    photo: Bitmap?,
+    photo: PreparedPhoto?,
     draft: VetVisitDraft?,
     options: List<VetReasonOption>,
     step: ReceiptStep,
@@ -129,8 +138,16 @@ fun ReceiptConfirmScreen(
     onDismiss: () -> Unit = {},
     today: LocalDate = LocalDate.now(),
 ) {
-    // 전면을 덮는 화면은 back 을 잡는다 (`PetPhotoPicker` 와 같은 규칙).
-    BackHandler(onBack = onDismiss)
+    var expanded by remember(photo) { mutableStateOf(false) }
+
+    // 전면을 덮는 화면은 back 을 잡는다 (`PetPhotoPicker` 와 같은 규칙). 크게 보는
+    // 중이면 back 이 그것부터 닫는다 — 초안을 버리기 전에 한 걸음 둔다.
+    BackHandler { if (expanded) expanded = false else onDismiss() }
+
+    if (photo != null && expanded) {
+        ReceiptFullScreen(photo) { expanded = false }
+        return
+    }
 
     Column(
         modifier
@@ -148,16 +165,28 @@ fun ReceiptConfirmScreen(
             DaengsTextAction("닫기", onDismiss, tint = TextMuted)
         }
 
-        photo?.let {
-            Image(
-                it.asImageBitmap(),
-                contentDescription = "찍은 영수증",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 220.dp)
-                    .clip(RoundedCornerShape(14.dp)),
-                contentScale = ContentScale.Fit,
-            )
+        photo?.let { prepared ->
+            Column(
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Image(
+                    prepared.thumbnail.asImageBitmap(),
+                    contentDescription = "찍은 영수증",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(PREVIEW_HEIGHT)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { expanded = true },
+                    // ⚠️ **자르지 않는다.** 처음엔 폭을 채우려고 `Crop` + `TopCenter` 로
+                    //    윗부분을 보였는데, 실물 사진은 위아래에 **검은 여백**이 있어
+                    //    미리보기가 통째로 까맣게 나왔다(실기기 실측). 사진마다 여백·회전이
+                    //    달라 어디를 잘라도 안전한 자리가 없다. 미리보기는 "무슨 사진인지"
+                    //    알아보는 자리이고, **대조는 눌러서 크게 보는 쪽이 한다.**
+                    contentScale = ContentScale.Fit,
+                )
+                DaengsTextAction("눌러서 크게 보기", { expanded = true }, tint = TextMuted)
+            }
         }
 
         when {
@@ -173,6 +202,60 @@ fun ReceiptConfirmScreen(
             else -> ReceiptForm(draft, options, step, error, onConfirm, onRetry, today)
         }
     }
+}
+
+/**
+ * 영수증 한 장을 **읽을 수 있는 크기로** 띄운다. 아무 데나 누르면 닫힌다.
+ *
+ * 썸네일(512px)이 아니라 [PreparedPhoto.jpeg] 의 원본 바이트를 푼다 — 썸네일을 화면
+ * 폭으로 늘리면 그게 바로 못 읽는 그림이다. 화면 폭에 맞춰 [BitmapFactory] 가
+ * 건너뛰며 읽으므로(`inSampleSize`) 2400px 를 통째로 메모리에 올리지 않는다.
+ */
+@Composable
+private fun ReceiptFullScreen(photo: PreparedPhoto, onClose: () -> Unit) {
+    val widthPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenWidthDp.dp.roundToPx()
+    }
+    val bitmap = remember(photo, widthPx) { decodeAtLeast(photo.jpeg, widthPx) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(CreamBg)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
+            .clickable(onClick = onClose),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text("영수증", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            DaengsTextAction("닫기", onClose, tint = TextMuted)
+        }
+        Image(
+            bitmap.asImageBitmap(),
+            contentDescription = "크게 본 영수증",
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClose),
+            // 폭을 꽉 채우고 세로는 흐르게 둔다 — 잘라내면 대조할 줄이 사라진다.
+            contentScale = ContentScale.FillWidth,
+        )
+    }
+}
+
+/**
+ * [target] 픽셀 폭 아래로 내려가지 않는 선에서 **건너뛰며** 읽는다.
+ *
+ * 원본을 통째로 풀면 2400px 영수증 한 장이 10MB 쯤 된다. 화면보다 큰 픽셀은 어차피
+ * 안 보이므로 그만큼만 읽는다.
+ */
+private fun decodeAtLeast(jpeg: ByteArray, target: Int): android.graphics.Bitmap {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, bounds)
+    var sample = 1
+    while (target > 0 && bounds.outWidth / (sample * 2) >= target) sample *= 2
+    return BitmapFactory.decodeByteArray(
+        jpeg, 0, jpeg.size,
+        BitmapFactory.Options().apply { inSampleSize = sample },
+    )
 }
 
 @Composable
@@ -403,6 +486,9 @@ private val WON = NumberFormat.getIntegerInstance(Locale.KOREA)
 private fun wonOf(amount: Int): String = "${WON.format(amount)}원"
 
 private fun String.blankToNull(): String? = trim().takeIf { it.isNotEmpty() }
+
+/** 미리보기 높이. 여기서는 알아보기만 하고, 읽는 것은 눌러서 크게 보는 쪽이 한다. */
+private val PREVIEW_HEIGHT = 200.dp
 
 /**
  * 사유 칩 블록의 높이.

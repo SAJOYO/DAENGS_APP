@@ -1,7 +1,10 @@
 package com.daengs.app.ui.storage
 
+import android.graphics.Bitmap
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -17,6 +20,7 @@ import com.daengs.app.care.ReceiptStep
 import com.daengs.app.care.UnreadableReason
 import com.daengs.app.care.VetReasonOption
 import com.daengs.app.care.VetVisitDraft
+import com.daengs.app.screening.PreparedPhoto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -24,6 +28,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 
 /**
@@ -145,6 +150,35 @@ class ReceiptConfirmScreenTest {
     }
 
     @Test
+    fun `영수증을 눌러 크게 볼 수 있다 — 대조가 이 화면의 목적이다`() {
+        // 세로로 긴 실물 영수증은 작은 미리보기로는 글자를 못 읽는다. 못 읽으면
+        // 기계가 채운 값을 대조할 원본이 없는 것과 같다.
+        compose.setContent { screen(okDraft(suggested = "skin"), photo = preparedPhoto()) }
+
+        compose.onNodeWithText("눌러서 크게 보기").assertExists()
+        compose.onNodeWithContentDescription("찍은 영수증").performClick()
+
+        compose.onNodeWithContentDescription("크게 본 영수증").assertExists()
+    }
+
+    @Test
+    fun `크게 본 뒤 닫으면 폼으로 돌아온다`() {
+        compose.setContent { screen(okDraft(suggested = "skin"), photo = preparedPhoto()) }
+
+        compose.onNodeWithContentDescription("찍은 영수증").performClick()
+        compose.onNodeWithContentDescription("크게 본 영수증").performClick()
+
+        compose.onNodeWithText("눌러서 크게 보기").assertExists()
+    }
+
+    @Test
+    fun `사진이 없으면 크게 보기 자리도 없다`() {
+        compose.setContent { screen(okDraft(suggested = "skin")) }
+
+        compose.onAllNodesWithText("눌러서 크게 보기").assertCountEquals(0)
+    }
+
+    @Test
     fun `읽는 중에는 폼 대신 안내가 보인다`() {
         compose.setContent { screen(draft = null, step = ReceiptStep.EXTRACTING) }
 
@@ -188,10 +222,11 @@ class ReceiptConfirmScreenTest {
         draft: VetVisitDraft?,
         step: ReceiptStep = ReceiptStep.READY,
         error: com.daengs.app.chat.ChatApiError? = null,
+        photo: PreparedPhoto? = null,
         onConfirm: (ReceiptEdits) -> Unit = {},
         onRetry: () -> Unit = {},
     ) = ReceiptConfirmScreen(
-        photo = null,
+        photo = photo,
         draft = draft,
         options = OPTIONS,
         step = step,
@@ -200,6 +235,15 @@ class ReceiptConfirmScreenTest {
         onRetry = onRetry,
         today = LocalDate.of(2026, 9, 10),
     )
+
+    /** 세로로 긴 영수증 한 장. 실물과 같은 비율(대략 1:2.2)로 만든다. */
+    private fun preparedPhoto(): PreparedPhoto {
+        val bitmap = Bitmap.createBitmap(240, 520, Bitmap.Config.ARGB_8888)
+        val jpeg = ByteArrayOutputStream()
+            .also { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            .toByteArray()
+        return PreparedPhoto(bitmap, jpeg)
+    }
 
     private fun okDraft(suggested: String?) = VetVisitDraft(
         draftId = "d1", petId = "p1", status = ExtractionStatus.OK, unreadableReason = null,
