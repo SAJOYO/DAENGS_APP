@@ -21,6 +21,7 @@ data class GeoStoryboardBundle(
         fun parse(text: String): GeoStoryboardBundle {
             require(text.toByteArray(Charsets.UTF_8).size <= 1_000_000) { "장면 파일이 너무 커요." }
             val obj = JSONObject(text)
+            if (obj.optString("format") == ServerDiaryBoard.RESPONSE) return ServerDiaryBoard.parse(text)
             if (obj.optString("format") == ServerDiaryBundle.RESPONSE) return ServerDiaryBundle.parse(text)
             val v5 = obj.getString("format") == FORMAT_V5
             val v4 = v5 || obj.getString("format") == FORMAT_V4
