@@ -106,8 +106,7 @@ class ConnectedPlaceSearchUiTest {
             discovery = PlaceDiscoveryState(requestedKinds = result.kinds, origin = result.origin,
                 selectedPlaceKey = result.selected, search = PlaceSearchState.Content(result.search!!)))
         compose.setContent { DaengsTheme {
-            ConnectedPlaceSearchScreen(state, {}, {}, {}, {}, {}, {}, showMap = false,
-                previewAvatarPosition = androidx.compose.ui.geometry.Offset(150f, 100f))
+            ConnectedPlaceSearchScreen(state, {}, {}, {}, {}, {}, {}, showMap = false)
         } }
         compose.onNodeWithText(result.answer!!).assertDoesNotExist()
         compose.onNodeWithContentDescription("강아지에게 검색 조건 말하기").performClick()
@@ -115,6 +114,25 @@ class ConnectedPlaceSearchUiTest {
         compose.onNodeWithContentDescription("AI 조건 검색 전환").assertDoesNotExist()
         assertEquals(result.selected, state.toConnectedSearchState("", true, result.selected, null).selected)
     }
+    @Test fun fixedDogRemainsAvailableWithoutGpsAndWhenSearchOriginMovesFarAway() {
+        val state = androidx.compose.runtime.mutableStateOf(ready().copy(
+            location = PlaceLocationState.Failed(PlaceLocationFailure.UNAVAILABLE, null)))
+        compose.setContent { DaengsTheme {
+            ConnectedPlaceSearchScreen(state.value, {}, {}, {}, {}, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithTag("place-dog-anchor").assertIsDisplayed().performClick()
+        compose.onNodeWithText("검색 지역을 먼저 정해 줘").assertExists()
+        compose.onNodeWithText("닫기").performClick()
+        val before = compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle {
+            state.value = state.value.copy(discovery = state.value.discovery.copy(
+                origin = GeoPoint(35.16, 129.16), radiusMeters = 500))
+        }
+        compose.onNodeWithTag("place-dog-anchor").assertIsDisplayed().performClick()
+        compose.onNodeWithText("현재 검색 지역 · 반경 500m").assertExists()
+        assertEquals(before, compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot)
+    }
+
     private fun ready() = PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.54,127.05)),
         discovery = PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE)))
 
@@ -129,15 +147,15 @@ class ConnectedPlaceSearchUiTest {
         compose.onNodeWithContentDescription("뒤로가기").performClick()
         assertEquals(1, backs)
         assertTrue(actions.isEmpty())
-        compose.onNodeWithText("내 주변 검색").performClick()
+        compose.onNodeWithContentDescription("내 주변 검색").performClick()
         assertEquals(PlacesAction.Locate(PlaceKind.CAFE, false), actions.single())
-        val before = compose.onNodeWithText("내 주변 검색").fetchSemanticsNode().boundsInRoot
+        val before = compose.onNodeWithContentDescription("내 주변 검색").fetchSemanticsNode().boundsInRoot
         expandCategories()
         compose.onNodeWithTag("place-purpose-grid").assertExists()
         // Popup belongs to another window; compare the original map control's position.
-        assertEquals(before, compose.onNodeWithText("내 주변 검색").fetchSemanticsNode().boundsInRoot)
+        assertEquals(before, compose.onNodeWithContentDescription("내 주변 검색").fetchSemanticsNode().boundsInRoot)
         compose.onNode(hasText("문화") and hasAnyAncestor(hasTestTag("place-purpose-grid"))).performClick()
-        assertEquals(before, compose.onNodeWithText("내 주변 검색").fetchSemanticsNode().boundsInRoot)
+        assertEquals(before, compose.onNodeWithContentDescription("내 주변 검색").fetchSemanticsNode().boundsInRoot)
         assertEquals(1, actions.size)
     }
     @Test fun failedGpsOffersRetryInsteadOfEmptyResults() {
@@ -178,7 +196,7 @@ class ConnectedPlaceSearchUiTest {
         compose.setContent { DaengsTheme { ConnectedPlaceSearchScreen(state.value, { action ->
             actions += action
             if (action is PlacesAction.SetAiMode) state.value = state.value.copy(facility = FacilityUiState(enabled = action.enabled))
-        }, {}, {}, {}, {}, {}, showMap = false, previewAvatarPosition = androidx.compose.ui.geometry.Offset(150f, 100f)) } }
+        }, {}, {}, {}, {}, {}, showMap = false) } }
         compose.onNodeWithTag("place-search-field").assertExists()
         compose.onNodeWithContentDescription("강아지에게 검색 조건 말하기").performClick()
         assertTrue(actions.isEmpty())

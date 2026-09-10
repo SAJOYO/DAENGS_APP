@@ -2,10 +2,13 @@ package com.daengs.app.ui.places
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -14,14 +17,18 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,28 +38,22 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
-import kotlin.math.roundToInt
+import com.daengs.app.miniroom.art.DogBreed
 
-internal data class DogBubblePlacement(val offset: IntOffset, val below: Boolean, val tailX: Float)
+internal data class DogBubblePlacement(val offset: IntOffset, val tailX: Float)
 
-/** 화면 가장자리와 키보드로 공간이 줄면 위/아래를 바꾸고, 꼬리는 항상 머리 쪽을 가리킨다. */
-internal fun placeDogBubble(anchor: IntRect, window: IntSize, popup: IntSize, margin: Int, headRadius: Int = 48): DogBubblePlacement {
+/** 고정된 머리 바로 위에서 연다. 원래 머리의 실제 bounds를 쓰므로 밀도/지도 좌표와 무관하다. */
+internal fun placeDogBubble(anchor: IntRect, window: IntSize, popup: IntSize, margin: Int): DogBubblePlacement {
     val center = anchor.center
-    val belowY = center.y + headRadius
-    val aboveY = center.y - headRadius - popup.height
-    val belowSpace = window.height - margin - belowY
-    val aboveSpace = center.y - headRadius - margin
-    val below = popup.height <= belowSpace || (popup.height > aboveSpace && belowSpace >= aboveSpace)
-    val x = (center.x - popup.width / 2).coerceIn(margin, (window.width - popup.width - margin).coerceAtLeast(margin))
-    val y = (if (below) belowY else aboveY).coerceIn(margin, (window.height - popup.height - margin).coerceAtLeast(margin))
-    return DogBubblePlacement(IntOffset(x, y), below,
+    val x = (anchor.right - popup.width).coerceIn(margin, (window.width - popup.width - margin).coerceAtLeast(margin))
+    val y = (anchor.top - popup.height).coerceIn(margin, (window.height - popup.height - margin).coerceAtLeast(margin))
+    return DogBubblePlacement(IntOffset(x, y),
         (center.x - x).toFloat().coerceIn(14f, (popup.width - 14).toFloat().coerceAtLeast(14f)))
 }
 
-/** 이 컴포넌트는 얼굴을 그리지 않는다. 지도 SDK의 기존 프로필 그림 위에 터치 영역만 얹는다. */
+/** 위치 마커와 분리된 검색 도우미. 지도 이동이나 GPS 유무가 입구를 숨기지 않는다. */
 @Composable
 internal fun PlaceDogAssistant(
-    anchor: Offset?,
     busy: Boolean,
     replyAvailable: Boolean,
     open: Boolean,
@@ -60,21 +61,32 @@ internal fun PlaceDogAssistant(
     onSubmit: (String) -> Unit,
     onCancel: () -> Unit,
     onUndo: (() -> Unit)? = null,
+    avatarBreed: DogBreed? = null,
+    avatarPhoto: android.graphics.Bitmap? = null,
+    searchContext: String? = null,
     reply: @Composable () -> Unit,
 ) {
-    if (anchor == null) return
     val density = LocalDensity.current
     val keyboard = LocalSoftwareKeyboardController.current
     var draft by rememberSaveable { mutableStateOf("") }
     var composing by rememberSaveable { mutableStateOf(false) }
-    val targetSize = with(density) { 48.dp.roundToPx() }
-    Box(Modifier.offset { IntOffset(anchor.x.roundToInt() - targetSize / 2, anchor.y.roundToInt() - targetSize / 2) }
-        .size(48.dp).testTag("place-dog-anchor")
-        .clickable(role = Role.Button) { composing = !replyAvailable; onOpen(!open) }
-        .semantics { contentDescription = "강아지에게 검색 조건 말하기" }) {
+    Box(Modifier.size(48.dp)) {
+        Surface(Modifier.fillMaxSize(), shape = CircleShape, shadowElevation = 4.dp,
+            color = DaengsColors.Surface, border = BorderStroke(1.dp, DaengsColors.BrandPrimarySoft)) {
+            Box(Modifier.fillMaxSize().clip(CircleShape)
+                .clickable(role = Role.Button) { composing = !replyAvailable; onOpen(!open) }
+                .semantics { contentDescription = "강아지에게 검색 조건 말하기" }
+                .testTag("place-dog-anchor").padding(3.dp)) {
+                val portrait = Modifier.fillMaxSize().clip(CircleShape)
+                if (avatarPhoto != null) Image(avatarPhoto.asImageBitmap(), contentDescription = null,
+                    modifier = portrait, contentScale = ContentScale.Crop)
+                else Image(painterResource((avatarBreed ?: DogBreed.BEAGLE).portraitRes), contentDescription = null,
+                    modifier = portrait, contentScale = ContentScale.Crop)
+            }
+        }
         if (open) {
             val position = remember(density, busy) { BubblePositionProvider(with(density) { 8.dp.roundToPx() }, busy) }
-            var placement by remember { mutableStateOf(DogBubblePlacement(IntOffset.Zero, true, 100f)) }
+            var placement by remember { mutableStateOf(DogBubblePlacement(IntOffset.Zero, 100f)) }
             var maxSpace by remember { mutableIntStateOf(Int.MAX_VALUE) }
             position.onPosition = { placement = it }
             position.onSpace = { maxSpace = it }
@@ -96,7 +108,7 @@ internal fun PlaceDogAssistant(
                     val scale by animateFloatAsState(if (appeared) 1f else .88f, spring(dampingRatio = .7f), label = "dog-bubble-pop")
                     Box(Modifier.width(width).graphicsLayer {
                         scaleX = scale; scaleY = scale
-                        transformOrigin = TransformOrigin((placement.tailX / size.width).coerceIn(0f, 1f), if (placement.below) 0f else 1f)
+                        transformOrigin = TransformOrigin((placement.tailX / size.width).coerceIn(0f, 1f), 1f)
                     }
                         .testTag("place-dog-bubble").padding(vertical = 10.dp)) {
                         Surface(shape = RoundedCornerShape(20.dp), color = DaengsColors.Surface,
@@ -111,6 +123,8 @@ internal fun PlaceDogAssistant(
                                     TextButton(onClick = { keyboard?.hide(); onOpen(false) },
                                         modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)) { Text("닫기", fontSize = 11.sp) }
                                 }
+                                searchContext?.let { Text(it, fontSize = 11.sp, color = DaengsColors.TextSecondary,
+                                    modifier = Modifier.testTag("place-dog-search-context")) }
                                 if (composing || !replyAvailable) {
                                     fun submit() {
                                         if (draft.isBlank()) return
@@ -135,14 +149,7 @@ internal fun PlaceDogAssistant(
                             }
                         }
                         // 여백 안에서 꼬리를 그려 카드 높이를 바꾸지 않는다.
-                        Canvas(Modifier.fillMaxWidth().height(1.dp)) {
-                            val x = placement.tailX
-                            val h = 10.dp.toPx()
-                            if (placement.below) drawPath(Path().apply {
-                                moveTo(x, -h); lineTo(x - h, 1f); lineTo(x + h, 1f); close()
-                            }, DaengsColors.Surface)
-                        }
-                        if (!placement.below) Canvas(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp)) {
+                        Canvas(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp)) {
                             val x = placement.tailX; val h = 10.dp.toPx()
                             drawPath(Path().apply { moveTo(x, h); lineTo(x - h, -1f); lineTo(x + h, -1f); close() }, DaengsColors.Surface)
                         }
@@ -157,10 +164,8 @@ private class BubblePositionProvider(private val margin: Int, private val thinki
     var onPosition: (DogBubblePlacement) -> Unit = {}
     var onSpace: (Int) -> Unit = {}
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-        onSpace(maxOf(anchorBounds.center.y - 48 - margin, windowSize.height - anchorBounds.center.y - 48 - margin))
-        if (thinking) return IntOffset(
-            (anchorBounds.center.x + 16).coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)),
-            (anchorBounds.center.y - 48 - popupContentSize.height).coerceAtLeast(margin))
+        onSpace(anchorBounds.top - margin)
+        if (thinking) return placeDogBubble(anchorBounds, windowSize, popupContentSize, margin).offset
         return placeDogBubble(anchorBounds, windowSize, popupContentSize, margin).also(onPosition).offset
     }
 }
@@ -174,18 +179,18 @@ private fun DogThoughts() {
     Canvas(Modifier.size(100.dp, 72.dp).testTag("place-dog-thinking")
         .semantics { contentDescription = "강아지가 검색 조건을 생각하고 있어요"; liveRegion = LiveRegionMode.Polite }) {
         val u = size.width / 100f
-        drawCircle(white, 4 * u, Offset(10 * u, 68 * u))
-        drawCircle(white, 7 * u, Offset(25 * u, 51 * u))
-        drawRoundRect(white, Offset(27 * u, 0f), androidx.compose.ui.geometry.Size(66 * u, 38 * u),
+        drawCircle(white, 4 * u, Offset(85 * u, 68 * u))
+        drawCircle(white, 7 * u, Offset(70 * u, 51 * u))
+        drawRoundRect(white, Offset(3 * u, 0f), androidx.compose.ui.geometry.Size(66 * u, 38 * u),
             androidx.compose.ui.geometry.CornerRadius(19 * u))
-        repeat(3) { i -> drawCircle(ink.copy(alpha = if (phase >= i + 1) 1f else .2f), 2.6f * u, Offset((45 + i * 14) * u, 19 * u)) }
+        repeat(3) { i -> drawCircle(ink.copy(alpha = if (phase >= i + 1) 1f else .2f), 2.6f * u, Offset((22 + i * 14) * u, 19 * u)) }
     }
 }
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 500)
 @Composable
 private fun DogAssistantPreview() {
-    DaengsTheme { Box(Modifier.fillMaxSize()) { PlaceDogAssistant(Offset(180f, 150f), false, false, true, {}, {}, {}) {} } }
+    DaengsTheme { PlaceMapControls(false, {}, {}) { PlaceDogAssistant(false, false, true, {}, {}, {}) {} } }
 }
 
 @Preview(showBackground = true)

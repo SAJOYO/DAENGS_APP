@@ -82,7 +82,6 @@ fun NaverMapSurface(
     modifier: Modifier = Modifier,
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
-    onAvatarPosition: ((androidx.compose.ui.geometry.Offset?) -> Unit)? = null,
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -105,7 +104,6 @@ fun NaverMapSurface(
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
     val latestMomentCallback by rememberUpdatedState(onSelectMoment)
     val latestSnapshotCallback by rememberUpdatedState(onCameraSnapshot)
-    val latestAvatarCallback by rememberUpdatedState(onAvatarPosition)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
@@ -160,24 +158,8 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = if (keepSelectionVisible || onAvatarPosition != null) modifier.onSizeChanged { viewportSize = it } else modifier,
+        modifier = if (keepSelectionVisible) modifier.onSizeChanged { viewportSize = it } else modifier,
     )
-
-    // SDK가 그리는 내 위치와 같은 projection을 사용한다. 팝업이 카메라를 움직이지 않는다.
-    DisposableEffect(naverMap, scene.currentPosition, viewportSize, onAvatarPosition != null) {
-        val map = naverMap
-        val point = scene.currentPosition
-        fun report() {
-            val screen = if (map != null && point != null && viewportSize != IntSize.Zero)
-                map.projection.toScreenLocation(point.toLatLng()) else null
-            latestAvatarCallback?.invoke(screen?.takeIf {
-                it.x in 0f..viewportSize.width.toFloat() && it.y in 0f..viewportSize.height.toFloat()
-            }?.let { androidx.compose.ui.geometry.Offset(it.x, it.y) })
-        }
-        val listener = NaverMap.OnCameraChangeListener { _, _ -> report() }
-        if (onAvatarPosition != null) { map?.addOnCameraChangeListener(listener); report() }
-        onDispose { map?.removeOnCameraChangeListener(listener); latestAvatarCallback?.invoke(null) }
-    }
 
     LaunchedEffect(naverMap, searchOrigin) {
         val map = naverMap ?: return@LaunchedEffect
