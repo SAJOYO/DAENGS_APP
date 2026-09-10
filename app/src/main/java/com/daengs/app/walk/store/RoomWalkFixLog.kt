@@ -23,7 +23,8 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val forgottenOwners = mutableSetOf<String>()
 
     override val ownerId: String get() = owner()
-    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds(), dao.observeAnalysisChanges()) { _, _, _, _ -> Unit }
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(),
+        dao.observePhotoIds(), dao.observeAnalysisChanges(), dao.observeDiaryPublicationCount()) { _, _, _, _, _ -> Unit }
 
     override suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> {
         val expectedOwner = owner()
@@ -101,7 +102,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.entries(sessionId).any { it.payload != null } || dao.hasPhotos(sessionId)
 
     override suspend fun closeSession(sessionId: String, endedAtMillis: Long) =
-        dao.closeSession(sessionId, endedAtMillis)
+        dao.closeAndPrepareDiary(sessionId, endedAtMillis)
 
     override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) =
         dao.stampWeather(

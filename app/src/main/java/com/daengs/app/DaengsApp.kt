@@ -74,6 +74,8 @@ class DaengsApp : Application() {
         private set
     lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
         private set
+    lateinit var walkDiaryPublication: com.daengs.app.walk.diary.WalkDiaryPublication
+        private set
 
     /** CameraX 완료 뒤 저장은 화면 회전/이탈보다 오래 살아야 한다. */
     fun saveWalkPhoto(capture: com.daengs.app.walk.WalkPhotoCapture, file: java.io.File) = applicationScope.async {
@@ -152,8 +154,18 @@ class DaengsApp : Application() {
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
         // Queue recovery before the service can enqueue a new session/action.
+        walkDiaryPublication = com.daengs.app.walk.diary.WalkDiaryPublication(dao,
+            { tokenStore.load()?.appUserId.orEmpty() }, applicationScope, sync = { id ->
+                sessionProvider.freshSession()?.let { auth ->
+                    walkRuntime.sync.syncPendingSession(auth.accessToken, id)
+                }
+            })
         val recoveredPins = writer.ordered { actionPins.recover() }
-        applicationScope.launch { recoveredPins.await(); delivery.enqueuePending() }
+        applicationScope.launch {
+            recoveredPins.await()
+            walkDiaryPublication.recover()
+            delivery.enqueuePending()
+        }
         if (BuildConfig.DEBUG && BuildConfig.TERRITORY_SERVER_ACTIONS) {
             val actions = TerritoryActionSync(TerritoryActionDatabase.open(this).actions(),
                 TerritoryActionApi { BuildConfig.API_BASE_URL }, sessionProvider::freshSession,

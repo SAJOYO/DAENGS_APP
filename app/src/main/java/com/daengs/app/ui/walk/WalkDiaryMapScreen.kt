@@ -61,8 +61,16 @@ internal fun WalkDiaryMapScreen(
     var savingScene by remember(sessionId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val entries by remember(sessionId) { app.walkEntries.observe(sessionId) }.collectAsState(initial = emptyList())
-    LaunchedEffect(sessionId) { app.walkRuntime.delivery.enqueue(sessionId) }
+    LaunchedEffect(sessionId) {
+        app.walkDiaryPublication.start(sessionId)
+        app.walkRuntime.delivery.enqueue(sessionId)
+    }
     fun generate() {
+        if (diary?.published == true) {
+            app.walkDiaryPublication.start(sessionId)
+            retry++
+            return
+        }
         if (generating) return
         generating = true; generationError = null
         scope.launch {
@@ -117,9 +125,14 @@ internal fun WalkDiaryMapScreen(
         route?.bounds.orEmpty().ifEmpty { listOfNotNull(detail?.summary?.anchor) } + scenes.mapNotNull { it.point }
     }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        if (loaded && detail == null) {
+        if (loaded && detail == null && error == null) {
             TextButton(onClick = onBack) { Text("‹ 산책 목록") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
+        } else if (!loaded || diary == null || diary?.preparing == true) {
+            WalkDiaryPreparing(onBack = onBack, onRefresh = {
+                app.walkDiaryPublication.start(sessionId)
+                retry++
+            }, error = error)
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
                 onSelect = ::selectScene, onClose = { selectedId = null },
@@ -136,6 +149,7 @@ internal fun WalkDiaryMapScreen(
                 adding = adding,
                 generationNotice = generationError ?: diary?.notice,
                 generating = generating, onGenerate = ::generate,
+                generationActionLabel = if (diary?.published == true) "새로고침" else "일기 생성·갱신",
                 title = detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
                 subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
                 onBack = onBack, mapSettings = { WalkMapSettingsButton() },

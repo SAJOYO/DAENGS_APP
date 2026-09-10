@@ -58,6 +58,47 @@ class WalkDiaryBoardSyncTest {
         assertTrue(storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
     }
 
+    @Test fun `publication sends only the budget left since end and never posts after publication`() = checkDb { dao ->
+        val started = 10000L
+        val base = LocalDiaryBoard.build(com.daengs.app.walk.WalkSummary(id, emptyList(), 0, 10000,
+            null, 0.0, 0, emptyList(), null), emptyList(), emptyList(), emptyList())
+        dao.insertDiaryPublication(WalkDiaryPublicationRow(id, started, started + 10000, base))
+        var posts = 0
+        val sync = WalkDiarySync(dao, { "owner" }, nowMillis = { 14000 }, request = { _, path, method, body ->
+            when {
+                path.endsWith("capabilities") -> capability.put("diary_publication",
+                    JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 10000))
+                method == "GET" -> diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
+                else -> {
+                    posts++
+                    assertTrue(body!!.getLong("preparation_budget_ms") in 0..6000)
+                    assertFalse(body.getBoolean("refresh"))
+                    diaryBoardFixture()
+                }
+            }
+        })
+        sync.sync("token", id, "remote")
+        assertEquals(1, posts)
+        val published = dao.diaryPublication(id)!!.publishedBundle
+        assertNotNull(published)
+        sync.sync("token", id, "remote", refresh = true)
+        assertEquals(1, posts)
+        assertEquals(published, dao.diaryPublication(id)!!.publishedBundle)
+    }
+
+    @Test fun `new local preparation skips unsupported generation and an expired budget`() = checkDb { dao ->
+        val started = 10000L
+        dao.insertDiaryPublication(WalkDiaryPublicationRow(id, started, started + 10000, "local-base"))
+        WalkDiarySync(dao, { "owner" }, nowMillis = { 14000 }, legacy = { _, _, _, _ -> error("no legacy generation") },
+            request = { _, path, method, _ ->
+                assertEquals("GET", method)
+                if (path.endsWith("capabilities")) capability else diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
+            }).sync("token", id, "remote")
+        dao.publishDiaryBase(id, started + 10000)
+        WalkDiarySync(dao, { "owner" }, request = { _, _, _, _ -> error("published means no network generation") })
+            .sync("token", id, "remote")
+    }
+
     @Test fun `pending posts negotiated contract once then reads completed board`() = checkDb { dao ->
         dao.insertPhotoSync(WalkPhotoSyncRow(id, "owner", "publisher", 1, 1))
         var reads = 0; var posts = 0

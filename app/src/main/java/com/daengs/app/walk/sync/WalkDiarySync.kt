@@ -29,6 +29,7 @@ class WalkDiarySync(
         WalkStoryboardSync(dao, owner).sync(token, id, walk, refresh)
     },
     private val pause: suspend () -> Unit = { delay(2_000) },
+    private val nowMillis: () -> Long = System::currentTimeMillis,
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
         WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
     },
@@ -39,6 +40,10 @@ class WalkDiarySync(
         val account = owner()
         val walk = dao.session(sessionId)
         if (account.isBlank() || walk?.ownerId != account || walk.serverWalkId != walkId || walk.endedAtMillis == null) return@withLock
+        val publication = dao.diaryPublication(sessionId)
+        suspend fun closed() = publication != null && (nowMillis() >= publication.deadlineAtMillis ||
+            dao.diaryPublication(sessionId)?.publishedBundle != null)
+        if (closed()) return@withLock
         val capabilities = try { request(token, "/storyboard/capabilities", "GET", null) }
         catch (e: WalkHttpException) { if (e.statusCode == 404) null else throw e }
         if (owner() != account) return@withLock
@@ -50,6 +55,7 @@ class WalkDiarySync(
             else -> null
         }
         if (selectedFormat == null) {
+            if (publication != null) return@withLock
             legacy(token, sessionId, walkId, refresh)
             return@withLock
         }
@@ -65,7 +71,7 @@ class WalkDiarySync(
         val stamp = diaryInputStamp(rows, photos, dao.photos(sessionId))
         val before = dao.sceneAnalysis(sessionId)
         if (!dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, before?.generation ?: 0, stamp,
-                before?.inputRevision.orEmpty(), "running", null, null), account)) return@withLock
+                before?.inputRevision.orEmpty(), "running", null, null), account, nowMillis())) return@withLock
         val expected = JSONObject().apply { rows.forEach { put(it.id, it.revision) } }
         val path = "/$walkId/storyboard"
         val query = "$path?bundle_format=$selectedFormat&target_scene_count=${ServerDiaryBundle.TARGET_SCENES}"
@@ -100,7 +106,7 @@ class WalkDiarySync(
             val raw = response.getJSONObject("bundle").toString()
             require(GeoStoryboardBundle.parse(raw).sessionId == sessionId)
             check(dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, response.getLong("generation"), stamp,
-                response.getString("input_revision"), "ready", raw, null), account))
+                response.getString("input_revision"), "ready", raw, null), account, nowMillis()))
         }
         suspend fun accept(response: JSONObject) {
             if (selectedFormat == ServerDiaryBoard.FORMAT && !response.has("format")) {
@@ -118,7 +124,7 @@ class WalkDiarySync(
             check(dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, response.getLong("generation"), stamp,
                 response.getString("input_revision"), response.getString("status"),
                 if (ready) response.toString() else null,
-                if (response.getString("status") == "failed") "일기를 만들지 못했어요. 다시 시도해 주세요." else null), account))
+                if (response.getString("status") == "failed") "일기를 만들지 못했어요. 다시 시도해 주세요." else null), account, nowMillis()))
         }
         try {
             current()
@@ -128,6 +134,7 @@ class WalkDiarySync(
                 current()
                 require(response.getString("session_id") == sessionId)
                 if (response.getString("status") != "ready") {
+                    if (publication != null) return@withLock
                     legacy(token, sessionId, walkId, false)
                     return@withLock
                 }
@@ -138,16 +145,23 @@ class WalkDiarySync(
             if (regenerate || response.getString("status") in setOf("pending", "stale", "failed", "running")) {
                 val responseFormat = if (response.getString("format") == ServerDiaryBoard.RESPONSE)
                     ServerDiaryBoard.FORMAT else ServerDiaryBundle.FORMAT
+                if (closed()) return@withLock
+                if (publication != null && (responseFormat != ServerDiaryBoard.FORMAT ||
+                        capabilities?.optJSONObject("diary_publication")?.optString("format") != ServerDiaryBoard.FORMAT))
+                    return@withLock
                 val body = JSONObject().put("bundle_format", responseFormat)
                     .put("target_scene_count", response.getInt("target_scene_count")).put("expected_entries", expected)
                     .put("expected_photo_manifest", response.optJSONObject("photo_manifest") ?: JSONObject.NULL)
                     // A non-refresh POST reuses a live lease, or recovers one abandoned by process death.
                     .put("refresh", regenerate && response.getString("status") != "running")
+                if (publication != null) body.put("preparation_budget_ms",
+                    (publication.deadlineAtMillis - nowMillis()).coerceIn(0, 10_000))
                 response = request(token, path, "POST", body)
             }
             accept(response)
             repeat(8) {
                 if (response.getString("status") != "running") return@repeat
+                if (closed()) return@withLock
                 pause(); current()
                 response = request(token, query, "GET", null)
                 accept(response)
