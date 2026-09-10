@@ -21,4 +21,13 @@ data class MapScene(
     val travelHeading: com.daengs.app.location.TravelHeading? = null,
     /** 이미 산책별로 합성한 표시 전용 흔적. 통계 값이나 이동 경로를 대신하지 않는다. */
     val traceTiles: List<TraceRasterTile> = emptyList(),
+    val spatialCells: List<com.daengs.app.map.layers.spatial.SpatialDiaryPaintCell> = emptyList(),
+    val allowRegionalOverview: Boolean = false,
 )
+
+/** Multiple historical walks may span cities; active and single-walk maps keep their local zoom. */
+internal fun MapScene.minimumZoom(): Double = when {
+    allowRegionalOverview -> 5.0
+    baseMapStyle == BaseMapStyle.TERRITORY_FOCUSED -> 13.0
+    else -> 11.0
+}

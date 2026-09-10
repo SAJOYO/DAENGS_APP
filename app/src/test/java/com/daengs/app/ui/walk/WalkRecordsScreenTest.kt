@@ -95,7 +95,10 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-view-overview").performClick()
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 4회")
         compose.onNodeWithTag("records-reset").performClick()
-        compose.waitUntil(10_000) { queries.last().dogId == null && !queries.last().filter.active }
+        // Observe the rendered result so Compose can settle the reset and background selection.
+        waitText("선택 산책 8회")
+        assertEquals(null, queries.last().dogId)
+        assertEquals(WalkHistoryFilter(), queries.last().filter)
         compose.onNodeWithTag("records-view-walks").performClick()
         waitText("1 페이지")
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 8회")
