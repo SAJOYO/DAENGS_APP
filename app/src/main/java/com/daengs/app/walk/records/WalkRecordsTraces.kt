@@ -25,6 +25,8 @@ class PreparedWalkRecordsTraces internal constructor(
     val overlapUnavailableReason: String? get() = overlap.unavailableReason
     private val eligibilityMutex = Mutex()
     private val eligibilityCache = linkedMapOf<EligibilityKey, WalkTraceMask>()
+    private val colorMutex = Mutex()
+    private val colorCache = linkedMapOf<ColorTileKey, IntArray>()
 
     fun hasOverlap(minimumWalks: Int): Boolean = overlap.hasOverlap(minimumWalks)
     fun overlapWalkIds(minimumWalks: Int): Set<String> = overlap.walkIds(minimumWalks)
@@ -60,7 +62,7 @@ class PreparedWalkRecordsTraces internal constructor(
                     if (i % 4_096 == 0) context.ensureActive()
                     tile.alpha[i] * region.alpha[i]
                 }
-                if (clipped.any { it > 0f }) tile.copy(alpha = clipped) else null
+                if (clipped.any { it > 0f }) tile.copy(alpha = clipped, rgb = colorsFor(tile).copyOf()) else null
             }
         }
     }
@@ -79,6 +81,20 @@ class PreparedWalkRecordsTraces internal constructor(
     }
 
     private data class EligibilityKey(val minimumWalks: Int, val hiddenIds: Set<String>)
+
+    private suspend fun colorsFor(tile: TraceRasterTile): IntArray = colorMutex.withLock {
+        val key = ColorTileKey(tile.tileX, tile.tileY, tile.size, tile.pixelU)
+        colorCache[key]?.let { return@withLock it }
+        val context = currentCoroutineContext()
+        val colors = TraceBrush.colors(tile, overlap.cellColors, overlap.radiusU) { context.ensureActive() }
+        // One full-selection colour field: thresholds and hidden IDs never multiply this cache.
+        // Default 128px tiles retain at most 16 MiB; callers receive detached arrays above.
+        while (colorCache.size >= 256) colorCache.remove(colorCache.keys.first())
+        colorCache[key] = colors
+        colors
+    }
+
+    private data class ColorTileKey(val x: Int, val y: Int, val size: Int, val pixelU: Double)
 }
 
 /** Focus the selected record's actual route without changing the full selection's bounds. */

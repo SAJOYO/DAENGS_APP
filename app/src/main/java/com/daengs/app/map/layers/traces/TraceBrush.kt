@@ -10,6 +10,7 @@ import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** Display-only reconstruction. Never use its smoothed coverage as an observation count. */
@@ -129,6 +130,70 @@ object TraceBrush {
         }
     }
 
+    /**
+     * Smooth only a fixed field of original cell colours. No alpha, visibility or threshold is
+     * read here: clipping and source-over keep exactly the same support and opacity as before.
+     * Normalising colour channels by blurred support prevents dark fringes beside empty space.
+     */
+    fun colors(
+        tile: TraceRasterTile, cells: Map<SpatialDiaryCellId, Int>, radiusU: Double,
+        policy: TraceBrushPolicy = TraceBrushPolicy(pixelU = tile.pixelU, tileSize = tile.size),
+        checkCancelled: () -> Unit = {},
+    ): IntArray {
+        checkCancelled()
+        require(cells.size <= policy.maxCells) { "색을 표시할 공간 정보가 너무 많아요." }
+        require(radiusU.isFinite() && radiusU in policy.pixelU..64.0)
+        require(tile.size == policy.tileSize && tile.pixelU == policy.pixelU)
+        val kernel = gaussianKernel(policy)
+        val halo = kernel.size / 2
+        val size = tile.size + 2 * halo
+        val step = tile.pixelU
+        val left = tile.tileX.toDouble() * tile.size * step - halo * step
+        val top = (tile.tileY.toDouble() + 1) * tile.size * step + halo * step
+        require(abs(left) < WORLD_EDGE + size * step && abs(top) < WORLD_EDGE + size * step)
+        val support = FloatArray(size * size)
+        val pigment = IntArray(size * size)
+        cells.forEach { (cell, rgb) ->
+            checkCancelled()
+            require(rgb in 0..0xFFFFFF)
+            val x = radiusU * sqrt(3.0) * (cell.q + cell.r / 2.0)
+            val y = radiusU * 1.5 * cell.r
+            require(abs(x) + radiusU < WORLD_EDGE && abs(y) + radiusU < WORLD_EDGE)
+            if (x + radiusU < left || x - radiusU > left + size * step ||
+                y - radiusU > top || y + radiusU < top - size * step) return@forEach
+            val x0 = floor((x - radiusU - left) / step).toInt().coerceIn(0, size - 1)
+            val x1 = ceil((x + radiusU - left) / step).toInt().coerceIn(0, size - 1)
+            val y0 = floor((top - y - radiusU) / step).toInt().coerceIn(0, size - 1)
+            val y1 = ceil((top - y + radiusU) / step).toInt().coerceIn(0, size - 1)
+            for (row in y0..y1) for (col in x0..x1) {
+                val dx = abs(left + (col + 0.5) * step - x)
+                val dy = abs(top - (row + 0.5) * step - y)
+                if (insideHex(dx, dy, radiusU)) {
+                    val index = row * size + col
+                    // Exact shared-edge pixels have a deterministic owner, independent of input order.
+                    pigment[index] = maxOf(pigment[index], rgb)
+                    support[index] = 1f
+                }
+            }
+        }
+        val weights = blur(support, size, kernel, checkCancelled)
+        val result = IntArray(tile.size * tile.size)
+        for (shift in listOf(16, 8, 0)) {
+            checkCancelled()
+            val channel = FloatArray(pigment.size) { i -> ((pigment[i] ushr shift) and 0xFF).toFloat() }
+            val smoothed = blur(channel, size, kernel, checkCancelled)
+            result.indices.forEach { i ->
+                if (i % 4_096 == 0) checkCancelled()
+                val source = (i / tile.size + halo) * size + i % tile.size + halo
+                if (weights[source] > 0f) {
+                    val value = (smoothed[source] / weights[source]).roundToInt().coerceIn(0, 255)
+                    result[i] = result[i] or (value shl shift)
+                }
+            }
+        }
+        return result
+    }
+
     private fun rasterTile(
         key: TileKey, centers: List<Center>, radius: Double, policy: TraceBrushPolicy,
         halo: Int, kernel: DoubleArray, checkCancelled: () -> Unit,
@@ -148,7 +213,7 @@ object TraceBrush {
             for (row in y0..y1) for (col in x0..x1) {
                 val dx = abs(left + (col + 0.5) * step - center.x)
                 val dy = abs(top - (row + 0.5) * step - center.y)
-                if (dx <= sqrt(3.0) * radius / 2 && dy + dx / sqrt(3.0) <= radius) {
+                if (insideHex(dx, dy, radius)) {
                     support[row * size + col] = 1f
                 }
             }
@@ -247,6 +312,9 @@ object TraceBrush {
     private fun point(x: Double, y: Double) = GeoPoint(
         Math.toDegrees(2 * atan(exp(y / EARTH_RADIUS)) - PI / 2), Math.toDegrees(x / EARTH_RADIUS),
     )
+
+    private fun insideHex(dx: Double, dy: Double, radius: Double) =
+        dx <= sqrt(3.0) * radius / 2 && dy + dx / sqrt(3.0) <= radius
 
     private data class TileKey(val x: Int, val y: Int)
     private data class Center(val x: Double, val y: Double)

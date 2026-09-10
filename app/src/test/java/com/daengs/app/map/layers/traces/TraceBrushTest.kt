@@ -77,13 +77,39 @@ class TraceBrushTest {
     fun `raster coverage is independent of tile partition on both sides of world origin`() {
         val cells = (-30..30).map { SpatialDiaryCellId(it, it / 3) }.toSet()
         val sheet = WalkTraceSheet("boundary", cells = cells)
-        val small = pixels(TraceBrush.mask(sheet, TraceBrushPolicy(tileSize = 64)).tiles)
-        val large = pixels(TraceBrush.mask(sheet, TraceBrushPolicy(tileSize = 128)).tiles)
+        val smallTiles = TraceBrush.mask(sheet, TraceBrushPolicy(tileSize = 64)).tiles
+        val largeTiles = TraceBrush.mask(sheet, TraceBrushPolicy(tileSize = 128)).tiles
+        val small = pixels(smallTiles)
+        val large = pixels(largeTiles)
 
         assertEquals(small.filterValues { it > 0 }.keys, large.filterValues { it > 0 }.keys)
         small.filterValues { it > 0 }.forEach { (key, value) ->
             assertEquals("pixel $key", value, large.getValue(key), 0.000001f)
         }
+        val pigment = cells.associateWith { if (it.q < 0) TraceOverlapPalette.TEAL_RGB else TraceOverlapPalette.ORANGE_RGB }
+        val smallColors = colors(smallTiles, pigment)
+        val largeColors = colors(largeTiles, pigment)
+        small.filterValues { it > 0 }.keys.forEach { key ->
+            assertEquals("colour $key", smallColors.getValue(key), largeColors.getValue(key))
+        }
+        assertTrue(smallColors.values.any { it != 0 && it != TraceOverlapPalette.TEAL_RGB && it != TraceOverlapPalette.ORANGE_RGB })
+    }
+
+    @Test
+    fun `colour interpolation preserves the pigment at soft edges without reading or changing alpha`() {
+        val cell = SpatialDiaryCellId(0, 0)
+        val tiles = TraceBrush.mask(WalkTraceSheet("island", cells = setOf(cell))).tiles
+        val sourcePixels = pixels(tiles)
+        val pigment = mapOf(cell to TraceOverlapPalette.TEAL_RGB)
+        val painted = colors(tiles, pigment)
+
+        sourcePixels.filterValues { it > 0 }.keys.forEach { key ->
+            assertEquals(TraceOverlapPalette.TEAL_RGB, painted.getValue(key))
+        }
+        assertEquals(sourcePixels, pixels(tiles))
+        val first = tiles.first()
+        assertArrayEquals(TraceBrush.colors(first, pigment, 8.0),
+            TraceBrush.colors(first.copy(alpha = FloatArray(first.alpha.size)), pigment, 8.0))
     }
 
     @Test
@@ -133,6 +159,11 @@ class TraceBrushTest {
         assertThrows(IllegalArgumentException::class.java) {
             TraceBrush.compose(listOf(WalkTraceMask("a", listOf(solidTile(), solidTile()))))
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            TraceBrush.colors(solidTile(), cells.associateWith { 0xFFFFFF }, 8.0,
+                TraceBrushPolicy(tileSize = 32, maxCells = 2))
+        }
+        assertThrows(IllegalArgumentException::class.java) { solidTile().copy(rgb = intArrayOf(0)) }
     }
 
     @Test
@@ -152,6 +183,14 @@ class TraceBrushTest {
             }
         }
         assertTrue(source.alpha.all { it == 1f })
+        checks = 0
+        assertThrows(CancellationException::class.java) {
+            TraceBrush.colors(source, mapOf(SpatialDiaryCellId(0, 0) to TraceOverlapPalette.TEAL_RGB), 8.0) {
+                if (++checks == 4) throw CancellationException()
+            }
+        }
+        assertEquals(4, checks)
+        assertTrue(source.alpha.all { it == 1f })
     }
 
     private fun solidTile(tileX: Int = 0) = TraceRasterTile(tileX, 0, 32, 2.0,
@@ -163,6 +202,16 @@ class TraceBrushTest {
                 val x = tile.tileX * tile.size + index % tile.size
                 val y = (tile.tileY + 1) * tile.size - 1 - index / tile.size
                 put(x to y, alpha)
+            }
+        }
+    }
+
+    private fun colors(tiles: List<TraceRasterTile>, cells: Map<SpatialDiaryCellId, Int>): Map<Pair<Int, Int>, Int> = buildMap {
+        tiles.forEach { tile ->
+            TraceBrush.colors(tile, cells, 8.0).forEachIndexed { index, rgb ->
+                val x = tile.tileX * tile.size + index % tile.size
+                val y = (tile.tileY + 1) * tile.size - 1 - index / tile.size
+                put(x to y, rgb)
             }
         }
     }

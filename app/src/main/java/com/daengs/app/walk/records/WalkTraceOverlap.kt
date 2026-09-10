@@ -1,6 +1,7 @@
 package com.daengs.app.walk.records
 
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.traces.TraceOverlapPalette
 import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.diary.SpatialDiaryHexGrid
@@ -20,9 +21,14 @@ data class WalkTraceOverlapHit(val point: GeoPoint, val cell: SpatialDiaryCellId
 /** Full-query evidence, independent of display alpha, smoothing, visibility and the current page. */
 internal class WalkTraceOverlap private constructor(
     val unavailableReason: String?,
-    private val radiusU: Double,
+    val radiusU: Double,
     private val cells: Map<SpatialDiaryCellId, Set<String>>,
 ) {
+    /** Colour evidence is fixed before any threshold or visibility choice. */
+    val cellColors: Map<SpatialDiaryCellId, Int> = Collections.unmodifiableMap(
+        cells.mapValues { (_, walkIds) -> TraceOverlapPalette.colorForWalkCount(walkIds.size) },
+    )
+
     // Prepared on Dispatchers.Default with the index, never rescanned on camera recomposition.
     private val eligibleByMinimum = listOf(2, 3, 5).associateWith { minimum ->
         val selectedCells = cells.filterValues { it.size >= minimum }.keys.toSet()
