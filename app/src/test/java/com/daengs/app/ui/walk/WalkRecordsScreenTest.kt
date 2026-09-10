@@ -477,7 +477,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
         // A partial response cannot disprove the remembered area. The same ready sheets restore it.
         compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 0 }
-        waitText("선택 산책 3회 · 표시 흔적 1개")
+        waitText("선택 산책 3회 · 겹침 표시 1회")
         compose.onNodeWithTag("records-inspection-summary").assertTextContains("3회 중 2회 겹침", substring = true)
         compose.onNodeWithTag("records-map-record-record-3").assertDoesNotExist()
         // Successfully checked empty sheets do prove removal; a later load must not resurrect it.
