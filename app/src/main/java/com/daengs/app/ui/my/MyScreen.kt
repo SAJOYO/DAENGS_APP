@@ -100,6 +100,10 @@ fun MyScreen(
     nickname: String?,
     /** 이름을 고치러 간다. null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다 */
     onEditNickname: (() -> Unit)? = null,
+    /** OCR 학습 이용에 동의했나 (#258). [OCR_CONSENT_VISIBLE] 이 false 면 안 보인다. */
+    ocrConsent: Boolean = false,
+    /** 동의를 켜고 끈다. null 이면 그 줄이 안 뜬다 — 로그인 안 한 사람에게는 없는 줄이다. */
+    onOcrConsentChange: ((Boolean) -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
     pets: List<Pet>?,
     /**
@@ -208,6 +212,10 @@ fun MyScreen(
                 SettingDivider()
             }
             SettingRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
+            if (OCR_CONSENT_VISIBLE && onOcrConsentChange != null) {
+                SettingDivider()
+                OcrConsentRow(ocrConsent, onOcrConsentChange)
+            }
         }
         Spacer(Modifier.height(14.dp))
 
@@ -734,6 +742,45 @@ private fun Section(content: @Composable () -> Unit) {
  * Material3 `Button` 을 안 쓴다 — 이 저장소는 `Surface`·`Box` 에 `.clickable` 을
  * 붙여 직접 짠다 (`LandingScreen` 과 같은 결).
  */
+/**
+ * 영수증 학습 이용 동의를 화면에 내놓을 것인가.
+ *
+ * ⚠️ **지금은 false 다.** 저쪽 `OCR_CONSENT_VERSION` 이 `"unset"` 이라, 동의를 받아도
+ *    실제로 존재하는 개인정보처리방침 판을 가리키지 못한다 — 근거가 안 서는 동의를
+ *    받는 것이 안 받는 것보다 나쁘다 (저쪽 `docs/vet-visits.md` "열린 것").
+ *
+ * **진료비 기능은 이것과 무관하게 지금 돈다.** 동의는 OCR 이 읽은 진료 항목을 학습용으로
+ * 남길지만 가르고, 기록 자체는 미동의여도 온전히 저장된다. 미동의 동안 저쪽은
+ * `raw_ocr_items` 를 `'[]'` 로 쌓는다.
+ *
+ * 판 번호가 정해지면 **이 줄을 true 로 바꾸면 된다** — 값과 콜백은 이미
+ * `MainActivity` → `HomeScreen` → 여기까지 이어져 있다.
+ */
+private const val OCR_CONSENT_VISIBLE = false
+
+/** 켜짐/꺼짐이 글자로 보이는 한 줄. 스위치 그림을 새로 들이지 않는다. */
+@Composable
+private fun OcrConsentRow(on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onChange(!on) }
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("영수증 학습 이용 동의", color = TextDark, fontSize = 15.sp)
+            Text(
+                "읽어 낸 진료 항목을 인식 개선에 써요. 꺼도 진료비 기록은 그대로 남아요.",
+                color = TextMuted,
+                fontSize = 12.sp,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(if (on) "켜짐" else "꺼짐", color = if (on) DaengPink else TextMuted, fontSize = 13.sp)
+    }
+}
+
 @Composable
 private fun SettingRow(
     label: String,

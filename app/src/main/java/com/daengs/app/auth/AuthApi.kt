@@ -196,6 +196,35 @@ object AuthApi {
             }
         }
 
+    /**
+     * OCR 학습 이용 동의를 켜고 끈다 (#258).
+     *
+     * ⚠️ **[setNickname] 과 같은 규칙 — `ocr_consent` 칸만 보낸다.** 저쪽이 보낸 칸만
+     * 고치므로(`model_fields_set`), 닉네임을 고칠 때 이 값을 같이 보내면 그 값으로
+     * 덮이고 반대도 마찬가지다.
+     *
+     * ⚠️ **판 번호를 앱이 안 보낸다.** 서버가 `OCR_CONSENT_VERSION` 을 정한다 — 동의
+     * 기록의 일부를 클라이언트가 고를 수 있으면 그 기록이 근거가 못 된다. `true` 는
+     * 켤 때마다 시각·판을 새로 쓰고(재동의), `false` 는 둘 다 되돌린다.
+     */
+    suspend fun setOcrConsent(accessToken: String, on: Boolean): Result<AppMe> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val conn = open("/auth/app/me", "PATCH")
+                conn.setRequestProperty("Authorization", "Bearer $accessToken")
+                conn.use { it.send(ocrConsentBody(on).toString()); it.readJson() }.toAppMe()
+            }.recoverCatching { cause ->
+                if (cause is IllegalStateException) throw cause
+                throw IllegalStateException("서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.", cause)
+            }
+        }
+
+    /** [setOcrConsent] 가 보내는 본문. **칸 하나뿐인 것을 테스트가 본다.** */
+    internal fun ocrConsentBody(on: Boolean): JSONObject = JSONObject().put("ocr_consent", on)
+
+    /** `GET`·`PATCH /auth/app/me` 의 답을 읽는다. 테스트가 부를 수 있게 열어 둔다. */
+    internal fun parseMe(json: JSONObject): AppMe = json.toAppMe()
+
     private fun JSONObject.toAppMe(): AppMe = AppMe(
         appUserId = getString("app_user_id"),
         // 없으면 아직 안 정한 것이다. 서버가 대신 지어 주지 않는다.
@@ -204,6 +233,8 @@ object AuthApi {
         // 주므로 아래 `takeIf` 가 null 로 만든다 — 닉네임을 모르는 옛 서버에 붙어도
         // 로그인이 실패하지 않는다.
         nickname = if (isNull("nickname")) null else optString("nickname").takeIf { it.isNotBlank() },
+        // 이 칸을 모르는 옛 서버에서는 false 다 — 미동의가 기본이라 그게 맞는 값이다.
+        ocrConsent = optBoolean("ocr_consent", false),
     )
 
     // -- 아래는 배관 -------------------------------------------------------
