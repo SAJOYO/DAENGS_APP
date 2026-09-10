@@ -13,6 +13,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -30,11 +31,12 @@ import com.daengs.app.ui.theme.*
 internal fun TerritoryGameRulesDialog(onDismiss: () -> Unit) {
     // The dialog owns another saveable registry. Keep progress in the caller's registry.
     val state = rememberTerritoryRulesState()
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { if (state.tab == -1) onDismiss() else state.tab = -1 },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center) {
             TerritoryGameRulesContent(onDismiss, Modifier.widthIn(max = 520.dp).fillMaxWidth()
-                .heightIn(max = 760.dp).fillMaxHeight(), state)
+                .heightIn(max = 760.dp).then(if (state.tab == -1) Modifier else Modifier.fillMaxHeight()), state)
         }
     }
 }
@@ -52,17 +54,23 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
+                if (tab != -1) IconButton(onClick = { state.tab = -1 },
+                    modifier = Modifier.testTag("game-rules-summary-back").semantics { contentDescription = "규칙 요약으로 돌아가기" }) {
+                    DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(22.dp).rotate(180f), TextDark)
+                }
                 Column(Modifier.weight(1f)) {
-                    Text("점령 규칙", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                    Text("첫 시즌 · 전봇대에서 시작하는 영역 놀이", fontSize = 11.sp, color = TextDark.copy(alpha = .76f))
+                    Text(when (tab) { -1 -> "점령 규칙"; 0 -> "직접 해보기"; else -> "자세한 규칙" },
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Text("첫 시즌", fontSize = 11.sp, color = TextDark.copy(alpha = .76f))
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.testTag("game-rules-close")
                     .semantics { contentDescription = "점령 규칙 닫기" }) {
                     DaengsIconView(DaengsIcon.Close, Modifier.size(22.dp), TextDark)
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(12.dp).selectableGroup()) {
-                listOf("점령하기", "점수", "영역 유지", "시즌").forEachIndexed { index, title ->
+            if (tab >= 1) Row(Modifier.fillMaxWidth().padding(12.dp).selectableGroup()) {
+                listOf("점수", "영역 유지", "시즌").forEachIndexed { position, title ->
+                    val index = position + 1
                     Box(Modifier.weight(1f).background(if (tab == index) TextDark else CreamBg, RoundedCornerShape(12.dp))
                         .testTag("game-rules-tab-$index")
                         .selectable(tab == index, role = Role.Tab, onClick = { state.tab = index })
@@ -74,10 +82,11 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
             }
             // A new step starts at its illustration, even after scrolling a long rule or large text.
             key(tab, scenario, page) {
-                Column(Modifier.weight(1f).fillMaxWidth().testTag("game-rules-body")
+                Column(Modifier.weight(1f, fill = tab != -1).fillMaxWidth().testTag("game-rules-body")
                     .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     when (tab) {
+                        -1 -> TerritoryRulesSummary()
                         0 -> {
                             Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 GuideScenario.entries.forEach { option ->
@@ -117,7 +126,17 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
             HorizontalDivider(color = PinkSoft)
             Row(Modifier.fillMaxWidth().testTag("game-rules-footer").padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (tab == 0) {
+                if (tab == -1) {
+                    Button(onClick = { state.tab = 0 }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        .testTag("game-rules-example-open"), shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
+                        Text("직접 해보기", fontSize = 13.sp, textAlign = TextAlign.Center)
+                    }
+                    OutlinedButton(onClick = { state.tab = 1 }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        .testTag("game-rules-details-open"), shape = RoundedCornerShape(14.dp)) {
+                        Text("자세한 규칙", color = TextDark, fontSize = 13.sp, textAlign = TextAlign.Center)
+                    }
+                } else if (tab == 0) {
                     TextButton(onClick = { state.page-- }, enabled = page > 0,
                         colors = ButtonDefaults.textButtonColors(contentColor = TextDark),
                         modifier = Modifier.testTag("game-guide-previous")) { Text("이전") }
@@ -133,7 +152,7 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
 }
 
 @Stable
-internal class TerritoryRulesState(tab: Int = 0, scenario: GuideScenario = GuideScenario.EMPTY, page: Int = 0) {
+internal class TerritoryRulesState(tab: Int = -1, scenario: GuideScenario = GuideScenario.EMPTY, page: Int = 0) {
     var tab by mutableIntStateOf(tab)
     var scenario by mutableStateOf(scenario)
     var page by mutableIntStateOf(page)
@@ -170,4 +189,16 @@ private fun RuleExplanation(rule: GameRule) {
 @Composable
 private fun TerritoryGameRulesPreview() = DaengsTheme {
     TerritoryGameRulesContent({}, Modifier.fillMaxSize())
+}
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 760)
+@Composable
+private fun TerritoryGameExamplePreview() = DaengsTheme {
+    TerritoryGameRulesContent({}, Modifier.fillMaxSize(), TerritoryRulesState(tab = 0))
+}
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 760)
+@Composable
+private fun TerritoryGameRuleDetailsPreview() = DaengsTheme {
+    TerritoryGameRulesContent({}, Modifier.fillMaxSize(), TerritoryRulesState(tab = 1))
 }
