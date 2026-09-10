@@ -6,6 +6,10 @@ import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.pet.Pet
 import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkSummary
+import com.daengs.app.walk.WalkEntry
+import com.daengs.app.walk.WalkMomentType
+import com.daengs.app.walk.pin.ActionPin
+import org.json.JSONObject
 import com.daengs.app.walk.distanceTo
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.diary.SpatialDiaryHexGrid
@@ -73,11 +77,47 @@ internal object WalkRecordsLabFixture : WalkRecordsSource {
             WalkRecord(summary, titles[index], notes = listOf(
                 if (weatherCodes[index] == 61) "비가 그쳐 나무 그늘 아래를 천천히 걸었어요." else "나무 그늘에서 잠깐 쉬었다 돌아왔어요.",
             ), trace = if (index == 3) null else WalkTraceSheet(id, TRACE_RADIUS_U, traceCells(paths)))
+                .let { record -> record.copy(entries = behaviorEntries(record, index)) }
         }
     }
 
     override suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection =
         selectWalkRecords(records, query, zone)
+
+    /** Current fictional entries, including cases that must remain searchable without a map mark. */
+    private fun behaviorEntries(record: WalkRecord, index: Int): List<WalkEntry> {
+        val walk = record.summary
+        val path = walk.segments.first().map { it.point }
+        fun entry(ordinal: Int, type: WalkMomentType, position: Int?, petId: String? = walk.dogIds.first(),
+            estimated: Boolean = false): WalkEntry {
+            val at = walk.startedAtMillis + ordinal * 90_000L
+            val point = position?.let { path[it.coerceAtMost(path.lastIndex)] }
+            // Display-only synthetic projection; never sent to the API or written to Room.
+            val pin = if (estimated && point != null) ActionPin(JSONObject()
+                .put("state", "resolved").put("method", "estimated")
+                .put("point", JSONObject().put("lat", point.latitude).put("lng", point.longitude)).toString()) else null
+            return WalkEntry(id = "sample-entry-${index + 1}-$ordinal", sessionId = walk.sessionId,
+                type = type, recordedAtMillis = at,
+                point = point.takeUnless { estimated }, locationCapturedAtMillis = at.takeIf { point != null && !estimated },
+                accuracyMeters = 5f.takeIf { point != null && !estimated }, petId = petId, pin = pin,
+                note = "그늘에서 쉬었어요.".takeIf { type == WalkMomentType.NOTE }).validate()
+        }
+        return when (index) {
+            0 -> listOf(entry(1, WalkMomentType.SNIFFING, 2), entry(2, WalkMomentType.SNIFFING, 2, estimated = true))
+            1 -> listOf(entry(1, WalkMomentType.SNIFFING, 1), entry(2, WalkMomentType.BARKING, 3))
+            2 -> listOf(entry(1, WalkMomentType.SNIFFING, 1, pets[0].id),
+                entry(2, WalkMomentType.SNIFFING, 2, pets[1].id), entry(3, WalkMomentType.EXCRETION, null, pets[0].id))
+            3 -> listOf(entry(1, WalkMomentType.SNIFFING, 2)) // Located entry on the walk without a trace.
+            4 -> listOf(entry(1, WalkMomentType.SNIFFING, null)) // Trace exists, but entry has no location.
+            5 -> listOf(entry(1, WalkMomentType.EXCRETION, 1))
+            6 -> listOf(entry(1, WalkMomentType.BARKING, null))
+            7 -> listOf(entry(1, WalkMomentType.SNIFFING, 2))
+            9 -> listOf(entry(1, WalkMomentType.BARKING, 1))
+            10 -> listOf(entry(1, WalkMomentType.NOTE, null, petId = null))
+            11 -> listOf(entry(1, WalkMomentType.SNIFFING, 1, petId = null))
+            else -> emptyList()
+        }
+    }
 
     private fun outAndBack(path: List<GeoPoint>): List<List<GeoPoint>> =
         listOf(path + path.dropLast(1).asReversed())

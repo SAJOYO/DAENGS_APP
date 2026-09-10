@@ -49,6 +49,7 @@ import com.daengs.app.ui.walk.HistoryFilterSaver
 import com.daengs.app.ui.walk.WalkHistoryPageContent
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
+import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.records.WalkRecord
 import com.daengs.app.walk.records.WalkRecordsQuery
 import com.daengs.app.walk.records.WalkRecordsSelection
@@ -57,6 +58,7 @@ import com.daengs.app.walk.records.selectWalkRecords
 import com.daengs.app.walk.records.PreparedWalkRecordsTraces
 import com.daengs.app.walk.records.prepareWalkRecordsTraces
 import com.daengs.app.walk.records.walkRecordFocusBounds
+import com.daengs.app.walk.records.selectWalkRecordBehaviors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -80,6 +82,11 @@ fun WalkRecordsScreen(
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
     val query = remember(dogId, filter) { WalkRecordsQuery(dogId, filter) }
     var view by rememberSaveable { mutableStateOf(RecordsView.WALKS) }
+    var behavior by rememberSaveable { mutableStateOf<WalkMomentType?>(null) }
+    var behaviorView by rememberSaveable(query) { mutableStateOf(BehaviorRecordsView.RECORD_LOCATIONS) }
+    // Keep inspection state above the loading/tab branches, with a stable restoration location.
+    // The native map must not be wrapped in SaveableStateHolder's ReusableContent subtree.
+    val behaviorState = rememberWalkRecordsBehaviorState(query, behavior)
     var conditionsOpen by rememberSaveable { mutableStateOf(false) }
     var pageIndex by rememberSaveable(query) { mutableIntStateOf(0) }
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
@@ -124,7 +131,7 @@ fun WalkRecordsScreen(
     // Opening the other view never selects records again or changes the current list page.
     var mapRequested by remember(query) { mutableStateOf(false) }
     LaunchedEffect(view) { if (view == RecordsView.OVERVIEW) mapRequested = true }
-    val shouldPrepareMap = mapRequested || view == RecordsView.OVERVIEW
+    val shouldPrepareMap = behavior == null && (mapRequested || view == RecordsView.OVERVIEW)
     var prepared by remember(selection) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
     var mapError by remember(selection) { mutableStateOf<String?>(null) }
     var mapRetry by remember { mutableIntStateOf(0) }
@@ -181,7 +188,9 @@ fun WalkRecordsScreen(
         WalkRecordsConditions(query, pets,
             onKeyword = { filter = filter.copy(keyword = it) },
             onOpenConditions = { focusManager.clearFocus(); conditionsOpen = true },
-            onReset = { focusManager.clearFocus(); dogId = null; filter = WalkHistoryFilter() })
+            onReset = { focusManager.clearFocus(); dogId = null; filter = WalkHistoryFilter(); behavior = null },
+            showBehavior = view == RecordsView.OVERVIEW, behavior = behavior,
+            onClearBehavior = { behavior = null })
         TabRow(selectedTabIndex = view.ordinal) {
             Tab(selected = view == RecordsView.WALKS, onClick = { focusManager.clearFocus(); view = RecordsView.WALKS },
                 text = { Text("산책별") }, modifier = Modifier.testTag("records-view-walks"))
@@ -213,6 +222,11 @@ fun WalkRecordsScreen(
                             onOpen, pets, Modifier.weight(1f),
                             rows.mapNotNull { record -> record.title?.let { record.summary.sessionId to it } }.toMap())
                     }
+                } else if (behavior != null) {
+                    val behaviorResult = remember(current, behavior) { selectWalkRecordBehaviors(current, requireNotNull(behavior)) }
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen,
+                        view = behaviorView, onView = { behaviorView = it }, state = behaviorState,
+                        modifier = Modifier.weight(1f))
                 } else {
                     WalkRecordsOverview(current, pets, prepared, tiles, mapError ?: compositionError,
                         onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
@@ -257,7 +271,14 @@ fun WalkRecordsScreen(
     if (conditionsOpen) {
         WalkRecordsConditionsSheet(query, pets, today,
             onApply = { next -> dogId = next.dogId; filter = next.filter; conditionsOpen = false },
-            onDismiss = { conditionsOpen = false })
+            onDismiss = { conditionsOpen = false }, behavior = behavior,
+            onBehaviorApply = { next ->
+                if (next != behavior) {
+                    if (behavior == null) behaviorView = BehaviorRecordsView.RECORD_LOCATIONS
+                    behavior = next
+                    if (next != null) view = RecordsView.OVERVIEW
+                }
+            })
     }
 }
 
