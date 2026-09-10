@@ -54,6 +54,8 @@ import com.daengs.app.walk.records.WalkRecord
 import com.daengs.app.walk.records.WalkRecordsQuery
 import com.daengs.app.walk.records.WalkRecordsSelection
 import com.daengs.app.walk.records.WalkRecordsSource
+import com.daengs.app.walk.records.WalkTraceState
+import com.daengs.app.walk.records.WalkTraceOverlapHit
 import com.daengs.app.walk.records.selectWalkRecords
 import com.daengs.app.walk.records.PreparedWalkRecordsTraces
 import com.daengs.app.walk.records.prepareWalkRecordsTraces
@@ -64,6 +66,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -140,14 +143,47 @@ fun WalkRecordsScreen(
     }
 
     // Opening the other view never selects records again or changes the current list page.
-    var mapRequested by remember(query) { mutableStateOf(false) }
-    LaunchedEffect(view) { if (view == RecordsView.OVERVIEW) mapRequested = true }
-    val shouldPrepareMap = behavior == null && (mapRequested || view == RecordsView.OVERVIEW)
-    var prepared by remember(selection) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
-    var mapError by remember(selection) { mutableStateOf<String?>(null) }
+    var mapRequested by remember(source, query, selection) { mutableStateOf(false) }
+    LaunchedEffect(view, selection) { if (view == RecordsView.OVERVIEW) mapRequested = true }
+    val tracesRequested = mapRequested || view == RecordsView.OVERVIEW
+    // Local rows stay authoritative while this separate request enriches only their map inputs.
+    var traceSelection by remember(source, selection) { mutableStateOf<WalkRecordsSelection?>(null) }
+    var traceLoading by remember(source, selection) { mutableStateOf(false) }
+    var traceError by remember(source, selection) { mutableStateOf<String?>(null) }
+    var traceRequest by remember(source, selection) { mutableIntStateOf(0) }
+    LaunchedEffect(source, selection, tracesRequested, traceRequest) {
+        val local = selection ?: return@LaunchedEffect
+        if (!tracesRequested || local.records.isEmpty()) return@LaunchedEffect
+        traceLoading = true
+        traceError = null
+        traceSelection = local.withTraceRequestState(WalkTraceState.LOADING)
+        try {
+            val loaded = withContext(Dispatchers.Default) {
+                source.loadTraces(local).also { enriched ->
+                    require(enriched.query == local.query && enriched.sessionIds == local.sessionIds &&
+                        enriched.records.zip(local.records).all { (after, before) ->
+                            currentCoroutineContext().ensureActive()
+                            after.copy(trace = before.trace, traceState = before.traceState) == before
+                        }) { "흔적 조회가 원본 산책 기록을 변경했어요." }
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            traceSelection = loaded
+        } catch (failure: Exception) {
+            if (failure is CancellationException) throw failure
+            traceSelection = local.withTraceRequestState(WalkTraceState.FAILED)
+            traceError = "흔적을 불러오지 못했어요. 산책 기록과 행동 위치는 그대로 볼 수 있어요."
+        } finally {
+            if (currentCoroutineContext().isActive) traceLoading = false
+        }
+    }
+    val mappedSelection = traceSelection ?: selection
+    val shouldPrepareMap = behavior == null && tracesRequested
+    var prepared by remember(mappedSelection) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
+    var mapError by remember(mappedSelection) { mutableStateOf<String?>(null) }
     var mapRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(selection, shouldPrepareMap, mapRetry) {
-        val selected = selection ?: return@LaunchedEffect
+    LaunchedEffect(mappedSelection, shouldPrepareMap, mapRetry) {
+        val selected = mappedSelection ?: return@LaunchedEffect
         if (!shouldPrepareMap || selected.records.isEmpty()) return@LaunchedEffect
         prepared = null
         mapError = null
@@ -162,8 +198,9 @@ fun WalkRecordsScreen(
     val overlapHit = remember(prepared, overlapPoint, overlapOnly, minimumWalks) {
         overlapPoint?.takeIf { overlapOnly }?.let { prepared?.hitTestOverlap(it, minimumWalks, snapRadiusU = 0.0) }
     }
-    LaunchedEffect(prepared, overlapHit) {
-        if (prepared != null && overlapPoint != null && overlapHit == null) overlapPoint = null
+    ReconcileWalkRecordsOverlapPoint(mappedSelection, traceLoading, traceError, prepared,
+        overlapPoint, overlapHit, onClear = { overlapPoint = null })
+    LaunchedEffect(overlapHit) {
         if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
     }
     // Any display change clears old ink before the next asynchronous composition can publish.
@@ -234,12 +271,14 @@ fun WalkRecordsScreen(
                             rows.mapNotNull { record -> record.title?.let { record.summary.sessionId to it } }.toMap())
                     }
                 } else if (behavior != null) {
-                    val behaviorResult = remember(current, behavior) { selectWalkRecordBehaviors(current, requireNotNull(behavior)) }
+                    val mapRecords = mappedSelection ?: current
+                    val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
                     WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen,
                         view = behaviorView, onView = { behaviorView = it }, state = behaviorState,
+                        traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
                 } else {
-                    WalkRecordsOverview(current, pets, prepared, tiles, mapError ?: compositionError,
+                    WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
                         onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
                         selectedId = selectedId, hiddenIds = hiddenIds,
                         onSelect = { id ->
@@ -279,6 +318,7 @@ fun WalkRecordsScreen(
                         onOpen = onOpen, listState = overviewScroll,
                         camera = camera, onCamera = { camera = it },
                         fitBounds = focusBounds ?: prepared?.bounds.orEmpty(), cameraRequest = cameraRequest,
+                        traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
                 }
             }
@@ -296,6 +336,34 @@ fun WalkRecordsScreen(
                 }
             })
     }
+}
+
+/** A missing hit proves removal only after every sheet was successfully checked. */
+@Composable
+internal fun ReconcileWalkRecordsOverlapPoint(
+    selection: WalkRecordsSelection?,
+    traceLoading: Boolean,
+    traceError: String?,
+    prepared: PreparedWalkRecordsTraces?,
+    point: GeoPoint?,
+    hit: WalkTraceOverlapHit?,
+    onClear: () -> Unit,
+) {
+    val complete = !traceLoading && traceError == null && selection?.records?.all {
+        it.effectiveTraceState == WalkTraceState.READY || it.effectiveTraceState == WalkTraceState.EMPTY
+    } == true
+    LaunchedEffect(complete, prepared, point, hit) {
+        if (complete && prepared != null && point != null && hit == null) onClear()
+    }
+}
+
+/** Embedded preview traces need no server request; unsent records keep their distinct explanation. */
+private fun WalkRecordsSelection.withTraceRequestState(state: WalkTraceState): WalkRecordsSelection {
+    if (records.none { it.traceState != null }) return this
+    return WalkRecordsSelection(query, records.map { record ->
+        if (record.traceState == null || record.traceState == WalkTraceState.NOT_UPLOADED) record
+        else record.copy(trace = null, traceState = state)
+    })
 }
 
 @Composable

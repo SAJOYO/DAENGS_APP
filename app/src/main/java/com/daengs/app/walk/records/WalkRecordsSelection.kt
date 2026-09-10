@@ -22,7 +22,12 @@ data class WalkRecord(
     val notes: List<String> = emptyList(),
     val trace: WalkTraceSheet? = null,
     val entries: List<WalkEntry> = emptyList(),
+    val serverWalkId: String? = null,
+    val traceState: WalkTraceState? = null,
 ) {
+    val effectiveTraceState: WalkTraceState
+        get() = traceState ?: if (trace?.cells.isNullOrEmpty()) WalkTraceState.EMPTY else WalkTraceState.READY
+
     init {
         require(summary.sessionId.isNotBlank())
         require(trace == null || trace.walkId == summary.sessionId) {
@@ -35,6 +40,10 @@ data class WalkRecord(
             "같은 행동 기록이 두 번 들어왔어요."
         }
     }
+}
+
+enum class WalkTraceState {
+    NOT_REQUESTED, LOADING, READY, EMPTY, NOT_UPLOADED, ANALYSIS_PENDING, UNSUPPORTED, FAILED,
 }
 
 /** The full selected set is fixed before pagination; the map consumes [records], not [page]. */
@@ -71,6 +80,8 @@ fun interface WalkRecordsSource {
     /** Emit once on subscription and again when the saved inputs or account scope change. */
     val changes: Flow<Unit> get() = flowOf(Unit)
     suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection
+    /** Enrich the fixed local selection only when its map is requested. */
+    suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection = selection
 }
 
 /**

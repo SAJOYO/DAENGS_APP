@@ -53,6 +53,19 @@ class RoomWalkRecordsSourceTest {
 
     @After fun close() = db.close()
 
+    @Test fun `upload acknowledgement carries the server mapping without claiming a ready sheet`() = runBlocking {
+        seedSearchWalk(log, "local", 1)
+        val before = source.select(WalkRecordsQuery()).records.single()
+        assertNull(before.serverWalkId)
+        assertEquals(WalkTraceState.NOT_UPLOADED, before.effectiveTraceState)
+        dao.markRawUploaded("local", "server-walk", 1000)
+        val after = source.select(WalkRecordsQuery()).records.single()
+        assertEquals("server-walk", after.serverWalkId)
+        assertEquals(WalkTraceState.NOT_REQUESTED, after.effectiveTraceState)
+        assertNull(after.trace)
+        assertEquals(before.summary, after.summary)
+    }
+
     @Test fun `full selection crosses thirty records before pagination and retains route without invented traces`() = runBlocking {
         val ids = (1..35).map { "walk-${it.toString().padStart(2, '0')}" }
         ids.forEach { seedSearchWalk(log, it, 10) }

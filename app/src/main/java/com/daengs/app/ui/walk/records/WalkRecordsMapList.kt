@@ -48,6 +48,7 @@ import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.records.WalkRecord
+import com.daengs.app.walk.records.WalkTraceState
 
 /** Selecting and hiding change presentation only. Every selected record stays in this list. */
 @Composable
@@ -72,6 +73,7 @@ internal fun WalkRecordsMapList(
         items(records, key = { it.summary.sessionId }) { record ->
             val id = record.summary.sessionId
             val traceState = when {
+                record.effectiveTraceState != WalkTraceState.READY -> MapRecordTraceState.MISSING
                 availableTraceIds == null -> MapRecordTraceState.PREPARING
                 id !in availableTraceIds -> MapRecordTraceState.MISSING
                 id in hiddenIds -> MapRecordTraceState.HIDDEN
@@ -94,7 +96,8 @@ private fun WalkRecordMapCard(
     onOpen: () -> Unit,
 ) {
     val walk = record.summary
-    val status = when (traceState) {
+    val status = if (record.effectiveTraceState != WalkTraceState.READY) traceStateLabel(record.effectiveTraceState)
+    else when (traceState) {
         MapRecordTraceState.PREPARING -> "지도 표시 확인 전"
         MapRecordTraceState.MISSING -> "지도 흔적 없음"
         MapRecordTraceState.HIDDEN -> "지도에서 숨김"

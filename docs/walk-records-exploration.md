@@ -7,7 +7,8 @@ Step2에서 공통 선택 계약과 실제 화면을 합성 기록으로 연결�
 확장을 추가했다. 이 확장의 확인 결과는 아래 이전 Step3 결과와 구분하여 기록한다.
 Step4에서 같은 화면의 행동 기록 탐색을 구현했다. 겹침 색 표현에 이어 Step5에서 전체 조작
 시연과 마감 리뷰까지 수행했다. 실제 데이터 연결 1단계에서 현재 로그인 계정의 Room 기록
-공급부를 추가했다. 공간 원판 공급과 일반 사용자 화면의 진입점·실제 상세 연결은 후속이다.
+공급부를 추가했다. 2단계에서는 서버의 봉인 원판을 모아보기의 기존 브러시에 연결했다.
+일반 사용자 화면의 진입점·실제 상세 연결은 후속이다.
 
 ## 명칭과 화면 구조
 
@@ -60,8 +61,8 @@ Room 공급부는 기존 제목 유효성·삭제된 메모 제외·계정 소�
 - 로그인·로그아웃 세대 변경도 Room 변경과 무관하게 조회를 무효화한다. 같은 회원으로
   재로그인해도 이전 공급부는 다시 유효해지지 않는다. 정상 토큰 refresh는 이 세대를 바꾸지 않는다.
 
-이번 공급부의 `trace`는 null이다. 실제 공간 원판 조회·브러시 연결을 다음 단계에서 추가하며,
-GPS 경로에서 공간 원판을 지어내지 않는다. DB 스키마·서버 API·외부 DB 설정은 바꾸지 않는다.
+로컬 `select()`의 `trace`는 null이다. 1단계에서는 원판 조회 없이 Room 기록만 제공했다.
+2단계의 별도 조회에서도 GPS 경로로 공간 원판을 지어내지 않는다.
 
 ### 실제 데이터 연결 1단계 검증 · 2026-09-10
 
@@ -82,6 +83,57 @@ DB 검증은 메모리 Room을 사용한다. 새 DB 설치나 팀원별 설정�
 
 독립 코드 리뷰와 자체 점검을 수행했다. 사용자 폰의 저장 기록·운영 화면 진입·실제 공간
 원판·대규모 이력 부하는 아직 검증하지 않았다. 전체 테스트와 원격 CI는 실행하지 않았다.
+
+## 실제 데이터 연결 2단계 · 산책별 원판 공급
+
+모아보기를 처음 열면 로컬에서 확정한 산책 집합 S의 전송된 `client_session_id`만
+`POST /app/walks/spatial-diary/sheets/query`로 보낸다. 서버가 강아지·기간 조건을 다시
+해석하지 않는다. 원판과 서버 Walk ID를 요청 당시 Room 매핑과 대조한 뒤 로컬 sessionId로
+브러시에 전달한다. 목록 페이지·행동 기록·선택 집합은 원판 조회로 바뀌지 않는다.
+
+- 서버는 현재 계정의 산책당 최신 봉인 원판 한 장을 같은 read-only REPEATABLE READ
+  snapshot에서 읽는다. fingerprint와 중복 메타데이터를 검증하고 기존 payload를 반환한다.
+  미봉인은 `pending`, 현재 계정에서 찾을 수 없는 산책은 `unavailable`이다. 봉인됐지만
+  원판이 손상된 경우에는 오류를 반환하며 이전 원판으로 대신하지 않는다.
+- 앱은 응답 순서·소속·버전·정수 셀 좌표·중복·범위·양수 peak를 검증한다. occupancy가
+  0이어도 peak가 양수인 셀은 남긴다. 농도 값을 다시 계산하지 않고 기존 브러시의 고정
+  알파·겹침 색을 사용한다. 생성 정책이 다르면 개별 표시만 허용하고 겹침 비교는 막는다.
+- 원판 준비 중에도 로컬 경로·행동 위치·카드는 유지한다. 조회 대기·빈 원판·전송 확인 필요·
+  서버 계산 대기·미지원·실패를 구분하고, 실패한 결과를 ‘흔적 없음’으로 표시하지 않는다.
+- 같은 선택의 탭 왕복은 재조회하지 않는다. 새로고침은 서버 원판을 다시 읽으며 예전
+  원판을 최신 결과처럼 유지하지 않는다. 조회 중 로그아웃·같은 회원 재로그인·로컬 기록
+  수정/삭제/서버 ID 변경이 일어나면 늦은 응답을 게시하지 않는다.
+- 요청은 최대 400개, 서버 원시 셀 합계는 100,000개다. 앱은 현재 paint 2·hex-v1·반지름
+  4–64u·원판당 5,000셀을 지원한다. 기존 브러시의 타일/범위 상한도 유지한다.
+  초과 결과를 조용히 일부만 잘라 보여주지 않는다.
+
+APP [#271](https://github.com/SAJOYO/DAENGS_APP/pull/271)은 Room 공급부
+[#269](https://github.com/SAJOYO/DAENGS_APP/pull/269) 위에 쌓았다. 서버 API는
+DEV [#422](https://github.com/SAJOYO/DAENGS_dev/pull/422)에 있다. 이 단계는 DB
+스키마·마이그레이션·전송/분석 작업을 바꾸지 않으며 배포를 포함하지 않는다.
+운영 진입점과 실제 산책 상세를 연결하고 배포 API로 확인하는 것은 3단계다.
+
+### 실제 데이터 연결 2단계 검증 · 2026-09-10
+
+앱 대상 고유 테스트 **56개 통과 / 실패·오류·skip 0개**. Room 공급부 9개, 원판
+조회 수명 7개, HTTP 2개, 실제 서버 fixture 파서 4개, 기존 선택 10개, 브러시·겹침 11개,
+화면 13개다. 첫 실행의 테스트용 JSON 호출 두 곳을 Android API에 맞춰 수정했고,
+화면 대기 순서를 보정한 뒤 화면 13개를 다시 실행해 통과했다.
+
+독립 리뷰에서 요청 상한을 전체 로컬 기록 수가 아닌 전송된 요청 수에 적용하도록 수정했다.
+새로고침 중 로딩·실패·부분 원판 때문에 저장한 겹침 구간을 잃지 않도록 보강하고,
+정상 응답에서 구간이 복원되는지와 모든 원판을 확인한 뒤 실제 사라진 구간만 해제하는지도
+기존 화면 회귀에서 검증했다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.records.WalkRecordSheetsTest' --tests 'com.daengs.app.walk.records.WalkRecordSheetsApiTest' --tests 'com.daengs.app.walk.records.TraceLoadingWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.WalkRecordsTracesTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' -PslimAbi=x86_64 --console=plain
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' -PslimAbi=x86_64 --console=plain
+```
+
+서버 대응 PR #422는 공간 조회·원판 codec 대상 49개와 ruff·공통 check를 통과했다.
+서버 DAO 검증은 mock과 PostgreSQL SQL 컴파일이며 실제 DB의 격리/대표 선택 실행을
+검증한 것은 아니다. 이번 단계에서는 전체 테스트·CI·실DB·배포·APK 설치·실기기 검증을
+수행하지 않았다. 앱의 Room 검증과 로컬 HTTP 대역에는 팀원별 DB 설치가 필요 없다.
 
 ## 조건 편집과 상태 유지
 
