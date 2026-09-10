@@ -308,6 +308,125 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-record-$id").performClick()
     }
 
+    @Test fun `behavior selection commits from its draft and leaves the walks query unchanged`() {
+        val reads = AtomicInteger()
+        val source = WalkRecordsSource { query -> reads.incrementAndGet(); selectWalkRecords(behaviorRecords(), query) }
+        val restore = StateRestorationTester(compose)
+        restore.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsScreen(source, pets, {}, {}, today = today)
+        } } }
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-behavior-sniffing").performScrollTo().performClick()
+        compose.onNodeWithTag("records-conditions-cancel").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        chooseBehavior("sniffing")
+        compose.onNodeWithTag("records-view-overview").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-view-locations").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("4건", substring = true)
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("3회", substring = true)
+        compose.onNodeWithTag("records-behavior-view-traces").performClick()
+        compose.onNodeWithTag("records-view-walks").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
+        assertEquals(1, reads.get())
+        restore.emulateSavedInstanceStateRestore()
+        waitText("산책 기록")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
+        chooseBehavior("barking")
+        compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("1건", substring = true)
+        compose.onNodeWithTag("records-behavior-clear").performClick()
+        waitText("선택 산책 3회 · 표시 흔적 1개")
+    }
+
+    @Test fun `behavior records preserve missing locations and walk evidence when hidden and opened`() {
+        val sample = behaviorRecords()
+        val source = WalkRecordsSource { query -> selectWalkRecords(sample, query) }
+        val restore = StateRestorationTester(compose)
+        restore.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            var opened by rememberSaveable { mutableStateOf<String?>(null) }
+            WalkRecordsScreen(source, pets, {}, { opened = it }, today = today)
+            if (opened != null) AlertDialog(onDismissRequest = { opened = null }, title = { Text("상세: $opened") },
+                confirmButton = { TextButton(onClick = { opened = null }) { Text("돌아가기") } })
+        } } }
+        waitText("1 페이지")
+        chooseBehavior("sniffing")
+        val result = selectWalkRecordBehaviors(WalkRecordsSelection(WalkRecordsQuery(), sample), WalkMomentType.SNIFFING)
+        val located = result.records.first { it.entry.id == "s1" }.key
+        val unlocated = result.records.first { it.entry.id == "s3" }.key
+        chooseBehaviorRecord(located)
+        compose.onNodeWithTag("records-behavior-hide-$located").performScrollTo().performClick()
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("4건", substring = true)
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("3회", substring = true)
+        compose.onNodeWithTag("records-behavior-open-$located").performScrollTo().performClick()
+        waitText("상세: record-1")
+        compose.onNodeWithText("돌아가기").performClick()
+        compose.onNodeWithTag("records-view-walks").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        compose.onNodeWithTag("records-behavior-entry-$located").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-hide-$located").assertTextContains("다시 표시", substring = true)
+        restore.emulateSavedInstanceStateRestore()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-behavior-entry-$located").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-hide-$located").assertTextContains("다시 표시", substring = true)
+        chooseBehaviorRecord(unlocated)
+        compose.onNodeWithTag("records-behavior-open-$unlocated").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("records-behavior-hide-$unlocated").assertIsNotEnabled()
+        compose.onNodeWithTag("records-behavior-restore-all").performClick()
+        compose.onNodeWithTag("records-behavior-restore-all").assertDoesNotExist()
+        // A changed common query resets display state, even when its walk population is identical.
+        compose.onNodeWithTag("records-behavior-view-traces").performClick()
+        compose.onNodeWithTag("records-search").performTextReplacement("기록")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-behavior-view-locations").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-entry-$unlocated").assertIsNotSelected()
+    }
+
+    @Test fun `behavior attribution uses the selected dog and empty behavior keeps common controls`() {
+        show(WalkRecordsSource { query -> selectWalkRecords(behaviorRecords(), query) })
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-dog-dog-1").performScrollTo().performClick()
+        compose.onNodeWithTag("records-behavior-sniffing").performScrollTo().performClick()
+        compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("2건", substring = true)
+        chooseBehavior("excretion")
+        compose.onNodeWithTag("records-behavior-count").assertTextContains("0건", substring = true)
+        compose.onNodeWithTag("records-conditions").assertIsEnabled()
+        compose.onNodeWithTag("records-behavior-clear").performClick()
+        waitText("선택 산책 3회 · 표시 흔적 1개")
+    }
+
+    private fun chooseBehavior(code: String) {
+        compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-behavior-$code").performScrollTo().performClick()
+        compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private fun chooseBehaviorRecord(key: String) {
+        compose.onNodeWithTag("records-behavior-list").performScrollToNode(hasTestTag("records-behavior-entry-$key"))
+        compose.onNodeWithTag("records-behavior-entry-$key").performClick()
+    }
+
+    private fun behaviorRecords() = (1..3).map { n ->
+        val walk = record(n).let { it.copy(summary = it.summary.copy(dogIds = listOf("dog-1", "dog-2"))) }
+        fun entry(id: String, type: WalkMomentType, petId: String?, point: GeoPoint?) = WalkEntry(id,
+            walk.summary.sessionId, type, walk.summary.startedAtMillis + 1_000,
+            point = point, locationCapturedAtMillis = point?.let { walk.summary.startedAtMillis + 1_000 }, petId = petId)
+        val point = GeoPoint(37.544, 127.037)
+        walk.copy(entries = when (n) {
+            1 -> listOf(entry("s1", WalkMomentType.SNIFFING, "dog-1", point), entry("s2", WalkMomentType.SNIFFING, "dog-2", point))
+            2 -> listOf(entry("s3", WalkMomentType.SNIFFING, "dog-1", null), entry("b1", WalkMomentType.BARKING, "dog-2", null))
+            else -> listOf(entry("s4", WalkMomentType.SNIFFING, null, GeoPoint(37.545, 127.038)))
+        })
+    }
+
     private fun show(source: WalkRecordsSource) = compose.setContent { DaengsTheme {
         CompositionLocalProvider(LocalInspectionMode provides true) { WalkRecordsScreen(source, pets, {}, {}, today = today) }
     } }
