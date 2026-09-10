@@ -1,0 +1,164 @@
+package com.daengs.app.ui.walk.records
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
+import com.daengs.app.map.layers.traces.TraceRasterTile
+import com.daengs.app.map.shell.MapCameraSnapshot
+import com.daengs.app.map.shell.MapHost
+import com.daengs.app.map.shell.MapScene
+import com.daengs.app.pet.Pet
+import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.theme.TextMuted
+import com.daengs.app.ui.walk.previewDiarySummary
+import com.daengs.app.ui.walk.toCompletedRouteLayerState
+import com.daengs.app.ui.walk.walkDiaryTitle
+import com.daengs.app.walk.records.*
+import com.daengs.app.walk.toSessionRoute
+
+@Composable
+internal fun WalkRecordsOverview(
+    selection: WalkRecordsSelection,
+    pets: List<Pet>,
+    prepared: PreparedWalkRecordsTraces?,
+    tiles: List<TraceRasterTile>?,
+    error: String?,
+    onRetry: () -> Unit,
+    selectedId: String?,
+    hiddenIds: Set<String>,
+    onSelect: (String) -> Unit,
+    onToggleHidden: (String) -> Unit,
+    onRestoreAll: () -> Unit,
+    onClearSelection: () -> Unit,
+    onOpen: (String) -> Unit,
+    listState: LazyListState,
+    camera: MapCameraSnapshot?,
+    onCamera: (MapCameraSnapshot) -> Unit,
+    fitBounds: List<GeoPoint>,
+    cameraRequest: Int,
+    modifier: Modifier = Modifier,
+) {
+    val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
+    val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
+    val route = remember(highlighted) {
+        highlighted?.summary?.toSessionRoute()?.toCompletedRouteLayerState()?.let { layer ->
+            layer.copy(start = layer.start?.copy(compact = true), end = layer.end?.copy(compact = true))
+        } ?: CompletedRouteLayerState()
+    }
+    val hiddenCount = prepared?.availableWalkIds?.count { it in hiddenIds } ?: 0
+    val visibleCount = prepared?.availableWalkIds?.size?.minus(hiddenCount)
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (visibleCount == null) "지도 흔적을 준비하고 있어요."
+                else "선택 산책 ${selection.records.size}회 · 표시 흔적 ${visibleCount}개",
+                Modifier.weight(1f).testTag("records-map-count"), style = MaterialTheme.typography.labelMedium)
+            if (hiddenCount > 0) {
+                TextButton(onClick = onRestoreAll, modifier = Modifier.testTag("records-map-restore-all")) {
+                    Text("모두 표시")
+                }
+            }
+        }
+        if (prepared != null) {
+            val missing = selection.records.size - prepared.availableWalkIds.size
+            if (missing > 0 || hiddenCount > 0) Text(
+                listOfNotNull("숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
+                    "흔적 없음 ${missing}회".takeIf { missing > 0 }).joinToString(" · ") + " · 목록에는 모두 남아 있어요.",
+                Modifier.padding(start = 18.dp, end = 18.dp, bottom = 6.dp).testTag("records-map-status"),
+                style = MaterialTheme.typography.labelSmall, color = TextMuted)
+        }
+        // Reserve the same space before selection: camera fitting must not race a map resize.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(when {
+                selected == null -> "카드를 눌러 산책 경로를 살펴보세요."
+                selected.summary.sessionId in hiddenIds -> "고른 산책은 지도에서 숨김"
+                route.paths.none { it.isNotEmpty() } -> "이 산책에는 강조할 경로가 없어요."
+                else -> "고른 산책 경로"
+            }, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+            if (selected != null) TextButton(onClick = onClearSelection, modifier = Modifier.testTag("records-map-clear-selection")) {
+                Text("강조 해제")
+            }
+        }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val wide = maxWidth >= 600.dp
+            val map: @Composable (Modifier) -> Unit = { mapModifier ->
+                Box(mapModifier.background(CreamBg).testTag("records-overview-map").semantics {
+                    stateDescription = highlighted?.takeIf { route.paths.any { it.isNotEmpty() } }
+                        ?.let { "강조한 산책: ${walkDiaryTitle(it.summary, it.title)}" }
+                        ?: "강조한 산책 없음"
+                }) {
+                    when {
+                        prepared == null && error != null -> RecordsMessage(error, "다시 시도", onRetry, Modifier.fillMaxSize())
+                        prepared == null -> RecordsMessage("산책 흔적을 준비하고 있어요.", modifier = Modifier.fillMaxSize())
+                        prepared.bounds.isEmpty() -> RecordsMessage("지도에 표시할 위치가 없어요.", modifier = Modifier.fillMaxSize())
+                        else -> {
+                            // Keep the map mounted even when every trace is hidden or composition is pending.
+                            MapHost(scene = MapScene(traceTiles = tiles.orEmpty(), completedRoute = route,
+                                allowRegionalOverview = true), searchOrigin = null, followDevice = false,
+                                fitBounds = fitBounds, cameraRequestKey = cameraRequest,
+                                initialCamera = camera, onCameraSnapshot = onCamera,
+                                onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
+                                modifier = Modifier.fillMaxSize())
+                            val message = when {
+                                error != null -> error
+                                tiles == null -> "흔적 표시를 바꾸고 있어요."
+                                visibleCount == 0 && hiddenCount > 0 -> "산책 흔적을 모두 숨겼어요."
+                                visibleCount == 0 -> "표시할 산책 흔적이 없어요."
+                                else -> null
+                            }
+                            if (message != null) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
+                                color = CreamBg.copy(alpha = .95f)) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
+                                    if (error != null) TextButton(onClick = onRetry) { Text("다시 시도") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            val records: @Composable (Modifier) -> Unit = { listModifier ->
+                WalkRecordsMapList(selection.records, pets, selectedId, hiddenIds, prepared?.availableWalkIds,
+                    onSelect, onToggleHidden, onOpen, listModifier, listState)
+            }
+            if (wide) Row(Modifier.fillMaxSize()) {
+                map(Modifier.weight(1.2f).fillMaxHeight())
+                records(Modifier.weight(1f).fillMaxHeight())
+            } else Column(Modifier.fillMaxSize()) {
+                map(Modifier.weight(.55f).fillMaxWidth())
+                HorizontalDivider()
+                records(Modifier.weight(.45f).fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 580)
+@Composable
+private fun WalkRecordsOverviewPreview() {
+    val record = WalkRecord(previewDiarySummary(), "숲길을 걸었어요")
+    DaengsTheme { WalkRecordsOverview(WalkRecordsSelection(WalkRecordsQuery(), listOf(record)),
+        emptyList(), null, null, null, {}, record.summary.sessionId, emptySet(), {}, {}, {}, {}, {},
+        rememberLazyListState(), null, {}, emptyList(), 0, Modifier.fillMaxSize()) }
+}
