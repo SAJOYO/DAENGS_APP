@@ -361,6 +361,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-record-record-1").assertIsSelected()
         compose.onNodeWithTag("records-map-open-record-1").assertIsEnabled()
         compose.onNodeWithTag("records-map-restore-all").performClick()
+        waitText("선택 산책 1회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-map-hide-record-1").assertTextEquals("지도에서 숨기기")
     }
 
@@ -495,7 +496,7 @@ class WalkRecordsScreenTest {
 
     private fun chooseMapRecord(id: String) {
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-$id"))
-        compose.onNodeWithTag("records-map-record-$id").performClick()
+        compose.onNodeWithTag("records-map-record-record-$id").performClick()
     }
 
     @Test fun `behavior selection commits from its draft and leaves the walks query unchanged`() {
