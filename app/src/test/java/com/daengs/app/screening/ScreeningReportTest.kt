@@ -41,6 +41,7 @@ class ScreeningReportTest {
               "name": "피부 표면·색·두께 변화", "prob": 0.75, "percent": 75.0, "confidence": 0.6225,
               "text": "모양만 보면 피부 표면·색·두께 변화에 가깝습니다.",
               "feature": "딱지, 둥근 비늘, 검어진 피부, 두꺼워진 피부",
+              "labels": "비듬·각질·상피성잔고리·태선화·과다색소침착",
               "detail": "병변 진행 후 흔적 또는 만성 염증성 변화",
               "caveat": "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
             },
@@ -195,6 +196,7 @@ class ScreeningReportTest {
         //    사진과 대조할 방법이 없다.
         assertEquals("딱지, 둥근 비늘, 검어진 피부, 두꺼워진 피부", g.feature)
         assertEquals("병변 진행 후 흔적 또는 만성 염증성 변화", g.detail)
+        assertEquals("비듬·각질·상피성잔고리·태선화·과다색소침착", g.labels)
         assertTrue("면책이 비었다", g.caveat.isNotBlank())
     }
 
@@ -275,6 +277,7 @@ class ScreeningReportTest {
         assertNotNull(g)
         assertEquals("", g!!.feature)
         assertEquals("", g.detail)
+        assertEquals("", g.labels)
         assertTrue(g.text.isNotBlank())
     }
 }
