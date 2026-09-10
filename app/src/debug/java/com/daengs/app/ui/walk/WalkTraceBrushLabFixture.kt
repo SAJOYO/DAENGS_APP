@@ -29,6 +29,12 @@ internal object WalkTraceBrushLabFixture {
 
     val bounds: List<GeoPoint> = (firstLoop + secondLoop + isolated).map(Offset::toPoint)
 
+    /** Thumbnail paths use the same invented geometry; the isolated point is never joined. */
+    fun routes(): List<List<List<GeoPoint>>> = listOf(
+        listOf(firstLoop.map(Offset::toPoint), firstRetrace.map(Offset::toPoint), listOf(isolated.toPoint())),
+        listOf(secondLoop.map(Offset::toPoint)),
+    )
+
     fun sheets(): List<WalkTraceSheet> {
         val firstCells = cells(firstLoop) + cells(firstRetrace) +
             SpatialDiaryHexGrid.cellFor(isolated.toPoint(), RADIUS_U)
