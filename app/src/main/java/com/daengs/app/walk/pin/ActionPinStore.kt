@@ -62,8 +62,9 @@ class ActionPinStore(private val dao: WalkDao, private val owner: () -> String,
         }
     }
 
-    private suspend fun observations(session: String, account: String) = dao.fixes(session).map {
+    private suspend fun observations(session: String, account: String) = dao.fixes(session).filter { it.recordingEligible != false }.map {
         ActionPinObservation(account, session, it.clientSeq, it.chainIndex, it.atMillis,
             GeoPoint(it.lat, it.lng), it.accuracyM, it.isMock)
     }
 }
+

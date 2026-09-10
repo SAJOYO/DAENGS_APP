@@ -150,6 +150,7 @@ class DaengsApp : Application() {
         val delivery = WorkManagerWalkDeliveryScheduler(this, log)
         val photoSync = com.daengs.app.walk.sync.WalkPhotoSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         walkRuntime = WalkRuntime(
+            recordingScope = applicationScope,
             locationSource = FusedLocationSource(this),
             store = store,
             controller = ForegroundWalkTrackingController(this, store),
@@ -172,7 +173,10 @@ class DaengsApp : Application() {
                     walkRuntime.sync.syncPendingSession(auth.accessToken, id)
                 }
             })
-        val recoveredPins = writer.ordered { actionPins.recover() }
+        val recoveredPins = writer.ordered {
+            actionPins.recover()
+            com.daengs.app.walk.recoverDrainedRecordings(log) { id, cutoff -> actionPins.finishSession(id, cutoff) }
+        }
         applicationScope.launch {
             recoveredPins.await()
             walkDiaryPublication.recover()
@@ -196,3 +200,4 @@ class DaengsApp : Application() {
         }
     }
 }
+

@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class WalkTrackingState(
     val savedEntryCount: Int = 0,
+    val recordingTransition: Boolean = false,
+    val ingressProgress: IngressProgress? = null,
     val ownerId: String? = null,
     /** Service-owned identity and participants; survives screen recreation and map toggles. */
     val activeSessionId: String? = null,
@@ -36,7 +38,7 @@ data class WalkTrackingState(
     val completedSessionId: String? = null,
     val stayStamps: List<StayStamp> = emptyList(),
 ) {
-    val canRecordAction: Boolean get() = trail.state == TrackingState.RECORDING && activeSessionId != null
+    val canRecordAction: Boolean get() = trail.state == TrackingState.RECORDING && activeSessionId != null && !recordingTransition
 
     fun elapsedMillisAt(realtimeMillis: Long): Long =
         activeDurationMillis + activeSinceRealtimeMillis
@@ -99,6 +101,7 @@ class WalkTrackingStore {
 
 /** Application과 Service가 공유하는 산책 기록 의존성. 화면에는 제어 계약만 공개한다. */
 class WalkRuntime internal constructor(
+    internal val recordingScope: kotlinx.coroutines.CoroutineScope,
     internal val locationSource: LocationSource,
     internal val store: WalkTrackingStore,
     val controller: WalkTrackingController,
@@ -115,3 +118,4 @@ class WalkRuntime internal constructor(
     /** 끝난 산책의 서버 전달을 Android에 맡기는 자리. */
     internal val delivery: WalkDeliveryScheduler,
 )
+
