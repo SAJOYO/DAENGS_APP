@@ -201,7 +201,10 @@ private fun RecordRow(
                         }
                     }
                     Text(report.body, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
-                    Text(report.action, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
+                    // 채팅 카드와 **같은 규칙**이다 — 정상에서는 권고 줄을 안 그린다.
+                    if (report.showsAction) {
+                        Text(report.action, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
+                    }
                     // ★ 2026-09-08 — 6종(report.stage2) 대신 **계열 네 묶음**이다.
                     //   채팅 카드와 같은 것을 그려야 한다. 한쪽만 고치면 같은 결과가
                     //   화면마다 다르게 보이고, 갈라져도 아무도 모른다.

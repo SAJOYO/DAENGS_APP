@@ -1858,7 +1858,11 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 // ★ 이 카드에서 **유일한 행동**이라 접지 않는다 (2026-09-10). 접으면
                 //   안 펴는 사람에게는 아무 말도 안 한 것이 된다. 다만 면책을 걷어내고 나면
                 //   혼자 굵을 이유가 없어서 **굵기를 뺐다** — 위 헤드라인만 강조로 남긴다.
-                Text(report.action, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                //   ⚠️ **정상에서는 안 그린다** (2026-09-11) — 정상 `body` 가 이미 같은 권고로
+                //      끝나서 두 번 말하게 된다. 규칙은 [ScreeningReport.showsAction] 한 곳이다.
+                if (report.showsAction) {
+                    Text(report.action, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                }
 
                 // ★ 면책은 **여기 한 곳뿐이다** (2026-09-10). 예전에는 같은 뜻이 네 군데였다.
                 //   ⚠️ `report.group` **밖에** 둔다. 안에 두면 확신이 낮아 `group` 이 null 인
