@@ -25,7 +25,7 @@ class TraceBrushTest {
         assertEquals(firstPixels.keys, secondPixels.keys)
         firstPixels.forEach { (key, alpha) -> assertEquals(alpha, secondPixels.getValue(key)) }
         assertEquals(route.toSet(), once.cells)
-        assertTrue(TraceBrush.compose(listOf(second)).all { tile -> tile.alpha.all { it <= 0.28f } })
+        assertTrue(TraceBrush.compose(listOf(second)).all { tile -> tile.alpha.all { it <= 0.14f } })
     }
 
     @Test
@@ -36,9 +36,11 @@ class TraceBrushTest {
         val two = TraceBrush.compose(sheets.take(2))
         val one = TraceBrush.compose(sheets.take(1))
 
-        assertEquals((1 - 0.72.pow(3)).toFloat(), three.single().alpha.first(), 0.000001f)
-        assertEquals(0.4816f, two.single().alpha.first(), 0.000001f)
-        assertEquals(0.28f, one.single().alpha.first(), 0.000001f)
+        assertEquals((1 - 0.86.pow(3)).toFloat(), three.single().alpha.first(), 0.000001f)
+        assertEquals(0.2604f, two.single().alpha.first(), 0.000001f)
+        assertEquals(0.14f, one.single().alpha.first(), 0.000001f)
+        val many = TraceBrush.compose((1..20).map { WalkTraceMask("many-$it", listOf(original)) })
+        assertTrue(many.single().alpha.all { it == 0.40f })
         assertTrue(original.alpha.all { it == 1f })
         assertArrayEquals(three.single().alpha, TraceBrush.compose(sheets.reversed()).single().alpha, 0f)
         val unrelated = WalkTraceMask("other-place", listOf(solidTile(tileX = 1_000)))
