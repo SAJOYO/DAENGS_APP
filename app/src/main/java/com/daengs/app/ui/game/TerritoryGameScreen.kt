@@ -35,6 +35,7 @@ internal fun TerritoryGameScreen(
     nowNanos: Long,
     onBack: () -> Unit, onOpenMap: () -> Unit, onSelectPet: (String) -> Unit, onRetry: () -> Unit,
     onAddPet: () -> Unit = onBack, onSignIn: () -> Unit = onBack,
+    onOpenBookmarks: () -> Unit = onBack,
 ) {
     var rulesOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = !rulesOpen, onBack = onBack)
@@ -55,6 +56,11 @@ internal fun TerritoryGameScreen(
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("game-overview-list"),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item(key = "bookmarks") {
+                OutlinedButton(onClick = onOpenBookmarks, modifier = Modifier.fillMaxWidth().testTag("game-bookmarks-open")) {
+                    Text("☆  북마크한 전봇대", color = TextDark)
+                }
+            }
             item(key = "season") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

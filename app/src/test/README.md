@@ -52,6 +52,14 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 점령 게임 성적 화면·규칙 팝업
 
+### 전봇대 북마크 (#278)
+
+`com.daengs.app.territory.bookmarks.*`는 HTTP·목록 계약과 로그인 생애를,
+`com.daengs.app.ui.game.bookmarks.*`는 중복 탭·타임아웃 재조회·목록/지도·위치 없음·작은 화면을 검증한다.
+게임 진입 메뉴와 공용 별 연결을 변경하면 `TerritoryGameScreenTest`,
+`ui.game.owned.OwnedTerritoryScreenTest`, `ui.walk.WalkTerritoryUiTest`를 함께 선택한다.
+실기기 가상 데이터 확인은 실제 서버에 북마크가 저장됐다는 근거가 아니다.
+
 `ui/game/TerritoryGameScreenTest`는 홈 진입·조회 강아지 교체·성적 상태·팝업 복귀·320dp 큰 글자를,
 `ui/game/TerritoryGameRulesTest`는 전봇대를 누르는 두 로컬 예시·인증 구도·점수 차액·닫기/뒤로·상태 복원을 확인한다.
 팝업은 실제 점령·카메라·GPS·서버 요청을 실행하지 않는다. 점수 조회 모델을 고치면

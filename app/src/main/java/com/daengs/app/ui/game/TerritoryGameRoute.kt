@@ -18,6 +18,7 @@ fun TerritoryGameRoute(
     photoOf: (String) -> ImageBitmap? = { null },
     petsError: Boolean = false, onRefreshPets: () -> Unit = {},
     onAddPet: () -> Unit = onBack, onSignIn: () -> Unit = onBack,
+    onOpenBookmarks: () -> Unit = onBack,
 ) {
     var selectedId by rememberSaveable(ownerId) { mutableStateOf<String?>(null) }
     val pet = pets?.firstOrNull { it.id == selectedId } ?: pets?.firstOrNull { it.isPrimary } ?: pets?.firstOrNull()
@@ -48,6 +49,6 @@ fun TerritoryGameRoute(
         TerritoryGameScreen(shown, pet.takeIf { ownerId != null }, pets.orEmpty().takeIf { ownerId != null }.orEmpty(), photoOf, now,
             onBack = onBack, onOpenMap = onOpenMap, onSelectPet = { selectedId = it },
             onRetry = { if (pets == null) onRefreshPets() else { overview = TerritoryGameOverview(); retry++ } },
-            onAddPet = onAddPet, onSignIn = onSignIn)
+            onAddPet = onAddPet, onSignIn = onSignIn, onOpenBookmarks = onOpenBookmarks)
     }
 }

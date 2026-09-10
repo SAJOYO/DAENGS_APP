@@ -115,6 +115,7 @@ private enum class Screen {
     TerritoryGame,
     /** 현재 보유한 영역만 살펴보는 조회 전용 지도와 목록. */
     OwnedTerritories,
+    TerritoryBookmarks,
     /** 이전 저장 화면값의 복원 호환용. 새 상세 선택은 기록 route가 보관한다. */
     WalkDetail,
     /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
@@ -135,6 +136,7 @@ class MainActivity : ComponentActivity() {
         val walkController = walkRuntime.controller
         setContent {
             DaengsTheme {
+              com.daengs.app.ui.game.bookmarks.TerritoryBookmarkProvider(app.sessionProvider) {
                 // 화면이 넷이 됐지만 **네비게이션 라이브러리는 아직 안 넣는다.**
                 // 흐름이 갈래 없이 일직선(랜딩 → 홈 ⇄ 도감)이고, 딥링크도 백스택
                 // 복원도 필요 없다. 산책 게임이 붙어 옆길이 생기면 그때가 맞다.
@@ -978,6 +980,7 @@ class MainActivity : ComponentActivity() {
                             onRefreshPets = { scope.launch { freshToken()?.let { pets.refresh(it) } } },
                             onBack = { screen = Screen.Home },
                             onOpenMap = { screen = Screen.OwnedTerritories },
+                            onOpenBookmarks = { screen = Screen.TerritoryBookmarks },
                             onAddPet = { editing = null; screen = Screen.Onboarding },
                             onSignIn = { screen = Screen.Landing },
                         )
@@ -990,6 +993,10 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
                         )
                     }
+
+                    Screen.TerritoryBookmarks -> com.daengs.app.ui.game.bookmarks.TerritoryBookmarksRoute(
+                        onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
+                    )
 
                     Screen.Walk -> WalkRoute(
                         onBack = { screen = Screen.Home },
@@ -1100,6 +1107,7 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { petNeed = null },
                     )
                 }
+              }
             }
         }
     }
