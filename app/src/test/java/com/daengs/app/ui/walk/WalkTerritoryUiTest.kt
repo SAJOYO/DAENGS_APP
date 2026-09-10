@@ -51,8 +51,8 @@ class WalkTerritoryUiTest {
     @Test fun onlineCameraExplainsRealPhotoAndHidesSimulationControls() {
         compose.setContent { DaengsTheme { TerritoryCaptureDialog("internal-site-id", { null },
             { _, _, _ -> kotlinx.coroutines.CompletableDeferred(false) }, {}, online = true) } }
-        compose.onNodeWithText("강아지와 전봇대 주변 모습이 함께 나오게 찍어 주세요").assertIsDisplayed()
-        compose.onNodeWithText("사진은 현재 위치에서 촬영하고 서버에서 확인해요 · 인증 범위 10m").assertIsDisplayed()
+        compose.onNodeWithText("현재 위치에서 강아지가 잘 보이게 찍어 주세요").assertIsDisplayed()
+        compose.onNodeWithText("위치는 GPS로, 강아지 여부는 사진으로 확인해요 · 인증 범위 10m").assertIsDisplayed()
         compose.onNodeWithText("테스트 판정 선택").assertDoesNotExist()
         compose.onNodeWithText("internal-site-id", substring = true).assertDoesNotExist()
     }

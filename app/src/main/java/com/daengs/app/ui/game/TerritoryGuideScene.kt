@@ -77,13 +77,13 @@ internal fun TerritoryGuideScene(scenario: GuideScenario, step: GuideStep, onSel
                             strokeWidth = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())))
                     }
                 }
-                Image(pole, contentDescription = if (onSelectPole != null) "예시 전봇대 선택" else null,
+                if (!photo) Image(pole, contentDescription = if (onSelectPole != null) "예시 전봇대 선택" else null,
                     modifier = Modifier.offset(x = poleX - 32.dp, y = baseY - 160.dp * TerritoryPoleArt.ANCHOR_Y)
                         .size(64.dp, 160.dp).testTag("game-guide-pole").then(
                             if (onSelectPole != null) Modifier.clickable(role = Role.Button, onClick = onSelectPole) else Modifier))
                 if (photo) {
-                    Canvas(Modifier.offset(x = dogX - 42.dp, y = baseY - 72.dp).size(84.dp, 82.dp)
-                        .semantics { contentDescription = "촬영 구도 예시: 두부의 전신과 전봇대 주변을 함께 담아요" }) {
+                    Canvas(Modifier.align(Alignment.Center).size(120.dp, 117.dp)
+                        .semantics { contentDescription = "촬영 구도 예시: 해당 위치에서 두부가 잘 보이게 촬영해요" }) {
                         drawSpriteFrame(dogSheet, 0, size)
                     }
                     Box(Modifier.matchParentSize().padding(10.dp).border(2.dp, TextDark.copy(alpha = .5f), RoundedCornerShape(10.dp)))
@@ -107,7 +107,7 @@ internal fun TerritoryGuideScene(scenario: GuideScenario, step: GuideStep, onSel
                     step == GuideStep.RESULT && scenario == GuideScenario.TAKEOVER -> "초코 → 두부  ·  기본 100 + 탈취 20점"
                     step == GuideStep.RESULT -> "두부  ·  20 + 80 = 기본 100점"
                     step == GuideStep.MARKED -> "두부  ·  기본 +20점"
-                    photo -> "두부 + 전봇대 주변이 한 화면에"
+                    photo -> "위치는 GPS로 · 사진은 강아지 확인"
                     step == GuideStep.ACTION -> "영역표시할 강아지  ·  두부"
                     else -> "전봇대를 선택하면 주인과 행동을 확인해요"
                 }, color = TextDark, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
