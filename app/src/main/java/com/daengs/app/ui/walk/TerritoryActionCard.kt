@@ -30,6 +30,7 @@ internal fun TerritoryActionCard(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("전봇대", Modifier.weight(1f), color = TextDark, fontSize = 13.sp)
+                com.daengs.app.ui.game.bookmarks.TerritoryBookmarkAction(target.site.id)
                 WalkToolButton(WalkTool.CLOSE, "점령지 선택 닫기", onClose)
             }
             Text(target.occupancyLabel, color = TextDark, fontSize = 13.sp,
