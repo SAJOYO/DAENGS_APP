@@ -15,7 +15,7 @@ import kotlinx.coroutines.delay
 fun TerritoryGameRoute(
     repository: ActivityRepository, ownerId: String?, pets: List<Pet>?,
     onBack: () -> Unit, onOpenMap: () -> Unit,
-    photoOf: (String) -> ImageBitmap? = { null }, walkActive: Boolean = false,
+    photoOf: (String) -> ImageBitmap? = { null },
     petsError: Boolean = false, onRefreshPets: () -> Unit = {},
     onAddPet: () -> Unit = onBack, onSignIn: () -> Unit = onBack,
 ) {
@@ -45,7 +45,7 @@ fun TerritoryGameRoute(
             pet == null -> TerritoryGameOverview(GameOverviewStatus.NO_PET)
             else -> overview
         }
-        TerritoryGameScreen(shown, pet.takeIf { ownerId != null }, pets.orEmpty().takeIf { ownerId != null }.orEmpty(), photoOf, now, walkActive,
+        TerritoryGameScreen(shown, pet.takeIf { ownerId != null }, pets.orEmpty().takeIf { ownerId != null }.orEmpty(), photoOf, now,
             onBack = onBack, onOpenMap = onOpenMap, onSelectPet = { selectedId = it },
             onRetry = { if (pets == null) onRefreshPets() else { overview = TerritoryGameOverview(); retry++ } },
             onAddPet = onAddPet, onSignIn = onSignIn)

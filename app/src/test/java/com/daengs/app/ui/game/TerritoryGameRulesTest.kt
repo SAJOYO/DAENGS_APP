@@ -24,7 +24,7 @@ class TerritoryGameRulesTest {
         var maps = 0
         val dog = previewGamePet()
         compose.setContent { DaengsTheme {
-            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, false,
+            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0,
                 { exits++ }, { maps++ }, {}, {})
         } }
         compose.onNodeWithText("회원·시즌별 100점", substring = true).assertDoesNotExist()
@@ -81,7 +81,7 @@ class TerritoryGameRulesTest {
         val restoration = StateRestorationTester(compose)
         val dog = previewGamePet()
         restoration.setContent { DaengsTheme {
-            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, false, {}, {}, {}, {})
+            TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, {}, {}, {}, {})
         } }
         compose.onNodeWithTag("game-rules-open").performClick()
         compose.onNodeWithTag("game-guide-TAKEOVER").performClick()

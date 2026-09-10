@@ -100,11 +100,11 @@ class TerritoryGameScreenTest {
         var opened = 0
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.3f)) {
-                DaengsTheme { TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0, true,
+                DaengsTheme { TerritoryGameScreen(previewGameOverview(), dog, listOf(dog), { null }, 0,
                     {}, { opened++ }, {}, {}) }
             }
         }
-        compose.onNodeWithText("산책 지도로 돌아가기").assertIsDisplayed().performClick()
+        compose.onNodeWithText("점령 지도 보기").assertIsDisplayed().performClick()
         assertEquals(1, opened)
         val list = compose.onNodeWithTag("game-overview-list")
         val body = list.fetchSemanticsNode().boundsInRoot
@@ -128,7 +128,7 @@ class TerritoryGameScreenTest {
         compose.onNodeWithText("매월 1일 00:00").assertIsDisplayed()
         compose.onNodeWithTag("game-rules-close").performClick()
         compose.onNodeWithTag("game-rules-dialog").assertDoesNotExist()
-        compose.onNodeWithText("산책 지도로 돌아가기").assertIsDisplayed()
+        compose.onNodeWithText("점령 지도 보기").assertIsDisplayed()
     }
 
     @Test fun preparingErrorAndNoPetStayDistinctAndCanRetryOrRegister() {
