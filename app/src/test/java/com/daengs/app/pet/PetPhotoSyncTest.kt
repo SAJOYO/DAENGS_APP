@@ -124,6 +124,41 @@ class PetPhotoSyncTest {
         )
     }
 
+    /**
+     * **도장 없는 기기 사진 + 도장 없는 서버 사진.** 예전에는 `!canUpload` 가지가 조건별로
+     * 나뉘어 있어 이 조합만 아래로 새고, 아래는 "도장 없으면 올린다" 는 자리라 돌보미가
+     * 남의 강아지 사진을 덮을 수 있었다. 서버가 이 조합을 낼 일이 없다고 해도, 막는 것이
+     * 한 가지에 모여 있어야 다음에 조건이 늘어도 안 샌다.
+     */
+    @Test
+    fun `공동 돌봄 아이는 서버 도장이 없어도 올리지 않는다`() {
+        assertEquals(
+            PhotoAction.DOWNLOAD,
+            photoActionFor(
+                serverHasPhoto = true,
+                serverUpdatedAt = null,
+                localExists = true,
+                localStamp = null,
+                canUpload = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `공동 돌봄 아이는 어떤 조합에서도 올리지 않는다`() {
+        val combinations = listOf(true, false).flatMap { serverHasPhoto ->
+            listOf(null, "2026-09-10T10:00:00Z").flatMap { serverStamp ->
+                listOf(true, false).flatMap { localExists ->
+                    listOf(null, "2026-09-10T10:00:00Z", "2026-01-01T00:00:00Z").map { localStamp ->
+                        photoActionFor(serverHasPhoto, serverStamp, localExists, localStamp, canUpload = false)
+                    }
+                }
+            }
+        }
+
+        assertEquals(emptyList<PhotoAction>(), combinations.filter { it == PhotoAction.UPLOAD })
+    }
+
     @Test
     fun `공동 돌봄 아이의 서버 사진이 없어지면 기기에서도 지운다`() {
         assertEquals(
