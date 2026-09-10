@@ -115,15 +115,26 @@ fun WalkRecordsScreen(
         try {
             if (query.filter.keyword.isNotBlank()) delay(250)
             source.changes.collectLatest {
-                selection = null
+                // Keep the last successful result during same-source, same-query refreshes.
+                // Source/query/retry changes still clear it synchronously through remember above.
                 error = null
                 try {
-                    val loaded = withContext(Dispatchers.Default) { source.select(query) }
+                    val previous = selection
+                    val loaded = withContext(Dispatchers.Default) {
+                        val next = source.select(query)
+                        require(next.query == query) { "조회 조건과 결과 조건이 달라요." }
+                        // Selection is not a data class. Retain its identity for equal contents so
+                        // table invalidations do not restart trace loading or recreate map inputs.
+                        if (previous != null && previous.query == next.query && previous.records == next.records)
+                            previous else next
+                    }
                     currentCoroutineContext().ensureActive()
-                    require(loaded.query == query) { "조회 조건과 결과 조건이 달라요." }
                     selection = loaded
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
+                    // A failed read may mean the captured account is no longer valid.
+                    // Never reveal this stale snapshot again when a later refresh starts.
+                    selection = null
                     error = "산책 기록을 불러오지 못했어요."
                 }
             }
