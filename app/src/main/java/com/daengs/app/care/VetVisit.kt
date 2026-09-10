@@ -36,11 +36,15 @@ data class ReceiptItem(val name: String, val amountKrw: Int) {
  */
 data class VetVisitTicket(
     val draftId: String,
-    val petId: String,
-    val storageKey: String,
     val uploadUrl: String,
     val uploadHeaders: Map<String, String>,
-    /** 201 이면 새로 만든 것, 200 이면 같은 `client_event_id` 로 있던 것. **둘 다 성공이다.** */
+    /**
+     * 201 이면 새로 만든 것, 200 이면 같은 `client_event_id` 로 있던 것. **둘 다 성공이다.**
+     *
+     * 화면이 안 쓰는데 남긴 유일한 칸이다 — 이 계약이 이 클래스에 적혀 있지 않으면 다음
+     * 사람이 200 을 실패로 볼 자리다. 응답의 `pet_id`·`storage_key`·`expires_in_seconds`
+     * 는 그런 근거가 없어 안 담았다.
+     */
     val created: Boolean,
 ) {
     companion object {
@@ -48,8 +52,6 @@ data class VetVisitTicket(
             val headers = json.optJSONObject("upload_headers")
             return VetVisitTicket(
                 draftId = json.getString("draft_id"),
-                petId = json.getString("pet_id"),
-                storageKey = json.getString("storage_key"),
                 uploadUrl = json.getString("upload_url"),
                 uploadHeaders = headers?.keys()?.asSequence()
                     ?.associateWith { headers.getString(it) }.orEmpty(),
@@ -200,6 +202,28 @@ val PHONE_PATTERN = Regex("^[0-9]{2,4}(-[0-9]{3,4}){1,2}$")
 /** 빈 칸은 통과다 — 안 보낼 값이라 모양을 볼 것이 없다. */
 fun phoneLooksValid(value: String): Boolean =
     value.isBlank() || PHONE_PATTERN.matches(value.trim())
+
+/**
+ * 영수증 사진 한 장의 상한 (저쪽 `services/vet_visit.py` 의 `MAX_RECEIPT_BYTES`).
+ *
+ * 저쪽이 bridge 에서 413 으로 막지만, 다 올리고 나서 거절당하면 대역폭이 이미 나갔다.
+ */
+const val MAX_RECEIPT_BYTES = 12 * 1024 * 1024
+
+/**
+ * 확인 화면의 글자 수 상한. 저쪽 `VetVisitConfirmRequest` 의 `max_length` 와 같은 숫자다.
+ *
+ * **넘겨 보내면 화면이 엉뚱한 말을 한다.** FastAPI 검증 422 는 `detail` 이 배열이라
+ * [com.daengs.app.chat.ChatApiError.from] 이 "요청 형식이 맞지 않아요. 앱을 업데이트해
+ * 주세요." 로 떨어진다 — OCR 이 읽어 온 긴 병원 주소 하나 때문에 유저에게 앱을
+ * 업데이트하라고 말하게 된다. 전화번호를 [phoneLooksValid] 로 막은 것과 같은 결이다.
+ */
+const val MAX_HOSPITAL_NAME = 60
+const val MAX_HOSPITAL_ADDRESS = 200
+const val MAX_REASON_DETAIL = 60
+
+/** 금액 상한도 저쪽과 같다 (`total_krw` 는 `ge=0, le=100_000_000`). */
+const val MAX_TOTAL_KRW = 100_000_000
 
 // -- 아래는 배관 -------------------------------------------------------------
 

@@ -72,17 +72,30 @@ class VetVisitApi internal constructor(
      * **여기는 우리 API 가 아니다.** 주소도 헤더도 티켓이 준 것을 그대로 쓰고 토큰을
      * 안 붙인다 — 저쪽 bridge 는 인증 헤더를 안 받고 **키가 자격**이다.
      *
-     * ⚠️ **409 를 성공으로 접는다.** 저쪽이 `open_write(exclusive=True)` 라 같은 키에
-     *    두 번 쓰면 409 인데, 그 뜻은 **그 자리에 이미 바이트가 있다**는 것이다 (반쯤
-     *    쓰다 끊긴 파일은 저쪽이 지운다). 여기서 실패로 보고 새 초안을 만들면 같은
+     * ⚠️ **"이미 올라가 있다" 를 성공으로 접는다.** 저쪽이 create-only 라 같은 키에 두 번
+     *    쓰면 거절인데, 그 뜻은 **그 자리에 이미 온전한 바이트가 있다**는 것이다 (반쯤 쓰다
+     *    끊긴 파일은 `open_write` 가 지운다). 여기서 실패로 보고 새 초안을 만들면 같은
      *    영수증에 Gemini 를 한 번 더 태운다. 진짜로 사진이 없으면 ③이 409
      *    `photo_not_uploaded` 로 말해 준다.
+     *
+     *    **거절 코드가 저장소마다 다르다** — LocalBridge 는 `FileExistsError` → **409**,
+     *    GCS 는 티켓에 실려 오는 `x-goog-if-generation-match: 0` 이 깨져 **412** 다
+     *    (저쪽 `core/storage.py` 의 `GcsStorage.create_upload_ticket`). 둘 다 접지 않으면
+     *    저장소를 GCS 로 바꾸는 날 이 판단이 **아무 소리 없이** 죽는다.
      */
     suspend fun upload(ticket: VetVisitTicket, jpeg: ByteArray): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                // 12 MiB 를 다 올리고 나서 413 을 받는 왕복을 없앤다 (저쪽 MAX_RECEIPT_BYTES).
+                if (jpeg.size > MAX_RECEIPT_BYTES) {
+                    throw ChatApiError(0, null, "영수증 사진이 너무 커요. 다시 찍어 주세요.")
+                }
                 val status = uploader.put(ticket.uploadUrl, ticket.uploadHeaders, jpeg)
-                if (status == HttpURLConnection.HTTP_CONFLICT) return@runCatching
+                if (status == HttpURLConnection.HTTP_CONFLICT ||
+                    status == HttpURLConnection.HTTP_PRECON_FAILED
+                ) {
+                    return@runCatching
+                }
                 if (status !in 200..299) {
                     throw ChatApiError(status, code = null, message = uploadSentence(status))
                 }
@@ -232,7 +245,14 @@ internal object UrlConnectionUploader : BridgeUploader {
             setFixedLengthStreamingMode(bytes.size)
         }
         try {
-            conn.outputStream.use { it.write(bytes) }
+            try {
+                conn.outputStream.use { it.write(bytes) }
+            } catch (io: java.io.IOException) {
+                // 저쪽은 Content-Type(415)·Content-Length(413)를 **본문을 읽기 전에** 거절한다.
+                // 그러면 우리 write 가 터지는데, 그때도 응답은 와 있다 — 그것을 못 읽고
+                // 예외로 나가면 "닿지 못했다" 가 되어 화면이 엉뚱한 말을 한다.
+                return runCatching { conn.responseCode }.getOrNull() ?: throw io
+            }
             return conn.responseCode
         } finally {
             conn.disconnect()

@@ -2,11 +2,14 @@ package com.daengs.app.care
 
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.chat.ChatLoadState
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -89,6 +92,154 @@ class VetVisitCoordinatorTest {
         advanceUntilIdle()
 
         assertEquals(listOf("id-1", "id-2"), gateway.startedWith)
+    }
+
+    @Test
+    fun `저쪽이 우리 쪽 장애를 failed 로 주면 같은 초안으로 추출을 다시 부른다`() = runTest {
+        // 저쪽은 Gemini 타임아웃·API 오류를 200 + status=failed 로 주고 extracted_at 을
+        // 저장하지 않는다 — 다시 부르면 Gemini 가 다시 돌고 성공할 수 있다. 오류 객체가
+        // 없다고 재시도를 막으면 저쪽 문서가 안내한 "다시 시도" 가 죽은 버튼이 된다.
+        gateway.extractResult = Result.success(draft().copy(status = ExtractionStatus.FAILED))
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        assertNull("오류가 아니다 — 200 이다", state(coordinator).receipt?.error)
+        gateway.extractResult = Result.success(draft())
+        assertTrue("재시도가 받아들여져야 한다", coordinator.retryReceipt(token))
+        advanceUntilIdle()
+
+        assertEquals("초안을 새로 만들지 않는다", listOf("id-1"), gateway.startedWith)
+        assertEquals(listOf("draft-1", "draft-1"), gateway.extractedWith)
+        assertEquals(ExtractionStatus.OK, state(coordinator).receipt?.draft?.status)
+    }
+
+    @Test
+    fun `확정이 실패한 뒤의 재시도는 재추출이 아니다 — 고친 값과 항목을 날리지 않는다`() = runTest {
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        gateway.confirmResult = Result.failure(ChatApiError.unreachable("못 저장했어요", IOException()))
+        coordinator.confirm(token, edits())
+        advanceUntilIdle()
+
+        assertFalse("여기는 confirm 을 다시 부르는 자리다", coordinator.retryReceipt(token))
+        assertEquals("추출을 다시 부르지 않았다", listOf("draft-1"), gateway.extractedWith)
+        assertEquals(ReceiptStep.READY, state(coordinator).receipt?.step)
+    }
+
+    @Test
+    fun `재시작은 처음 찍은 그 사진을 다시 올린다`() = runTest {
+        gateway.uploadResult = Result.failure(ChatApiError.unreachable("못 올렸어요", IOException()))
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        gateway.uploadResult = Result.success(Unit)
+        coordinator.retryReceipt(token)
+        advanceUntilIdle()
+
+        assertEquals(2, gateway.uploadedBytes.size)
+        assertArrayEquals("같은 바이트여야 한다", jpeg, gateway.uploadedBytes[1])
+    }
+
+    @Test
+    fun `확인 화면을 닫으면 사진을 놓는다 — 다시 열어도 옛 바이트가 안 올라간다`() = runTest {
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        coordinator.dismissReceipt()
+        assertNull(state(coordinator).receipt)
+
+        val other = byteArrayOf(9, 9)
+        coordinator.beginReceipt(token, other)
+        advanceUntilIdle()
+
+        assertArrayEquals("새로 찍은 사진이어야 한다", other, gateway.uploadedBytes.last())
+        assertEquals(listOf("id-1", "id-2"), gateway.startedWith)
+    }
+
+    @Test
+    fun `추출이 도는 중에 닫으면 늦게 온 결과가 화면을 되살리지 않는다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        gateway.extractGate = gate
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        assertEquals(ReceiptStep.EXTRACTING, state(coordinator).receipt?.step)
+        coordinator.dismissReceipt()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertNull("닫힌 화면이 되살아나면 안 된다", state(coordinator).receipt)
+    }
+
+    @Test
+    fun `추출이 도는 중에는 확정을 못 부른다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        gateway.extractGate = gate
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        assertFalse("유저가 본 적 없는 초안으로 확정하면 안 된다", coordinator.confirm(token, edits()))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(gateway.confirmedWith.isEmpty())
+    }
+
+    @Test
+    fun `처리 중인 영수증이 있으면 새로 찍은 것을 안 받는다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        gateway.extractGate = gate
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        assertFalse(coordinator.beginReceipt(token, byteArrayOf(9)))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf("id-1"), gateway.startedWith)
+    }
+
+    @Test
+    fun `목록을 못 읽으면 실패 상태로 남는다`() = runTest {
+        gateway.listResult = Result.failure(ChatApiError.unreachable("못 읽었어요", IOException()))
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token)
+        advanceUntilIdle()
+
+        assertTrue(state(coordinator).visits is ChatLoadState.Failed)
+    }
+
+    @Test
+    fun `삭제가 실패하면 목록은 그대로 두고 오류만 세운다`() = runTest {
+        gateway.deleteResult = Result.failure(ChatApiError.unreachable("못 지웠어요", IOException()))
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token)
+        advanceUntilIdle()
+
+        coordinator.delete(token, "v1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("v1"), visits(coordinator).map { it.id })
+        assertNotNull(state(coordinator).deleteError)
+        coordinator.clearErrors()
+        assertNull(state(coordinator).deleteError)
     }
 
     @Test
@@ -224,21 +375,31 @@ class VetVisitCoordinatorTest {
         val extractedWith = mutableListOf<String>()
         val confirmedWith = mutableListOf<String>()
 
+        /** 실제로 올라간 바이트. 재시작이 같은 사진을 다시 올리는지 보려고 적어 둔다. */
+        val uploadedBytes = mutableListOf<ByteArray>()
+
         var uploadResult: Result<Unit> = Result.success(Unit)
         var extractResult: Result<VetVisitDraft> = Result.success(draft())
         var confirmResult: Result<VetVisit> = Result.success(visit())
         var optionsResult: Result<List<VetReasonOption>> =
             Result.success(listOf(VetReasonOption("skin", "피부"), VetReasonOption("ear", "귀")))
 
+        /** 채워 두면 추출이 여기서 멈춘다 — 도는 도중에 끼어드는 것을 볼 수 있다. */
+        var extractGate: CompletableDeferred<Unit>? = null
+
         override suspend fun startDraft(accessToken: String, petId: String, clientEventId: String) =
             Result.success(
-                VetVisitTicket("draft-1", petId, "k", "http://bridge/k", emptyMap(), created = true),
+                VetVisitTicket("draft-1", "http://bridge/k", emptyMap(), created = true),
             ).also { startedWith += clientEventId }
 
-        override suspend fun upload(ticket: VetVisitTicket, jpeg: ByteArray) = uploadResult
+        override suspend fun upload(ticket: VetVisitTicket, jpeg: ByteArray) =
+            uploadResult.also { uploadedBytes += jpeg }
 
-        override suspend fun extract(accessToken: String, draftId: String) =
-            extractResult.also { extractedWith += draftId }
+        override suspend fun extract(accessToken: String, draftId: String): Result<VetVisitDraft> {
+            extractedWith += draftId
+            extractGate?.await()
+            return extractResult
+        }
 
         override suspend fun confirm(
             accessToken: String,
@@ -246,11 +407,13 @@ class VetVisitCoordinatorTest {
             confirmation: VetVisitConfirmation,
         ) = confirmResult.also { confirmedWith += confirmation.clientEventId }
 
-        override suspend fun list(accessToken: String, petId: String) =
-            Result.success(listOf(visit("v1")))
+        var listResult: Result<List<VetVisit>> = Result.success(listOf(visit("v1")))
+        var deleteResult: Result<Unit> = Result.success(Unit)
+
+        override suspend fun list(accessToken: String, petId: String) = listResult
 
         override suspend fun reasonOptions(accessToken: String, petId: String) = optionsResult
 
-        override suspend fun delete(accessToken: String, visitId: String) = Result.success(Unit)
+        override suspend fun delete(accessToken: String, visitId: String) = deleteResult
     }
 }

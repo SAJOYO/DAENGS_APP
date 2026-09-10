@@ -73,6 +73,23 @@ class VetVisitApiTest {
     }
 
     @Test
+    fun `GCS 의 412 도 같은 뜻이라 같이 접는다 — 저장소가 바뀌어도 안 죽는다`() = runBlocking {
+        // LocalBridge 는 FileExistsError → 409, GCS 는 x-goog-if-generation-match 0 이
+        // 깨져 412 다. 둘 다 "그 자리에 이미 온전한 바이트가 있다" 다.
+        uploader.status = 412
+        assertTrue(api.upload(ticket(), byteArrayOf(1)).isSuccess)
+    }
+
+    @Test
+    fun `상한을 넘는 사진은 올리기 전에 막는다 — 다 보내고 413 을 받지 않는다`() = runBlocking {
+        val error = api.upload(ticket(), ByteArray(MAX_RECEIPT_BYTES + 1))
+            .exceptionOrNull() as ChatApiError
+
+        assertEquals("서버를 아예 안 두드린다", null, uploader.url)
+        assertEquals("영수증 사진이 너무 커요. 다시 찍어 주세요.", error.message)
+    }
+
+    @Test
     fun `업로드 415 는 실패다 — 상태 코드를 든 오류가 온다`() = runBlocking {
         uploader.status = 415
         val error = api.upload(ticket(), byteArrayOf(1)).exceptionOrNull() as ChatApiError
@@ -162,8 +179,6 @@ class VetVisitApiTest {
 
     private fun ticket() = VetVisitTicket(
         draftId = draftId,
-        petId = pet,
-        storageKey = "vet/d1.jpg",
         uploadUrl = "http://bridge/vet/d1.jpg",
         uploadHeaders = mapOf("Content-Type" to "image/jpeg"),
         created = true,
