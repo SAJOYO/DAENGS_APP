@@ -87,10 +87,8 @@ internal fun WalkHistoryBrowser(
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹ 뒤로") }
-            // **이 화면이 "산책 일기" 다.** 홈의 `지난 산책` 으로 들어오든 산책 탭의
-            // `일기` 로 들어오든 같은 화면이 뜬다. 전에는 이 목록이 `산책 기록`,
-            // 목록에서 연 한 건이 `산책 일기` 라 이름이 정확히 반대로 붙어 있었다.
-            Text("산책 일기", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            // 완료된 산책 세션을 찾는 목록이다. 장면을 구성해 내보내는 일기와 구분한다.
+            Text("산책 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         if (pets.size >= 2) DogFilterRow(pets, dogId, { dogId = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), photoOf = photoOf)

@@ -220,7 +220,7 @@ private fun WalkGameOverlay(
     onSelectClaimingPet: (String, String) -> Unit = { _, _ -> },
     onOpenEntries: () -> Unit = {},
     /**
-     * 산책 일기 **목록**으로 나간다. [onOpenEntries] 와 다른 자리다 — 저쪽은 지금
+     * 산책 기록 **목록**으로 나간다. [onOpenEntries] 와 다른 자리다 — 저쪽은 지금
      * 걷는 산책 한 건에 남긴 것이고, 이쪽은 지난 산책들의 목록이다. 걷는 중인
      * 산책은 아직 목록에 없어서(끝나야 들어간다) 둘을 하나로 합칠 수 없다.
      */
@@ -383,13 +383,13 @@ private fun WalkGameOverlay(
                     // **산책 전에는 목록으로 간다.** 도크의 `일기` 는 지금 걷는 산책에
                     // 묶여 있어서(`activeSessionId ?: completedSessionId`), 걷기 전에
                     // 누르면 묶일 산책이 없어 늘 빈 창이 떴다. 여기서 사람이 보고 싶은
-                    // 것은 지난 일기다 — 홈의 `지난 산책` 과 같은 화면으로 보낸다.
+                    // 것은 지난 산책이다 — 홈의 `지난 산책` 과 같은 화면으로 보낸다.
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) {
-                            WalkToolButton(WalkTool.ENTRIES, "산책 일기", onOpenDiaryList,
-                                caption = "일기", captionBeside = true)
+                            WalkToolButton(WalkTool.ENTRIES, "산책 기록", onOpenDiaryList,
+                                caption = "산책 기록", captionBeside = true)
                         }
                     }
                 }

@@ -29,6 +29,7 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
+import com.daengs.app.map.shell.MapCameraSnapshot
 import com.daengs.app.map.shell.minimumZoom
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -37,6 +38,7 @@ import com.naver.maps.geometry.LatLng
 import com.naver.maps.geometry.LatLngBounds
 import com.naver.maps.map.CameraAnimation
 import com.naver.maps.map.CameraUpdate
+import com.naver.maps.map.CameraPosition
 import com.naver.maps.map.MapView
 import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.LocationOverlay
@@ -78,6 +80,8 @@ fun NaverMapSurface(
     onSelectRouteEndpoint: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
+    initialCamera: MapCameraSnapshot? = null,
+    onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -89,6 +93,9 @@ fun NaverMapSurface(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
+    val cameraToRestore = remember(mapView) { initialCamera }
+    var cameraRestored by remember(mapView) { mutableStateOf(false) }
+    var reportCamera by remember(mapView) { mutableStateOf(false) }
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current.density
@@ -96,6 +103,7 @@ fun NaverMapSurface(
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
     val latestMomentCallback by rememberUpdatedState(onSelectMoment)
+    val latestSnapshotCallback by rememberUpdatedState(onCameraSnapshot)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
     val lastCameraReason = remember { mutableIntStateOf(CameraUpdate.REASON_DEVELOPER) }
@@ -136,6 +144,13 @@ fun NaverMapSurface(
                         if (reason == CameraUpdate.REASON_GESTURE) latestGestureCallback()
                     }
                     map.addOnCameraIdleListener {
+                        if (reportCamera) {
+                            val camera = map.cameraPosition
+                            latestSnapshotCallback?.invoke(MapCameraSnapshot(
+                                GeoPoint(camera.target.latitude, camera.target.longitude),
+                                camera.zoom, camera.bearing, camera.tilt,
+                            ))
+                        }
                         if (!lastCameraReason.intValue.isUserDriven()) return@addOnCameraIdleListener
                         val target = map.cameraPosition.target
                         latestCameraCallback(GeoPoint(target.latitude, target.longitude))
@@ -223,9 +238,19 @@ fun NaverMapSurface(
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
         bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
         val map = naverMap ?: return@LaunchedEffect
+        if (!cameraRestored && cameraToRestore != null && centerOn == null && searchOrigin == null) {
+            cameraRestored = true
+            reportCamera = true
+            map.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(
+                cameraToRestore.target.toLatLng(), cameraToRestore.zoom,
+                cameraToRestore.tilt, cameraToRestore.bearing,
+            )))
+            return@LaunchedEffect
+        }
         if (keepSelectionVisible && centerOn != null) return@LaunchedEffect
         if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+        reportCamera = true
         val bounds = LatLngBounds.Builder().apply {
             points.forEach { include(it.toLatLng()) }
         }.build()

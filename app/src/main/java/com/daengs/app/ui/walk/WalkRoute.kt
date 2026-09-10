@@ -42,7 +42,7 @@ import com.daengs.app.walk.WalkTrackingController
 @Composable
 fun WalkRoute(
     onBack: () -> Unit,
-    /** 산책 일기 목록으로 나간다. 홈의 `지난 산책` 과 같은 화면이다. */
+    /** 산책 기록 목록으로 나간다. 홈의 `지난 산책` 과 같은 화면이다. */
     onOpenDiaryList: () -> Unit = onBack,
     onRequestOrientation: (WalkOrientation) -> Unit,
     walkController: WalkTrackingController,
