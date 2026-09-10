@@ -3,6 +3,7 @@
 | 파일 | 내용 |
 | --- | --- |
 | [collaboration.md](collaboration.md) | 협업 규칙 — 우선순위 · Iteration · PR 기준 · 데일리 · 회고 |
+| [co-care-contract.md](co-care-contract.md) | 공동 돌봄 앱 계약·미니룸 정책 제안·서버 계약 검토·화면 연결안 (#261 / DEV #388) |
 | [기능별 테스트 실행 지도](../app/src/test/README.md) | 기능별 Gradle 선택자, Room·동기화 검증 경계, 공용 helper 제공자·소비자 |
 | [walk-photo-sync.md](walk-photo-sync.md) | 산책 사진 메타데이터 전송 — Room 13, 응답 유실/편집 복구, 서버 기능 협상 |
 | [walk-diary-generation.md](walk-diary-generation.md) | 서버 일기 생성·조회, 배경과 원본 분리, 사진·지도 연결 |
