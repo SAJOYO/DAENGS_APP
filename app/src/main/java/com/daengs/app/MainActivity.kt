@@ -702,6 +702,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 modifier = storageModifier,
+                                currentUserId = session?.appUserId,
+                                selectedPetIsOwner = pets.primary?.isOwner == true,
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },

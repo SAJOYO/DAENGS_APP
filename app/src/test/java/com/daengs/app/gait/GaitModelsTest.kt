@@ -810,6 +810,43 @@ class GaitModelsTest {
     }
 
     @Test
+    fun `목록에서 작성자와 현재 사용자의 권한을 읽는다`() {
+        val summary = GaitSummary.parse(
+            JSONObject(
+                """{"record_id":"r","status":"DONE","created_by":{"app_user_id":"u1","nickname":"키키"},
+                    "can_confirm":true,"can_delete":false}""",
+            ),
+        )
+        assertEquals("u1", summary.createdBy?.appUserId)
+        assertEquals("키키", summary.createdBy?.displayName)
+        assertEquals(true, summary.canConfirm)
+        assertEquals(false, summary.canDelete)
+        val record = summary.toRecord()
+        assertEquals("u1", record.createdBy?.appUserId)
+        assertEquals(true, record.canConfirm)
+        assertEquals(false, record.canDelete)
+    }
+
+    @Test
+    fun `옛 보행 응답에는 권한 정보가 없어도 읽는다`() {
+        val summary = GaitSummary.parse(JSONObject("""{"record_id":"r","status":"DONE"}"""))
+        assertEquals(null, summary.createdBy)
+        assertEquals(null, summary.canConfirm)
+        assertEquals(null, summary.canDelete)
+    }
+
+    @Test
+    fun `삭제 권한이 없는 보행 기록은 홀더에서도 지우지 않는다`() = runTest {
+        val protected = record("shared").copy(canDelete = false)
+        val holder = GaitHolder(initial = listOf(protected))
+
+        holder.remove(protected.id)
+
+        assertEquals(listOf(protected), holder.records)
+        assertEquals("대표 보호자만 이 보행 기록을 지울 수 있어요.", holder.error)
+    }
+
+    @Test
     fun `제목은 다듬고 스물 자에서 자르며 비면 없는 것이다`() {
         assertEquals("저녁 산책", GaitTitleStore.normalize("  저녁 산책  "))
         assertEquals(null, GaitTitleStore.normalize("   "))

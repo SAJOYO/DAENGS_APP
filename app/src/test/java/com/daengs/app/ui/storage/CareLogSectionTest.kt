@@ -12,6 +12,7 @@ import com.daengs.app.care.CareKind
 import com.daengs.app.care.CareLogState
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.chat.ChatLoadState
+import com.daengs.app.member.MemberIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -115,6 +116,26 @@ class CareLogSectionTest {
         assertNull(deleted)
         compose.onNodeWithText("지우기").performClick()
         assertEquals("event-1", deleted?.id)
+    }
+
+    @Test
+    fun `돌보미는 자신이 쓴 기록만 지울 수 있다`() {
+        val mine = event().copy(actor = MemberIdentity("me", "나"))
+        val others = event().copy(id = "event-2", actor = MemberIdentity("other", "키키"))
+        assertEquals(true, canDeleteCareEvent(mine, currentUserId = "me", petIsOwner = false))
+        assertEquals(false, canDeleteCareEvent(others, currentUserId = "me", petIsOwner = false))
+        assertEquals(true, canDeleteCareEvent(others, currentUserId = "me", petIsOwner = true))
+
+        compose.setContent {
+            CareLogSection(
+                state = CareLogState("pet", today = ChatLoadState.Ready(summary(listOf(mine, others)))),
+                canDelete = { canDeleteCareEvent(it, "me", petIsOwner = false) },
+                zone = SEOUL,
+            )
+        }
+        compose.onNodeWithText("나").assertIsDisplayed()
+        compose.onNodeWithText("키키").assertIsDisplayed()
+        compose.onAllNodesWithText("삭제").assertCountEquals(1)
     }
 
     private companion object {

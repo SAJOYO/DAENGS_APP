@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.daengs.app.BuildConfig
+import com.daengs.app.member.MemberIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -424,6 +425,9 @@ data class GaitAnalyzed(
      * (`video_meta` 는 해상도·원본 fps 뿐). 분석이 안 끝났거나 실패면 null.
      */
     val sampledFrames: Int?,
+    val createdBy: MemberIdentity? = null,
+    val canConfirm: Boolean? = null,
+    val canDelete: Boolean? = null,
 ) {
     val settled: Boolean get() = GaitStatus.settled(status)
 
@@ -459,6 +463,9 @@ data class GaitAnalyzed(
                 failureReason = json.optStringOrNull("failure_reason"),
                 // 없으면 0 이 아니라 null — 0 으로 두면 "0초" 로 단언하게 된다.
                 sampledFrames = quality?.takeIf { it.has("n_frames_sampled") }?.optInt("n_frames_sampled"),
+                createdBy = json.optJSONObject("created_by")?.let(MemberIdentity::parse),
+                canConfirm = json.optBooleanOrNull("can_confirm"),
+                canDelete = json.optBooleanOrNull("can_delete"),
             )
         }
     }
@@ -500,6 +507,9 @@ data class GaitSummary(
      * ([GaitTitleStore] 머리말).
      */
     val note: String?,
+    val createdBy: MemberIdentity? = null,
+    val canConfirm: Boolean? = null,
+    val canDelete: Boolean? = null,
 ) {
     companion object {
         fun parse(json: JSONObject): GaitSummary = GaitSummary(
@@ -511,6 +521,9 @@ data class GaitSummary(
             filterVersion = json.optStringOrNull("gait_filter_version"),
             tier = GaitQualityTier.of(json.optStringOrNull("quality_status"), json.optStringOrNull("quality_tier")),
             note = json.optStringOrNull("note"),
+            createdBy = json.optJSONObject("created_by")?.let(MemberIdentity::parse),
+            canConfirm = json.optBooleanOrNull("can_confirm"),
+            canDelete = json.optBooleanOrNull("can_delete"),
         )
     }
 }
@@ -518,6 +531,9 @@ data class GaitSummary(
 /** `optString` 은 없는 키에 빈 문자열을 준다. null 과 "" 를 갈라야 하는 자리가 많다. */
 internal fun JSONObject.optStringOrNull(key: String): String? =
     if (isNull(key)) null else optString(key).ifBlank { null }
+
+internal fun JSONObject.optBooleanOrNull(key: String): Boolean? =
+    if (has(key) && !isNull(key)) getBoolean(key) else null
 
 // -- 서버 모양 → 화면 모양 --------------------------------------------------
 
@@ -541,6 +557,9 @@ fun GaitSummary.toRecord(): GaitRecord = GaitRecord(
     hasOverlay = hasOverlay,
     // 서버 note = 처음 정한 제목. 로컬 수정본은 [GaitHolder] 가 그 위에 덮는다.
     title = note,
+    createdBy = createdBy,
+    canConfirm = canConfirm,
+    canDelete = canDelete,
 )
 
 

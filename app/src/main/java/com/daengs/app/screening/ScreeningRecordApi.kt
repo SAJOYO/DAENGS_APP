@@ -1,6 +1,7 @@
 package com.daengs.app.screening
 
 import com.daengs.app.BuildConfig
+import com.daengs.app.member.MemberIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -231,6 +232,9 @@ data class ScreeningRecord(
     val contractVersion: String?,
     /** **단건 조회에서만 온다.** 목록은 안 싣는다 — N 장마다 저장소를 두드리게 된다. */
     val photoUrl: String?,
+    val createdBy: MemberIdentity? = null,
+    val canConfirm: Boolean? = null,
+    val canDelete: Boolean? = null,
 ) {
     enum class Status { PENDING_UPLOAD, DONE, FAILED }
 
@@ -248,9 +252,15 @@ data class ScreeningRecord(
             report = json.optJSONObject("result")?.let(ScreeningReport::parse),
             contractVersion = json.optStringOrNull("contract_version"),
             photoUrl = json.optStringOrNull("photo_url"),
+            createdBy = json.optJSONObject("created_by")?.let(MemberIdentity::parse),
+            canConfirm = json.optBooleanOrNull("can_confirm"),
+            canDelete = json.optBooleanOrNull("can_delete"),
         )
 
         private fun JSONObject.optStringOrNull(key: String): String? =
             if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
+
+        private fun JSONObject.optBooleanOrNull(key: String): Boolean? =
+            if (has(key) && !isNull(key)) getBoolean(key) else null
     }
 }

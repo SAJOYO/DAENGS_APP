@@ -2,6 +2,7 @@ package com.daengs.app.gait
 
 import android.graphics.Bitmap
 import android.net.Uri
+import com.daengs.app.member.MemberIdentity
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -81,6 +82,10 @@ data class GaitRecord(
      * 그대로다. 날짜를 제목 문자열에 섞어 저장하지 않는다.
      */
     val title: String? = null,
+    /** 서버가 판정한 현재 사용자의 권한. null은 이 필드가 없던 서버 응답이다. */
+    val createdBy: MemberIdentity? = null,
+    val canConfirm: Boolean? = null,
+    val canDelete: Boolean? = null,
 ) {
     /** 화면에 그릴 제목. 제목이 없으면 [DEFAULT_TITLE]. 날짜는 여기 안 섞는다. */
     val displayTitle: String get() = title?.ifBlank { null } ?: DEFAULT_TITLE

@@ -22,12 +22,20 @@ class CareEventTest {
         assertEquals(1_756_701_000_000L, event.occurredAtMs) // 2025-09-01T04:30:00Z
         assertEquals("사료 반만", event.note)
         assertEquals("10000000-0000-4000-8000-000000000001", event.clientEventId)
+        assertEquals("20000000-0000-4000-8000-000000000002", event.actor?.appUserId)
+        assertEquals("키키", event.actor?.displayName)
     }
 
     @Test
     fun `메모가 null 이면 null 로 읽는다`() {
         val event = CareEvent.parse(JSONObject(EVENT_JSON).put("note", JSONObject.NULL))
         assertNull(event.note)
+    }
+
+    @Test
+    fun `옛 기록에 작성자가 없어도 읽는다`() {
+        val event = CareEvent.parse(JSONObject(EVENT_JSON).apply { remove("actor") })
+        assertNull(event.actor)
     }
 
     @Test
@@ -68,6 +76,7 @@ class CareEventTest {
              "occurred_at": "2025-09-01T13:30:00+09:00",
              "note": "사료 반만",
              "client_event_id": "10000000-0000-4000-8000-000000000001",
+             "actor": {"app_user_id":"20000000-0000-4000-8000-000000000002","nickname":"키키"},
              "created_at": "2025-09-01T13:30:05+09:00"}
         """
         const val SUMMARY_JSON = """
