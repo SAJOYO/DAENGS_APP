@@ -50,6 +50,17 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
 
+## 점령 게임 성적 화면·규칙 팝업
+
+`ui/game/TerritoryGameScreenTest`는 홈 진입·조회 강아지 교체·성적 상태·팝업 복귀·320dp 큰 글자를,
+`ui/game/TerritoryGameRulesTest`는 전봇대를 누르는 두 로컬 예시·인증 구도·점수 차액·닫기/뒤로·상태 복원을 확인한다.
+팝업은 실제 점령·카메라·GPS·서버 요청을 실행하지 않는다. 점수 조회 모델을 고치면
+`TerritoryGameOverviewTest`, API/저장소를 고치면 위 activity 소비자를 추가한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.game.TerritoryGameScreenTest' --tests 'com.daengs.app.ui.game.TerritoryGameRulesTest'
+```
+
 ## 시설 검색의 적용 조건 표시·해제
 
 ### 카테고리 다중 선택과 지도 위 말풍선

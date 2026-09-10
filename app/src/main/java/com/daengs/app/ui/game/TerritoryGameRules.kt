@@ -1,25 +1,5 @@
 package com.daengs.app.ui.game
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.daengs.app.ui.*
-import com.daengs.app.ui.theme.*
-
 /** First-season product policy; membership caps and pet score ownership are distinct. */
 internal data class GameRule(val id: String, val title: String, val summary: String, val detail: String)
 internal val firstSeasonGameRules = listOf(
@@ -34,35 +14,3 @@ internal val firstSeasonGameRules = listOf(
     GameRule("season", "매달 새로운 시즌이 시작돼요", "한국 시간 매월 1일 · 지난 성적은 결산",
         "시즌은 한국 시간으로 매월 1일 00:00에 바뀌어요. 첫 시즌은 시작한 날부터 그달 말까지 진행해요.\n\n시즌 종료 시 성적을 결산하고 다음 시즌이 자동으로 시작돼요. 새 시즌에는 점령지와 기본 점수 기회가 새로 열려요."),
 )
-
-@Composable
-internal fun TerritoryGameRules() {
-    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("첫 시즌 점령 방법", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextDark)
-        firstSeasonGameRules.forEach { rule ->
-            val open = expanded == rule.id
-            Surface(shape = RoundedCornerShape(16.dp), color = CardWhite) {
-                Column {
-                    Row(Modifier.fillMaxWidth().testTag("game-rule-${rule.id}")
-                        .semantics { stateDescription = if (open) "펼침" else "접힘" }
-                        .clickable(role = Role.Button, onClickLabel = if (open) "설명 접기" else "설명 펼치기") {
-                            expanded = if (open) null else rule.id
-                        }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(rule.title, color = TextDark, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(rule.summary, color = TextDark.copy(alpha = 0.76f), fontSize = 12.sp)
-                        }
-                        DaengsIconView(DaengsIcon.CaretDown, Modifier.size(20.dp).rotate(if (open) 180f else 0f), TextDark)
-                    }
-                    if (open) Text(rule.detail, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 18.dp),
-                        fontSize = 13.sp, lineHeight = 21.sp, color = TextDark)
-                }
-            }
-        }
-    }
-}
-
-@Preview(showBackground = true, widthDp = 360)
-@Composable
-private fun TerritoryGameRulesPreview() = DaengsTheme { TerritoryGameRules() }

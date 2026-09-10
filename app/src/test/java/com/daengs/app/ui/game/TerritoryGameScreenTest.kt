@@ -48,15 +48,14 @@ class TerritoryGameScreenTest {
         screenshot("game-overview")
         compose.onNodeWithText("강아지 변경").performClick()
         compose.onNodeWithTag("game-pet-$GAME_PET_B").performClick()
-        compose.onNodeWithTag("game-overview-list").performScrollToNode(hasTestTag("game-rule-mark"))
-        compose.onNodeWithTag("game-rule-mark").performClick()
+        compose.onNodeWithTag("game-rules-open").performClick()
+        compose.onNodeWithTag("game-rules-tab-1").performClick()
+        compose.onNodeWithText("회원·시즌별 100점", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("game-rules-close").performClick()
         compose.onNodeWithContentDescription("점령 게임 뒤로 가기").performClick()
         compose.onNodeWithText("현황 ›").assertIsDisplayed()
         compose.onNodeWithText("점령 게임").assertDoesNotExist()
         compose.onNodeWithText("현황 ›").performClick()
-        compose.onNodeWithTag("game-overview-list").performScrollToNode(hasTestTag("game-rule-mark"))
-        compose.onNodeWithText("회원·시즌별 100점", substring = true).assertExists()
-        compose.onNodeWithTag("game-overview-list").performScrollToNode(hasTestTag("game-dog-score"))
         compose.onNodeWithText("보리의 이번 시즌").assertIsDisplayed()
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithText("현황 ›").assertIsDisplayed()
@@ -97,7 +96,7 @@ class TerritoryGameScreenTest {
     }
 
     @Test @Config(qualifiers = "w320dp-h720dp")
-    fun narrowScreenKeepsMapActionReachableAndRulesExpandableWithLargerText() {
+    fun narrowScreenKeepsRulesControlsReachableWithLargerText() {
         var opened = 0
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.3f)) {
@@ -108,17 +107,28 @@ class TerritoryGameScreenTest {
         compose.onNodeWithText("산책 지도로 돌아가기").assertIsDisplayed().performClick()
         assertEquals(1, opened)
         val list = compose.onNodeWithTag("game-overview-list")
-        list.performScrollToNode(hasTestTag("game-rule-mark"))
-        compose.onNodeWithTag("game-rule-mark").performClick()
-        list.performScrollToNode(hasText("회원·시즌별 100점", substring = true))
-        compose.onNodeWithText("회원·시즌별 100점", substring = true).assertExists()
         val body = list.fetchSemanticsNode().boundsInRoot
         val button = compose.onNodeWithTag("game-map-action").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(body.bottom <= button.top)
-        screenshot("game-rules-narrow")
-        list.performScrollToNode(hasTestTag("game-rule-mark"))
-        compose.onNodeWithTag("game-rule-mark").performClick()
-        compose.onNodeWithText("회원·시즌별 100점", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("game-rules-open").performClick()
+        compose.onNodeWithTag("game-guide-next").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("game-guide-pole").performScrollTo().performClick()
+        compose.onNodeWithTag("game-guide-next").assertIsDisplayed().performClick()
+        compose.onNodeWithText("두부  ·  기본 +20점").performScrollTo().assertIsDisplayed()
+        val rulesBody = compose.onNodeWithTag("game-rules-body").fetchSemanticsNode().boundsInRoot
+        val footer = compose.onNodeWithTag("game-rules-footer").fetchSemanticsNode().boundsInRoot
+        assertTrue(rulesBody.bottom <= footer.top)
+        compose.onNodeWithTag("game-rules-close").assertIsDisplayed()
+        screenshot("game-rules-narrow", dialog = true)
+        compose.onNodeWithTag("game-rules-tab-1").performClick()
+        compose.onNodeWithText("회원·시즌별 100점", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("game-rules-tab-2").performClick()
+        compose.onNodeWithText("인증 직후 10분 보호").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("game-rules-tab-3").performClick()
+        compose.onNodeWithText("매월 1일 00:00").assertIsDisplayed()
+        compose.onNodeWithTag("game-rules-close").performClick()
+        compose.onNodeWithTag("game-rules-dialog").assertDoesNotExist()
+        compose.onNodeWithText("산책 지도로 돌아가기").assertIsDisplayed()
     }
 
     @Test fun preparingErrorAndNoPetStayDistinctAndCanRetryOrRegister() {
@@ -145,11 +155,12 @@ class TerritoryGameScreenTest {
         compose.onNodeWithText("1,240 점").assertDoesNotExist()
     }
 
-    private fun screenshot(name: String) {
+    private fun screenshot(name: String, dialog: Boolean = false) {
         val output = java.io.File("build/reports/territory-game/$name.png")
         checkNotNull(output.parentFile).mkdirs()
         compose.runOnIdle {
-            val view = compose.activity.window.decorView
+            val view = if (dialog) checkNotNull(org.robolectric.shadows.ShadowDialog.getLatestDialog().window).decorView
+                else compose.activity.window.decorView
             val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
             view.draw(android.graphics.Canvas(bitmap))
             output.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }

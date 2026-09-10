@@ -36,7 +36,8 @@ internal fun TerritoryGameScreen(
     onBack: () -> Unit, onOpenMap: () -> Unit, onSelectPet: (String) -> Unit, onRetry: () -> Unit,
     onAddPet: () -> Unit = onBack, onSignIn: () -> Unit = onBack,
 ) {
-    BackHandler(onBack = onBack)
+    var rulesOpen by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = !rulesOpen, onBack = onBack)
     Column(Modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -45,18 +46,25 @@ internal fun TerritoryGameScreen(
             }
             Text("점령 게임", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark,
                 modifier = Modifier.weight(1f))
-            TextButton(onClick = onRetry) { Text("새로고침", color = TextDark, fontSize = 12.sp) }
+            TextButton(onClick = { rulesOpen = true }, modifier = Modifier.testTag("game-rules-open")) {
+                DaengsIconView(DaengsIcon.Book, Modifier.size(16.dp), TextDark)
+                Spacer(Modifier.width(4.dp))
+                Text("점령 규칙", color = TextDark, fontSize = 12.sp)
+            }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("game-overview-list"),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item(key = "season") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DaengsIconView(DaengsIcon.Clock, Modifier.size(16.dp), DaengsColors.Success)
-                        Text(overview.seasonTitle(), fontWeight = FontWeight.Bold, color = TextDark, fontSize = 14.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DaengsIconView(DaengsIcon.Clock, Modifier.size(16.dp), DaengsColors.Success)
+                            Text(overview.seasonTitle(), fontWeight = FontWeight.Bold, color = TextDark, fontSize = 14.sp)
+                        }
+                        Text(overview.seasonTime(nowNanos), fontSize = 13.sp, color = TextDark)
                     }
-                    Text(overview.seasonTime(nowNanos), fontSize = 13.sp, color = TextDark)
+                    TextButton(onClick = onRetry) { Text("새로고침", color = TextDark, fontSize = 12.sp) }
                 }
             }
             item(key = "dog-score") { GameDogScore(overview, pet, pets, photoOf, onSelectPet) }
@@ -64,7 +72,6 @@ internal fun TerritoryGameScreen(
                 OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("다시 불러오기") }
             }
             if (overview.status == GameOverviewStatus.READY) item(key = "score-breakdown") { GameScoreBreakdown(overview) }
-            item(key = "rules") { TerritoryGameRules() }
         }
         Surface(color = CardWhite, shadowElevation = 4.dp) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)) {
@@ -86,6 +93,7 @@ internal fun TerritoryGameScreen(
             }
         }
     }
+    if (rulesOpen) TerritoryGameRulesDialog(onDismiss = { rulesOpen = false })
 }
 
 @Composable
