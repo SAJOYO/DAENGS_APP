@@ -180,7 +180,6 @@ class MainActivity : ComponentActivity() {
                 val completedDestination = key(recordsAccount) {
                     com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
                 }
-                val completedTracking by walkController.state.collectAsState()
                 val gameScreenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
@@ -1050,15 +1049,8 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.Walk -> key(recordsAccount) {
-                      com.daengs.app.ui.walk.WalkSessionCompletionGate(
-                        destination = completedDestination, tracking = completedTracking,
-                        acknowledge = { id ->
-                            val current = walkController.state.value
-                            if (current.completedSessionId == id && current.activeSessionId == null &&
-                                current.finishingSessionId == null && current.ownerId == recordsAccount.ownerId) {
-                                walkController.dismissCompletion()
-                            }
-                        },
+                      com.daengs.app.ui.walk.WalkSessionFlow(
+                        account = recordsAccount, destination = completedDestination, controller = walkController,
                         onExit = { screen = Screen.Home },
                         detail = { id, close ->
                             com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history, close,

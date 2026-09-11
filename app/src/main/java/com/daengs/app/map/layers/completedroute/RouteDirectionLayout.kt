@@ -83,7 +83,8 @@ internal fun placeRouteDirections(
             if (!visible.contains(center, radius) || exclusions.any { it.near(center, radius) } ||
                 arrows.any { it.center.distance(center) < spacing } ||
                 routeObstacles.any { it.distance(center) < radius + 4 * density }) continue
-            arrows += RouteDirectionArrow(id, center, (Math.toDegrees(atan2(dy, dx)) + 90).toFloat(), side)
+            val angle = (Math.toDegrees(atan2(dy, dx)) + 450) % 360
+            arrows += RouteDirectionArrow(id, center, angle.toFloat(), side)
             break
         }
         if (arrows.size == 6) break

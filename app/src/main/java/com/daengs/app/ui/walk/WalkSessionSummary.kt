@@ -13,7 +13,8 @@ import com.daengs.app.walk.WalkSummary
 @Composable
 internal fun WalkSessionSummary(summary: WalkSummary, dogNames: List<String> = emptyList()) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp)) {
-        if (dogNames.isNotEmpty()) Text(dogNames.joinToString(" · "), color = TextMuted,
+        val metadata = dogNames + listOfNotNull(summary.weather?.let(::weatherLabel))
+        if (metadata.isNotEmpty()) Text(metadata.joinToString(" · "), color = TextMuted,
             style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             listOf("걸은 시간" to formatWalkDuration(summary.activeDurationMillis),

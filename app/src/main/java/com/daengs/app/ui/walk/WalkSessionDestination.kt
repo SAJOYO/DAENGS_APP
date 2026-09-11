@@ -8,6 +8,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.material3.Text
 import com.daengs.app.auth.AccountScope
 import com.daengs.app.walk.WalkTrackingState
+import com.daengs.app.walk.WalkTrackingController
 import java.util.UUID
 
 internal enum class WalkSessionOrigin(val backLabel: String) {
@@ -62,6 +63,19 @@ internal fun rememberWalkSessionDestination(account: AccountScope): WalkSessionD
     }
 
 /** The live subtree (including permission launchers and location subscriptions) is unmounted. */
+@Composable
+internal fun WalkSessionFlow(
+    account: AccountScope, destination: WalkSessionDestination, controller: WalkTrackingController,
+    onExit: () -> Unit, detail: @Composable (String, () -> Unit) -> Unit, live: @Composable () -> Unit,
+) {
+    val tracking by controller.state.collectAsState()
+    WalkSessionCompletionGate(destination, tracking, { id ->
+        val current = controller.state.value
+        if (current.completedSessionId == id && current.activeSessionId == null &&
+            current.finishingSessionId == null && current.ownerId == account.ownerId) controller.dismissCompletion()
+    }, onExit, detail, live)
+}
+
 @Composable
 internal fun WalkSessionCompletionGate(
     destination: WalkSessionDestination,

@@ -48,6 +48,11 @@ internal fun WalkDiaryMapContent(
     generationActionLabel: String = "일기 생성·갱신",
     backLabel: String = "산책 목록으로",
     summaryContent: @Composable () -> Unit = {},
+    directionNotice: Boolean = false,
+    onZoomRoute: () -> Unit = {},
+    explorerSelected: Boolean = false,
+    onChooseExplorer: (Boolean) -> Unit = {},
+    explorerPanel: (@Composable () -> Unit)? = null,
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -99,7 +104,9 @@ internal fun WalkDiaryMapContent(
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val mapPeek = (maxHeight * .25f).coerceIn(96.dp, 180.dp).coerceAtMost(maxHeight * .4f)
             val panelHeight = maxHeight - mapPeek
-            val peek = (maxHeight * .34f).coerceIn(180.dp, 260.dp).coerceAtMost(panelHeight)
+            val peek = if (explorerPanel == null)
+                (maxHeight * .34f).coerceIn(180.dp, 260.dp).coerceAtMost(panelHeight)
+            else (maxHeight * .43f).coerceIn(210.dp, 280.dp).coerceAtMost(maxHeight * .6f)
             // Padding/fit use the browsing viewport even while the sheet covers more of the map.
             // Only an explicit scene selection uses the upper, still-visible band as its pivot.
             val viewport = DiaryMapViewport(with(LocalDensity.current) { peek.roundToPx() },
@@ -124,13 +131,20 @@ internal fun WalkDiaryMapContent(
                                     .background(PinkSoft, RoundedCornerShape(4.dp)))
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (selected == null) "${scenes.size}개 장면 · 시간순" else "‹ 장면 목록",
+                                    Text(if (explorerSelected) "이동 순서 살펴보기"
+                                        else if (selected == null) "${scenes.size}개 장면 · 시간순" else "‹ 장면 목록",
                                         Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Text(if (selected != null) "장면 ${scenes.indexOfFirst { it.id == selected.id } + 1}"
                                         else if (expanded) "접기 ↓" else "펼치기 ↑",
                                         fontSize = 13.sp, color = TextMuted)
                                 }
                             }
+                        }
+                        if (explorerPanel != null) TabRow(selectedTabIndex = if (explorerSelected) 1 else 0) {
+                            Tab(selected = !explorerSelected, onClick = { onChooseExplorer(false) },
+                                text = { Text("장면 " + scenes.size) })
+                            Tab(selected = explorerSelected, onClick = { onChooseExplorer(true) },
+                                text = { Text("동선 탐색") })
                         }
                         if (adding) Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("동선에서 위치를 골라 주세요.", Modifier.weight(1f), fontSize = 14.sp)
@@ -140,11 +154,19 @@ internal fun WalkDiaryMapContent(
                             Text(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.bodyMedium)
                         }
+                        if (directionNotice) Row(Modifier.padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text("현재 화면에서는 방향을 표시하기 어려워요.", Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            TextButton(onClick = onZoomRoute) { Text("동선 확대") }
+                        }
                         if (error != null) Row(Modifier.padding(horizontal = 20.dp)) {
                             Text(error, Modifier.weight(1f))
                             TextButton(onClick = onRetry) { Text("다시 시도") }
                         }
-                        if (loading) {
+                        if (explorerSelected && explorerPanel != null) {
+                            Box(Modifier.weight(1f).fillMaxWidth()) { explorerPanel() }
+                        } else if (loading) {
                             LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
                             Text("장면을 불러오고 있어요.", Modifier.padding(20.dp))
                         } else if (selected == null) {
@@ -233,5 +255,7 @@ private fun DiaryReadingPreview() {
         content = DiarySceneContent("두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", "note", locationLabel = "기록한 위치"))
     DaengsTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",
+        summaryContent = { WalkSessionSummary(com.daengs.app.walk.WalkSummary("s", emptyList(), 0, 1_800_000,
+            null, 1_200.0, 1_800_000, emptyList(), null), listOf("두부")) },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
 }

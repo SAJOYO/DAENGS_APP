@@ -46,6 +46,9 @@ class RouteDirectionLayoutTest {
         val rotated = placeRouteDirections(listOf(edge("0", 140.0, 30.0, 140.0, 270.0)),
             viewport, emptyList(), 1.0)
         assertEquals(180f, rotated.first().angle, .01f)
+        val northwest = placeRouteDirections(listOf(edge("0", 300.0, 260.0, 60.0, 20.0)),
+            viewport, emptyList(), 1.0)
+        assertEquals(315f, northwest.first().angle, .01f)
     }
     @Test fun `selected pass arrows still avoid unselected route geometry`() {
         val selected = listOf(edge("0", 40.0, 140.0, 360.0, 140.0))
