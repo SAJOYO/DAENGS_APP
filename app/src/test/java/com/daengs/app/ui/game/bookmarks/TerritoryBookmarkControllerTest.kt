@@ -2,6 +2,8 @@ package com.daengs.app.ui.game.bookmarks
 
 import com.daengs.app.auth.*
 import com.daengs.app.territory.bookmarks.*
+import com.daengs.app.territory.support.BOOKMARK_SITE
+import com.daengs.app.territory.support.bookmarkJson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
