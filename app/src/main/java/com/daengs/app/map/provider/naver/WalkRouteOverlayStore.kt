@@ -30,15 +30,15 @@ internal interface WalkRouteHandle {
 }
 
 /** Map-owned cache. Inputs must be immutable snapshots, including each nested point list.
- * Equal copied segments reuse their prepared parts; a changed segment is repainted in full
- * because speed interpolation also depends on the next edge. No recording data is altered.
+ * Equal copied segments reuse their prepared parts; append-only speed segments repaint their
+ * interpolation tail. Other edits invalidate the segment cache. No recording data is altered.
  */
 internal class WalkRouteOverlayStore(
     private val create: (WalkRouteRenderState) -> WalkRouteHandle,
     private val probe: WalkRouteProbe? = null,
 ) {
     private data class Entry(var source: WalkRouteSource, var policy: WalkStylePolicy, var theme: String,
-        var state: WalkRouteRenderState, var handle: WalkRouteHandle?)
+        var state: WalkRouteRenderState, var handle: WalkRouteHandle?, val speedCache: WalkSpeedPathCache?)
     private val entries = linkedMapOf<WalkRouteKey, Entry>()
     private var lastSources: List<WalkRouteSource>? = null
     private var lastPolicy: WalkStylePolicy? = null
@@ -55,13 +55,16 @@ internal class WalkRouteOverlayStore(
         }
         for (source in sources) {
             val entry = entries[source.key]
+            val cache = entry?.speedCache ?: if (source.key.speed) WalkSpeedPathCache(probe?.let { stats ->
+                { count -> stats.pointsPrepared += count; stats.edgesPainted += (count - 1).coerceAtLeast(0) }
+            }) else null
             val changed = entry == null || entry.source != source || entry.policy != policy || entry.theme != theme
-            val parts = if (changed) prepare(source, policy, theme) else entry!!.state.parts
+            val parts = if (changed) prepare(source, policy, theme, cache) else entry!!.state.parts
             // Coordinate-only legacy paths retain the existing unknown-speed appearance.
             val next = WalkRouteRenderState(source.key, parts, source.key.speed && source.key.completed && dimCompleted)
             if (entry == null) {
                 entries[source.key] = Entry(source, policy, theme, next,
-                    if (parts.isEmpty()) null else sdk { create(next).also { probe?.created = (probe?.created ?: 0) + 1 } })
+                    if (parts.isEmpty()) null else sdk { create(next).also { probe?.created = (probe?.created ?: 0) + 1 } }, cache)
             } else {
                 when {
                     parts.isEmpty() -> remove(entry)
@@ -77,12 +80,14 @@ internal class WalkRouteOverlayStore(
         lastSources = sources; lastPolicy = policy; lastTheme = theme; lastDim = dimCompleted
     }
 
-    private fun prepare(source: WalkRouteSource, policy: WalkStylePolicy, theme: String): List<WalkSpeedPart> {
+    private fun prepare(source: WalkRouteSource, policy: WalkStylePolicy, theme: String,
+        cache: WalkSpeedPathCache?): List<WalkSpeedPart> {
         val started = if (probe != null) System.nanoTime() else 0L
-        val parts = if (source.key.speed) paintWalkSpeedPath(source.speedPoints, policy, theme)
+        val parts = if (source.key.speed) checkNotNull(cache).paint(source.speedPoints, policy, theme)
             else if (source.points.size >= 2) listOf(WalkSpeedPart(source.points, policy.unknownColor)) else emptyList()
         probe?.let {
-            it.prepared++; it.pointsPrepared += if (source.key.speed) source.speedPoints.size else source.points.size
+            it.prepared++
+            if (!source.key.speed) it.pointsPrepared += source.points.size
             it.prepareNanos += System.nanoTime() - started
         }
         return parts
