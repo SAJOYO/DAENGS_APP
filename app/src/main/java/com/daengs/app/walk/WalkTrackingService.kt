@@ -370,6 +370,10 @@ class WalkTrackingService : Service() {
             return
         }
         if (type == WalkMomentType.NOTE) return // Notes use the editor, without a GPS gate.
+        if (com.daengs.app.walk.pin.ActionPinRollout.legacyCreation) {
+            recordLegacyMoment(type)
+            return
+        }
         val activeSession = sessionId ?: return
         val capturedOwner = sessionOwnerId.orEmpty()
         val actionId = UUID.randomUUID().toString()
@@ -394,6 +398,31 @@ class WalkTrackingService : Service() {
             try { stored.await() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* writer.failure reports storage failure. */ }
+        }
+    }
+
+    private fun recordLegacyMoment(type: WalkMomentType) {
+        val activeSession = sessionId ?: return
+        val action = com.daengs.app.walk.pin.legacyWalkAction(
+            store.state.value.latestMomentFix, UUID.randomUUID().toString(), activeSession,
+            type, System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(),
+        )
+        if (action == null) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        val capturedOwner = sessionOwnerId.orEmpty()
+        val stored = writer.ordered {
+            check(log.ownerId == capturedOwner) { "계정이 변경됐어요." }
+            log.appendAction(action)
+        }
+        serviceScope.launch {
+            try {
+                stored.await()
+                store.publish(WalkEvent.MomentRecorded(type, WalkMomentOutcome.CREATED, "moment-${action.id}"))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { /* writer.failure reports storage failure. */ }
         }
     }
 

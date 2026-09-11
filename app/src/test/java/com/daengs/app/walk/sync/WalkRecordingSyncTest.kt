@@ -29,6 +29,65 @@ class WalkRecordingSyncTest {
     private fun detail(points: List<RecordedFix>) = fixture().getJSONObject("upload").put("id", "walk")
         .put("points", points.toUploadPoints()).put("recording_receipt", receipt(points))
 
+    @Test fun `legacy compatibility only accepts explicit lack of recording support`() = runBlocking {
+        assertFalse(WalkRecordingSync { _, _, _, _ -> JSONObject() }.supports("t"))
+        assertFalse(WalkRecordingSync { _, _, _, _ -> throw WalkHttpException(404, "old") }.supports("t"))
+        assertTrue(WalkRecordingSync { _, _, _, _ -> JSONObject().put("gps_recording_versions",
+            JSONArray(listOf(WalkRecordingContract.VERSION))) }.supports("t"))
+        for (failure in listOf(IOException("offline"), WalkHttpException(401, "login"), WalkHttpException(500, "server"))) {
+            assertSame(failure, runCatching { WalkRecordingSync { _, _, _, _ -> throw failure }.supports("t") }.exceptionOrNull())
+        }
+        var account = "first"
+        val changed = WalkRecordingSync { _, _, _, _ -> account = "second"; throw WalkHttpException(404, "old") }
+        assertTrue(runCatching { changed.supports("t") { check(account == "first") } }.exceptionOrNull() is IllegalStateException)
+    }
+
+    @Test fun `legacy release still verifies and repairs recording metadata on supporting servers`() = runBlocking {
+        val db = androidx.room.Room.inMemoryDatabaseBuilder(androidx.test.core.app.ApplicationProvider.getApplicationContext(),
+            com.daengs.app.walk.store.WalkDatabase::class.java).build()
+        try {
+            val log = com.daengs.app.walk.store.RoomWalkFixLog(db.walkDao(), owner = { "owner" })
+            val local = fixes()
+            log.openSession(RecordedSession("s", startedAtMillis = local.first().atMillis, endedAtMillis = local.first().atMillis + 60_000))
+            local.forEach { log.append("s", it) }
+            var uploads = 0
+            var finalized = 0
+            val api = object : WalkApiClient {
+                override val configured = true
+                override suspend fun upload(token: String, session: RecordedSession, fixes: List<RecordedFix>): Result<String> {
+                    uploads++; assertEquals(local, fixes); return Result.success("walk")
+                }
+                override suspend fun appendPoints(token: String, walkId: String, fixes: List<RecordedFix>): Result<Unit> = error("single batch")
+                override suspend fun finalize(token: String, walkId: String, manifest: WalkFinalizeManifest): Result<Unit> {
+                    finalized++; return Result.success(Unit)
+                }
+                override suspend fun list(token: String): Result<List<RemoteWalk>> = error("push only")
+                override suspend fun detail(token: String, walkId: String): Result<RemoteWalkDetail> = error("recording transport owns receipt")
+            }
+            var stored = local.map { it.copy(recordingEligible = null) }
+            var retainRepair = false
+            var repairs = 0
+            val recording = WalkRecordingSync { _, path, method, _ ->
+                when {
+                    path == "/entry-capabilities" -> JSONObject().put("gps_recording_versions", JSONArray(listOf(WalkRecordingContract.VERSION)))
+                    method == "GET" -> detail(stored)
+                    else -> { repairs++; if (retainRepair) stored = local; receipt(stored) }
+                }
+            }
+            val sync = WalkSync(log, api, recording = recording, requireRecordingSupport = false, warn = { _, _ -> })
+            assertTrue(runCatching { sync.syncPendingSession("t", "s") }.isFailure)
+            assertEquals(0, finalized)
+            assertEquals(com.daengs.app.walk.WalkSyncState.RAW_UPLOADED, log.session("s")!!.syncState)
+            retainRepair = true
+            sync.syncPendingSession("t", "s")
+            assertEquals(1, uploads)
+            assertEquals(1, finalized)
+            assertEquals(2, repairs)
+            assertEquals(local, stored)
+            assertEquals(false, log.fixes("s").single().recordingEligible)
+        } finally { db.close() }
+    }
+
     @Test fun `production serializers agree with the shared server contract and preserve unknown`() {
         val shared = fixture()
         val points = fixes()

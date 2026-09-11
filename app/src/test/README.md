@@ -135,8 +135,9 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 추정 입력만 바꾸면 `ActionPinEstimatorTest`와 `ActionPinReplayTest`를 선택한다.
 핀 저장·확정·수정·전송 계약이 바뀌면 다음 묶음을 사용한다. `LegacyActionPinTest`와
-v2 동기화의 v1 사례는 과거 기록 보존·구서버 호환 계약이다. 임시 v1 생성 스위치는 제거했지만
-이 호환 검증은 유지한다. 새 행동의 GPS 없음·불량·정상 입력은 `ActionPinStoreTest`에서 확인한다.
+v2 동기화의 v1 사례는 과거 기록 보존·구서버 호환 계약이다. 현재 릴리즈의 v1 생성·GPS 차단은
+`LegacyActionPinTest`, 실제 서비스 버튼의 v1 저장은 `WalkSpeedServiceTest`로 확인한다.
+v2 엔진의 GPS 없음·불량·정상 입력은 `ActionPinStoreTest`에서 확인한다.
 동기화 진입점 변경은 `WalkEntryV2SyncTest`의 `WalkEntrySync` 연결 사례로 v2 생성·확정 재시도,
 쓰기 보류와 v1/v2 혼합 산책을 확인한다. 버튼·서비스 연결을 바꾸면 `WalkTrackingTest`,
 raw 업로드/finalize 이후 전송 순서는 `WalkSyncTest`도 함께 선택한다.
@@ -147,6 +148,8 @@ GPS 기록 구분의 전송·복원·보완은 `WalkRecordingSyncTest`를 함께
 생성한다. 서버 #441의 계약 테스트에 이 파일을 넣어 양쪽 구현을 연결해 검증할 수 있다.
 `WalkSyncTest`는 LOCAL_ONLY/RAW_UPLOADED/DERIVED의 관문, `WalkEntryV2SyncTest`는
 Room outbox·기존 오류의 제한된 재시도·ACK 유실과 원본 지문 동결을 담당한다.
+v1 릴리즈 정책을 바꾸면 앞의 두 클래스와 `WalkRecordingSyncTest`로 구형 서버의 전송 지속,
+지원 서버의 실제 메타데이터 보완, 426 이후 기존 v2 자료 복구를 함께 확인한다.
 핀의 일기 반영은 `StoryboardPinSyncTest`, `WalkRecordProfileTest`, `WalkDiaryTest`도 연결된다.
 
 ```powershell

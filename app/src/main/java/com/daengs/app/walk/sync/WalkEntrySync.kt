@@ -8,6 +8,7 @@ import org.json.JSONObject
 class WalkEntrySync(
     private val dao: WalkDao,
     private val v2: WalkEntryV2Sync? = null,
+    private val preferLegacy: Boolean = false,
     private val owner: (() -> String)? = null,
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
         WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
@@ -16,7 +17,13 @@ class WalkEntrySync(
     private val mutex = kotlinx.coroutines.sync.Mutex()
     suspend fun sync(token: String, sessionId: String, walkId: String) {
         mutex.lock()
-        try { syncLocked(token, sessionId, walkId) } finally { mutex.unlock() }
+        try {
+            try { syncLocked(token, sessionId, walkId) }
+            catch (e: WalkHttpException) {
+                // A server-owned v2 record may predate the local v1 projection.
+                if (e.statusCode != 426 || !preferLegacy || v2?.sync(token, sessionId, walkId) != true) throw e
+            }
+        } finally { mutex.unlock() }
     }
 
     private suspend fun syncLocked(token: String, sessionId: String, walkId: String) {
@@ -30,8 +37,8 @@ class WalkEntrySync(
             return response
         }
         checkAccount()
-        if (v2?.sync(token, sessionId, walkId) == true) return
-        // v2 미지원 서버의 기존 v1 기록만 처리한다. v2 원본을 v1으로 바꾸지 않는다.
+        if (!preferLegacy && v2?.sync(token, sessionId, walkId) == true) return
+        // The release can prefer v1 without rewriting any existing v2 payload or outbox.
         for (row in dao.entries(sessionId).filter { !it.isV2 && it.dirty && it.syncError == null }) {
             val response = try { if (row.payload == null) {
                 call("/$walkId/entries/${row.id}?expected_revision=${row.revision}&mutation_id=${row.mutationId}",
@@ -60,6 +67,7 @@ class WalkEntrySync(
             dao.acknowledgeEntry(row.id, response.getInt("revision"), row.mutationId)
         }
         if (dao.entries(sessionId).any { it.isV2 }) {
+            if (preferLegacy && v2?.sync(token, sessionId, walkId) == true) return
             throw java.io.IOException("새 형식의 기존 행동은 기기에 보관 중이며 서버 지원을 기다리고 있어요.")
         }
         val result = call("/$walkId/entries", "GET", null)
