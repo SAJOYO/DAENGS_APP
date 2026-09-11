@@ -72,7 +72,7 @@ class DiarySlotPreviewScreenTest {
         compose.onNodeWithText("지역 환경 관측 · 문장에 인용").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("기온 (°C): 23\n풍속 (m/s): 2.1").assertExists()
         compose.runOnIdle { capture(requireNotNull(view), "diary-slot-preview-evidence") }
-        compose.onNodeWithText("새 방식 일기 미리보기").performScrollTo()
+        compose.onNodeWithText("개발용 일기 미리보기").performScrollTo()
         compose.runOnIdle { capture(requireNotNull(view), "diary-slot-preview-result") }
     }
 
@@ -95,7 +95,7 @@ class DiarySlotPreviewScreenTest {
                 map = { Box(Modifier.fillMaxSize()) }, onGenerate = { generations++ }, onSlotPreview = { previews++ })
         } }
         compose.onNodeWithContentDescription("일기 메뉴").performClick()
-        compose.onNodeWithText("새 방식 미리보기").performClick()
+        compose.onNodeWithText("개발용 일기 미리보기").performClick()
         assertEquals(1, previews)
         assertEquals(0, generations)
     }

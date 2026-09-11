@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.DaengsApp
+import com.daengs.app.BuildConfig
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.diary.*
 import kotlinx.coroutines.CancellationException
@@ -21,6 +22,7 @@ import kotlin.coroutines.coroutineContext
 
 @Composable
 internal fun DiarySlotPreviewScreen(sessionId: String, onBack: () -> Unit) {
+    if (!BuildConfig.DEBUG) return
     val app = LocalContext.current.applicationContext as DaengsApp
     val api = remember { DiarySlotPreviewApi() }
     key(sessionId) {
@@ -75,9 +77,9 @@ internal fun DiarySlotPreviewContent(
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
-                Text("새 방식 일기 미리보기", style = MaterialTheme.typography.headlineSmall)
+                Text("개발용 일기 미리보기", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(8.dp))
-                Text("이 산책에 남긴 기록과 주변 자료로 문장을 만들어 봐요. 결과는 원래 일기에 저장되지 않아요.", color = TextMuted)
+                Text("생성 문장과 선정 자료를 확인하는 개발용 화면이에요. 결과는 원래 일기에 저장되지 않아요.", color = TextMuted)
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = onGenerate, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                     Text(when { loading -> "미리보기 만드는 중"; error != null -> "다시 시도";

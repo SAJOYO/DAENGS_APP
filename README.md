@@ -212,8 +212,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 Windows 에서는 `gradlew.bat` 을 쓴다.
 기능 변경의 테스트만 확인할 때는 [실행 지도](app/src/test/README.md)에 따라 `--tests`로 범위를 선택한다.
 
-산책 상세의 `⋯ → 새 방식 미리보기`에서는 저장된 산책으로 파트 슬롯 일기를 만들어 볼 수 있다.
-기존 일기에는 저장하지 않는다. [사용 방법과 서버 활성화 조건](docs/diary-slot-preview.md).
+Debug 빌드의 산책 상세 `⋯ → 개발용 일기 미리보기`에서 파트 슬롯의 생성 문장·선정 자료를 확인한다.
+Release에는 이 진입점이 없으며 기존 일기에는 저장하지 않는다. [사용 방법과 서버 활성화 조건](docs/diary-slot-preview.md).
 
 ### 스토어에 올릴 빌드
 

@@ -95,7 +95,7 @@ internal fun WalkDiaryMapContent(
                             enabled = !loading && !generating, onClick = { menu = false; generate() })
                     }
                     onSlotPreview?.let { preview ->
-                        DropdownMenuItem(text = { Text("새 방식 미리보기") },
+                        DropdownMenuItem(text = { Text("개발용 일기 미리보기") },
                             enabled = !loading, onClick = { menu = false; preview() })
                     }
                 }
