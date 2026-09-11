@@ -144,7 +144,8 @@ fun summarize(
     val activeElapsedAtMillis = linkedMapOf<Long, Long>()
     val pendingChainSamples = mutableListOf<LocationSample>()
 
-    for (fix in fixes.sortedBy { it.clientSeq }) {
+    val eligibleFixes = fixes.filter { it.recordingEligible != false }
+    for (fix in eligibleFixes.sortedBy { it.clientSeq }) {
         if (previousChain != null && fix.chainIndex != previousChain) {
             recorder.addAll(pendingChainSamples)
             pendingChainSamples.clear()
@@ -165,7 +166,7 @@ fun summarize(
     val snapshot = recorder.snapshot()
     // 필터가 다 버렸어도 **원본에는 남아 있다.** 그 첫 점이 산책이 있었던 자리다.
     val anchor = snapshot.segments.firstOrNull()?.firstOrNull()?.point
-        ?: fixes.minByOrNull { it.clientSeq }?.let { GeoPoint(it.lat, it.lng) }
+        ?: eligibleFixes.minByOrNull { it.clientSeq }?.let { GeoPoint(it.lat, it.lng) }
     return WalkSummary(
         sessionId = session.id,
         dogIds = session.dogIds,

@@ -7,6 +7,86 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveRecordingEpoch(row: RecordingEpochRow)
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE sessionId = :sessionId ORDER BY firstIngressSeq, chainIndex")
+    suspend fun recordingEpochs(sessionId: String): List<RecordingEpochRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND ingressSeq > :afterSeq ORDER BY ingressSeq LIMIT :limit")
+    suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int): List<WalkFixRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND clientSeq = :clientSeq")
+    suspend fun observation(sessionId: String, clientSeq: Int): WalkFixRow?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_recording_epoch SET persistedCount = persistedCount + 1 WHERE id = :epochId AND sessionId = :sessionId AND chainIndex = :chainIndex AND clockEpochId = :clockEpochId AND drained = 0")
+    suspend fun advanceRecordingEpoch(epochId: String, sessionId: String, chainIndex: Int, clockEpochId: String): Int
+
+    @androidx.room.Transaction
+    suspend fun appendObservation(row: WalkFixRow) {
+        val existing = observation(row.sessionId, row.clientSeq)
+        if (existing != null) { check(existing == row) { "Conflicting observation identity" }; return }
+        check(row.ingressSeq == row.clientSeq.toLong()) { "Observation sequence changed" }
+        check(session(row.sessionId)?.endedAtMillis == null) { "Recording session is already closed" }
+        check(advanceRecordingEpoch(requireNotNull(row.sourceEpoch), row.sessionId, row.chainIndex,
+            requireNotNull(row.clockEpochId)) == 1) { "Recording epoch is unavailable" }
+        insertObservation(row)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertDiaryPublication(row: WalkDiaryPublicationRow): Long
+
+    @Query("SELECT * FROM walk_diary_publication WHERE sessionId = :id")
+    suspend fun diaryPublication(id: String): WalkDiaryPublicationRow?
+
+    @Query("SELECT * FROM walk_diary_publication WHERE sessionId = :id")
+    fun observeDiaryPublication(id: String): kotlinx.coroutines.flow.Flow<WalkDiaryPublicationRow?>
+
+    @Query("SELECT sessionId FROM walk_diary_publication WHERE publishedBundle IS NULL")
+    suspend fun pendingDiaryPublications(): List<String>
+
+    @Query("SELECT COUNT(publishedBundle) FROM walk_diary_publication")
+    fun observeDiaryPublicationCount(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("UPDATE walk_diary_publication SET baseBundle = :bundle WHERE sessionId = :id AND baseBundle IS NULL")
+    suspend fun freezeDiaryBase(id: String, bundle: String)
+
+    @Query("UPDATE walk_diary_publication SET publishedBundle = :bundle, publishedAtMillis = :now " +
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now < deadlineAtMillis")
+    suspend fun publishDiaryCandidate(id: String, bundle: String, now: Long): Int
+
+    @Query("UPDATE walk_diary_publication SET publishedBundle = baseBundle, publishedAtMillis = :now " +
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now >= deadlineAtMillis")
+    suspend fun publishDiaryBase(id: String, now: Long): Int
+
+    @androidx.room.Transaction
+    suspend fun closeAndPrepareDiary(id: String, endedAt: Long) {
+        val current = session(id) ?: return
+        if (current.endedAtMillis != null) return
+        val epochs = recordingEpochs(id)
+        if (epochs.isNotEmpty()) com.daengs.app.walk.checkRecordingComplete(epochs.map { it.toModel() })
+        closeSession(id, endedAt)
+        insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt, endedAt + 10_000))
+    }
+
+    @androidx.room.Transaction
+    suspend fun prepareLocalDiary(id: String, ownerId: String): WalkDiaryPublicationRow? {
+        val row = diaryPublication(id) ?: return null
+        val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
+        if (row.baseBundle == null) {
+            val source = fixes(id).filter { it.recordingEligible != false }.map {
+                com.daengs.app.walk.RecordedFix(it.clientSeq, it.chainIndex, it.atMillis, it.lat, it.lng, it.accuracyM, it.isMock)
+            }
+            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE)
+            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source,
+                entries(id).mapNotNull { it.entry() }, photos(id)))
+        }
+        return diaryPublication(id)
+    }
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertPhotoSync(row: WalkPhotoSyncRow): Long
 
@@ -92,14 +172,27 @@ interface WalkDao {
     }
 
     @androidx.room.Transaction
-    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true): String? {
+    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true, recordingEvidence: String? = null): String? {
         val row = entry(id) ?: return null
         if (session(row.sessionId)?.ownerId != ownerId) return null
         row.pendingRequest?.let { return it }
         if (!row.dirty && !row.pinDirty) return null
-        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported).json.toString()
+        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported, recordingEvidence).json.toString()
         updatePinRow(row.copy(pendingRequest = pending))
         return pending
+    }
+
+    @androidx.room.Transaction
+    suspend fun retryLegacyPinSourceErrors(sessionId: String, ownerId: String) {
+        if (session(sessionId)?.ownerId != ownerId) return
+        for (row in entries(sessionId)) {
+            if (row.isV2 && row.revision == 0 && row.payload != null && row.pendingRequest == null &&
+                row.syncError == com.daengs.app.walk.sync.LEGACY_PIN_SOURCE_ERROR &&
+                row.pinPayload?.let { org.json.JSONObject(it).optString("state") } == "unlocated") {
+                // The new rejection text differs, so an unrelated 422 is not retried forever.
+                updatePinRow(row.copy(syncError = null))
+            }
+        }
     }
 
     @androidx.room.Transaction
@@ -225,8 +318,11 @@ interface WalkDao {
         val analyses = historySearchAnalyses(allowed).associateBy { it.sessionId }
         return allowed.associateWith { id ->
             val rows = entries[id].orEmpty()
-            val title = com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows)
-                .bundle?.takeIf { it.sessionId == id }?.title
+            val publication = diaryPublication(id)
+            val board = if (publication != null) publication.publishedBundle?.let {
+                com.daengs.app.walk.diary.GeoStoryboardBundle.parse(it)
+            } else com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows).bundle
+            val title = board?.takeIf { it.sessionId == id }?.title
             listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
         }
     }
@@ -240,7 +336,7 @@ interface WalkDao {
     @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
     suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
     @androidx.room.Transaction
-    suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String): Boolean {
+    suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String, nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (session(row.sessionId)?.ownerId != ownerId) return false
         val stamp = if (row.entryStamp.startsWith("diary:"))
             com.daengs.app.walk.sync.diaryInputStamp(entries(row.sessionId), photoSync(row.sessionId), photos(row.sessionId))
@@ -252,6 +348,11 @@ interface WalkDao {
         // as belonging to the new input. Acceptance of that input is still checked above.
         saveSceneAnalysis(if (row.status == "ready") row.copy(bundleEntryStamp = row.entryStamp)
             else row.copy(bundle = current?.bundle, bundleEntryStamp = current?.bundleEntryStamp))
+        if (row.status == "ready" && row.bundle != null && diaryPublication(row.sessionId) != null) {
+            val parsed = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(row.bundle)
+            check(parsed.sessionId == row.sessionId)
+            publishDiaryCandidate(row.sessionId, row.bundle, nowMillis)
+        }
         return true
     }
 
@@ -288,6 +389,7 @@ interface WalkDao {
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
         require(title.isNotBlank() && title.length <= 80 &&
             body.length <= com.daengs.app.walk.diary.MAX_DIARY_SCENE_BODY_LENGTH)
+        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId,
             draft.edit(scene, title = title, body = body, acknowledge = true,
@@ -453,6 +555,12 @@ interface WalkDao {
             "ORDER BY startedAtMillis DESC",
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
+
+    /** Complete account-owned selection for records exploration, before UI pagination. */
+    @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
+        "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +
+        "ORDER BY startedAtMillis DESC, id DESC")
+    suspend fun finishedRecordSessions(ownerId: String, dogId: String?): List<WalkSessionRow>
 
     @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
         "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +

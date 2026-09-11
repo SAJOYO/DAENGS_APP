@@ -6,12 +6,12 @@ import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.isAccurateEnoughForMoment
 import com.daengs.app.walk.isFreshEnoughForMoment
 
+/** Release decision only. GPS preservation and existing v2 outboxes remain available. */
 object ActionPinRollout {
-    // GCP v2 API/DB와 지원 정책 배포를 확인한 뒤 해제한다. 기존 v2 복구는 계속 유지한다.
     val legacyCreation: Boolean = true
 }
 
-/** 화면 좌표나 추정 핀이 아닌, 탭 시점에 유효한 실제 GPS만 기존 계약으로 기록한다. */
+/** A v1 action requires a fresh observed position; it cannot encode an estimated/missing pin. */
 internal fun legacyWalkAction(
     sample: LocationSample?, id: String, sessionId: String, type: WalkMomentType,
     recordedAtMillis: Long, nowElapsedNanos: Long,

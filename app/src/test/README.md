@@ -42,6 +42,7 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 | 장소 검색·자연어 시설 검색 | `com.daengs.app.place.*`, `com.daengs.app.ui.places.*`, `com.daengs.app.map.features.places.*`, `com.daengs.app.map.layers.places.*` | 챗봇 제안은 `com.daengs.app.assistant.PlaceSuggestionsTest`, `com.daengs.app.ui.chat.PlaceSuggestionCardTest`; 경로 인계는 Journey |
 | Journey·지도 인계 | `com.daengs.app.journey.*`, `com.daengs.app.map.features.journey.*` | 장소 선택·상태 복귀를 바꾸면 `com.daengs.app.ui.places.PlaceSessionCoordinatorTest` |
 | 산책 코어·GPS·기록 | `com.daengs.app.walk.*`, `com.daengs.app.location.*` | 화면은 `com.daengs.app.ui.walk.*`; 지도 표현은 다음 행. 핀·사진·일기만 바꾸면 아래 좁은 묶음 사용 |
+| 속도 표시 상태·GPS 표시 안정화 | `com.daengs.app.walk.display.*` | `com.daengs.app.walk.WalkSpeedServiceTest`, `com.daengs.app.ui.walk.MotionSpeedometerTest`, `com.daengs.app.ui.walk.WalkScreenPolicyTest`, `com.daengs.app.ui.walk.WalkViewModelTest`; 서비스→Room→표시, 재진입·고정 크기·기존 제어 경계 |
 | 산책 지도·스타일·공통 지도 상태 | `com.daengs.app.map.style.*`, `com.daengs.app.map.shell.*`, `com.daengs.app.map.layers.trail.*`, `com.daengs.app.map.layers.completedroute.*`, `com.daengs.app.map.layers.stays.*`, `com.daengs.app.map.provider.naver.*` | 속도·GPS 안내·완료 경로는 `com.daengs.app.ui.walk.WalkSpeedometerTest`, `com.daengs.app.ui.walk.WalkGpsPresentationTest`, `com.daengs.app.ui.walk.WalkCompletedRoutePresentationTest` |
 | 전봇대 점령·사진 인증·활동 | `com.daengs.app.territory.*`, `com.daengs.app.activity.*`, `com.daengs.app.map.features.territory.*`, `com.daengs.app.map.layers.territory.*` | 화면 상태는 `com.daengs.app.ui.walk.WalkViewModelTest`, `com.daengs.app.ui.walk.WalkTerritoryUiTest`, `com.daengs.app.ui.walk.Territory*` |
 | 대화·어시스턴트·돌봄 | `com.daengs.app.chat.*`, `com.daengs.app.assistant.*`, `com.daengs.app.care.*`, `com.daengs.app.ui.chat.*`, `com.daengs.app.ui.storage.*` | 장소·산책 제안 계약은 해당 기능 소비자도 확인. 서버 모델의 답변 품질은 별도 범위 |
@@ -49,6 +50,72 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 | 홈·미니룸·카드·도감·공통 UI | `com.daengs.app.miniroom.*`, `com.daengs.app.dogcard.*`, `com.daengs.app.ui.home.*`, `com.daengs.app.ui.dogcard.*`, `com.daengs.app.ui.dex.*`, `com.daengs.app.ui.theme.*`, `com.daengs.app.ui.AvatarSourceTest` | 카드 DB 변경은 `com.daengs.app.dogcard.store.CardMigrationTest`; 그림·애니메이션은 실기기 확인도 필요 |
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
+
+## GPS 이동 정책 엔진 (#294)
+
+`com.daengs.app.walk.motion.*`는 Android 없는 순수 엔진의 동결 정책, 위치·속도 품질,
+고속 뒤 재진입·구간 장벽, 작은 보폭 누적, 시각 역행·중복·누락, 개별/배치 재생 일치와
+제한된 관측 창을 검증한다. `RecordedMotionReplayTest`는 #283 완료 epoch와 원본 번호를
+대조한다. 원본/epoch 계약을 바꾸면 `RecordingJournalTest`, `RecordingCompletionTest`도
+선택한다. legacy reader를 바꾸면 `TrailRecorderTest`, `WalkSummaryTest`를 추가한다.
+#307의 `WalkSpeedRuntimeTest`와 `WalkSpeedServiceTest`는 운영 속도 표시 연결을 검사한다.
+거리·요약은 기존 계산이며, 이 테스트가 실기기 주행 검증은 아니다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'
+```
+
+## 점령 게임 성적 화면·규칙 팝업
+
+### 전봇대 북마크 (#278)
+
+`com.daengs.app.territory.bookmarks.*`는 HTTP·목록 계약과 로그인 생애를,
+`com.daengs.app.ui.game.bookmarks.*`는 중복 탭·타임아웃 재조회·목록/지도·위치 없음·작은 화면을 검증한다.
+게임 진입 메뉴와 공용 별 연결을 변경하면 `TerritoryGameScreenTest`,
+`ui.game.owned.OwnedTerritoryScreenTest`, `ui.walk.WalkTerritoryUiTest`를 함께 선택한다.
+실기기 가상 데이터 확인은 실제 서버에 북마크가 저장됐다는 근거가 아니다.
+
+`ui/game/TerritoryGameScreenTest`는 홈 진입·조회 강아지 교체·성적 상태·팝업 복귀·320dp 큰 글자를,
+`ui/game/TerritoryGameRulesTest`는 전봇대를 누르는 두 로컬 예시·인증 구도·점수 차액·닫기/뒤로·상태 복원을 확인한다.
+팝업은 실제 점령·카메라·GPS·서버 요청을 실행하지 않는다. 점수 조회 모델을 고치면
+`TerritoryGameOverviewTest`, API/저장소를 고치면 위 activity 소비자를 추가한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.game.TerritoryGameScreenTest' --tests 'com.daengs.app.ui.game.TerritoryGameRulesTest'
+```
+
+## 시설 검색의 적용 조건 표시·해제
+
+### 카테고리 다중 선택과 지도 위 말풍선
+
+`PlaceCategorySelectionTest`, `PlacePurposeSearchTest`는 다른 대분류의 종류 조합,
+6개 제한과 마지막 선택 해제/늦은 응답을 확인한다.
+`DogBubblePlacementTest`는 화면 끝·키보드 크기의 창에서 머리 위 배치와 꼬리 좌표를,
+`PlaceDogAssistantUiTest`는 입력 → 생각 → 답변 전환과 고정된 48dp 버튼을 확인한다.
+`ConnectedPlaceSearchUiTest`는 GPS 미확인/먼 검색 중심에서도 입구 유지, 반경 표시,
+짧은 지도에서 안내에 가리지 않는 버튼 터치와 기존 검색 액션을 확인한다.
+`ConversationUndoTest`는 서버 restore, 실패 시 현재 결과 보존, 같은 ID 재시도,
+취소한 복원이 새 수동 검색을 덮지 않는지를 다룬다.
+`ConnectedPlaceSearchUiTest`, `FacilityConnectedUiTest`, `FacilitySearchCoordinatorTest`는
+연결 화면/기존 제안 경로의 소비자다. 실제 SDK/IME 검토 방법과 계약 경계는
+[말풍선 문서](../../../docs/place-dog-bubbles.md)에 있다.
+
+아래처럼 변경한 클래스만 선택한다. 공용 대화 저장소 수정 시에는
+`FacilityConversationTest`, `ConversationFiltersTest`, `ConversationConnectedTest`도 포함한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true --tests 'com.daengs.app.ui.places.PlaceDogAssistantUiTest' --tests 'com.daengs.app.ui.places.DogBubblePlacementTest'
+```
+
+`ConversationFiltersTest`는 조건 ID/revision 전달, 늦은 조작 거부, 실패 시 필터 보존,
+동일 요청 재시도를 확인한다. `AppliedPlaceFiltersTest`는 필수/선호·AND/OR·부정값 표시,
+`ConversationConnectedTest`는 기존 ViewModel 반영, `ConnectedPlaceSearchUiTest`는 AI를
+꺼도 조건 확인·해제·현재 조건 검색이 가능한지를 검증한다. `-PfacilityConversation=true`로
+기존 `FacilityConversationTest`, `PlaceSearchBatchTest`, `PlaceSessionCoordinatorTest`,
+`PlacesViewModelTest`와 함께 실행한다. 실제 서버/지도·실기기 검증은 별도다.
+
+화면 테스트의 320dp 합성 렌더는 `app/build/reports/conversation/filters-screen.png`,
+`filters-dialog.png`에 저장한다. 테스트 창을 그린 이미지이며 실제 폰 캡처가 아니다.
 
 ## 산책에서 함께 확인할 경계
 
@@ -68,7 +135,21 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 추정 입력만 바꾸면 `ActionPinEstimatorTest`와 `ActionPinReplayTest`를 선택한다.
 핀 저장·확정·수정·전송 계약이 바뀌면 다음 묶음을 사용한다. `LegacyActionPinTest`와
-v2 동기화의 임시 v1 사례는 구서버 대응 계약이므로 v2 테스트와 이름이 비슷해도 삭제하지 않는다.
+v2 동기화의 v1 사례는 과거 기록 보존·구서버 호환 계약이다. 현재 릴리즈의 v1 생성·GPS 차단은
+`LegacyActionPinTest`, 실제 서비스 버튼의 v1 저장은 `WalkSpeedServiceTest`로 확인한다.
+v2 엔진의 GPS 없음·불량·정상 입력은 `ActionPinStoreTest`에서 확인한다.
+동기화 진입점 변경은 `WalkEntryV2SyncTest`의 `WalkEntrySync` 연결 사례로 v2 생성·확정 재시도,
+쓰기 보류와 v1/v2 혼합 산책을 확인한다. 버튼·서비스 연결을 바꾸면 `WalkTrackingTest`,
+raw 업로드/finalize 이후 전송 순서는 `WalkSyncTest`도 함께 선택한다.
+
+GPS 기록 구분의 전송·복원·보완은 `WalkRecordingSyncTest`를 함께 선택한다. 이 클래스의
+`production serializers agree with the shared server contract and preserve unknown` 사례는
+공통 fixture와 실제 WalkApi/PinPending 직렬화를 대조하고 `app/build/outputs/contracts/gps-recording-v1.json`을
+생성한다. 서버 #441의 계약 테스트에 이 파일을 넣어 양쪽 구현을 연결해 검증할 수 있다.
+`WalkSyncTest`는 LOCAL_ONLY/RAW_UPLOADED/DERIVED의 관문, `WalkEntryV2SyncTest`는
+Room outbox·기존 오류의 제한된 재시도·ACK 유실과 원본 지문 동결을 담당한다.
+v1 릴리즈 정책을 바꾸면 앞의 두 클래스와 `WalkRecordingSyncTest`로 구형 서버의 전송 지속,
+지원 서버의 실제 메타데이터 보완, 426 이후 기존 v2 자료 복구를 함께 확인한다.
 핀의 일기 반영은 `StoryboardPinSyncTest`, `WalkRecordProfileTest`, `WalkDiaryTest`도 연결된다.
 
 ```powershell
@@ -99,6 +180,16 @@ DB 버전·초기 행 생성·기존 사진 게시자 이관은 아래 마이그
 
 ### 일기·스토리보드·기록 검색
 
+종료 후 일기 공개 시점·서버 후보 채택을 바꾸면 아래 묶음부터 선택한다.
+`WalkDiaryPublicationTest`는 DAO 계약, `WalkDiaryPublicationLifecycleTest`는 실제 조정기의
+타이머·동기화→Room→Reader 흐름, `WalkDiaryBoardSyncTest`는 상태별 HTTP 경계를 확인한다.
+준비 중·만료 후 미공개·공개 완료와 공개 행이 없는 기존 산책을 서로 대신 쓰지 않는다.
+`WalkHistorySearchTest`는 기존 분석 제목 무효화와 공개 보드 제목 보존을 구분한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.diary.WalkDiaryPublicationTest' --tests 'com.daengs.app.walk.diary.WalkDiaryPublicationLifecycleTest' --tests 'com.daengs.app.walk.sync.WalkDiaryBoardSyncTest' --tests 'com.daengs.app.walk.diary.WalkDiaryReaderTest' --tests 'com.daengs.app.walk.store.WalkHistorySearchTest'
+```
+
 parser/표현 모델은 `walk.diary`, 서버 반영은 세 sync 클래스, 캐시·검색은 저장소와 reader가 담당한다.
 화면만 바꾸면 해당 UI 클래스부터 선택하고, 일기 format·사진/핀 연결·무효화 규칙을 바꾸면
 아래 묶음을 선택한다.
@@ -110,6 +201,56 @@ parser/표현 모델은 `walk.diary`, 서버 반영은 세 sync 클래스, 캐�
 UI 소비자는 `com.daengs.app.ui.walk.WalkDiaryMapScreenTest`,
 `com.daengs.app.ui.walk.WalkStoryboardScreenTest`, `com.daengs.app.ui.walk.WalkHistorySearchScreenTest`다.
 JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소비자도 함께 선택한다.
+
+### 행동 기록으로 산책 비교
+
+서버 응답의 A/B·근거 정합성은 `WalkBehaviorComparisonTest`, HTTP·세션 경계는
+`WalkBehaviorComparisonApiTest`, 지도 선택·빈 결과·위치 없는 근거는
+`WalkBehaviorComparisonScreenTest`가 검증한다. 이 화면 테스트는 320dp에서 413 오류 뒤
+7일·1일 선택이 실제 조회 기간과 성공 화면에 반영되는 흐름도 검증한다. 서버에서 직렬화한 응답 fixture를
+공용 `walk/support/BehaviorComparisonFixtures.kt`를 통해 함께 읽는다.
+실제 Naver 지도 렌더링·서버 데이터 적재는 이 테스트의 범위가 아니다.
+공용 지도 정책을 바꾸면 `com.daengs.app.map.shell.MapScenePolicyTest`도 함께 선택한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonTest' --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonApiTest' --tests 'com.daengs.app.ui.walk.WalkBehaviorComparisonScreenTest'
+```
+
+## 산책 기록의 일반 진입·상세 복귀
+
+홈·산책 화면의 기록 진입점은 `WalkRecordsRoute`에서 실제 공급부와 기존
+`WalkDiaryMapScreen`을 연결한다. 화면 연결만 바꾸면 아래 네 클래스를 선택한다.
+
+- `ui/walk/WalkRecordsRouteStateTest`: 기록 화면을 실제로 내린 뒤 상태 복원,
+  Activity 저장 시점, 같은 회원 재로그인·다른 계정·프로세스 경계의 초기화.
+- `ui/walk/records/WalkRecordsRouteTest`: 기록·모아보기·행동 보기의 상세 왕복,
+  홈으로 나갔다 복귀, nullable 프로필 로딩 중 조건 유지, 미로그인 안내,
+  계정 변경 중 늦은 응답 배제와 동기화 오류에도 로컬 기록 유지.
+- `ui/walk/WalkRecordsScreenTest`: 공통 조건·페이지·지도 선택·행동 보기의 기존 소비자.
+- `ui/walk/WalkDiaryMapScreenTest`: 기존 상세 표시·뒤로 동작의 소비자.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkDiaryMapScreenTest' -PslimAbi=x86_64 --console=plain
+```
+
+이 절은 실행 지도이며 통과 결과가 아니다. Route 테스트는 실제 기록 화면을 unmount하는
+상세 대역과 inspection 지도를 사용한다. MainActivity 초기화·native Naver 지도·배포 서버·
+사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
+경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
+
+## 산책 기록의 실제 원판 조회
+
+`walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과
+빈 결과를, `WalkRecordSheetsApiTest`는 인증된 batch HTTP 요청과 미배포/인증 실패를 확인한다.
+`TraceLoadingWalkRecordsSourceTest`는 조회 지연·실패·재시도·계정/기록 변경 중 늦은 응답을,
+`RoomWalkRecordsSourceTest`는 실제 SQLite의 업로드 ID 전달과 보드 확정 시 목록 갱신,
+준비 중·늦은 AI 제목의 검색 제외를 확인한다.
+브러시 연결/겹침 정책은 `WalkRecordsTracesTest`, 화면 소비자는
+`ui/walk/WalkRecordsScreenTest`로 좁혀 실행한다. 실제 서버·DB 접속은 필요하지 않다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.records.WalkRecordSheetsTest' --tests 'com.daengs.app.walk.records.WalkRecordSheetsApiTest' --tests 'com.daengs.app.walk.records.TraceLoadingWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.WalkRecordsTracesTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --console=plain
+```
 
 ## Room·계정·외부 의존성
 
@@ -133,7 +274,8 @@ Room 준비 코드를 정리할 때는 계정·시계·세션·임시 파일과 
 ## 공용 helper 제공자와 소비자
 
 2단계에서는 테스트 파일 7곳의 공용 코드를 기능별 `support` 파일 6개로 분리했다.
-아래 표는 이번 분리 대상과 기존 시설 fixture의 참조 범위다. 경로는
+이후 추가 정리에서 대화 응답·장면 위치 근거·내 점령지·찜 fixture도 테스트 파일에서 분리했다.
+아래 표는 이 공용 코드와 기존 시설 fixture의 현재 참조 범위다. 경로는
 `java/com/daengs/app/` 기준이며 원래 제공 파일의 테스트도 소비자로 포함한다.
 Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로 import 문 검색만으로는 부족하다.
 
@@ -142,11 +284,16 @@ Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로
 | [walk/support/PinFixtures.kt](java/com/daengs/app/walk/support/PinFixtures.kt) — `PIN_TAP`, `pinRequest`, `pinPoint`, `pinFix` | `walk/pin/ActionPinEstimatorTest.kt`, `walk/pin/ActionPinReplayTest.kt` |
 | [walk/support/DiaryFixtures.kt](java/com/daengs/app/walk/support/DiaryFixtures.kt) — `diaryFixture` | `walk/diary/ServerDiaryBundleTest.kt`, `walk/diary/WalkDiaryReaderTest.kt`, `walk/sync/WalkDiarySyncTest.kt`, `ui/walk/WalkStoryboardScreenTest.kt` |
 | 같은 `DiaryFixtures.kt` — `titledDiaryFixture` | `walk/diary/WalkDiaryTitleTest.kt`, `walk/diary/WalkDiaryReaderTest.kt`, `walk/store/WalkHistorySearchTest.kt`, `walk/sync/WalkStoryboardSyncTest.kt` |
+| 같은 `DiaryFixtures.kt` — `sceneAnchorFixture` | `walk/diary/WalkSceneAnchoringTest.kt`, `walk/sync/WalkStoryboardSyncTest.kt`, `ui/walk/WalkDiaryMapScreenTest.kt` |
 | [walk/support/WalkHistoryFixtures.kt](java/com/daengs/app/walk/support/WalkHistoryFixtures.kt) — `seedSearchWalk` | `walk/store/WalkHistorySearchTest.kt`, `ui/walk/WalkHistorySearchScreenTest.kt` |
 | [territory/support/TerritoryFixtures.kt](java/com/daengs/app/territory/support/TerritoryFixtures.kt) — 식별자 상수, `MemoryActions`, `ClaimServer` | `territory/TerritoryActionSyncTest.kt`, `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionApiTest.kt`, `territory/TerritoryActionStoreTest.kt`, `territory/TerritoryPhotoApiTest.kt`; 공용 `territory/support/PhotoServer.kt`도 참조 |
 | [territory/support/PhotoServer.kt](java/com/daengs/app/territory/support/PhotoServer.kt) — `PhotoServer` | `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionStoreTest.kt` |
+| [territory/support/OwnedTerritoryFixtures.kt](java/com/daengs/app/territory/support/OwnedTerritoryFixtures.kt) — `OWNED_PET`, `OWNED_SITE`, `ownedJson` | `territory/owned/OwnedTerritoryApiTest.kt`, `territory/owned/OwnedTerritoryRepositoryTest.kt` |
+| [territory/support/BookmarkFixtures.kt](java/com/daengs/app/territory/support/BookmarkFixtures.kt) — `BOOKMARK_SITE`, `bookmarkJson`, `mutationJson` | `territory/bookmarks/TerritoryBookmarkApiTest.kt`, `territory/bookmarks/TerritoryBookmarkRepositoryTest.kt`, `ui/game/bookmarks/TerritoryBookmarkActionTest.kt`, `ui/game/bookmarks/TerritoryBookmarkControllerTest.kt`, `ui/game/bookmarks/TerritoryBookmarksScreenTest.kt` |
 | [activity/support/ActivityFixtures.kt](java/com/daengs/app/activity/support/ActivityFixtures.kt) — `ActivityFixtures` | `activity/ActivityApiTest.kt`, `activity/ActivityRepositoryTest.kt` |
 | 이미 분리된 `place/FacilityFixtures.kt` — `facilityQuery`, `facilityJson`, `facilityResponse` | `place/FacilityApiTest.kt`, `ui/places/FacilityViewModelTest.kt`, `ui/places/FacilitySearchCoordinatorTest.kt`, `ui/places/FacilitySearchPanelTest.kt`, `ui/places/FacilityConnectedUiTest.kt` |
+| [place/support/ConversationFixtures.kt](java/com/daengs/app/place/support/ConversationFixtures.kt) — `conversationFixture` | `place/FacilityConversationTest.kt`, `place/ConversationFiltersTest.kt`, `place/ConversationUndoTest.kt`, `ui/places/ConversationConnectedTest.kt`, `ui/places/ConnectedPlaceSearchUiTest.kt`; 같은 파일의 `filteredConversationFixture`도 참조 |
+| 같은 `ConversationFixtures.kt` — `filteredConversationFixture` | `place/ConversationFiltersTest.kt`, `place/ConversationUndoTest.kt`, `ui/places/AppliedPlaceFiltersTest.kt`, `ui/places/ConversationConnectedTest.kt`, `ui/places/ConnectedPlaceSearchUiTest.kt` |
 
 각 helper의 이름·가시성·인자·기본값·반환값과 fake 동작을 보존하고 소비자는 `support`에서 import한다.
 일기 JSON은 테스트 클래스 대신 공용 파일의 `DiaryResources`를 기준으로 같은 절대 리소스 경로를 읽는다.
@@ -159,6 +306,36 @@ Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로
 참조를 대조하면서 누락된 일기 소비자 `WalkStoryboardScreenTest`, `WalkStoryboardSyncTest`를 추가했다.
 기존 표의 `WalkTerritoryUiTest`, `TerritoryRangePresentationTest`는 공유 식별자가 아니라
 `MapPurpose.WALK`를 사용하므로 이 helper 검증 범위에서 제외했다.
+
+### 추가 분리한 fixture의 검증 범위
+
+대화 응답·장면 위치 근거·내 점령지·찜 fixture를 함께 변경할 때는 아래 16개 클래스를 선택한다.
+`AppliedPlaceFiltersTest`는 `filteredConversationFixture`를 통해 대화 응답을 간접 사용하므로 포함한다.
+한 묶음만 변경하면 해당 제공자 행의 소비자를 선택하되, 다른 helper를 거친 소비자까지 포함한다.
+대화 연결 화면도 검증하므로 기존 기능 플래그 `-PfacilityConversation=true`를 사용한다.
+
+```powershell
+$fixtureTests = @(
+    'com.daengs.app.place.FacilityConversationTest'
+    'com.daengs.app.place.ConversationFiltersTest'
+    'com.daengs.app.place.ConversationUndoTest'
+    'com.daengs.app.ui.places.AppliedPlaceFiltersTest'
+    'com.daengs.app.ui.places.ConversationConnectedTest'
+    'com.daengs.app.ui.places.ConnectedPlaceSearchUiTest'
+    'com.daengs.app.walk.diary.WalkSceneAnchoringTest'
+    'com.daengs.app.walk.sync.WalkStoryboardSyncTest'
+    'com.daengs.app.ui.walk.WalkDiaryMapScreenTest'
+    'com.daengs.app.territory.owned.OwnedTerritoryApiTest'
+    'com.daengs.app.territory.owned.OwnedTerritoryRepositoryTest'
+    'com.daengs.app.territory.bookmarks.TerritoryBookmarkApiTest'
+    'com.daengs.app.territory.bookmarks.TerritoryBookmarkRepositoryTest'
+    'com.daengs.app.ui.game.bookmarks.TerritoryBookmarkActionTest'
+    'com.daengs.app.ui.game.bookmarks.TerritoryBookmarkControllerTest'
+    'com.daengs.app.ui.game.bookmarks.TerritoryBookmarksScreenTest'
+)
+$testArgs = $fixtureTests | ForEach-Object { '--tests'; $_ }
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true @testArgs --no-daemon --max-workers=1 --console=plain
+```
 
 ## 기준 시점에 확인한 결과
 

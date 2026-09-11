@@ -189,9 +189,22 @@ private fun RecordRow(
                     Text(report.headline, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = accentOf(record))
                     report.group?.let {
                         Text(it.text, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
+                        // ★ 특징 한 줄 (2026-09-10). 채팅 카드와 **같은 것을 그린다** —
+                        //    한쪽만 고치면 같은 판정이 화면마다 다르게 보인다.
+                        //    ⚠️ 옛 기록은 `feature` 가 없다. 그때는 이름 줄만 남는다.
+                        //    ⚠️ 목록은 훑어보는 화면이라 `detail`(자세히 보기)은 안 그린다.
+                        if (it.feature.isNotBlank()) {
+                            Text(
+                                "${it.feature} 같은 모습이 보이는 상태예요.",
+                                fontSize = 12.sp, color = TextDark, lineHeight = 18.sp,
+                            )
+                        }
                     }
                     Text(report.body, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
-                    Text(report.action, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
+                    // 채팅 카드와 **같은 규칙**이다 — 정상에서는 권고 줄을 안 그린다.
+                    if (report.showsAction) {
+                        Text(report.action, fontSize = 13.sp, color = TextDark, lineHeight = 20.sp)
+                    }
                     // ★ 2026-09-08 — 6종(report.stage2) 대신 **계열 네 묶음**이다.
                     //   채팅 카드와 같은 것을 그려야 한다. 한쪽만 고치면 같은 결과가
                     //   화면마다 다르게 보이고, 갈라져도 아무도 모른다.

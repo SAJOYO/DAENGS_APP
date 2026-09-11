@@ -16,20 +16,22 @@ import androidx.core.app.ServiceCompat
 import com.daengs.app.DaengsApp
 import com.daengs.app.MainActivity
 import com.daengs.app.R
-import com.daengs.app.location.FeedStatus
 import com.daengs.app.location.LocationSample
 import com.daengs.app.location.LocationSource
-import com.daengs.app.location.LocationTracker
 import com.daengs.app.miniroom.OutsideApi
 import com.daengs.app.miniroom.OutsideTime
 import com.daengs.app.walk.sync.WalkDeliveryScheduler
-import com.daengs.app.walk.sync.completeAndEnqueueWalk
+import com.daengs.app.walk.display.DisplayLifecycle
+import com.daengs.app.walk.display.MotionDisplay
+import com.daengs.app.walk.display.WalkSpeedRuntime
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -48,7 +50,18 @@ class WalkTrackingService : Service() {
     private val stayRecorder = StayStampRecorder()
 
     private lateinit var locationSource: LocationSource
-    private lateinit var tracker: LocationTracker
+    private var ingress: WalkIngress? = null
+    private var subscription: com.daengs.app.location.LocationSubscription? = null
+    private var projectionJob: kotlinx.coroutines.Job? = null
+    private var speedRuntime: WalkSpeedRuntime? = null
+    private var speedTickJob: kotlinx.coroutines.Job? = null
+    private var boundaryJob: kotlinx.coroutines.Job? = null
+    private var transitioning = false
+    private var pendingStopStartId: Int? = null
+    private val ingressSequence = java.util.concurrent.atomic.AtomicLong(0)
+    private val clockEpochId = UUID.randomUUID().toString()
+    private var projectionCursor = -1L
+    private val projectionMutex = kotlinx.coroutines.sync.Mutex()
     private lateinit var store: WalkTrackingStore
     private lateinit var writer: WalkFixWriter
     private lateinit var delivery: WalkDeliveryScheduler
@@ -75,11 +88,8 @@ class WalkTrackingService : Service() {
         writer = runtime.writer
         delivery = runtime.delivery
         log = runtime.log
-        tracker = LocationTracker(serviceScope)
         createNotificationChannel()
 
-        serviceScope.launch { tracker.updates.collect(::acceptLocation) }
-        serviceScope.launch { tracker.status.collect(::acceptFeedStatus) }
         serviceScope.launch { writer.failure.filterNotNull().collect(::acceptStorageFailure) }
     }
 
@@ -104,7 +114,12 @@ class WalkTrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        tracker.stop()
+        ingress?.seal("INTERRUPTED")
+        speedRuntime?.onLifecycle(DisplayLifecycle.FINISHED, SystemClock.elapsedRealtimeNanos())
+        val closingSubscription = subscription
+        (application as DaengsApp).walkRuntime.recordingScope.launch {
+            runCatching { kotlinx.coroutines.withTimeout(10_000) { closingSubscription?.close() } }
+        }
         if (recorder.snapshot().state != TrackingState.OFF) {
             pauseTiming()
             store.publish(
@@ -120,6 +135,7 @@ class WalkTrackingService : Service() {
     }
 
     private fun startRecording(dogIds: List<String>) {
+        if (transitioning || sessionId != null) return
         if (recorder.snapshot().state != TrackingState.OFF) {
             promote(recorder.snapshot(), store.state.value.errorMessage)
             return
@@ -129,6 +145,7 @@ class WalkTrackingService : Service() {
         activeDurationMillis = 0L
         activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
         stayRecorder.reset()
+        transitioning = true
         val trail = recorder.start()
         openSession(dogIds)
         store.publish(
@@ -141,87 +158,205 @@ class WalkTrackingService : Service() {
         )
         // Android 14+는 위치 구독 전에 location 타입 FGS가 승격됐는지 검사한다.
         promote(trail, errorMessage = null)
-        tracker.start(locationSource, WALK_OBSERVATION_CONFIG)
+        transitioning = true
+        boundaryJob = serviceScope.launch {
+            try { writer.flush(); beginIngress() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                pauseTiming()
+                speedRuntime?.onLifecycle(DisplayLifecycle.PAUSED, SystemClock.elapsedRealtimeNanos())
+                store.publish(trackingState(recorder.pause(), errorMessage = error.message ?: "위치 기록을 시작하지 못했어요."))
+            } finally { transitioning = false; publishTransition() }
+        }
     }
 
     private fun pauseRecording(startId: Int) {
-        if (recorder.snapshot().state != TrackingState.RECORDING) {
-            stopIfInactive(startId)
-            return
-        }
-        tracker.stop()
-        val cutoff = System.currentTimeMillis()
-        sessionId?.let { id -> writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) } }
-        pauseTiming()
-        stayRecorder.breakContinuity()
-        val trail = recorder.pause()
-        store.publish(trackingState(trail))
-        promote(trail, errorMessage = null)
+        if (transitioning) return
+        if (recorder.snapshot().state != TrackingState.RECORDING) { stopIfInactive(startId); return }
+        transitionRecording(stop = false, startId = startId)
     }
 
     private fun resumeRecording(startId: Int) {
-        if (recorder.snapshot().state != TrackingState.PAUSED) {
-            stopIfInactive(startId)
-            return
+        if (transitioning) return
+        if (recorder.snapshot().state != TrackingState.PAUSED) { stopIfInactive(startId); return }
+        if (ingress?.progress?.value?.failureReason != null) return
+        transitioning = true
+        boundaryJob = serviceScope.launch {
+            try {
+                writer.flush()
+                chainIndex += 1
+                directPinRef = null
+                activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
+                recorder.resume()
+                store.publish(trackingState(recorder.snapshot(), latestMomentFix = null))
+                beginIngress()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                pauseTiming()
+                speedRuntime?.onLifecycle(DisplayLifecycle.PAUSED, SystemClock.elapsedRealtimeNanos())
+                store.publish(trackingState(recorder.pause(), errorMessage = error.message ?: "위치 기록을 재개하지 못했어요."))
+            } finally { transitioning = false; publishTransition() }
         }
-        val trail = recorder.resume()
-        activeSinceRealtimeMillis = SystemClock.elapsedRealtime()
-        synchronized(sessionLock) { chainIndex += 1; directPinRef = null }
-        // 일시정지 전에 받은 좌표로 재개 직후 행동을 찍지 않는다. 새 fix가 올 때까지
-        // 행동은 fallback으로 저장한다.
-        store.publish(trackingState(trail, latestMomentFix = null))
-        promote(trail, errorMessage = null)
-        tracker.start(locationSource, WALK_OBSERVATION_CONFIG)
     }
 
     private fun stopRecording(stopStartId: Int) {
-        if (recorder.snapshot().state == TrackingState.OFF) {
-            stopIfInactive(stopStartId)
-            return
+        if (transitioning) { pendingStopStartId = stopStartId; return }
+        if (recorder.snapshot().state == TrackingState.OFF) { stopIfInactive(stopStartId); return }
+        transitionRecording(stop = true, startId = stopStartId)
+    }
+
+    private fun beginIngress() {
+        val id = checkNotNull(sessionId)
+        val runtime = (application as DaengsApp).walkRuntime
+        val epoch = RecordingEpoch(UUID.randomUUID().toString(), id, clockEpochId, chainIndex,
+            System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(), ingressSequence.get())
+        speedRuntime?.begin(epoch, SystemClock.elapsedRealtimeNanos())
+        publishSpeed()
+        val stream = WalkIngress(epoch, ingressSequence, runtime.recordingScope,
+            SystemClock::elapsedRealtimeNanos, System::currentTimeMillis,
+            persist = { writer.appendObserved(id, it).await() },
+            saveEpoch = { writer.saveRecordingEpoch(it).await() })
+        ingress = stream
+        try {
+            subscription = locationSource.subscribeRecording(WALK_OBSERVATION_CONFIG,
+                onSample = { stream.offer(it) }, onFailure = { stream.fail("SOURCE_DELIVERY_FAILURE") })
+        } catch (error: Exception) {
+            stream.fail("SOURCE_START_FAILURE")
+            throw error
         }
-        tracker.stop()
-        pauseTiming()
-        // 지우려면 어느 세션인지 알아야 하는데, closeSession() 이 비워 버린다.
-        val finished = synchronized(sessionLock) { sessionId }
-        val cutoff = System.currentTimeMillis()
-        finished?.let { id -> writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) } }
-        closeSession()
-        val trail = recorder.stop()
-        store.publish(trackingState(trail, finishingSessionId = finished))
-        serviceScope.launch {
+        projectionJob = serviceScope.launch {
             try {
-                completeAndEnqueueWalk(
-                    sessionId = finished,
-                    complete = {
-                        writer.flush()
-                        // **flush 뒤에 판정한다.** 좌표가 다 저장되기 전에 재면 방금 걸은
-                        // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
-                        finished?.let { finishOrDiscard(it) } == true
-                    },
-                    enqueue = delivery::enqueue,
-                    onCompletionFailure = { error ->
-                        publishCompletionFailure(error.message ?: "산책을 저장하지 못했어요.")
-                    },
-                    onEnqueueFailure = { error ->
-                        Log.w(
-                            TAG,
-                            "산책 전달 작업을 예약하지 못했다. 다음 시작에서 다시 찾는다.",
-                            error,
-                        )
-                    },
-                )
-            } finally {
-                synchronized(sessionLock) {
-                    // flush 중 새 산책이 시작됐다면 새 알림까지 지우지 않는다. 새 startId가
-                    // 있으면 Android가 stopSelf 호출을 무시하지만 foreground 제거는 따로
-                    // 막아야 한다.
-                    if (sessionId == null && recorder.snapshot().state == TrackingState.OFF) {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf(stopStartId)
+                stream.progress.collect { progress ->
+                    projectStored(id)
+                    if (progress.failureReason != null && !transitioning) {
+                        pauseAfterFeedProblem("위치 기록 전달에 문제가 생겼어요. 원본 저장 상태를 확인해 주세요.")
                     }
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                stream.fail("PROJECTION_FAILURE")
+                pauseAfterFeedProblem(error.message ?: "저장한 위치를 읽지 못했어요.")
             }
         }
+    }
+
+    private suspend fun projectStored(id: String) = projectionMutex.withLock {
+        while (sessionId == id) {
+            val fixes = log.observationsAfter(id, projectionCursor, 128)
+            if (fixes.isEmpty()) break
+            // Include cached/ineligible observations so engine references remain contiguous.
+            // This read-only projection catches its own faults; raw and legacy recording continue.
+            speedRuntime?.observations(fixes, SystemClock.elapsedRealtimeNanos())
+            for (fix in fixes) {
+                if (fix.recordingEligible != false) acceptCommittedLocation(fix)
+                projectionCursor = requireNotNull(fix.ingressSeq)
+            }
+            publishSpeed()
+        }
+    }
+
+    private fun transitionRecording(stop: Boolean, startId: Int) {
+        val id = sessionId ?: return
+        transitioning = true
+        pauseTiming()
+        val stream = ingress
+        val boundary = stream?.seal(if (stop) "STOP" else "PAUSE")
+        speedRuntime?.onLifecycle(if (stop) DisplayLifecycle.FINISHED else DisplayLifecycle.PAUSED,
+            SystemClock.elapsedRealtimeNanos())
+        if (stop) speedTickJob?.cancel()
+        val cutoff = if (stop && recorder.snapshot().state == TrackingState.PAUSED) System.currentTimeMillis()
+            else boundary?.endedAtMillis ?: System.currentTimeMillis()
+        store.publish(trackingState(recorder.snapshot(), finishingSessionId = id.takeIf { stop }))
+        boundaryJob = serviceScope.launch {
+            try {
+                try { kotlinx.coroutines.withTimeout(10_000) { subscription?.close() } }
+                catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException && error !is kotlinx.coroutines.TimeoutCancellationException) throw error
+                    stream?.fail("SOURCE_CLOSE_FAILURE")
+                    throw error
+                } finally { subscription = null }
+                val receipt = kotlinx.coroutines.withTimeout(30_000) { stream?.drain() }
+                projectionJob?.cancelAndJoin()
+                projectStored(id)
+                receipt?.let { speedRuntime?.drained(it) }
+                check(receipt == null || receipt.failureReason == null) { "원본 전달에 실패한 산책은 완료할 수 없어요." }
+                writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) }.await()
+                writer.flush()
+                if (!stop) {
+                    stayRecorder.breakContinuity()
+                    recorder.pause()
+                    store.publish(trackingState(recorder.snapshot()))
+                    promote(recorder.snapshot(), null)
+                } else {
+                    // Stopping an already paused recording creates an explicit STOP marker.
+                    if (receipt != null && receipt.endKind == "PAUSE") {
+                        val atNanos = SystemClock.elapsedRealtimeNanos()
+                        writer.saveRecordingEpoch(RecordingEpoch(UUID.randomUUID().toString(), id,
+                            clockEpochId, chainIndex + 1, cutoff, atNanos, ingressSequence.get(),
+                            endedAtMillis = cutoff, endedElapsedNanos = atNanos, endKind = "STOP",
+                            targetIngressSeq = ingressSequence.get() - 1, drained = true)).await()
+                    }
+                    checkRecordingComplete(log.recordingEpochs(id))
+                    // Await this transaction, not a global failure flag changed by later work.
+                    writer.ordered { log.closeSession(id, cutoff) }.await()
+                    sessionId = null
+                    sessionDogIds = emptyList()
+                    recorder.stop()
+                    // Completion is already durable. Downstream preparation cannot invalidate it.
+                    try {
+                        if (finishOrDiscard(id)) {
+                            (application as DaengsApp).walkDiaryPublication.start(id)
+                            delivery.enqueue(id)
+                        }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: Exception) {
+                        Log.w(TAG, "완료한 산책의 결과 준비는 다음 시작에서 재시도한다.", error)
+                        publishCompletionFailure("산책은 저장됐어요. 결과를 다시 준비할게요.")
+                    }
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf(startId)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                if (cancelled !is kotlinx.coroutines.TimeoutCancellationException) throw cancelled
+                stream?.fail("DRAIN_TIMEOUT")
+                (application as DaengsApp).walkRuntime.recordingScope.launch {
+                    runCatching { stream?.drain() }
+                }
+                publishInterrupted(stop, startId, "원본 저장이 늦어 산책을 완료하지 못했어요. 저장된 원본은 유지돼요.")
+            } catch (error: Exception) {
+                stream?.fail("FINALIZATION_FAILURE")
+                // Persist a late close/finalization failure even if the raw consumer already finished.
+                runCatching { kotlinx.coroutines.withTimeout(30_000) { stream?.drain() } }
+                publishInterrupted(stop, startId, error.message ?: "산책 기록을 완료하지 못했어요. 저장된 원본은 유지돼요.")
+            } finally { transitioning = false; publishTransition() }
+        }
+    }
+
+    private fun publishInterrupted(stop: Boolean, startId: Int, message: String) {
+        if (stop) {
+            projectionJob?.cancel()
+            // Release the active session without closing/deleting its recoverable journal.
+            sessionId = null
+            sessionDogIds = emptyList()
+            store.publish(trackingState(recorder.stop(), errorMessage = message))
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+        } else {
+            store.publish(trackingState(recorder.pause(), errorMessage = message))
+            promote(recorder.snapshot(), message)
+        }
+    }
+
+    private fun publishTransition() {
+        store.publish(store.state.value.copy(recordingTransition = transitioning,
+            ingressProgress = ingress?.progress?.value))
+        if (!transitioning) pendingStopStartId?.let {
+            pendingStopStartId = null
+            stopRecording(it)
+            return
+        }
+        if (!transitioning && recorder.snapshot().state == TrackingState.RECORDING &&
+            ingress?.progress?.value?.failureReason != null) pauseAfterFeedProblem("원본 전달 실패")
     }
 
     /** 잘못 전달된 제어 명령이 비활성 서비스를 시작된 상태로 남기지 않게 한다. */
@@ -230,7 +365,7 @@ class WalkTrackingService : Service() {
     }
 
     private fun recordMoment(type: WalkMomentType?, startId: Int) {
-        if (type == null || recorder.snapshot().state != TrackingState.RECORDING) {
+        if (transitioning || type == null || recorder.snapshot().state != TrackingState.RECORDING) {
             stopIfInactive(startId)
             return
         }
@@ -276,7 +411,6 @@ class WalkTrackingService : Service() {
             store.publish(WalkEvent.MomentLocationUnavailable)
             return
         }
-        // 기존 writer 큐에 넣어 raw GPS 뒤, 세션 종료 전에 저장한다.
         val capturedOwner = sessionOwnerId.orEmpty()
         val stored = writer.ordered {
             check(log.ownerId == capturedOwner) { "계정이 변경됐어요." }
@@ -292,25 +426,14 @@ class WalkTrackingService : Service() {
         }
     }
 
-    private fun acceptLocation(sample: LocationSample) {
-        // A queued fix after pause/stop must not enter either raw history or the detector.
-        if (recorder.snapshot().state != TrackingState.RECORDING) return
-        synchronized(sessionLock) {
-            sessionId?.let { id ->
-                writer.append(
-                    id,
-                    RecordedFix(
-                        clientSeq = nextClientSeq++,
-                        chainIndex = chainIndex,
-                        atMillis = sample.capturedAtMillis,
-                        lat = sample.point.latitude,
-                        lng = sample.point.longitude,
-                        accuracyM = sample.accuracyMeters,
-                        isMock = sample.isMock,
-                    ),
-                )
-            }
-        }
+    private fun acceptCommittedLocation(fix: RecordedFix) {
+        val sample = com.daengs.app.location.LocationSample(
+            com.daengs.app.location.GeoPoint(fix.lat, fix.lng), fix.atMillis,
+            elapsedRealtimeNanos = fix.elapsedRealtimeNanos, accuracyMeters = fix.accuracyM,
+            speedMetersPerSecond = fix.speedMps, isMock = fix.isMock,
+            bearingDegrees = fix.bearingDegrees, bearingAccuracyDegrees = fix.bearingAccuracyDegrees,
+            speedAccuracyMetersPerSecond = fix.speedAccuracyMps, provider = fix.provider)
+        nextClientSeq = fix.clientSeq + 1
         if (sample.isAccurateEnoughForMoment() && !sample.isMock &&
             sample.accuracyMeters?.let { it.isFinite() && it > 0 } == true) {
             directPinRef = com.daengs.app.walk.pin.ActionPinSourceRef(nextClientSeq - 1, chainIndex, sample.capturedAtMillis)
@@ -340,7 +463,19 @@ class WalkTrackingService : Service() {
             sessionStartedAtMillis = System.currentTimeMillis()
             sessionDogIds = dogIds.toList()
             nextClientSeq = 0
+            ingress = null
+            ingressSequence.set(0)
+            projectionCursor = -1L
             chainIndex = 0
+            speedRuntime = WalkSpeedRuntime(id) { error -> Log.w(TAG, "속도 표시 계산을 중단합니다. 원본 기록은 계속합니다.", error) }
+            speedTickJob?.cancel()
+            speedTickJob = serviceScope.launch {
+                while (sessionId == id) {
+                    kotlinx.coroutines.delay(1_000)
+                    speedRuntime?.tick(SystemClock.elapsedRealtimeNanos())
+                    publishSpeed()
+                }
+            }
             directPinRef = null
             writer.openSession(
                 RecordedSession(
@@ -437,35 +572,11 @@ class WalkTrackingService : Service() {
         }
     }
 
-    private fun closeSession() = synchronized(sessionLock) {
-        sessionId?.let { writer.closeSession(it, System.currentTimeMillis()) }
-        sessionId = null
-        sessionDogIds = emptyList()
-    }
-
-    private fun acceptFeedStatus(status: FeedStatus) {
-        when (status) {
-            is FeedStatus.Failed -> pauseAfterFeedProblem(
-                status.cause.message ?: "위치를 계속 받을 수 없습니다.",
-            )
-            FeedStatus.Completed -> if (recorder.snapshot().state == TrackingState.RECORDING) {
-                pauseAfterFeedProblem("위치 업데이트가 종료되어 산책 기록을 일시정지했습니다.")
-            }
-            FeedStatus.Idle, FeedStatus.Running -> Unit
-        }
-    }
-
     private fun pauseAfterFeedProblem(message: String) {
-        // stop 직후 늦게 배달된 feed 실패가 종료된 기록을 다시 foreground로 올리면 안 된다.
-        if (recorder.snapshot().state != TrackingState.RECORDING) return
-        tracker.stop()
-        val cutoff = System.currentTimeMillis()
-        sessionId?.let { id -> writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) } }
-        pauseTiming()
-        stayRecorder.breakContinuity()
-        val trail = recorder.pause()
-        store.publish(trackingState(trail, errorMessage = message))
-        promote(trail, message)
+        if (transitioning || recorder.snapshot().state != TrackingState.RECORDING) return
+        store.publish(trackingState(recorder.snapshot(), errorMessage = message))
+        ingress?.fail("SOURCE_DELIVERY_FAILURE")
+        transitionRecording(stop = false, startId = 0)
     }
 
     private fun acceptStorageFailure(message: String) {
@@ -481,6 +592,11 @@ class WalkTrackingService : Service() {
         activeSinceRealtimeMillis = null
     }
 
+    private fun publishSpeed() {
+        val display = speedRuntime?.display?.value ?: return
+        if (store.state.value.motionDisplay != display) store.publish(store.state.value.copy(motionDisplay = display))
+    }
+
     private fun trackingState(
         trail: TrailSnapshot,
         lastSample: LocationSample? = store.state.value.lastSample,
@@ -490,6 +606,8 @@ class WalkTrackingService : Service() {
         finishingSessionId: String? = null,
         completedSessionId: String? = null,
     ): WalkTrackingState = WalkTrackingState(
+        recordingTransition = transitioning,
+        ingressProgress = ingress?.progress?.value,
         activeSessionId = sessionId,
         activeSessionStartedAtMillis = sessionStartedAtMillis.takeIf { sessionId != null },
         ownerId = sessionOwnerId,
@@ -504,6 +622,7 @@ class WalkTrackingService : Service() {
         finishingSessionId = finishingSessionId,
         completedSessionId = completedSessionId,
         stayStamps = stayRecorder.snapshot(),
+        motionDisplay = speedRuntime?.display?.value ?: MotionDisplay(),
     )
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {

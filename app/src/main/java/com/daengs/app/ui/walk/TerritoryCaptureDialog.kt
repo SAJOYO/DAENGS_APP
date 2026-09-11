@@ -57,8 +57,8 @@ internal fun TerritoryCaptureDialog(
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding().padding(16.dp).verticalScroll(rememberScrollState())) {
             Text("영역표시 인증", style = MaterialTheme.typography.titleLarge)
-            Text(if (online) "강아지와 전봇대 주변 모습이 함께 나오게 찍어 주세요" else "$siteId · 강아지와 현장 모습이 함께 나오게 찍어 주세요")
-            Text(if (online) "사진은 현재 위치에서 촬영하고 서버에서 확인해요 · 인증 범위 10m" else "점령 연습 · 사진 내용은 검사하지 않는 페이크 판정입니다")
+            Text(if (online) "현재 위치에서 강아지가 잘 보이게 찍어 주세요" else "$siteId · 강아지가 잘 보이게 찍어 주세요")
+            Text(if (online) "위치는 GPS로, 강아지 여부는 사진으로 확인해요 · 인증 범위 10m" else "점령 연습 · 사진 내용은 검사하지 않는 페이크 판정입니다")
             if (permission) {
                 val camera = rememberCameraController(videoEnabled = false)
                 CameraPreview(camera, Modifier.fillMaxWidth().aspectRatio(3f / 4f))

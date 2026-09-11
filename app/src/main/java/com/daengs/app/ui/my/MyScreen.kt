@@ -100,6 +100,10 @@ fun MyScreen(
     nickname: String?,
     /** 이름을 고치러 간다. null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다 */
     onEditNickname: (() -> Unit)? = null,
+    /** OCR 학습 이용에 동의했나 (#258). [OCR_CONSENT_VISIBLE] 이 false 면 안 보인다. */
+    ocrConsent: Boolean = false,
+    /** 동의를 켜고 끈다. null 이면 그 줄이 안 뜬다 — 로그인 안 한 사람에게는 없는 줄이다. */
+    onOcrConsentChange: ((Boolean) -> Unit)? = null,
     /** 내 강아지. null 이면 아직 못 받아 온 것이고, 빈 목록과 다르다. */
     pets: List<Pet>?,
     /**
@@ -131,6 +135,11 @@ fun MyScreen(
     onDeletePet: (Pet) -> Unit,
     /** 아이를 배웅하는 자리로 보낸다. 삭제 창에서도, 아이 카드에서도 여기로 온다 */
     onFarewell: ((Pet) -> Unit)? = null,
+    /**
+     * 그 아이를 함께 돌보는 사람을 보러 간다. **대표도 돌보미도 들어갈 수 있다** —
+     * 프로필 수정과 달리 소유 여부로 가리지 않는다. null 이면 그 줄이 안 뜬다.
+     */
+    onOpenMembers: ((Pet) -> Unit)? = null,
     /** 이미 배웅한 아이의 날짜. 없으면 아직 함께 있는 아이다 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deleteBusy: Boolean,
@@ -172,8 +181,9 @@ fun MyScreen(
             dogName = primary?.name,
             nickname = nickname,
             onEditNickname = onEditNickname,
-            // 대표가 있어야 사진을 걸 자리가 있다.
-            onEditPhoto = onEditPhoto?.takeIf { primary != null },
+            // 대표 강아지는 계정의 선택값이고, 대표 보호자는 권한이다. 공동 돌봄 아이를
+            // 대표 강아지로 고를 수는 있지만 그 아이의 사진을 바꿀 수는 없다.
+            onEditPhoto = onEditPhoto?.takeIf { primary?.isOwner == true },
         )
         Spacer(Modifier.height(20.dp))
 
@@ -195,6 +205,7 @@ fun MyScreen(
                 onDelete = { deleting = it },
                 onFarewell = onFarewell,
                 farewellOf = farewellOf,
+                onOpenMembers = onOpenMembers,
             )
             Spacer(Modifier.height(14.dp))
         }
@@ -208,6 +219,10 @@ fun MyScreen(
                 SettingDivider()
             }
             SettingRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
+            if (OCR_CONSENT_VISIBLE && onOcrConsentChange != null) {
+                SettingDivider()
+                OcrConsentRow(ocrConsent, onOcrConsentChange)
+            }
         }
         Spacer(Modifier.height(14.dp))
 
@@ -538,6 +553,7 @@ private fun PetSection(
     onDelete: (Pet) -> Unit,
     onFarewell: ((Pet) -> Unit)?,
     farewellOf: (Pet) -> java.time.LocalDate?,
+    onOpenMembers: ((Pet) -> Unit)?,
 ) {
     Text("내 강아지", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
 
@@ -562,14 +578,16 @@ private fun PetSection(
                     ?.let { go -> { go(pet) } },
                 // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
                 // 묻는 화면은 떠난 아이에게 할 말이 아니다.
-                onEdit = {
-                    if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
-                    else onEdit(pet)
+                onEdit = if (!pet.isOwner) null else {
+                    {
+                        if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
+                        else onEdit(pet)
+                    }
                 },
                 onPickPrimary = { onPickPrimary(pet) },
-                onDelete = { onDelete(pet) },
+                onDelete = if (pet.isOwner) ({ onDelete(pet) }) else null,
                 sentOn = farewellOf(pet),
-                onFarewell = onFarewell?.let { go -> { go(pet) } },
+                onOpenMembers = onOpenMembers?.let { go -> { go(pet) } },
             )
         }
         if (canAddMore) {
@@ -595,12 +613,16 @@ private fun PetCard(
      * 그렇다. 눌리지 않는 줄을 띄워 두면 왜 안 되는지를 화면이 설명해야 한다.
      */
     onToggleRoom: (() -> Unit)? = null,
-    onEdit: () -> Unit,
+    onEdit: (() -> Unit)?,
     onPickPrimary: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)?,
     /** 배웅한 날. 있으면 이 아이는 떠난 아이다 */
     sentOn: java.time.LocalDate? = null,
-    onFarewell: (() -> Unit)? = null,
+    /**
+     * 이 아이를 함께 돌보는 사람을 보러 간다. **[onEdit] 과 다른 자리다** — 프로필 수정은
+     * 대표만 할 수 있지만 보호자 목록은 돌보미도 본다. null 이면 그 줄이 안 뜬다.
+     */
+    onOpenMembers: (() -> Unit)? = null,
 ) {
     // **방에 서 있는지는 테두리로 말한다.** 글씨는 누르면 무슨 일이 생기는지를
     // 말하는 자리라(`방에서 빼기`), 지금 어떤 상태인지를 같은 글씨로 읽게 하면
@@ -611,47 +633,80 @@ private fun PetCard(
         border = if (inRoom) BorderStroke(1.5.dp, DaengPink.copy(alpha = 0.45f)) else null,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.clickable(onClick = onEdit).padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PetFace(pet, 46.dp, photo)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    // 배웅한 아이. **글자가 아니라 무지개다** — "사망" 같은 말을 목록에
-                    // 붙여 두면 매번 그 단어를 읽게 된다.
+        Column {
+            Row(
+                Modifier
+                    .then(if (onEdit == null) Modifier else Modifier.clickable(onClick = onEdit))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PetFace(pet, 46.dp, photo)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        if (!pet.isOwner) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp)) {
+                                Text(
+                                    "공동 돌봄",
+                                    color = DaengPinkDeep,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                )
+                            }
+                        }
+                        // 배웅한 아이. **글자가 아니라 무지개다** — "사망" 같은 말을 목록에
+                        // 붙여 두면 매번 그 단어를 읽게 된다.
+                        if (sentOn != null) {
+                            Spacer(Modifier.width(6.dp))
+                            DaengsIconView(DaengsIcon.Rainbow, Modifier.size(16.dp))
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    // 배웅한 아이는 나이·몸무게 대신 **간 날**을 적는다. 떠난 아이에게
+                    // "3살" 이라고 붙어 있으면 시간이 멈춘 것처럼 읽힌다.
                     if (sentOn != null) {
-                        Spacer(Modifier.width(6.dp))
-                        DaengsIconView(DaengsIcon.Rainbow, Modifier.size(16.dp))
+                        Text(
+                            "%d년 %d월 %d일에 배웅했어요".format(
+                                sentOn.year,
+                                sentOn.monthValue,
+                                sentOn.dayOfMonth,
+                            ),
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                        )
+                    } else {
+                        Text(petSubtitle(pet), color = TextMuted, fontSize = 12.sp)
                     }
                 }
-                Spacer(Modifier.height(2.dp))
-                // 배웅한 아이는 나이·몸무게 대신 **간 날**을 적는다. 떠난 아이에게
-                // "3살" 이라고 붙어 있으면 시간이 멈춘 것처럼 읽힌다.
+                Spacer(Modifier.width(8.dp))
+                // **대표 자리는 배웅한 아이에게도 그대로 둔다.** 한 마리만 키우다 보낸
+                // 경우 그 아이가 대표일 수밖에 없고, 여러 마리여도 떠난 아이를 대표로
+                // 두고 싶을 수 있다. 여기서 막으면 그 선택을 못 하게 된다.
+                //
+                // 대신 **삭제는 아이의 자리로 옮겼다.** 떠난 아이 옆에 지우기 버튼이 매번
+                // 붙어 있는 것과, 그 아이의 화면에서 조용히 고르는 것은 다르다.
                 if (sentOn != null) {
-                    Text(
-                        "%d년 %d월 %d일에 배웅했어요".format(
-                            sentOn.year,
-                            sentOn.monthValue,
-                            sentOn.dayOfMonth,
-                        ),
-                        color = TextMuted,
-                        fontSize = 12.sp,
-                    )
-                } else {
-                    Text(petSubtitle(pet), color = TextMuted, fontSize = 12.sp)
+                    if (pet.isPrimary) {
+                        Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text(
+                            "대표로",
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable(onClick = onPickPrimary)
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                    // **배웅한 아이도 방에 두고 뺄 수 있다.** 배웅은 지우는 일이 아니라는
+                    // 것이 그 화면의 전제라, 방 구성에서만 손을 못 대면 말이 안 맞는다.
+                    RoomToggle(inRoom, onToggleRoom)
+                    return@Row
                 }
-            }
-            Spacer(Modifier.width(8.dp))
-            // **대표 자리는 배웅한 아이에게도 그대로 둔다.** 한 마리만 키우다 보낸
-            // 경우 그 아이가 대표일 수밖에 없고, 여러 마리여도 떠난 아이를 대표로
-            // 두고 싶을 수 있다. 여기서 막으면 그 선택을 못 하게 된다.
-            //
-            // 대신 **삭제는 아이의 자리로 옮겼다.** 떠난 아이 옆에 지우기 버튼이 매번
-            // 붙어 있는 것과, 그 아이의 화면에서 조용히 고르는 것은 다르다.
-            if (sentOn != null) {
                 if (pet.isPrimary) {
                     Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 } else {
@@ -665,36 +720,39 @@ private fun PetCard(
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
-                // **배웅한 아이도 방에 두고 뺄 수 있다.** 배웅은 지우는 일이 아니라는
-                // 것이 그 화면의 전제라, 방 구성에서만 손을 못 대면 말이 안 맞는다.
                 RoomToggle(inRoom, onToggleRoom)
-                return@Row
+                // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
+                // 고치기이고, 지우기는 한 번 더 묻는다.
+                if (onDelete != null) {
+                    Text(
+                        "삭제",
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onDelete)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
             }
-            if (pet.isPrimary) {
-                Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            } else {
-                Text(
-                    "대표로",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onPickPrimary)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                )
+        // **프로필 수정과 다른 동작이다.** 카드 본체를 누르면 고치기이고(공동 돌봄
+        // 아이는 그 자리가 막혀 있다), 이 줄은 대표·돌보미 모두 누를 수 있어야 한다.
+        //
+        // 눌렀을 때 가는 곳이 다르니 **선으로 갈라 둔다.** 선이 없으면 한 덩어리로 보여
+        // 아래 줄을 누르려다 위(수정)를 누르게 된다.
+        if (onOpenMembers != null) {
+            SettingDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenMembers)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("함께 돌보는 사람", color = TextDark, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text("보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-            RoomToggle(inRoom, onToggleRoom)
-            // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
-            // 고치기이고, 지우기는 한 번 더 묻는다.
-            Text(
-                "삭제",
-                color = TextMuted,
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable(onClick = onDelete)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+        }
         }
     }
 }
@@ -734,6 +792,45 @@ private fun Section(content: @Composable () -> Unit) {
  * Material3 `Button` 을 안 쓴다 — 이 저장소는 `Surface`·`Box` 에 `.clickable` 을
  * 붙여 직접 짠다 (`LandingScreen` 과 같은 결).
  */
+/**
+ * 영수증 학습 이용 동의를 화면에 내놓을 것인가.
+ *
+ * ⚠️ **지금은 false 다.** 저쪽 `OCR_CONSENT_VERSION` 이 `"unset"` 이라, 동의를 받아도
+ *    실제로 존재하는 개인정보처리방침 판을 가리키지 못한다 — 근거가 안 서는 동의를
+ *    받는 것이 안 받는 것보다 나쁘다 (저쪽 `docs/vet-visits.md` "열린 것").
+ *
+ * **진료비 기능은 이것과 무관하게 지금 돈다.** 동의는 OCR 이 읽은 진료 항목을 학습용으로
+ * 남길지만 가르고, 기록 자체는 미동의여도 온전히 저장된다. 미동의 동안 저쪽은
+ * `raw_ocr_items` 를 `'[]'` 로 쌓는다.
+ *
+ * 판 번호가 정해지면 **이 줄을 true 로 바꾸면 된다** — 값과 콜백은 이미
+ * `MainActivity` → `HomeScreen` → 여기까지 이어져 있다.
+ */
+private const val OCR_CONSENT_VISIBLE = false
+
+/** 켜짐/꺼짐이 글자로 보이는 한 줄. 스위치 그림을 새로 들이지 않는다. */
+@Composable
+private fun OcrConsentRow(on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onChange(!on) }
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("영수증 학습 이용 동의", color = TextDark, fontSize = 15.sp)
+            Text(
+                "읽어 낸 진료 항목을 인식 개선에 써요. 꺼도 진료비 기록은 그대로 남아요.",
+                color = TextMuted,
+                fontSize = 12.sp,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(if (on) "켜짐" else "꺼짐", color = if (on) DaengPink else TextMuted, fontSize = 13.sp)
+    }
+}
+
 @Composable
 private fun SettingRow(
     label: String,
@@ -758,7 +855,21 @@ private fun SettingRow(
 private fun MyScreenSignedInPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, nickname = "네옹집사", pets = emptyList(), canAddMore = true,
+            HomeDemoData.DOG_BREED,
+            nickname = "네옹집사",
+            pets = listOf(
+                Pet(
+                    id = "mine", name = "네옹", breed = DogBreed.TOY_POODLE_LIGHT_BROWN.id,
+                    sex = null, neutered = null, weightKg = null, birthDate = null,
+                    birthDateKind = null, isPrimary = true,
+                ),
+                Pet(
+                    id = "shared", name = "몽이", breed = DogBreed.BEAGLE.id,
+                    sex = null, neutered = null, weightKg = null, birthDate = null,
+                    birthDateKind = null, isPrimary = false, isOwner = false,
+                ),
+            ),
+            canAddMore = true,
             onAddPet = {}, onEditPet = {}, onPickPrimary = {},
             onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
             signedIn = true, onSignIn = {}, onSignOut = {},

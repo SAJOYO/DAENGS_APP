@@ -47,6 +47,13 @@ class WalkFixWriter(
 
     fun append(sessionId: String, fix: RecordedFix) = enqueue { log.append(sessionId, fix) }
 
+    /** Bounded ingress awaits one durable append; the screen never blocks this acknowledgment. */
+    fun appendObserved(sessionId: String, fix: RecordedFix): Deferred<Unit> =
+        enqueueAwait { log.append(sessionId, fix) }
+
+    fun saveRecordingEpoch(epoch: RecordingEpoch): Deferred<Unit> =
+        enqueueAwait { log.saveRecordingEpoch(epoch) }
+
     /** 성공 안내가 실제 Room 쓰기보다 앞서지 않도록 이 명령만 완료 신호를 돌려준다. */
     fun appendAction(action: RecordedWalkAction): Deferred<Unit> =
         enqueueAwait { log.appendAction(action) }

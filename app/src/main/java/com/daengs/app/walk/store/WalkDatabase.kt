@@ -10,8 +10,8 @@ import androidx.sqlite.execSQL
 
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class],
-    version = 13,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class],
+    version = 15,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -223,6 +223,36 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_diary_publication (" +
+                    "sessionId TEXT NOT NULL, startedAtMillis INTEGER NOT NULL, deadlineAtMillis INTEGER NOT NULL, " +
+                    "baseBundle TEXT, publishedBundle TEXT, publishedAtMillis INTEGER, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
+        /** Nullable raw fields preserve legacy rows; no existing session becomes recording evidence. */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN ingressSeq INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN sourceEpoch TEXT")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN clockEpochId TEXT")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN elapsedRealtimeNanos INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN receivedElapsedNanos INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN receivedAtMillis INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN speedMps REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN speedAccuracyMps REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN bearingDegrees REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN bearingAccuracyDegrees REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN provider TEXT")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN recordingEligible INTEGER")
+                connection.execSQL("CREATE UNIQUE INDEX index_walk_fix_sessionId_ingressSeq ON walk_fix(sessionId, ingressSeq)")
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_recording_epoch (id TEXT NOT NULL, sessionId TEXT NOT NULL, clockEpochId TEXT NOT NULL, chainIndex INTEGER NOT NULL, startedAtMillis INTEGER NOT NULL, startedElapsedNanos INTEGER NOT NULL, firstIngressSeq INTEGER NOT NULL, endedAtMillis INTEGER, endedElapsedNanos INTEGER, endKind TEXT, targetIngressSeq INTEGER, persistedCount INTEGER NOT NULL, failureReason TEXT, firstFailedSeq INTEGER, drained INTEGER NOT NULL, PRIMARY KEY(id), FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("CREATE INDEX IF NOT EXISTS index_walk_recording_epoch_sessionId ON walk_recording_epoch(sessionId)")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -238,6 +268,8 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12,
                     MIGRATION_12_13,
+                    MIGRATION_13_14,
+                    MIGRATION_14_15,
                 )
                 .build()
     }

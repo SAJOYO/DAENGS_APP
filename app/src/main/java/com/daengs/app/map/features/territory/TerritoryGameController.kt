@@ -35,6 +35,7 @@ data class TerritoryGameSite(
     val isOwnedByMe: Boolean? = null,
     val proximity: TerritoryProximity = TerritoryProximity(),
     val sharedState: com.daengs.app.territory.SharedTerritorySite? = null,
+    val leaseLabel: String? = null,
 ) {
     val occupancyLabel: String get() = if (!occupancyKnown) when (occupancyReadState) {
         TerritoryOccupancyReadState.FAILED -> "점유 조회 실패"
@@ -63,6 +64,7 @@ data class TerritoryGameState(
     val actionLabel: String = "영역표시",
     val guidance: String = "점령지를 선택해 주세요",
     val canPhotograph: Boolean = false,
+    val photoActionLabel: String = "영역표시 인증 촬영",
     val photoStatus: ClaimPhotoStatus? = null,
     val feedback: com.daengs.app.map.layers.territory.TerritoryFeedback? = null,
     val readOnly: Boolean = false,

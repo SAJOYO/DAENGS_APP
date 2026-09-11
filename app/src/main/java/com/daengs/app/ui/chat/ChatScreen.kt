@@ -1567,15 +1567,22 @@ private fun UserBubble(text: String) {
  * 답을 만드는 동안 뜨는 말풍선.
  *
  * **글자 한 줄이면 멈춘 것과 구분이 안 된다.** 서버가 몇 초 걸리는 자리라 그 사이가
- * 제일 불안하다. 우리 아이 얼굴이 곰곰이 판과 번갈아 바뀌면서 "돌고 있다" 를 글자
- * 없이도 말한다. 그림 두 장을 오가는 것만으로 모션이 되어서, 프레임 시트를 따로
- * 받을 필요가 없었다.
+ * 제일 불안하다. **말하는 쪽 얼굴**이 학사모 쓴 똑똑이와 앞발 괸 곰곰이를 오가면서
+ * "돌고 있다" 를 글자 없이도 말한다. 그림 두 장을 오가는 것만으로 모션이 되어서,
+ * 프레임 시트를 따로 받을 필요가 없었다.
  *
- * **왼쪽 얼굴은 안 바꾼다.** 거기는 학사모 쓴 똑똑이이고 누가 말하는지를 가리키는
- * 자리다 (#92 에서 정한 것). 바뀌는 것은 말풍선 **안**이다.
+ * **움직이는 것은 왼쪽 얼굴이고, 말풍선 안에는 글자만 있다.**
  *
- * 그림이 없는 견종(믹스)이면 이 자리도 글자만 남는다 — 아무 얼굴이나 갖다 쓰면
- * 사용자가 자기 개가 아닌 얼굴을 본다 ([PawAvatar] 와 같은 규칙).
+ * 예전에는 반대였다 — 왼쪽은 똑똑이로 고정하고 말풍선 **안**에서 우리 아이
+ * 얼굴([DogFace.Portrait])과 곰곰이가 번갈았다 (#92). 얼굴을 고정한 뜻은 *"누가
+ * 말하는지를 가리키는 자리"* 였는데, **정작 그 옆에서 바뀌던 것이 내 개 얼굴**이라
+ * 말하는 쪽이 흐려졌다. 헤더에는 "댕스 AI" 라고 적어 놓고 그 아래에서 내 개가
+ * 깜빡이는 셈이었다.
+ *
+ * 지금은 **오가는 두 판이 둘 다 챗봇 얼굴**이다. 움직여도 말하는 쪽이 안 흔들린다.
+ *
+ * 그림이 없는 견종(믹스)이면 발자국이 그대로 있고 움직이지 않는다 — 아무 얼굴이나
+ * 갖다 쓰면 사용자가 자기 개가 아닌 얼굴을 본다 ([PawAvatar] 와 같은 규칙).
  */
 @Composable
 private fun ThinkingBubble(avatar: DogBreed?, text: String) {
@@ -1587,23 +1594,25 @@ private fun ThinkingBubble(avatar: DogBreed?, text: String) {
         }
     }
     Row(verticalAlignment = Alignment.Top) {
-        ChatFace(avatar, 32.dp)
+        // 그림이 없으면 [ChatFace] 가 발자국을 내놓는다. 거기엔 오갈 두 판이 없다.
+        if (avatar != null) {
+            DogAvatar(
+                avatar,
+                Modifier.size(32.dp),
+                face = if (pondering) DogFace.Thinking else DogFace.Smart,
+            )
+        } else {
+            ChatFace(avatar, 32.dp)
+        }
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
-            Row(
-                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (avatar != null) {
-                    DogAvatar(
-                        avatar,
-                        Modifier.size(28.dp),
-                        face = if (pondering) DogFace.Thinking else DogFace.Portrait,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp)
-            }
+            Text(
+                text,
+                color = TextDark,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            )
         }
     }
 }
@@ -1617,10 +1626,11 @@ private fun ThinkingBubble(avatar: DogBreed?, text: String) {
 private const val THINKING_FRAME_MS = 700L
 
 /**
- * 대기 말풍선. **모션은 프리뷰에서 안 돈다** — 여기서 보는 것은 두 얼굴이 앉는
- * 자리와 크기다. 움직임이 거슬리는지는 실기기에서 본다.
+ * 대기 말풍선. **모션은 프리뷰에서 안 돈다** — 여기서 보는 것은 얼굴이 앉는 자리와
+ * 크기, 그리고 말풍선이 글자만 담았을 때의 폭이다. 움직임이 거슬리는지는 실기기에서
+ * 본다. 프리뷰는 첫 프레임이라 세 줄 다 **똑똑이**로 멈춰 있다.
  *
- * 그림 없는 견종(믹스)은 얼굴 없이 글자만 남는 것도 같이 본다.
+ * 그림 없는 견종(믹스)은 발자국이 그대로 있고 움직이지 않는 것도 같이 본다.
  */
 @Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
@@ -1745,7 +1755,11 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                         // 보정 안 된 확률은 순서만 뜻이 있고 숫자 자체는 못 믿는다 —
                         // 그걸 빼고 퍼센트만 크게 보여 주면 과하게 믿게 된다.
                         val notes = buildList {
-                            report.stage1.thresholdPercent?.let { add("기준 ${it.percentText()}") }
+                            // ⚠️ **`기준 X%` 를 여기 넣지 않는다** (2026-09-10). 보호자가
+                            //    그 숫자로 할 일이 없고, 확률 옆에 다른 숫자가 붙으면
+                            //    둘을 견주게 된다. 계약에는 그대로 온다 — 관리자 콘솔이 쓴다.
+                            //    ⚠️ 아래 보정 경고는 **남긴다.** 면책이 아니라 *확률 자체를
+                            //       못 믿을 때만* 뜨는 경고다.
                             if (!report.stage1.calibrated) add("보정 전 값이라 순서만 참고하세요")
                         }
                         if (notes.isNotEmpty()) {
@@ -1761,15 +1775,51 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 //    긴급도는 높은 쪽으로 잡혀 있어서, 붙이면 말한 것의 절반이 한
                 //    단계 부풀려진다 (저쪽 실측 과잉 52.4%).
                 report.group?.let { g ->
+                    // ★ 2026-09-10 — **말을 덜어냈다.**
+                    //   ⚠️ `g.text`("모양만 보면 …에 가깝습니다")를 **안 그린다.** 바로 아래
+                    //      막대의 1등이 같은 이름이라 같은 말이 두 번이었다.
+                    //   ⚠️ `g.caveat`("진단이 아닙니다 …")도 **안 그린다.** 같은 뜻의 면책이
+                    //      이 카드에 **네 군데**(caveat · 자세히보기 · body · disclaimer) 있었다.
+                    //      맨 아래 "자세히 보기" 한 문단만 남긴다.
+                    //   ⚠️ 둘 다 계약에는 그대로 온다 — **관리자 콘솔이 쓴다.** 지운 게 아니다.
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(g.text, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
-                        if (g.caveat.isNotBlank()) {
-                            Text(g.caveat, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                        // ★ 병원에서 쓰는 이름 (2026-09-10). `솟아오른 변화` 만 들고 가면
+                        //    수의사가 못 알아듣는다. ⚠️ 순서는 코드순 고정이라 확률과 무관하고,
+                        //    단정이 아니라 용어 풀이다.
+                        if (g.labels.isNotBlank()) {
+                            Text(
+                                "(${g.labels})",
+                                color = TextDark, fontSize = 12.sp, lineHeight = 18.sp,
+                            )
+                        }
+                        // ★ 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
+                        //    이름만 띄우면 자기 개 사진과 대조할 방법이 없다 —
+                        //    `표면 변화` 는 뜻이 안 잡히고 `딱지, 둥근 비늘` 은 바로 보인다.
+                        if (g.feature.isNotBlank()) {
+                            Text(
+                                "${g.feature} 같은 모습이 보이는 상태예요.",
+                                color = TextDark, fontSize = 12.sp, lineHeight = 18.sp,
+                            )
                         }
                     }
                 }
 
-                Text(report.body, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                // ★ **계열 문장이 없으면 body 가 그 자리를 채운다** (2026-09-10).
+                //   확률 바로 아래 한 문장은 **어떤 판정에서도 비지 않는다** — 그래야
+                //   확신이 높든 낮든, 정상이든 재촬영이든 카드의 뼈대가 같다:
+                //
+                //     이상·확신 있음  `g.feature` "돌기, 넓게 솟은 부위… 상태예요"
+                //     이상·확신 낮음  `body`      "이 사진만으로 정확하게 알 수 없습니다."
+                //     정상            `body`      "사진으로 확인할 수 있는 범위에는 한계가…"
+                //     재촬영          `body`      "이상한 부위가 잘 보이도록 … 다시 찍어주세요."
+                //
+                //   ⚠️ 그래서 조건이 `group == null` **하나**다. 판정별로 가르지 않는다 —
+                //      가르면 새 판정이 생길 때마다 이 자리를 다시 손봐야 한다.
+                //   ⚠️ 앱이 문장을 **짓지 않는다.** 둘 다 서버가 준 것이다. 확신이 낮다고
+                //      앱이 대신 말을 지어내면 저쪽과 표현이 갈린다.
+                if (report.group == null && report.body.isNotBlank()) {
+                    Text(report.body, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                }
 
                 // ★ 2026-09-08 — 6종(report.stage2) 대신 **계열 네 묶음**을 그린다.
                 //   6종 이름은 저쪽 holdout 커버리지 41.1% 라 못 쓰는데 네 묶음은 66.5% 다.
@@ -1780,7 +1830,13 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 //      관리자 콘솔이 6종을 본다.
                 if (report.groups.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("모델이 비슷하다고 본 정도", color = TextMuted, fontSize = 12.sp)
+                        // ⚠️ **"의심 정도" 로 쓰지 않는다** (2026-09-11). `의심` 은 임상적
+                        //    의심으로 읽혀서, 네 줄에 의심 순위를 매기는 말이 된다 —
+                        //    1등을 안 주기로 한 이유가 그것이다(저쪽 holdout 46.3% 오답).
+                        //    게다가 `의심` 은 지금 **덩어리 경보 한 곳에서만** 쓴다
+                        //    ("덩어리가 의심됩니다"). 거기 말고도 쓰면 그 한 마디가 흔해진다.
+                        //    `모양이` 를 남기는 것이 요점이다 — 무엇과 비슷한지를 못 박는다.
+                        Text("모양이 비슷한 정도", color = TextMuted, fontSize = 12.sp)
                         report.groups.forEach { g ->
                             // 전부 같은 글꼴·같은 굵기다. 첫 줄만 굵게 하면 그게 곧
                             // "1등" 이라, 계약이 그 필드를 안 준 뜻이 없어진다.
@@ -1815,9 +1871,71 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                     }
                 }
 
-                Text(report.action, color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                if (report.disclaimer.isNotBlank()) {
-                    Text(report.disclaimer, color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                // ★ 이 카드에서 **유일한 행동**이라 접지 않는다 (2026-09-10). 접으면
+                //   안 펴는 사람에게는 아무 말도 안 한 것이 된다. 다만 면책을 걷어내고 나면
+                //   혼자 굵을 이유가 없어서 **굵기를 뺐다** — 위 헤드라인만 강조로 남긴다.
+                //   ⚠️ **정상에서는 안 그린다** (2026-09-11) — 정상 `body` 가 이미 같은 권고로
+                //      끝나서 두 번 말하게 된다. 규칙은 [ScreeningReport.showsAction] 한 곳이다.
+                if (report.showsAction) {
+                    Text(report.action, color = TextDark, fontSize = 13.sp, lineHeight = 19.sp)
+                }
+
+                // ★ 면책은 **여기 한 곳뿐이다** (2026-09-10). 예전에는 같은 뜻이 네 군데였다.
+                //   ⚠️ `report.group` **밖에** 둔다. 안에 두면 확신이 낮아 `group` 이 null 인
+                //      날에는 면책이 통째로 사라진다 — 확신이 낮을수록 더 필요한 말인데.
+                //   ⚠️ `report.disclaimer` 를 여기 겹쳐 쓰지 않는다. 계약에는 그대로 오고
+                //      **관리자 콘솔이 쓴다** — 화면에서 뺀 것이지 지운 것이 아니다.
+                //   ⚠️ `g.detail`(수의학적 의미)도 넣지 않는다. "주로 일차 병변…" 은 보호자가
+                //      읽을 문장이 아니다. 접어 뒀다고 아무 말이나 넣어도 되는 자리가 아니다.
+                run {
+                    val open = remember { mutableStateOf(false) }
+                    Text(
+                        if (open.value) "접기" else "자세히 보기",
+                        color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                        modifier = Modifier.clickable { open.value = !open.value },
+                    )
+                    if (open.value) {
+                        Text(
+                            "이 결과는 사진에서 관찰되는 피부 형태를 분류한 스크리닝 " +
+                                "정보이며 질병을 진단하지 않습니다. 정확한 원인 확인에는 " +
+                                "수의사의 신체검사와 피부 세포검사, 피부 긁기 검사 또는 " +
+                                "조직검사 등이 필요할 수 있습니다.",
+                            color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                        )
+                        // ★ 네 묶음이 **병원에서 뭐라고 불리는지** (2026-09-11).
+                        //   본문의 괄호는 1등에만 붙어서, 확신이 낮아 `group` 이 null 인
+                        //   날에는 들고 갈 말이 하나도 없었다 — 하필 그때가 막대만 남는 때다.
+                        //
+                        //   ⚠️ **이름과 라벨을 한 줄에 두지 않는다.** 묶음 이름에도
+                        //      (`피부 표면·색·두께 변화`) 라벨에도 `·` 가 있어서, 한 줄에
+                        //      두면 어디서 끊기는지 안 보인다. 줄을 나누고 **색으로** 가른다.
+                        //   ⚠️ 카드 본문에 넣지 않는다. 네 줄이 다섯 줄을 차지한다 —
+                        //      접혀 있으니 펼친 사람만 본다.
+                        val named = report.groups.filter { it.labels.isNotBlank() }
+                        if (named.isNotEmpty()) {
+                            Column(
+                                Modifier.padding(top = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    "병원에서 쓰는 이름",
+                                    color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                )
+                                named.forEach { g ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(
+                                            g.name,
+                                            color = TextDark, fontSize = 11.sp, lineHeight = 16.sp,
+                                        )
+                                        Text(
+                                            g.labels,
+                                            color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1842,12 +1960,17 @@ private fun ReportBubblePreview() {
         groups: List<ScreeningReport.Group>,
         group: ScreeningReport.GroupLine?,
         alert: ScreeningReport.Alert?,
+        verdict: ScreeningReport.Verdict = ScreeningReport.Verdict.ABNORMAL,
+        headline: String = "피부에 이상 소견이 보입니다.",
+        // 확신이 낮아 `group` 이 null 인 날 확률 아래를 채우는 문장.
+        body: String = "이 사진만으로 정확하게 알 수 없습니다.",
+        action: String = "수의사 진료를 받아보시기를 권합니다.",
     ) = ScreeningReport(
         contractVersion = "1.0",
-        verdict = ScreeningReport.Verdict.ABNORMAL,
-        headline = "피부에 이상 소견이 보입니다.",
-        body = "어떤 병변인지까지는 이 사진만으로 판단할 수 없습니다.",
-        action = "수의사 진료를 받아보시기를 권합니다.",
+        verdict = verdict,
+        headline = headline,
+        body = body,
+        action = action,
         stage1 = ScreeningReport.Stage1(83.0f, 14.7f, calibrated = true),
         stage2 = emptyList(),
         groups = groups,
@@ -1856,23 +1979,23 @@ private fun ReportBubblePreview() {
         disclaimer = "이 결과는 수의학적 진단이 아니며, 수의사의 진료를 대체하지 않습니다.",
     )
 
+    // 서랍의 "병원에서 쓰는 이름" 이 실제 화면과 같게 보이도록 라벨을 채운다.
+    fun g(name: String, percent: Float, labels: String) =
+        ScreeningReport.Group(name, percent, labels)
+    val RAISED = "솟아오른 변화" to "구진·플라크·농포·여드름"
+    val SURFACE = "피부 표면·색·두께 변화" to "비듬·각질·상피성잔고리·태선화·과다색소침착"
+    val ERODED = "벗겨지거나 패인 상처" to "미란·궤양"
+    val LUMP = "깊거나 단단한 혹" to "결절·종괴"
+    fun row(p: Pair<String, String>, percent: Float) = g(p.first, percent, p.second)
+
     val surface = listOf(
-        ScreeningReport.Group("표면 변화", 75.0f),
-        ScreeningReport.Group("융기·발진", 17.0f),
-        ScreeningReport.Group("미란·궤양", 5.0f),
-        ScreeningReport.Group("결절·종괴", 3.0f),
+        row(SURFACE, 75.0f), row(RAISED, 17.0f), row(ERODED, 5.0f), row(LUMP, 3.0f),
     )
     val lump = listOf(
-        ScreeningReport.Group("결절·종괴", 62.0f),
-        ScreeningReport.Group("표면 변화", 25.0f),
-        ScreeningReport.Group("융기·발진", 9.0f),
-        ScreeningReport.Group("미란·궤양", 4.0f),
+        row(LUMP, 62.0f), row(SURFACE, 25.0f), row(RAISED, 9.0f), row(ERODED, 4.0f),
     )
     val flat = listOf(
-        ScreeningReport.Group("표면 변화", 39.0f),
-        ScreeningReport.Group("융기·발진", 37.0f),
-        ScreeningReport.Group("미란·궤양", 13.0f),
-        ScreeningReport.Group("결절·종괴", 11.0f),
+        row(SURFACE, 39.0f), row(RAISED, 37.0f), row(ERODED, 13.0f), row(LUMP, 11.0f),
     )
     val caveat = "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
 
@@ -1882,11 +2005,13 @@ private fun ReportBubblePreview() {
                 report(
                     lump,
                     ScreeningReport.GroupLine(
-                        "결절·종괴", 62.0f, "모양만 보면 결절·종괴 계열에 가깝습니다.", caveat,
+                        "깊거나 단단한 혹", 62.0f, "모양만 보면 깊거나 단단한 혹에 가깝습니다.", caveat,
+                        feature = "피부 안쪽 또는 표면의 덩어리",
+                        labels = "결절·종괴",
                     ),
                     ScreeningReport.Alert(
                         "A6", "덩어리가 의심됩니다.", "빠른 진료를 권합니다.",
-                        "진단이 아닙니다. 덩어리처럼 보이는 다른 병변일 수 있습니다.",
+                        "진단이 아닙니다. 덩어리처럼 보이는 다른 것일 수 있습니다.",
                         0.72f, 0.40f,
                     ),
                 ),
@@ -1896,14 +2021,30 @@ private fun ReportBubblePreview() {
                 report(
                     surface,
                     ScreeningReport.GroupLine(
-                        "표면 변화", 75.0f, "모양만 보면 표면 변화 계열에 가깝습니다.", caveat,
+                        "피부 표면·색·두께 변화", 75.0f, "모양만 보면 피부 표면·색·두께 변화에 가깝습니다.", caveat,
+                        feature = "딱지, 둥근 비늘, 검어진 피부",
+                        labels = "비듬·각질·상피성잔고리·태선화·과다색소침착",
                     ),
                     null,
                 ),
                 DogBreed.BEAGLE,
             )
-            // 확신이 낮은 경우 — 문장이 없고 막대만 남는다
+            // 확신이 낮은 경우 — 계열 문장 대신 `body` 가 그 자리를 채운다.
+            // **뼈대는 위 둘과 같다**: 헤드라인 · 확률 · 한 문장 · 막대 · 권고 · 자세히 보기
             ReportBubble(report(flat, null, null), DogBreed.BEAGLE)
+            // 정상 — 막대가 없고, 같은 자리를 `body` 가 채운다
+            ReportBubble(
+                report(
+                    emptyList(), null, null,
+                    verdict = ScreeningReport.Verdict.NORMAL,
+                    headline = "뚜렷한 피부 병변 소견은 보이지 않습니다.",
+                    body = "사진으로 확인할 수 있는 범위에는 한계가 있습니다. " +
+                        "가려워하거나, 냄새가 나거나, 계속 핥는 등 평소와 다른 행동이 " +
+                        "있다면 결과와 무관하게 병원에 가보시는 것을 권합니다.",
+                    action = "평소와 다른 점이 있으면 진료를 받아보세요.",
+                ),
+                DogBreed.BEAGLE,
+            )
         }
     }
 }

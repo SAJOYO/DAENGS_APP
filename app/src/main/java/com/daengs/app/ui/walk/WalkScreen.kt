@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -220,7 +221,7 @@ private fun WalkGameOverlay(
     onSelectClaimingPet: (String, String) -> Unit = { _, _ -> },
     onOpenEntries: () -> Unit = {},
     /**
-     * 산책 일기 **목록**으로 나간다. [onOpenEntries] 와 다른 자리다 — 저쪽은 지금
+     * 산책 기록 **목록**으로 나간다. [onOpenEntries] 와 다른 자리다 — 저쪽은 지금
      * 걷는 산책 한 건에 남긴 것이고, 이쪽은 지난 산책들의 목록이다. 걷는 중인
      * 산책은 아직 목록에 없어서(끝나야 들어간다) 둘을 하나로 합칠 수 없다.
      */
@@ -263,6 +264,9 @@ private fun WalkGameOverlay(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val layoutMode = walkLayoutMode(maxWidth.value, maxHeight.value)
+        val territoryCardMaxHeight = maxHeight * if (layoutMode == WalkLayoutMode.LANDSCAPE) .7f else .65f
+        val territoryCardVisible = summary == null && mapPurpose == MapPurpose.TERRITORY &&
+            territory.selectedSiteId != null && territoryGame.enabled && territoryGame.target != null
         val stackMapTools = maxWidth < 380.dp
         val elapsedMillis = summary?.activeDurationMillis ?: tracking.elapsedMillisAt(realtimeMillis)
         val distanceMeters = summary?.distanceMeters ?: tracking.trail.distanceMeters
@@ -333,9 +337,8 @@ private fun WalkGameOverlay(
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
                     if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
-                    else if (!landscape) WalkSpeedometer(
-                        speed = if (locationGranted && preciseLocation && locationError == null)
-                            walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                    else if (!landscape) MotionSpeedometer(
+                        display = tracking.motionDisplay,
                         modifier = Modifier.align(Alignment.End))
                 }
             }
@@ -370,9 +373,14 @@ private fun WalkGameOverlay(
                 if (momentsOpen && tracking.trail.state == TrackingState.RECORDING) WalkMomentDock(
                     layoutMode = WalkLayoutMode.PORTRAIT, enabled = momentEnabled,
                     onAddMoment = { momentsOpen = false; onAddMoment(it) })
-                if (summary == null && mapPurpose == MapPurpose.TERRITORY && territory.selectedSiteId != null && territoryGame.enabled) {
+                if (territoryCardVisible) {
+                    val ownerPet = territoryGame.target?.takeIf { it.occupancyKnown && it.isOwnedByMe == true }
+                        ?.claim?.occupancy?.ownerPetId?.let { id -> pets.firstOrNull { it.id == id } }
                     TerritoryActionCard(territoryGame, onMarkTerritory, onPhotograph = onPhotographTerritory,
-                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet)
+                        modifier = Modifier.fillMaxWidth().heightIn(max = territoryCardMaxHeight),
+                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet,
+                        ownerPhoto = ownerPet?.id?.let(photoOf), ownerBreed = ownerPet?.breedArt,
+                        onPrepareWalk = onCloseTerritory)
                 }
                 if (tracking.errorMessage != null || (mapPurpose == MapPurpose.TERRITORY &&
                     (territory.failure != null || territory.sites.isEmpty()))) {
@@ -383,25 +391,24 @@ private fun WalkGameOverlay(
                     // **산책 전에는 목록으로 간다.** 도크의 `일기` 는 지금 걷는 산책에
                     // 묶여 있어서(`activeSessionId ?: completedSessionId`), 걷기 전에
                     // 누르면 묶일 산책이 없어 늘 빈 창이 떴다. 여기서 사람이 보고 싶은
-                    // 것은 지난 일기다 — 홈의 `지난 산책` 과 같은 화면으로 보낸다.
+                    // 것은 지난 산책이다 — 홈의 `지난 산책` 과 같은 화면으로 보낸다.
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) {
-                            WalkToolButton(WalkTool.ENTRIES, "산책 일기", onOpenDiaryList,
-                                caption = "일기", captionBeside = true)
+                            WalkToolButton(WalkTool.ENTRIES, "산책 기록", onOpenDiaryList,
+                                caption = "산책 기록", captionBeside = true)
                         }
                     }
                 }
-                if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
+                if ((tracking.trail.state == TrackingState.OFF && !territoryCardVisible) || summary != null) WalkPrimaryControl(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
                     onToggleDog, onStart, onPause, onShowResult, photoOf = photoOf)
-                else if (!landscape) dock()
+                else if (!landscape && tracking.trail.state != TrackingState.OFF) dock()
                 if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
             }
             if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
-                WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
-                    walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                MotionSpeedometer(display = tracking.motionDisplay,
                     modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { gaugeHeight = it.height })
                 Box(Modifier.align(Alignment.BottomEnd).onSizeChanged { dockWidth = it.width }) { dock() }
             }

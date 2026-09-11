@@ -102,7 +102,10 @@ class TerritoryFeedbackTrackerTest {
                 val frame = territoryFeedbackFrame(kind, step / 100f)
                 assertTrue(frame.markerScale in 1f..1.18f)
                 assertTrue(frame.pawAlpha in 0f..1f)
-                if (kind == TerritoryFeedbackKind.READY) assertEquals(0f, frame.pawAlpha)
+                if (kind == TerritoryFeedbackKind.READY) {
+                    assertEquals(0f, frame.pawAlpha)
+                    assertEquals(1f, frame.markerScale)
+                }
             }
             val event = TerritoryFeedback(1, "A", kind, 10)
             assertEquals(1f, event.progressAt(2_000_000_010))

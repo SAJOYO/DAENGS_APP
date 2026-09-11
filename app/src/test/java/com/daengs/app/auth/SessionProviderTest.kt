@@ -90,6 +90,59 @@ class SessionProviderTest {
         assertEquals(login, stored)
     }
 
+    @Test
+    fun `토큰 refresh는 로컬 산책을 읽는 계정 scope를 바꾸지 않는다`() = runBlocking {
+        var stored: Session? = expiredSession()
+        val refreshed = aliveSession("new")
+        val provider = provider(
+            load = { stored },
+            save = { stored = it },
+            clear = { stored = null },
+            refresh = { Result.success(refreshed) },
+        )
+        val before = provider.accountScope.value
+
+        assertEquals(refreshed, provider.freshSession())
+
+        assertEquals("user-1", before.ownerId)
+        assertEquals(before, provider.accountScope.value)
+    }
+
+    @Test
+    fun `로그아웃 뒤 같은 회원으로 로그인해도 옛 계정 scope는 재사용되지 않는다`() {
+        var stored: Session? = aliveSession("old")
+        val provider = provider(
+            load = { stored },
+            save = { stored = it },
+            clear = { stored = null },
+            refresh = { error("refresh 없이 계정 변경을 알려야 한다") },
+        )
+        val before = provider.accountScope.value
+
+        provider.clear()
+        assertEquals(AccountScope(null, before.generation + 1), provider.accountScope.value)
+
+        provider.save(aliveSession("login"))
+        assertEquals(AccountScope(before.ownerId, before.generation + 2), provider.accountScope.value)
+    }
+
+    @Test
+    fun `refresh 만료로 저장 세션을 지우면 계정 scope도 로그아웃을 알린다`() = runBlocking {
+        var stored: Session? = expiredSession().copy(refreshExpiresAtMs = NOW)
+        val provider = provider(
+            load = { stored },
+            save = { stored = it },
+            clear = { stored = null },
+            refresh = { error("만료된 refresh를 요청하면 안 된다") },
+        )
+        val before = provider.accountScope.value
+
+        assertNull(provider.freshSession())
+
+        assertNull(stored)
+        assertEquals(AccountScope(null, before.generation + 1), provider.accountScope.value)
+    }
+
     private fun provider(
         load: () -> Session?,
         save: (Session) -> Unit,

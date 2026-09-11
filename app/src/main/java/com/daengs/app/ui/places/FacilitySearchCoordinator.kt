@@ -14,8 +14,10 @@ data class FacilityUiState(
     val notice: String? = null,
     val selectedPlaceKey: PlaceKey? = null,
     val canRetry: Boolean = false,
+    val appliedResponse: FacilityResponse? = null,
 ) {
-    val confirmedLens: FacilityLens? get() = response?.confirmedLens
+    val confirmedResponse: FacilityResponse? get() = response?.takeIf { it.confirmedLens != null } ?: appliedResponse
+    val confirmedLens: FacilityLens? get() = confirmedResponse?.confirmedLens
 }
 
 /** 위치·계정·분류가 바뀌면 이전 continuation을 폐기한다. 재시도 액션은 같은 UUID를 쓴다. */
@@ -44,13 +46,15 @@ internal class FacilitySearchCoordinator(
     }
 
     fun reject(message: String) {
+        val applied = mutable.value.confirmedResponse
         invalidate()
-        mutable.value = mutable.value.copy(error = message)
+        mutable.value = mutable.value.copy(error = message, appliedResponse = applied)
     }
 
     fun search(owner: String?, request: FacilityQuery) {
+        val applied = mutable.value.confirmedResponse.takeIf { this.owner == owner }
         invalidate()
-        mutable.value = mutable.value.copy(enabled = true)
+        mutable.value = mutable.value.copy(enabled = true, appliedResponse = applied)
         if (owner == null) { reject(FacilityException(401).facilityMessage()); return }
         this.owner = owner; query = request
         submit { repository.discover(owner, request) }
@@ -90,6 +94,11 @@ internal class FacilitySearchCoordinator(
         }
     }
 
+    fun cancelPending() {
+        generation++; job?.cancel(); job = null
+        mutable.value = mutable.value.copy(loading = false, canRetry = query != null, notice = "응답 대기를 멈췄어요.")
+    }
+
     private fun submit(operation: suspend () -> FacilityResponse) {
         val revision = ++generation
         job?.cancel()
@@ -101,7 +110,8 @@ internal class FacilitySearchCoordinator(
                 pendingAction = null
                 val lens = response.confirmedLens
                 val selected = lens?.search?.overviewHits(lens.parking)?.firstOrNull()?.place?.key
-                mutable.value = FacilityUiState(enabled = true, response = response, selectedPlaceKey = selected)
+                mutable.value = FacilityUiState(enabled = true, response = response, selectedPlaceKey = selected,
+                    appliedResponse = response.takeIf { lens != null } ?: mutable.value.appliedResponse)
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 if (revision != generation) return@launch

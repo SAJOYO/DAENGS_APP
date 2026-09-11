@@ -129,8 +129,7 @@ fun GuideFrameScreen(
     }
     val h = (w * aspect).coerceAtMost(1f)
 
-    val centerOff = centerOffset(CropBox(box.x, box.y, w), aspect)
-    val hint = Band.hintFor(w, centerOff)
+    val hint = Band.hintFor(w)
 
     Box(
         Modifier
@@ -321,8 +320,8 @@ private fun GuideButton(
 }
 
 /**
- * 촬영 가이드 밴드. **저쪽이 STEP 10 에서 실측한 값이다** (`src/agent.py` 의
- * `GUIDE_RECOMMEND` · `GUIDE_ALLOW` · `GUIDE_CENTER_MAX`).
+ * 촬영 가이드 밴드. **저쪽이 실측한 값이다** (`src/agent.py` 의
+ * `GUIDE_RECOMMEND` · `GUIDE_ALLOW`).
  *
  * 화면 **가로** 대비 병변의 비율이고, 밴드 밖에서는 성능이 떨어지는 걸 이미
  * 재 뒀다. 그래서 서버는 추론 **전에** 이걸 보고 재촬영으로 돌려보낸다.
@@ -330,9 +329,8 @@ private fun GuideButton(
  * 저쪽이 바꾸면 같이 바꿔야 한다.
  */
 internal object Band {
-    private val RECOMMEND = 0.34f..0.56f
-    private val ALLOW = 0.28f..0.68f
-    private const val CENTER_MAX = 0.10f
+    private val RECOMMEND = 0.28f..0.48f
+    private val ALLOW = 0.24f..0.56f
 
     /**
      * 찍을 때 보여 줄 네모의 가로 비율. 권장 밴드의 한가운데다.
@@ -359,11 +357,14 @@ internal object Band {
 
     data class Hint(val text: String, val bad: Boolean)
 
-    fun hintFor(w: Float, centerOff: Float): Hint =
+    /**
+     * 프레임은 사진 안에서 어디든 움직일 수 있다. 위치는 서버가 이 프레임을
+     * 크롭 중심으로 쓰므로 품질 판정 대상이 아니며, 여기서는 크기만 안내한다.
+     */
+    fun hintFor(w: Float): Hint =
         when {
             w < ALLOW.start -> Hint("너무 작아요 — 더 가까이 찍어 주세요", true)
             w > ALLOW.endInclusive -> Hint("너무 커요 — 주변 피부도 보이게", true)
-            centerOff > CENTER_MAX -> Hint("가운데에서 벗어났어요", true)
             w !in RECOMMEND -> Hint("괜찮아요", false)
             else -> Hint("딱 좋아요", false)
         }
@@ -371,5 +372,4 @@ internal object Band {
 
 /** 손잡이로 인정하는 거리. 저쪽 데모와 같다. */
 private const val HANDLE_GRAB = 0.07f
-
 

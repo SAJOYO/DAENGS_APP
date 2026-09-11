@@ -56,6 +56,20 @@ data class ScreeningReport(
     enum class Verdict { NORMAL, ABNORMAL, RETAKE }
 
     /**
+     * 권고 줄([action])을 화면에 띄우나. **정상이면 안 띄운다** (2026-09-11).
+     *
+     * 정상의 [body] 가 이미 "평소와 다른 행동이 있다면 결과와 무관하게 병원에
+     * 가보시는 것을 권합니다" 로 끝난다. 그 바로 아래 권고 줄이 "평소와 다른 점이
+     * 있으면 진료를 받아보세요" 라고 **같은 말을 한 번 더** 했다 (실기기에서 확인).
+     *
+     * 이상·재촬영은 그대로다 — 거기서는 권고 줄이 카드의 **유일한 행동**이다.
+     *
+     * ⚠️ [action] 은 계약에 그대로 오고 파싱도 그대로 한다. 화면에서 뺀 것이지
+     *    지운 게 아니다. 채팅 카드와 지난 기록이 **같은 규칙**을 쓰도록 여기 둔다.
+     */
+    val showsAction: Boolean get() = verdict != Verdict.NORMAL && action.isNotBlank()
+
+    /**
      * 1단계(정상/이상) 확률.
      *
      * [abnormalPercent] 는 **없을 수 있다** — 사진을 아예 못 읽어 재촬영으로 돌아온
@@ -83,7 +97,23 @@ data class ScreeningReport(
      * 저쪽은 묶음을 정하는 코드를 `agent.lesion_group()` **한 곳**으로 모아 뒀다.
      */
     @Immutable
-    data class Group(val name: String, val percent: Float)
+    data class Group(
+        val name: String,
+        val percent: Float,
+        /**
+         * 그 묶음이 담는 **병원에서 쓰는 이름** — `구진·플라크·농포·여드름` (2026-09-11).
+         *
+         * 예전에는 [GroupLine.labels] 로 **1등 묶음에만** 왔다. 그러면 확신이 낮아
+         * [group] 이 `null` 인 날 보호자가 병원에 들고 갈 말이 하나도 없다 —
+         * 하필 그때가 화면에 막대만 남는 때다 (저쪽 커버리지 66.5%, 셋에 하나꼴).
+         *
+         * ⚠️ **"1등 병변" 이 아니다.** 네 줄에 **같은 방식으로** 붙는 용어 풀이이고
+         *    하나를 골라 단정하지 않는다. 그래서 **카드 본문이 아니라
+         *    "자세히 보기" 안에** 그린다 — 카드는 짧게, 서랍은 충실하게.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val labels: String = "",
+    )
 
     /**
      * 계열 한 줄. [text] 와 [caveat] 를 **그대로** 띄운다.
@@ -93,7 +123,43 @@ data class ScreeningReport(
      *    붙이면 말한 것의 절반이 한 단계 부풀려진다 (저쪽 실측 과잉 52.4%).
      */
     @Immutable
-    data class GroupLine(val name: String, val percent: Float, val text: String, val caveat: String)
+    data class GroupLine(
+        val name: String,
+        val percent: Float,
+        val text: String,
+        val caveat: String,
+        /**
+         * 보호자가 **사진에서 직접 확인할 수 있는** 특징 (2026-09-10).
+         * 이름만으로는 자기 개 사진과 대조가 안 된다 — `표면 변화` 는 뜻이 안 잡히고
+         * `딱지, 둥근 비늘, 검어진 피부` 는 바로 보인다. 계열 줄 **바로 아래**에 띄운다.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val feature: String = "",
+        /**
+         * 그 묶음이 담는 **라벨 이름** — `구진·플라크·농포·여드름` (2026-09-10).
+         *
+         * `솟아오른 변화` 만 들고 병원에 가면 **수의사가 못 알아듣는다.** 보호자가
+         * 전달할 말이 있어야 하고, 그건 데이터 라벨의 이름이다. 계열 이름 옆에
+         * 괄호로 띄운다.
+         *
+         * ⚠️ **"1등 병변" 이 아니다.** 금지된 것은 *"이 개는 구진입니다"* 라고
+         *    하나를 골라 단정하는 것이다(저쪽 holdout 46.3% 틀림). 이건 *"이 묶음은
+         *    이런 것들을 담는다"* 는 **용어 풀이**라 정확도 문제가 안 걸린다.
+         * ⚠️ 순서는 **코드순(A1→A6) 고정**이라 확률과 무관하다. 확률순으로 두면
+         *    첫 이름이 "1등" 으로 읽혀서 그때는 진짜 top1 부활이다.
+         *    ⚠️ **막대 4개의 순서는 확률순 그대로다** — 그건 당연하고 건드리지 않는다.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val labels: String = "",
+        /**
+         * 수의학적 의미 (primary/secondary 등). **"자세히 보기" 안에만** 띄운다.
+         *
+         * ⚠️ 본문에 올리면 안 된다. 그 축은 *진단 순서*의 축이지 *보호자에게 뭐라고
+         *    부를지*의 축이 아니고, 저쪽에서 그 축으로 묶었다가 **과잉 분류 88.4%** 로
+         *    기각했다. 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val detail: String = "",
+    )
 
     /**
      * "덩어리가 의심됩니다" — **계약에서 유일하게 병변 이름을 말하는 자리**다.
@@ -161,7 +227,13 @@ data class ScreeningReport(
                         val name = o.optString("name")
                         // 이름이 비면 막대만 남아서 무엇인지 못 읽는다 — 통째로 뺀다.
                         if (name.isNotBlank()) {
-                            add(Group(name, o.optDouble("percent", 0.0).toFloat()))
+                            add(
+                                Group(
+                                    name,
+                                    o.optDouble("percent", 0.0).toFloat(),
+                                    labels = o.optString("labels"),
+                                ),
+                            )
                         }
                     }
                 },
@@ -173,6 +245,9 @@ data class ScreeningReport(
                         percent = it.optDouble("percent", 0.0).toFloat(),
                         text = text,
                         caveat = it.optString("caveat"),
+                        feature = it.optString("feature"),
+                        labels = it.optString("labels"),
+                        detail = it.optString("detail"),
                     )
                 },
                 alert = al?.let {

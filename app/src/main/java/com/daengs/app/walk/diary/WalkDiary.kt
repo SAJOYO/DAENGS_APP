@@ -52,7 +52,7 @@ data class DiaryScene(
 )
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
-    val title: String? = null)
+    val title: String? = null, val preparing: Boolean = false, val published: Boolean = false)
 
 /** Read-only projection: never mutates saved text, hiding choices, or the reviewed snapshot. */
 fun diaryWalk(

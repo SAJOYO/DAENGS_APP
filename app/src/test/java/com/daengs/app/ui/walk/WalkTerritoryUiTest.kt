@@ -24,11 +24,35 @@ import org.robolectric.annotation.Config
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w390dp-h844dp")
 class WalkTerritoryUiTest {
+    @Test fun firstSeasonRenewalButtonsShowZeroRewardAndLease() {
+        val base = screen(TerritoryWalkPhase.WALKING).territoryGame
+        val occupancy = TerritoryOccupancy("p1", null, null, ClaimCertification.UNVERIFIED, 1000)
+        val target = base.target!!.copy(ownerLabel = "보리", isOwnedByMe = true,
+            claim = base.target!!.claim.copy(occupancy = occupancy), leaseLabel = "점령 유지 · 2일 3시간 남음")
+        val game = mutableStateOf(base.copy(sites = listOf(target), canMark = true, canPhotograph = false,
+            onlinePhotos = true, actionLabel = "유지 연장 · 0점", guidance = "현장에서 유지 시간을 연장할 수 있어요 · 연장 보상 0점"))
+        var selected: String? = null
+        compose.setContent { DaengsTheme { TerritoryActionCard(game.value, { selected = it }) } }
+        compose.onNodeWithText("보리 · 미인증").assertIsDisplayed()
+        compose.onNodeWithText("미점유").assertDoesNotExist()
+        compose.onNodeWithText("점령 유지 · 2일 3시간 남음").assertIsDisplayed()
+        compose.onNodeWithText("유지 연장 · 0점").assertIsEnabled().performClick()
+        assertEquals(target.site.id, selected)
+        screenshot("first-season-gps-renewal")
+        compose.runOnIdle { game.value = game.value.copy(canMark = false, canPhotograph = true,
+            sites = listOf(target.copy(claim = target.claim.copy(occupancy = occupancy.copy(certification = ClaimCertification.VERIFIED)))),
+            photoActionLabel = "사진으로 유지 연장", guidance = "새 사진으로 유지 시간을 연장할 수 있어요 · 연장 보상 0점") }
+        compose.onNodeWithText("보리 · 인증").assertIsDisplayed()
+        compose.onNodeWithText("사진으로 유지 연장").assertIsEnabled()
+        compose.onNodeWithText("유지 연장 · 0점").assertDoesNotExist()
+        screenshot("first-season-photo-renewal")
+    }
+
     @Test fun onlineCameraExplainsRealPhotoAndHidesSimulationControls() {
         compose.setContent { DaengsTheme { TerritoryCaptureDialog("internal-site-id", { null },
             { _, _, _ -> kotlinx.coroutines.CompletableDeferred(false) }, {}, online = true) } }
-        compose.onNodeWithText("강아지와 전봇대 주변 모습이 함께 나오게 찍어 주세요").assertIsDisplayed()
-        compose.onNodeWithText("사진은 현재 위치에서 촬영하고 서버에서 확인해요 · 인증 범위 10m").assertIsDisplayed()
+        compose.onNodeWithText("현재 위치에서 강아지가 잘 보이게 찍어 주세요").assertIsDisplayed()
+        compose.onNodeWithText("위치는 GPS로, 강아지 여부는 사진으로 확인해요 · 인증 범위 10m").assertIsDisplayed()
         compose.onNodeWithText("테스트 판정 선택").assertDoesNotExist()
         compose.onNodeWithText("internal-site-id", substring = true).assertDoesNotExist()
     }
@@ -244,18 +268,19 @@ class WalkTerritoryUiTest {
 
 
     /**
-     * 산책 전 `일기` 는 **목록**으로 나간다.
+     * 산책 전 `산책 기록`은 **목록**으로 나간다.
      *
      * 전에는 이 버튼이 걷는 산책에 묶인 편집기를 열어서, 걷기 전에는 묶일 산책이
      * 없어 늘 "아직 남긴 기록이 없어요" 만 떴다. 실기기에서 DB 에 산책이 두 건
      * 있는데도 비어 있는 것을 봤다.
      */
-    @Test fun `산책 전 일기는 기록 편집기가 아니라 목록으로 간다`() {
+    @Test fun `산책 전 기록 버튼은 편집기가 아니라 목록으로 간다`() {
         val actions = mutableListOf<WalkAction>()
         val state = mutableStateOf(screen(TerritoryWalkPhase.BROWSING))
         compose.setContent { DaengsTheme { WalkScreen(state.value, actions::add, showMap = false) } }
 
-        compose.onNodeWithContentDescription("산책 일기").performClick()
+        compose.onNodeWithText("산책 기록").assertIsDisplayed()
+        compose.onNodeWithContentDescription("산책 기록").performClick()
 
         assertEquals(WalkAction.OpenDiaryList, actions.last())
     }

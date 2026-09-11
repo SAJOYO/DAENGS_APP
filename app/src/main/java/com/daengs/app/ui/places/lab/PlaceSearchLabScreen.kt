@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +28,7 @@ import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.places.PlaceSearchStyle
+import com.daengs.app.ui.places.*
 import kotlinx.serialization.json.*
 
 /** 상태와 이벤트만 받아 Preview·fixture·향후 실제 API에서 같은 화면을 사용한다. */
@@ -45,21 +47,34 @@ fun PlaceSearchLabScreen(
     categoryContent: (@Composable () -> Unit)? = null,
     conditionContent: (@Composable () -> Unit)? = null,
     answerContent: (@Composable () -> Unit)? = null,
+    onSearchFilters: (() -> Unit)? = null,
+    searchFilterCount: Int = 0,
     aiConnected: Boolean = false,
+    showAiToggle: Boolean = true,
     emptyMessage: String = "검색 결과가 없어요.",
     showRetry: Boolean = true,
     resultLabel: String = state.applied.kind?.let(::categoryLabel) ?: "전체",
     map: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(DaengsColors.SurfaceMuted)) },
+    // Opt in only when a bookmark source is supplied; production has no fake saved results.
+    bookmarks: PlaceBookmarkPanelState? = null,
+    onBrowseTab: (PlaceBrowseTab) -> Unit = {},
+    onShowAllBookmarks: () -> Unit = {},
+    onToggleBookmark: (PlaceKey) -> Unit = {},
+    onRetryBookmarks: () -> Unit = {},
+    resultsListState: LazyListState? = null,
+    collapseRequest: Int = 0,
+    bookmarkNotices: (@Composable () -> Unit)? = null,
 ) {
     var profiles by remember { mutableStateOf(false) }
     var filters by remember { mutableStateOf(false) }
     val kinds = remember { listOf<PlaceKind?>(null, PlaceKind.CAFE, PlaceKind.RESTAURANT) + PlaceKind.entries.filter { it != PlaceKind.CAFE && it != PlaceKind.RESTAURANT } }
+    val readingBookmarks = bookmarks?.tab == PlaceBrowseTab.BOOKMARKS
     PlaceResultsScaffold(
         detailOpen = state.expanded != null,
         header = {
             PlaceSearchHeader(state.draft,
-                if (state.aiMode) "AI에게 원하는 장소를 말해보세요" else if (live) "장소명 검색" else "장소명·주소 검색",
-                state.aiMode, onEdit, onSubmit, onAi, onBack)
+                if (readingBookmarks) "찜한 시설 이름 검색" else if (state.aiMode) "AI에게 원하는 장소를 말해보세요" else if (live) "장소명 검색" else "장소명·주소 검색",
+                state.aiMode, onEdit, onSubmit, onAi, onBack, onSearchFilters, searchFilterCount, showAiToggle)
             if (state.aiMode && !aiConnected) Text("AI 조건 검색 · 아직 미연결", fontSize = 11.sp)
             answerContent?.invoke()
         },
@@ -88,25 +103,37 @@ fun PlaceSearchLabScreen(
             }
         },
         controls = {
-            val count = when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
+            val count = if (readingBookmarks && bookmarks?.phase != PlaceBookmarkPhase.READY) "—"
+                else when (state.phase) { LabPhase.RESULTS, LabPhase.EMPTY -> "${state.hits.size}곳${if (state.truncated) "+" else ""}"; LabPhase.UNSAMPLED -> "미수집"; else -> "—" }
             PlaceResultControls("$resultLabel $count",
                 state.selectedDogIds.joinToString("·") { if (live) state.profileNames[it] ?: "반려견" else if (it == "demo-bori") "보리" else "초코" }.ifEmpty { "반려견 선택" } + " ▾",
                 state.selectedDogIds.isNotEmpty(), state.applied.radiusMeters, state.applied.parkingFirst,
-                { profiles = true; if (live) onRefreshProfiles() }, { filters = true }, { onParking(!state.applied.parkingFirst) })
+                { profiles = true; if (live) onRefreshProfiles() }, { filters = true }, { onParking(!state.applied.parkingFirst) },
+                allRegions = readingBookmarks && bookmarks?.allRegions == true)
         },
         map = {
             Box(Modifier.fillMaxSize()) {
                 map()
+                // 지도 높이가 줄어도 안내가 강아지/위치 버튼을 덮지 않도록 오른쪽을 비운다.
                 PlaceFloatingNotices(listOfNotNull(state.notice, state.profileMessage.takeIf { live }).distinct(),
-                    Modifier.align(Alignment.TopCenter).padding(start = 16.dp, end = 16.dp, top = 52.dp))
+                    Modifier.align(Alignment.TopCenter).padding(start = 16.dp,
+                        end = if (live) 128.dp else 16.dp, top = 52.dp))
             }
         },
         results = {
-            if (state.truncated) item { Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(16.dp), fontSize = 11.sp) }
-            if (state.applied.kind == null && !live) item { Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(16.dp), fontSize = 11.sp) }
-            if (state.phase == LabPhase.RESULTS) {
+            if (readingBookmarks && bookmarks != null && bookmarks.phase == PlaceBookmarkPhase.READY)
+                item { PlaceBookmarkSummary(bookmarks, state.hits.size, onShowAllBookmarks) }
+            if (readingBookmarks && bookmarkNotices != null) item { bookmarkNotices() }
+            if (state.truncated && !readingBookmarks) item { Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(16.dp), fontSize = 11.sp) }
+            if (state.applied.kind == null && !live && !readingBookmarks) item { Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(16.dp), fontSize = 11.sp) }
+            if (readingBookmarks && bookmarks != null && (bookmarks.phase != PlaceBookmarkPhase.READY || state.hits.isEmpty())) {
+                item { PlaceBookmarkEmpty(bookmarks, { onBrowseTab(PlaceBrowseTab.SEARCH) }, onRetryBookmarks) }
+            } else if (state.phase == LabPhase.RESULTS) {
                 items(state.hits, key = { placeMarkerId(it.place.key) }) { hit ->
-                    PlaceResultRow(hit, state.selected == hit.place.key, { onToggle(hit.place.key) })
+                    PlaceResultRow(hit, state.selected == hit.place.key, { onToggle(hit.place.key) },
+                        saved = bookmarks?.savedKeys?.contains(hit.place.key), onBookmark = { onToggleBookmark(hit.place.key) },
+                        bookmarkEnabled = bookmarks?.busy != true, bookmarkKnown = bookmarks == null || bookmarks.phase == PlaceBookmarkPhase.READY,
+                        showDistance = !readingBookmarks || bookmarks?.distanceAvailable != false)
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = PlaceSearchStyle.Border)
                 }
             } else item {
@@ -123,9 +150,17 @@ fun PlaceSearchLabScreen(
                 }
             }
         },
+        listState = resultsListState,
+        collapseRequest = collapseRequest,
+        navigation = bookmarks?.let { saved -> { expanded, toggle ->
+            PlaceBookmarkHandle(saved.tab, expanded, onBrowseTab, toggle)
+        } },
     )
     state.hits.firstOrNull { it.place.key == state.expanded }?.let { hit ->
-        PlaceDetailSheet(hit, { onToggle(hit.place.key) }, onAction, cardActions, state.profileNames)
+        PlaceDetailSheet(hit, { onToggle(hit.place.key) }, onAction, cardActions, state.profileNames,
+            saved = bookmarks?.savedKeys?.contains(hit.place.key), onBookmark = { onToggleBookmark(hit.place.key) },
+            bookmarkEnabled = bookmarks?.busy != true, bookmarkKnown = bookmarks == null || bookmarks.phase == PlaceBookmarkPhase.READY,
+            showDistance = !readingBookmarks || bookmarks?.distanceAvailable != false)
     }
     if (profiles && live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("함께 갈 반려견") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -149,12 +184,15 @@ fun PlaceSearchLabScreen(
             }
         }
     }, confirmButton = { TextButton(onClick = { profiles = false }) { Text("완료") } })
-    if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text("검색 조건") }, text = {
+    if (filters) AlertDialog(onDismissRequest = { filters = false }, title = { Text(if (live) "검색 반경" else "검색 조건") }, text = {
         Column {
-        if (live) listOf(1000, 3000, 5000, 10000, 20000).forEach { meters ->
+        if (readingBookmarks) TextButton(onClick = { onRadius(0); filters = false }) { Text("지역 전체") }
+        if (live || bookmarks != null) listOf(1000, 3000, 5000, 10000, 20000).forEach { meters ->
             TextButton(onClick = { onRadius(meters); filters = false }) { Text("${meters / 1000}km${if (state.applied.radiusMeters == meters) " ✓" else ""}") }
         }
-        Text(if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요." else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 장소 상세에서 확인하세요.")
+        Text(if (live && onSearchFilters != null) "‘주차 우선’은 정렬 설정이에요. 필수 조건은 검색창의 필터에서 확인하세요."
+            else if (live) "주차는 필수 조건이 아닌 우선 정렬입니다. 실내 동반 조건은 카드에서 확인하세요."
+            else "반경 3km · 대형견 30kg·3세의 저장 응답입니다.\n실내 동반 등 추가 제한은 장소 상세에서 확인하세요.")
         }
     }, confirmButton = { TextButton(onClick = { filters = false }) { Text("완료") } })
 }
@@ -167,7 +205,7 @@ private fun categorySymbol(kind: PlaceKind?): String = when (kind) {
 
 @Composable
 private fun PlaceResultControls(count: String, dogLabel: String, dogSelected: Boolean, radiusMeters: Int,
-    parking: Boolean, onDog: () -> Unit, onRadius: () -> Unit, onParking: () -> Unit) {
+    parking: Boolean, onDog: () -> Unit, onRadius: () -> Unit, onParking: () -> Unit, allRegions: Boolean = false) {
     BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         val availableWidth = maxWidth
         val singleRow = availableWidth >= 340.dp
@@ -175,7 +213,7 @@ private fun PlaceResultControls(count: String, dogLabel: String, dogSelected: Bo
             Row(modifier.semantics { contentDescription = "검색 조건" },
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                 PlaceConditionChip(dogLabel, dogSelected, onDog, Modifier.weight(1f, fill = false))
-                PlaceConditionChip("반경 ${radiusMeters / 1000}km ▾", false, onRadius)
+                PlaceConditionChip(if (allRegions) "지역 전체 ▾" else "반경 ${radiusMeters / 1000}km ▾", false, onRadius)
                 PlaceConditionChip("주차 우선", parking, onParking, Modifier.semantics {
                     stateDescription = if (parking) "켜짐" else "꺼짐"
                 })

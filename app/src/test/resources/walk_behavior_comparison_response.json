@@ -1,0 +1,158 @@
+{
+  "spec": {
+    "comparison_version": "walk-behavior-comparison-v1",
+    "walk_selector": {
+      "pet_id": "00000000-0000-0000-0000-000000000002",
+      "since": "2026-09-02",
+      "until": "2026-09-02",
+      "context_facets": []
+    },
+    "behavior_code": "sniffing"
+  },
+  "projection": {
+    "paint_version": 2,
+    "grid_version": "hex-v1",
+    "radius_u": 8.0,
+    "profile_name": "계단 3·8·20",
+    "profile_fp": "903fab223ba8",
+    "sample_step_m": 1.5,
+    "paint_fp": "3bb02412877d"
+  },
+  "baseline": {
+    "walk_ids": [
+      "00000000-0000-0000-0000-00000000000a",
+      "00000000-0000-0000-0000-00000000000b"
+    ],
+    "field": {
+      "metric": "walk_utilization",
+      "unit": "share",
+      "normalization": "equal_contributing_walks",
+      "denominator": 2.0,
+      "cells": [
+        {
+          "q": 0,
+          "r": 0,
+          "value": 0.375,
+          "numerator": 0.75
+        },
+        {
+          "q": 1,
+          "r": 0,
+          "value": 0.625,
+          "numerator": 1.25
+        }
+      ]
+    }
+  },
+  "matching": {
+    "walk_ids": [
+      "00000000-0000-0000-0000-00000000000a"
+    ],
+    "field": {
+      "metric": "walk_utilization",
+      "unit": "share",
+      "normalization": "equal_contributing_walks",
+      "denominator": 1.0,
+      "cells": [
+        {
+          "q": 0,
+          "r": 0,
+          "value": 0.75,
+          "numerator": 0.75
+        },
+        {
+          "q": 1,
+          "r": 0,
+          "value": 0.25,
+          "numerator": 0.25
+        }
+      ]
+    }
+  },
+  "summary": {
+    "selected_walk_count": 3,
+    "excluded_empty_walk_count": 1,
+    "entry_count": 2,
+    "recorded_day_count": 1,
+    "unlocated_entry_count": 1
+  },
+  "evidence": [
+    {
+      "vocabulary_version": "walk-behavior-v1",
+      "kind": "behavior",
+      "behavior_code": "sniffing",
+      "note": null,
+      "recorded_at": "2026-09-01T15:30:00Z",
+      "location": {
+        "lat": 37.5,
+        "lng": 127.0,
+        "captured_at": "2026-09-01T15:30:00Z",
+        "accuracy_m": 5.0
+      },
+      "pet_id": "00000000-0000-0000-0000-000000000002",
+      "entry_id": "00000000-0000-0000-0000-0000000000c9",
+      "entry_revision": 1,
+      "walk_id": "00000000-0000-0000-0000-00000000000a",
+      "context_status": "not_requested",
+      "context_refs": [],
+      "pin": {
+        "resolution_id": "00000000-0000-0000-0000-0000000000c9",
+        "state": "resolved",
+        "method": "observed",
+        "target_at": "2026-09-01T15:30:00Z",
+        "point": {
+          "lat": 37.5,
+          "lng": 127.0
+        },
+        "computed_at": "2026-09-01T15:30:00Z",
+        "resolve_by": "2026-09-01T15:30:00Z",
+        "policy_version": "legacy-v1",
+        "algorithm_version": "legacy-v1",
+        "source_refs": [],
+        "uncertainty_m": null,
+        "uncertainty_basis": "unknown",
+        "reason": "direct_fix"
+      },
+      "pin_revision": 0,
+      "client_session_id": "00000000-0000-0000-0000-0000000001fe"
+    },
+    {
+      "vocabulary_version": "walk-behavior-v1",
+      "kind": "behavior",
+      "behavior_code": "sniffing",
+      "note": null,
+      "recorded_at": "2026-09-01T15:30:00Z",
+      "location": null,
+      "pet_id": "00000000-0000-0000-0000-000000000002",
+      "entry_id": "00000000-0000-0000-0000-0000000000ca",
+      "entry_revision": 1,
+      "walk_id": "00000000-0000-0000-0000-00000000000a",
+      "context_status": "not_requested",
+      "context_refs": [],
+      "pin": {
+        "resolution_id": "00000000-0000-0000-0000-000000000192",
+        "state": "unlocated",
+        "method": "none",
+        "target_at": "2026-09-01T15:30:00+00:00",
+        "point": null,
+        "computed_at": "2026-09-01T15:30:00+00:00",
+        "resolve_by": "2026-09-01T15:30:00+00:00",
+        "policy_version": "action-pin-v1",
+        "algorithm_version": "fixture",
+        "source_refs": [],
+        "uncertainty_m": null,
+        "uncertainty_basis": "unknown",
+        "reason": "no_evidence"
+      },
+      "pin_revision": 2,
+      "client_session_id": "00000000-0000-0000-0000-0000000001fe"
+    }
+  ],
+  "receipt": {
+    "source_revision": "72f7f732db1ac425ca17e9b27165f4b74cee9e13bd2471b5799445e1d9865912",
+    "view_as_of": "2026-09-09T12:31:37.539513Z",
+    "paint_fp": "3bb02412877d",
+    "context_policy_version": 2,
+    "aggregation_version": 1
+  }
+}

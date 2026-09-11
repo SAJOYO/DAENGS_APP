@@ -4,7 +4,60 @@
 추정기: [#228](https://github.com/SAJOYO/DAENGS_APP/pull/228).
 서버: [DEV #357](https://github.com/SAJOYO/DAENGS_dev/pull/357).
 
-## 기록과 위치
+## 현재 릴리즈: v1 핀과 GPS 보완의 분리
+
+APP #310은 #305에서 함께 적용한 GPS 전달 보완과 신규 v2 핀 활성화를 분리한다.
+현재 `ActionPinRollout.legacyCreation = true`다. 서비스는 유효하고 신선한 실제 GPS가
+있을 때 v1 행동을 저장한다. 위치가 없거나 오래됐으면 기존처럼 핀 생성을 거절한다.
+새 행동에 추정 좌표·provisional/unlocated 핀을 생성하지 않는다.
+
+같은 릴리즈 정책을 앱 조립에서 `WalkEntrySync.preferLegacy`와
+`WalkSync.requireRecordingSupport`에 연결한다. v1은 기존 API로 먼저 전송한다.
+이미 있는 v2 자료는 v1으로 변환하지 않고 기존 v2 복구·동결 요청을 유지한다.
+서버가 기존 자료에 명시적으로 426을 반환하는 경우에도 v2로 조회·복구한다.
+혼합 산책은 v1 전송을 먼저 완료한 뒤 기존 v2 자료의 서버 지원을 기다린다.
+
+GPS 구분의 직렬화·복원·보완·지문 검증은 유지한다. 지원 서버에는 v1 릴리즈에서도
+실제 저장을 확인한 뒤 finalize한다. `gps-recording-v1` 미지원 또는 capabilities 404인
+옛 서버에서는 v1 원본·행동 전송을 계속하고 구분 원본은 기기에 보관한다. 옛 서버가 이
+필드를 저장했다고 간주하지 않으며, 이후 지원 서버로 바뀌면 지문 대조와 제한된 보완을
+수행한다. 인증 실패·통신 장애·서버 오류를 미지원으로 취급해 검증을 건너뛰지 않는다.
+기존 v2 전송은 이 호환 경로와 별개로 GPS 구분 저장 확인을 계속 요구한다.
+
+향후 신규 v2 활성화는 서버 준비를 확인한 별도 변경에서 `legacyCreation = false`로
+전환한다. 서버 capability가 생긴 것만으로 신규 생성 형식을 바꾸지 않는다.
+Room/SQL 이관이나 GPS 이동·속도 정책 변경은 없다.
+
+## v2 계약과 향후 활성화 조건
+
+아래는 기존 v2 자료의 복구와 향후 신규 v2 활성화 시 사용하는 계약이다.
+과거 기록을 일괄 v2로 바꾸거나 원본 GPS 참조를 새로 만들지 않는다.
+
+서버 계약은 DAENGS_dev `85ff1741` 기준이다. 배포 환경에는 v2용 DB 스키마와 함께
+`DAENGS_WALK_ENTRY_V2_ENABLED=true`, `DAENGS_WALK_ENTRY_V2_WRITE_ENABLED=true`가 필요하다.
+인증된 `GET /app/walks/entry-capabilities`의 `read_versions`·`write_versions`에
+`walk-entry-v2`, `active_policy_versions`에 `action-pin-policy-v1`이 있어야 신규 전송한다.
+일시정지·종료 시각을 정확히 전송하려면 `pin_observation_cutoff_supported=true`도 필요하다.
+장면 생성은 별도로 `storyboard_formats`의 v5 지원을 확인한다.
+
+생성·내용 정정은 `PUT /app/v2/walks/{walk_id}/entries/{entry_id}`, 이후 위치 확정은
+동일 경로의 `/pin`으로 보낸다. capabilities와 산책 원본 업로드 경로는 `/app/walks`를 유지한다.
+서버가 아직 준비되지 않았거나 신규 쓰기를 중단하면 새 행동을 기기에 보관하고 전송을 재시도한다.
+v2가 섞인 산책은 v2 지원을 기다리고, v1만 있는 산책은 구서버에서도 기존 전송을 계속한다.
+코드 병합만으로 실제 배포·플래그 활성화를 확인한 것으로 간주하지 않는다.
+
+서버 [DEV #441](https://github.com/SAJOYO/DAENGS_dev/pull/441)의
+[GPS 기록 구분 계약](https://github.com/SAJOYO/DAENGS_dev/blob/3102b77af4d8e2f152bd7a6aada81394bcee1a7c/docs/walk/gps-recording-contract.md)을 연결했다.
+앱은 기존 recordingEligible을 원본 업로드에 포함하고 상세 응답에서도 복원한다.
+v2 활성화 시 알려진 구분이 있는 원본은 업로드 전에 gps-recording-v1 지원을 요구한다.
+RAW_UPLOADED/DERIVED 재시도와 v2 핀 전송 전에도 실제 저장 receipt를 확인하며,
+이미 올라간 원본의 누락된 구분은 같은 원본 지문을 대조한 제한된 보완 경로로 채운다.
+새 핀 요청에 확인한 구분 지문을 동결하되, 기존 outbox 본문은 변경하지 않는다.
+최초 unlocated 생성에서 멈춘 옛 근거 오류는 캐시 제외 근거를 검증한 뒤 한 번 재시도한다.
+이미 수용된 v2 행동이 있는 산책의 새로운 보완은 서버가 보류한다. 원본을 자동 삭제·재생성하지 않는다.
+서버 지원 배포가 앱 전환보다 먼저여야 한다. 이 변경에 SQL/Room schema 추가는 없다.
+
+## v2 기록과 위치
 
 진행 중인 산책에서 킁킁·배설·짖기를 누르면 GPS 품질과 관계없이 각각의 행동을 저장한다.
 원본 fix와 같은 writer 큐에서 행동 content와 초기 pin을 한 Room 트랜잭션으로 쓴다.

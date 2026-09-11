@@ -14,6 +14,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MapScenePolicyTest {
+    @Test fun `only historical comparison allows a regional overview`() {
+        assertEquals(5.0, MapScene(allowRegionalOverview = true).minimumZoom(), 0.0)
+        assertEquals(11.0, MapScene().minimumZoom(), 0.0)
+        assertEquals(13.0, MapScene(baseMapStyle = BaseMapStyle.TERRITORY_FOCUSED).minimumZoom(), 0.0)
+    }
     private val point = GeoPoint(37.5, 127.0)
     private val sources = MapSceneSources(
         currentPosition = point,

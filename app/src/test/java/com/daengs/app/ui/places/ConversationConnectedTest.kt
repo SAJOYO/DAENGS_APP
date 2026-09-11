@@ -4,7 +4,9 @@ import com.daengs.app.auth.Session
 import com.daengs.app.journey.*
 import com.daengs.app.location.*
 import com.daengs.app.place.*
+import com.daengs.app.place.support.filteredConversationFixture
 import com.daengs.app.ui.places.lab.LabPhase
+import com.daengs.app.place.support.conversationFixture
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.*
@@ -14,6 +16,35 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConversationConnectedTest {
+    @Test fun directFilterRemovalUpdatesTheExistingSessionAndMapWithoutAi() = runTest {
+        val calls = mutableListOf<JsonObject>()
+        val login = Session("owner", "access", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+        val repository = FacilityConversationRepository(ConversationClient { _, payload ->
+            calls += payload
+            if (payload.getValue("mode").jsonPrimitive.content == "manual") filteredConversationFixture(payload)
+            else conversationFixture("manual", payload)
+        }, PlaceSearchRepository { error("Unexpected fallback") }, { login }, { login })
+        val vm = PlacesViewModel(repository, JourneyRepository { JourneyResponse("dog", emptyList()) },
+            object : LocationSource {
+                override suspend fun currentLocation() = LocationSample(GeoPoint(37.5, 127.0), 0)
+                override fun locationUpdates(config: LocationUpdateConfig) = emptyFlow<LocationSample>()
+            }, externalScope = backgroundScope, conversationRepository = repository)
+        vm.updateProfiles("owner", emptyList(), false, null)
+        vm.updatePermission(true, false)
+        runCurrent()
+        vm.onAction(PlacesAction.SearchAt(GeoPoint(37.5, 127.0), PlaceKind.SHOPPING, false))
+        runCurrent()
+        val before = vm.state.value.conversation.result!!
+        assertEquals(2, before.appliedPlaceFilters().count)
+        vm.onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(before.sessionId, before.revision,
+            removeAll = listOf("parking"), removeAny = listOf("shop", "pet"))))
+        runCurrent()
+        assertEquals(listOf("manual", "filters"), calls.map { it.getValue("mode").jsonPrimitive.content })
+        assertFalse(vm.state.value.facility.enabled)
+        assertEquals(0, vm.state.value.conversation.result!!.appliedPlaceFilters().count)
+        assertEquals(vm.state.value.conversation.result!!.search, vm.state.value.discovery.response)
+        assertEquals(LabPhase.RESULTS, vm.state.value.toConnectedSearchState("", false, null, null).phase)
+    }
     @Test fun existingScreenKeepsShoppingResultsAcrossAiToggleAndAppliesSelectedPlace() = runTest {
         val calls = mutableListOf<String>()
         val answerReady = kotlinx.coroutines.CompletableDeferred<Unit>()

@@ -2,6 +2,7 @@ package com.daengs.app.walk.sync
 
 import com.daengs.app.walk.diary.GeoStoryboardBundle
 import com.daengs.app.walk.diary.ServerDiaryBundle
+import com.daengs.app.walk.diary.ServerDiaryBoard
 import com.daengs.app.walk.diary.storyboardHash
 import com.daengs.app.walk.store.*
 import kotlinx.coroutines.CancellationException
@@ -28,6 +29,7 @@ class WalkDiarySync(
         WalkStoryboardSync(dao, owner).sync(token, id, walk, refresh)
     },
     private val pause: suspend () -> Unit = { delay(2_000) },
+    private val nowMillis: () -> Long = System::currentTimeMillis,
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
         WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
     },
@@ -38,11 +40,22 @@ class WalkDiarySync(
         val account = owner()
         val walk = dao.session(sessionId)
         if (account.isBlank() || walk?.ownerId != account || walk.serverWalkId != walkId || walk.endedAtMillis == null) return@withLock
+        val publication = dao.diaryPublication(sessionId)
+        suspend fun closed() = publication != null && (nowMillis() >= publication.deadlineAtMillis ||
+            dao.diaryPublication(sessionId)?.publishedBundle != null)
+        if (closed()) return@withLock
         val capabilities = try { request(token, "/storyboard/capabilities", "GET", null) }
         catch (e: WalkHttpException) { if (e.statusCode == 404) null else throw e }
         if (owner() != account) return@withLock
         val formats = capabilities?.getJSONArray("diary_formats")
-        if (formats == null || (0 until formats.length()).none { formats.getString(it) == ServerDiaryBundle.FORMAT }) {
+        val offered = formats?.let { (0 until it.length()).map(it::getString).toSet() }.orEmpty()
+        val selectedFormat = when {
+            ServerDiaryBoard.FORMAT in offered -> ServerDiaryBoard.FORMAT
+            ServerDiaryBundle.FORMAT in offered -> ServerDiaryBundle.FORMAT
+            else -> null
+        }
+        if (selectedFormat == null) {
+            if (publication != null) return@withLock
             legacy(token, sessionId, walkId, refresh)
             return@withLock
         }
@@ -58,18 +71,21 @@ class WalkDiarySync(
         val stamp = diaryInputStamp(rows, photos, dao.photos(sessionId))
         val before = dao.sceneAnalysis(sessionId)
         if (!dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, before?.generation ?: 0, stamp,
-                before?.inputRevision.orEmpty(), "running", null, null), account)) return@withLock
+                before?.inputRevision.orEmpty(), "running", null, null), account, nowMillis())) return@withLock
         val expected = JSONObject().apply { rows.forEach { put(it.id, it.revision) } }
         val path = "/$walkId/storyboard"
-        val query = "$path?bundle_format=${ServerDiaryBundle.FORMAT}&target_scene_count=${ServerDiaryBundle.TARGET_SCENES}"
+        val query = "$path?bundle_format=$selectedFormat&target_scene_count=${ServerDiaryBundle.TARGET_SCENES}"
+        val regenerate = refresh && selectedFormat != ServerDiaryBoard.FORMAT
         suspend fun current() {
             if (owner() != account || dao.session(sessionId)?.ownerId != account ||
                 diaryInputStamp(dao.entries(sessionId), dao.photoSync(sessionId), dao.photos(sessionId)) != stamp)
                 throw IOException("일기를 만드는 중 기록이 바뀌었어요. 다시 동기화해 주세요.")
         }
         fun validate(response: JSONObject) {
-            require(response.getString("format") == ServerDiaryBundle.RESPONSE && response.getString("session_id") == sessionId)
-            require(response.getInt("target_scene_count") == ServerDiaryBundle.TARGET_SCENES)
+            val allowed = if (selectedFormat == ServerDiaryBoard.FORMAT)
+                setOf(ServerDiaryBoard.RESPONSE, ServerDiaryBundle.RESPONSE) else setOf(ServerDiaryBundle.RESPONSE)
+            require(response.getString("format") in allowed && response.getString("session_id") == sessionId)
+            require(response.getInt("target_scene_count") in 1..50)
             require(response.getLong("generation") >= 0)
             require(response.getString("status") in setOf("pending", "running", "ready", "failed", "stale"))
             val remote = response.getJSONObject("entry_revisions")
@@ -80,7 +96,23 @@ class WalkDiarySync(
             if (photos != null) require(manifest != null && manifest.getString("publisher_id") == photos.publisherId &&
                 manifest.getLong("revision") == photos.acknowledgedRevision) { "사진 목록이 서버와 달라요." }
         }
+        suspend fun acceptLegacy(response: JSONObject) {
+            current()
+            require(response.getString("session_id") == sessionId && response.getString("status") == "ready")
+            require(response.getLong("generation") >= 0)
+            val revisions = response.getJSONObject("entry_revisions")
+            require(revisions.keys().asSequence().toSet() == rows.map { it.id }.toSet() &&
+                rows.all { revisions.getInt(it.id) == it.revision })
+            val raw = response.getJSONObject("bundle").toString()
+            require(GeoStoryboardBundle.parse(raw).sessionId == sessionId)
+            check(dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, response.getLong("generation"), stamp,
+                response.getString("input_revision"), "ready", raw, null), account, nowMillis()))
+        }
         suspend fun accept(response: JSONObject) {
+            if (selectedFormat == ServerDiaryBoard.FORMAT && !response.has("format")) {
+                acceptLegacy(response)
+                return
+            }
             current(); validate(response)
             val ready = response.getString("status") == "ready"
             if (ready) {
@@ -92,23 +124,44 @@ class WalkDiarySync(
             check(dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, response.getLong("generation"), stamp,
                 response.getString("input_revision"), response.getString("status"),
                 if (ready) response.toString() else null,
-                if (response.getString("status") == "failed") "일기를 만들지 못했어요. 다시 시도해 주세요." else null), account))
+                if (response.getString("status") == "failed") "일기를 만들지 못했어요. 다시 시도해 주세요." else null), account, nowMillis()))
         }
         try {
             current()
             var response = request(token, query, "GET", null)
+            // The server preserves an already stored pre-diary board instead of upgrading it.
+            if (selectedFormat == ServerDiaryBoard.FORMAT && !response.has("format")) {
+                current()
+                require(response.getString("session_id") == sessionId)
+                if (response.getString("status") != "ready") {
+                    if (publication != null) return@withLock
+                    legacy(token, sessionId, walkId, false)
+                    return@withLock
+                }
+                acceptLegacy(response)
+                return@withLock
+            }
             current(); validate(response)
-            if (refresh || response.getString("status") in setOf("pending", "stale", "failed", "running")) {
-                val body = JSONObject().put("bundle_format", ServerDiaryBundle.FORMAT)
-                    .put("target_scene_count", ServerDiaryBundle.TARGET_SCENES).put("expected_entries", expected)
+            if (regenerate || response.getString("status") in setOf("pending", "stale", "failed", "running")) {
+                val responseFormat = if (response.getString("format") == ServerDiaryBoard.RESPONSE)
+                    ServerDiaryBoard.FORMAT else ServerDiaryBundle.FORMAT
+                if (closed()) return@withLock
+                if (publication != null && (responseFormat != ServerDiaryBoard.FORMAT ||
+                        capabilities?.optJSONObject("diary_publication")?.optString("format") != ServerDiaryBoard.FORMAT))
+                    return@withLock
+                val body = JSONObject().put("bundle_format", responseFormat)
+                    .put("target_scene_count", response.getInt("target_scene_count")).put("expected_entries", expected)
                     .put("expected_photo_manifest", response.optJSONObject("photo_manifest") ?: JSONObject.NULL)
                     // A non-refresh POST reuses a live lease, or recovers one abandoned by process death.
-                    .put("refresh", refresh && response.getString("status") != "running")
+                    .put("refresh", regenerate && response.getString("status") != "running")
+                if (publication != null) body.put("preparation_budget_ms",
+                    (publication.deadlineAtMillis - nowMillis()).coerceIn(0, 10_000))
                 response = request(token, path, "POST", body)
             }
             accept(response)
             repeat(8) {
                 if (response.getString("status") != "running") return@repeat
+                if (closed()) return@withLock
                 pause(); current()
                 response = request(token, query, "GET", null)
                 accept(response)

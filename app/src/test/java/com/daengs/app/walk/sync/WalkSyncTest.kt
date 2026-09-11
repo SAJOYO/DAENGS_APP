@@ -19,6 +19,56 @@ import org.junit.Test
  */
 class WalkSyncTest {
 
+    @Test fun `v1 release keeps uploading to an old server without losing local GPS eligibility`() = runBlocking {
+        for (state in WalkSyncState.entries) {
+            val log = FakeLog()
+            val api = FakeApi()
+            log.sessions += session("gps", ended = true, state = state,
+                serverWalkId = if (state == WalkSyncState.LOCAL_ONLY) null else "server-gps")
+            val original = fix(0).copy(recordingEligible = false)
+            log.append("gps", original)
+            var consumers = 0
+            val sync = WalkSync(log, api, { NOW },
+                photoSync = { _, _, _ -> consumers++ },
+                storyboardSync = { _, _, _ -> consumers++ },
+                recording = WalkRecordingSync { _, path, _, _ ->
+                    assertEquals("/entry-capabilities", path)
+                    throw WalkHttpException(404, "old server")
+                }, requireRecordingSupport = false, warn = { _, _ -> })
+            sync.syncPendingSession("token", "gps")
+            assertEquals(WalkSyncState.DERIVED, log.session("gps")!!.syncState)
+            assertEquals(listOf(original), log.fixes("gps"))
+            assertEquals(if (state == WalkSyncState.LOCAL_ONLY) 1 else 0, api.uploadCalls)
+            if (state == WalkSyncState.LOCAL_ONLY) assertEquals(listOf(original), api.uploadedPoints)
+            assertEquals(if (state == WalkSyncState.DERIVED) 0 else 1, api.finalizeCalls)
+            assertEquals(2, consumers)
+        }
+    }
+
+    @Test fun `GPS evidence readiness gates new uploaded and already derived sessions`() = runBlocking {
+        for (state in WalkSyncState.entries) {
+            val log = FakeLog()
+            val api = FakeApi()
+            log.sessions += session("gps", ended = true, state = state,
+                serverWalkId = if (state == WalkSyncState.LOCAL_ONLY) null else "server-gps")
+            log.append("gps", fix(0).copy(recordingEligible = false))
+            var probes = 0
+            var consumers = 0
+            val sync = WalkSync(log, api, { NOW },
+                photoSync = { _, _, _ -> consumers++ },
+                storyboardSync = { _, _, _ -> consumers++ },
+                recording = WalkRecordingSync { _, _, _, _ -> probes++; throw java.io.IOException("unsupported") },
+                warn = { _, _ -> })
+            assertTrue(runCatching { sync.syncPendingSession("token", "gps") }.isFailure)
+            assertEquals(1, probes)
+            assertEquals(0, api.uploadCalls)
+            assertEquals(0, api.finalizeCalls)
+            assertEquals(0, consumers)
+            assertEquals(state, log.session("gps")!!.syncState)
+            assertEquals(false, log.fixes("gps").single().recordingEligible)
+        }
+    }
+
     @Test fun `manual diary refresh synchronizes photos without generating twice`() = runBlocking {
         val log = FakeLog()
         val api = FakeApi()

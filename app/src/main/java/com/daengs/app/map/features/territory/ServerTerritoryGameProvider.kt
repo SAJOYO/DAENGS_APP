@@ -27,11 +27,13 @@ class ServerTerritoryGameProvider(
     private val currentOwner: () -> String?,
     private val actions: TerritoryActionSync? = null,
     private val wakeDelivery: suspend () -> Unit = {},
+    private val leaseNowNanos: () -> Long = System::nanoTime,
 ) : TerritoryGameProvider {
     override val onlinePhotos: Boolean get() = actions?.photos != null
     override val refreshesFromServer = true
     private val board = MutableStateFlow(SharedBoard())
     private var generation = 0L
+    private val receiptSites = mutableMapOf<String, Pair<String, SharedTerritorySite>>()
     override val changes = if (actions == null) board.map { Unit } else merge(board.map { Unit },
         actions.operations.map { Unit }, actions.receipt.map { Unit }, actions.storageFailed.map { Unit })
     private val selectedPets = mutableMapOf<String, String>()
@@ -42,6 +44,7 @@ class ServerTerritoryGameProvider(
         acceptingReceipts = false
         generation++
         board.value = SharedBoard()
+        receiptSites.clear()
     }
 
     override suspend fun refresh(sites: List<TerritorySite>) {
@@ -91,29 +94,43 @@ class ServerTerritoryGameProvider(
     override fun snapshot(board: TerritoryBoardState, tracking: WalkTrackingState, permitted: Boolean,
                           petNames: Map<String, String>, nowNanos: Long, screenSample: LocationSample?): TerritoryGameState {
         val location = territoryLocationEvidence(tracking, permitted, nowNanos, 10_000_000_000L, screenSample)
+        val leaseNow = leaseNowNanos()
         val cached = this.board.value.takeIf { it.ownerId == currentOwner() }
         val live = actions?.receipt?.value?.takeIf { it.operation.ownerId == currentOwner() }
         // Occupancy is durable state, not the last animation event. Include every confirmed
         // MARK (photo settlement updates its response), including restored/response-loss rows.
         val confirmed = actions?.operations?.value.orEmpty()
             .filter { it.ownerId == currentOwner() && it.kind == "MARK" && it.state == "CONFIRMED" }
-            .map { parseTerritoryClaim(checkNotNull(it.response), it.body).site }
+            .map { row ->
+                val response = checkNotNull(row.response)
+                receiptSites[row.identity]?.takeIf { it.first == response }?.second ?:
+                    parseTerritoryClaim(response, row.body).site.copy(receivedAtNanos = leaseNow).also {
+                        receiptSites[row.identity] = response to it
+                    }
+            }
             .plus(listOfNotNull(live?.claim?.site))
             .groupBy { it.siteId }.mapValues { (_, versions) -> versions.maxBy { it.version } }
         val sites = board.sites.map { site ->
             val read = cached?.sites?.get(site.id)
-            val shared = confirmed[site.id]?.takeIf { read != null && it.version > read.version } ?: read
-            val occupied = shared?.occupancy
+            val receipt = confirmed[site.id]?.takeIf { read != null && it.version > read.version &&
+                (it.seasonId == null || read.seasonId == null || it.seasonId == read.seasonId) }
+            val shared = if (receipt != null && read?.serverNowMillis != null &&
+                read.serverNowMillis >= (receipt.serverNowMillis ?: Long.MAX_VALUE))
+                receipt.copy(serverNowMillis = read.serverNowMillis, receivedAtNanos = read.receivedAtNanos)
+                else receipt ?: read
+            val expired = shared?.leaseRemainingMillis(leaseNow) == 0L
+            val occupied = shared?.occupancy?.takeUnless { expired }
             val claim = TerritoryClaimSite(site.id, occupied?.let {
                 TerritoryOccupancy(it.ownerPetId, null, null, it.certification, it.occupiedAtMillis)
             }, shared?.version ?: 0)
             val proximity = location.proximity(site, 20.0)
             TerritoryGameSite(site, claim, occupied?.ownerPetName.orEmpty(), null, proximity.distanceMeters, false,
-                occupancyKnown = shared != null,
-                occupancyReadState = if (shared != null) TerritoryOccupancyReadState.READY
+                occupancyKnown = shared != null && !expired,
+                occupancyReadState = if (expired) TerritoryOccupancyReadState.LOADING else if (shared != null) TerritoryOccupancyReadState.READY
                     else cached?.readState ?: if (currentOwner() == null) TerritoryOccupancyReadState.LOGIN_REQUIRED
                     else TerritoryOccupancyReadState.LOADING,
-                isOwnedByMe = occupied?.isMine, proximity = proximity, sharedState = shared)
+                isOwnedByMe = occupied?.isMine, proximity = proximity, sharedState = shared,
+                leaseLabel = shared?.leaseLabel(leaseNow))
         }
         val base = TerritoryGameState(enabled = true, readOnly = true,
             phase = when {
@@ -158,23 +175,33 @@ class ServerTerritoryGameProvider(
         val target = sites.firstOrNull { it.site.id == base.targetId }
         val disposition = target?.let {
             val result = unverifiedClaimDisposition(it.claim, pet.orEmpty())
-            if (it.sharedState?.policyVersion == "certified-protection-v2" && result == ClaimDisposition.POLICY_UNDECIDED)
+            if (it.sharedState?.policyVersion.requiresTerritoryChallenge() && result == ClaimDisposition.POLICY_UNDECIDED)
                 ClaimDisposition.PHOTO_REQUIRED else result
         }
-        val canMark = base.phase == TerritoryWalkPhase.WALKING && sessionReady && !locked && pet != null &&
-            target?.occupancyKnown == true && target.interaction?.access == ClaimAccess.READY && disposition == ClaimDisposition.GRANTED
+        val firstSeason = target?.sharedState?.policyVersion == FIRST_SEASON_POLICY
+        val renewals = rows.filter { it.kind == "RENEW" && it.renewalMarkIdentity() == attempt?.identity }
+        val pendingRenewal = renewals.any { it.state == "PENDING" }
+        val ownUnverified = firstSeason && target?.claim?.occupancy?.let {
+            it.ownerPetId == pet && it.certification == ClaimCertification.UNVERIFIED } == true
+        val ownVerified = firstSeason && target?.claim?.occupancy?.let {
+            it.ownerPetId == pet && it.certification == ClaimCertification.VERIFIED } == true
+        val canMark = base.phase == TerritoryWalkPhase.WALKING && sessionReady && pet != null &&
+            !pendingRenewal && photo?.photoActive() != true && target?.occupancyKnown == true &&
+            target.interaction?.access == ClaimAccess.READY &&
+            ((!locked && disposition == ClaimDisposition.GRANTED) ||
+                (ownUnverified && (attempt == null || attempt.state == "CONFIRMED" || attempt.canReplaceRejectedMark())))
         val photoRange = target?.let { location.proximity(it.site, 10.0).range == TerritoryProximityRange.IN_RANGE } == true
-        val v2 = target?.sharedState?.policyVersion == "certified-protection-v2"
+        val v2 = target?.sharedState?.policyVersion.requiresTerritoryChallenge()
         val protection = target?.sharedState?.takeIf { it.occupancy?.ownerPetId != pet }
         val protected = protection?.occupancy?.protectedUntilMillis?.let {
             protection.serverNowMillis == null || it > protection.serverNowMillis
         } == true
         val photoAllowed = (v2 && remoteClaim?.photoStatus != ClaimPhotoStatus.PENDING) || (remoteClaim?.resolutionCode == null && (remoteClaim == null || remoteClaim.photoStatus in
             setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)))
-        val canPhotograph = !protected && onlinePhotos && base.phase == TerritoryWalkPhase.WALKING && sessionReady && trusted && photoRange &&
+        val canPhotograph = !pendingRenewal && !protected && onlinePhotos && base.phase == TerritoryWalkPhase.WALKING && sessionReady && trusted && photoRange &&
             pet != null && target?.occupancyKnown == true && photo?.photoActive() != true && photoAllowed &&
             (attempt == null || attempt.state == "CONFIRMED" || attempt.canReplaceRejectedMark()) &&
-            !(disposition == ClaimDisposition.ALREADY_OWNED && target.claim.occupancy?.certification == ClaimCertification.VERIFIED)
+            !(disposition == ClaimDisposition.ALREADY_OWNED && target.claim.occupancy?.certification == ClaimCertification.VERIFIED && !firstSeason)
         val live = actions.receipt.value?.takeIf { it.operation.ownerId == owner && it.operation.sessionId == tracking.activeSessionId }
         val confirmed = live?.claim?.takeIf { acceptingReceipts && live.animate && live.eventId != ignoredReceipt &&
             (it.disposition == ClaimDisposition.GRANTED || it.photoStatus == ClaimPhotoStatus.VERIFIED) &&
@@ -187,6 +214,11 @@ class ServerTerritoryGameProvider(
                 val remaining = ((protection.occupancy!!.protectedUntilMillis!! - (protection.serverNowMillis ?: 0) - elapsed).coerceAtLeast(0) + 999) / 1000
                 if (remaining == 0L) "보호 종료 여부를 확인하고 있어요" else "인증된 영역 보호 중 · %02d:%02d 뒤 도전 가능".format(remaining / 60, remaining % 60)
             }
+            pendingRenewal -> "유지 연장 결과를 확인하고 있어요 · 연장 보상 0점"
+            photo?.photoActive() == true -> photo.photoGuidance()
+            renewals.lastOrNull()?.state == "REJECTED" -> renewals.last().renewalGuidance()
+            ownVerified && canPhotograph -> "새 사진으로 유지 시간을 연장할 수 있어요 · 연장 보상 0점"
+            ownUnverified && canMark -> "현장에서 유지 시간을 연장할 수 있어요 · 연장 보상 0점"
             v2 && canPhotograph && (remoteClaim?.resolutionCode != null || remoteClaim?.photoStatus == ClaimPhotoStatus.VERIFIED) -> "새 사진으로 다시 도전할 수 있어요"
             remoteClaim?.resolutionCode == "site_changed" -> "다른 강아지가 먼저 점령했어요 · 보호 종료 후 다시 도전해 주세요"
             photo != null && (photo.photoActive() || photo.state == "REJECTED" || photo.failure != null) -> photo.photoGuidance()
@@ -214,6 +246,8 @@ class ServerTerritoryGameProvider(
         return base.copy(readOnly = false, sites = sites, claimingPetId = pet,
             eligiblePets = tracking.activeDogIds.associateWith { petNames[it] ?: "강아지" }, petLocked = locked,
             representativeLabel = pet?.let { petNames[it] ?: "대표 강아지" }, canMark = canMark,
+            actionLabel = if (ownUnverified) "유지 연장 · 0점" else "영역표시",
+            photoActionLabel = if (ownVerified) "사진으로 유지 연장" else "영역표시 인증 촬영",
             guidance = guidance, canPhotograph = canPhotograph, onlinePhotos = onlinePhotos,
             photoStatus = if (photo?.state == "REJECTED") ClaimPhotoStatus.REJECTED else remoteClaim?.photoStatus,
             confirmedMarkId = live?.eventId.takeIf { confirmed != null }, confirmedMarkSiteId = confirmed?.site?.siteId,
@@ -233,8 +267,16 @@ class ServerTerritoryGameProvider(
         if (atMillis - fix.capturedAtMillis !in -5_000L..30_000L ||
             fix.capturedAtMillis < (tracking.activeSessionStartedAtMillis ?: Long.MAX_VALUE))
             return "정확한 현재 위치를 다시 확인해 주세요"
-        return actions.submit(tracking, siteId, checkNotNull(current.claimingPetId),
-            markBody(checkNotNull(tracking.activeSessionId), siteId, current.claimingPetId, fix))
+        val pet = checkNotNull(current.claimingPetId)
+        val session = checkNotNull(tracking.activeSessionId)
+        val request = markBody(session, siteId, pet, fix)
+        val original = actions.rows().firstOrNull { it.kind == "MARK" && it.ownerId == currentOwner() &&
+            it.sessionId == session && JSONObject(it.body).getString("site_id") == siteId && it.state == "CONFIRMED" }
+        if (current.target?.sharedState?.policyVersion == FIRST_SEASON_POLICY &&
+            current.target?.claim?.occupancy?.ownerPetId == pet && original != null) {
+            return actions.submitRenewal(tracking, original, request, current.target!!.claim.version)
+        }
+        return actions.submit(tracking, siteId, pet, request)
     }
 
     override suspend fun prepareCapture(siteId: String, board: TerritoryBoardState, tracking: WalkTrackingState,
@@ -249,7 +291,7 @@ class ServerTerritoryGameProvider(
         actions.deliver()
         val mark = actions.rows().firstOrNull { it.kind == "MARK" && it.ownerId == currentOwner() && it.sessionId == session && JSONObject(it.body).getString("site_id") == siteId && it.state == "CONFIRMED" } ?: return null
         val claim = parseTerritoryClaim(checkNotNull(mark.response), mark.body)
-        if (current.target?.sharedState?.policyVersion == "certified-protection-v2") {
+        if (current.target?.sharedState?.policyVersion.requiresTerritoryChallenge()) {
             if (actions.photos?.checkAccess(mark) != true) { refresh(board.sites); return null }
         } else if (claim.resolutionCode != null || claim.photoStatus !in setOf(ClaimPhotoStatus.NOT_SUBMITTED, ClaimPhotoStatus.REJECTED, ClaimPhotoStatus.RETRY_PENDING)) return null
         return TerritoryCaptureTarget(ClaimSession(session, mark.ownerId, JSONObject(mark.body).getString("claiming_pet_id")), siteId, claim.claimId)
@@ -266,7 +308,7 @@ class ServerTerritoryGameProvider(
         val id = java.util.UUID.randomUUID().toString()
         return actions.photos!!.reserve(tracking, mark, photoCaptureBody(id, mark.sessionId, target.siteId,
             target.session.claimingPetId, checkNotNull(tracking.latestMomentFix), atMillis),
-            current.target?.takeIf { it.sharedState?.policyVersion == "certified-protection-v2" }?.claim?.version)
+            current.target?.takeIf { it.sharedState?.policyVersion.requiresTerritoryChallenge() }?.claim?.version)
     }
 
     override fun saveCapture(captureId: String, file: java.io.File) = actions?.photos?.save(captureId, file)

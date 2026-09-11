@@ -48,7 +48,7 @@ class ScreeningRealResponseTest {
         val g = load().groups
         assertEquals(4, g.size)
         assertEquals(
-            listOf("융기·발진", "표면 변화", "결절·종괴", "미란·궤양"),
+            listOf("솟아오른 변화", "피부 표면·색·두께 변화", "깊거나 단단한 혹", "벗겨지거나 패인 상처"),
             g.map { it.name },
         )
         assertEquals(71.5f, g[0].percent, 0.05f)
@@ -59,11 +59,30 @@ class ScreeningRealResponseTest {
     }
 
     @Test
+    fun `막대 네 줄 모두에 병원에서 쓰는 이름이 온다`() {
+        // ★ 2026-09-11 — 예전에는 `group`(주장) 에만 있었다. 그러면 **확신이 낮아
+        //   group 이 null 인 날** 보호자가 병원에 들고 갈 말이 하나도 없다 —
+        //   하필 그때가 화면에 막대만 남는 때다.
+        //
+        //   ⚠️ 이 저장된 응답은 **새 서버가 내려준 것이라야** 의미가 있다. 옛 응답을
+        //      그대로 두면 이 검사가 빈 문자열을 통과시킨다.
+        val g = load().groups
+        assertTrue("labels 가 비어 있다 — 저장된 응답이 옛 서버 것인지 보라", g.all { it.labels.isNotBlank() })
+        assertEquals("묶음마다 다른 이름이어야 한다", g.size, g.map { it.labels }.toSet().size)
+    }
+
+    @Test
     fun `계열 한 줄이 온다`() {
         val line = load().group
         assertNotNull("확신이 충분한 응답이라 null 이면 안 됩니다", line)
-        assertEquals("융기·발진", line!!.name)
+        assertEquals("솟아오른 변화", line!!.name)
         assertTrue("서버가 준 문장을 그대로 씁니다", line.text.isNotBlank())
+        // ★ 실서버가 특징을 같이 보내는가 (2026-09-10). 이름만 오면 보호자가
+        //    자기 개 사진과 대조할 방법이 없습니다.
+        assertEquals("돌기, 넓게 솟은 부위, 고름이 찬 자리", line.feature)
+        assertTrue("자세히 보기 내용이 옵니다", line.detail.isNotBlank())
+        // ★ 병원에서 쓰는 이름이 오는가 (2026-09-10). 없으면 보호자가 전할 말이 없습니다.
+        assertEquals("구진·플라크·농포·여드름", line.labels)
         assertTrue("단서를 빼지 않습니다", line.caveat.isNotBlank())
         // ⚠️ 긴급도 문구가 서버에서 딸려 오면 안 됩니다 (과잉 52.4%).
         assertTrue(

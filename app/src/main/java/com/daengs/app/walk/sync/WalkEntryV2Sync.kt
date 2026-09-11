@@ -16,7 +16,7 @@ internal data class PinPending(val json: JSONObject) {
     val localVersion get() = json.getString("local_version")
 
     companion object {
-        fun from(row: WalkEntryRow, cutoffSupported: Boolean = true): PinPending {
+        fun from(row: WalkEntryRow, cutoffSupported: Boolean = true, recordingEvidence: String? = null): PinPending {
             val kind = when { row.payload == null -> "delete"; row.revision == 0 -> "create";
                 row.dirty -> "content"; else -> "pin" }
             val body = JSONObject().put("expected_revision", row.revision)
@@ -24,6 +24,8 @@ internal data class PinPending(val json: JSONObject) {
             if (kind == "create" || kind == "content") body.put("content", JSONObject(requireNotNull(row.payload)))
             if (kind == "create" || kind == "pin") body.put("pin", row.pinPayload?.let(::JSONObject) ?: JSONObject.NULL)
             if (kind == "pin") body.put("expected_pin_revision", row.pinRevision)
+            if ((kind == "create" || kind == "pin") && recordingEvidence != null)
+                body.put("recording_evidence_fingerprint", recordingEvidence)
             val pin = body.optJSONObject("pin")
             if (!cutoffSupported && pin != null && !pin.isNull("observation_cutoff_at")) {
                 fun time(key: String) = java.time.Instant.parse(pin.getString(key))
@@ -67,6 +69,22 @@ class WalkEntryV2Sync(private val dao: WalkDao, private val owner: () -> String,
         }
         val canCreate = supports("write_versions", "walk-entry-v2") &&
             supports("active_policy_versions", "action-pin-policy-v1")
+        val needsEvidence = dao.entries(sessionId).any {
+            it.isV2 && it.payload != null && (it.syncError == null || it.syncError == LEGACY_PIN_SOURCE_ERROR) &&
+                (it.dirty || it.pinDirty || it.pendingRequest != null)
+        }
+        val recordingEvidence = if (needsEvidence) {
+            if (!supports("gps_recording_versions", WalkRecordingContract.VERSION))
+                throw IOException("행동은 기기에 저장됐어요. 서버의 GPS 기록 구분 지원을 기다리고 있어요.")
+            val fixes = dao.fixes(sessionId).map { p ->
+                com.daengs.app.walk.RecordedFix(p.clientSeq, p.chainIndex, p.atMillis, p.lat, p.lng,
+                    p.accuracyM, p.isMock, recordingEligible = p.recordingEligible)
+            }
+            WalkRecordingSync { _, path, method, body -> call(path, method, body, false) }
+                .ensure(token, walkId, fixes)
+        } else null
+        if (recordingEvidence != null && dao.fixes(sessionId).any { it.recordingEligible == false })
+            dao.retryLegacyPinSourceErrors(sessionId, account)
         for (initial in dao.entries(sessionId)) {
             // The per-entry outbox also serializes a local finalization behind a lost create ACK.
             repeat(4) {
@@ -90,7 +108,7 @@ class WalkEntryV2Sync(private val dao: WalkDao, private val owner: () -> String,
                 }
                 if (row.revision == 0 && row.payload != null && row.pendingRequest == null && !canCreate) return@repeat
                 val serialized = dao.preparePinRequest(row.id, account,
-                    caps.optBoolean("pin_observation_cutoff_supported")) ?: return@repeat
+                    caps.optBoolean("pin_observation_cutoff_supported"), recordingEvidence) ?: return@repeat
                 val pending = PinPending(JSONObject(serialized))
                 val path = "/$walkId/entries/${row.id}" + when (pending.kind) {
                     "delete" -> "?expected_revision=${pending.body.getInt("expected_revision")}&mutation_id=${pending.mutation}"
@@ -108,7 +126,8 @@ class WalkEntryV2Sync(private val dao: WalkDao, private val owner: () -> String,
                     if (e.statusCode in listOf(422, 426)) {
                         dao.rejectPinRequest(row.id, serialized, account,
                             if (e.statusCode == 426) "앱 업데이트가 필요한 기록이에요. 기기의 원본은 보관하고 있어요."
-                            else "서버가 기록의 위치 근거를 확인하지 못했어요. 기기의 원본은 보관하고 있어요.")
+                            else if (recordingEvidence != null) "GPS 구분을 전달했지만 서버가 위치 근거를 확인하지 못했어요. 기기 원본은 보관하고 있어요."
+                            else LEGACY_PIN_SOURCE_ERROR)
                         return@repeat
                     }
                     if (e.statusCode !in listOf(409, 410)) throw e
@@ -130,3 +149,5 @@ class WalkEntryV2Sync(private val dao: WalkDao, private val owner: () -> String,
         return true
     }
 }
+
+internal const val LEGACY_PIN_SOURCE_ERROR = "서버가 기록의 위치 근거를 확인하지 못했어요. 기기의 원본은 보관하고 있어요."

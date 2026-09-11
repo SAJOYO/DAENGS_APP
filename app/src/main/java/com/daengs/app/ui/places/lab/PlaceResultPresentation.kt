@@ -19,10 +19,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.map.features.places.placeMarkerId
+import com.daengs.app.map.features.places.categoryLabel
 import com.daengs.app.map.features.places.toCardPresentation
 import com.daengs.app.place.*
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.places.PlaceBookmarkButton
 import kotlinx.serialization.json.*
 
 private fun PlaceSearchHit.registration(): Pair<String, String> {
@@ -35,7 +37,9 @@ private fun PlaceSearchHit.registration(): Pair<String, String> {
 }
 
 @Composable
-internal fun PlaceResultRow(hit: PlaceSearchHit, selected: Boolean, onOpen: () -> Unit) {
+internal fun PlaceResultRow(hit: PlaceSearchHit, selected: Boolean, onOpen: () -> Unit,
+    saved: Boolean? = null, onBookmark: () -> Unit = {}, bookmarkEnabled: Boolean = true,
+    bookmarkKnown: Boolean = true, showDistance: Boolean = true) {
     val (mark, registration) = hit.registration()
     Surface(onClick = onOpen, color = DaengsColors.Surface,
         modifier = Modifier.fillMaxWidth().testTag("place-result-${placeMarkerId(hit.place.key)}")) {
@@ -44,11 +48,12 @@ internal fun PlaceResultRow(hit: PlaceSearchHit, selected: Boolean, onOpen: () -
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(hit.place.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                     color = DaengsColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(hit.toCardPresentation().meta, fontSize = 12.sp, color = DaengsColors.TextSecondary)
+                Text(if (showDistance) hit.toCardPresentation().meta else categoryLabel(hit.place.match.kind) + " · 거리 미확인", fontSize = 12.sp, color = DaengsColors.TextSecondary)
                 Text("$mark $registration", fontSize = 12.sp, color = DaengsColors.TextPrimary,
                     modifier = Modifier.semantics { contentDescription = registration })
             }
-            Text("›", fontSize = 24.sp, color = if (selected) DaengsColors.BrandPrimary else DaengsColors.TextSecondary)
+            if (saved != null) PlaceBookmarkButton(hit.place.name, saved, onBookmark, bookmarkEnabled, bookmarkKnown)
+            else Text("›", fontSize = 24.sp, color = if (selected) DaengsColors.BrandPrimary else DaengsColors.TextSecondary)
         }
     }
 }
@@ -56,15 +61,21 @@ internal fun PlaceResultRow(hit: PlaceSearchHit, selected: Boolean, onOpen: () -
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlaceDetailSheet(hit: PlaceSearchHit, onDismiss: () -> Unit,
-    onAction: (String) -> Unit, actions: (@Composable (PlaceSearchHit) -> Unit)?, dogNames: Map<String, String>) {
+    onAction: (String) -> Unit, actions: (@Composable (PlaceSearchHit) -> Unit)?, dogNames: Map<String, String>,
+    saved: Boolean? = null, onBookmark: () -> Unit = {}, bookmarkEnabled: Boolean = true,
+    bookmarkKnown: Boolean = true, showDistance: Boolean = true) {
     key(hit.place.key) {
         ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = DaengsColors.Surface, contentColor = DaengsColors.TextPrimary,
             modifier = Modifier.testTag("place-detail-sheet")) {
             Column(Modifier.fillMaxWidth().heightIn(max = (LocalConfiguration.current.screenHeightDp * .72f).dp)) {
-                TextButton(onClick = onDismiss, modifier = Modifier.padding(horizontal = 8.dp)) { Text("‹ 목록으로") }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onDismiss) { Text("‹ 목록으로") }
+                    Spacer(Modifier.weight(1f))
+                    if (saved != null) PlaceBookmarkButton(hit.place.name, saved, onBookmark, bookmarkEnabled, bookmarkKnown)
+                }
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
-                    PlaceDetailContent(hit, onAction, actions, dogNames)
+                    PlaceDetailContent(hit, onAction, actions, dogNames, showDistance)
                 }
             }
         }
@@ -73,12 +84,12 @@ internal fun PlaceDetailSheet(hit: PlaceSearchHit, onDismiss: () -> Unit,
 
 @Composable
 internal fun PlaceDetailContent(hit: PlaceSearchHit, onAction: (String) -> Unit = {},
-    actions: (@Composable (PlaceSearchHit) -> Unit)? = null, dogNames: Map<String, String> = emptyMap()) {
+    actions: (@Composable (PlaceSearchHit) -> Unit)? = null, dogNames: Map<String, String> = emptyMap(), showDistance: Boolean = true) {
     val p = hit.place
     val presentation = hit.toCardPresentation()
     val (mark, registration) = hit.registration()
     Text(p.name, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-    Text(presentation.meta, Modifier.padding(top = 6.dp), fontSize = 13.sp, color = DaengsColors.TextSecondary)
+    Text(if (showDistance) presentation.meta else categoryLabel(p.match.kind) + " · 거리 미확인", Modifier.padding(top = 6.dp), fontSize = 13.sp, color = DaengsColors.TextSecondary)
     Text("$mark $registration", Modifier.padding(vertical = 16.dp).semantics { contentDescription = registration }, fontSize = 14.sp)
     HorizontalDivider(Modifier.padding(bottom = 16.dp))
     if (hit.evaluations.dogs.isNotEmpty()) {
