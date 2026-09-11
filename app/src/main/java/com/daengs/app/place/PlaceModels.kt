@@ -271,7 +271,7 @@ private fun JsonObject.toBooleanFactCoverage(): BooleanFactCoverage = BooleanFac
     unknown = getValue("unknown").jsonPrimitive.int,
 )
 
-private fun JsonObject.toPlaceSearchHit(): PlaceSearchHit = PlaceSearchHit(
+internal fun JsonObject.toPlaceSearchHit(): PlaceSearchHit = PlaceSearchHit(
     place = getValue("place").jsonObject.toPlaceResult(),
     evaluations = objectOrNull("evaluations")?.toPlaceEvaluations()
         ?: PlaceEvaluations(dogAccess = null),

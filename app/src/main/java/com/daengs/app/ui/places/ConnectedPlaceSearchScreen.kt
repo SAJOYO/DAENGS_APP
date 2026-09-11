@@ -2,6 +2,7 @@ package com.daengs.app.ui.places
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -11,11 +12,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.map.features.places.*
 import com.daengs.app.map.shell.MapHost
+import com.daengs.app.map.shell.MapCameraSnapshot
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.*
 import com.daengs.app.ui.places.lab.*
 import com.daengs.app.ui.theme.DaengsTheme
+import kotlinx.serialization.json.JsonObject
 
 /** AI 확정 결과는 서버가 실행한 응답 그대로 그린다. 일반 검색을 다시 호출하면 조건을 잃는다. */
 internal fun PlacesUiState.visibleDiscovery(): PlaceDiscoveryState {
@@ -86,7 +89,13 @@ fun ConnectedPlaceSearchScreen(
     avatarBreed: DogBreed? = null,
     /** 올린 프로필 사진. 있으면 [avatarBreed] 보다 이쪽이 앞선다. */
     avatarPhoto: android.graphics.Bitmap? = null,
+    bookmarkController: PlaceBookmarkController? = null,
 ) {
+    val bookmarks = bookmarkController ?: rememberPlaceBookmarks()
+    val saved = bookmarks?.let { key(it) { it.state.collectAsState().value } }
+    val searchList = rememberLazyListState()
+    val savedList = rememberLazyListState()
+    var searchCamera by remember { mutableStateOf<MapCameraSnapshot?>(null) }
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     val ai = state.facility.enabled
     val display = state.visibleDiscovery()
@@ -106,6 +115,18 @@ fun ConnectedPlaceSearchScreen(
         if (state.discovery.response != null) expanded = ui.expanded
     }
     val category = PlaceCategorySelection.fromKinds(display.requestedKinds)
+    if (bookmarks != null && saved != null) {
+        PlaceBookmarkFeedback(bookmarks, saved)
+        if (saved.session.tab == PlaceBrowseTab.BOOKMARKS) {
+            PlaceBookmarksScreen(bookmarks, saved, state.profiles, savedList, showMap, onCall,
+                actions = { hit -> PlaceJourneyAction(
+                    state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
+                    onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
+                    onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
+                ) }, onRefreshProfiles = onRefreshProfiles)
+            return
+        }
+    }
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
     fun search(selected: PlaceCategorySelection = category, parking: Boolean = display.preferParking, query: String? = null) {
@@ -126,6 +147,16 @@ fun ConnectedPlaceSearchScreen(
         onApply = { onAction(PlacesAction.ApplyFilters(it)) }, onDismiss = { filtersOpen = false })
     PlaceSearchLabScreen(
         state = ui, live = true, onBack = onBack,
+        bookmarks = saved?.panel(), resultsListState = searchList,
+        onBrowseTab = { tab -> if (tab == PlaceBrowseTab.BOOKMARKS) {
+            bookmarks?.enter(PlaceBrowseSnapshot(PlaceBrowseFilters(
+                kinds = display.requestedKinds.toSet(), name = display.nameQuery,
+                origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
+                dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
+                requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
+            ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera), state.profiles.snapshots())
+        } },
+        onToggleBookmark = { bookmarks?.toggle(it) }, onRetryBookmarks = { bookmarks?.refresh() },
         onEdit = { draft = it }, showAiToggle = false,
         onSubmit = {
             when {
@@ -188,6 +219,7 @@ fun ConnectedPlaceSearchScreen(
                 if (showMap) MapHost(
                     scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
                     searchOrigin = display.origin, followDevice = follow,
+                    initialCamera = searchCamera, onCameraSnapshot = { searchCamera = it },
                     // 내 위치는 점, 검색 도우미는 하단 고정 버튼으로 역할을 분리한다.
                     onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
                     onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },

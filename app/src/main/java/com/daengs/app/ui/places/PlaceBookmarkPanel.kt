@@ -30,6 +30,9 @@ data class PlaceBookmarkPanelState(
     val phase: PlaceBookmarkPhase = PlaceBookmarkPhase.LOADING,
     val hasFilters: Boolean = true,
     val allRegions: Boolean = false,
+    val busy: Boolean = false,
+    val errorText: String? = null,
+    val distanceAvailable: Boolean = true,
 )
 
 /** Tabs share the handle row, preserving the map rather than adding a second navigation strip. */
@@ -78,7 +81,7 @@ internal fun PlaceBookmarkEmpty(state: PlaceBookmarkPanelState, onSearch: () -> 
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(when {
             state.phase == PlaceBookmarkPhase.LOADING -> "찜한 시설을 불러오는 중…"
-            state.phase == PlaceBookmarkPhase.FAILED -> "찜한 시설을 불러오지 못했어요."
+            state.phase == PlaceBookmarkPhase.FAILED -> state.errorText ?: "찜한 시설을 불러오지 못했어요."
             state.totalSaved == 0 -> "아직 찜한 시설이 없어요."
             else -> "이 조건에 맞는 찜이 없어요."
         }, fontSize = 13.sp)
@@ -95,10 +98,10 @@ internal fun PlaceBookmarkEmpty(state: PlaceBookmarkPanelState, onSearch: () -> 
 }
 
 @Composable
-internal fun PlaceBookmarkButton(name: String, saved: Boolean, onToggle: () -> Unit) {
-    IconToggleButton(checked = saved, onCheckedChange = { onToggle() }, modifier = Modifier.size(48.dp)
-        .semantics { contentDescription = "$name ${if (saved) "찜 해제" else "찜하기"}" }) {
-        Text(if (saved) "♥" else "♡", fontSize = 25.sp,
+internal fun PlaceBookmarkButton(name: String, saved: Boolean, onToggle: () -> Unit, enabled: Boolean = true, known: Boolean = true) {
+    IconToggleButton(checked = saved && known, enabled = enabled, onCheckedChange = { onToggle() }, modifier = Modifier.size(48.dp)
+        .semantics { contentDescription = "$name ${if (!known) "찜 상태 확인" else if (saved) "찜 해제" else "찜하기"}" }) {
+        Text(if (!known) "?" else if (saved) "♥" else "♡", fontSize = 25.sp,
             color = if (saved) DaengsColors.BrandPrimary else DaengsColors.TextSecondary)
     }
 }

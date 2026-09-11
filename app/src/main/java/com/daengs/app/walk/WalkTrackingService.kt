@@ -21,6 +21,9 @@ import com.daengs.app.location.LocationSource
 import com.daengs.app.miniroom.OutsideApi
 import com.daengs.app.miniroom.OutsideTime
 import com.daengs.app.walk.sync.WalkDeliveryScheduler
+import com.daengs.app.walk.display.DisplayLifecycle
+import com.daengs.app.walk.display.MotionDisplay
+import com.daengs.app.walk.display.WalkSpeedRuntime
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +53,8 @@ class WalkTrackingService : Service() {
     private var ingress: WalkIngress? = null
     private var subscription: com.daengs.app.location.LocationSubscription? = null
     private var projectionJob: kotlinx.coroutines.Job? = null
+    private var speedRuntime: WalkSpeedRuntime? = null
+    private var speedTickJob: kotlinx.coroutines.Job? = null
     private var boundaryJob: kotlinx.coroutines.Job? = null
     private var transitioning = false
     private var pendingStopStartId: Int? = null
@@ -110,6 +115,7 @@ class WalkTrackingService : Service() {
 
     override fun onDestroy() {
         ingress?.seal("INTERRUPTED")
+        speedRuntime?.onLifecycle(DisplayLifecycle.FINISHED, SystemClock.elapsedRealtimeNanos())
         val closingSubscription = subscription
         (application as DaengsApp).walkRuntime.recordingScope.launch {
             runCatching { kotlinx.coroutines.withTimeout(10_000) { closingSubscription?.close() } }
@@ -158,6 +164,7 @@ class WalkTrackingService : Service() {
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 pauseTiming()
+                speedRuntime?.onLifecycle(DisplayLifecycle.PAUSED, SystemClock.elapsedRealtimeNanos())
                 store.publish(trackingState(recorder.pause(), errorMessage = error.message ?: "위치 기록을 시작하지 못했어요."))
             } finally { transitioning = false; publishTransition() }
         }
@@ -186,6 +193,7 @@ class WalkTrackingService : Service() {
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 pauseTiming()
+                speedRuntime?.onLifecycle(DisplayLifecycle.PAUSED, SystemClock.elapsedRealtimeNanos())
                 store.publish(trackingState(recorder.pause(), errorMessage = error.message ?: "위치 기록을 재개하지 못했어요."))
             } finally { transitioning = false; publishTransition() }
         }
@@ -202,6 +210,8 @@ class WalkTrackingService : Service() {
         val runtime = (application as DaengsApp).walkRuntime
         val epoch = RecordingEpoch(UUID.randomUUID().toString(), id, clockEpochId, chainIndex,
             System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(), ingressSequence.get())
+        speedRuntime?.begin(epoch, SystemClock.elapsedRealtimeNanos())
+        publishSpeed()
         val stream = WalkIngress(epoch, ingressSequence, runtime.recordingScope,
             SystemClock::elapsedRealtimeNanos, System::currentTimeMillis,
             persist = { writer.appendObserved(id, it).await() },
@@ -234,10 +244,14 @@ class WalkTrackingService : Service() {
         while (sessionId == id) {
             val fixes = log.observationsAfter(id, projectionCursor, 128)
             if (fixes.isEmpty()) break
+            // Include cached/ineligible observations so engine references remain contiguous.
+            // This read-only projection catches its own faults; raw and legacy recording continue.
+            speedRuntime?.observations(fixes, SystemClock.elapsedRealtimeNanos())
             for (fix in fixes) {
                 if (fix.recordingEligible != false) acceptCommittedLocation(fix)
                 projectionCursor = requireNotNull(fix.ingressSeq)
             }
+            publishSpeed()
         }
     }
 
@@ -247,6 +261,9 @@ class WalkTrackingService : Service() {
         pauseTiming()
         val stream = ingress
         val boundary = stream?.seal(if (stop) "STOP" else "PAUSE")
+        speedRuntime?.onLifecycle(if (stop) DisplayLifecycle.FINISHED else DisplayLifecycle.PAUSED,
+            SystemClock.elapsedRealtimeNanos())
+        if (stop) speedTickJob?.cancel()
         val cutoff = if (stop && recorder.snapshot().state == TrackingState.PAUSED) System.currentTimeMillis()
             else boundary?.endedAtMillis ?: System.currentTimeMillis()
         store.publish(trackingState(recorder.snapshot(), finishingSessionId = id.takeIf { stop }))
@@ -261,6 +278,7 @@ class WalkTrackingService : Service() {
                 val receipt = kotlinx.coroutines.withTimeout(30_000) { stream?.drain() }
                 projectionJob?.cancelAndJoin()
                 projectStored(id)
+                receipt?.let { speedRuntime?.drained(it) }
                 check(receipt == null || receipt.failureReason == null) { "원본 전달에 실패한 산책은 완료할 수 없어요." }
                 writer.ordered { (application as DaengsApp).actionPins.finishSession(id, cutoff) }.await()
                 writer.flush()
@@ -420,6 +438,15 @@ class WalkTrackingService : Service() {
             ingressSequence.set(0)
             projectionCursor = -1L
             chainIndex = 0
+            speedRuntime = WalkSpeedRuntime(id) { error -> Log.w(TAG, "속도 표시 계산을 중단합니다. 원본 기록은 계속합니다.", error) }
+            speedTickJob?.cancel()
+            speedTickJob = serviceScope.launch {
+                while (sessionId == id) {
+                    kotlinx.coroutines.delay(1_000)
+                    speedRuntime?.tick(SystemClock.elapsedRealtimeNanos())
+                    publishSpeed()
+                }
+            }
             directPinRef = null
             writer.openSession(
                 RecordedSession(
@@ -536,6 +563,11 @@ class WalkTrackingService : Service() {
         activeSinceRealtimeMillis = null
     }
 
+    private fun publishSpeed() {
+        val display = speedRuntime?.display?.value ?: return
+        if (store.state.value.motionDisplay != display) store.publish(store.state.value.copy(motionDisplay = display))
+    }
+
     private fun trackingState(
         trail: TrailSnapshot,
         lastSample: LocationSample? = store.state.value.lastSample,
@@ -561,6 +593,7 @@ class WalkTrackingService : Service() {
         finishingSessionId = finishingSessionId,
         completedSessionId = completedSessionId,
         stayStamps = stayRecorder.snapshot(),
+        motionDisplay = speedRuntime?.display?.value ?: MotionDisplay(),
     )
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {

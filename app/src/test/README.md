@@ -42,6 +42,7 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 | 장소 검색·자연어 시설 검색 | `com.daengs.app.place.*`, `com.daengs.app.ui.places.*`, `com.daengs.app.map.features.places.*`, `com.daengs.app.map.layers.places.*` | 챗봇 제안은 `com.daengs.app.assistant.PlaceSuggestionsTest`, `com.daengs.app.ui.chat.PlaceSuggestionCardTest`; 경로 인계는 Journey |
 | Journey·지도 인계 | `com.daengs.app.journey.*`, `com.daengs.app.map.features.journey.*` | 장소 선택·상태 복귀를 바꾸면 `com.daengs.app.ui.places.PlaceSessionCoordinatorTest` |
 | 산책 코어·GPS·기록 | `com.daengs.app.walk.*`, `com.daengs.app.location.*` | 화면은 `com.daengs.app.ui.walk.*`; 지도 표현은 다음 행. 핀·사진·일기만 바꾸면 아래 좁은 묶음 사용 |
+| 속도 표시 상태·GPS 표시 안정화 | `com.daengs.app.walk.display.*` | `com.daengs.app.walk.WalkSpeedServiceTest`, `com.daengs.app.ui.walk.MotionSpeedometerTest`, `com.daengs.app.ui.walk.WalkScreenPolicyTest`, `com.daengs.app.ui.walk.WalkViewModelTest`; 서비스→Room→표시, 재진입·고정 크기·기존 제어 경계 |
 | 산책 지도·스타일·공통 지도 상태 | `com.daengs.app.map.style.*`, `com.daengs.app.map.shell.*`, `com.daengs.app.map.layers.trail.*`, `com.daengs.app.map.layers.completedroute.*`, `com.daengs.app.map.layers.stays.*`, `com.daengs.app.map.provider.naver.*` | 속도·GPS 안내·완료 경로는 `com.daengs.app.ui.walk.WalkSpeedometerTest`, `com.daengs.app.ui.walk.WalkGpsPresentationTest`, `com.daengs.app.ui.walk.WalkCompletedRoutePresentationTest` |
 | 전봇대 점령·사진 인증·활동 | `com.daengs.app.territory.*`, `com.daengs.app.activity.*`, `com.daengs.app.map.features.territory.*`, `com.daengs.app.map.layers.territory.*` | 화면 상태는 `com.daengs.app.ui.walk.WalkViewModelTest`, `com.daengs.app.ui.walk.WalkTerritoryUiTest`, `com.daengs.app.ui.walk.Territory*` |
 | 대화·어시스턴트·돌봄 | `com.daengs.app.chat.*`, `com.daengs.app.assistant.*`, `com.daengs.app.care.*`, `com.daengs.app.ui.chat.*`, `com.daengs.app.ui.storage.*` | 장소·산책 제안 계약은 해당 기능 소비자도 확인. 서버 모델의 답변 품질은 별도 범위 |
@@ -49,6 +50,20 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 | 홈·미니룸·카드·도감·공통 UI | `com.daengs.app.miniroom.*`, `com.daengs.app.dogcard.*`, `com.daengs.app.ui.home.*`, `com.daengs.app.ui.dogcard.*`, `com.daengs.app.ui.dex.*`, `com.daengs.app.ui.theme.*`, `com.daengs.app.ui.AvatarSourceTest` | 카드 DB 변경은 `com.daengs.app.dogcard.store.CardMigrationTest`; 그림·애니메이션은 실기기 확인도 필요 |
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
+
+## GPS 이동 정책 엔진 (#294)
+
+`com.daengs.app.walk.motion.*`는 Android 없는 순수 엔진의 동결 정책, 위치·속도 품질,
+고속 뒤 재진입·구간 장벽, 작은 보폭 누적, 시각 역행·중복·누락, 개별/배치 재생 일치와
+제한된 관측 창을 검증한다. `RecordedMotionReplayTest`는 #283 완료 epoch와 원본 번호를
+대조한다. 원본/epoch 계약을 바꾸면 `RecordingJournalTest`, `RecordingCompletionTest`도
+선택한다. legacy reader를 바꾸면 `TrailRecorderTest`, `WalkSummaryTest`를 추가한다.
+#307의 `WalkSpeedRuntimeTest`와 `WalkSpeedServiceTest`는 운영 속도 표시 연결을 검사한다.
+거리·요약은 기존 계산이며, 이 테스트가 실기기 주행 검증은 아니다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'
+```
 
 ## 점령 게임 성적 화면·규칙 팝업
 

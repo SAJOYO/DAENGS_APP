@@ -15,7 +15,7 @@ import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.ui.theme.DaengsTheme
 
-/** Debug 전용: 실제 지도 렌더러에 가상 3개 장소만 전달한다. 점령 API/GPS 기록 없음. */
+/** Debug 전용: 실제 지도 렌더러에 소유/인증별 가상 5개 장소. 점령 API/GPS 기록 없음. */
 class TerritoryPoleLabActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,17 +26,21 @@ class TerritoryPoleLabActivity : ComponentActivity() {
 @Composable
 private fun TerritoryPoleLab() {
     var selected by remember { mutableStateOf<String?>(null) }
-    var firstState by remember { mutableStateOf(TerritoryMarkerOccupancy.NEUTRAL) }
+    var firstStyle by remember { mutableStateOf(TerritoryPoleStyle.NEUTRAL) }
     var feedback by remember { mutableStateOf<TerritoryFeedback?>(null) }
     val center = remember { GeoPoint(37.545, 127.04) }
-    val states = listOf(firstState, TerritoryMarkerOccupancy.UNVERIFIED, TerritoryMarkerOccupancy.VERIFIED)
-    val sites = states.mapIndexed { index, occupancy ->
-        TerritorySiteMarkerState("pole-$index", GeoPoint(center.latitude, center.longitude + (index - 1) * .00025),
-            selected = selected == "pole-$index", occupancy = occupancy, occupancyKnown = true,
-            label = when (occupancy) {
-                TerritoryMarkerOccupancy.NEUTRAL -> "기본"
-                TerritoryMarkerOccupancy.UNVERIFIED -> "점령 · 미인증"
-                TerritoryMarkerOccupancy.VERIFIED -> "점령 · 인증"
+    val styles = listOf(firstStyle) + TerritoryPoleStyle.entries.drop(1)
+    val offsets = listOf(0.0 to 0.0, .00018 to -.00023, .00018 to .00023,
+        -.00018 to -.00023, -.00018 to .00023)
+    val sites = styles.mapIndexed { index, style ->
+        TerritorySiteMarkerState("pole-$index", GeoPoint(center.latitude + offsets[index].first, center.longitude + offsets[index].second),
+            selected = selected == "pole-$index", occupancy = style.occupancy, isMine = style.isMine, occupancyKnown = true,
+            label = when (style) {
+                TerritoryPoleStyle.NEUTRAL -> "미점유"
+                TerritoryPoleStyle.MINE_UNVERIFIED -> "내 미인증"
+                TerritoryPoleStyle.MINE_VERIFIED -> "내 인증"
+                TerritoryPoleStyle.OTHER_UNVERIFIED -> "상대 미인증"
+                TerritoryPoleStyle.OTHER_VERIFIED -> "상대 인증"
             }, radiusMeters = 10.0.takeIf { selected == "pole-$index" },
             feedback = feedback?.takeIf { it.siteId == "pole-$index" })
     }
@@ -44,21 +48,22 @@ private fun TerritoryPoleLab() {
         Text("개발용 · 가상 장소 / 실제 지도", Modifier.padding(12.dp))
         Row {
             TextButton(onClick = {
-                firstState = TerritoryMarkerOccupancy.entries[(firstState.ordinal + 1) % 3]
+                firstStyle = TerritoryPoleStyle.entries[(firstStyle.ordinal + 1) % TerritoryPoleStyle.entries.size]
                 selected = "pole-0"
                 val now = System.nanoTime()
-                feedback = TerritoryFeedback(now, "pole-0", when (firstState) {
+                feedback = TerritoryFeedback(now, "pole-0", when (firstStyle.occupancy) {
                     TerritoryMarkerOccupancy.NEUTRAL -> TerritoryFeedbackKind.READY
                     TerritoryMarkerOccupancy.UNVERIFIED -> TerritoryFeedbackKind.MARKED
                     TerritoryMarkerOccupancy.VERIFIED -> TerritoryFeedbackKind.VERIFIED
                 }, now)
-            }) { Text("왼쪽 상태 전환") }
+            }) { Text("가운데 상태 전환") }
             TextButton(onClick = { selected = null; feedback = null }) { Text("선택 해제") }
         }
         MapHost(scene = MapScene(territorySites = sites), searchOrigin = null, followDevice = false,
             centerOn = center, centerZoom = 18.0,
             onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
             onSelectTerritorySite = { selected = it; feedback = null },
+            onMapTap = { selected = null; feedback = null },
             modifier = Modifier.fillMaxWidth().weight(1f))
     }
 }

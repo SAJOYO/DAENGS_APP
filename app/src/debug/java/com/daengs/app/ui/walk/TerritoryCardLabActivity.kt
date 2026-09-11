@@ -65,10 +65,11 @@ private fun TerritoryCardLab(showMap: Boolean = true) {
             if (showMap) MapHost(scene = MapScene(territorySites = listOf(TerritorySiteMarkerState(target.site.id, point,
                 selected = selected, occupancy = when (kind) { 0 -> TerritoryMarkerOccupancy.NEUTRAL
                     1 -> TerritoryMarkerOccupancy.VERIFIED; else -> TerritoryMarkerOccupancy.UNVERIFIED },
-                occupancyKnown = true, label = target.occupancyLabel, radiusMeters = 20.0.takeIf { selected }))),
+                occupancyKnown = true, isMine = kind == 2, label = target.occupancyLabel, radiusMeters = 20.0.takeIf { selected }))),
                 searchOrigin = null, followDevice = false, centerOn = point, centerZoom = 18.0,
                 bottomPaddingPx = if (selected) cardPixels else 0,
                 onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {}, onSelectTerritorySite = { selected = true },
+                onMapTap = { selected = false },
                 modifier = Modifier.fillMaxSize())
             if (selected) TerritoryActionCard(game, onMark = { message = "일반 점령 콜백 · 서버 요청 없음" },
                 modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { cardPixels = it.height }

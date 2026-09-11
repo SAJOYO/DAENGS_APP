@@ -46,6 +46,29 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkViewModelTest {
+    @Test fun `service speed survives inactive screen and new view model without recording commands`() = runTest {
+        val display = com.daengs.app.walk.display.MotionDisplay(1.5,
+            com.daengs.app.walk.display.DisplayFreshness.LIVE, com.daengs.app.walk.display.DisplaySignal.RECEIVING)
+        val tracking = WalkTrackingState(activeSessionId = "walk", trail = TrailSnapshot(state = TrackingState.RECORDING),
+            motionDisplay = display)
+        val controller = FakeWalkController().apply { publish(tracking) }
+        val first = viewModel(controller, CountingLocationSource())
+        first.activate(true, true); runCurrent()
+        first.deactivate(); runCurrent()
+        val delayed = display.copy(freshness = com.daengs.app.walk.display.DisplayFreshness.STALE,
+            signal = com.daengs.app.walk.display.DisplaySignal.DELAYED)
+        controller.publish(tracking.copy(motionDisplay = delayed)); runCurrent()
+        first.activate(true, true); runCurrent()
+        assertEquals(delayed, first.state.value.tracking.motionDisplay)
+        first.deactivate()
+        val recreated = viewModel(controller, CountingLocationSource())
+        recreated.activate(true, true); runCurrent()
+        assertEquals(delayed, recreated.state.value.tracking.motionDisplay)
+        recreated.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
+        assertEquals(delayed, recreated.state.value.tracking.motionDisplay)
+        assertEquals(emptyList<String>(), controller.sessionCommands)
+    }
+
     @Test fun `game map entry and screen reentry preserve active walk and participants`() = runTest {
         val recording = WalkTrackingState(ownerId = "user", activeSessionId = "walk-running",
             activeDogIds = listOf("dog-1", "dog-2"), trail = TrailSnapshot(state = TrackingState.RECORDING))
@@ -327,7 +350,7 @@ class WalkViewModelTest {
         vm.activate(true, true); vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
         vm.onAction(WalkAction.SelectTerritorySite("A")); runCurrent()
         vm.onAction(WalkAction.MarkTerritory("A")); runCurrent()
-        vm.onAction(WalkAction.ClearTerritory); runCurrent()
+        vm.onAction(WalkAction.MapTapped(GeoPoint(37.501, 127.001))); runCurrent()
         stored.complete("saved"); runCurrent()
         assertEquals(null, vm.state.value.territory.selectedSiteId)
         assertEquals(null, vm.state.value.momentNotice)

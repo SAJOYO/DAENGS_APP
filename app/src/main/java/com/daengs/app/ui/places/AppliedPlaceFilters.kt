@@ -17,6 +17,10 @@ internal data class AppliedPlaceFilters(
 }
 
 internal fun ConversationResult.appliedPlaceFilters(): AppliedPlaceFilters {
+    return filters.getValue("hard").jsonObject.appliedHardFilters()
+}
+
+internal fun JsonObject.appliedHardFilters(): AppliedPlaceFilters {
     fun JsonElement.condition(): AppliedFilter {
         val atom = jsonObject
         val value = atom.getValue("value")
@@ -32,7 +36,7 @@ internal fun ConversationResult.appliedPlaceFilters(): AppliedPlaceFilters {
         }
         return AppliedFilter(atom.getValue("id").jsonPrimitive.content, label)
     }
-    val hard = filters.getValue("hard").jsonObject
+    val hard = this
     return AppliedPlaceFilters(
         hard.getValue("all").jsonArray.map { it.condition() },
         hard.getValue("any").jsonArray.map { branch -> branch.jsonObject.let {

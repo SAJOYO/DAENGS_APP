@@ -22,7 +22,8 @@ data class TerritoryFeedbackFrame(val markerScale: Float = 1f, val glow: Float =
 fun territoryFeedbackFrame(kind: TerritoryFeedbackKind?, progress: Float): TerritoryFeedbackFrame {
     if (kind == null || progress !in 0f..1f || progress == 1f) return TerritoryFeedbackFrame()
     val pulse = sin(Math.PI * progress).toFloat()
-    return TerritoryFeedbackFrame((1f + .18f * pulse).coerceAtMost(1.18f), pulse,
+    val scale = if (kind == TerritoryFeedbackKind.READY) 1f else (1f + .18f * pulse).coerceAtMost(1.18f)
+    return TerritoryFeedbackFrame(scale, pulse,
         if (kind == TerritoryFeedbackKind.READY) 0f else (pulse * 1.6f).coerceAtMost(1f),
         .8f + .35f * progress)
 }

@@ -20,7 +20,7 @@ internal data class OwnedMapPresentation(
 )
 
 @Composable
-internal fun OwnedTerritoryMap(value: OwnedMapPresentation, onSelect: (String) -> Unit, onCamera: (MapCameraSnapshot) -> Unit) {
+internal fun OwnedTerritoryMap(value: OwnedMapPresentation, onSelect: (String?) -> Unit, onCamera: (MapCameraSnapshot) -> Unit) {
     if (LocalInspectionMode.current) {
         Box(Modifier.fillMaxSize().background(PinkSoft), contentAlignment = Alignment.Center) {
             Text("내 점령지 지도 · ${value.scene.territorySites.size}곳", color = TextDark)
@@ -28,10 +28,10 @@ internal fun OwnedTerritoryMap(value: OwnedMapPresentation, onSelect: (String) -
     } else MapHost(
         scene = value.scene, searchOrigin = null, followDevice = false,
         centerOn = value.centerOn, cameraRequestKey = value.requestKey,
-        fitBounds = value.scene.territorySites.map { it.point }.takeIf { value.centerOn == null },
+        fitBounds = value.scene.territorySites.map { it.point }.takeIf { value.centerOn == null && value.camera == null },
         keepSelectionVisible = true,
         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-        onSelectTerritorySite = onSelect, modifier = Modifier.fillMaxSize(),
+        onSelectTerritorySite = { onSelect(it) }, onMapTap = { onSelect(null) }, modifier = Modifier.fillMaxSize(),
         initialCamera = value.camera, onCameraSnapshot = onCamera,
     )
 }
