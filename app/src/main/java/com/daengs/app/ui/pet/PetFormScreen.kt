@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.daengs.app.ui.common.KeepScrollInside
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
@@ -737,25 +738,6 @@ private fun BreedCell(
     }
 }
 
-/**
- * 상자 안의 스크롤을 **밖으로 넘기지 않는다.**
- *
- * 기본 동작은 안쪽이 끝에 닿으면 남은 만큼을 부모가 받는다. 그러면 견종을 훑다가
- * 마지막 줄에서 손가락이 조금 더 가는 순간 **폼 전체가 따라 움직여서** 보고 있던
- * 견종이 화면 밖으로 나간다. 한 번의 드래그가 두 가지를 움직이면 지금 어느 쪽을
- * 만지는 중인지 알 수 없다.
- *
- * 남은 스크롤과 남은 관성을 여기서 다 먹는다. 폼은 상자 **밖**을 끌어서 움직인다.
- */
-private val KeepScrollInside = object : NestedScrollConnection {
-    override fun onPostScroll(
-        consumed: Offset,
-        available: Offset,
-        source: NestedScrollSource,
-    ): Offset = available
-
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
-}
 
 /** 한 줄에 넷. 다섯이면 "래브라도 리트리버" 가 석 줄이 되고, 셋이면 폼이 너무 길어진다. */
 private const val BREED_COLUMNS = 4
