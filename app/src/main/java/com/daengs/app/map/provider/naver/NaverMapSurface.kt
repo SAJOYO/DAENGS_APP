@@ -219,18 +219,21 @@ fun NaverMapSurface(
         naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx, keepSelectionVisible)
     }
 
-    // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
+    // Capture SDK defaults before applying any portrait, so removing one cannot leave an old face.
+    val defaultLocationIcon = remember(naverMap) {
+        naverMap?.locationOverlay?.let { Triple(it.icon, it.iconWidth, it.iconHeight) }
+    }
+    // 산책은 기본 발바닥 리소스를 넘긴다. 얼굴을 요청하지 않는 장소 지도는 SDK 점을 쓴다.
     LaunchedEffect(naverMap, avatarRes, avatarPhoto) {
         val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
+        val defaults = defaultLocationIcon ?: return@LaunchedEffect
         overlay.circleColor = LOCATION_CIRCLE
         // **올린 사진이 앞선다.** 앱의 다른 얼굴이 다 그 규칙이라(`avatarSource`),
         // 지도만 견종 그림이면 같은 아이가 화면마다 다르게 보인다.
-        val bitmap = avatarPhoto?.let { circularAvatarBitmap(it, AVATAR_PX, AVATAR_RING_PX) }
-            ?: avatarRes?.let { circularAvatarBitmap(context, it, AVATAR_PX, AVATAR_RING_PX) }
-            ?: return@LaunchedEffect
-        overlay.icon = OverlayImage.fromBitmap(bitmap)
-        overlay.iconWidth = AVATAR_PX
-        overlay.iconHeight = AVATAR_PX
+        val bitmap = locationAvatarBitmap(context, avatarPhoto, avatarRes, AVATAR_PX, AVATAR_RING_PX)
+        overlay.icon = bitmap?.let(OverlayImage::fromBitmap) ?: defaults.first
+        overlay.iconWidth = if (bitmap == null) defaults.second else AVATAR_PX
+        overlay.iconHeight = if (bitmap == null) defaults.third else AVATAR_PX
     }
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —

@@ -111,7 +111,7 @@ fun WalkScreen(
     val face = walkFaceOverride(state.selection.pets, state.selection.selectedDogIds)
     // **사진과 견종을 같이 옮긴다.** 사진만 바꾸면, 그 아이가 사진을 안 올렸을 때
     // 대표의 견종 그림이 남아서 반쯤 다른 아이가 된다.
-    val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
+    val faceRes = walkFacePortraitRes(face, avatarBreed)
     val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
 
     val mapPresentation = state.toMapPresentation()

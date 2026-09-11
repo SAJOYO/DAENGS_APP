@@ -106,3 +106,8 @@ fun walkFaceOverride(pets: List<Pet>, selected: Set<String>): Pet? {
     if (picked.any { it.isPrimary }) return null
     return picked.first()
 }
+
+/** Unknown breed is a paw, never another dog's portrait or an accidental SDK blue dot. */
+internal fun walkFacePortraitRes(selectedPet: Pet?, defaultBreed: com.daengs.app.miniroom.art.DogBreed?): Int =
+    (if (selectedPet == null) defaultBreed else selectedPet.breedArt)?.portraitRes
+        ?: com.daengs.app.R.drawable.ic_location_paw
