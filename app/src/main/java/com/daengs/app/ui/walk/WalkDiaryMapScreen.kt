@@ -40,6 +40,8 @@ internal fun WalkDiaryMapScreen(
     origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
 ) {
     val app = LocalContext.current.applicationContext as DaengsApp
+    val backupAccount by app.sessionProvider.accountScope.collectAsState()
+    val backupSource = remember(app, backupAccount) { app.routeBackupSource(backupAccount) }
     val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
         app.tokenStore.load()?.appUserId.orEmpty()
     } }
@@ -200,6 +202,9 @@ internal fun WalkDiaryMapScreen(
                 },
                 summaryContent = { detail?.summary?.let { summary ->
                     WalkSessionSummary(summary, pets.filter { it.id in summary.dogIds }.map { it.name })
+                    key(sessionId, backupAccount) {
+                        backupSource?.let { WalkRouteBackupStatus(sessionId, it) }
+                    }
                 } },
                 onOverview = { explorer.overview(); requestCamera(null) },
                 modifier = Modifier.weight(1f), map = { viewport ->

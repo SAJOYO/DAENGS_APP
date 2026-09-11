@@ -51,7 +51,7 @@ class WalkSessionDetailUiTest {
             DaengsTheme {
                 WalkDiaryMapContent(emptyList(), null, false, null, {}, {}, {}, {}, {}, {},
                     title = "저장된 산책", backLabel = WalkSessionOrigin.COMPLETION.backLabel,
-                    summaryContent = { WalkSessionSummary(summary) },
+                    summaryContent = { WalkSessionSummary(summary); WalkRouteBackupNotice(com.daengs.app.walk.sync.WalkRouteBackupState.PENDING, onRequest = {}) },
                     explorerSelected = explorer.panelOpen, onChooseExplorer = explorer::choosePanel,
                     explorerPanel = { WalkRouteExplorerPanel(explorer, {}) },
                     map = {
@@ -88,7 +88,8 @@ class WalkSessionDetailUiTest {
                     WalkDiaryMapContent(emptyList(), null, false, null, {}, {}, {}, {}, {}, {},
                         title = "두부와 함께 남긴 저녁 산책",
                         summaryContent = { WalkSessionSummary(WalkSummary("s", emptyList(), 0, 1_800_000,
-                            null, 1_200.0, 1_800_000, emptyList(), null), listOf("두부")) },
+                            null, 1_200.0, 1_800_000, emptyList(), null), listOf("두부"))
+                            WalkRouteBackupNotice(com.daengs.app.walk.sync.WalkRouteBackupState.NEEDS_RETRY, onRequest = {}) },
                         explorerPanel = { androidx.compose.material3.Text("동선 탐색") },
                         map = { Box(Modifier.fillMaxSize().background(Color.LightGray).testTag("session-map")) })
                 }
@@ -98,6 +99,7 @@ class WalkSessionDetailUiTest {
         compose.onNodeWithText("장면 0").assertIsDisplayed()
         compose.onNodeWithText("동선 탐색").assertIsDisplayed()
         compose.onNodeWithTag("session-map").assertIsDisplayed()
+        compose.onNodeWithTag("route-backup-request").assertIsDisplayed()
         capture("walk-session-small")
     }
 
