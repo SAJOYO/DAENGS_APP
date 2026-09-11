@@ -59,6 +59,19 @@ class ScreeningRealResponseTest {
     }
 
     @Test
+    fun `막대 네 줄 모두에 병원에서 쓰는 이름이 온다`() {
+        // ★ 2026-09-11 — 예전에는 `group`(주장) 에만 있었다. 그러면 **확신이 낮아
+        //   group 이 null 인 날** 보호자가 병원에 들고 갈 말이 하나도 없다 —
+        //   하필 그때가 화면에 막대만 남는 때다.
+        //
+        //   ⚠️ 이 저장된 응답은 **새 서버가 내려준 것이라야** 의미가 있다. 옛 응답을
+        //      그대로 두면 이 검사가 빈 문자열을 통과시킨다.
+        val g = load().groups
+        assertTrue("labels 가 비어 있다 — 저장된 응답이 옛 서버 것인지 보라", g.all { it.labels.isNotBlank() })
+        assertEquals("묶음마다 다른 이름이어야 한다", g.size, g.map { it.labels }.toSet().size)
+    }
+
+    @Test
     fun `계열 한 줄이 온다`() {
         val line = load().group
         assertNotNull("확신이 충분한 응답이라 null 이면 안 됩니다", line)

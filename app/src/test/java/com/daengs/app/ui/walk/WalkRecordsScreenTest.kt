@@ -242,10 +242,20 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-view-walks").performClick()
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
         assertEquals(1, calls.get())
-        release.complete(Unit)
+        compose.onNodeWithTag("records-view-overview").performClick()
+        // Finish the pending tab round trip before releasing the background response. Otherwise
+        // its failure races the next touch/measure pass in Robolectric instead of testing retention.
+        waitText("흔적을 불러오고 있어요.")
+        assertEquals(1, calls.get())
+        compose.runOnIdle { release.complete(Unit) }
+        waitText("흔적을 불러오지 못했어요. 산책 기록과 행동 위치는 그대로 볼 수 있어요.")
+        compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
+        compose.onNodeWithTag("records-view-walks").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("흔적을 불러오지 못했어요. 산책 기록과 행동 위치는 그대로 볼 수 있어요.")
         compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
+        assertEquals(1, calls.get())
         compose.onNodeWithTag("records-traces-refresh").performClick()
         waitText("흔적 없음 1회 · 계산 대기 1회")
         compose.onNodeWithTag("records-behavior-view-traces").performClick()

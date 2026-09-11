@@ -7,6 +7,7 @@ import com.daengs.app.auth.*
 import com.daengs.app.territory.bookmarks.*
 import com.daengs.app.ui.game.owned.*
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.territory.support.bookmarkJson
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test

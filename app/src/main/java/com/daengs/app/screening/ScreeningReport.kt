@@ -97,7 +97,23 @@ data class ScreeningReport(
      * 저쪽은 묶음을 정하는 코드를 `agent.lesion_group()` **한 곳**으로 모아 뒀다.
      */
     @Immutable
-    data class Group(val name: String, val percent: Float)
+    data class Group(
+        val name: String,
+        val percent: Float,
+        /**
+         * 그 묶음이 담는 **병원에서 쓰는 이름** — `구진·플라크·농포·여드름` (2026-09-11).
+         *
+         * 예전에는 [GroupLine.labels] 로 **1등 묶음에만** 왔다. 그러면 확신이 낮아
+         * [group] 이 `null` 인 날 보호자가 병원에 들고 갈 말이 하나도 없다 —
+         * 하필 그때가 화면에 막대만 남는 때다 (저쪽 커버리지 66.5%, 셋에 하나꼴).
+         *
+         * ⚠️ **"1등 병변" 이 아니다.** 네 줄에 **같은 방식으로** 붙는 용어 풀이이고
+         *    하나를 골라 단정하지 않는다. 그래서 **카드 본문이 아니라
+         *    "자세히 보기" 안에** 그린다 — 카드는 짧게, 서랍은 충실하게.
+         * 옛 서버는 안 보내므로 빈 문자열일 수 있다.
+         */
+        val labels: String = "",
+    )
 
     /**
      * 계열 한 줄. [text] 와 [caveat] 를 **그대로** 띄운다.
@@ -211,7 +227,13 @@ data class ScreeningReport(
                         val name = o.optString("name")
                         // 이름이 비면 막대만 남아서 무엇인지 못 읽는다 — 통째로 뺀다.
                         if (name.isNotBlank()) {
-                            add(Group(name, o.optDouble("percent", 0.0).toFloat()))
+                            add(
+                                Group(
+                                    name,
+                                    o.optDouble("percent", 0.0).toFloat(),
+                                    labels = o.optString("labels"),
+                                ),
+                            )
                         }
                     }
                 },

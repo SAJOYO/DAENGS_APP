@@ -3,6 +3,7 @@ package com.daengs.app.territory.owned
 import com.daengs.app.activity.ActivityAuthenticationRequired
 import com.daengs.app.activity.ActivitySessionChanged
 import com.daengs.app.auth.Session
+import com.daengs.app.territory.support.ownedJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*

@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.store.*
 import com.daengs.app.walk.diary.storyboardAnalysisView
+import com.daengs.app.walk.support.sceneAnchorFixture
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -27,7 +28,7 @@ class WalkStoryboardSyncTest {
         try {
             val dao = db.walkDao()
             dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
-            val fixture = com.daengs.app.walk.diary.sceneAnchorFixture().first
+            val fixture = sceneAnchorFixture().first
             val bundle = JSONObject(fixture.rawJson).put("session_id", "s")
             WalkStoryboardSync(dao, { owner }) { _, _, body ->
                 assertEquals("walk-storyboard-candidates-v4", body.getString("bundle_format"))

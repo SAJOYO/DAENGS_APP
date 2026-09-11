@@ -3,6 +3,7 @@ package com.daengs.app.place
 import com.daengs.app.auth.Session
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.place.support.filteredConversationFixture
+import com.daengs.app.place.support.conversationFixture
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import kotlinx.serialization.json.*
