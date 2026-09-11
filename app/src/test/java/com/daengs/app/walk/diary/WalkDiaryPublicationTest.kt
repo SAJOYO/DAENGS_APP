@@ -70,7 +70,7 @@ class WalkDiaryPublicationTest {
         assertEquals("직접 고친 장면", reader.observe(listOf(summary)).first().single().scenes.first().body)
     }
 
-    @Test fun `fast candidate opens immediately and cannot be replaced by timer`() = runBlocking {
+    @Test fun `DAO accepts a fast candidate and rejects a later base publication`() = runBlocking {
         val state = prepare()
         val candidate = state.baseBundle!!.replace("산책을 시작했다.", "산책길에 나섰다.")
         assertEquals(1, dao.publishDiaryCandidate("s", candidate, 1500))
