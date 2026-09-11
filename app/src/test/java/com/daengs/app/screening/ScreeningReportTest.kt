@@ -280,4 +280,37 @@ class ScreeningReportTest {
         assertEquals("", g.labels)
         assertTrue(g.text.isNotBlank())
     }
+
+    // -- 권고 줄 (2026-09-11) ---------------------------------------------------
+    //
+    // 정상 카드에서 권고가 두 번 나왔다. body 끝이 "…병원에 가보시는 것을 권합니다" 인데
+    // 바로 아래 권고 줄이 "평소와 다른 점이 있으면 진료를 받아보세요" 였다.
+
+    private val report get() = ScreeningReport.parse(JSONObject(abnormalJson))
+
+    @Test
+    fun `정상이면 권고 줄을 안 띄운다`() {
+        val normal = report.copy(
+            verdict = ScreeningReport.Verdict.NORMAL,
+            action = "평소와 다른 점이 있으면 진료를 받아보세요.",
+        )
+        assertTrue(!normal.showsAction)
+    }
+
+    /** 이상에서는 권고 줄이 카드의 유일한 행동이다. 빠지면 안 된다. */
+    @Test
+    fun `이상이면 권고 줄을 띄운다`() {
+        assertTrue(report.showsAction)
+    }
+
+    @Test
+    fun `재촬영도 권고 줄을 띄운다`() {
+        assertTrue(report.copy(verdict = ScreeningReport.Verdict.RETAKE).showsAction)
+    }
+
+    /** 옛 서버가 권고를 안 보내면 빈 줄 하나가 자리를 차지하지 않게 한다. */
+    @Test
+    fun `권고가 비어 있으면 안 띄운다`() {
+        assertTrue(!report.copy(action = "").showsAction)
+    }
 }
