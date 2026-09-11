@@ -73,4 +73,7 @@
 ./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*' --tests com.daengs.app.walk.store.WalkMigrationTest --tests com.daengs.app.walk.store.RecordingJournalTest --tests com.daengs.app.walk.RecordingCompletionTest --tests com.daengs.app.walk.TrailRecorderTest --tests com.daengs.app.walk.WalkSummaryTest
 ```
 
-4차는 세션이 소유하는 표시 상태 reducer, 5차는 정책 저장과 서비스·요약·경로의 실제 전환이다. 5차에서 종료 cutoff와 저널 순서를 확정하고 정책 소비자 완료까지 기다려야 한다. `MotionLifecycle.STOPPED` 자체는 원본 저장이 완료됐다는 영수증이 아니다. 기존 60초·50m 경계, 계정·핀·사진·전송 호환, 실시간/완료 결과 일치와 지연 예산을 그 전환 게이트로 둔다.
+4차의 표시 상태, 5-1의 서비스 연결, #313의 정책 저장에 이어 #319에서 거리·경로·완료를 연결했다.
+종료 cutoff와 저널 순서를 확정하고 정책 소비자 완료까지 기다린다. `MotionLifecycle.STOPPED`
+자체는 원본 저장 완료의 영수증이 아니다. 60초·50m, 기존 핀·전송, 실시간/완료 일치는 표적
+테스트로 검증하며, 야외 정확도·지연 예산·서버 동일 재생은 별도 후속 검증이다.

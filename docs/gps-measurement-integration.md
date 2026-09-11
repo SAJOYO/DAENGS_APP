@@ -85,3 +85,14 @@ v1 핀 생성, 완료 재생의 일치를 확인한다. 파일 DB 재개방 후 
 같은 값을 읽는다. recovery는 60초/50m 경계와 손상 원본의 보존을 확인한다.
 
 실기기 야외 GPS 정확도·장기 성능·배터리와 서버 왕복 검증은 이 테스트로 확인되지 않는다.
+
+2026-09-11 검증: 최초 debug 빌드와 표적 17개 클래스 171개가 모두 통과했다. 자체 리뷰에서
+종료 시각 일치와 무효 시각 관측 처리, 완료 결과의 늦은 덮어쓰기를 확인했다. 마지막 시각
+결측 사례를 보완하고 최신 dev `399c1beb`를 합친 `eb7aa7c6`에서 debug 빌드 및 영향받는
+7개 클래스 43개를 재실행해 통과했다. 중복을 제외한 검증 사례는 183개이며 실패·오류·skip은
+모두 0이다. 테스트 전체·과금 CI·서버 배포·실기기 설치는 수행하지 않았다.
+
+```powershell
+# 마지막 보완 + 최신 dev의 공통 상세 소비자 검증
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.RecordedMotionReplayTest' --tests 'com.daengs.app.walk.display.WalkSpeedRuntimeTest' --tests 'com.daengs.app.walk.WalkSpeedServiceTest' --tests 'com.daengs.app.walk.store.RecordingJournalTest' --tests 'com.daengs.app.walk.RecordingCompletionTest' --tests 'com.daengs.app.walk.routeexplorer.RouteExplorerIndexTest' --tests 'com.daengs.app.ui.walk.WalkSessionDestinationTest'
+```
