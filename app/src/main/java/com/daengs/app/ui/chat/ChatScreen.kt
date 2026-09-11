@@ -1830,7 +1830,13 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                 //      관리자 콘솔이 6종을 본다.
                 if (report.groups.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("모델이 비슷하다고 본 정도", color = TextMuted, fontSize = 12.sp)
+                        // ⚠️ **"의심 정도" 로 쓰지 않는다** (2026-09-11). `의심` 은 임상적
+                        //    의심으로 읽혀서, 네 줄에 의심 순위를 매기는 말이 된다 —
+                        //    1등을 안 주기로 한 이유가 그것이다(저쪽 holdout 46.3% 오답).
+                        //    게다가 `의심` 은 지금 **덩어리 경보 한 곳에서만** 쓴다
+                        //    ("덩어리가 의심됩니다"). 거기 말고도 쓰면 그 한 마디가 흔해진다.
+                        //    `모양이` 를 남기는 것이 요점이다 — 무엇과 비슷한지를 못 박는다.
+                        Text("모양이 비슷한 정도", color = TextMuted, fontSize = 12.sp)
                         report.groups.forEach { g ->
                             // 전부 같은 글꼴·같은 굵기다. 첫 줄만 굵게 하면 그게 곧
                             // "1등" 이라, 계약이 그 필드를 안 준 뜻이 없어진다.
@@ -1896,6 +1902,39 @@ private fun ReportBubble(report: ScreeningReport, avatar: DogBreed?) {
                                 "조직검사 등이 필요할 수 있습니다.",
                             color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
                         )
+                        // ★ 네 묶음이 **병원에서 뭐라고 불리는지** (2026-09-11).
+                        //   본문의 괄호는 1등에만 붙어서, 확신이 낮아 `group` 이 null 인
+                        //   날에는 들고 갈 말이 하나도 없었다 — 하필 그때가 막대만 남는 때다.
+                        //
+                        //   ⚠️ **이름과 라벨을 한 줄에 두지 않는다.** 묶음 이름에도
+                        //      (`피부 표면·색·두께 변화`) 라벨에도 `·` 가 있어서, 한 줄에
+                        //      두면 어디서 끊기는지 안 보인다. 줄을 나누고 **색으로** 가른다.
+                        //   ⚠️ 카드 본문에 넣지 않는다. 네 줄이 다섯 줄을 차지한다 —
+                        //      접혀 있으니 펼친 사람만 본다.
+                        val named = report.groups.filter { it.labels.isNotBlank() }
+                        if (named.isNotEmpty()) {
+                            Column(
+                                Modifier.padding(top = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    "병원에서 쓰는 이름",
+                                    color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                )
+                                named.forEach { g ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(
+                                            g.name,
+                                            color = TextDark, fontSize = 11.sp, lineHeight = 16.sp,
+                                        )
+                                        Text(
+                                            g.labels,
+                                            color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1940,23 +1979,23 @@ private fun ReportBubblePreview() {
         disclaimer = "이 결과는 수의학적 진단이 아니며, 수의사의 진료를 대체하지 않습니다.",
     )
 
+    // 서랍의 "병원에서 쓰는 이름" 이 실제 화면과 같게 보이도록 라벨을 채운다.
+    fun g(name: String, percent: Float, labels: String) =
+        ScreeningReport.Group(name, percent, labels)
+    val RAISED = "솟아오른 변화" to "구진·플라크·농포·여드름"
+    val SURFACE = "피부 표면·색·두께 변화" to "비듬·각질·상피성잔고리·태선화·과다색소침착"
+    val ERODED = "벗겨지거나 패인 상처" to "미란·궤양"
+    val LUMP = "깊거나 단단한 혹" to "결절·종괴"
+    fun row(p: Pair<String, String>, percent: Float) = g(p.first, percent, p.second)
+
     val surface = listOf(
-        ScreeningReport.Group("피부 표면·색·두께 변화", 75.0f),
-        ScreeningReport.Group("솟아오른 변화", 17.0f),
-        ScreeningReport.Group("벗겨지거나 패인 상처", 5.0f),
-        ScreeningReport.Group("깊거나 단단한 혹", 3.0f),
+        row(SURFACE, 75.0f), row(RAISED, 17.0f), row(ERODED, 5.0f), row(LUMP, 3.0f),
     )
     val lump = listOf(
-        ScreeningReport.Group("깊거나 단단한 혹", 62.0f),
-        ScreeningReport.Group("피부 표면·색·두께 변화", 25.0f),
-        ScreeningReport.Group("솟아오른 변화", 9.0f),
-        ScreeningReport.Group("벗겨지거나 패인 상처", 4.0f),
+        row(LUMP, 62.0f), row(SURFACE, 25.0f), row(RAISED, 9.0f), row(ERODED, 4.0f),
     )
     val flat = listOf(
-        ScreeningReport.Group("피부 표면·색·두께 변화", 39.0f),
-        ScreeningReport.Group("솟아오른 변화", 37.0f),
-        ScreeningReport.Group("벗겨지거나 패인 상처", 13.0f),
-        ScreeningReport.Group("깊거나 단단한 혹", 11.0f),
+        row(SURFACE, 39.0f), row(RAISED, 37.0f), row(ERODED, 13.0f), row(LUMP, 11.0f),
     )
     val caveat = "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
 
