@@ -44,10 +44,7 @@ import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
-import com.naver.maps.map.overlay.PathOverlay
-import com.naver.maps.map.overlay.MultipartPathOverlay
 import com.daengs.app.map.style.rememberWalkStyle
-import com.daengs.app.map.style.paintWalkSpeedPath
 import com.naver.maps.map.overlay.CircleOverlay
 
 @Composable
@@ -407,46 +404,8 @@ fun NaverMapSurface(
         onDispose { markers.forEach { it.map = null } }
     }
 
-    val speedPaths = remember(scene.trail, scene.completedRoute.paths, scene.completedRoute.speedPaths, walkStyle) {
-        listOf(false to scene.trail.speedPaths, true to scene.completedRoute.speedPaths).flatMap { (completed, paths) ->
-            paths.map { completed to paintWalkSpeedPath(it, walkStyle.policy, walkStyle.themeId) }
-        }.filter { it.second.isNotEmpty() }
-    }
-    val exploringSession = scene.sessionExplorer != null
-    val dimCompleted = scene.sessionExplorer?.highlightPaths?.isNotEmpty() == true
-    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths, exploringSession, dimCompleted) {
-        val map = naverMap
-        val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
-        if (map != null) {
-            // One multipart overlay per recording segment keeps pauses and GPS gaps separate.
-            speedPaths.forEach { (completed, parts) ->
-                lines += MultipartPathOverlay().apply {
-                    coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
-                    colorParts = parts.map { part ->
-                        val color = if (completed && dimCompleted) (part.color and 0x00ffffff) or 0x60000000 else part.color
-                        MultipartPathOverlay.ColorPart(color, TRAIL_OUTLINE_COLOR, color, TRAIL_OUTLINE_COLOR)
-                    }
-                    width = TRAIL_WIDTH
-                    outlineWidth = TRAIL_OUTLINE_WIDTH
-                    this.map = map
-                }
-            }
-            // Legacy coordinate-only callers have unknown speed, never pretend it is zero.
-            val fallback = (if (scene.trail.speedPaths.isEmpty()) scene.trail.paths else emptyList()).map { false to it } +
-                (if (scene.completedRoute.speedPaths.isEmpty()) scene.completedRoute.paths else emptyList()).map { true to it }
-            fallback.filter { it.second.size >= 2 }.forEach { (completed, path) ->
-                lines += PathOverlay().apply {
-                    coords = path.map(GeoPoint::toLatLng)
-                    width = TRAIL_WIDTH
-                    color = walkStyle.policy.unknownColor
-                    outlineWidth = TRAIL_OUTLINE_WIDTH
-                    outlineColor = TRAIL_OUTLINE_COLOR
-                    this.map = map
-                }
-            }
-        }
-        onDispose { lines.forEach { it.map = null } }
-    }
+    NaverWalkRouteLayer(naverMap, scene.trail, scene.completedRoute, walkStyle.policy, walkStyle.themeId,
+        dimCompleted = scene.sessionExplorer?.highlightPaths?.isNotEmpty() == true)
 
     NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
@@ -503,7 +462,6 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 /** 고른 핀은 이웃 위에 그린다. 마커가 겹칠 때 고른 것이 가려지면 안 된다. */
 private const val SELECTED_MARKER_Z = 100
 
-private const val TRAIL_WIDTH = 14
 
 /**
  * 산책 경로.
@@ -521,7 +479,6 @@ private val TRAIL_COLOR = DaengPinkDeep.toArgb()
  * 마커 핀에 흰 테두리를 두른 것과 같은 이유다. 지하철 노선처럼 색이 있는 선과 겹칠
  * 때도 테두리가 둘을 갈라 준다.
  */
-private const val TRAIL_OUTLINE_WIDTH = 2
 
 private val TRAIL_OUTLINE_COLOR = Color.WHITE
 
