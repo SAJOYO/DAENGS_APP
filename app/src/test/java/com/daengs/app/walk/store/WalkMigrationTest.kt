@@ -87,16 +87,28 @@ class WalkMigrationTest {
             }
             if (version == 11) old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL,'original-stamp')")
             if (version == 12) old.execSQL("INSERT INTO walk_session (id,ownerId,startedAtMillis,endedAtMillis) VALUES ('restored','owner',1000,2000)")
-            if (version == 13) {
+            if (version >= 13) {
                 old.execSQL("INSERT INTO walk_photo_sync VALUES ('s1','owner','publisher',1,0,NULL)")
                 old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL,'original-stamp')")
+            }
+            if (version >= 14) {
+                old.execSQL("INSERT INTO walk_diary_publication VALUES ('s1',2000,32000,'base-board','published-board',3000)")
             }
             old.version = version
         }
         val db = openLatest()
         try {
             val dao = db.walkDao()
-            assertEquals(null, dao.diaryPublication("s1"))
+            if (version >= 14) {
+                val publication = dao.diaryPublication("s1")!!
+                assertEquals("base-board", publication.baseBundle)
+                assertEquals("published-board", publication.publishedBundle)
+                assertEquals(2000L, publication.startedAtMillis)
+                assertEquals(32000L, publication.deadlineAtMillis)
+                assertEquals(3000L, publication.publishedAtMillis)
+            } else {
+                assertEquals(null, dao.diaryPublication("s1"))
+            }
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
             assertEquals(1, dao.fixes("s1").size)
@@ -116,7 +128,7 @@ class WalkMigrationTest {
             assertEquals(if (version >= 9) 0L else null, dao.photoSync("s1")?.acknowledgedRevision)
             assertEquals(null, dao.photoSync("restored"))
             assertEquals(if (version >= 8) "reviewed-story" else null, dao.storyboard("s1")?.payload)
-            if (version == 11 || version == 13) {
+            if (version == 11 || version >= 13) {
                 assertEquals("saved-bundle", dao.sceneAnalysis("s1")!!.bundle)
                 assertEquals("original-stamp", dao.sceneAnalysis("s1")!!.bundleEntryStamp)
             }
