@@ -75,6 +75,7 @@ import com.daengs.app.ui.landing.LandingScreen
 import com.daengs.app.ui.nickname.NicknameScreen
 import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.care.CareLogCoordinator
+import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.walk.records.WalkRecordsRoute
 import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
@@ -160,6 +161,8 @@ class MainActivity : ComponentActivity() {
                 val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
                 // 저장소 탭의 오늘의 케어 기록 (#201). 요약 보관함과 같은 생애 — 서버 사본이고 기기에 안 남긴다.
                 val careLog = remember(scope) { CareLogCoordinator(scope) }
+                // 저장소 탭의 진료비 (#258). 케어 기록과 같은 생애다.
+                val vetVisits = remember(scope) { VetVisitCoordinator(scope) }
                 val chatHistoryState by chatHistory.state.collectAsState()
 
                 // **저장된 토큰을 동기로 읽는다.** 비동기로 읽으면 랜딩이 한 프레임
@@ -288,6 +291,7 @@ class MainActivity : ComponentActivity() {
                     val petId = pets.primary?.id.takeIf { session != null }
                     chatHistory.selectPet(petId)
                     chatSummaries.selectPet(petId)
+                    vetVisits.selectPet(petId)
                 }
                 // 고치는 중인 강아지. null 이면 새로 등록하는 것이다.
                 var editing by remember { mutableStateOf<Pet?>(null) }
@@ -361,6 +365,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 var roomName by remember { mutableStateOf<String?>(null) }
+                // OCR 학습 이용 동의 (#258). **아직 화면에 안 보인다** — 저쪽 판 번호가
+                // 정해질 때까지 `MyScreen` 의 OCR_CONSENT_VISIBLE 이 가린다.
+                var ocrConsent by remember { mutableStateOf(false) }
                 var renameBusy by remember { mutableStateOf(false) }
                 var renameError by remember { mutableStateOf<String?>(null) }
 
@@ -408,6 +415,7 @@ class MainActivity : ComponentActivity() {
                         pets.forget()
                         // 남의 방 이름표가 남으면 안 된다. 로그아웃하면 지어진 이름으로.
                         roomName = null
+                        ocrConsent = false
                         return@LaunchedEffect
                     }
                     // **조용히 끝내지 않는다.** 못 받았으면 못 받았다고 남겨야
@@ -421,7 +429,11 @@ class MainActivity : ComponentActivity() {
                     sessionRestore = SessionRestore.Ok
                     pets.refresh(token)
                     // 이름표. 못 받아도 조용하다 — 지어진 이름이 걸린다.
-                    AuthApi.me(token).onSuccess { roomName = it.roomName; nickname = it.nickname }
+                    AuthApi.me(token).onSuccess {
+                        roomName = it.roomName
+                        nickname = it.nickname
+                        ocrConsent = it.ocrConsent
+                    }
                     // **확인 화면에 잡아 두지 않는다.** 옛 서버라 칸이 없거나 `me` 가
                     // 실패하면 보여 줄 이름이 없다. 그때는 그냥 방으로 보낸다 —
                     // 이름은 다음 로그인에 서버가 채운다.
@@ -696,6 +708,7 @@ class MainActivity : ComponentActivity() {
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
                                 careCoordinator = careLog,
+                                vetCoordinator = vetVisits,
                                 accessTokenProvider = freshToken,
                                 onOpenSource = { sessionId ->
                                     scope.launch {
@@ -784,6 +797,15 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         roomName = roomName,
+                        ocrConsent = ocrConsent,
+                        onOcrConsentChange = { on ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                // 서버가 답한 값을 그대로 쓴다 — 앱이 미리 켜 두면
+                                // 실패했을 때 화면만 켜진 채로 남는다.
+                                AuthApi.setOcrConsent(token, on).onSuccess { ocrConsent = it.ocrConsent }
+                            }
+                        },
                         renameBusy = renameBusy,
                         renameError = renameError,
                         onDismissRename = { renameError = null },
