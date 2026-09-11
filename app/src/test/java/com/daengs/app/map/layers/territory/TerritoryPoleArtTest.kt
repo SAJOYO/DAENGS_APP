@@ -62,17 +62,17 @@ class TerritoryPoleArtTest {
             }
             assertTrue("실제 표시 크기에서도 밑동 밖 그림자가 남아야 한다", visibleShadow >= 8)
         }
-        assertEquals(48 to 120, TerritoryPoleArt.size(false))
-        assertEquals(60 to 150, TerritoryPoleArt.size(true))
+        assertEquals(48 to 120, TerritoryPoleArt.size())
     }
 
-    @Test fun `선택 및 성공 확대에서도 세로 비율과 접점이 유지된다`() {
-        for (selected in listOf(false, true)) for (step in 0..10) {
-            val frame = territoryFeedbackFrame(TerritoryFeedbackKind.MARKED, step / 10f)
-            val (width, height) = TerritoryPoleArt.size(selected, frame.markerScale)
+    @Test fun `준비는 크기가 고정되고 성공 효과는 세로 비율과 접점을 유지한다`() {
+        for (kind in TerritoryFeedbackKind.entries) for (step in 0..10) {
+            val frame = territoryFeedbackFrame(kind, step / 10f)
+            val (width, height) = TerritoryPoleArt.size(frame.markerScale)
+            if (kind == TerritoryFeedbackKind.READY) assertEquals(48 to 120, width to height)
             assertEquals(2.5, height.toDouble() / width, .02)
-            assertTrue(width >= if (selected) 60 else 48)
-            assertTrue(height <= 178)
+            assertTrue(width >= 48)
+            assertTrue(height <= 143)
         }
         assertEquals(.5f, TerritoryPoleArt.ANCHOR_X)
         assertEquals(.975f, TerritoryPoleArt.ANCHOR_Y)
@@ -88,8 +88,8 @@ class TerritoryPoleArtTest {
         for ((row, footY) in listOf(190f, 405f).withIndex()) {
             for ((col, state) in TerritoryMarkerOccupancy.entries.withIndex()) {
                 val bitmap = territoryMarkerIcon(context, state)
-                for ((variant, selected) in listOf(false, true).withIndex()) {
-                    val (width, height) = TerritoryPoleArt.size(selected)
+                for (variant in 0..1) {
+                    val (width, height) = TerritoryPoleArt.size()
                     val x = 55f + col * 200 + variant * 85
                     val top = footY - height * TerritoryPoleArt.ANCHOR_Y
                     canvas.drawBitmap(bitmap, null, RectF(x - width / 2f, top, x + width / 2f, top + height), paint)

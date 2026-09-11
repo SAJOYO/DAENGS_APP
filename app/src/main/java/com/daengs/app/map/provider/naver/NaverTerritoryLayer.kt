@@ -47,7 +47,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                     subCaptionTextSize = 11f
                     subCaptionMinZoom = 0.0
                 }
-                val size = TerritoryPoleArt.size(site.selected)
+                val size = TerritoryPoleArt.size()
                 width = size.first; height = size.second
                 anchor = PointF(TerritoryPoleArt.ANCHOR_X, TerritoryPoleArt.ANCHOR_Y)
                 icon = icons.getValue(TerritoryPoleArt.resource(site.occupancy))
@@ -85,7 +85,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
             val active = feedback?.takeIf { it.siteId == site.id }
             val frame = territoryFeedbackFrame(active?.kind, progress)
             val accent = if (active?.kind == TerritoryFeedbackKind.MARKED) Color.rgb(227, 145, 45) else Color.rgb(60, 150, 115)
-            val size = TerritoryPoleArt.size(site.selected, frame.markerScale)
+            val size = TerritoryPoleArt.size(frame.markerScale)
             overlay.marker.width = size.first
             overlay.marker.height = size.second
             overlay.ring?.apply {

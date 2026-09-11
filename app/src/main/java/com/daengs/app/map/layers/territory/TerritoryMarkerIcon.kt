@@ -21,8 +21,9 @@ internal object TerritoryPoleArt {
     // 그림만 축소한다. SDK 선택 범위와 확대 시 밑동 기준점은 유지한다.
     const val ART_SCALE = .65f
 
-    fun size(selected: Boolean, scale: Float = 1f): Pair<Int, Int> {
-        val width = ((if (selected) 60 else 48) * scale).roundToInt()
+    // Selection is expressed by the range and card, never by enlarging the object.
+    fun size(scale: Float = 1f): Pair<Int, Int> {
+        val width = (48 * scale).roundToInt()
         return width to (width * HEIGHT.toFloat() / WIDTH).roundToInt()
     }
 
