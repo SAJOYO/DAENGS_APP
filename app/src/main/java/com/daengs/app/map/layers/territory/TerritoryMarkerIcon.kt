@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import androidx.annotation.DrawableRes
 import com.daengs.app.R
 import kotlin.math.roundToInt
@@ -35,7 +37,7 @@ internal object TerritoryPoleArt {
     }
 }
 
-/** 점유 여부만 그림으로 표시한다. 인증 여부는 기존 지도 caption/카드가 담당한다. */
+/** 고정된 밑동 발광과 인증 체크. 실제 범위 원/성공 애니메이션과는 별개다. */
 internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOccupancy): Bitmap {
     val source = checkNotNull(BitmapFactory.decodeResource(context.resources, TerritoryPoleArt.resource(occupancy)))
     val result = Bitmap.createBitmap(TerritoryPoleArt.WIDTH, TerritoryPoleArt.HEIGHT, Bitmap.Config.ARGB_8888)
@@ -51,12 +53,52 @@ internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOcc
         quadTo(128f, 627f, 105f, 614f)
         close()
     }, paint)
+    drawOccupancyGlow(canvas, occupancy)
     paint.color = Color.WHITE
     val scale = TerritoryPoleArt.ART_SCALE
     val left = 128f * (1f - scale)
     val top = 624f * (1f - scale)
     canvas.drawBitmap(source, null, RectF(left, top,
         left + source.width * scale, top + source.height * scale), paint)
+    if (occupancy == TerritoryMarkerOccupancy.VERIFIED) drawVerifiedBadge(canvas)
     source.recycle()
     return result
+}
+
+private fun drawOccupancyGlow(canvas: Canvas, occupancy: TerritoryMarkerOccupancy) {
+    val rgb = when (occupancy) {
+        TerritoryMarkerOccupancy.NEUTRAL -> return
+        TerritoryMarkerOccupancy.UNVERIFIED -> 0xF5A623
+        TerritoryMarkerOccupancy.VERIFIED -> 0x24C9A0
+    }
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader = RadialGradient(0f, 0f, 120f,
+            intArrayOf(0xDA000000.toInt() or rgb, 0xA0000000.toInt() or rgb, rgb),
+            floatArrayOf(0f, .42f, 1f), Shader.TileMode.CLAMP)
+    }
+    // 45×11px at native map size. Fits below the foot without moving its anchor.
+    canvas.save()
+    canvas.translate(128f, 602f)
+    canvas.scale(1f, .26f)
+    canvas.drawCircle(0f, 0f, 120f, paint)
+    canvas.restore()
+}
+
+private fun drawVerifiedBadge(canvas: Canvas) {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // White rim + dark mint face keep the check readable on both land and roads.
+    paint.color = Color.WHITE
+    canvas.drawCircle(198f, 282f, 40f, paint)
+    paint.color = Color.rgb(17, 128, 103)
+    canvas.drawCircle(198f, 282f, 33f, paint)
+    paint.color = Color.WHITE
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = 12f
+    paint.strokeCap = Paint.Cap.ROUND
+    paint.strokeJoin = Paint.Join.ROUND
+    canvas.drawPath(Path().apply {
+        moveTo(181f, 282f)
+        lineTo(193f, 294f)
+        lineTo(215f, 270f)
+    }, paint)
 }

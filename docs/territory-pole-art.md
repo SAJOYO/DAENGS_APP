@@ -2,13 +2,13 @@
 
 굵은 외곽선과 단순한 명암의 코믹 전봇대를 사용한다. 기본과 점유 그림은 같은 실루엣이며 점유 상태만 밑동에 큰 갈색 얼룩을 표시한다. 살짝 비스듬한 시점, 짧은 금속 가로대, 왼쪽의 해진 흰 포스터를 유지한다. 지도에서 장소 간 여백이 보이도록 본체를 이전의 65%로 줄이고, 짧고 뭉뚝한 사선 고깔 그림자를 붙인다.
 
-| 상태 | 에셋 | 지도 문구 |
-| --- | --- | --- |
-| NEUTRAL | map_territory_pole_neutral.webp | 선택하면 기존 장소/점유 설명 |
-| UNVERIFIED | map_territory_pole_occupied.webp | 미인증 |
-| VERIFIED | map_territory_pole_occupied.webp | 인증 |
+| 상태 | 에셋 | 고정 상태 표시 | 지도 문구 |
+| --- | --- | --- | --- |
+| NEUTRAL | map_territory_pole_neutral.webp | 기본 그림자만 | 선택하면 기존 장소/점유 설명 |
+| UNVERIFIED | map_territory_pole_occupied.webp | 밑동 주황빛 | 미인증 |
+| VERIFIED | map_territory_pole_occupied.webp | 밑동 민트빛 + 흰 체크 배지 | 인증 |
 
-`WalkMapPresentation`의 기존 점유 상태를 사용한다. 더러움은 점유 유무를 뜻하며 시간이나 방문 횟수에 따라 누적하지 않는다. 미인증과 인증은 같은 에셋을 공유하고 기존 caption과 카드로 구분한다. 기존 원형 배경/점유색 테두리는 제거했다. 접근 링과 잠깐 나타나는 성공 발자국은 기존 반경·시간·색상을 유지한다.
+`WalkMapPresentation`의 기존 점유 상태를 사용한다. 더러움은 점유 유무를 뜻하며 시간이나 방문 횟수에 따라 누적하지 않는다. 미인증과 인증은 같은 원본 에셋에 서로 다른 발광을 합성한다. 인증에는 색 구분을 보완하는 체크도 붙인다. 선택하지 않아도 상태가 보이며 기존 caption과 카드도 유지한다. 상태 발광은 실제 판정 반경을 뜻하지 않는다. 접근 링과 잠깐 나타나는 성공 발자국은 기존 반경·시간·색상을 유지한다.
 
 ## 에셋과 배치
 
@@ -22,7 +22,8 @@
 - 두 파일 모두 **256×640**, 밑동 접점 **(128,624)**. 바깥 배경을 자른 뒤 밑면 중심을 맞추므로 가로대가 좌우 중심을 바꾸어도 밑동은 움직이지 않는다.
 - 네이버 마커는 선택 전후 모두 **48×120px**이며 준비 효과에서도 확대하지 않는다. 선택은 범위 원·caption·카드로 표현한다. 내부 본체만 밑동을 중심으로 **65%** 축소하며 실제 높이는 약 **73px**다. 점령 성공 확대는 가로·세로를 함께 키운다. anchor는 **(0.5,0.975)**라 성공 효과에서도 밑동의 지리 좌표가 유지된다. 선택 시 카메라 줌인은 추가하지 않는다.
 - 그림자는 에셋에 굽지 않고 `territoryMarkerIcon`에서 오른쪽 위로 짧게 뻗는 둥근 끝의 고깔 Path로 그린다. 팔 모양이나 원형 받침이 없고 두 상태 모두 같은 색/알파(76/255, 약 30%)다. 작은 그림자 뒤에 본체를 합성한다.
-- 합성 비트맵 두 개를 캐시하며 애니메이션 프레임마다 비트맵을 만들지 않는다. 지도와 기존 `TerritoryFeedbackPreview`가 같은 합성 함수를 사용한다.
+- 발광은 밑동 뒤에 약 **45×11px**로 부드럽게 퍼지는 고정 타원이다. 인증 체크는 흰 테두리와 짙은 민트 바탕으로 밝고 어두운 지도에서 구분한다. 기존 비트맵의 투명 여백에 합성하므로 전체 크기·밑동 접점은 바뀌지 않는다. 지속 애니메이션이나 추가 지도 오버레이는 없다.
+- 합성 비트맵 **세 개를 점유 상태별로 캐시**하며 애니메이션 프레임마다 비트맵을 만들지 않는다. 원본 파일은 두 개지만 미인증·인증의 합성 결과가 다르므로 리소스 ID로 캐시를 합치지 않는다. 지도·`TerritoryFeedbackPreview`·규칙 팝업 예시가 같은 합성 함수를 사용한다.
 
 ## 검토 방법
 
@@ -34,8 +35,10 @@ Debug 빌드의 `TerritoryPoleLabActivity`는 실제 `MapHost`와 전봇대 레�
 adb shell am start -n com.daengs.app/.ui.walk.TerritoryPoleLabActivity
 ```
 
-대상 검증: `uv run --with pillow python -m unittest discover -s tools -p test_map_sprite.py` 4개, `:app:testDebugUnitTest --tests '*TerritoryPoleArtTest' --tests '*TerritoryFeedbackUiTest'` 9개 통과. `:app:assembleDebug -PterritoryServerRead=true` 성공. 지도 키/API 주소는 ignored 로컬 설정이며 저장소에는 넣지 않는다. 에뮬레이터 설치 `Success` 후 APK를 회수해 두 WebP의 SHA-256 일치를 확인한다. 실화면 검증 결과는 PR에 기록하며, 물리 기기와 로그인 뒤 실제 점유 조회는 별도다.
+원본 반입 당시 검증: `uv run --with pillow python -m unittest discover -s tools -p test_map_sprite.py` 4개, `:app:testDebugUnitTest --tests '*TerritoryPoleArtTest' --tests '*TerritoryFeedbackUiTest'` 9개 통과. `:app:assembleDebug -PterritoryServerRead=true` 성공. 지도 키/API 주소는 ignored 로컬 설정이며 저장소에는 넣지 않는다. 에뮬레이터 설치 `Success` 후 APK를 회수해 두 WebP의 SHA-256 일치를 확인한다. 실화면 검증 결과는 PR에 기록하며, 물리 기기와 로그인 뒤 실제 점유 조회는 별도다.
 
-아래는 **선택 확대 제거 전** 비교 기록이다. 왼쪽부터 기본·미인증·인증이고 각 쌍은 이전 기본 크기·선택 크기다. 현재는 각 쌍의 작은 크기로 통일한다. 위는 밝은 배경, 아래는 어두운 배경이다.
+상태 발광 변경은 `TerritoryPoleArtTest` 6개와 `TerritoryGameRulesTest` 3개, 디버그 APK 빌드로 검증했다. 별도 미리보기 APK를 실기기에 설치하고 회수한 APK의 SHA-256 일치, 선택 전 상태 표시와 선택 범위 원을 확인했다. 가상 장소를 사용했으며 실제 점령 API는 호출하지 않았다.
+
+아래는 현재 실제 표시 픽셀 크기의 합성 결과다. 왼쪽부터 기본·미인증·인증이다. 위는 밝은 배경, 아래는 어두운 배경이다. 선택 전후 크기는 동일하다.
 
 ![전봇대 실제 픽셀 크기 비교](images/territory-pole-native-sizes.png)

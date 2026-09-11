@@ -20,8 +20,8 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current.density
     val icons = remember(context) {
-        TerritoryMarkerOccupancy.entries.distinctBy(TerritoryPoleArt::resource).associate {
-            TerritoryPoleArt.resource(it) to OverlayImage.fromBitmap(territoryMarkerIcon(context, it))
+        TerritoryMarkerOccupancy.entries.associateWith {
+            OverlayImage.fromBitmap(territoryMarkerIcon(context, it))
         }
     }
     val overlays = remember(map) { mutableMapOf<String, SiteOverlays>() }
@@ -50,7 +50,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                 val size = TerritoryPoleArt.size()
                 width = size.first; height = size.second
                 anchor = PointF(TerritoryPoleArt.ANCHOR_X, TerritoryPoleArt.ANCHOR_Y)
-                icon = icons.getValue(TerritoryPoleArt.resource(site.occupancy))
+                icon = icons.getValue(site.occupancy)
                 alpha = if (site.occupancyKnown) 1f else .55f
                 zIndex = if (site.selected) 100 else 30
                 // 성공 발자국이 같은 위치에 떠도 선택한 전봇대가 충돌 숨김 처리되면 안 된다.

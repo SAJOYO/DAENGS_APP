@@ -17,11 +17,13 @@ import org.robolectric.annotation.GraphicsMode
 class TerritoryPoleArtTest {
     private val context get() = ApplicationProvider.getApplicationContext<Application>()
 
-    @Test fun `미인증과 인증은 같은 점령 그림을 쓰고 기본과 구분된다`() {
+    @Test fun `공유 원본이어도 미인증과 인증의 합성 그림은 구분된다`() {
         val neutral = territoryMarkerIcon(context, TerritoryMarkerOccupancy.NEUTRAL)
         val unverified = territoryMarkerIcon(context, TerritoryMarkerOccupancy.UNVERIFIED)
         val verified = territoryMarkerIcon(context, TerritoryMarkerOccupancy.VERIFIED)
-        assertTrue(unverified.sameAs(verified))
+        assertEquals(TerritoryPoleArt.resource(TerritoryMarkerOccupancy.UNVERIFIED),
+            TerritoryPoleArt.resource(TerritoryMarkerOccupancy.VERIFIED))
+        assertFalse(unverified.sameAs(verified))
         assertFalse(neutral.sameAs(unverified))
         fun baseBrightness(bitmap: Bitmap): Double = (560 until 605).flatMap { y ->
             (100 until 160).map { x -> bitmap.getPixel(x, y) }
@@ -54,7 +56,9 @@ class TerritoryPoleArtTest {
             assertTrue("축소해도 발은 같은 지리 좌표", inkRows.last() in 622..624)
             assertEquals(0, Color.alpha(bitmap.getPixel(128, 200)))
             assertEquals(76, Color.alpha(bitmap.getPixel(218, 575)))
-            assertEquals(0, Color.alpha(bitmap.getPixel(58, 583)))
+            if (state == TerritoryMarkerOccupancy.NEUTRAL) {
+                assertEquals(0, Color.alpha(bitmap.getPixel(58, 583)))
+            }
             assertEquals(0, Color.alpha(bitmap.getPixel(220, 540)))
             val small = Bitmap.createScaledBitmap(bitmap, 48, 120, true)
             val visibleShadow = (100 until 119).sumOf { y ->
@@ -63,6 +67,31 @@ class TerritoryPoleArtTest {
             assertTrue("실제 표시 크기에서도 밑동 밖 그림자가 남아야 한다", visibleShadow >= 8)
         }
         assertEquals(48 to 120, TerritoryPoleArt.size())
+    }
+
+    @Test fun `실제 지도 크기에서도 발광 색과 인증 체크가 남고 가장자리는 잘리지 않는다`() {
+        val icons = TerritoryMarkerOccupancy.entries.associateWith { state ->
+            val bitmap = territoryMarkerIcon(context, state)
+            for (x in 0 until bitmap.width) {
+                assertEquals(0, Color.alpha(bitmap.getPixel(x, bitmap.height - 1)))
+            }
+            for (y in 0 until bitmap.height) {
+                assertEquals(0, Color.alpha(bitmap.getPixel(0, y)))
+                assertEquals(0, Color.alpha(bitmap.getPixel(bitmap.width - 1, y)))
+            }
+            Bitmap.createScaledBitmap(bitmap, 48, 120, true)
+        }
+        fun count(state: TerritoryMarkerOccupancy, xs: IntRange, ys: IntRange, predicate: (Int) -> Boolean) =
+            ys.sumOf { y -> xs.count { x -> predicate(icons.getValue(state).getPixel(x, y)) } }
+        val orange: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.red(it) > Color.green(it) + 40 && Color.green(it) > Color.blue(it) + 40 }
+        val mint: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.green(it) > Color.red(it) + 60 && Color.blue(it) > Color.red(it) + 40 }
+        assertEquals(0, count(TerritoryMarkerOccupancy.NEUTRAL, 5..18, 108..117, orange))
+        assertTrue(count(TerritoryMarkerOccupancy.UNVERIFIED, 5..18, 108..117, orange) >= 15)
+        assertTrue(count(TerritoryMarkerOccupancy.VERIFIED, 5..18, 108..117, mint) >= 15)
+        val white: (Int) -> Boolean = { Color.alpha(it) > 200 && Color.red(it) > 230 && Color.green(it) > 230 && Color.blue(it) > 230 }
+        assertTrue("전봇대 자체의 밝은 픽셀과 별개로 인증 체크의 흰 획이 남는다",
+            count(TerritoryMarkerOccupancy.VERIFIED, 34..40, 50..56, white) >=
+                count(TerritoryMarkerOccupancy.UNVERIFIED, 34..40, 50..56, white) + 5)
     }
 
     @Test fun `준비는 크기가 고정되고 성공 효과는 세로 비율과 접점을 유지한다`() {
@@ -88,14 +117,12 @@ class TerritoryPoleArtTest {
         for ((row, footY) in listOf(190f, 405f).withIndex()) {
             for ((col, state) in TerritoryMarkerOccupancy.entries.withIndex()) {
                 val bitmap = territoryMarkerIcon(context, state)
-                for (variant in 0..1) {
-                    val (width, height) = TerritoryPoleArt.size()
-                    val x = 55f + col * 200 + variant * 85
-                    val top = footY - height * TerritoryPoleArt.ANCHOR_Y
-                    canvas.drawBitmap(bitmap, null, RectF(x - width / 2f, top, x + width / 2f, top + height), paint)
-                    paint.color = if (row == 0) Color.GRAY else Color.LTGRAY
-                    canvas.drawLine(x - 4, footY, x + 4, footY, paint)
-                }
+                val (width, height) = TerritoryPoleArt.size()
+                val x = 100f + col * 200
+                val top = footY - height * TerritoryPoleArt.ANCHOR_Y
+                canvas.drawBitmap(bitmap, null, RectF(x - width / 2f, top, x + width / 2f, top + height), paint)
+                paint.color = if (row == 0) Color.GRAY else Color.LTGRAY
+                canvas.drawLine(x - 4, footY, x + 4, footY, paint)
             }
         }
         val file = File("build/reports/territory-pole/native-sizes.png")
