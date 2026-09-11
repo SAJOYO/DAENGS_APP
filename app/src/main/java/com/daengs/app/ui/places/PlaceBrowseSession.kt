@@ -33,21 +33,20 @@ data class PlaceBrowseSnapshot(
     val camera: MapCameraSnapshot? = null,
 )
 
-/** Tab changes keep each view's edits and camera. New search conditions reseed bookmark filters. */
+/** First entry inherits search filters; subsequent entries preserve the saved workspace. */
 data class PlaceBrowseSession(
     val search: PlaceBrowseSnapshot = PlaceBrowseSnapshot(),
     val bookmarks: PlaceBrowseSnapshot? = null,
     val tab: PlaceBrowseTab = PlaceBrowseTab.SEARCH,
-    private val bookmarkSeed: PlaceBrowseFilters? = null,
 ) {
     val current: PlaceBrowseSnapshot get() = if (tab == PlaceBrowseTab.SEARCH) search else requireNotNull(bookmarks)
 
     fun select(next: PlaceBrowseTab): PlaceBrowseSession {
         if (next == tab) return this
         if (next == PlaceBrowseTab.SEARCH) return copy(tab = next)
-        val initial = if (bookmarks == null || bookmarkSeed != search.filters)
+        val initial = if (bookmarks == null)
             search.copy(draft = search.filters.name, selected = null, detail = null) else bookmarks
-        return copy(tab = next, bookmarks = initial, bookmarkSeed = search.filters)
+        return copy(tab = next, bookmarks = initial)
     }
 
     fun updateCurrent(update: (PlaceBrowseSnapshot) -> PlaceBrowseSnapshot): PlaceBrowseSession =
@@ -57,4 +56,7 @@ data class PlaceBrowseSession(
     fun showAllBookmarks(): PlaceBrowseSession = select(PlaceBrowseTab.BOOKMARKS).updateCurrent {
         it.copy(filters = it.filters.allBookmarks(), draft = "", selected = null, detail = null, camera = null)
     }
+
+    fun copySearchToBookmarks() = copy(tab = PlaceBrowseTab.BOOKMARKS,
+        bookmarks = search.copy(draft = search.filters.name, selected = null, detail = null))
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonObject
 
 data class PlaceBookmarkState(
     val session: PlaceBrowseSession = PlaceBrowseSession(),
@@ -22,6 +23,8 @@ data class PlaceBookmarkState(
     val message: String? = null,
     val undo: PlaceKey? = null,
     val errorText: String? = null,
+    val aiBusy: Boolean = false,
+    val aiAnswer: String? = null,
 )
 
 /** Account lifetime + generation fence; writes serialize and always reconcile after uncertainty. */
@@ -39,11 +42,16 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
     private var started = false
     private var closed = false
     private var dogs = emptyList<PlaceDogSnapshot>()
+    private var searchDogs = emptyList<PlaceDogSnapshot>()
+    private var aiJob: Job? = null
+    private var aiGeneration = 0
     fun ensureLoaded() { if (!started) { started = true; refresh() } }
     fun enter(search: PlaceBrowseSnapshot, selectedDogs: List<PlaceDogSnapshot>) {
+        val first = state.value.session.bookmarks == null
         val session = state.value.session.copy(search = search).select(PlaceBrowseTab.BOOKMARKS)
         mutable.value = state.value.copy(session = session)
-        dogs = selectedDogs
+        searchDogs = selectedDogs
+        if (first) dogs = selectedDogs
         refresh()
     }
     fun returnToSearch() {
@@ -61,6 +69,56 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         mutable.value = state.value.copy(session = state.value.session.showAllBookmarks())
         refresh()
     }
+    fun copySearchConditions() {
+        mutable.value = state.value.copy(session = state.value.session.copySearchToBookmarks())
+        dogs = searchDogs
+        refresh()
+    }
+    fun cancelConversation() {
+        aiGeneration++; aiJob?.cancel()
+        mutable.value = state.value.copy(aiBusy = false)
+    }
+    fun chat(query: String) {
+        if (closed || query.isBlank() || query.length > 1000 || state.value.session.tab != PlaceBrowseTab.BOOKMARKS) return
+        cancelConversation()
+        val mine = aiGeneration
+        val view = generation
+        val before = state.value.session.current.filters
+        val selectedDogs = dogs.toList()
+        fun current() = !closed && mine == aiGeneration && view == generation && state.value.session.tab == PlaceBrowseTab.BOOKMARKS
+        mutable.value = state.value.copy(aiBusy = true, aiAnswer = null)
+        aiJob = scope.launch {
+            try {
+                val plan = repository.interpret(account, query, before.savedQuery(selectedDogs))
+                if (!current()) return@launch
+                when (plan.action) {
+                    "search" -> {
+                        val candidate = before.withSavedPlan(requireNotNull(plan.filters), selectedDogs)
+                        val result = repository.search(account, candidate.savedQuery(selectedDogs))
+                        if (!current()) return@launch
+                        publishSaved(candidate, result)
+                    }
+                    "return_search" -> returnToSearch()
+                    else -> mutable.value = state.value.copy(aiAnswer = plan.message)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                if (current()) mutable.value = state.value.copy(aiAnswer = error.savedMessage())
+            } finally {
+                if (mine == aiGeneration) mutable.value = state.value.copy(aiBusy = false)
+            }
+        }
+    }
+    private fun publishSaved(filters: PlaceBrowseFilters, result: SavedPlaceResults, search: PlaceBrowseSnapshot? = null) {
+        generation++; readJob?.cancel()
+        val session = if (search == null) state.value.session else state.value.session.copy(search = search).select(PlaceBrowseTab.BOOKMARKS)
+        val previous = session.current
+        mutable.value = state.value.copy(session = session.updateCurrent { it.copy(filters = filters, draft = filters.name,
+            selected = previous.selected.takeIf { key -> result.hits.any { it.place.key == key } }, detail = null) },
+            phase = PlaceBookmarkPhase.READY, page = result.page, hits = result.hits, missing = result.missing,
+            distanceAvailable = result.distanceAvailable, errorText = null,
+            aiAnswer = "찜한 시설 안에서 조건에 맞는 ${result.hits.size}곳을 찾았어요.")
+    }
     fun updateDogs(value: List<PlaceDogSnapshot>) {
         if (dogs != value) { dogs = value; if (state.value.session.tab == PlaceBrowseTab.BOOKMARKS) refresh() }
     }
@@ -68,6 +126,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
     fun notice(message: String) { mutable.value = state.value.copy(message = message, undo = null) }
     fun refresh() {
         if (closed) return
+        cancelConversation()
         val id = ++generation
         readJob?.cancel()
         mutable.value = state.value.copy(phase = PlaceBookmarkPhase.LOADING, hits = emptyList(), missing = emptySet(), errorText = null)
@@ -105,11 +164,24 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         return submit(key, saved) { intentVersions[key] == version }
     }
 
-    fun captureTurn(): BookmarkTurn {
+    fun captureTurn(search: PlaceBrowseSnapshot? = null, selectedDogs: List<PlaceDogSnapshot> = emptyList()): BookmarkTurn {
         val turn = ++intentClock
+        val searchView = generation
         return object : BookmarkTurn {
             var cancelled = false
             override fun cancel() { cancelled = true }
+            override val supportsSearch = search != null
+            override suspend fun search(filters: JsonObject, isCurrent: () -> Boolean): String {
+                fun current() = !closed && !cancelled && searchView == generation && isCurrent()
+                if (!current()) throw CancellationException("Saved workspace changed")
+                val snapshot = requireNotNull(search)
+                val candidate = snapshot.filters.withSavedPlan(filters, selectedDogs)
+                val result = repository.search(account, candidate.savedQuery(selectedDogs))
+                if (!current()) throw CancellationException("Saved workspace changed")
+                dogs = selectedDogs; searchDogs = selectedDogs
+                publishSaved(candidate, result, snapshot)
+                return state.value.aiAnswer.orEmpty()
+            }
             override suspend fun execute(requestId: String, key: PlaceKey, saved: Boolean): BookmarkOutcome {
                 if (closed || cancelled || (intentVersions[key] ?: 0) > turn) return superseded()
                 intentVersions[key] = turn
@@ -179,6 +251,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
             job.invokeOnCompletion { activeWrites -= job }
         }
     fun close() {
+        cancelConversation()
         closed = true; generation++; readJob?.cancel()
         activeWrites.toList().forEach { it.cancel() }
     }
