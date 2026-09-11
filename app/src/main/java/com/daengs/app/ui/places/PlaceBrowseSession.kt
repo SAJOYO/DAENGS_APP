@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonObject
 
 enum class PlaceBrowseTab { SEARCH, BOOKMARKS }
 
-/** UI snapshot only. A future source must query all bookmarks, not filter a capped search page. */
+/** UI snapshot only. The bookmark source queries all saved keys, independently of search pages. */
 data class PlaceBrowseFilters(
     val kinds: Set<PlaceKind> = setOf(PlaceKind.CAFE),
     val name: String = "",
