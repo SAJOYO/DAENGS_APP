@@ -4,7 +4,7 @@ import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.RecordingEpoch
 import com.daengs.app.walk.countsAsWalk
-import com.daengs.app.walk.summarize
+import com.daengs.app.walk.summarizeLegacy
 
 /** One consistent storage read; no inferred observations or rewritten source references. */
 data class RecordedMotionInput(val session: RecordedSession, val epochs: List<RecordingEpoch>,
@@ -35,6 +35,6 @@ fun compareRecordedMotion(input: RecordedMotionInput): RecordedMotionComparison 
     val replay = try { replayRecordedMotion(policy, epochs, fixes.asSequence()) }
     catch (_: IllegalStateException) { return RecordedMotionComparison.Unavailable("INCOMPLETE_RECORDING") }
     catch (_: IllegalArgumentException) { return RecordedMotionComparison.Unavailable("INVALID_RECORDING") }
-    val legacy = summarize(session, fixes)
+    val legacy = summarizeLegacy(session, fixes)
     return RecordedMotionComparison.Ready(session.id, legacy.distanceMeters, legacy.activeDurationMillis, replay)
 }

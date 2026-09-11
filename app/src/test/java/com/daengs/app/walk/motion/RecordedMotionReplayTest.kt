@@ -2,10 +2,89 @@ package com.daengs.app.walk.motion
 
 import com.daengs.app.walk.RecordingEpoch
 import com.daengs.app.walk.RecordedSession
+import com.daengs.app.walk.toSessionRoute
 import org.junit.Assert.*
 import org.junit.Test
 
 class RecordedMotionReplayTest {
+    @Test fun `missing or invalid GPS time excludes only the observation in live and completed measurement`() {
+        val policy = MotionPolicies.freeze("s", measure = true)
+        val middle = fix(1, 4.0, 2.0)
+        for (bad in listOf(middle.copy(elapsedRealtimeNanos = null), middle.copy(receivedElapsedNanos = null),
+            middle.copy(receivedElapsedNanos = nanos(1.5)))) {
+            val raw = listOf(fix(0, 0.0, 1.0), bad, fix(2, 8.0, 4.0))
+            val engine = MotionPolicyEngine(policy)
+            val events = listOf(MotionEvent.Begin(MotionEpoch("e", "c", 0, 0, 0))) +
+                raw.map { MotionEvent.Observation("s", it) } + MotionEvent.End(2, nanos(5.0), EndKind.STOP)
+            events.forEachIndexed { index, event -> engine.step(MotionJournalEntry(index.toLong(), event)) }
+            val result = replayRecordedMotion(policy, listOf(epoch(count = 3)), raw.asSequence())
+            assertEquals(engine.snapshot(), result)
+            assertEquals(0.0, result.eligibleDistanceM, 0.0) // Invalid time breaks the connecting edge.
+            assertEquals(nanos(5.0), result.closedRecordingDurationNanos)
+        }
+    }
+
+    @Test fun `measurement includes an accepted fix tied with STOP but rejects reception after the gate`() {
+        val policy = MotionPolicies.freeze("s", measure = true)
+        val raw = listOf(fix(0, 0.0, 1.0), fix(1, 8.0, 5.0).copy(receivedElapsedNanos = nanos(5.0)))
+        val engine = MotionPolicyEngine(policy)
+        listOf(MotionEvent.Begin(MotionEpoch("e", "c", 0, 0, 0)),
+            MotionEvent.Observation("s", raw[0]), MotionEvent.Observation("s", raw[1]),
+            MotionEvent.End(1, nanos(5.0), EndKind.STOP)).forEachIndexed { index, event ->
+            engine.step(MotionJournalEntry(index.toLong(), event))
+        }
+        val replayed = replayRecordedMotion(policy, listOf(epoch()), raw.asSequence())
+        assertEquals(engine.snapshot(), replayed)
+        assertEquals(8.0, replayed.eligibleDistanceM, .00001)
+        val session = RecordedSession("s", startedAtMillis = 0, endedAtMillis = 5000,
+            motionPolicyJson = MotionPolicies.encode(policy))
+        assertEquals(5000L, com.daengs.app.walk.summarize(session, raw, epochs = listOf(epoch()))
+            .toSessionRoute().points.last().activeElapsedMillis)
+        assertThrows(IllegalArgumentException::class.java) {
+            replayRecordedMotion(policy, listOf(epoch()), sequenceOf(raw[0], raw[1].copy(receivedElapsedNanos = nanos(5.1))))
+        }
+    }
+
+    @Test fun `measurement summary opts in explicitly and uses monotonic route time`() {
+        val config = MotionConfig(minDistanceM = 20.0)
+        val old = RecordedSession("s", startedAtMillis = 0, endedAtMillis = 5000,
+            motionPolicyJson = MotionPolicies.encode(MotionPolicies.freeze("s", config)))
+        val raw = listOf(fix(0, 0.0, 1.0), fix(1, 8.0, 4.0))
+        assertEquals(8.0, com.daengs.app.walk.summarize(old, raw).distanceMeters, .00001)
+        val adopted = old.copy(motionPolicyJson = MotionPolicies.encode(MotionPolicies.freeze("s", config, measure = true)))
+        val measured = com.daengs.app.walk.summarize(adopted, raw, epochs = listOf(epoch()))
+        assertEquals(0.0, measured.distanceMeters, 0.0)
+        assertEquals(5000L, measured.activeDurationMillis)
+        assertEquals(MotionPolicies.MEASUREMENT_VERSION, measured.measurementVersion)
+        assertThrows(IllegalStateException::class.java) { com.daengs.app.walk.summarize(adopted, raw) }
+        assertThrows(IllegalStateException::class.java) {
+            com.daengs.app.walk.summarize(adopted.copy(motionPolicyJson = "broken"), raw, epochs = listOf(epoch()))
+        }
+        val clockAdjusted = raw.map { it.copy(atMillis = 1000L) }
+        val routeSummary = com.daengs.app.walk.summarize(adopted.copy(
+            motionPolicyJson = MotionPolicies.encode(MotionPolicies.freeze("s", measure = true))), clockAdjusted, epochs = listOf(epoch()))
+        val route = routeSummary.toSessionRoute()
+        assertEquals(listOf(1000L, 4000L), route.points.map { it.activeElapsedMillis })
+        assertEquals(8.0 / 3, route.points.last().derivedSpeedMetersPerSecond!!, .00001)
+    }
+
+    @Test fun `measurement route keeps source gaps and limits drawn samples without shortening total distance`() {
+        val session = RecordedSession("s", startedAtMillis = 0, endedAtMillis = 25000,
+            motionPolicyJson = MotionPolicies.encode(MotionPolicies.freeze("s", measure = true)))
+        val epochs = listOf(epoch(kind = "PAUSE"), epoch("e2", 1, 20.0, 25.0, 2, 2))
+        val raw = listOf(fix(0, 0.0, 1.0), fix(1, 4.0, 4.0),
+            fix(2, 500.0, 21.0, source = "e2", chain = 1), fix(3, 504.0, 24.0, source = "e2", chain = 1))
+        val full = com.daengs.app.walk.summarize(session, raw, epochs = epochs)
+        val limited = com.daengs.app.walk.summarize(session, raw, maxRouteSamples = 2, epochs = epochs)
+        assertEquals(8.0, full.distanceMeters, .00001)
+        assertEquals(full.distanceMeters, limited.distanceMeters, 0.0)
+        assertEquals(2, full.segments.size)
+        assertEquals(2, limited.segments.sumOf { it.size })
+        assertEquals(full.anchor, limited.anchor)
+        assertEquals(10_000L, full.activeDurationMillis)
+        assertEquals(listOf(1000L, 4000L, 6000L, 9000L), full.activeElapsedAtNanos.values.toList())
+    }
+
     @Test fun `comparison uses frozen settings and shows boundary differences without rewriting legacy summary`() {
         for (distance in listOf(49.5, 50.5)) for (end in listOf(59.999, 60.0)) {
             val session = RecordedSession("s", startedAtMillis = 0, endedAtMillis = (end * 1000).toLong(),

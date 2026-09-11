@@ -59,7 +59,7 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 대조한다. 원본/epoch 계약을 바꾸면 `RecordingJournalTest`, `RecordingCompletionTest`도
 선택한다. legacy reader를 바꾸면 `TrailRecorderTest`, `WalkSummaryTest`를 추가한다.
 #307의 `WalkSpeedRuntimeTest`와 `WalkSpeedServiceTest`는 운영 속도 표시 연결을 검사한다.
-거리·요약은 기존 계산이며, 이 테스트가 실기기 주행 검증은 아니다.
+#319부터 새 산책의 거리·요약까지 연결한다. 이 테스트가 실기기 주행 검증은 아니다.
 
 #313 정책 저장·비교는 위 `MotionPolicyTest`, `RecordedMotionReplayTest`,
 `WalkSpeedRuntimeTest`에 더해 `RecordingJournalTest`의 실제 파일 재개방과
@@ -67,6 +67,14 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 검증한다. 세션 모델·Room 변경의 기존 소비자는 `WalkDaoTest`, `WalkTrackingTest`,
 `WalkSummaryTest`로 확인한다. 비교 정책의 상세 범위는
 [저장 계약](../../../docs/gps-policy-persistence.md)을 따른다.
+
+#319의 측정 연결은 위 엔진·정책·재생·runtime·service·journal·completion에 더해
+`WalkSessionRouteTest`, `WalkHistoryTest`, `RoomWalkRecordsSourceTest`,
+`WalkDiaryPublicationTest`, `WalkDiaryPublicationLifecycleTest`로 완료 소비자를 확인한다.
+`WalkDaoTest`, `WalkTrackingTest`, `WalkSummaryTest`는 기존 저장/요약,
+`WalkSyncTest`, `WalkRecordingSyncTest`는 v1과 eligibility 전송 경계다.
+새 채택 마커·고속/재진입·경로 상한·STOP 시각 일치·단조 시간축·60초/50m 경계·파일
+재개방을 기존 클래스에 추가했다. [적용 및 서버 후속 계약](../../../docs/gps-measurement-integration.md)을 따른다.
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'

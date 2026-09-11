@@ -28,8 +28,12 @@ suspend fun recoverDrainedRecordings(log: WalkFixLog, finishPins: suspend (Strin
         val epochs = log.recordingEpochs(session.id)
         if (runCatching { checkRecordingComplete(epochs) }.isFailure) continue
         val endedAt = requireNotNull(epochs.last().endedAtMillis)
+        // Unknown policy or corrupt measurement input remains recoverable, never discarded as a short walk.
+        val summary = try { summarize(session, log.fixes(session.id), epochs = epochs) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: IllegalArgumentException) { continue }
+        catch (_: IllegalStateException) { continue }
         finishPins(session.id, endedAt)
-        val summary = summarize(session, log.fixes(session.id))
         if (!summary.countsAsWalk && !log.hasEntries(session.id)) log.deleteSession(session.id)
         else log.closeSession(session.id, endedAt)
     }
