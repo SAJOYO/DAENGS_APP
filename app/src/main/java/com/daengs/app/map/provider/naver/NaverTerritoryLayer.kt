@@ -24,7 +24,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
         }, probe) }
     }
     val rendered = remember(sites) { sites.map { it.renderState() } }
-    val feedback = sites.firstOrNull { it.selected && it.feedback != null }?.feedback
+    val feedback = remember(sites) { sites.firstOrNull { it.selected && it.feedback != null }?.feedback }
     val progress = rememberTerritoryFeedbackProgress(feedback)
     DisposableEffect(store) { onDispose { store?.clear() } }
     SideEffect {

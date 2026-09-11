@@ -10,12 +10,14 @@ class TerritoryOverlayStoreTest {
     private class Handle(var state: TerritoryRenderState) : TerritoryOverlayHandle {
         var updates = 0
         var removed = 0
+        var frameCalls = 0
+        var marked = false
         var frame = TerritoryFeedbackFrame()
         override fun update(previous: TerritoryRenderState, next: TerritoryRenderState) {
             assertEquals(state, previous)
             state = next; updates++
         }
-        override fun frame(frame: TerritoryFeedbackFrame, marked: Boolean) { this.frame = frame }
+        override fun frame(frame: TerritoryFeedbackFrame, marked: Boolean) { this.frame = frame; this.marked = marked; frameCalls++ }
         override fun remove() { removed++ }
     }
     private val handles = mutableMapOf<String, Handle>()
@@ -114,5 +116,103 @@ class TerritoryOverlayStoreTest {
         store.frame(null, 1f)
         assertEquals(TerritoryFeedbackFrame(), retained.frame)
         assertSame(retained, handles["a"])
+    }
+    @Test fun `500 sites dispatch frames to one effect target and idle dispatches none`() {
+        val feedback = TerritoryFeedback(1, "0", TerritoryFeedbackKind.VERIFIED, 0)
+        sync(List(500) { site("$it").copy(selected = it == 0) })
+        repeat(20) { store.frame(null, 1f) }
+        assertEquals(0, probe.handleFrames)
+        repeat(60) { store.frame(feedback, (it + 1) / 100f) }
+        assertEquals(60, probe.handleFrames)
+        assertEquals(1, probe.maxFrameTargets)
+        assertEquals(60, handles.getValue("0").frameCalls)
+        handles.filterKeys { it != "0" }.values.forEach { assertEquals(0, it.frameCalls) }
+    }
+
+    @Test fun `ending or invalid progress restores the previous effect only once`() {
+        val feedback = TerritoryFeedback(1, "a", TerritoryFeedbackKind.MARKED, 0)
+        sync(listOf(site("a").copy(selected = true), site("b")))
+        for (end in listOf(1f, 2f, -.1f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            store.frame(feedback, .5f)
+            assertTrue(handles.getValue("a").marked)
+            probe.reset()
+            repeat(5) { store.frame(feedback, end) }
+            assertEquals(1, probe.handleFrames)
+            assertEquals(TerritoryFeedbackFrame(), handles.getValue("a").frame)
+            assertFalse(handles.getValue("a").marked)
+        }
+        assertEquals(0, handles.getValue("b").frameCalls)
+    }
+
+    @Test fun `target switch restores old and animates new while unrelated sites receive nothing`() {
+        val a = site("a").copy(selected = true, radiusMeters = 20.0)
+        val b = site("b")
+        sync(listOf(a, b, site("c")))
+        val feedback = TerritoryFeedback(1, "a", TerritoryFeedbackKind.VERIFIED, 0)
+        store.frame(feedback, .4f)
+        sync(listOf(a.copy(selected = false, radiusMeters = null), b.copy(selected = true, radiusMeters = 20.0), site("c")))
+        probe.reset()
+        store.frame(feedback.copy(id = 2, siteId = "b", kind = TerritoryFeedbackKind.MARKED), .6f)
+        assertEquals(2, probe.handleFrames)
+        assertEquals(TerritoryFeedbackFrame(), handles.getValue("a").frame)
+        assertEquals(territoryFeedbackFrame(TerritoryFeedbackKind.MARKED, .6f), handles.getValue("b").frame)
+        assertEquals(0, handles.getValue("c").frameCalls)
+        probe.reset()
+        store.frame(feedback.copy(siteId = "b"), .7f)
+        assertEquals(1, probe.handleFrames)
+    }
+
+    @Test fun `changed idle ring initializes once and active ring receives current pulse`() {
+        val a = site("a").copy(selected = true)
+        sync(listOf(a, site("b")))
+        val feedback = TerritoryFeedback(1, "a", TerritoryFeedbackKind.VERIFIED, 0)
+        store.frame(feedback, .5f)
+        sync(listOf(a.copy(radiusMeters = 20.0, proximity = TerritoryProximityRange.IN_RANGE),
+            site("b").copy(radiusMeters = 20.0)))
+        probe.reset()
+        store.frame(feedback, .5f)
+        assertEquals(2, probe.handleFrames)
+        assertEquals(territoryFeedbackFrame(feedback.kind, .5f), handles.getValue("a").frame)
+        assertEquals(TerritoryFeedbackFrame(), handles.getValue("b").frame)
+        val bCalls = handles.getValue("b").frameCalls
+        store.frame(feedback, .6f)
+        assertEquals(bCalls, handles.getValue("b").frameCalls)
+    }
+
+    @Test fun `removal clear and reappearance do not dispatch frames to detached handles`() {
+        val a = site("a").copy(selected = true, radiusMeters = 20.0)
+        val feedback = TerritoryFeedback(1, "a", TerritoryFeedbackKind.VERIFIED, 0)
+        sync(listOf(a)); store.frame(feedback, .5f)
+        val old = handles.getValue("a")
+        val oldCalls = old.frameCalls
+        sync(emptyList()); store.frame(feedback, .6f)
+        assertEquals(oldCalls, old.frameCalls)
+        sync(listOf(a)); store.frame(feedback, .7f)
+        val new = handles.getValue("a")
+        assertNotSame(old, new)
+        assertEquals(territoryFeedbackFrame(feedback.kind, .7f), new.frame)
+        store.clear(); probe.reset()
+        store.frame(feedback, .8f)
+        assertEquals(0, probe.handleFrames)
+        assertEquals(1, new.removed)
+        sync(listOf(a.copy(selected = false)))
+        store.frame(feedback, .5f)
+        assertEquals(0, handles.getValue("a").frameCalls)
+    }
+
+    @Test fun `retained immutable snapshot is not traversed again on effect frames`() {
+        var reads = 0
+        val data = List(500) { site("$it").copy(selected = it == 0).renderState() }
+        val snapshot = object : AbstractList<TerritoryRenderState>() {
+            override val size get() = data.size
+            override fun get(index: Int): TerritoryRenderState { reads++; return data[index] }
+        }
+        store.sync(snapshot)
+        reads = 0
+        repeat(60) {
+            store.sync(snapshot)
+            store.frame(TerritoryFeedback(1, "0", TerritoryFeedbackKind.VERIFIED, 0), .5f)
+        }
+        assertEquals(0, reads)
     }
 }

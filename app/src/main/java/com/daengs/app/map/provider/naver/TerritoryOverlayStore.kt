@@ -44,10 +44,15 @@ internal class TerritoryOverlayStore(
 ) {
     private data class Entry(val handle: TerritoryOverlayHandle, var state: TerritoryRenderState)
     private val entries = linkedMapOf<String, Entry>()
+    private var lastInput: List<TerritoryRenderState>? = null
+    private var activeId: String? = null
+    private val pendingFrames = linkedSetOf<String>()
     private var lastStates: List<TerritoryRenderState> = emptyList()
 
     fun sync(states: List<TerritoryRenderState>) {
-        if (lastStates == states) return
+        // The layer supplies immutable snapshots, retaining identity during animation frames.
+        if (lastInput === states) return
+        if (lastStates == states) { lastInput = states; return }
         val started = if (probe != null) System.nanoTime() else 0L
         val incoming = states.associateBy { it.id }
         val iterator = entries.iterator()
@@ -56,6 +61,8 @@ internal class TerritoryOverlayStore(
             if (id !in incoming) {
                 entry.handle.remove()
                 iterator.remove()
+                pendingFrames.remove(id)
+                if (activeId == id) activeId = null
                 probe?.let { it.removed++ }
             }
         }
@@ -65,27 +72,48 @@ internal class TerritoryOverlayStore(
                 entries[id] = Entry(create(state), state)
                 probe?.let { it.created++ }
             } else if (entry.state != state) {
+                if (entry.state.range != state.range || entry.state.radius != state.radius || entry.state.paw != state.paw) {
+                    pendingFrames += id
+                }
                 entry.handle.update(entry.state, state)
                 entry.state = state
                 probe?.let { it.updated++ }
             }
         }
         lastStates = states.toList()
+        lastInput = states
         probe?.syncNanos?.add(System.nanoTime() - started)
     }
 
-    // Step 2 will limit traversal to active/prior effect IDs. Unchanged SDK values are skipped by the handle.
+    /** Only current/prior effect targets and auxiliary displays changed by sync need a frame. */
     fun frame(feedback: TerritoryFeedback?, progress: Float) {
-        entries.forEach { (id, entry) ->
-            val kind = feedback?.takeIf { it.siteId == id }?.kind
-            entry.handle.frame(territoryFeedbackFrame(kind, progress), kind == TerritoryFeedbackKind.MARKED)
+        val target = feedback?.siteId?.takeIf {
+            progress >= 0f && progress < 1f && entries[it]?.state?.selected == true
         }
+        activeId?.takeIf { it != target }?.let { pendingFrames += it }
+        var visits = 0
+        pendingFrames.forEach { id ->
+            if (id != target) entries[id]?.let {
+                it.handle.frame(TerritoryFeedbackFrame(), false)
+                visits++
+            }
+        }
+        pendingFrames.clear()
+        if (target != null) {
+            val kind = checkNotNull(feedback).kind
+            entries.getValue(target).handle.frame(territoryFeedbackFrame(kind, progress), kind == TerritoryFeedbackKind.MARKED)
+            visits++
+        }
+        activeId = target
+        probe?.recordFrame(visits)
     }
-
     fun clear() {
         entries.values.forEach { it.handle.remove() }
         probe?.let { it.removed += entries.size }
         entries.clear()
         lastStates = emptyList()
+        lastInput = null
+        activeId = null
+        pendingFrames.clear()
     }
 }

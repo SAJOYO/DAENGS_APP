@@ -80,9 +80,9 @@ private fun TerritoryPerformanceLab(frames: LabFrames, auto: Boolean) {
             val sorted = frames.millis.sorted()
             val p95 = sorted.getOrNull(((sorted.size - 1) * .95).toInt().coerceAtLeast(0)) ?: 0.0
             val text = String.format(Locale.US,
-                "n=%d phase=%s create=%d remove=%d update=%d syncMs=%.2f frames=%d uiP95Ms=%.2f over16ms=%d dropped=%d",
+                "n=%d phase=%s create=%d remove=%d update=%d syncMs=%.2f frames=%d uiP95Ms=%.2f over16ms=%d dropped=%d framePasses=%d handleFrames=%d maxFrameTargets=%d",
                 count, phase, probe.created, probe.removed, probe.updated, probe.syncNanos.sum() / 1_000_000.0,
-                sorted.size, p95, sorted.count { it > 16.667 }, frames.dropped)
+                sorted.size, p95, sorted.count { it > 16.667 }, frames.dropped, probe.framePasses, probe.handleFrames, probe.maxFrameTargets)
             Log.i("TerritoryPerf", text)
             report = text
         }
