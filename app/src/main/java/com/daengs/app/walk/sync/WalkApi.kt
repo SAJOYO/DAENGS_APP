@@ -58,7 +58,7 @@ object WalkApi {
         accessToken,
         "/$walkId/points",
         "POST",
-        JSONObject().put("points", fixes.toJsonArray()),
+        JSONObject().put("points", fixes.toUploadPoints()),
     ) { }
 
     /**
@@ -109,7 +109,7 @@ object WalkApi {
 
     // -- 아래는 배관 -------------------------------------------------------
 
-    private fun uploadBody(session: RecordedSession, fixes: List<RecordedFix>) =
+    internal fun uploadBody(session: RecordedSession, fixes: List<RecordedFix>) =
         JSONObject().apply {
             // 기기의 세션 id 를 그대로 쓴다. 되찾을 때 같은 id 로 맞춰 보므로
             // 여기서 새 id 를 만들면 같은 산책이 두 벌이 된다.
@@ -118,7 +118,7 @@ object WalkApi {
             put("started_at", session.startedAtMillis.toIso())
             put("ended_at", (session.endedAtMillis ?: session.startedAtMillis).toIso())
             putWeather(session.weather)
-            put("points", fixes.toJsonArray())
+            put("points", fixes.toUploadPoints())
         }
 
     private fun JSONObject.putWeather(weather: RecordedWeather?) {
@@ -126,22 +126,6 @@ object WalkApi {
         put("weather_code", weather?.weatherCode ?: JSONObject.NULL)
         put("is_day", weather?.isDay ?: JSONObject.NULL)
         put("temperature_c", weather?.temperatureC ?: JSONObject.NULL)
-    }
-
-    private fun List<RecordedFix>.toJsonArray(): JSONArray = JSONArray().also { array ->
-        for (fix in this) {
-            array.put(
-                JSONObject().apply {
-                    put("client_seq", fix.clientSeq)
-                    put("chain_index", fix.chainIndex)
-                    put("at", fix.atMillis.toIso())
-                    put("lat", fix.lat)
-                    put("lng", fix.lng)
-                    put("accuracy_m", fix.accuracyM ?: JSONObject.NULL)
-                    put("is_mock", fix.isMock)
-                },
-            )
-        }
     }
 
     internal suspend fun <T> call(
