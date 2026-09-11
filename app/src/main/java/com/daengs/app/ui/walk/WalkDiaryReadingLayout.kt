@@ -119,23 +119,24 @@ internal fun WalkDiaryMapContent(
                 containerColor = CreamBg,
                 sheetContent = {
                     Column(Modifier.fillMaxWidth().height(panelHeight).testTag("diary-sheet")) {
+                        val showSceneHeading = selected != null || explorerPanel == null
                         Surface(onClick = {
                             if (expanded) { onClose(); scope.launch { sheet.partialExpand() } }
                             else scope.launch { sheet.expand() }
-                        }, color = CardWhite, modifier = Modifier.fillMaxWidth().height(52.dp)
+                        }, color = CardWhite, modifier = Modifier.fillMaxWidth()
+                            .height(if (showSceneHeading) 52.dp else 48.dp)
                             .testTag("diary-sheet-handle").semantics {
-                                contentDescription = if (expanded) "지도 넓게 보기" else "장면 목록 펼치기"
+                                contentDescription = if (expanded) "지도 넓게 보기" else "상세 패널 펼치기"
                             }) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.padding(top = 8.dp).width(32.dp).height(4.dp)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = if (showSceneHeading) Arrangement.Top else Arrangement.Center) {
+                                Box(Modifier.padding(top = if (showSceneHeading) 8.dp else 0.dp).width(32.dp).height(4.dp)
                                     .background(PinkSoft, RoundedCornerShape(4.dp)))
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                                if (showSceneHeading) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (explorerSelected) "이동 순서 살펴보기"
-                                        else if (selected == null) "${scenes.size}개 장면 · 시간순" else "‹ 장면 목록",
+                                    Text(if (selected == null) "${scenes.size}개 장면 · 시간순" else "‹ 장면 목록",
                                         Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(if (selected != null) "장면 ${scenes.indexOfFirst { it.id == selected.id } + 1}"
-                                        else if (expanded) "접기 ↓" else "펼치기 ↑",
+                                    if (selected != null) Text("장면 ${scenes.indexOfFirst { it.id == selected.id } + 1}",
                                         fontSize = 13.sp, color = TextMuted)
                                 }
                             }

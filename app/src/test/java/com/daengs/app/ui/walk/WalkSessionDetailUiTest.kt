@@ -2,13 +2,13 @@ package com.daengs.app.ui.walk
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.routeexplorer.*
@@ -48,7 +48,7 @@ class WalkSessionDetailUiTest {
                 index = RouteExplorerIndex(explorerRoute(straightExplorerPath()))
             } }
             val summary = WalkSummary("saved", emptyList(), 0, 20_000, null, 100.0, 20_000, emptyList(), null)
-            MaterialTheme {
+            DaengsTheme {
                 WalkDiaryMapContent(emptyList(), null, false, null, {}, {}, {}, {}, {}, {},
                     title = "저장된 산책", backLabel = WalkSessionOrigin.COMPLETION.backLabel,
                     summaryContent = { WalkSessionSummary(summary) },
@@ -79,12 +79,12 @@ class WalkSessionDetailUiTest {
     @Test @Config(qualifiers = "w320dp-h640dp")
     fun `large font on a small screen keeps summary map and panel choices reachable`() {
         compose.setContent {
-            val density = androidx.compose.ui.platform.LocalDensity.current
             val view = androidx.compose.ui.platform.LocalView.current
             SideEffect { rendered = view.rootView }
-            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides
-                androidx.compose.ui.unit.Density(density.density, 1.3f)) {
-                MaterialTheme {
+            DaengsTheme {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides
+                    androidx.compose.ui.unit.Density(density.density, 1.3f)) {
                     WalkDiaryMapContent(emptyList(), null, false, null, {}, {}, {}, {}, {}, {},
                         title = "두부와 함께 남긴 저녁 산책",
                         summaryContent = { WalkSessionSummary(WalkSummary("s", emptyList(), 0, 1_800_000,
@@ -106,7 +106,7 @@ class WalkSessionDetailUiTest {
         var origin by mutableStateOf(WalkSessionOrigin.COMPLETION)
         var edited = false
         compose.setContent {
-            MaterialTheme {
+            DaengsTheme {
                 WalkDiaryMapContent(listOf(scene), scene, false, null, {}, {}, { edited = true }, {}, {}, {},
                     title = "저장된 산책", backLabel = origin.backLabel,
                     map = { Box(Modifier.fillMaxSize()) })
