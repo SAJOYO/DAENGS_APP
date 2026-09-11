@@ -7,6 +7,14 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    /** Freeze the session, policy, raw rows and close receipts together, then calculate outside SQLite. */
+    @androidx.room.Transaction
+    suspend fun motionInput(sessionId: String, ownerId: String): com.daengs.app.walk.motion.RecordedMotionInput? {
+        val row = session(sessionId)?.takeIf { it.ownerId == ownerId } ?: return null
+        return com.daengs.app.walk.motion.RecordedMotionInput(row.toModel(),
+            recordingEpochs(sessionId).map { it.toModel() }, fixes(sessionId).map { it.toModel() })
+    }
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveRecordingEpoch(row: RecordingEpochRow)
 

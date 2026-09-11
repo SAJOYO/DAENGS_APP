@@ -100,6 +100,12 @@ class WalkSpeedServiceTest {
         awaitState { source.callback != null && !state.recordingTransition }
         val id = state.activeSessionId!!
         source.emit(1.5f)
+        val storedPolicy = runBlocking { app.walkRuntime.log.session(id)!!.motionPolicyJson }
+        assertNotNull(storedPolicy)
+        val loadedPolicy = com.daengs.app.walk.motion.MotionPolicies.resolveJson(id, storedPolicy)
+            as com.daengs.app.walk.motion.MotionPolicySelection.Supported
+        val speedRuntime = ReflectionHelpers.getField<WalkSpeedRuntime>(service.get(), "speedRuntime")
+        assertEquals(loadedPolicy.policy.stored.configHash, speedRuntime.motionSnapshot()!!.configHash)
         awaitState { state.motionDisplay.speedMps == 1.5 }
         assertEquals(1, runBlocking { app.walkRuntime.log.fixes(id).size })
         main.idleFor(Duration.ofSeconds(11))
@@ -123,6 +129,7 @@ class WalkSpeedServiceTest {
         assertEquals(listOf(0L, 1L), fixes.map { it.ingressSeq })
         assertNotEquals(fixes.first().sourceEpoch, fixes.last().sourceEpoch)
         assertEquals(2, source.starts)
+        assertEquals(storedPolicy, runBlocking { app.walkRuntime.log.session(id)!!.motionPolicyJson })
         assertEquals(1, source.maxActive)
         command(WalkTrackingService.ACTION_STOP)
         awaitState { state.trail.state == TrackingState.OFF && !state.recordingTransition }

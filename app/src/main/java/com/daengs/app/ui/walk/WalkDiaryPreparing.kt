@@ -10,9 +10,10 @@ import androidx.compose.ui.unit.dp
 
 /** The map and editable cards are composed only after a single result is published. */
 @Composable
-internal fun WalkDiaryPreparing(onBack: () -> Unit, onRefresh: () -> Unit, error: String? = null) {
+internal fun WalkDiaryPreparing(onBack: () -> Unit, onRefresh: () -> Unit, error: String? = null,
+    backLabel: String = "산책 기록") {
     Column(Modifier.fillMaxSize()) {
-        TextButton(onClick = onBack) { Text("‹ 산책 기록") }
+        TextButton(onClick = onBack) { Text("‹ $backLabel") }
         Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             if (error == null) CircularProgressIndicator(Modifier.size(32.dp))

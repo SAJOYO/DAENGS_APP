@@ -8,10 +8,11 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** One service session, serialized on Main. No recording controls or writes; no UI-owned lifetime. */
 internal class WalkSpeedRuntime(
-    private val sessionId: String,
+    policy: SessionMotionPolicy,
     private val onFailure: (Exception) -> Unit = {},
 ) {
-    private val engine = MotionPolicyEngine(MotionPolicies.freeze(sessionId))
+    private val sessionId = policy.sessionId
+    private val engine = MotionPolicyEngine(policy)
     private var journalSeq = 0L
     private var epoch: DisplayEpoch? = null
     private var presentation: MotionDisplaySession? = null
@@ -19,6 +20,9 @@ internal class WalkSpeedRuntime(
     private var finished = false
     private val mutableDisplay = MutableStateFlow(MotionDisplay())
     val display = mutableDisplay.asStateFlow()
+
+    /** Diagnostic candidate only. Failure must not expose a partial measurement as a valid result. */
+    fun motionSnapshot(): MotionSnapshot? = if (failed) null else engine.snapshot()
 
     fun begin(source: RecordingEpoch, nowNanos: Long) = safely {
         check(!finished && source.sessionId == sessionId)

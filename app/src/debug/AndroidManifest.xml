@@ -24,6 +24,7 @@
         <activity android:name=".ui.walk.GeoStoryboardLabActivity" android:exported="true" android:label="geo 스토리보드 검토" />
         <activity android:name=".ui.walk.WalkTraceBrushLabActivity" android:exported="true" android:label="산책 흔적 표시 검토" />
         <activity android:name=".ui.walk.WalkRecordsLabActivity" android:exported="true" android:label="산책 기록 탐색 검토" />
+        <activity android:name=".ui.walk.WalkSessionLabActivity" android:exported="true" android:label="산책 상세 SDK 검토" />
         <activity android:name=".ui.places.lab.PlaceSearchLabActivity" android:exported="true" android:label="시설 검색 UI 검토" />
         <activity android:name=".ui.places.lab.PlaceBookmarkLabActivity" android:exported="true" android:label="시설 찜 UI 검토" />
         <activity android:name=".ui.places.lab.PlaceSearchLiveActivity" android:exported="true" android:label="시설 검색 API 검토" />

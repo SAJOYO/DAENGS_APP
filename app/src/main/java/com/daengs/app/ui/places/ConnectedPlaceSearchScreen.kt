@@ -246,7 +246,7 @@ fun ConnectedPlaceSearchScreen(
                         onSubmit = { query ->
                             dogAsked = true; dogQuery = query
                             if (!ai) onAction(PlacesAction.SetAiMode(true))
-                            onAction(PlacesAction.Discover(query))
+                            onAction(PlacesAction.Discover(query, bookmarks?.captureTurn()))
                         },
                         onCancel = { onAction(PlacesAction.CancelAi) },
                         onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,

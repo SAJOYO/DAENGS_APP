@@ -177,6 +177,9 @@ class MainActivity : ComponentActivity() {
                 val recordsAccount by app.sessionProvider.accountScope.collectAsState()
                 val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
                 val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
+                val completedDestination = key(recordsAccount) {
+                    com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
+                }
                 val gameScreenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
@@ -1015,7 +1018,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             detailContent = { id, backToRecords ->
-                                com.daengs.app.ui.walk.WalkDiaryMapScreen(id, walkRuntime.history,
+                                com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history,
                                     onBack = backToRecords, pets = pets.pets.orEmpty())
                             },
                         )
@@ -1046,7 +1049,16 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
                     )
 
-                    Screen.Walk -> WalkRoute(
+                    Screen.Walk -> key(recordsAccount) {
+                      com.daengs.app.ui.walk.WalkSessionFlow(
+                        account = recordsAccount, destination = completedDestination, controller = walkController,
+                        onExit = { screen = Screen.Home },
+                        detail = { id, close ->
+                            com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history, close,
+                                pets = pets.pets.orEmpty(), origin = com.daengs.app.ui.walk.WalkSessionOrigin.COMPLETION)
+                        },
+                      ) {
+                       WalkRoute(
                         onBack = { screen = Screen.Home },
                         onHome = { screen = Screen.Home },
                         // 산책 기록은 홈 카드와 같은 산책별/모아보기 화면으로 간다.
@@ -1068,6 +1080,8 @@ class MainActivity : ComponentActivity() {
                         photoOf = { petPhotos[it] },
                         outside = outside,
                     )
+                      }
+                    }
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
