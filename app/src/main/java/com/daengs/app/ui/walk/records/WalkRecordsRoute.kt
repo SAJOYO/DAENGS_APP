@@ -44,6 +44,7 @@ internal fun WalkRecordsRoute(
     onSignIn: () -> Unit,
     onSync: suspend () -> Unit,
     detailContent: @Composable (String, () -> Unit) -> Unit,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
 ) {
     // An expired login must not show even a restored detail id.
     if (accountScope.ownerId.isNullOrBlank() || source == null) {
@@ -83,7 +84,7 @@ internal fun WalkRecordsRoute(
             WalkRecordsScreen(source, pets.orEmpty(), onBack = {
                 state.captureRecords()
                 onBack()
-            }, onOpen = state::open, modifier = Modifier.weight(1f), petsLoaded = pets != null)
+            }, onOpen = state::open, modifier = Modifier.weight(1f), petsLoaded = pets != null, photoOf = photoOf)
         }
     }
 }

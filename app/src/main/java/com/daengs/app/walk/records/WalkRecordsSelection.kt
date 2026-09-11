@@ -9,10 +9,15 @@ import kotlinx.coroutines.flow.flowOf
 import java.time.ZoneId
 
 data class WalkRecordsQuery(
-    val dogId: String? = null,
+    val dogIds: Set<String>? = null,
     val filter: WalkHistoryFilter = WalkHistoryFilter(),
 ) {
-    init { require(dogId == null || dogId.isNotBlank()) }
+    // null means all dogs, including records without an assigned dog. An empty subset is invalid.
+    init { require(dogIds == null || (dogIds.isNotEmpty() && dogIds.all { it.isNotBlank() })) }
+    constructor(dogId: String, filter: WalkHistoryFilter = WalkHistoryFilter()) : this(setOf(dogId), filter)
+
+    fun includesDogs(ids: Collection<String>): Boolean = dogIds == null || ids.any { it in dogIds }
+    fun includesEntryDog(id: String?): Boolean = dogIds == null || id in dogIds
 }
 
 /** A saved walk record, distinct from a diary assembled from selected scenes. */
@@ -102,7 +107,7 @@ fun selectWalkRecords(
     val records = candidates.asSequence().filter { record ->
         val summary = record.summary
         summary.endedAtMillis != null &&
-            (selectedQuery.dogId == null || selectedQuery.dogId in summary.dogIds) &&
+            selectedQuery.includesDogs(summary.dogIds) &&
             selectedQuery.filter.matches(summary, zone) &&
             selectedQuery.filter.matchesText(listOfNotNull(record.title) + record.notes)
     }.sortedWith(compareByDescending<WalkRecord> { it.summary.startedAtMillis }
@@ -110,6 +115,6 @@ fun selectWalkRecords(
     return WalkRecordsSelection(selectedQuery, records)
 }
 
-private fun WalkRecordsQuery.snapshot() = copy(filter = filter.copy(
+private fun WalkRecordsQuery.snapshot() = copy(dogIds = dogIds?.toSet(), filter = filter.copy(
     seasons = filter.seasons.toSet(), weather = filter.weather.toSet(),
 ))
