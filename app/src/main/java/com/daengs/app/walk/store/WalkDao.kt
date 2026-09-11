@@ -85,11 +85,10 @@ interface WalkDao {
         val row = diaryPublication(id) ?: return null
         val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
         if (row.baseBundle == null) {
-            val source = fixes(id).filter { it.recordingEligible != false }.map {
-                com.daengs.app.walk.RecordedFix(it.clientSeq, it.chainIndex, it.atMillis, it.lat, it.lng, it.accuracyM, it.isMock)
-            }
-            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE)
-            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source,
+            val source = fixes(id).map { it.toModel() }
+            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE,
+                epochs = recordingEpochs(id).map { it.toModel() })
+            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source.filter { it.recordingEligible != false },
                 entries(id).mapNotNull { it.entry() }, photos(id)))
         }
         return diaryPublication(id)

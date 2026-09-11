@@ -69,7 +69,7 @@ class RecordingJournalTest {
         var db = Room.databaseBuilder(context, WalkDatabase::class.java, name).build()
         try {
             var log = RoomWalkFixLog(db.walkDao(), owner = { "owner" })
-            val policy = MotionPolicies.freeze("s", MotionConfig(minDistanceM = 7.0))
+            val policy = MotionPolicies.freeze("s", MotionConfig(minDistanceM = 7.0), measure = true)
             val saved = RecordedSession("s", ownerId = "owner", startedAtMillis = 0,
                 motionPolicyJson = MotionPolicies.encode(policy))
             log.openSession(saved)
@@ -77,6 +77,8 @@ class RecordingJournalTest {
             log.saveRecordingEpoch(originalEpoch)
             val raw = listOf(com.daengs.app.walk.motion.fix(0, 0.0, 1.0), com.daengs.app.walk.motion.fix(1, 8.0, 4.0))
             raw.forEach { log.append("s", it) }
+            log.appendAction(RecordedWalkAction("action", "s", WalkMomentType.SNIFFING, 4000, 4000,
+                com.daengs.app.location.GeoPoint(raw.last().lat, raw.last().lng), 1f))
             log.saveRecordingEpoch(originalEpoch.copy(endedAtMillis = 5000, endedElapsedNanos = nanos(5.0),
                 endKind = "STOP", targetIngressSeq = 1, persistedCount = 2, drained = true))
             // Simulate process recovery after the durable STOP but before closing the session row.
@@ -96,6 +98,17 @@ class RecordingJournalTest {
             assertEquals(3000L, comparison.legacyActiveDurationMillis)
             assertEquals(5000L, comparison.candidateRecordingDurationMillis)
             assertEquals(comparison, log.compareMotion("s"))
+            val detail = WalkHistory(log).sessionDetail("s")!!
+            assertEquals(5000L, detail.summary.activeDurationMillis)
+            assertEquals(MotionPolicies.MEASUREMENT_VERSION, detail.summary.measurementVersion)
+            assertEquals(8.0, detail.route.points.last().cumulativeDistanceMeters, .00001)
+            assertEquals(detail.summary, WalkHistory(log).detail("s"))
+            assertEquals(5000L, WalkHistory(log).finishedPage().walks.single().activeDurationMillis)
+            val records = com.daengs.app.walk.records.RoomWalkRecordsSource(db, "owner", { "owner" })
+                .select(com.daengs.app.walk.records.WalkRecordsQuery())
+            assertEquals(5000L, records.records.single().summary.activeDurationMillis)
+            assertNotNull(db.walkDao().prepareLocalDiary("s", "owner")!!.baseBundle)
+            assertFalse(db.walkDao().entry("action")!!.isV2)
             assertEquals(restored, log.session("s")) // Comparison must not activate or write any candidate.
             assertNull(RoomWalkFixLog(db.walkDao(), owner = { "other" }).compareMotion("s"))
 

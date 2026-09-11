@@ -177,6 +177,49 @@ class WalkSpeedServiceTest {
         assertEquals(state.latestMomentFix!!.point, row.entry()!!.point)
     }
 
+    @Test fun measurementPathAndTimeSurviveHighSpeedPauseAndSavedSummaryWithV1Pin() {
+        command(WalkTrackingService.ACTION_START)
+        awaitState { source.callback != null && !state.recordingTransition }
+        val id = state.activeSessionId!!
+        fun offer(speed: Float, meters: Double, seconds: Long, count: Int) {
+            main.idleFor(Duration.ofSeconds(seconds))
+            source.emit(speed, meters)
+            awaitState { runBlocking { app.walkRuntime.log.fixes(id).size == count } &&
+                state.lastSample?.point == GeoPoint(37.5 + Math.toDegrees(meters / 6_371_000), 127.0) }
+        }
+        offer(1f, 0.0, 1, 1)
+        offer(1f, 10.0, 10, 2)
+        assertEquals(10.0, state.trail.distanceMeters, .001)
+        offer(30f, 40.0, 1, 3)
+        assertEquals(10.0, state.trail.distanceMeters, .001)
+        offer(1f, 43.0, 3, 4)
+        offer(1f, 46.0, 3, 5)
+        offer(1f, 50.0, 4, 6)
+        assertEquals(14.0, state.trail.distanceMeters, .001)
+        assertEquals(2, state.trail.segments.size)
+        service.get().onStartCommand(Intent(app, WalkTrackingService::class.java)
+            .setAction(WalkTrackingService.ACTION_RECORD_MOMENT)
+            .putExtra(WalkTrackingService.EXTRA_MOMENT_TYPE, WalkMomentType.SNIFFING.behaviorCode), 0, 1)
+        main.idle()
+        runBlocking { app.walkRuntime.writer.flush() }
+        assertFalse(runBlocking { db.walkDao().entries(id).single().isV2 })
+        command(WalkTrackingService.ACTION_PAUSE)
+        awaitState { state.trail.state == TrackingState.PAUSED && !state.recordingTransition }
+        val pausedTime = state.elapsedMillisAt(SystemClock.elapsedRealtime())
+        val pausedPath = state.trail.segments
+        main.idleFor(Duration.ofSeconds(30))
+        assertEquals(pausedTime, state.elapsedMillisAt(SystemClock.elapsedRealtime()))
+        command(WalkTrackingService.ACTION_STOP)
+        awaitState { !state.recordingTransition && state.completedSessionId == id }
+        val detail = runBlocking { app.walkRuntime.history.sessionDetail(id)!! }
+        assertEquals(pausedTime, detail.summary.activeDurationMillis)
+        assertEquals(detail.summary.activeDurationMillis, state.elapsedMillisAt(SystemClock.elapsedRealtime()))
+        assertEquals(14.0, detail.summary.distanceMeters, .001)
+        assertEquals(pausedPath, detail.summary.segments)
+        assertEquals(detail.summary.segments, state.trail.segments)
+        assertEquals(detail.summary.distanceMeters, detail.route.points.last().cumulativeDistanceMeters, .001)
+    }
+
     private class TestLocationSource : LocationSource {
         var callback: ((LocationSample) -> Unit)? = null
         var starts = 0
@@ -190,7 +233,7 @@ class WalkSpeedServiceTest {
             callback = onSample
             return object : LocationSubscription { override suspend fun close() { callback = null; active-- } }
         }
-        fun emit(speed: Float) = checkNotNull(callback).invoke(LocationSample(GeoPoint(37.5, 127.0),
+        fun emit(speed: Float, meters: Double = 0.0) = checkNotNull(callback).invoke(LocationSample(GeoPoint(37.5 + Math.toDegrees(meters / 6_371_000), 127.0),
             System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(), 3f, speed,
             speedAccuracyMetersPerSecond = 0.2f, provider = "fused"))
     }

@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MotionPolicyTest {
+    @Test fun `measurement adoption is frozen separately from historical speed only policies`() {
+        val old = MotionPolicies.freeze("s")
+        assertNull((MotionPolicies.resolveJson("s", MotionPolicies.encode(old)) as MotionPolicySelection.Supported)
+            .policy.stored.measurementVersion)
+        val measuring = MotionPolicies.freeze("s", measure = true)
+        val json = MotionPolicies.encode(measuring)
+        assertEquals(measuring.stored, (MotionPolicies.resolveJson("s", json) as MotionPolicySelection.Supported).policy.stored)
+        assertEquals(MotionPolicySelection.Unsupported("MEASUREMENT_VERSION"),
+            MotionPolicies.resolveJson("s", json.replace(MotionPolicies.MEASUREMENT_VERSION, "future")))
+        assertTrue(MotionPolicies.resolveJson("s", json.replace("\"motion-measurement-v1\"", "null")) is MotionPolicySelection.Unsupported)
+    }
+
     @Test fun `stored envelope round trips and malformed envelopes cannot become default policies`() {
         val policy = MotionPolicies.freeze("s", MotionConfig(maxWalkingSpeedMps = 4.5))
         val text = MotionPolicies.encode(policy)

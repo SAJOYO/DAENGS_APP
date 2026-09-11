@@ -121,7 +121,7 @@ class WalkSpeedRuntimeTest {
     }
 
     @Test fun storedCustomPolicyMatchesLiveBatchesAndPausedReplayIncludingEmptyStop() {
-        val frozen = MotionPolicies.freeze("s", MotionConfig(minDistanceM = 7.0, maxWalkingSpeedMps = 5.0))
+        val frozen = MotionPolicies.freeze("s", MotionConfig(minDistanceM = 7.0, maxWalkingSpeedMps = 5.0), measure = true)
         val owner = WalkSpeedRuntime(frozen) { throw AssertionError(it) }
         val first = source().copy(endedAtMillis = 8_000, endedElapsedNanos = nanos(8.0),
             endKind = "PAUSE", targetIngressSeq = 2, persistedCount = 3, drained = true)
@@ -135,16 +135,23 @@ class WalkSpeedRuntimeTest {
         owner.begin(first, 0)
         raw.take(3).forEach { owner.observations(listOf(it), nanos(7.5)) }
         owner.onLifecycle(DisplayLifecycle.PAUSED, nanos(8.0)); owner.drained(first)
+        assertEquals(MeasurementTiming(8000, null), owner.measurementTiming())
         owner.begin(second, nanos(20.0))
         owner.observations(raw.drop(3), nanos(27.5))
         owner.onLifecycle(DisplayLifecycle.PAUSED, nanos(28.0)); owner.drained(second)
-        owner.begin(stop, nanos(30.0))
-        owner.onLifecycle(DisplayLifecycle.FINISHED, nanos(30.0)); owner.drained(stop)
+        owner.onLifecycle(DisplayLifecycle.FINISHED, nanos(30.0)); owner.completePausedStop(stop)
         val loaded = (MotionPolicies.resolveJson("s", MotionPolicies.encode(frozen)) as MotionPolicySelection.Supported).policy
         val replay = replayRecordedMotion(loaded, listOf(first, second, stop), raw.asSequence())
         assertEquals(replay, owner.motionSnapshot())
         assertEquals(16.0, replay.eligibleDistanceM, .00001)
         assertEquals(nanos(16.0), replay.closedRecordingDurationNanos)
         assertNotEquals(MotionPolicies.freeze("s").stored.configHash, replay.configHash)
+        val summary = com.daengs.app.walk.summarize(com.daengs.app.walk.RecordedSession("s", startedAtMillis = 0,
+            endedAtMillis = 30_000, motionPolicyJson = MotionPolicies.encode(frozen)), raw,
+            epochs = listOf(first, second, stop))
+        assertEquals(summary.segments, owner.trailSnapshot(com.daengs.app.walk.TrackingState.OFF).segments)
+        assertEquals(summary.distanceMeters, owner.trailSnapshot(com.daengs.app.walk.TrackingState.OFF).distanceMeters, 0.0)
+        assertEquals(summary.activeDurationMillis, owner.measurementTiming().closedMillis)
+        assertNull(owner.measurementTiming().activeSinceRealtimeMillis)
     }
 }

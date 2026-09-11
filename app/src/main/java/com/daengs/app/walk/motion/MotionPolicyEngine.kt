@@ -123,7 +123,10 @@ class MotionPolicyEngine(val policy: SessionMotionPolicy) {
         if (time == null || received == null || time < 0 || received < time)
             return exclude(fix, ref, MotionReason.INVALID_TIME, breakPath = true)
         if (!fix.recordingEligible || time < current.startedElapsedNanos ||
-            current.endExclusiveNanos?.let { time >= it } == true)
+            current.endExclusiveNanos?.let {
+                // Measurement sessions use the durable ingress barrier to order equal-clock STOP ties.
+                if (policy.stored.measurementVersion == MotionPolicies.MEASUREMENT_VERSION) time > it else time >= it
+            } == true)
             return exclude(fix, ref, MotionReason.OUTSIDE_ACTIVE_INTERVAL)
         val previous = lastTimedFix
         val previousTime = previous?.elapsedRealtimeNanos
