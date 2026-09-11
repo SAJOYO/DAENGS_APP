@@ -160,6 +160,7 @@ class DaengsApp : Application() {
             sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
                 owner = { tokenStore.load()?.appUserId.orEmpty() },
                 v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
+                recording = com.daengs.app.walk.sync.WalkRecordingSync(),
                 photoSync = photoSync::sync,
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,

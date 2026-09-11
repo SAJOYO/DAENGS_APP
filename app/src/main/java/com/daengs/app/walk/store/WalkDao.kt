@@ -172,14 +172,27 @@ interface WalkDao {
     }
 
     @androidx.room.Transaction
-    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true): String? {
+    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true, recordingEvidence: String? = null): String? {
         val row = entry(id) ?: return null
         if (session(row.sessionId)?.ownerId != ownerId) return null
         row.pendingRequest?.let { return it }
         if (!row.dirty && !row.pinDirty) return null
-        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported).json.toString()
+        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported, recordingEvidence).json.toString()
         updatePinRow(row.copy(pendingRequest = pending))
         return pending
+    }
+
+    @androidx.room.Transaction
+    suspend fun retryLegacyPinSourceErrors(sessionId: String, ownerId: String) {
+        if (session(sessionId)?.ownerId != ownerId) return
+        for (row in entries(sessionId)) {
+            if (row.isV2 && row.revision == 0 && row.payload != null && row.pendingRequest == null &&
+                row.syncError == com.daengs.app.walk.sync.LEGACY_PIN_SOURCE_ERROR &&
+                row.pinPayload?.let { org.json.JSONObject(it).optString("state") } == "unlocated") {
+                // The new rejection text differs, so an unrelated 422 is not retried forever.
+                updatePinRow(row.copy(syncError = null))
+            }
+        }
     }
 
     @androidx.room.Transaction

@@ -23,11 +23,16 @@ v2로 바꾸거나 원본 GPS 참조를 새로 만들지 않는다. 추가 Room 
 v2가 섞인 산책은 v2 지원을 기다리고, v1만 있는 산책은 구서버에서도 기존 전송을 계속한다.
 코드 병합만으로 실제 배포·플래그 활성화를 확인한 것으로 간주하지 않는다.
 
-배포 전 남은 호환 경계: 앱은 `recordingEligible=false`인 시작 전 캐시를 추정기에서 제외하지만,
-기존 raw 업로드는 이 구분을 전달하지 않는다. 서버 `85ff1741`의 `validate_sources`는 그 캐시도
-좌표가 있는 것으로 보아 `unlocated`를 거부한다. 원본이 없을 때는 허용하고 시작 전 캐시만
-추가하면 거부하는 것을 격리된 validator 검증으로 확인했다. 실제 앱→인증 서버 통합 검증은
-아직 하지 않았으며, 신규 쓰기 활성화 전에 양쪽의 유효 관측 범위를 맞춰야 한다.
+서버 [DEV #441](https://github.com/SAJOYO/DAENGS_dev/pull/441)의
+[GPS 기록 구분 계약](https://github.com/SAJOYO/DAENGS_dev/blob/fix/gps-recording-evidence/docs/walk/gps-recording-contract.md)을 연결했다.
+앱은 기존 recordingEligible을 원본 업로드에 포함하고 상세 응답에서도 복원한다.
+알려진 구분이 있는 원본은 업로드 전에 gps-recording-v1 지원을 확인한다.
+RAW_UPLOADED/DERIVED 재시도와 v2 핀 전송 전에도 실제 저장 receipt를 확인하며,
+이미 올라간 원본의 누락된 구분은 같은 원본 지문을 대조한 제한된 보완 경로로 채운다.
+새 핀 요청에 확인한 구분 지문을 동결하되, 기존 outbox 본문은 변경하지 않는다.
+최초 unlocated 생성에서 멈춘 옛 근거 오류는 캐시 제외 근거를 검증한 뒤 한 번 재시도한다.
+이미 수용된 v2 행동이 있는 산책의 새로운 보완은 서버가 보류한다. 원본을 자동 삭제·재생성하지 않는다.
+서버 지원 배포가 앱 전환보다 먼저여야 한다. 이 변경에 SQL/Room schema 추가는 없다.
 
 ## 기록과 위치
 

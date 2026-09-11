@@ -140,6 +140,13 @@ v2 동기화의 v1 사례는 과거 기록 보존·구서버 호환 계약이다
 동기화 진입점 변경은 `WalkEntryV2SyncTest`의 `WalkEntrySync` 연결 사례로 v2 생성·확정 재시도,
 쓰기 보류와 v1/v2 혼합 산책을 확인한다. 버튼·서비스 연결을 바꾸면 `WalkTrackingTest`,
 raw 업로드/finalize 이후 전송 순서는 `WalkSyncTest`도 함께 선택한다.
+
+GPS 기록 구분의 전송·복원·보완은 `WalkRecordingSyncTest`를 함께 선택한다. 이 클래스의
+`production serializers agree with the shared server contract and preserve unknown` 사례는
+공통 fixture와 실제 WalkApi/PinPending 직렬화를 대조하고 `app/build/outputs/contracts/gps-recording-v1.json`을
+생성한다. 서버 #441의 계약 테스트에 이 파일을 넣어 양쪽 구현을 연결해 검증할 수 있다.
+`WalkSyncTest`는 LOCAL_ONLY/RAW_UPLOADED/DERIVED의 관문, `WalkEntryV2SyncTest`는
+Room outbox·기존 오류의 제한된 재시도·ACK 유실과 원본 지문 동결을 담당한다.
 핀의 일기 반영은 `StoryboardPinSyncTest`, `WalkRecordProfileTest`, `WalkDiaryTest`도 연결된다.
 
 ```powershell
