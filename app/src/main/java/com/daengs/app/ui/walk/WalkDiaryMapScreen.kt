@@ -25,9 +25,19 @@ import kotlinx.coroutines.launch
 
 /** One selected session; entries, map styling and raw-history reconstruction are shared with walking. */
 @Composable
+internal fun WalkSessionDetailRoute(
+    sessionId: String, history: WalkHistory, onBack: () -> Unit,
+    modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
+    origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
+) {
+    WalkDiaryMapScreen(sessionId, history, onBack, modifier, pets, origin)
+}
+
+@Composable
 internal fun WalkDiaryMapScreen(
     sessionId: String, history: WalkHistory, onBack: () -> Unit,
     modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
+    origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
 ) {
     val app = LocalContext.current.applicationContext as DaengsApp
     val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
@@ -137,13 +147,13 @@ internal fun WalkDiaryMapScreen(
     }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null && error == null) {
-            TextButton(onClick = onBack) { Text("‹ 산책 기록") }
+            TextButton(onClick = onBack) { Text("‹ ${origin.backLabel}") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else if (!loaded || diary == null || diary?.preparing == true) {
             WalkDiaryPreparing(onBack = onBack, onRefresh = {
                 app.walkDiaryPublication.start(sessionId)
                 retry++
-            }, error = error)
+            }, error = error, backLabel = origin.backLabel)
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
                 onSelect = ::selectScene, onClose = { selectedId = null },
@@ -164,6 +174,10 @@ internal fun WalkDiaryMapScreen(
                 title = detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
                 subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
                 onBack = onBack, mapSettings = { WalkMapSettingsButton() },
+                backLabel = origin.backLabel,
+                summaryContent = { detail?.summary?.let { summary ->
+                    WalkSessionSummary(summary, pets.filter { it.id in summary.dogIds }.map { it.name })
+                } },
                 onOverview = { requestCamera(null) },
                 modifier = Modifier.weight(1f), map = { viewport ->
                     if (bounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {

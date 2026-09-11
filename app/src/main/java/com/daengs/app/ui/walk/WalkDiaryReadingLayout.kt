@@ -46,6 +46,8 @@ internal fun WalkDiaryMapContent(
     mapSettings: @Composable () -> Unit = {},
     onOverview: () -> Unit = {},
     generationActionLabel: String = "일기 생성·갱신",
+    backLabel: String = "산책 목록으로",
+    summaryContent: @Composable () -> Unit = {},
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -67,7 +69,7 @@ internal fun WalkDiaryMapContent(
     Column(modifier.fillMaxSize().background(CreamBg)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "산책 목록으로" }) {
+            IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = backLabel }) {
                 Text("‹", fontSize = 30.sp, color = TextDark)
             }
             Text(subtitle.ifBlank { "산책 일기" },
@@ -93,6 +95,7 @@ internal fun WalkDiaryMapContent(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 14.dp),
             fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
             color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        summaryContent()
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val mapPeek = (maxHeight * .25f).coerceIn(96.dp, 180.dp).coerceAtMost(maxHeight * .4f)
             val panelHeight = maxHeight - mapPeek
