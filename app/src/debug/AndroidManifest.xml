@@ -20,6 +20,7 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="28">
         <activity android:name=".ui.walk.TerritoryPoleLabActivity" android:exported="true" android:label="전봇대 표시 검토" />
+        <activity android:name=".ui.walk.TerritoryCardLabActivity" android:exported="true" android:label="점령지 카드 검토" />
         <activity android:name=".ui.walk.GeoStoryboardLabActivity" android:exported="true" android:label="geo 스토리보드 검토" />
         <activity android:name=".ui.walk.WalkTraceBrushLabActivity" android:exported="true" android:label="산책 흔적 표시 검토" />
         <activity android:name=".ui.walk.WalkRecordsLabActivity" android:exported="true" android:label="산책 기록 탐색 검토" />

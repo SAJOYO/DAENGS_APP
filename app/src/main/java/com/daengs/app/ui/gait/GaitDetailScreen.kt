@@ -182,12 +182,14 @@ fun GaitDetailScreen(
                     accent = true,
                 )
             }
-            DeleteAction(
-                confirming = confirming,
-                onAsk = { confirming = true },
-                onCancel = { confirming = false },
-                onConfirm = onDelete,
-            )
+            if (record.canDelete != false) {
+                DeleteAction(
+                    confirming = confirming,
+                    onAsk = { confirming = true },
+                    onCancel = { confirming = false },
+                    onConfirm = onDelete,
+                )
+            }
         }
     }
 }
@@ -398,7 +400,10 @@ private fun GaitDetailUnusablePreview() {
 private fun GaitDetailNoReasonPreview() {
     DaengsTheme {
         GaitDetailScreen(
-            record = GaitRecord("r", LocalDate.of(2026, 7, 15), seconds = 6, comparable = false),
+            record = GaitRecord(
+                "r", LocalDate.of(2026, 7, 15), seconds = 6, comparable = false,
+                canDelete = false,
+            ),
             canCompare = false,
             onBack = {},
             onCompare = {},

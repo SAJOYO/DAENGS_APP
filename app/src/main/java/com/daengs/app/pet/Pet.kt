@@ -41,6 +41,8 @@ data class Pet(
      */
     val farewellOn: LocalDate? = null,
     val isPrimary: Boolean,
+    /** 이 아이의 대표 보호자인가. false 면 공동 돌봄으로 참여한 아이이며 프로필 변경은 못 한다. */
+    val isOwner: Boolean = true,
     /** 이 아이의 정보가 마지막으로 바뀐 시각. **아래 [photoUpdatedAt] 과 다른 값이다.** */
     val updatedAt: String? = null,
     /**
@@ -144,6 +146,8 @@ data class Pet(
             },
             farewellOn = json.optStringOrNull("farewell_on")?.let(LocalDate::parse),
             isPrimary = json.optBoolean("is_primary"),
+            // #388 전 서버에는 필드가 없다. 배포 순서 동안 기존 소유 아이를 돌보미로 오인하지 않는다.
+            isOwner = json.optBoolean("is_owner", true),
             updatedAt = json.optStringOrNull("updated_at"),
             hasPhoto = json.optBoolean("has_photo"),
             photoUpdatedAt = json.optStringOrNull("photo_updated_at"),

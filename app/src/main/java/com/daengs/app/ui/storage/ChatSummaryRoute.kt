@@ -65,6 +65,8 @@ fun ChatSummaryRoute(
     onOpenSource: (String) -> Unit,
     onOpenCitation: (ChatCitation) -> Unit,
     modifier: Modifier = Modifier,
+    currentUserId: String? = null,
+    selectedPetIsOwner: Boolean = true,
 ) {
     val state by coordinator.state.collectAsState()
     val careState by careCoordinator.state.collectAsState()
@@ -133,6 +135,7 @@ fun ChatSummaryRoute(
                     onRetryLoad = { withToken { careCoordinator.load(it) } },
                     onConfirmDelete = { event -> withToken { careCoordinator.delete(it, event.id) } },
                     onDismissError = { careCoordinator.clearErrors() },
+                    canDelete = { event -> canDeleteCareEvent(event, currentUserId, selectedPetIsOwner) },
                 )
             }
         }

@@ -9,6 +9,10 @@ package com.daengs.app.walk
  */
 interface WalkFixLog {
     val ownerId: String? get() = null
+    suspend fun saveRecordingEpoch(epoch: RecordingEpoch) { error("Recording journal unavailable") }
+    suspend fun recordingEpochs(sessionId: String): List<RecordingEpoch> = emptyList()
+    suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int): List<RecordedFix> =
+        fixes(sessionId).filter { (it.ingressSeq ?: it.clientSeq.toLong()) > afterSeq }.take(limit)
     val historyChanges: kotlinx.coroutines.flow.Flow<Unit> get() = kotlinx.coroutines.flow.flowOf(Unit)
     suspend fun restoreSession(session: RecordedSession) = openSession(session)
     suspend fun hasEntries(sessionId: String): Boolean = actions(sessionId).isNotEmpty()
@@ -152,4 +156,16 @@ data class RecordedFix(
     val lng: Double,
     val accuracyM: Float?,
     val isMock: Boolean,
+    val ingressSeq: Long? = null,
+    val sourceEpoch: String? = null,
+    val clockEpochId: String? = null,
+    val elapsedRealtimeNanos: Long? = null,
+    val receivedElapsedNanos: Long? = null,
+    val receivedAtMillis: Long? = null,
+    val speedMps: Float? = null,
+    val speedAccuracyMps: Float? = null,
+    val bearingDegrees: Float? = null,
+    val bearingAccuracyDegrees: Float? = null,
+    val provider: String? = null,
+    val recordingEligible: Boolean? = null,
 )

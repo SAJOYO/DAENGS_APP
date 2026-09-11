@@ -75,7 +75,7 @@ data class WalkSessionDogRow(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("sessionId")],
+    indices = [Index("sessionId"), Index(value = ["sessionId", "ingressSeq"], unique = true)],
 )
 data class WalkFixRow(
     val sessionId: String,
@@ -86,6 +86,18 @@ data class WalkFixRow(
     val lng: Double,
     val accuracyM: Float?,
     val isMock: Boolean,
+    val ingressSeq: Long? = null,
+    val sourceEpoch: String? = null,
+    val clockEpochId: String? = null,
+    val elapsedRealtimeNanos: Long? = null,
+    val receivedElapsedNanos: Long? = null,
+    val receivedAtMillis: Long? = null,
+    val speedMps: Float? = null,
+    val speedAccuracyMps: Float? = null,
+    val bearingDegrees: Float? = null,
+    val bearingAccuracyDegrees: Float? = null,
+    val provider: String? = null,
+    val recordingEligible: Boolean? = null,
 )
 
 /** 버튼을 누른 사실의 원본. 5m 장소 묶음은 저장하지 않고 읽을 때 다시 계산한다. */

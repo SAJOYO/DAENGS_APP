@@ -58,6 +58,9 @@ class WalkMigrationTest {
     @Test
     fun `13의 보드와 사용자 수정은 보존하며 기존 세션을 다시 준비하지 않는다`() = verifyPhotoUpgrade(13)
 
+    @Test
+    fun `14의 원본과 공개 상태를 보존하고 수신 필드는 결손으로 남긴다`() = verifyPhotoUpgrade(14)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -97,6 +100,9 @@ class WalkMigrationTest {
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
             assertEquals(1, dao.fixes("s1").size)
+            assertEquals(null, dao.fixes("s1").single().ingressSeq)
+            assertEquals(null, dao.fixes("s1").single().speedMps)
+            assertEquals(emptyList<RecordingEpochRow>(), dao.recordingEpochs("s1"))
             assertEquals("dog", dao.sessionDogs("s1").single().dogId)
             assertEquals("kept", dao.entry("e")!!.payload)
             assertEquals(3, dao.entry("e")!!.revision)
@@ -338,6 +344,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_11_12,
                 WalkDatabase.MIGRATION_12_13,
                 WalkDatabase.MIGRATION_13_14,
+                WalkDatabase.MIGRATION_14_15,
             )
             .build()
 

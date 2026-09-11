@@ -7,6 +7,35 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveRecordingEpoch(row: RecordingEpochRow)
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE sessionId = :sessionId ORDER BY firstIngressSeq, chainIndex")
+    suspend fun recordingEpochs(sessionId: String): List<RecordingEpochRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND ingressSeq > :afterSeq ORDER BY ingressSeq LIMIT :limit")
+    suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int): List<WalkFixRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND clientSeq = :clientSeq")
+    suspend fun observation(sessionId: String, clientSeq: Int): WalkFixRow?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_recording_epoch SET persistedCount = persistedCount + 1 WHERE id = :epochId AND sessionId = :sessionId AND chainIndex = :chainIndex AND clockEpochId = :clockEpochId AND drained = 0")
+    suspend fun advanceRecordingEpoch(epochId: String, sessionId: String, chainIndex: Int, clockEpochId: String): Int
+
+    @androidx.room.Transaction
+    suspend fun appendObservation(row: WalkFixRow) {
+        val existing = observation(row.sessionId, row.clientSeq)
+        if (existing != null) { check(existing == row) { "Conflicting observation identity" }; return }
+        check(row.ingressSeq == row.clientSeq.toLong()) { "Observation sequence changed" }
+        check(session(row.sessionId)?.endedAtMillis == null) { "Recording session is already closed" }
+        check(advanceRecordingEpoch(requireNotNull(row.sourceEpoch), row.sessionId, row.chainIndex,
+            requireNotNull(row.clockEpochId)) == 1) { "Recording epoch is unavailable" }
+        insertObservation(row)
+    }
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertDiaryPublication(row: WalkDiaryPublicationRow): Long
 
@@ -37,6 +66,8 @@ interface WalkDao {
     suspend fun closeAndPrepareDiary(id: String, endedAt: Long) {
         val current = session(id) ?: return
         if (current.endedAtMillis != null) return
+        val epochs = recordingEpochs(id)
+        if (epochs.isNotEmpty()) com.daengs.app.walk.checkRecordingComplete(epochs.map { it.toModel() })
         closeSession(id, endedAt)
         insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt, endedAt + 10_000))
     }
@@ -46,7 +77,7 @@ interface WalkDao {
         val row = diaryPublication(id) ?: return null
         val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
         if (row.baseBundle == null) {
-            val source = fixes(id).map {
+            val source = fixes(id).filter { it.recordingEligible != false }.map {
                 com.daengs.app.walk.RecordedFix(it.clientSeq, it.chainIndex, it.atMillis, it.lat, it.lng, it.accuracyM, it.isMock)
             }
             val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE)

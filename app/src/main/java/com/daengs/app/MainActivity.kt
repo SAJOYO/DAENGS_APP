@@ -45,6 +45,7 @@ import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
+import com.daengs.app.ui.pet.PetMembersScreen
 import com.daengs.app.ui.pet.PetPhotoPicker
 import com.daengs.app.ui.dogcard.CardDrawScreen
 import com.daengs.app.ui.dogcard.DrawDog
@@ -60,6 +61,7 @@ import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.devPets
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.rememberPetMemberHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
 import com.daengs.app.screening.rememberScreeningHolder
 import com.daengs.app.ui.screening.ScreeningHistoryScreen
@@ -218,6 +220,7 @@ class MainActivity : ComponentActivity() {
                 // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
                 // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
+                val petMembers = rememberPetMemberHolder()
                 LaunchedEffect(pets.pets) {
                     // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
                     // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
@@ -319,6 +322,8 @@ class MainActivity : ComponentActivity() {
                 // 배웅한 날은 **서버가 갖고 있다**(`pets.farewell_on`). 기기에 적어 두던
                 // 것을 옮긴 것이라, 기기를 바꿔도 그 기록이 남는다.
                 var farewell by remember { mutableStateOf<Pet?>(null) }
+                // 보호자 목록을 보려는 아이. **소유 여부로 가리지 않는다** — 돌보미도 본다.
+                var membersFor by remember { mutableStateOf<Pet?>(null) }
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
@@ -689,6 +694,22 @@ class MainActivity : ComponentActivity() {
                                 farewell = null
                             },
                         )
+                    } else if (membersFor != null) {
+                        val pet = membersFor!!
+                        // **들어올 때마다 새로 읽는다.** 다른 보호자가 나가거나 대표가
+                        // 바뀐 뒤 같은 화면으로 돌아오는 경우가 이 목록의 본래 쓸모다.
+                        LaunchedEffect(pet.id, session?.appUserId) {
+                            val token = freshToken() ?: return@LaunchedEffect
+                            petMembers.load(token, pet.id)
+                        }
+                        PetMembersScreen(
+                            members = petMembers.members.takeIf { petMembers.petId == pet.id },
+                            petName = pet.name,
+                            currentUserId = session?.appUserId,
+                            busy = petMembers.busy,
+                            error = petMembers.error,
+                            onBack = { membersFor = null },
+                        )
                     } else HomeScreen(
                         tourOpen = tourOpen,
                         onReplayTour = { tourOpen = true },
@@ -724,6 +745,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 modifier = storageModifier,
+                                currentUserId = session?.appUserId,
+                                selectedPetIsOwner = pets.primary?.isOwner == true,
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },
@@ -770,7 +793,7 @@ class MainActivity : ComponentActivity() {
                         outside = outside,
                         pets = shownPets,
                         photoOf = { petPhotos[it] },
-                        onEditPhoto = { pets.primary?.let { pet -> photoFor = pet } },
+                        onEditPhoto = { pets.primary?.takeIf(Pet::isOwner)?.let { pet -> photoFor = pet } },
                         hiddenRoomPetIds = hiddenRoomPetIds,
                         onToggleRoomPet = { pet ->
                             hiddenRoomPetIds = if (pet.id in hiddenRoomPetIds) {
@@ -787,8 +810,10 @@ class MainActivity : ComponentActivity() {
                         onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
-                        onEditPet = { editing = it; screen = Screen.Onboarding },
-                        onFarewell = { farewell = it },
+                        onEditPet = { pet -> if (pet.isOwner) { editing = pet; screen = Screen.Onboarding } },
+                        onFarewell = { pet -> if (pet.isOwner) farewell = pet },
+                        // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
+                        onOpenMembers = { pet -> membersFor = pet },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
