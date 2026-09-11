@@ -26,7 +26,7 @@ internal fun ConversationPanel(state: ConversationUiState, validationError: Stri
         if (state.busy || (showAnswer && state.answerBusy)) LinearProgressIndicator(Modifier.fillMaxWidth())
         val error = state.error ?: validationError
         if (error != null) Text(error, color = DaengsColors.Error)
-        else if (showAnswer) state.result?.answer?.let { Text(it) }
+        else if (showAnswer) (state.commandAnswer ?: state.result?.answer)?.let { Text(it) }
         state.notice?.let { Text(it) }
         if (state.error != null || state.result?.failed == true) {
             TextButton(onClick = onRetrySearch) { Text("검색 다시 시도") }

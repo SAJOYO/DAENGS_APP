@@ -55,6 +55,7 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
                         },
                         label = gameSite?.occupancyLabel ?: "점유 확인 전",
                         occupancyKnown = gameSite?.occupancyKnown == true,
+                        isMine = gameSite?.isOwnedByMe == true,
                         ready = target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING &&
                             (territoryGame.canMark || territoryGame.canPhotograph),
                         feedback = territoryGame.feedback?.takeIf { target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },

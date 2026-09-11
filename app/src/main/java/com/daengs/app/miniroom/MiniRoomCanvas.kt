@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.DoorSpec
 import com.daengs.app.miniroom.art.FrameSpec
 import com.daengs.app.miniroom.art.ItemCatalog
@@ -79,6 +80,14 @@ fun MiniRoomCanvas(
      * 붙박이라 [pickTopmost] 가 안 잡으므로 [pickFixture] 로 따로 본다.
      */
     onTurntableTap: (() -> Unit)? = null,
+    /**
+     * 강아지를 **눌렀을 때** (끌지 않고 뗐을 때). 머리 위에 퀵 메뉴를 여는 데 쓴다.
+     *
+     * 끌기와 같은 제스처를 나눠 쓴다 — 제스처 블록을 따로 만들면 둘이 서로 먹는다.
+     * 자리를 [DogTapTarget] 에 실어 보내는 것은 **밖에서 다시 계산하지 않게** 하려는
+     * 것이다. [onSpots] 와 같은 이유다.
+     */
+    onDogTap: ((DogTapTarget) -> Unit)? = null,
     /**
      * 누를 수 있는 자리가 **화면 어디인지** 알려 준다 (창 기준 좌표).
      *
@@ -173,6 +182,10 @@ fun MiniRoomCanvas(
 
     val spotsCallback by rememberUpdatedState(onSpots)
 
+    // 강아지 탭도 같은 이유로 최신 것을 읽는다. 이 값이 키에 들어가면 메뉴를 열고
+    // 닫을 때마다 제스처가 재시작된다.
+    val dogTapCallback by rememberUpdatedState(onDogTap)
+
     Spacer(
         modifier
             .onGloballyPositioned { coords ->
@@ -215,21 +228,36 @@ fun MiniRoomCanvas(
                             val grab = hit.pos - g.toGridF(down.position).let { Offset(it.first, it.second) }
                             // 끄는 동안엔 편집 모드가 아니라 가구가 안 움직인다 → 한 번만 읽는다
                             val walls = state.occupiedCells(null, catalog)
+                            // **끌기로 넘어가기 전까지는 안 옮긴다.** 제자리에서 뗀 것은
+                            // 탭이고, 그때 아이를 한 픽셀이라도 밀면 눌렀을 뿐인데
+                            // 자리가 바뀐다. 가르는 기준은 아래 턴테이블·액자·문과 같다.
+                            var slid = false
                             try {
                                 while (true) {
                                     val e = awaitPointerEvent()
                                     val ch = e.changes.firstOrNull { it.id == down.id } ?: break
                                     if (!ch.pressed) break
-                                    val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
-                                    val (cf, rf) = gg.toGridF(ch.position)
-                                    // 손가락으로도 책상을 뚫지 못한다 — 자율 이동과 같은 규칙
-                                    herd.dragTo(hit, Offset(cf, rf) + grab, walls)
-                                    hit.target = hit.pos
-                                    hit.restUntil = clock.value + 600L
+                                    if ((ch.position - down.position).getDistance() >
+                                        viewConfiguration.touchSlop
+                                    ) {
+                                        slid = true
+                                    }
+                                    if (slid) {
+                                        val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
+                                        val (cf, rf) = gg.toGridF(ch.position)
+                                        // 손가락으로도 책상을 뚫지 못한다 — 자율 이동과 같은 규칙
+                                        herd.dragTo(hit, Offset(cf, rf) + grab, walls)
+                                        hit.target = hit.pos
+                                        hit.restUntil = clock.value + 600L
+                                    }
                                     ch.consume()
                                 }
                             } finally {
                                 herd.draggingId = null
+                            }
+                            if (!slid) {
+                                val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
+                                dogTapCallback?.invoke(hit.tapTarget(catalog, gg))
                             }
                             return@awaitEachGesture
                         }
@@ -415,3 +443,46 @@ data class RoomTouchSpots(
     val frame: Rect,
     val turntable: Rect?,
 )
+
+/**
+ * 방금 누른 강아지가 **누구이고 화면 어디에 있는지**.
+ *
+ * 퀵 메뉴가 머리 위에 붙으려면 자리를 알아야 하는데, 그 자리를 밖에서 다시 계산하면
+ * **가리키는 곳과 눌리는 곳이 갈라진다.** 방 그림·배치·견종이 바뀌면 조용히 어긋나고,
+ * 어긋나도 아무도 모른다. 그래서 히트 판정이 쓴 그 셈에서 나온 값을 그대로 실어 보낸다
+ * ([RoomTouchSpots] 와 같은 이유).
+ *
+ * @param dogId [DogActor.id]. 같은 견종이 여럿이어도 이걸로 갈린다
+ * @param breed 화면에 이름·얼굴을 띄울 때 쓴다
+ * @param head 머리 꼭대기. **캔버스 왼쪽 위 기준 픽셀**이라 그리는 쪽에서 dp 로 바꾼다
+ */
+data class DogTapTarget(
+    val dogId: Int,
+    val breed: DogBreed,
+    val head: Offset,
+)
+
+/**
+ * 이 아이의 [DogTapTarget]. **[hitTest] 와 같은 셈을 쓴다.**
+ *
+ * 발이 격자 위 [DogActor.pos] 이고, 그림은 거기서 `anchor` 만큼 올려 그린다.
+ *
+ * ⚠️ **그림 꼭대기가 아니라 `touchArea` 의 꼭대기를 준다.** 스프라이트는 위쪽에 빈
+ * 자리를 두고 있어서, 그림 높이로 올리면 메뉴가 머리에서 한참 떠서 벽까지 올라간다
+ * (실기기에서 바로 보였다). `touchArea` 는 아이 몸에 붙은 상자이고 [hitTest] 가 누를
+ * 수 있다고 판정하는 그 상자라, **눌린 곳 바로 위**에 뜬다.
+ *
+ * 그림이 없는 견종이면 발 자리를 그대로 준다 — 그런 아이는 애초에 [hitTest] 에 안
+ * 걸려서 여기까지 오지 않는다.
+ */
+private fun DogActor.tapTarget(catalog: ItemCatalog, g: RoomGeometry): DogTapTarget {
+    val art = catalog[breed.id]
+    val s = g.scale * sizeScale
+    val foot = g.toScreenF(pos.x, pos.y)
+    val top = if (art == null) {
+        foot.y
+    } else {
+        foot.y - (art.box.anchor.y - art.box.touchArea.top) * s
+    }
+    return DogTapTarget(dogId = id, breed = breed, head = Offset(foot.x, top))
+}

@@ -6,6 +6,7 @@ import com.daengs.app.location.*
 import com.daengs.app.place.*
 import com.daengs.app.place.support.filteredConversationFixture
 import com.daengs.app.ui.places.lab.LabPhase
+import com.daengs.app.place.support.conversationFixture
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.*

@@ -2,6 +2,9 @@ package com.daengs.app.territory.bookmarks
 
 import com.daengs.app.activity.*
 import com.daengs.app.auth.*
+import com.daengs.app.territory.support.BOOKMARK_SITE
+import com.daengs.app.territory.support.bookmarkJson
+import com.daengs.app.territory.support.mutationJson
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test

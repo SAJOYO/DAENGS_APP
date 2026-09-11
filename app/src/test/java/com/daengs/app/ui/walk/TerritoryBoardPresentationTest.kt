@@ -11,6 +11,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TerritoryBoardPresentationTest {
+    @Test fun `map ownership follows the member flag even when another dog is selected`() {
+        val point = site("one")
+        for (mine in listOf(true, false)) for (certification in com.daengs.app.territory.ClaimCertification.entries) {
+            val occupancy = com.daengs.app.territory.TerritoryOccupancy("owner-dog", null, null, certification, 1000)
+            val target = com.daengs.app.map.features.territory.TerritoryGameSite(point,
+                com.daengs.app.territory.TerritoryClaimSite(point.id, occupancy = occupancy), "두부", null, null, false,
+                isOwnedByMe = mine)
+            val state = WalkUiState(map = WalkMapUiState(purpose = MapPurpose.TERRITORY),
+                selection = WalkSelectionState(selectedDogIds = setOf("different-dog")),
+                territory = TerritoryBoardState(sites = listOf(point)),
+                territoryGame = com.daengs.app.map.features.territory.TerritoryGameState(enabled = true, sites = listOf(target)))
+            val marker = state.toMapPresentation().scene.territorySites.single()
+            assertEquals(mine, marker.isMine)
+            assertEquals(certification.name, marker.occupancy.name)
+            assertEquals(mine, state.copy(selection = WalkSelectionState(selectedDogIds = setOf("owner-dog")))
+                .toMapPresentation().scene.territorySites.single().isMine)
+        }
+    }
+
     @Test fun `reading a far site keeps the inspected viewport instead of fitting the device too`() {
         val far = site("far").copy(point = GeoPoint(35.0, 129.0))
         val target = com.daengs.app.map.features.territory.TerritoryGameSite(far,

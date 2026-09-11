@@ -7,6 +7,7 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.*
 import com.daengs.app.walk.store.*
 import com.daengs.app.walk.sync.storyboardEntryStamp
+import com.daengs.app.walk.support.sceneAnchorFixture
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -16,17 +17,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
-import java.time.Instant
-
-internal fun sceneAnchorFixture(): Pair<GeoStoryboardBundle, List<RecordedFix>> {
-    val data = JSONObject(WalkSceneAnchoringTest::class.java.getResource("/storyboard/v4-observations.json")!!.readText())
-    val array = data.getJSONArray("observations")
-    return GeoStoryboardBundle.parse(data.getJSONObject("bundle").toString()) to (0 until array.length()).map { i ->
-        val p = array.getJSONObject(i)
-        RecordedFix(p.getInt("client_seq"), p.getInt("chain_index"), Instant.parse(p.getString("at")).toEpochMilli(),
-            p.getDouble("lat"), p.getDouble("lng"), p.getDouble("accuracy_m").toFloat(), p.getBoolean("is_mock"))
-    }
-}
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)

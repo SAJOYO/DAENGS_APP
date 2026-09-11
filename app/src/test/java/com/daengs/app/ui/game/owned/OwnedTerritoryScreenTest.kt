@@ -32,12 +32,15 @@ class OwnedTerritoryScreenTest {
     @Test fun `list selection opens exact map position with the dogs profile and back returns`() {
         var back = 0
         var map: OwnedMapPresentation? = null
+        var clear: () -> Unit = {}
+        var snapshot: (com.daengs.app.map.shell.MapCameraSnapshot) -> Unit = {}
         val photos = mutableSetOf<String>()
         compose.setContent { DaengsTheme {
             OwnedTerritoryScreen(ready, listOf(previewGamePet(site.petId)), null,
                 { photos += it; ImageBitmap(8, 8) }, 0, { back++ }, {}, {}, {}, {},
-                mapSurface = { value, select, _ ->
+                mapSurface = { value, select, onCamera ->
                     map = value
+                    clear = { select(null) }; snapshot = onCamera
                     TextButton(onClick = { select(site.siteId) }) { Text("지도 전봇대") }
                 })
         } }
@@ -49,6 +52,15 @@ class OwnedTerritoryScreenTest {
         compose.onNodeWithText("사진 인증 완료").assertIsDisplayed()
         compose.onNodeWithText(site.siteId).assertDoesNotExist()
         compose.onNodeWithText("산책 시작").assertDoesNotExist()
+        val request = map!!.requestKey
+        val camera = com.daengs.app.map.shell.MapCameraSnapshot(checkNotNull(site.point), 18.0)
+        compose.runOnIdle { snapshot(camera); clear() }
+        compose.onNodeWithText("두부의 점령지").assertDoesNotExist()
+        compose.runOnIdle {
+            assertFalse(map!!.scene.territorySites.any { it.selected })
+            assertEquals(camera, map!!.camera)
+            assertEquals(request, map!!.requestKey)
+        }
         compose.onNodeWithTag("owned-back").performClick()
         assertEquals(1, back)
     }

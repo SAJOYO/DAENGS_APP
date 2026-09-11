@@ -38,7 +38,52 @@ class WalkEntryV2SyncTest {
     }
     @After fun close() = db.close()
 
-    @Test fun `임시 v1 산책은 구서버 capabilities를 묻지 않고 저장 조회 수정 삭제한다`() = runBlocking {
+    @Test fun `v1 릴리즈는 신규 행동에 v2 지원이나 저장 영수증을 요구하지 않는다`() = runBlocking {
+        dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("old", "legacy", WalkMomentType.BARKING,
+            now, com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        val calls = mutableListOf<String>()
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, _, _, _, _ -> error("v1 산책의 v2 활성화 금지") }
+        val sync = WalkEntrySync(dao, v2, preferLegacy = true, owner = { owner }) { _, path, method, body ->
+            calls += method
+            assertTrue(path.startsWith("/walk/entries"))
+            if (method == "GET") JSONObject().put("entries", JSONArray()) else {
+                assertFalse(body!!.has("pin"))
+                assertFalse(body.has("recording_evidence_fingerprint"))
+                JSONObject().put("revision", 1).put("mutation_id", body.getString("mutation_id"))
+            }
+        }
+        sync.sync("token", "legacy", "walk")
+        assertEquals(listOf("PUT", "GET"), calls)
+        assertFalse(dao.entry("old")!!.isV2)
+        assertFalse(dao.entry("old")!!.dirty)
+    }
+
+    @Test fun `v1 릴리즈의 혼합 산책은 v1 먼저 보내고 기존 v2 동결 요청은 보존한다`() = runBlocking {
+        dao.preparePinRequest(id, owner)
+        val original = dao.entry(id)!!
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("old", "s", WalkMomentType.BARKING,
+            now, com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        val calls = mutableListOf<String>()
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, _, _, useV2 ->
+            calls += "probe"
+            assertFalse(useV2)
+            assertEquals("/entry-capabilities", path)
+            throw WalkHttpException(404, "old server")
+        }
+        val sync = WalkEntrySync(dao, v2, preferLegacy = true, owner = { owner }) { _, path, method, body ->
+            calls += "v1"
+            assertEquals("/walk/entries/old", path)
+            assertEquals("PUT", method)
+            JSONObject().put("revision", 1).put("mutation_id", body!!.getString("mutation_id"))
+        }
+        assertTrue(runCatching { sync.sync("token", "s", "walk") }.exceptionOrNull() is IOException)
+        assertEquals(listOf("v1", "probe"), calls)
+        assertFalse(dao.entry("old")!!.dirty)
+        assertEquals(original, dao.entry(id))
+    }
+
+    @Test fun `과거 v1 산책은 capabilities 미지원 확인 후 저장 조회 수정 삭제한다`() = runBlocking {
         val store = WalkEntryStore(dao)
         dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
         store.save(com.daengs.app.walk.WalkEntry("old", "legacy", WalkMomentType.SNIFFING, now,
@@ -46,8 +91,14 @@ class WalkEntryV2SyncTest {
         val calls = mutableListOf<String>()
         var remote: JSONObject? = null
         var revision = 0
-        val v2 = WalkEntryV2Sync(dao, { owner }) { _, _, _, _, _ -> error("v2 must not be probed") }
-        val sync = WalkEntrySync(dao, v2, temporaryLegacyMode = true) { _, path, method, body ->
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, v2 ->
+            assertFalse(v2)
+            assertEquals("/entry-capabilities", path)
+            assertEquals("GET", method)
+            calls += "capabilities"
+            throw WalkHttpException(404, "missing")
+        }
+        val sync = WalkEntrySync(dao, v2, owner = { owner }) { _, path, method, body ->
             calls += method
             assertTrue(path.startsWith("/walk/entries"))
             if (method == "GET") JSONObject().put("entries", JSONArray().apply { remote?.let { put(it) } })
@@ -66,40 +117,88 @@ class WalkEntryV2SyncTest {
         assertEquals(WalkMomentType.BARKING, dao.entry("old")!!.entry()!!.type)
         store.delete("old")
         sync.sync("token", "legacy", "walk")
-        assertEquals(listOf("PUT", "GET", "PUT", "GET", "DELETE", "GET"), calls)
+        assertEquals(listOf("capabilities", "PUT", "GET", "capabilities", "PUT", "GET",
+            "capabilities", "DELETE", "GET"), calls)
         assertNull(dao.entry("old")!!.payload)
         assertFalse(dao.entry("old")!!.dirty)
     }
 
-    @Test fun `혼합 산책은 v1부터 전송하고 구서버 실패에도 기존 v2 영수증과 핀을 보존한다`() = runBlocking {
+    @Test fun `혼합 산책은 v2 지원이 없으면 보류하고 기존 v2 영수증과 핀을 보존한다`() = runBlocking {
         dao.preparePinRequest(id, owner)
         val original = dao.entry(id)!!
         WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("legacy", "s", WalkMomentType.BARKING, now,
             com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
-        var sentLegacy = false
-        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, _, _, _ ->
-            assertTrue(sentLegacy)
+        var probes = 0
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, v2 ->
+            probes++
+            assertFalse(v2)
+            assertEquals("GET", method)
             assertEquals("/entry-capabilities", path)
             throw WalkHttpException(404, "missing")
         }
-        val sync = WalkEntrySync(dao, v2, temporaryLegacyMode = true) { _, path, method, body ->
-            assertEquals("/walk/entries/legacy", path)
-            assertEquals("PUT", method)
-            sentLegacy = true
-            JSONObject().put("revision", 1).put("mutation_id", body!!.getString("mutation_id"))
+        val sync = WalkEntrySync(dao, v2, owner = { owner }) { _, _, _, _ ->
+            error("혼합 산책을 v1으로 우회하면 안 된다")
         }
         try { sync.sync("token", "s", "walk"); fail() } catch (_: IOException) { }
-        assertTrue(sentLegacy)
-        assertFalse(dao.entry("legacy")!!.dirty)
+        assertEquals(1, probes)
+        assertTrue(dao.entry("legacy")!!.dirty)
         assertEquals(original, dao.entry(id))
     }
 
-    @Test fun `임시 v1도 다른 계정 산책을 보내거나 계정 전환 뒤 ACK를 적용하지 않는다`() = runBlocking {
+    @Test fun `혼합 산책은 기존 메모를 v1으로 새 행동을 v2로 보내고 v2 목록을 읽는다`() = runBlocking {
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("legacy", "s", WalkMomentType.NOTE,
+            now, note = "과거 메모"))
+        val calls = mutableListOf<Triple<String, String, Boolean>>()
+        var behavior: JSONObject? = null
+        var note: JSONObject? = null
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, useV2 ->
+            calls += Triple(method, path, useV2)
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
+            when {
+                path == "/entry-capabilities" -> caps()
+                method == "GET" -> JSONObject().put("entries", JSONArray().put(behavior!!).put(note!!))
+                path.endsWith("/legacy") -> {
+                    assertFalse(useV2)
+                    assertFalse(body!!.has("pin"))
+                    JSONObject().put("id", "legacy").put("revision", 1)
+                        .put("mutation_id", body.getString("mutation_id"))
+                        .put("content", body.getJSONObject("content")).also {
+                            note = JSONObject(it.toString()).put("contract_version", "walk-entry-v2")
+                                .put("deleted", false).put("pin_revision", 0).put("pin", JSONObject.NULL)
+                        }
+                }
+                else -> {
+                    assertTrue(useV2)
+                    assertEquals("/walk/entries/$id", path)
+                    assertEquals("provisional", body!!.getJSONObject("pin").getString("state"))
+                    assertTrue(body.getJSONObject("content").isNull("location"))
+                    ack(body).also { behavior = it }
+                }
+            }
+        }
+        val sync = WalkEntrySync(dao, v2, owner = { owner }) { _, _, _, _ ->
+            error("v2 지원 서버를 구형 목록 경로로 우회하면 안 된다")
+        }
+        sync.sync("token", "s", "walk")
+        assertEquals(Triple("GET", "/entry-capabilities", false), calls.first())
+        assertEquals(Triple("GET", "/walk/entries", true), calls.last())
+        assertEquals(setOf(Triple("PUT", "/walk/entries/$id", true), Triple("PUT", "/walk/entries/legacy", false)),
+            calls.filter { it.first == "PUT" }.toSet())
+        assertEquals(5, calls.size)
+        assertTrue(dao.entry(id)!!.isV2)
+        assertFalse(dao.entry(id)!!.dirty)
+        assertFalse(dao.entry(id)!!.pinDirty)
+        assertFalse(dao.entry("legacy")!!.isV2)
+        assertFalse(dao.entry("legacy")!!.dirty)
+        assertEquals("과거 메모", dao.entry("legacy")!!.entry()!!.note)
+    }
+
+    @Test fun `과거 v1도 다른 계정 산책을 보내거나 계정 전환 뒤 ACK를 적용하지 않는다`() = runBlocking {
         dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
         WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("old", "legacy", WalkMomentType.SNIFFING, now,
             com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
         var calls = 0
-        val sync = WalkEntrySync(dao, temporaryLegacyMode = true, owner = { owner }) { _, _, _, body ->
+        val sync = WalkEntrySync(dao, owner = { owner }) { _, _, _, body ->
             calls++
             owner = "other"
             JSONObject().put("revision", 1).put("mutation_id", body!!.getString("mutation_id"))
@@ -113,11 +212,43 @@ class WalkEntryV2SyncTest {
         assertTrue(dao.entry("old")!!.dirty)
         assertEquals(0, dao.entry("old")!!.revision)
     }
-    private fun caps(write: Boolean = true) = JSONObject().put("read_versions", JSONArray(listOf("walk-entry-v2")))
-        .put("write_versions", JSONArray(if (write) listOf("walk-entry-v2") else emptyList<String>()))
+    @Test fun `cached only failed action retries after verified metadata and new rejection is not looped`() = runBlocking {
+        val fix = com.daengs.app.walk.RecordedFix(0, 0, 9_000, 37.5, 127.0, 5f, false, recordingEligible = false)
+        dao.insertFix(WalkFixRow("s", 0, 0, fix.atMillis, fix.lat, fix.lng, fix.accuracyM, false, recordingEligible = false))
+        now = 18_000; pins.finish(id)
+        dao.updatePinRow(dao.entry(id)!!.copy(syncError = LEGACY_PIN_SOURCE_ERROR))
+        var puts = 0
+        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, _ ->
+            when {
+                path == "/entry-capabilities" -> caps()
+                path == "/walk" -> storedGps(listOf(fix))
+                method == "PUT" -> {
+                    puts++
+                    assertEquals(WalkRecordingContract.evidenceFingerprint(listOf(fix)), body!!.getString("recording_evidence_fingerprint"))
+                    assertEquals("unlocated", body.getJSONObject("pin").getString("state"))
+                    throw WalkHttpException(422, "another validation error")
+                }
+                else -> JSONObject().put("entries", JSONArray())
+            }
+        }
+        sync.sync("token", "s", "walk")
+        sync.sync("token", "s", "walk")
+        assertEquals(1, puts)
+        assertNotNull(dao.entry(id)!!.payload)
+        assertNotEquals(LEGACY_PIN_SOURCE_ERROR, dao.entry(id)!!.syncError)
+    }
+    private fun storedGps(points: List<com.daengs.app.walk.RecordedFix> = emptyList()) = JSONObject().put("recording_receipt", JSONObject()
+        .put("contract_version", WalkRecordingContract.VERSION).put("policy_version", WalkRecordingContract.POLICY)
+        .put("point_count", points.size).put("known_point_count", points.count { it.recordingEligible != null })
+        .put("raw_input_fingerprint", WalkRecordingContract.rawFingerprint(points))
+        .put("evidence_fingerprint", WalkRecordingContract.evidenceFingerprint(points)))
+    private fun caps(write: Boolean = true) = JSONObject().put("read_versions", JSONArray(listOf("walk-entry-v1", "walk-entry-v2")))
+        .put("write_versions", JSONArray(listOf("walk-entry-v1") + if (write) listOf("walk-entry-v2") else emptyList()))
         .put("active_policy_versions", JSONArray(if (write) listOf("action-pin-policy-v1") else emptyList<String>()))
+        .put("pin_observation_cutoff_supported", true)
+        .put("gps_recording_versions", JSONArray(listOf(WalkRecordingContract.VERSION)))
     private fun ack(body: JSONObject, revision: Int = 1, pinRevision: Int = 1, content: JSONObject? = null) = JSONObject()
-        .put("id", id).put("revision", revision).put("pin_revision", pinRevision)
+        .put("contract_version", "walk-entry-v2").put("id", id).put("revision", revision).put("pin_revision", pinRevision)
         .put("mutation_id", body.getString("mutation_id")).put("deleted", false)
         .put("content", content ?: body.getJSONObject("content")).put("pin", body.optJSONObject("pin") ?: JSONObject.NULL)
 
@@ -126,7 +257,8 @@ class WalkEntryV2SyncTest {
         var remote: JSONObject? = null
         var lose = true
         var puts = 0
-        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps()
             else if (method == "GET") JSONObject().put("entries", JSONArray().put(remote!!))
             else {
@@ -141,6 +273,9 @@ class WalkEntryV2SyncTest {
                 if (lose) { lose = false; throw IOException("lost ACK") }
                 remote!!
             }
+        }
+        val sync = WalkEntrySync(dao, v2, owner = { owner }) { _, _, _, _ ->
+            error("v2 재전송을 v1으로 우회하면 안 된다")
         }
         try { sync.sync("token", "s", "walk"); fail() } catch (_: IOException) { }
         assertNotNull(dao.entry(id)!!.pendingRequest)
@@ -188,7 +323,8 @@ class WalkEntryV2SyncTest {
             .put("mutation_id", UUID.randomUUID().toString()).put("content", note.toJson()).put("pin", JSONObject.NULL)
         var legacyWrites = 0
         var v2Writes = 0
-        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
+        val v2Sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps()
             else if (method == "GET") JSONObject().put("entries", JSONArray().put(remote))
             else if (!v2) { legacyWrites++; throw WalkHttpException(426, "walk_entry_upgrade_required") }
@@ -198,20 +334,30 @@ class WalkEntryV2SyncTest {
                 ack(body, 2, 0).also { remote = it }
             }
         }
+        var releaseWrites = 0
+        val sync = WalkEntrySync(dao, v2Sync, preferLegacy = true, owner = { owner }) { _, _, _, _ ->
+            releaseWrites++
+            throw WalkHttpException(426, "walk_entry_upgrade_required")
+        }
         sync.sync("token", "s", "walk")
         assertTrue(dao.entry(id)!!.isV2)
         WalkEntryStore(dao).save(dao.entry(id)!!.entry()!!.copy(note = "confirmed note"))
         sync.sync("token", "s", "walk")
         assertEquals(1, legacyWrites)
         assertEquals(1, v2Writes)
+        assertEquals(1, releaseWrites)
         assertFalse(dao.entry(id)!!.dirty)
         assertEquals("confirmed note", remote.getJSONObject("content").getString("note"))
     }
 
     @Test fun `쓰기 비활성화는 로컬 기록을 유지하고 v1로 우회하지 않는다`() = runBlocking {
-        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, _ ->
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, _ ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             assertEquals("GET", method)
             if (path == "/entry-capabilities") caps(false) else JSONObject().put("entries", JSONArray())
+        }
+        val sync = WalkEntrySync(dao, v2, owner = { owner }) { _, _, _, _ ->
+            error("쓰기 보류를 v1 전송으로 우회하면 안 된다")
         }
         try { sync.sync("token", "s", "walk"); fail() } catch (_: IOException) { }
         assertNotNull(dao.entry(id)!!.payload)
@@ -221,9 +367,12 @@ class WalkEntryV2SyncTest {
 
     @Test fun `옛 서버도 위치 없는 행동을 v1에 전송하지 않는다`() = runBlocking {
         var calls = 0
-        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, _, _, _ ->
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, _, _, _ ->
             calls++; assertEquals("/entry-capabilities", path)
             throw WalkHttpException(404, "missing")
+        }
+        val sync = WalkEntrySync(dao, v2, owner = { owner }) { _, _, _, _ ->
+            error("위치 없는 행동을 구형 전송으로 바꾸면 안 된다")
         }
         try { sync.sync("token", "s", "walk"); fail() } catch (_: IOException) { }
         assertEquals(1, calls)
@@ -236,6 +385,7 @@ class WalkEntryV2SyncTest {
         var remote: JSONObject? = null
         var writes = 0
         val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, _ ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps().put("pin_observation_cutoff_supported", supports)
             else if (method == "GET") JSONObject().put("entries", JSONArray().apply { remote?.let { put(it) } })
             else {
@@ -260,6 +410,7 @@ class WalkEntryV2SyncTest {
         val pending = dao.preparePinRequest(id, owner)!!
         val final = ack(PinPending(JSONObject(pending)).body, 3, 2, created.getJSONObject("content"))
         val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, _ ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps()
             else if (method == "PUT") throw WalkHttpException(409, "conflict")
             else JSONObject().put("entries", JSONArray().put(final))
@@ -272,6 +423,7 @@ class WalkEntryV2SyncTest {
 
     @Test fun `위치 검증 거부는 기기 원본을 보관하고 수정 가능한 오류로 표시한다`() = runBlocking {
         val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, _, _ ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps()
             else if (method == "PUT") throw WalkHttpException(422, "invalid")
             else JSONObject().put("entries", JSONArray())
@@ -284,6 +436,7 @@ class WalkEntryV2SyncTest {
 
     @Test fun `통신 중 계정 전환은 다른 계정으로 ACK를 적용하지 않는다`() = runBlocking {
         val sync = WalkEntryV2Sync(dao, { owner }) { _, path, _, body, _ ->
+            if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps() else {
                 owner = "other"; ack(body!!)
             }

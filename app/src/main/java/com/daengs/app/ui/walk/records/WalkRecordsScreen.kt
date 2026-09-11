@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,7 +43,6 @@ import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.HistoryFilterSaver
-import com.daengs.app.ui.walk.WalkHistoryPageContent
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkMomentType
@@ -82,21 +78,23 @@ fun WalkRecordsScreen(
     sampleLabel: String? = null,
     today: LocalDate = LocalDate.now(),
     petsLoaded: Boolean = true,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
 ) {
-    var dogId by rememberSaveable { mutableStateOf<String?>(null) }
+    var dogIds by rememberSaveable(stateSaver = RecordsDogIdsSaver) { mutableStateOf<Set<String>?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
-    val query = remember(dogId, filter) { WalkRecordsQuery(dogId, filter) }
+    val query = remember(dogIds, filter) { WalkRecordsQuery(dogIds, filter) }
     var view by rememberSaveable { mutableStateOf(RecordsView.WALKS) }
     var behavior by rememberSaveable { mutableStateOf<WalkMomentType?>(null) }
     var behaviorView by rememberSaveable(query) { mutableStateOf(BehaviorRecordsView.RECORD_LOCATIONS) }
     // Keep inspection state above the loading/tab branches, with a stable restoration location.
     // The native map must not be wrapped in SaveableStateHolder's ReusableContent subtree.
     val behaviorState = rememberWalkRecordsBehaviorState(query, behavior)
-    var conditionsOpen by rememberSaveable { mutableStateOf(false) }
+    var activeFilter by rememberSaveable { mutableStateOf<RecordsFilter?>(null) }
     var pageIndex by rememberSaveable(query) { mutableIntStateOf(0) }
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     var selectedId by rememberSaveable(query) { mutableStateOf<String?>(null) }
     var hiddenIds by rememberSaveable(query, stateSaver = HiddenWalkIdsSaver) { mutableStateOf(emptySet<String>()) }
+    var overviewExpanded by rememberSaveable(query) { mutableStateOf(false) }
     var overlapOnly by rememberSaveable(query) { mutableStateOf(false) }
     var minimumWalks by rememberSaveable(query) { mutableIntStateOf(2) }
     var overlapPoint by rememberSaveable(query, stateSaver = OverlapPointSaver) { mutableStateOf<GeoPoint?>(null) }
@@ -145,7 +143,7 @@ fun WalkRecordsScreen(
         }
     }
     LaunchedEffect(pets, petsLoaded) {
-        if (petsLoaded && dogId != null && pets.none { it.id == dogId }) dogId = null
+        if (petsLoaded) dogIds = dogIds?.intersect(pets.map { it.id }.toSet())?.takeIf { it.isNotEmpty() }
     }
     LaunchedEffect(selection) {
         selection?.let { current ->
@@ -239,48 +237,39 @@ fun WalkRecordsScreen(
     BackHandler(onBack = onBack)
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ 뒤로") }
-            Text("산책 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
+            onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
+            onKeyword = { filter = filter.copy(keyword = it) },
+            onFilter = { focusManager.clearFocus(); activeFilter = it },
+            onReset = { focusManager.clearFocus(); dogIds = null; filter = WalkHistoryFilter(); behavior = null },
+            onClearBehavior = { behavior = null }, today = today)
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        WalkRecordsConditions(query, pets,
-            onKeyword = { filter = filter.copy(keyword = it) },
-            onOpenConditions = { focusManager.clearFocus(); conditionsOpen = true },
-            onReset = { focusManager.clearFocus(); dogId = null; filter = WalkHistoryFilter(); behavior = null },
-            showBehavior = view == RecordsView.OVERVIEW, behavior = behavior,
-            onClearBehavior = { behavior = null })
-        TabRow(selectedTabIndex = view.ordinal) {
-            Tab(selected = view == RecordsView.WALKS, onClick = { focusManager.clearFocus(); view = RecordsView.WALKS },
-                text = { Text("산책별") }, modifier = Modifier.testTag("records-view-walks"))
-            Tab(selected = view == RecordsView.OVERVIEW, onClick = { focusManager.clearFocus(); view = RecordsView.OVERVIEW },
-                text = { Text("모아보기") }, modifier = Modifier.testTag("records-view-overview"))
-        }
         val current = selection
         if (current != null && view == RecordsView.WALKS) {
-            Text("선택 산책 ${current.records.size}회", Modifier.fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp).testTag("records-count"),
-                style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("지난 산책", style = MaterialTheme.typography.titleSmall)
+                Text("선택 산책 ${current.records.size}회", Modifier.testTag("records-count"),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))
             current.records.isEmpty() -> RecordsMessage(
-                if (query.dogId != null || query.filter.active) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
-                if (query.dogId != null || query.filter.active) "전체 기록 보기" else null,
-                { dogId = null; filter = WalkHistoryFilter() }, Modifier.weight(1f),
+                if (query.dogIds != null || query.filter.active) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
+                if (query.dogIds != null || query.filter.active) "전체 기록 보기" else null,
+                { dogIds = null; filter = WalkHistoryFilter() }, Modifier.weight(1f),
             )
             else -> {
                 if (view == RecordsView.WALKS) {
                     val currentPage = pageIndex.coerceAtMost((current.records.size - 1) / PAGE_SIZE)
                     val rows = current.page(currentPage, PAGE_SIZE)
                     savedLists.SaveableStateProvider(currentPage) {
-                        WalkHistoryPageContent(rows.map { it.summary }, currentPage + 1,
-                            currentPage > 0, (currentPage + 1) * PAGE_SIZE < current.records.size,
+                        WalkRecordsList(rows, currentPage + 1, (current.records.size + PAGE_SIZE - 1) / PAGE_SIZE,
                             { pageIndex = currentPage - 1 }, { pageIndex = currentPage + 1 },
-                            onOpen, pets, Modifier.weight(1f),
-                            rows.mapNotNull { record -> record.title?.let { record.summary.sessionId to it } }.toMap())
+                            onOpen, pets, Modifier.weight(1f))
                     }
                 } else if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
@@ -291,6 +280,7 @@ fun WalkRecordsScreen(
                         modifier = Modifier.weight(1f))
                 } else {
                     WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
+                        expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
                         selectedId = selectedId, hiddenIds = hiddenIds,
                         onSelect = { id ->
@@ -336,10 +326,10 @@ fun WalkRecordsScreen(
             }
         }
     }
-    if (conditionsOpen) {
-        WalkRecordsConditionsSheet(query, pets, today,
-            onApply = { next -> dogId = next.dogId; filter = next.filter; conditionsOpen = false },
-            onDismiss = { conditionsOpen = false }, behavior = behavior,
+    activeFilter?.let { kind ->
+        WalkRecordsConditionsSheet(kind, query, pets, today,
+            onApply = { next -> dogIds = next.dogIds; filter = next.filter },
+            onDismiss = { activeFilter = null }, behavior = behavior, petsLoaded = petsLoaded, photoOf = photoOf,
             onBehaviorApply = { next ->
                 if (next != behavior) {
                     if (behavior == null) behaviorView = BehaviorRecordsView.RECORD_LOCATIONS

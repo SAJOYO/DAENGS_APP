@@ -94,6 +94,7 @@ class OwnedTerritoryBrowserTest {
         val scene = ownedTerritoryScene(value.visibleItems(0), site.siteId)
         assertEquals(site.point, scene.territorySites.single().point)
         assertTrue(scene.territorySites.single().selected)
+        assertTrue(scene.territorySites.single().isMine)
         assertNull(scene.currentPosition)
         assertTrue(scene.places.isEmpty() && scene.moments.isEmpty() && scene.allowRegionalOverview)
         assertEquals("유지 기한 정보 없음", ownedRemaining(null, 1000))

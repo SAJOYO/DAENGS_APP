@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -263,6 +264,9 @@ private fun WalkGameOverlay(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val layoutMode = walkLayoutMode(maxWidth.value, maxHeight.value)
+        val territoryCardMaxHeight = maxHeight * if (layoutMode == WalkLayoutMode.LANDSCAPE) .7f else .65f
+        val territoryCardVisible = summary == null && mapPurpose == MapPurpose.TERRITORY &&
+            territory.selectedSiteId != null && territoryGame.enabled && territoryGame.target != null
         val stackMapTools = maxWidth < 380.dp
         val elapsedMillis = summary?.activeDurationMillis ?: tracking.elapsedMillisAt(realtimeMillis)
         val distanceMeters = summary?.distanceMeters ?: tracking.trail.distanceMeters
@@ -333,9 +337,8 @@ private fun WalkGameOverlay(
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
                     if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
-                    else if (!landscape) WalkSpeedometer(
-                        speed = if (locationGranted && preciseLocation && locationError == null)
-                            walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                    else if (!landscape) MotionSpeedometer(
+                        display = tracking.motionDisplay,
                         modifier = Modifier.align(Alignment.End))
                 }
             }
@@ -370,9 +373,14 @@ private fun WalkGameOverlay(
                 if (momentsOpen && tracking.trail.state == TrackingState.RECORDING) WalkMomentDock(
                     layoutMode = WalkLayoutMode.PORTRAIT, enabled = momentEnabled,
                     onAddMoment = { momentsOpen = false; onAddMoment(it) })
-                if (summary == null && mapPurpose == MapPurpose.TERRITORY && territory.selectedSiteId != null && territoryGame.enabled) {
+                if (territoryCardVisible) {
+                    val ownerPet = territoryGame.target?.takeIf { it.occupancyKnown && it.isOwnedByMe == true }
+                        ?.claim?.occupancy?.ownerPetId?.let { id -> pets.firstOrNull { it.id == id } }
                     TerritoryActionCard(territoryGame, onMarkTerritory, onPhotograph = onPhotographTerritory,
-                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet)
+                        modifier = Modifier.fillMaxWidth().heightIn(max = territoryCardMaxHeight),
+                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet,
+                        ownerPhoto = ownerPet?.id?.let(photoOf), ownerBreed = ownerPet?.breedArt,
+                        onPrepareWalk = onCloseTerritory)
                 }
                 if (tracking.errorMessage != null || (mapPurpose == MapPurpose.TERRITORY &&
                     (territory.failure != null || territory.sites.isEmpty()))) {
@@ -393,15 +401,14 @@ private fun WalkGameOverlay(
                         }
                     }
                 }
-                if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
+                if ((tracking.trail.state == TrackingState.OFF && !territoryCardVisible) || summary != null) WalkPrimaryControl(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
                     onToggleDog, onStart, onPause, onShowResult, photoOf = photoOf)
-                else if (!landscape) dock()
+                else if (!landscape && tracking.trail.state != TrackingState.OFF) dock()
                 if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
             }
             if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
-                WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
-                    walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                MotionSpeedometer(display = tracking.motionDisplay,
                     modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { gaugeHeight = it.height })
                 Box(Modifier.align(Alignment.BottomEnd).onSizeChanged { dockWidth = it.width }) { dock() }
             }

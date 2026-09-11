@@ -2,6 +2,7 @@ package com.daengs.app.place
 
 import com.daengs.app.auth.Session
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.place.bookmarks.BookmarkTurn
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
@@ -33,6 +34,9 @@ data class ConversationResult(
     val parkingFirst get() = filters.getValue("preferences").jsonArray.isNotEmpty()
     val matches get() = receipt.getValue("result_matches_filters").jsonPrimitive.boolean
     val failed get() = receipt["execution"]?.jsonPrimitive?.content == "failed"
+    val preservesDisplay get() = receipt["bookmark_command"]?.let { it != JsonNull } == true ||
+        receipt["saved_search_filters"]?.let { it != JsonNull } == true ||
+        receipt["code"]?.jsonPrimitive?.content in setOf("feedback_no_mutation", "saved_search_clarify", "saved_search_client_required")
 }
 
 data class ConversationUiState(
@@ -45,6 +49,7 @@ data class ConversationUiState(
     val answerError: String? = null,
     val filterRetry: ConversationFilterEdit? = null,
     val canUndo: Boolean = false,
+    val commandAnswer: String? = null,
 )
 
 fun JsonObject.toConversationResult(): ConversationResult {
@@ -130,10 +135,13 @@ class FacilityConversationRepository(
     private var owner: String? = null
     // Cancellation/timeout says nothing about whether the server committed. Keep its identity.
     private var pending: JsonObject? = null
+    private var pendingBookmarks: BookmarkTurn? = null
+    private var activeBookmarks: BookmarkTurn? = null
     private data class Undo(val filters: JsonObject, val sessionId: String, val revision: Int)
     private var undo: Undo? = null
 
-    fun cancelPending() {
+    fun cancelPending(cancelBookmarks: Boolean = false) {
+        if (cancelBookmarks) { activeBookmarks?.cancel(); pendingBookmarks?.cancel() }
         generation++
         // Undo restores into a new session. An abandoned restore must not replace a new manual intent.
         if (undo != null && pending?.get("mode")?.jsonPrimitive?.content == "restore") pending = null
@@ -142,6 +150,8 @@ class FacilityConversationRepository(
     }
 
     fun invalidate() {
+        activeBookmarks?.cancel(); pendingBookmarks?.cancel()
+        activeBookmarks = null; pendingBookmarks = null
         generation++
         mutable.value = ConversationUiState()
         owner = null
@@ -168,11 +178,13 @@ class FacilityConversationRepository(
         return searchPlaceBatches(fallback, requests)
     }
 
-    suspend fun chat(query: String, visibleOrder: List<PlaceKey>) {
+    suspend fun chat(query: String, visibleOrder: List<PlaceKey>, bookmarks: BookmarkTurn? = null,
+        visibleSelected: PlaceKey? = mutable.value.selected) {
         val session = freshSession() ?: throw FacilityException(401)
         require(mutable.value.result != null) { "먼저 카테고리를 선택해 주변 장소를 검색해 주세요." }
         val before = mutable.value.result
-        val result = run(session, "chat", query = query, visibleOrder = visibleOrder)
+        val result = run(session, "chat", query = query, visibleOrder = visibleOrder, bookmarks = bookmarks,
+            visibleSelected = visibleSelected)
         if (before != null && !result.failed && result.matches && result.filters != before.filters &&
             result.sessionId == before.sessionId && result.revision == before.revision + 1 &&
             mutable.value.notice == null) {
@@ -270,6 +282,8 @@ class FacilityConversationRepository(
         session: Session, mode: String, manual: JsonObject? = null,
         query: String = "", visibleOrder: List<PlaceKey> = emptyList(),
         filterEdit: ConversationFilterEdit? = null,
+        bookmarks: BookmarkTurn? = null,
+        visibleSelected: PlaceKey? = null,
     ): ConversationResult {
         if (owner != null && owner != session.appUserId) invalidate()
         owner = session.appUserId
@@ -283,9 +297,11 @@ class FacilityConversationRepository(
             }
             manual?.let { put("manual", it) }
             filterEdit?.let { put("remove_filters", it.toJson()) }
-            if (mode == "chat") mutable.value.selected?.let { key ->
+            if (mode == "chat") visibleSelected?.let { key ->
                 put("visible_selected", buildJsonObject { put("source", key.source); put("ref", key.ref) })
             }
+            if (mode == "chat" && bookmarks != null) put("bookmark_commands", "v1")
+            if (mode == "chat" && bookmarks?.supportsSearch == true) put("saved_search", "v1")
             put("visible_order", buildJsonArray {
                 visibleOrder.take(120).forEach { key -> add(buildJsonObject {
                     put("source", key.source); put("ref", key.ref)
@@ -297,12 +313,16 @@ class FacilityConversationRepository(
         val payload = retry?.takeIf {
             it["mode"]?.jsonPrimitive?.content == "restore" ||
                 (it["mode"] == next["mode"] && it["manual"] == next["manual"] && it["query"] == next["query"] &&
-                    it["remove_filters"] == next["remove_filters"]) ||
+                    it["remove_filters"] == next["remove_filters"] && it["bookmark_commands"] == next["bookmark_commands"] &&
+                    it["saved_search"] == next["saved_search"]) ||
                 before == null
         } ?: next
+        val commandContext = if (payload === next) bookmarks else pendingBookmarks
         pending = payload
+        pendingBookmarks = commandContext
+        activeBookmarks = commandContext
         mutable.value = mutable.value.copy(busy = true, error = null, notice = null, answerBusy = false,
-            answerError = null, filterRetry = filterEdit, canUndo = false)
+            answerError = null, filterRetry = filterEdit, canUndo = false, commandAnswer = null)
         try {
             var notice: String? = if (payload !== next && (payload["mode"]?.jsonPrimitive?.content == "restore" ||
                 payload["manual"] != next["manual"] || payload["query"] != next["query"]))
@@ -335,12 +355,44 @@ class FacilityConversationRepository(
                     restore(session, before, mine)
                 } else throw error
             }
+            // A bookmark is independent of the current map generation, but bound to the
+            // exact local request, account lifetime and utterance-time target.
+            val command = result.receipt["bookmark_command"]?.takeUnless { it is JsonNull }?.jsonObject
+            var commandAnswer: String? = null
+            val savedFilters = result.receipt["saved_search_filters"]?.takeUnless { it == JsonNull }?.jsonObject
+            if (savedFilters != null) {
+                checkLive(mine, session)
+                require(command == null && result.requestId == payload["client_request_id"]?.jsonPrimitive?.content &&
+                    payload["saved_search"]?.jsonPrimitive?.content == "v1" && commandContext?.supportsSearch == true)
+                require(before != null && result.filters == before.filters && result.search == before.search &&
+                    result.order == before.order && !result.failed && result.answerStatus == "none")
+                commandAnswer = commandContext!!.search(savedFilters) { mine == generation }
+            }
+            if (command != null && result.requestId == payload["client_request_id"]?.jsonPrimitive?.content &&
+                payload["bookmark_commands"]?.jsonPrimitive?.content == "v1" && commandContext != null) {
+                val live = currentSession()
+                if (live?.appUserId != session.appUserId || live.refreshToken != session.refreshToken)
+                    throw CancellationException("Bookmark account changed")
+                require(before != null && result.filters == before.filters && result.search == before.search &&
+                    result.order == before.order && !result.failed && result.answerStatus == "none")
+                val key = command.getValue("key").jsonObject.let {
+                    PlaceKey(it.getValue("source").jsonPrimitive.content, it.getValue("ref").jsonPrimitive.content)
+                }
+                require(key in before.order)
+                if (mine == generation) mutable.value = mutable.value.copy(answerBusy = true)
+                commandAnswer = commandContext.execute(result.requestId, key,
+                    command.getValue("saved").jsonPrimitive.boolean).message
+            }
             checkLive(mine, session)
-            pending = null
-            return publish(result, notice, if (result.failed) filterEdit?.copy(revision = result.revision) else null)
+            pending = null; pendingBookmarks = null
+            val currentSelection = mutable.value.selected
+            val published = publish(result, notice, if (result.failed) filterEdit?.copy(revision = result.revision) else null)
+            if (published.preservesDisplay) mutable.value = mutable.value.copy(
+                commandAnswer = commandAnswer, selected = currentSelection)
+            return published
         } catch (error: Exception) {
             if (mine == generation) mutable.value = mutable.value.copy(
-                busy = false, error = when {
+                busy = false, answerBusy = false, error = when {
                     error is CancellationException -> null
                     error is FacilityException && error.status == 409 -> "이전 요청의 처리 상태를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요."
                     else -> error.facilityMessage()

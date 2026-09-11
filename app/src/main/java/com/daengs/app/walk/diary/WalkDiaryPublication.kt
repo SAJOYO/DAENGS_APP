@@ -11,12 +11,13 @@ class WalkDiaryPublication(
     private val scope: CoroutineScope,
     private val sync: suspend (String) -> Unit,
     private val now: () -> Long = System::currentTimeMillis,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val active = ConcurrentHashMap.newKeySet<String>()
 
     fun start(id: String) {
         if (!active.add(id)) return
-        scope.launch(Dispatchers.IO) {
+        scope.launch(dispatcher) {
             try {
                 val account = owner()
                 val state = dao.prepareLocalDiary(id, account) ?: return@launch
@@ -24,7 +25,7 @@ class WalkDiaryPublication(
                 val remaining = (state.deadlineAtMillis - now()).coerceIn(0, 10_000)
                 if (remaining > 0) {
                     // Upload/auth must never hold the local deadline job.
-                    scope.launch(Dispatchers.IO) {
+                    scope.launch(dispatcher) {
                         try { if (owner() == account) sync(id) }
                         catch (e: CancellationException) { throw e }
                         catch (_: Exception) { /* The durable upload worker retries separately. */ }

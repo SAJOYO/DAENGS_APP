@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -33,18 +34,27 @@ internal fun PlaceResultsScaffold(
     categories: @Composable () -> Unit,
     controls: @Composable () -> Unit,
     map: @Composable () -> Unit,
+    listState: LazyListState? = null,
+    collapseRequest: Int = 0,
+    navigation: (@Composable (Boolean, () -> Unit) -> Unit)? = null,
     results: LazyListScope.() -> Unit,
 ) {
     val sheet = rememberStandardBottomSheetState()
     val scaffold = rememberBottomSheetScaffoldState(bottomSheetState = sheet)
     val scope = rememberCoroutineScope()
-    val list = rememberLazyListState()
+    val defaultList = rememberLazyListState()
+    val list = listState ?: defaultList
     val expanded = sheet.targetValue == SheetValue.Expanded
+    LaunchedEffect(collapseRequest) {
+        if (collapseRequest > 0) sheet.partialExpand()
+    }
     BackHandler(enabled = sheet.currentValue == SheetValue.Expanded && !detailOpen) {
         scope.launch { sheet.partialExpand() }
     }
     Column(Modifier.fillMaxSize().background(DaengsColors.AppBackground).safeDrawingPadding()) {
-        Column(Modifier.fillMaxWidth().background(DaengsColors.Surface).padding(horizontal = 16.dp, vertical = 12.dp), content = header)
+        // Keep the 48dp search controls; reclaim only the gap before categories (12 -> 4dp).
+        Column(Modifier.fillMaxWidth().background(DaengsColors.Surface)
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp), content = header)
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val panelHeight = (maxHeight - 96.dp).coerceAtLeast(180.dp).coerceAtMost(maxHeight)
             val peek = (if (maxWidth < 372.dp) 246.dp else 220.dp).coerceAtMost(panelHeight)
@@ -59,9 +69,11 @@ internal fun PlaceResultsScaffold(
                 containerColor = DaengsColors.Surface,
                 sheetContent = {
                     Column(Modifier.fillMaxWidth().height(panelHeight).testTag("place-results-sheet")) {
-                        PlaceResultsHandle(expanded) {
+                        val toggle: () -> Unit = {
                             scope.launch { if (expanded) sheet.partialExpand() else sheet.expand() }
                         }
+                        if (navigation != null) navigation(expanded, toggle)
+                        else PlaceResultsHandle(expanded, toggle)
                         controls()
                         HorizontalDivider(Modifier.padding(top = 4.dp), color = PlaceSearchStyle.Border)
                         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth().testTag("place-results-list"),

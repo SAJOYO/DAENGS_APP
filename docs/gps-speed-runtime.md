@@ -1,0 +1,44 @@
+# 실제 산책의 GPS 속도 표시 (#307, 5-1)
+
+`WalkTrackingService`가 산책마다 `WalkSpeedRuntime`을 만들고, Main에서 엔진 이벤트·표시 입력·tick을 직렬 처리한다. 화면은 `WalkTrackingState.motionDisplay`만 그린다. 세로·가로 화면 모두 `MotionSpeedometer`를 사용하며, 화면의 별도 위치 상태나 재생성으로 속도를 초기화하지 않는다.
+
+## 원본에서 화면까지
+
+1. 기존 위치 구독 → `WalkIngress` → writer → Room 저장 흐름을 유지한다.
+2. 서비스의 기존 `observationsAfter` 커서가 읽은 페이지(최대 128개)를 엔진에 순서대로 넣는다. 캐시·활동 구간 밖 관측도 번호 보존을 위해 엔진에 전달한다.
+3. `MotionSpeedAdapter`가 세션·source·clock·chain, 측정 시각, 속도 출처·품질·제외 이유를 검사한다. 각 페이지의 최종 표시만 발행한다.
+4. 서비스의 1초 tick이 GPS 입력 없이도 최신성을 갱신한다. 화면 구독 유무와 무관하며 일시정지에는 값이 고정되고 종료·서비스 파괴에는 작업이 해제된다. deep sleep 중 정밀 타이머를 보장하거나 wake lock을 추가하지 않는다. 복귀 후 현재 단조 시각으로 나이를 계산한다.
+
+표시에는 TRUSTED·ESTIMATED만 허용한다. UNVERIFIED·UNKNOWN·mock·속도 충돌·구간 밖·중복·역행 관측은 새 숫자가 되지 않는다. 단, 기기 속도 결측·무효라는 이유가 있어도 엔진이 유효한 좌표 창 속도로 대체했으면 표시할 수 있다. 위치의 낮은 정확도와 거리 제외는 독립이므로 신뢰 가능한 기기 속도나 실제 고속을 숨기지 않는다. 0은 실제 측정된 정지이며 근거 없음을 대신하지 않는다.
+
+표시 중 계산 계약 오류는 해당 세션의 투영을 중단하고 마지막 숫자와 수신 불안정 상태를 남긴다. #319의 측정 세션은 경로 계산 중단도 알린다. 원본 저장으로 예외를 전파하지 않고, 완료 값은 저장 원본으로 재생한다. 같은 세션에서 자동으로 엔진을 재생성해 번호나 구간을 임의 복구하지 않는다.
+
+## 경계와 수명
+
+- 시작: 새 엔진과 초기 표시. 현재 속도를 DB나 이전 산책에서 복원하지 않는다.
+- 일시정지·종료: 기존 접수 게이트를 닫은 직후 표시에도 상태를 알린다. 이미 접수한 원본은 계속 저장·엔진 처리하지만 표시 숫자는 바뀌지 않는다.
+- drain 완료: 모든 원본을 읽은 뒤 엔진에 실제 epoch 끝 경계를 전달한다. 표시의 FINAL은 정상 저장 완료를 증명하지 않는다.
+- 재개: 증가한 chain을 표시 generation으로 쓰고 새 source로 추정 창을 연다. 이전 숫자는 유지하고 새 측정의 최신성은 별도로 판단한다.
+- 화면 회전·탭 이동: 서비스와 저장소가 소유한 값을 다시 구독한다. 화면이 기록 명령을 재전송하거나 별도 속도 측정 구독을 만들지 않는다.
+- 프로세스 종료: 현재 속도는 메모리와 함께 사라진다. 기존 미완료 원본 복구 정책을 유지한다.
+
+일시정지·종료 버튼과 기존 상태 모달은 그대로다. #313에서 [산책별 정책 저장과 비교](gps-policy-persistence.md)를, #319에서 [새 산책의 거리·경로·완료 요약](gps-measurement-integration.md)을 연결했다. 시작 때 만든 동일 정책을 런타임과 세션 저장에 사용한다. 신규 핀은 v1이며 서버의 전체 측정 전송·동일 계산은 후속이다.
+
+## 검증
+
+`WalkSpeedRuntimeTest`·`MotionSpeedAdapterTest`는 실제 엔진 출력, 수신 공백, 늦은 페이지, 종료 중 원본 꼬리, 재개 source, 표시 오류 격리를 확인한다. `WalkSpeedServiceTest`는 가짜 위치 공급자와 메모리 Room으로 실제 서비스→접수→저장→표시 및 일시정지·재개·종료를 검사한다. GPS와 무관한 앱 SDK 초기화와 네트워크 전송 예약은 테스트 대역이며 실제 앱 시작 검증은 아니다. `WalkViewModelTest`와 `WalkScreenPolicyTest`는 재구독·새 ViewModel·화면 재마운트·가로/좁은 배치 및 기존 버튼을 확인한다.
+
+실기기 GPS 품질, 야외 정지·보행·고속 전환, 장기 저장 지연, 프레임·배터리 비용은 별도 검증이다. 합성 관측이나 Robolectric 화면을 실기기 주행 결과로 보고하지 않는다.
+
+2026-09-11, dev `8fede36`에서 debug 빌드와 선택 92개 테스트를 검증했다. 최초 87개 통과 후 테스트 환경·접근성 노드 조회·픽셀 반올림 문제를 수정했고, 해당 서비스·화면 8개를 다시 실행해 실패·오류·skip 0개를 확인했다. 최초 통과한 다른 클래스는 변경하지 않았다. `app/build/reports/gps-speed-runtime/`의 세로 320/411dp·가로 891dp 합성 렌더에서 속도계와 기존 제어가 겹치지 않는 것을 확인했다. 실제 지도는 이 렌더에서 제외했다.
+
+최신 dev `8c145da`의 전봇대 표시 변경을 통합한 `e7509ef`에서 debug 빌드와 영향받는 화면·ViewModel 테스트 30개(6+24)를 추가 실행해 실패·오류·skip 0개를 확인했다. 전체 저장소 테스트는 실행하지 않았다.
+
+이후 dev `13c4ca6`의 시설 찜 변경에서 `STATUS.md` 충돌만 두 기능의 설명을 유지하도록 정리했다. GPS·산책 화면·관련 테스트 코드가 바뀌지 않은 것을 대조하고 `:app:assembleDebug`만 다시 실행해 통과했다.
+
+```powershell
+# 최초 연결 검증 범위
+./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.walk.display.*' --tests 'com.daengs.app.walk.motion.MotionPolicyEngineTest' --tests 'com.daengs.app.walk.WalkSpeedServiceTest' --tests 'com.daengs.app.walk.WalkTrackingTest' --tests 'com.daengs.app.ui.walk.MotionSpeedometerTest' --tests 'com.daengs.app.ui.walk.WalkScreenPolicyTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest'
+# 최신 dev 통합 후 영향 범위만 재검증
+./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.ui.walk.WalkScreenPolicyTest'
+```

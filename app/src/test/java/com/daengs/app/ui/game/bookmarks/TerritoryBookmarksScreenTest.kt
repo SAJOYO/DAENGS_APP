@@ -11,6 +11,7 @@ import com.daengs.app.territory.bookmarks.*
 import com.daengs.app.ui.game.*
 import com.daengs.app.ui.game.owned.OwnedMapPresentation
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.territory.support.bookmarkJson
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -30,8 +31,12 @@ class TerritoryBookmarksScreenTest {
     @Test fun `saved list opens exact coordinate without walking and back restores list`() {
         var map: OwnedMapPresentation? = null
         var backs = 0
+        var clear: () -> Unit = {}
+        var snapshot: (com.daengs.app.map.shell.MapCameraSnapshot) -> Unit = {}
         compose.setContent { DaengsTheme {
-            TerritoryBookmarksScreen(ready, { backs++ }, {}, {}, {}, mapSurface = { value, _, _ -> map = value; Text("지도") })
+            TerritoryBookmarksScreen(ready, { backs++ }, {}, {}, {}, mapSurface = { value, select, onCamera ->
+                map = value; clear = { select(null) }; snapshot = onCamera; Text("지도")
+            })
         } }
         compose.onNodeWithText("저장한 전봇대 1 / 20곳").assertIsDisplayed()
         compose.onNodeWithText("지도에서 보기").performClick()
@@ -43,6 +48,15 @@ class TerritoryBookmarksScreenTest {
         }
         compose.onNodeWithText("산책 시작").assertDoesNotExist()
         compose.onNodeWithText(item.siteId).assertDoesNotExist()
+        val request = map!!.requestKey
+        val camera = com.daengs.app.map.shell.MapCameraSnapshot(checkNotNull(item.point), 18.0)
+        compose.runOnIdle { snapshot(camera); clear() }
+        compose.onNodeWithContentDescription("북마크 해제").assertDoesNotExist()
+        compose.runOnIdle {
+            assertFalse(map!!.scene.territorySites.any { it.selected })
+            assertEquals(camera, map!!.camera)
+            assertEquals(request, map!!.requestKey)
+        }
         compose.onNodeWithTag("bookmarks-back").performClick()
         compose.onNodeWithTag("bookmarks-list").assertIsDisplayed()
         assertEquals(0, backs)

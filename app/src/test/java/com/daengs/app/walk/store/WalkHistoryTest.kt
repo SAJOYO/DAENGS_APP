@@ -37,6 +37,7 @@ class WalkHistoryTest {
     private lateinit var db: WalkDatabase
     private lateinit var history: WalkHistory
     private lateinit var log: RoomWalkFixLog
+    private val today = LocalDate.of(2026, 9, 11)
 
     @Before
     fun setUp() {
@@ -123,14 +124,14 @@ class WalkHistoryTest {
     /** 오늘 나선 것만, 산책으로 칠 만한 것만 합산된다. */
     @Test
     fun `홈 요약은 오늘 걸은 것을 합친다`() = runBlocking {
-        walked("today-1", startedAt = todayAt(9), meters = 400.0, seconds = 600)
-        walked("today-2", startedAt = todayAt(19), meters = 600.0, seconds = 900)
+        walked("today-1", startedAt = at(today, 9), meters = 400.0, seconds = 600)
+        walked("today-2", startedAt = at(today, 19), meters = 600.0, seconds = 900)
         // 오늘이지만 산책이 아니다.
-        walked("today-tiny", startedAt = todayAt(13), meters = 2.0, seconds = 5)
+        walked("today-tiny", startedAt = at(today, 13), meters = 2.0, seconds = 5)
         // 어제 것은 안 센다.
-        walked("yesterday", startedAt = todayAt(9) - DAY_MILLIS, meters = 900.0, seconds = 1_200)
+        walked("yesterday", startedAt = at(today.minusDays(1), 9), meters = 900.0, seconds = 1_200)
 
-        val totals = history.todayTotals()
+        val totals = history.todayTotals(today)
 
         assertEquals(2, totals.count)
         assertEquals(1_500_000L, totals.activeDurationMillis)
@@ -141,14 +142,14 @@ class WalkHistoryTest {
     /** 끝나지 않은 산책은 걷는 중이라 아직 오늘의 기록이 아니다. */
     @Test
     fun `미종료 세션은 홈 요약에 안 들어간다`() = runBlocking {
-        walked("walking", startedAt = todayAt(9), meters = 400.0, seconds = 600, close = false)
+        walked("walking", startedAt = at(today, 9), meters = 400.0, seconds = 600, close = false)
 
-        assertEquals(0, history.todayTotals().count)
+        assertEquals(0, history.todayTotals(today).count)
     }
 
     @Test
     fun `기록이 없으면 0 이다`() = runBlocking {
-        val totals = history.todayTotals()
+        val totals = history.todayTotals(today)
 
         assertEquals(0, totals.count)
         assertEquals(0L, totals.activeDurationMillis)
@@ -218,10 +219,10 @@ class WalkHistoryTest {
      */
     @Test
     fun `전부 잊으면 좌표와 행동까지 사라진다`() = runBlocking {
-        walked("a", startedAt = todayAt(9), meters = 400.0, seconds = 600)
-        walked("b", startedAt = todayAt(19), meters = 600.0, seconds = 900)
-        log.appendAction(action("a1", WalkMomentType.SNIFFING, todayAt(9), 37.5, sessionId = "a"))
-        log.appendAction(action("b1", WalkMomentType.BARKING, todayAt(19), 37.6, sessionId = "b"))
+        walked("a", startedAt = at(today, 9), meters = 400.0, seconds = 600)
+        walked("b", startedAt = at(today, 19), meters = 600.0, seconds = 900)
+        log.appendAction(action("a1", WalkMomentType.SNIFFING, at(today, 9), 37.5, sessionId = "a"))
+        log.appendAction(action("b1", WalkMomentType.BARKING, at(today, 19), 37.6, sessionId = "b"))
         assertEquals(2, history.finished().size)
 
         history.forgetEverything()
@@ -245,7 +246,7 @@ class WalkHistoryTest {
     /** 아직 안 끝난 산책도 지운다. 탈퇴는 "이 기기에서 나를 지우는 것" 이다. */
     @Test
     fun `진행 중인 산책도 지운다`() = runBlocking {
-        walked("open", startedAt = todayAt(9), meters = 300.0, seconds = 400, close = false)
+        walked("open", startedAt = at(today, 9), meters = 300.0, seconds = 400, close = false)
         assertNotNull(log.session("open"))
 
         history.forgetEverything()
@@ -280,8 +281,8 @@ class WalkHistoryTest {
         if (close) log.closeSession(id, startedAt + seconds * 1_000L)
     }
 
-    private fun todayAt(hour: Int): Long =
-        LocalDate.now().atStartOfDay(ZoneId.systemDefault()).plusHours(hour.toLong())
+    private fun at(day: LocalDate, hour: Int): Long =
+        day.atStartOfDay(ZoneId.systemDefault()).plusHours(hour.toLong())
             .toInstant().toEpochMilli()
 
     private fun action(
@@ -300,7 +301,4 @@ class WalkHistoryTest {
         accuracyMeters = 5f,
     )
 
-    private companion object {
-        const val DAY_MILLIS = 86_400_000L
-    }
 }

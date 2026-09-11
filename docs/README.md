@@ -2,6 +2,9 @@
 
 | 파일 | 내용 |
 | --- | --- |
+| [gps-motion-policy-architecture.md](gps-motion-policy-architecture.md) | GPS 정책층 1차 설계 — 단계별 수집·저장·판정·표시·복구 계약 |
+| [gps-recording-delivery.md](gps-recording-delivery.md) | GPS 2차 — 원본 저널과 종료 drain, Room·실기기 검증 |
+| [gps-motion-engine.md](gps-motion-engine.md) | GPS 3차 — 동결 정책·이동 추정·구간 장벽·동일 저널 재생 (운영 미연결) |
 | [collaboration.md](collaboration.md) | 협업 규칙 — 우선순위 · Iteration · PR 기준 · 데일리 · 회고 |
 | [co-care-contract.md](co-care-contract.md) | 공동 돌봄 앱 계약·미니룸 정책 제안·서버 계약 검토·화면 연결안 (#261 / DEV #388) |
 | [기능별 테스트 실행 지도](../app/src/test/README.md) | 기능별 Gradle 선택자, Room·동기화 검증 경계, 공용 helper 제공자·소비자 |

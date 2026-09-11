@@ -23,6 +23,16 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val forgottenOwners = mutableSetOf<String>()
 
     override val ownerId: String get() = owner()
+    /** On-demand diagnostics only; history, pin upload and keep/discard still use their release policies. */
+    suspend fun compareMotion(sessionId: String): com.daengs.app.walk.motion.RecordedMotionComparison? =
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val expectedOwner = owner()
+            val input = dao.motionInput(sessionId, expectedOwner) ?: return@withContext null
+            val result = com.daengs.app.walk.motion.compareRecordedMotion(input)
+            check(owner() == expectedOwner) { "산책을 읽는 동안 계정이 변경됐어요." }
+            result
+        }
+
     override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(),
         dao.observePhotoIds(), dao.observeAnalysisChanges(), dao.observeDiaryPublicationCount()) { _, _, _, _, _ -> Unit }
 
@@ -62,6 +72,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
                 syncState = session.syncState.storedValue,
                 serverWalkId = session.serverWalkId,
                 syncedAtMillis = session.syncedAtMillis,
+                motionPolicyJson = session.motionPolicyJson,
             ),
         )
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
@@ -74,7 +85,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
         }
     }
 
-    override suspend fun append(sessionId: String, fix: RecordedFix) = dao.insertFix(
+    override suspend fun append(sessionId: String, fix: RecordedFix) = appendFix(
         WalkFixRow(
             sessionId = sessionId,
             clientSeq = fix.clientSeq,
@@ -84,8 +95,32 @@ class RoomWalkFixLog(private val dao: WalkDao,
             lng = fix.lng,
             accuracyM = fix.accuracyM,
             isMock = fix.isMock,
+            ingressSeq = fix.ingressSeq,
+            sourceEpoch = fix.sourceEpoch,
+            clockEpochId = fix.clockEpochId,
+            elapsedRealtimeNanos = fix.elapsedRealtimeNanos,
+            receivedElapsedNanos = fix.receivedElapsedNanos,
+            receivedAtMillis = fix.receivedAtMillis,
+            speedMps = fix.speedMps,
+            speedAccuracyMps = fix.speedAccuracyMps,
+            bearingDegrees = fix.bearingDegrees,
+            bearingAccuracyDegrees = fix.bearingAccuracyDegrees,
+            provider = fix.provider,
+            recordingEligible = fix.recordingEligible,
         ),
     )
+
+    private suspend fun appendFix(row: WalkFixRow) {
+        if (row.ingressSeq == null) dao.insertFix(row) else dao.appendObservation(row)
+    }
+
+    override suspend fun saveRecordingEpoch(epoch: com.daengs.app.walk.RecordingEpoch) =
+        dao.saveRecordingEpoch(RecordingEpochRow.from(epoch))
+
+    override suspend fun recordingEpochs(sessionId: String) = dao.recordingEpochs(sessionId).map { it.toModel() }
+
+    override suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int) =
+        dao.observationsAfter(sessionId, afterSeq, limit).map(WalkFixRow::toModel)
 
     override suspend fun appendAction(action: RecordedWalkAction) {
         if (dao.entry(action.id) != null) return
@@ -209,6 +244,7 @@ fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession 
     syncState = WalkSyncState.fromStored(syncState),
     serverWalkId = serverWalkId,
     syncedAtMillis = syncedAtMillis,
+    motionPolicyJson = motionPolicyJson,
 )
 
 internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
@@ -219,6 +255,18 @@ internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     lng = lng,
     accuracyM = accuracyM,
     isMock = isMock,
+    ingressSeq = ingressSeq,
+    sourceEpoch = sourceEpoch,
+    clockEpochId = clockEpochId,
+    elapsedRealtimeNanos = elapsedRealtimeNanos,
+    receivedElapsedNanos = receivedElapsedNanos,
+    receivedAtMillis = receivedAtMillis,
+    speedMps = speedMps,
+    speedAccuracyMps = speedAccuracyMps,
+    bearingDegrees = bearingDegrees,
+    bearingAccuracyDegrees = bearingAccuracyDegrees,
+    provider = provider,
+    recordingEligible = recordingEligible,
 )
 
 /** 모르는 미래 코드는 버린다. 앱이 오래됐다고 산책 상세 전체가 열리지 않으면 안 된다. */

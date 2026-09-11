@@ -17,7 +17,7 @@ internal fun OwnedTerritoryRoute(
     repository: OwnedTerritoryRepository, ownerId: String?, pets: List<Pet>?,
     onBack: () -> Unit, onSignIn: () -> Unit,
     photoOf: (String) -> ImageBitmap? = { null },
-    mapSurface: @Composable (OwnedMapPresentation, (String) -> Unit, (com.daengs.app.map.shell.MapCameraSnapshot) -> Unit) -> Unit =
+    mapSurface: @Composable (OwnedMapPresentation, (String?) -> Unit, (com.daengs.app.map.shell.MapCameraSnapshot) -> Unit) -> Unit =
         { value, select, snapshot -> OwnedTerritoryMap(value, select, snapshot) },
 ) {
     var petId by rememberSaveable(ownerId) { mutableStateOf<String?>(null) }

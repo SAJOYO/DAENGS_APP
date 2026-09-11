@@ -150,6 +150,7 @@ class DaengsApp : Application() {
         val delivery = WorkManagerWalkDeliveryScheduler(this, log)
         val photoSync = com.daengs.app.walk.sync.WalkPhotoSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         walkRuntime = WalkRuntime(
+            recordingScope = applicationScope,
             locationSource = FusedLocationSource(this),
             store = store,
             controller = ForegroundWalkTrackingController(this, store),
@@ -157,9 +158,11 @@ class DaengsApp : Application() {
             log = log,
             history = WalkHistory(log),
             sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
-                temporaryLegacyMode = com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
+                preferLegacy = com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
                 owner = { tokenStore.load()?.appUserId.orEmpty() },
                 v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
+                recording = com.daengs.app.walk.sync.WalkRecordingSync(),
+                requireRecordingSupport = !com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
                 photoSync = photoSync::sync,
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,
@@ -172,7 +175,10 @@ class DaengsApp : Application() {
                     walkRuntime.sync.syncPendingSession(auth.accessToken, id)
                 }
             })
-        val recoveredPins = writer.ordered { actionPins.recover() }
+        val recoveredPins = writer.ordered {
+            actionPins.recover()
+            com.daengs.app.walk.recoverDrainedRecordings(log) { id, cutoff -> actionPins.finishSession(id, cutoff) }
+        }
         applicationScope.launch {
             recoveredPins.await()
             walkDiaryPublication.recover()

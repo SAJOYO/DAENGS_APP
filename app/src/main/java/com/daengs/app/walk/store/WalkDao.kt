@@ -7,6 +7,43 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    /** Freeze the session, policy, raw rows and close receipts together, then calculate outside SQLite. */
+    @androidx.room.Transaction
+    suspend fun motionInput(sessionId: String, ownerId: String): com.daengs.app.walk.motion.RecordedMotionInput? {
+        val row = session(sessionId)?.takeIf { it.ownerId == ownerId } ?: return null
+        return com.daengs.app.walk.motion.RecordedMotionInput(row.toModel(),
+            recordingEpochs(sessionId).map { it.toModel() }, fixes(sessionId).map { it.toModel() })
+    }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveRecordingEpoch(row: RecordingEpochRow)
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE sessionId = :sessionId ORDER BY firstIngressSeq, chainIndex")
+    suspend fun recordingEpochs(sessionId: String): List<RecordingEpochRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND ingressSeq > :afterSeq ORDER BY ingressSeq LIMIT :limit")
+    suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int): List<WalkFixRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND clientSeq = :clientSeq")
+    suspend fun observation(sessionId: String, clientSeq: Int): WalkFixRow?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_recording_epoch SET persistedCount = persistedCount + 1 WHERE id = :epochId AND sessionId = :sessionId AND chainIndex = :chainIndex AND clockEpochId = :clockEpochId AND drained = 0")
+    suspend fun advanceRecordingEpoch(epochId: String, sessionId: String, chainIndex: Int, clockEpochId: String): Int
+
+    @androidx.room.Transaction
+    suspend fun appendObservation(row: WalkFixRow) {
+        val existing = observation(row.sessionId, row.clientSeq)
+        if (existing != null) { check(existing == row) { "Conflicting observation identity" }; return }
+        check(row.ingressSeq == row.clientSeq.toLong()) { "Observation sequence changed" }
+        check(session(row.sessionId)?.endedAtMillis == null) { "Recording session is already closed" }
+        check(advanceRecordingEpoch(requireNotNull(row.sourceEpoch), row.sessionId, row.chainIndex,
+            requireNotNull(row.clockEpochId)) == 1) { "Recording epoch is unavailable" }
+        insertObservation(row)
+    }
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertDiaryPublication(row: WalkDiaryPublicationRow): Long
 
@@ -37,6 +74,8 @@ interface WalkDao {
     suspend fun closeAndPrepareDiary(id: String, endedAt: Long) {
         val current = session(id) ?: return
         if (current.endedAtMillis != null) return
+        val epochs = recordingEpochs(id)
+        if (epochs.isNotEmpty()) com.daengs.app.walk.checkRecordingComplete(epochs.map { it.toModel() })
         closeSession(id, endedAt)
         insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt, endedAt + 10_000))
     }
@@ -46,11 +85,10 @@ interface WalkDao {
         val row = diaryPublication(id) ?: return null
         val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
         if (row.baseBundle == null) {
-            val source = fixes(id).map {
-                com.daengs.app.walk.RecordedFix(it.clientSeq, it.chainIndex, it.atMillis, it.lat, it.lng, it.accuracyM, it.isMock)
-            }
-            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE)
-            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source,
+            val source = fixes(id).map { it.toModel() }
+            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE,
+                epochs = recordingEpochs(id).map { it.toModel() })
+            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source.filter { it.recordingEligible != false },
                 entries(id).mapNotNull { it.entry() }, photos(id)))
         }
         return diaryPublication(id)
@@ -141,14 +179,27 @@ interface WalkDao {
     }
 
     @androidx.room.Transaction
-    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true): String? {
+    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true, recordingEvidence: String? = null): String? {
         val row = entry(id) ?: return null
         if (session(row.sessionId)?.ownerId != ownerId) return null
         row.pendingRequest?.let { return it }
         if (!row.dirty && !row.pinDirty) return null
-        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported).json.toString()
+        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported, recordingEvidence).json.toString()
         updatePinRow(row.copy(pendingRequest = pending))
         return pending
+    }
+
+    @androidx.room.Transaction
+    suspend fun retryLegacyPinSourceErrors(sessionId: String, ownerId: String) {
+        if (session(sessionId)?.ownerId != ownerId) return
+        for (row in entries(sessionId)) {
+            if (row.isV2 && row.revision == 0 && row.payload != null && row.pendingRequest == null &&
+                row.syncError == com.daengs.app.walk.sync.LEGACY_PIN_SOURCE_ERROR &&
+                row.pinPayload?.let { org.json.JSONObject(it).optString("state") } == "unlocated") {
+                // The new rejection text differs, so an unrelated 422 is not retried forever.
+                updatePinRow(row.copy(syncError = null))
+            }
+        }
     }
 
     @androidx.room.Transaction
