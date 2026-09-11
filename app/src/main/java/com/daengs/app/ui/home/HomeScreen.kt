@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -49,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
+import com.daengs.app.miniroom.DogTapTarget
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
 import com.daengs.app.miniroom.RoomDefaults
@@ -552,6 +554,7 @@ fun HomeScreen(
                 onToggleWeather = onToggleWeather,
                 drawnCards = drawnCards,
                 onOpenDraw = onOpenDraw,
+                onOpenChat = onOpenChat,
                 state = roomState,
                 catalog = catalog,
                 dateLabel = dateLabel,
@@ -740,6 +743,8 @@ private fun RoomSection(
     herd: com.daengs.app.miniroom.DogHerd,
     onOpenDex: (() -> Unit)?,
     onOpenWalk: (() -> Unit)?,
+    /** 강아지 퀵 메뉴의 "질문" 이 쓴다. 방 자체에는 챗봇으로 가는 다른 길이 없다. */
+    onOpenChat: (() -> Unit)?,
     profileBreed: DogBreed,
     onPickProfile: (DogBreed) -> Unit,
     /** 개발자 패널에서 프로필 사진을 올려 본다. */
@@ -833,6 +838,11 @@ private fun RoomSection(
     var roomOrigin by remember { mutableStateOf(Offset.Zero) }
     // 알약을 누르면 이 값이 오르고, 방이 그때 문을 연다.
     var doorSignal by remember { mutableIntStateOf(0) }
+    // 방금 누른 강아지. null 이면 퀵 메뉴가 안 떠 있다.
+    //
+    // **머리 자리까지 같이 들고 있는다** — 방이 히트 판정에 쓴 셈에서 나온 값이라
+    // 여기서 다시 계산하면 가리키는 곳과 눌리는 곳이 갈라진다 ([doorSpot] 과 같은 규칙).
+    var quickMenu by remember { mutableStateOf<DogTapTarget?>(null) }
 
     Box(
         modifier
@@ -876,8 +886,20 @@ private fun RoomSection(
             onFrameTap = if (inventoryOpen) null else onOpenDex,
             // 뒷벽의 턴테이블 -> 내 카드의 음악. 액자와 같은 이유로 편집 중에는 안 받는다.
             onTurntableTap = if (inventoryOpen) null else { { turntableOpen = true } },
+            // 강아지를 톡 누르면 머리 위에 퀵 메뉴. 편집 중에는 안 받는다 — 그때는
+            // 강아지가 숨어 있고 손가락은 가구를 만지는 중이다. 둘러보기 중에도 안
+            // 받는다 — 겹이 가리키는 곳과 다른 것이 떠 버린다.
+            onDogTap = if (inventoryOpen || tourOpen) null else { { quickMenu = it } },
             framePicture = framePicture,
         )
+        // 메뉴가 열린 동안 **그 아이는 서 있는다.** 안 멈추면 메뉴만 남고 아이가 걸어
+        // 나가서, 누구 메뉴인지가 사라진다. 멈추는 장치는 끌 때 쓰는 것을 그대로 쓴다
+        // (`DogHerd.update` 가 이 id 를 보고 그 아이만 건너뛴다).
+        val menuDogId = quickMenu?.dogId
+        DisposableEffect(menuDogId) {
+            if (menuDogId != null) herd.draggingId = menuDogId
+            onDispose { if (herd.draggingId == menuDogId) herd.draggingId = null }
+        }
         // 목록이 늦을 때만 뜬다. 600ms 를 기다렸다 띄우므로 빠른 망에서는 안 보인다.
         var showDogsLoading by remember { mutableStateOf(false) }
         LaunchedEffect(dogsLoading) {
@@ -1027,6 +1049,21 @@ private fun RoomSection(
                     renaming = false
                     onDismissRename?.invoke()
                 },
+            )
+        }
+
+        // **퀵 메뉴는 방 위 모든 것보다 나중에 그린다.** 앞에 두었더니 문 옆
+        // 「산책 나가기」 알약이 「산책」 버튼을 덮어서 둘 다 안 읽혔다 (실기기에서 봤다).
+        // 덮는 판이 있는 메뉴는 그리는 순서에서도 맨 위여야 한다.
+        quickMenu?.let { target ->
+            DogQuickMenu(
+                head = target.head,
+                actions = dogQuickActions(
+                    onWalk = onOpenWalk?.let { go -> { quickMenu = null; go() } },
+                    onDraw = onOpenDraw?.let { go -> { quickMenu = null; go() } },
+                    onAsk = onOpenChat?.let { go -> { quickMenu = null; go() } },
+                ),
+                onDismiss = { quickMenu = null },
             )
         }
 
