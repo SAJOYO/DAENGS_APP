@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,7 +43,6 @@ import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.HistoryFilterSaver
-import com.daengs.app.ui.walk.WalkHistoryPageContent
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkMomentType
@@ -246,9 +246,12 @@ fun WalkRecordsScreen(
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
         val current = selection
         if (current != null && view == RecordsView.WALKS) {
-            Text("선택 산책 ${current.records.size}회", Modifier.fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp).testTag("records-count"),
-                style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("지난 산책", style = MaterialTheme.typography.titleSmall)
+                Text("선택 산책 ${current.records.size}회", Modifier.testTag("records-count"),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
@@ -263,11 +266,9 @@ fun WalkRecordsScreen(
                     val currentPage = pageIndex.coerceAtMost((current.records.size - 1) / PAGE_SIZE)
                     val rows = current.page(currentPage, PAGE_SIZE)
                     savedLists.SaveableStateProvider(currentPage) {
-                        WalkHistoryPageContent(rows.map { it.summary }, currentPage + 1,
-                            currentPage > 0, (currentPage + 1) * PAGE_SIZE < current.records.size,
+                        WalkRecordsList(rows, currentPage + 1, (current.records.size + PAGE_SIZE - 1) / PAGE_SIZE,
                             { pageIndex = currentPage - 1 }, { pageIndex = currentPage + 1 },
-                            onOpen, pets, Modifier.weight(1f),
-                            rows.mapNotNull { record -> record.title?.let { record.summary.sessionId to it } }.toMap())
+                            onOpen, pets, Modifier.weight(1f))
                     }
                 } else if (behavior != null) {
                     val mapRecords = mappedSelection ?: current

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -33,6 +34,28 @@ class WalkRecordsFiltersTest {
     private val query = AtomicReference(WalkRecordsQuery())
     private val source = WalkRecordsSource { value -> query.set(value); WalkRecordsSelection(value, emptyList()) }
     private val today = LocalDate.of(2026, 9, 11)
+
+    @Test fun `loading preserves selected dogs and deleted profiles reconcile only after loading`() {
+        val pets = mutableStateOf(recordsPreviewPets())
+        val loaded = mutableStateOf(true)
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsScreen(source, pets.value, {}, {}, petsLoaded = loaded.value)
+        } } }
+        compose.onNodeWithTag("records-dog-filter").performClick()
+        compose.onNodeWithTag("records-dog-dog-0").performClick()
+        compose.onNodeWithTag("records-dog-dog-1").performClick()
+        compose.onNodeWithTag("records-conditions-apply").performClick()
+        waitDogs(setOf("dog-0", "dog-1"))
+        compose.runOnIdle { loaded.value = false; pets.value = emptyList() }
+        compose.onNodeWithTag("records-dog-filter").assertTextContains("2마리")
+        assertEquals(setOf("dog-0", "dog-1"), query.get().dogIds)
+        compose.runOnIdle { pets.value = recordsPreviewPets().filter { it.id != "dog-0" }; loaded.value = true }
+        waitDogs(setOf("dog-1"))
+        compose.onNodeWithTag("records-dog-filter").assertTextContains("콩이")
+        compose.runOnIdle { pets.value = recordsPreviewPets().filter { it.id !in setOf("dog-0", "dog-1") } }
+        waitDogs(null)
+        compose.onNodeWithTag("records-dog-filter").assertTextContains("모든 강아지")
+    }
 
     @Test fun `five dog selector is independent and applied subset survives recreation`() {
         val restore = StateRestorationTester(compose)
