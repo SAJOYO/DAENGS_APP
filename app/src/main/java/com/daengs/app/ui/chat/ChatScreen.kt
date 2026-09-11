@@ -1567,15 +1567,22 @@ private fun UserBubble(text: String) {
  * 답을 만드는 동안 뜨는 말풍선.
  *
  * **글자 한 줄이면 멈춘 것과 구분이 안 된다.** 서버가 몇 초 걸리는 자리라 그 사이가
- * 제일 불안하다. 우리 아이 얼굴이 곰곰이 판과 번갈아 바뀌면서 "돌고 있다" 를 글자
- * 없이도 말한다. 그림 두 장을 오가는 것만으로 모션이 되어서, 프레임 시트를 따로
- * 받을 필요가 없었다.
+ * 제일 불안하다. **말하는 쪽 얼굴**이 학사모 쓴 똑똑이와 앞발 괸 곰곰이를 오가면서
+ * "돌고 있다" 를 글자 없이도 말한다. 그림 두 장을 오가는 것만으로 모션이 되어서,
+ * 프레임 시트를 따로 받을 필요가 없었다.
  *
- * **왼쪽 얼굴은 안 바꾼다.** 거기는 학사모 쓴 똑똑이이고 누가 말하는지를 가리키는
- * 자리다 (#92 에서 정한 것). 바뀌는 것은 말풍선 **안**이다.
+ * **움직이는 것은 왼쪽 얼굴이고, 말풍선 안에는 글자만 있다.**
  *
- * 그림이 없는 견종(믹스)이면 이 자리도 글자만 남는다 — 아무 얼굴이나 갖다 쓰면
- * 사용자가 자기 개가 아닌 얼굴을 본다 ([PawAvatar] 와 같은 규칙).
+ * 예전에는 반대였다 — 왼쪽은 똑똑이로 고정하고 말풍선 **안**에서 우리 아이
+ * 얼굴([DogFace.Portrait])과 곰곰이가 번갈았다 (#92). 얼굴을 고정한 뜻은 *"누가
+ * 말하는지를 가리키는 자리"* 였는데, **정작 그 옆에서 바뀌던 것이 내 개 얼굴**이라
+ * 말하는 쪽이 흐려졌다. 헤더에는 "댕스 AI" 라고 적어 놓고 그 아래에서 내 개가
+ * 깜빡이는 셈이었다.
+ *
+ * 지금은 **오가는 두 판이 둘 다 챗봇 얼굴**이다. 움직여도 말하는 쪽이 안 흔들린다.
+ *
+ * 그림이 없는 견종(믹스)이면 발자국이 그대로 있고 움직이지 않는다 — 아무 얼굴이나
+ * 갖다 쓰면 사용자가 자기 개가 아닌 얼굴을 본다 ([PawAvatar] 와 같은 규칙).
  */
 @Composable
 private fun ThinkingBubble(avatar: DogBreed?, text: String) {
@@ -1587,23 +1594,25 @@ private fun ThinkingBubble(avatar: DogBreed?, text: String) {
         }
     }
     Row(verticalAlignment = Alignment.Top) {
-        ChatFace(avatar, 32.dp)
+        // 그림이 없으면 [ChatFace] 가 발자국을 내놓는다. 거기엔 오갈 두 판이 없다.
+        if (avatar != null) {
+            DogAvatar(
+                avatar,
+                Modifier.size(32.dp),
+                face = if (pondering) DogFace.Thinking else DogFace.Smart,
+            )
+        } else {
+            ChatFace(avatar, 32.dp)
+        }
         Spacer(Modifier.width(8.dp))
         Surface(color = CardWhite, shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp)) {
-            Row(
-                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (avatar != null) {
-                    DogAvatar(
-                        avatar,
-                        Modifier.size(28.dp),
-                        face = if (pondering) DogFace.Thinking else DogFace.Portrait,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(text, color = TextDark, fontSize = 15.sp, lineHeight = 22.sp)
-            }
+            Text(
+                text,
+                color = TextDark,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            )
         }
     }
 }
@@ -1617,10 +1626,11 @@ private fun ThinkingBubble(avatar: DogBreed?, text: String) {
 private const val THINKING_FRAME_MS = 700L
 
 /**
- * 대기 말풍선. **모션은 프리뷰에서 안 돈다** — 여기서 보는 것은 두 얼굴이 앉는
- * 자리와 크기다. 움직임이 거슬리는지는 실기기에서 본다.
+ * 대기 말풍선. **모션은 프리뷰에서 안 돈다** — 여기서 보는 것은 얼굴이 앉는 자리와
+ * 크기, 그리고 말풍선이 글자만 담았을 때의 폭이다. 움직임이 거슬리는지는 실기기에서
+ * 본다. 프리뷰는 첫 프레임이라 세 줄 다 **똑똑이**로 멈춰 있다.
  *
- * 그림 없는 견종(믹스)은 얼굴 없이 글자만 남는 것도 같이 본다.
+ * 그림 없는 견종(믹스)은 발자국이 그대로 있고 움직이지 않는 것도 같이 본다.
  */
 @Preview(showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
