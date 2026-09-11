@@ -37,6 +37,7 @@ fun MapHost(
     /** Only read when the map is created; later snapshots must not drive the camera. */
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
+    onRouteDirectionCount: (Int) -> Unit = {},
 ) {
     NaverMapSurface(
         scene = scene,
@@ -62,5 +63,13 @@ fun MapHost(
         modifier = modifier,
         initialCamera = initialCamera,
         onCameraSnapshot = onCameraSnapshot,
+        onRouteDirectionCount = onRouteDirectionCount,
     )
+}
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun SessionMapHostPreview() {
+    MapHost(MapScene(sessionExplorer = com.daengs.app.map.layers.completedroute.SessionRouteExplorerLayerState()),
+        searchOrigin = null, followDevice = false, onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {})
 }
