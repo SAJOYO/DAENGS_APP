@@ -53,6 +53,7 @@ data class PlacesUiState(
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
+    data class ApplySearchPlan(val transfer: com.daengs.app.place.SearchPlanTransfer) : PlacesAction
     data class ApplyFilters(val edit: com.daengs.app.place.ConversationFilterEdit) : PlacesAction
     data class SetAiMode(val enabled: Boolean) : PlacesAction
     data class Discover(val query: String, val bookmarks: com.daengs.app.place.bookmarks.BookmarkTurn? = null) : PlacesAction
@@ -201,6 +202,29 @@ class PlacesViewModel(
             facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
         }
         when (action) {
+            is PlacesAction.ApplySearchPlan -> {
+                val transfer = action.transfer
+                val repository = conversationRepository
+                if (repository == null) {
+                    transfer.completion.completeExceptionally(IllegalStateException("일반 검색을 사용할 수 없어요."))
+                    return
+                }
+                runtimeScope.launch {
+                    try {
+                        val result = repository.applySearchPlan(transfer)
+                        val dogs = result.search?.dogs.orEmpty()
+                        profiles.value = profiles.value.copy(selectedIds = dogs.map { it.ref }.toSet())
+                        appliedDogs = dogs
+                        session.updateDogs(dogs)
+                        facility.invalidate()
+                        session.acceptConversation(result)
+                        transfer.completion.complete(Unit)
+                    } catch (error: Exception) {
+                        transfer.completion.completeExceptionally(error)
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                    }
+                }
+            }
             is PlacesAction.ApplyFilters -> {
                 val repository = conversationRepository ?: return
                 facility.invalidate()

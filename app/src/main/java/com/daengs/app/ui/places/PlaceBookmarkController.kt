@@ -25,6 +25,7 @@ data class PlaceBookmarkState(
     val errorText: String? = null,
     val aiBusy: Boolean = false,
     val aiAnswer: String? = null,
+    val searchTransfer: Int = 0,
 )
 
 /** Account lifetime + generation fence; writes serialize and always reconcile after uncertainty. */
@@ -78,16 +79,18 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         aiGeneration++; aiJob?.cancel()
         mutable.value = state.value.copy(aiBusy = false)
     }
-    fun chat(query: String) {
+    fun chat(query: String, onSearch: ((SearchPlanTransfer) -> Unit)? = null) {
         if (closed || query.isBlank() || query.length > 1000 || state.value.session.tab != PlaceBrowseTab.BOOKMARKS) return
         cancelConversation()
         val mine = aiGeneration
         val view = generation
         val before = state.value.session.current.filters
         val selectedDogs = dogs.toList()
-        fun current() = !closed && mine == aiGeneration && view == generation && state.value.session.tab == PlaceBrowseTab.BOOKMARKS
+        fun current() = !closed && repository.isCurrent(account) && mine == aiGeneration &&
+            view == generation && state.value.session.tab == PlaceBrowseTab.BOOKMARKS
         mutable.value = state.value.copy(aiBusy = true, aiAnswer = null)
         aiJob = scope.launch {
+            var searchingPlaces = false
             try {
                 val plan = repository.interpret(account, query, before.savedQuery(selectedDogs))
                 if (!current()) return@launch
@@ -99,11 +102,28 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
                         publishSaved(candidate, result)
                     }
                     "return_search" -> returnToSearch()
+                    "search_places" -> {
+                        searchingPlaces = true
+                        val filters = requireNotNull(plan.searchFilters)
+                        val candidate = before.withSearchPlan(filters, selectedDogs)
+                        val request = SearchPlanTransfer(filters, requireNotNull(account.ownerId), ::current)
+                        requireNotNull(onSearch) { "일반 검색 연결을 사용할 수 없어요." }(request)
+                        request.completion.await()
+                        if (!current()) return@launch
+                        val search = state.value.session.search.copy(filters = candidate, draft = candidate.name,
+                            selected = null, detail = null, camera = null)
+                        mutable.value = state.value.copy(session = state.value.session.copy(search = search)
+                            .select(PlaceBrowseTab.SEARCH), searchTransfer = state.value.searchTransfer + 1)
+                        refresh()
+                    }
                     else -> mutable.value = state.value.copy(aiAnswer = plan.message)
                 }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
-                if (current()) mutable.value = state.value.copy(aiAnswer = error.savedMessage())
+                if (current()) mutable.value = state.value.copy(aiAnswer =
+                    if (searchingPlaces && error !is ActivityAuthenticationRequired && error !is ActivitySessionChanged)
+                        "일반 장소를 검색하지 못했어요. 현재 찜 조건과 결과를 유지했어요."
+                    else error.savedMessage())
             } finally {
                 if (mine == aiGeneration) mutable.value = state.value.copy(aiBusy = false)
             }

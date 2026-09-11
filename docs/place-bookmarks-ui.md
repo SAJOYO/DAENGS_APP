@@ -1,5 +1,33 @@
 # 시설 검색 찜 열람
 
+## 검색 정책 공통화 1단계 (#323)
+
+서버 [DAENGS_dev#451](https://github.com/SAJOYO/DAENGS_dev/pull/451)과 연결한다.
+찜 화면의 “찜 제한 풀고 주차 되는 카페”는 현재 찜 조건을 일반 검색으로 전달한다.
+“이전 검색 화면으로 돌아가”는 기존 검색 화면 복원이며 새 조건 전달과 구분한다.
+
+interpret에 search_policy: "v1"을 협상하고 search_places/search_filters를 받는다.
+앱은 기준 위치·반려견·필수/OR 조건·선호 범위·조회 한도를 확인하고,
+기존 conversation restore 모드로 실제 검색을 실행한다. 모델을 다시 부르지 않는다.
+응답의 조건 전체·요청·세션·실행 성공을 확인한 다음 결과와 반려견 선택을 적용하고 탭을 전환한다.
+찜 조건과 화면 상태는 보존한다. 실패·취소·계정 변경·늦은 응답에서는 이전 결과를 유지한다.
+전달 요청은 출발 계정에 묶이고, 새 인증이 다른 계정이면 조회 전에 거절한다.
+
+이전 검색 복원은 저장된 초안·카메라를 유지한다. 새 일반 검색은 새 조건의 초안과 목록으로
+전환한다. 검색 실패를 찜 0개로 해석하거나 저장·해제 명령을 실행하지 않는다.
+새 후보·찜 제외·“이미 알아” 정정과 복합 찜 명령은 다음 단계다.
+
+검증 대상은 SearchPolicyTest, SavedSearchConversationTest, PlaceBrowseSessionTest,
+PlaceBookmarkControllerTest, BookmarkCommandTest, ConversationBookmarkTest,
+FacilityConversationTest, PlaceBookmarkApiTest, ConnectedPlaceBookmarkUiTest와 debug 빌드다.
+전체 스위트·실제 운영 회원·기기 설치는 실행하지 않는다. 지도 디자인과 에셋은 변경하지 않았다.
+
+2026-09-11: 위 9개 클래스의 고유 51개 테스트와 debug APK 빌드를 통과했다.
+최초 새 테스트의 보조 함수 컴파일 오류를 고쳤고, 다음 실행의 반려견 평가 누락 fixture
+1건을 완전한 합성 응답으로 수정한 뒤 해당 클래스만 재실행했다.
+계정 귀속 검사를 추가한 최종 실행은 관련 4개 클래스 22개와 debug 빌드를 통과했다.
+390dp Compose 캡처에서 기존 찜 말풍선의 조건·조회 결과 수 표시를 확인했다.
+
 ## 찜 범위 대화 검색 2단계 (#317)
 
 찜 탭에서도 기존 댕댕이를 눌러 검색 조건을 말한다. 현재 찜 조건을

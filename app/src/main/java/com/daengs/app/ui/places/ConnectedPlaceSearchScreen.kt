@@ -108,6 +108,13 @@ fun ConnectedPlaceSearchScreen(
     var dogAsked by rememberSaveable { mutableStateOf(false) }
     var dogQuery by rememberSaveable { mutableStateOf("") }
     val appliedFilters = state.conversation.result?.appliedPlaceFilters()
+    LaunchedEffect(saved?.searchTransfer) {
+        if ((saved?.searchTransfer ?: 0) > 0) {
+            draft = saved!!.session.search.draft
+            searchCamera = null
+            searchList.scrollToItem(0)
+        }
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, false, expanded, notice)
     LaunchedEffect(state.discovery.response) {
@@ -129,7 +136,8 @@ fun ConnectedPlaceSearchScreen(
                     state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
                     onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
                     onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
-                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto)
+                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                onSearch = { onAction(PlacesAction.ApplySearchPlan(it)) })
             return
         }
     }
