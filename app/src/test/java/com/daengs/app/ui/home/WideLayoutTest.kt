@@ -1,7 +1,9 @@
 package com.daengs.app.ui.home
 
 import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -69,5 +71,105 @@ class WideLayoutTest {
     @Test
     fun `방 최소치에 1dp 모자라면 스크롤한다`() {
         assertTrue(homeScrolls(CARDS_BLOCK_HEIGHT + ROOM_MIN_HEIGHT - 1.dp))
+    }
+}
+
+/**
+ * 반접기(플렉스 모드)에서 콘텐츠가 설 자리.
+ *
+ * 안드로이드는 접혀도 **창을 줄여 주지 않는다.** 앱 창은 화면 전체로 남고,
+ * 접힘은 `androidx.window` 의 `FoldingFeature` 로만 알려 준다. 그래서 아래쪽
+ * 절반이 책상에 평평하게 누워 있는데도 앱은 거기까지 그린다 — 에뮬레이터에서
+ * 힌지를 90 도로 접어 `HALF_OPENED` 가 뜨는데도 창은 그대로인 것을 봤다.
+ *
+ * 어디까지 쓸 수 있는지를 정하는 규칙만 여기서 잡는다. 자세를 읽어 오는 일은
+ * 합성 쪽이고, 여기는 그 값을 받아 자리를 내는 순수한 계산이다.
+ */
+class FlexModeTest {
+
+    /** 힌지가 가로로 누워 반쯤 접혔으면 **위쪽 절반**까지만 쓴다. */
+    @Test
+    fun `반접힘에 가로 힌지면 힌지 위까지만 쓴다`() {
+        val height = flexContentHeight(
+            windowHeight = 1003.dp,
+            hingeTop = 502.dp,
+            halfOpened = true,
+            horizontalHinge = true,
+        )
+        assertEquals(502.dp, height)
+    }
+
+    /** 펼쳐져 있으면 창 전체가 제 자리다. 자를 이유가 없다. */
+    @Test
+    fun `펼쳐져 있으면 자르지 않는다`() {
+        assertNull(
+            flexContentHeight(
+                windowHeight = 1003.dp,
+                hingeTop = 502.dp,
+                halfOpened = false,
+                horizontalHinge = true,
+            ),
+        )
+    }
+
+    /**
+     * **세로 힌지는 다른 이야기다.**
+     *
+     * 폴드를 펼치면 힌지가 세로로 서서 화면을 좌우로 가른다. 위아래로 접히는
+     * 플립과 전혀 다른 문제라 여기서 다루지 않는다 — 넓은 화면은
+     * [WIDE_BREAKPOINT] 가 두 칸으로 가른다.
+     */
+    @Test
+    fun `세로 힌지는 여기서 다루지 않는다`() {
+        assertNull(
+            flexContentHeight(
+                windowHeight = 1003.dp,
+                hingeTop = 502.dp,
+                halfOpened = true,
+                horizontalHinge = false,
+            ),
+        )
+    }
+
+    /**
+     * 힌지가 창 밖이면 못 믿는다.
+     *
+     * 자세와 힌지 자리는 **다른 데서 오는 두 값**이라 어긋난 채로 도착할 수
+     * 있다. 그대로 믿고 자르면 화면이 통째로 비거나 자른 의미가 없어진다.
+     */
+    @Test
+    fun `힌지가 창 밖이면 자르지 않는다`() {
+        assertNull(
+            flexContentHeight(
+                windowHeight = 1003.dp,
+                hingeTop = 1200.dp,
+                halfOpened = true,
+                horizontalHinge = true,
+            ),
+        )
+    }
+
+    /** 힌지가 맨 위에 붙어 있어도 마찬가지다 — 남는 자리가 없다. */
+    @Test
+    fun `힌지가 맨 위면 자르지 않는다`() {
+        assertNull(
+            flexContentHeight(
+                windowHeight = 1003.dp,
+                hingeTop = 0.dp,
+                halfOpened = true,
+                horizontalHinge = true,
+            ),
+        )
+    }
+
+    /**
+     * 플립을 반접으면 위쪽 절반이 502dp 다. 거기서 하단바(90dp)를 빼면 본문이
+     * 412dp 라 [homeScrolls] 가 true 를 돌려준다 — **커버와 같은 길로 온다.**
+     * 판정을 따로 두지 않은 근거가 이 한 줄이다.
+     */
+    @Test
+    fun `플렉스 위쪽 절반은 스크롤 갈래로 간다`() {
+        val top = flexContentHeight(1003.dp, 502.dp, halfOpened = true, horizontalHinge = true)
+        assertTrue(homeScrolls(top!! - 90.dp))
     }
 }

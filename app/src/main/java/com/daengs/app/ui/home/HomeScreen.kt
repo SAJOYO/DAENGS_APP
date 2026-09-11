@@ -372,12 +372,19 @@ fun HomeScreen(
     var tourStep by remember(tourOpen) { mutableIntStateOf(0) }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
+    // **반쯤 접혀 있으면 누운 절반을 안 쓴다.** 플립을 책상에 세우면 아래쪽이
+    // 평평하게 눕는데 안드로이드는 창을 안 줄여 줘서, 거기까지 방과 카드를
+    // 그리고 있었다. 접히지 않았으면 null 이라 창 전체를 그대로 쓴다.
+    val usableHeight = rememberFlexTopHeight(maxHeight) ?: maxHeight
     // **가로면 하단바를 왼쪽 세로 레일로 바꾼다.** 가로에서는 세로 공간이 411dp 뿐이라
     // 하단바가 설 자리가 없어서, 눕히면 바가 통째로 사라지고 다른 탭으로 갈 방법이
     // 없었다 (실기기에서 확인). 레일은 세로를 안 먹는다.
-    val rail = usesNavRail(maxWidth, maxHeight)
-    val compactTop = hidesTopBar(maxHeight)
-    Row(Modifier.fillMaxSize()) {
+    //
+    // 창 높이가 아니라 **실제로 쓸 높이**로 정한다. 반접기에서 창 높이로 정하면
+    // 세로가 넉넉한 줄 알고 상단바를 펴서, 정작 쓸 수 있는 절반이 더 좁아진다.
+    val rail = usesNavRail(maxWidth, usableHeight)
+    val compactTop = hidesTopBar(usableHeight)
+    Row(Modifier.fillMaxWidth().height(usableHeight)) {
     if (rail) {
         DaengsNavRail(
             selected = tab,

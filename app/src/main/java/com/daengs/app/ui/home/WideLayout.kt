@@ -100,3 +100,36 @@ val CARDS_BLOCK_HEIGHT: Dp = 327.dp
  */
 fun homeScrolls(contentHeight: Dp): Boolean =
     contentHeight < CARDS_BLOCK_HEIGHT + ROOM_MIN_HEIGHT
+
+/**
+ * 반접기(플렉스 모드)에서 콘텐츠가 설 수 있는 높이. 접히지 않았으면 null.
+ *
+ * **안드로이드는 접혀도 창을 줄여 주지 않는다.** 갤럭시 Z 플립을 책상에 반쯤
+ * 접어 세우면 아래쪽 절반이 평평하게 눕는데, 앱 창은 화면 전체로 남고 접힘은
+ * `androidx.window` 의 `FoldingFeature` 로만 알려 준다. 에뮬레이터에서 힌지를
+ * 90 도로 접어 시스템이 `HALF_OPENED` 를 내놓는데도 창이 그대로인 것을 봤다.
+ * 그래서 누운 절반에까지 방과 카드를 그리고 있었다.
+ *
+ * 돌려주는 값은 **힌지 위까지의 높이**다. 이것을 홈의 본문 상자에 씌우면
+ * 세로가 짧아지므로 [homeScrolls] 가 알아서 스크롤 갈래를 고른다 — 플렉스와
+ * 커버가 같은 길로 오는 이유다. 판정을 따로 두지 않았다.
+ *
+ * null 을 돌려주는 자리가 셋이고 각각 이유가 다르다.
+ * - **펼침·닫힘**: 자를 이유가 없다. 창 전체가 제 자리다.
+ * - **세로 힌지**: 폴드를 펼치면 힌지가 세로로 서서 화면을 좌우로 가른다.
+ *   위아래로 접히는 플립과 다른 문제라 여기서 다루지 않는다
+ *   ([WIDE_BREAKPOINT] 가 두 칸으로 가르는 쪽이다).
+ * - **힌지가 창 밖이거나 맨 위**: 자세와 힌지 자리는 **다른 데서 오는 두 값**이라
+ *   어긋난 채로 도착할 수 있다. 그대로 믿고 자르면 화면이 통째로 비거나
+ *   자른 의미가 없어진다. 못 믿으면 안 자른다.
+ */
+fun flexContentHeight(
+    windowHeight: Dp,
+    hingeTop: Dp,
+    halfOpened: Boolean,
+    horizontalHinge: Boolean,
+): Dp? {
+    if (!halfOpened || !horizontalHinge) return null
+    if (hingeTop <= 0.dp || hingeTop >= windowHeight) return null
+    return hingeTop
+}
