@@ -42,8 +42,12 @@ internal fun TerritoryGuideScene(scenario: GuideScenario, step: GuideStep, onSel
     val ownerBreed = if (mine) DogBreed.BICHON_FRISE else DogBreed.TOY_POODLE_CHOCOLATE
     val status = if (step == GuideStep.RESULT) "인증 영역" else if (occupied) "미인증 영역" else "빈 전봇대"
     val context = LocalContext.current
-    val pole = remember(context, occupied) { territoryMarkerIcon(context,
-        if (occupied) TerritoryMarkerOccupancy.UNVERIFIED else TerritoryMarkerOccupancy.NEUTRAL).asImageBitmap() }
+    val occupancy = when {
+        step == GuideStep.RESULT -> TerritoryMarkerOccupancy.VERIFIED
+        occupied -> TerritoryMarkerOccupancy.UNVERIFIED
+        else -> TerritoryMarkerOccupancy.NEUTRAL
+    }
+    val pole = remember(context, occupancy, mine) { territoryMarkerIcon(context, occupancy, mine).asImageBitmap() }
     val dogImage = ImageBitmap.imageResource(DogBreed.BICHON_FRISE.sheetRes)
     val dogSheet = remember(dogImage) { SpriteSheet(dogImage, dogImage.width / 4, dogImage.height, 4, 4, filterQuality = FilterQuality.None) }
     val proximity = if (step == GuideStep.APPROACH) TerritoryProximityRange.APPROACHING else TerritoryProximityRange.IN_RANGE

@@ -115,7 +115,7 @@ internal fun ownedTerritoryScene(items: List<OwnedTerritory>, selectedId: String
         TerritorySiteMarkerState(site.siteId, point, selected = site.siteId == selectedId,
             occupancy = if (site.certification == ClaimCertification.VERIFIED) TerritoryMarkerOccupancy.VERIFIED
                 else TerritoryMarkerOccupancy.UNVERIFIED,
-            label = "${site.petName}의 점령지", occupancyKnown = true)
+            label = "${site.petName}의 점령지", occupancyKnown = true, isMine = true)
     } },
 )
 

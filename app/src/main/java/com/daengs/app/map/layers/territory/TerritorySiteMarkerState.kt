@@ -15,6 +15,8 @@ data class TerritorySiteMarkerState(
     val occupancyKnown: Boolean = false,
     /** Physical range, independent of ready/claim/session state. */
     val proximity: com.daengs.app.territory.TerritoryProximityRange = com.daengs.app.territory.TerritoryProximityRange.UNAVAILABLE,
+    /** Server member ownership, independent of the selected/active dog. */
+    val isMine: Boolean = false,
 )
 
 enum class TerritoryMarkerOccupancy { NEUTRAL, UNVERIFIED, VERIFIED }

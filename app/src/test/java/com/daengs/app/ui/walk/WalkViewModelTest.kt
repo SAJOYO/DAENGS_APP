@@ -350,7 +350,7 @@ class WalkViewModelTest {
         vm.activate(true, true); vm.onAction(WalkAction.ChangeMapPurpose(MapPurpose.TERRITORY)); runCurrent()
         vm.onAction(WalkAction.SelectTerritorySite("A")); runCurrent()
         vm.onAction(WalkAction.MarkTerritory("A")); runCurrent()
-        vm.onAction(WalkAction.ClearTerritory); runCurrent()
+        vm.onAction(WalkAction.MapTapped(GeoPoint(37.501, 127.001))); runCurrent()
         stored.complete("saved"); runCurrent()
         assertEquals(null, vm.state.value.territory.selectedSiteId)
         assertEquals(null, vm.state.value.momentNotice)

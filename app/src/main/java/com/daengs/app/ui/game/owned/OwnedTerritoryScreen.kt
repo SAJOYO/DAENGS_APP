@@ -38,7 +38,7 @@ internal fun OwnedTerritoryScreen(
     state: OwnedBrowserState, pets: List<Pet>, petId: String?, photoOf: (String) -> ImageBitmap?, nowNanos: Long,
     onBack: () -> Unit, onSignIn: () -> Unit, onSelectPet: (String?) -> Unit,
     onRefresh: () -> Unit, onLoadMore: () -> Unit,
-    mapSurface: @Composable (OwnedMapPresentation, (String) -> Unit, (MapCameraSnapshot) -> Unit) -> Unit =
+    mapSurface: @Composable (OwnedMapPresentation, (String?) -> Unit, (MapCameraSnapshot) -> Unit) -> Unit =
         { value, select, snapshot -> OwnedTerritoryMap(value, select, snapshot) },
 ) {
     var showMap by rememberSaveable { mutableStateOf(true) }
@@ -47,8 +47,9 @@ internal fun OwnedTerritoryScreen(
     var camera by remember(petId) { mutableStateOf<MapCameraSnapshot?>(null) }
     val items = state.visibleItems(nowNanos)
     val selected = items.firstOrNull { it.siteId == selectedId }
-    val select: (String) -> Unit = { id ->
-        selectedId = id; showMap = true; camera = null; cameraRequest++
+    val select: (String?) -> Unit = { id ->
+        selectedId = id
+        if (id != null) { showMap = true; camera = null; cameraRequest++ }
     }
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {

@@ -55,7 +55,7 @@ internal fun bookmarkScene(items: List<TerritoryBookmark>, selected: String?) = 
 @Composable
 internal fun TerritoryBookmarksScreen(
     state: BookmarkState, onBack: () -> Unit, onSignIn: () -> Unit, onRefresh: () -> Unit, onToggle: (String) -> Unit,
-    mapSurface: @Composable (OwnedMapPresentation, (String) -> Unit, (MapCameraSnapshot) -> Unit) -> Unit =
+    mapSurface: @Composable (OwnedMapPresentation, (String?) -> Unit, (MapCameraSnapshot) -> Unit) -> Unit =
         { value, select, snapshot -> OwnedTerritoryMap(value, select, snapshot) },
 ) {
     var showMap by rememberSaveable { mutableStateOf(false) }
@@ -63,8 +63,9 @@ internal fun TerritoryBookmarksScreen(
     var request by rememberSaveable { mutableIntStateOf(0) }
     var camera by remember { mutableStateOf<MapCameraSnapshot?>(null) }
     val selected = state.items.firstOrNull { it.siteId == selectedId }
-    val select: (String) -> Unit = { id ->
-        if (state.items.any { it.siteId == id && it.point != null }) {
+    val select: (String?) -> Unit = { id ->
+        if (id == null) selectedId = null
+        else if (state.items.any { it.siteId == id && it.point != null }) {
             selectedId = id; showMap = true; camera = null; request++
         }
     }

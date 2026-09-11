@@ -20,8 +20,8 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current.density
     val icons = remember(context) {
-        TerritoryMarkerOccupancy.entries.distinctBy(TerritoryPoleArt::resource).associate {
-            TerritoryPoleArt.resource(it) to OverlayImage.fromBitmap(territoryMarkerIcon(context, it))
+        TerritoryPoleStyle.entries.associateWith {
+            OverlayImage.fromBitmap(territoryMarkerIcon(context, it.occupancy, it.isMine))
         }
     }
     val overlays = remember(map) { mutableMapOf<String, SiteOverlays>() }
@@ -35,8 +35,8 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                 position = point
                 captionText = if (site.selected) site.label else if (!site.occupancyKnown) "확인 전" else when (site.occupancy) {
                     TerritoryMarkerOccupancy.NEUTRAL -> ""
-                    TerritoryMarkerOccupancy.UNVERIFIED -> "미인증"
-                    TerritoryMarkerOccupancy.VERIFIED -> "인증"
+                    TerritoryMarkerOccupancy.UNVERIFIED -> if (site.isMine) "내 미인증" else "상대 미인증"
+                    TerritoryMarkerOccupancy.VERIFIED -> if (site.isMine) "내 인증" else "상대 인증"
                 }
                 captionMinZoom = 0.0
                 if (site.radiusMeters != null) {
@@ -47,10 +47,11 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
                     subCaptionTextSize = 11f
                     subCaptionMinZoom = 0.0
                 }
-                val size = TerritoryPoleArt.size(site.selected)
+                val size = TerritoryPoleArt.size()
                 width = size.first; height = size.second
                 anchor = PointF(TerritoryPoleArt.ANCHOR_X, TerritoryPoleArt.ANCHOR_Y)
-                icon = icons.getValue(TerritoryPoleArt.resource(site.occupancy))
+                icon = icons.getValue(TerritoryPoleStyle.of(
+                    if (site.occupancyKnown) site.occupancy else TerritoryMarkerOccupancy.NEUTRAL, site.isMine))
                 alpha = if (site.occupancyKnown) 1f else .55f
                 zIndex = if (site.selected) 100 else 30
                 // 성공 발자국이 같은 위치에 떠도 선택한 전봇대가 충돌 숨김 처리되면 안 된다.
@@ -85,7 +86,7 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
             val active = feedback?.takeIf { it.siteId == site.id }
             val frame = territoryFeedbackFrame(active?.kind, progress)
             val accent = if (active?.kind == TerritoryFeedbackKind.MARKED) Color.rgb(227, 145, 45) else Color.rgb(60, 150, 115)
-            val size = TerritoryPoleArt.size(site.selected, frame.markerScale)
+            val size = TerritoryPoleArt.size(frame.markerScale)
             overlay.marker.width = size.first
             overlay.marker.height = size.second
             overlay.ring?.apply {
