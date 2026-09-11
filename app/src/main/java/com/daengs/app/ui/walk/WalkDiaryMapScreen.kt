@@ -202,10 +202,12 @@ internal fun WalkDiaryMapScreen(
                 },
                 summaryContent = { detail?.summary?.let { summary ->
                     WalkSessionSummary(summary, pets.filter { it.id in summary.dogIds }.map { it.name })
+                } },
+                backupAction = {
                     key(sessionId, backupAccount) {
                         backupSource?.let { WalkRouteBackupStatus(sessionId, it) }
                     }
-                } },
+                },
                 onOverview = { explorer.overview(); requestCamera(null) },
                 modifier = Modifier.weight(1f), map = { viewport ->
                     if (bounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
