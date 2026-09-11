@@ -4,6 +4,31 @@
 추정기: [#228](https://github.com/SAJOYO/DAENGS_APP/pull/228).
 서버: [DEV #357](https://github.com/SAJOYO/DAENGS_dev/pull/357).
 
+## v2 전환과 배포 조건
+
+APP #237의 임시 v1 생성 스위치와 동기화 우회를 제거했다. 새 행동은 아래 v2 흐름으로
+저장하며, 기존 v1 행동·메모는 저장된 형식 그대로 전송·조회한다. 과거 기록을 일괄
+v2로 바꾸거나 원본 GPS 참조를 새로 만들지 않는다. 추가 Room 마이그레이션은 없다.
+
+서버 계약은 DAENGS_dev `85ff1741` 기준이다. 배포 환경에는 v2용 DB 스키마와 함께
+`DAENGS_WALK_ENTRY_V2_ENABLED=true`, `DAENGS_WALK_ENTRY_V2_WRITE_ENABLED=true`가 필요하다.
+인증된 `GET /app/walks/entry-capabilities`의 `read_versions`·`write_versions`에
+`walk-entry-v2`, `active_policy_versions`에 `action-pin-policy-v1`이 있어야 신규 전송한다.
+일시정지·종료 시각을 정확히 전송하려면 `pin_observation_cutoff_supported=true`도 필요하다.
+장면 생성은 별도로 `storyboard_formats`의 v5 지원을 확인한다.
+
+생성·내용 정정은 `PUT /app/v2/walks/{walk_id}/entries/{entry_id}`, 이후 위치 확정은
+동일 경로의 `/pin`으로 보낸다. capabilities와 산책 원본 업로드 경로는 `/app/walks`를 유지한다.
+서버가 아직 준비되지 않았거나 신규 쓰기를 중단하면 새 행동을 기기에 보관하고 전송을 재시도한다.
+v2가 섞인 산책은 v2 지원을 기다리고, v1만 있는 산책은 구서버에서도 기존 전송을 계속한다.
+코드 병합만으로 실제 배포·플래그 활성화를 확인한 것으로 간주하지 않는다.
+
+배포 전 남은 호환 경계: 앱은 `recordingEligible=false`인 시작 전 캐시를 추정기에서 제외하지만,
+기존 raw 업로드는 이 구분을 전달하지 않는다. 서버 `85ff1741`의 `validate_sources`는 그 캐시도
+좌표가 있는 것으로 보아 `unlocated`를 거부한다. 원본이 없을 때는 허용하고 시작 전 캐시만
+추가하면 거부하는 것을 격리된 validator 검증으로 확인했다. 실제 앱→인증 서버 통합 검증은
+아직 하지 않았으며, 신규 쓰기 활성화 전에 양쪽의 유효 관측 범위를 맞춰야 한다.
+
 ## 기록과 위치
 
 진행 중인 산책에서 킁킁·배설·짖기를 누르면 GPS 품질과 관계없이 각각의 행동을 저장한다.

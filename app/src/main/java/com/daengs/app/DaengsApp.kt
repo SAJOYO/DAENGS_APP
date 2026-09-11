@@ -158,7 +158,6 @@ class DaengsApp : Application() {
             log = log,
             history = WalkHistory(log),
             sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
-                temporaryLegacyMode = com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
                 owner = { tokenStore.load()?.appUserId.orEmpty() },
                 v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
                 photoSync = photoSync::sync,
