@@ -23,6 +23,16 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val forgottenOwners = mutableSetOf<String>()
 
     override val ownerId: String get() = owner()
+    /** On-demand diagnostics only; history, pin upload and keep/discard still use their release policies. */
+    suspend fun compareMotion(sessionId: String): com.daengs.app.walk.motion.RecordedMotionComparison? =
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val expectedOwner = owner()
+            val input = dao.motionInput(sessionId, expectedOwner) ?: return@withContext null
+            val result = com.daengs.app.walk.motion.compareRecordedMotion(input)
+            check(owner() == expectedOwner) { "산책을 읽는 동안 계정이 변경됐어요." }
+            result
+        }
+
     override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(),
         dao.observePhotoIds(), dao.observeAnalysisChanges(), dao.observeDiaryPublicationCount()) { _, _, _, _, _ -> Unit }
 
@@ -62,6 +72,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
                 syncState = session.syncState.storedValue,
                 serverWalkId = session.serverWalkId,
                 syncedAtMillis = session.syncedAtMillis,
+                motionPolicyJson = session.motionPolicyJson,
             ),
         )
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
@@ -233,6 +244,7 @@ fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession 
     syncState = WalkSyncState.fromStored(syncState),
     serverWalkId = serverWalkId,
     syncedAtMillis = syncedAtMillis,
+    motionPolicyJson = motionPolicyJson,
 )
 
 internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(

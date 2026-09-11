@@ -61,6 +61,13 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 #307의 `WalkSpeedRuntimeTest`와 `WalkSpeedServiceTest`는 운영 속도 표시 연결을 검사한다.
 거리·요약은 기존 계산이며, 이 테스트가 실기기 주행 검증은 아니다.
 
+#313 정책 저장·비교는 위 `MotionPolicyTest`, `RecordedMotionReplayTest`,
+`WalkSpeedRuntimeTest`에 더해 `RecordingJournalTest`의 실제 파일 재개방과
+`WalkMigrationTest`의 15→16 이관, `WalkSpeedServiceTest`의 서비스/저장 정책 일치를
+검증한다. 세션 모델·Room 변경의 기존 소비자는 `WalkDaoTest`, `WalkTrackingTest`,
+`WalkSummaryTest`로 확인한다. 비교 정책의 상세 범위는
+[저장 계약](../../../docs/gps-policy-persistence.md)을 따른다.
+
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'
 ```
