@@ -410,8 +410,7 @@ fun NaverMapSurface(
             paintWalkSpeedPath(path, walkStyle.policy, walkStyle.themeId)
         }.filter { it.isNotEmpty() }
     }
-    val routePattern = remember { OverlayImage.fromResource(R.drawable.ic_walk_route_pattern) }
-    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths, routePattern) {
+    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths) {
         val map = naverMap
         val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
         if (map != null) {
@@ -424,8 +423,6 @@ fun NaverMapSurface(
                     }
                     width = TRAIL_WIDTH
                     outlineWidth = TRAIL_OUTLINE_WIDTH
-                    patternImage = routePattern
-                    patternInterval = TRAIL_PATTERN_INTERVAL
                     this.map = map
                 }
             }
@@ -439,8 +436,6 @@ fun NaverMapSurface(
                     color = walkStyle.policy.unknownColor
                     outlineWidth = TRAIL_OUTLINE_WIDTH
                     outlineColor = TRAIL_OUTLINE_COLOR
-                    patternImage = routePattern
-                    patternInterval = TRAIL_PATTERN_INTERVAL
                     this.map = map
                 }
             }
@@ -501,8 +496,6 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 private const val SELECTED_MARKER_Z = 100
 
 private const val TRAIL_WIDTH = 14
-// Dense diagonal ribbon; spacing follows screen width, not GPS sampling density.
-private const val TRAIL_PATTERN_INTERVAL = TRAIL_WIDTH
 
 /**
  * 산책 경로.
