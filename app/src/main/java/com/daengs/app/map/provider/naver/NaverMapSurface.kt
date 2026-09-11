@@ -82,6 +82,7 @@ fun NaverMapSurface(
     modifier: Modifier = Modifier,
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
+    onRouteDirectionCount: (Int) -> Unit = {},
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -159,7 +160,8 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = if (keepSelectionVisible) modifier.onSizeChanged { viewportSize = it } else modifier,
+        modifier = if (keepSelectionVisible || scene.sessionExplorer != null)
+            modifier.onSizeChanged { viewportSize = it } else modifier,
     )
 
     LaunchedEffect(naverMap, searchOrigin) {
@@ -398,33 +400,40 @@ fun NaverMapSurface(
     }
 
     val speedPaths = remember(scene.trail, scene.completedRoute.paths, scene.completedRoute.speedPaths, walkStyle) {
-        (scene.trail.speedPaths + scene.completedRoute.speedPaths).map { path ->
-            paintWalkSpeedPath(path, walkStyle.policy, walkStyle.themeId)
-        }.filter { it.isNotEmpty() }
+        listOf(false to scene.trail.speedPaths, true to scene.completedRoute.speedPaths).flatMap { (completed, paths) ->
+            paths.map { completed to paintWalkSpeedPath(it, walkStyle.policy, walkStyle.themeId) }
+        }.filter { it.second.isNotEmpty() }
     }
-    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths) {
+    val exploringSession = scene.sessionExplorer != null
+    val dimCompleted = scene.sessionExplorer?.highlightPaths?.isNotEmpty() == true
+    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths, exploringSession, dimCompleted) {
         val map = naverMap
         val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
         if (map != null) {
             // One multipart overlay per recording segment keeps pauses and GPS gaps separate.
-            speedPaths.forEach { parts ->
+            speedPaths.forEach { (completed, parts) ->
                 lines += MultipartPathOverlay().apply {
                     coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
-                    colorParts = parts.map { part -> MultipartPathOverlay.ColorPart(part.color, part.color, part.color, part.color) }
+                    colorParts = parts.map { part ->
+                        val color = if (completed && dimCompleted) (part.color and 0x00ffffff) or 0x60000000 else part.color
+                        val outline = if (completed && exploringSession) Color.WHITE else color
+                        MultipartPathOverlay.ColorPart(color, outline, color, outline)
+                    }
                     width = TRAIL_WIDTH
-                    outlineWidth = 0
+                    outlineWidth = if (completed && exploringSession) 2 else 0
                     this.map = map
                 }
             }
             // Legacy coordinate-only callers have unknown speed, never pretend it is zero.
-            val fallback = (if (scene.trail.speedPaths.isEmpty()) scene.trail.paths else emptyList()) +
-                (if (scene.completedRoute.speedPaths.isEmpty()) scene.completedRoute.paths else emptyList())
-            fallback.filter { it.size >= 2 }.forEach { path ->
+            val fallback = (if (scene.trail.speedPaths.isEmpty()) scene.trail.paths else emptyList()).map { false to it } +
+                (if (scene.completedRoute.speedPaths.isEmpty()) scene.completedRoute.paths else emptyList()).map { true to it }
+            fallback.filter { it.second.size >= 2 }.forEach { (completed, path) ->
                 lines += PathOverlay().apply {
                     coords = path.map(GeoPoint::toLatLng)
                     width = TRAIL_WIDTH
                     color = walkStyle.policy.unknownColor
-                    outlineWidth = 0
+                    outlineWidth = if (completed && exploringSession) 2 else 0
+                    outlineColor = Color.WHITE
                     this.map = map
                 }
             }
@@ -433,6 +442,9 @@ fun NaverMapSurface(
     }
 
     NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
+    NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
+        scene.moments.map { it.point } + listOfNotNull(scene.completedRoute.start?.point, scene.completedRoute.end?.point),
+        viewportSize, bottomPaddingPx, density, onRouteDirectionCount)
 
     DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {
         val map = naverMap
