@@ -8,6 +8,8 @@ import com.daengs.app.place.bookmarks.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class PlaceBookmarkState(
     val session: PlaceBrowseSession = PlaceBrowseSession(),
@@ -28,7 +30,11 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
     private val mutable = MutableStateFlow(PlaceBookmarkState())
     val state = mutable.asStateFlow()
     private var readJob: Job? = null
-    private var writeJob: Job? = null
+    private val writes = Mutex()
+    private val intentVersions = mutableMapOf<PlaceKey, Long>()
+    private var intentClock = 0L
+    private val commands = linkedMapOf<String, Deferred<BookmarkOutcome>>()
+    private val activeWrites = mutableSetOf<Deferred<BookmarkOutcome>>()
     private var generation = 0
     private var started = false
     private var closed = false
@@ -65,7 +71,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         val id = ++generation
         readJob?.cancel()
         mutable.value = state.value.copy(phase = PlaceBookmarkPhase.LOADING, hits = emptyList(), missing = emptySet(), errorText = null)
-        if (writeJob?.isActive == true) return
+        if (state.value.busy) return
         readJob = scope.launch {
             try {
                 if (state.value.session.tab == PlaceBrowseTab.BOOKMARKS) {
@@ -92,31 +98,90 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         set(key, state.value.page!!.items.none { it.key == key })
     }
     fun undo() { state.value.undo?.let { set(it, true) } }
-    private fun set(key: PlaceKey, saved: Boolean) {
-        if (closed || state.value.busy) return
-        generation++; readJob?.cancel()
-        mutable.value = state.value.copy(busy = true, message = null, undo = null)
-        writeJob = scope.launch {
-            var message: String
-            var undo: PlaceKey? = null
-            try {
-                val page = repository.set(account, key, saved)
-                if (closed) return@launch
-                mutable.value = state.value.copy(page = page,
-                    hits = if (saved || state.value.session.tab == PlaceBrowseTab.SEARCH) state.value.hits
-                        else state.value.hits.filterNot { it.place.key == key })
-                message = if (saved) "찜한 시설에 담았어요." else "찜을 해제했어요."
-                if (!saved) undo = key
-            } catch (cancelled: CancellationException) { throw cancelled
-            } catch (error: Exception) { message = error.savedMessage() }
-            if (!closed) {
-                mutable.value = state.value.copy(busy = false, message = message, undo = undo)
-                writeJob = null
-                refresh() // A timed-out write may have committed. Read before allowing another toggle.
+    /** Direct UI intent gets its own sequence; a read refresh never advances it. */
+    fun set(key: PlaceKey, saved: Boolean): Deferred<BookmarkOutcome> {
+        val version = ++intentClock
+        intentVersions[key] = version
+        return submit(key, saved) { intentVersions[key] == version }
+    }
+
+    fun captureTurn(): BookmarkTurn {
+        val turn = ++intentClock
+        return object : BookmarkTurn {
+            var cancelled = false
+            override fun cancel() { cancelled = true }
+            override suspend fun execute(requestId: String, key: PlaceKey, saved: Boolean): BookmarkOutcome {
+                if (closed || cancelled || (intentVersions[key] ?: 0) > turn) return superseded()
+                intentVersions[key] = turn
+                val command = commands[requestId] ?: submit(key, saved) {
+                    !cancelled && intentVersions[key] == turn
+                }.also {
+                    commands[requestId] = it
+                    while (commands.size > 128 && commands.values.first().isCompleted) commands.remove(commands.keys.first())
+                }
+                return command.await()
             }
         }
     }
-    fun close() { closed = true; generation++; readJob?.cancel(); writeJob?.cancel() }
+
+    private fun superseded() = BookmarkOutcome(BookmarkCompletion.SUPERSEDED,
+        "이전 찜 요청은 더 진행하지 않아요. 현재 찜 상태를 확인해 주세요.")
+
+    private fun submit(key: PlaceKey, saved: Boolean, current: () -> Boolean): Deferred<BookmarkOutcome> =
+        scope.async(start = CoroutineStart.UNDISPATCHED) {
+            writes.withLock {
+                if (closed || !current()) return@withLock superseded()
+                generation++; readJob?.cancel()
+                mutable.value = state.value.copy(busy = true, message = null, undo = null)
+                var outcome: BookmarkOutcome
+                try {
+                    val page = repository.set(account, key, saved)
+                    if (closed) return@withLock superseded()
+                    mutable.value = state.value.copy(page = page,
+                        hits = if (saved || state.value.session.tab == PlaceBrowseTab.SEARCH) state.value.hits
+                            else state.value.hits.filterNot { it.place.key == key })
+                    outcome = if (page.items.any { it.key == key } == saved)
+                        BookmarkOutcome(BookmarkCompletion.CONFIRMED,
+                            if (saved) "찜에 저장된 것을 확인했어요." else "찜이 해제된 것을 확인했어요.")
+                    else BookmarkOutcome(BookmarkCompletion.UNKNOWN,
+                        "요청한 찜 상태를 확인하지 못했어요. 찜 목록을 새로고침해 주세요.")
+                } catch (cancelled: CancellationException) { throw cancelled
+                } catch (error: Exception) {
+                    // Transport failure does not prove rollback. Reconcile through the ordinary list API.
+                    mutable.value = state.value.copy(phase = PlaceBookmarkPhase.LOADING)
+                    outcome = try {
+                        val page = repository.list(account)
+                        if (closed) return@withLock superseded()
+                        mutable.value = state.value.copy(page = page)
+                        if (page.items.any { it.key == key } == saved)
+                            BookmarkOutcome(BookmarkCompletion.CONFIRMED,
+                                if (saved) "현재 찜에 저장돼 있어요." else "현재 찜에서 해제돼 있어요.")
+                        else if (error is PlaceBookmarkException && error.status in listOf(401, 404, 409, 422, 503))
+                            BookmarkOutcome(BookmarkCompletion.FAILED, error.savedMessage())
+                        else BookmarkOutcome(BookmarkCompletion.UNKNOWN,
+                            "아직 요청한 찜 상태를 확인하지 못했어요. 찜 목록을 새로고침해 주세요.")
+                    } catch (cancelled: CancellationException) { throw cancelled
+                    } catch (_: Exception) {
+                        BookmarkOutcome(BookmarkCompletion.UNKNOWN, "찜 처리 결과를 확인하지 못했어요. 찜 목록을 새로고침해 주세요.")
+                    }
+                } finally {
+                    if (!closed) mutable.value = state.value.copy(busy = false)
+                }
+                if (closed) return@withLock superseded()
+                mutable.value = state.value.copy(message = outcome.message,
+                    undo = key.takeIf { !saved && outcome.completion == BookmarkCompletion.CONFIRMED })
+                refresh()
+                // A newer queued intent must not be announced as this command's success.
+                if (!current()) superseded() else outcome
+            }
+        }.also { job ->
+            activeWrites += job
+            job.invokeOnCompletion { activeWrites -= job }
+        }
+    fun close() {
+        closed = true; generation++; readJob?.cancel()
+        activeWrites.toList().forEach { it.cancel() }
+    }
 }
 
 private fun Throwable.savedMessage(): String = when {

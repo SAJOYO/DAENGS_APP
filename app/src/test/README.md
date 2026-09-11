@@ -32,6 +32,21 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 기능별 선택 범위
 
+### 산책 종료·기록 공통 상세와 동선 탐색
+
+새 상세 경계는 WalkSessionDestinationTest, WalkSessionDetailUiTest,
+WalkRouteExplorerStateTest로 확인한다. 지도 배치는
+map.layers.completedroute.RouteDirectionLayoutTest, 단일 세션 통과·재생 계산은
+walk.routeexplorer.RouteExplorerIndexTest가 담당한다.
+기록 진입/편집을 바꾸면 기존 WalkRecordsRouteStateTest, ui.walk.records.WalkRecordsRouteTest,
+WalkRecordsScreenTest, WalkDiaryMapScreenTest, WalkDiaryReaderTest, WalkDiaryPublicationTest를
+해당 변경 경계에 맞게 추가한다. 실제 지도 SDK의 가시성은 JVM 테스트 통과와 구별한다.
+[상세 계약과 기기 확인 범위](../../../docs/walk-session-detail.md)를 참고한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.routeexplorer.RouteExplorerIndexTest' --tests 'com.daengs.app.ui.walk.WalkRouteExplorerStateTest' --tests 'com.daengs.app.map.layers.completedroute.RouteDirectionLayoutTest'
+```
+
 표의 각 선택자를 `--tests '선택자'`로 붙인다. 테스트 파일은 이 문서 아래
 `java/com/daengs/app/`에 있고, 앱 코드의 같은 패키지와 연결된다.
 
@@ -60,6 +75,13 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 선택한다. legacy reader를 바꾸면 `TrailRecorderTest`, `WalkSummaryTest`를 추가한다.
 #307의 `WalkSpeedRuntimeTest`와 `WalkSpeedServiceTest`는 운영 속도 표시 연결을 검사한다.
 거리·요약은 기존 계산이며, 이 테스트가 실기기 주행 검증은 아니다.
+
+#313 정책 저장·비교는 위 `MotionPolicyTest`, `RecordedMotionReplayTest`,
+`WalkSpeedRuntimeTest`에 더해 `RecordingJournalTest`의 실제 파일 재개방과
+`WalkMigrationTest`의 15→16 이관, `WalkSpeedServiceTest`의 서비스/저장 정책 일치를
+검증한다. 세션 모델·Room 변경의 기존 소비자는 `WalkDaoTest`, `WalkTrackingTest`,
+`WalkSummaryTest`로 확인한다. 비교 정책의 상세 범위는
+[저장 계약](../../../docs/gps-policy-persistence.md)을 따른다.
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'

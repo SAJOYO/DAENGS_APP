@@ -4,6 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MotionPolicyTest {
+    @Test fun `stored envelope round trips and malformed envelopes cannot become default policies`() {
+        val policy = MotionPolicies.freeze("s", MotionConfig(maxWalkingSpeedMps = 4.5))
+        val text = MotionPolicies.encode(policy)
+        assertEquals(policy.stored, (MotionPolicies.resolveJson("s", text) as MotionPolicySelection.Supported).policy.stored)
+        assertEquals(MotionPolicySelection.Legacy, MotionPolicies.resolveJson("s", null))
+        for (bad in listOf("", "null", "{}", "[]", "broken", text.replace("motion-v1", "future-v2"),
+            text.replace(policy.stored.configHash, "invalid"), text.dropLast(1) + ",\"future\":true}")) {
+            assertTrue(bad, MotionPolicies.resolveJson("s", bad) is MotionPolicySelection.Unsupported)
+        }
+    }
+
     @Test fun `frozen config survives storage and does not follow later defaults or edits`() {
         val config = MotionConfig(maxWalkingSpeedMps = 5.0, windowSize = 4)
         val original = MotionPolicies.freeze("s", config)

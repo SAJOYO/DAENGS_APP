@@ -26,6 +26,8 @@ data class WalkSessionRow(
     val serverWalkId: String? = null,
     /** 마지막 동기화 상태 전이 시각. */
     val syncedAtMillis: Long? = null,
+    /** Stored with the first session INSERT; never backfilled with current defaults. */
+    val motionPolicyJson: String? = null,
 )
 
 /**

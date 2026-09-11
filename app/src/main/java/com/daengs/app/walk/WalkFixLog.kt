@@ -120,6 +120,8 @@ data class RecordedSession(
     val serverWalkId: String? = null,
     /** 마지막 동기화 상태 전이 시각. [WalkSyncState.LOCAL_ONLY]이면 null이다. */
     val syncedAtMillis: Long? = null,
+    /** Immutable GPS policy envelope. null means unknown/legacy, including server-restored sessions. */
+    val motionPolicyJson: String? = null,
 )
 
 enum class WalkSyncState(val storedValue: String) {
