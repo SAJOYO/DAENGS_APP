@@ -19,6 +19,30 @@ import org.junit.Test
  */
 class WalkSyncTest {
 
+    @Test fun `GPS evidence readiness gates new uploaded and already derived sessions`() = runBlocking {
+        for (state in WalkSyncState.entries) {
+            val log = FakeLog()
+            val api = FakeApi()
+            log.sessions += session("gps", ended = true, state = state,
+                serverWalkId = if (state == WalkSyncState.LOCAL_ONLY) null else "server-gps")
+            log.append("gps", fix(0).copy(recordingEligible = false))
+            var probes = 0
+            var consumers = 0
+            val sync = WalkSync(log, api, { NOW },
+                photoSync = { _, _, _ -> consumers++ },
+                storyboardSync = { _, _, _ -> consumers++ },
+                recording = WalkRecordingSync { _, _, _, _ -> probes++; throw java.io.IOException("unsupported") },
+                warn = { _, _ -> })
+            assertTrue(runCatching { sync.syncPendingSession("token", "gps") }.isFailure)
+            assertEquals(1, probes)
+            assertEquals(0, api.uploadCalls)
+            assertEquals(0, api.finalizeCalls)
+            assertEquals(0, consumers)
+            assertEquals(state, log.session("gps")!!.syncState)
+            assertEquals(false, log.fixes("gps").single().recordingEligible)
+        }
+    }
+
     @Test fun `manual diary refresh synchronizes photos without generating twice`() = runBlocking {
         val log = FakeLog()
         val api = FakeApi()

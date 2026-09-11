@@ -29,7 +29,7 @@ Room 15는 기존 원본 표에 nullable 필드를 추가하고 `walk_recording_
 
 기존 `clientSeq`는 Int이므로 그 한계를 넘으면 새 번호로 조용히 순환하지 않고 기록 실패로 닫는다. 원본 삽입과 epoch 저장 개수 증가는 하나의 Room 트랜잭션이다. 동일 원본 재제출은 멱등이며, 같은 번호에 다른 원본 또는 다른 세션·chain·시계 범위를 제출하면 실패한다.
 
-시작 이전 캐시도 `fixes`와 원본 페이지 조회에서 보존한다. 서버의 finalize 계약은 `terminalClientSeq == expectedPointCount - 1`이므로 원본을 걸러 전송 번호를 재작성하지 않는다. 로컬 경로·시간·체류·행동 핀 후보에서만 캐시를 제외한다. 새 원본 필드의 서버 전송 및 동일 정책 재생은 후속 계약이 필요하다. 기존 원본 업로드 JSON은 그대로다.
+시작 이전 캐시도 `fixes`와 원본 페이지 조회에서 보존한다. 서버의 finalize 계약은 `terminalClientSeq == expectedPointCount - 1`이므로 원본을 걸러 전송 번호를 재작성하지 않는다. 로컬 경로·시간·체류·행동 핀 후보에서 캐시를 제외한다. APP #305 / DEV #441은 recordingEligible의 서버 전송·저장·복원·핀 검증까지 연결한다. [앱 연결 문서](action-pin-app-integration.md)의 공통 계약을 따른다. 속도·단조 시각·epoch 전체의 서버 백업과 이동 정책 재생은 이 구분 계약에 포함되지 않는다.
 
 ## 일시정지·종료·복구
 

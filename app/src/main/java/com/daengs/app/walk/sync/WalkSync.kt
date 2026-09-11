@@ -29,6 +29,7 @@ class WalkSync(
     private val entrySync: WalkEntrySync? = null,
     private val storyboardSync: (suspend (String, String, String) -> Unit)? = null,
     private val photoSync: (suspend (String, String, String) -> Unit)? = null,
+    private val recording: WalkRecordingSync? = null,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -62,6 +63,7 @@ class WalkSync(
             if (!stillOwned(owner)) return@withContext
             session.serverWalkId?.let { remoteId ->
                 runCatching {
+                    verifyRecording(token, session, remoteId)
                     entrySync?.sync(token, session.id, remoteId)
                     photoSync?.invoke(token, session.id, remoteId)
                     storyboardSync?.invoke(token, session.id, remoteId)
@@ -83,6 +85,7 @@ class WalkSync(
                     return@withLock
                 }
                 if (session.syncState != WalkSyncState.DERIVED) pushOne(accessToken, session)
+                else session.serverWalkId?.let { verifyRecording(accessToken, session, it) }
                 log.session(sessionId)?.serverWalkId?.let {
                     entrySync?.sync(accessToken, sessionId, it)
                     photoSync?.invoke(accessToken, sessionId, it)
@@ -103,10 +106,15 @@ class WalkSync(
     }
 
     private suspend fun pushOne(token: String, session: com.daengs.app.walk.RecordedSession) {
+        val account = session.ownerId ?: log.ownerId
         // 이 세션의 주인이 지금 로그인한 사람인지 본다. 올리다가 계정이 바뀌면
         // 남의 계정으로 남의 산책을 올리게 된다.
-        if (!stillOwned(session.ownerId ?: log.ownerId)) return
+        if (!stillOwned(account)) return
         val fixes = log.fixes(session.id)
+        val needsRecording = fixes.any { it.recordingEligible != null }
+        fun checkOwner() { check(stillOwned(account)) { "계정이 변경됐어요." } }
+        if (needsRecording) recording?.requireSupport(token, ::checkOwner)
+        if (!stillOwned(account)) return
         val rememberedWalkId = session.serverWalkId
             ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
         val walkId = rememberedWalkId ?: run {
@@ -121,12 +129,24 @@ class WalkSync(
             id
         }
 
+        if (needsRecording) recording?.ensure(token, walkId, fixes, ::checkOwner)
+        if (!stillOwned(account)) return
         val manifest = WalkFinalizeManifest(
             expectedPointCount = fixes.size,
             terminalClientSeq = fixes.lastOrNull()?.clientSeq,
         )
         api.finalize(token, walkId, manifest).getOrThrow()
         log.markDerived(session.id, now())
+    }
+
+    private suspend fun verifyRecording(token: String, session: com.daengs.app.walk.RecordedSession, walkId: String) {
+        val transport = recording ?: return
+        val account = session.ownerId ?: log.ownerId
+        val fixes = log.fixes(session.id)
+        if (fixes.none { it.recordingEligible != null }) return
+        fun checkOwner() { check(stillOwned(account)) { "계정이 변경됐어요." } }
+        transport.requireSupport(token, ::checkOwner)
+        transport.ensure(token, walkId, fixes, ::checkOwner)
     }
 
     /** 서버에 있는데 이 기기에 없는 것을 내려받는다. */
