@@ -68,6 +68,42 @@ class FusedLocationSource(context: Context) : LocationSource {
     }
 
     @SuppressLint("MissingPermission")
+    override fun subscribeRecording(config: LocationUpdateConfig, onSample: (LocationSample) -> Unit,
+        onFailure: (Throwable) -> Unit): LocationSubscription {
+        val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val executor = java.util.concurrent.ThreadPoolExecutor(1, 1, 0L,
+            java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.ArrayBlockingQueue(64),
+            java.util.concurrent.ThreadFactory { task -> Thread(task, "walk-location").apply { isDaemon = true } },
+            java.util.concurrent.RejectedExecutionHandler { _, _ ->
+                if (!closed.get()) onFailure(IllegalStateException("SOURCE_DELIVERY_FAILURE"))
+            })
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                if (closed.get()) return
+                try { result.locations.forEach { onSample(it.toSample()) } }
+                catch (error: Exception) { onFailure(error) }
+            }
+        }
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, config.intervalMillis)
+            .setMinUpdateIntervalMillis(config.minIntervalMillis)
+            .setMinUpdateDistanceMeters(config.minDistanceMeters).build()
+        val registration = try { client.requestLocationUpdates(request, executor, callback) }
+        catch (error: Exception) { executor.shutdown(); throw error }
+        registration.addOnFailureListener { if (!closed.get()) onFailure(it) }
+        // A late registration after close/timeout must not resurrect the subscription.
+        registration.addOnSuccessListener { if (closed.get()) client.removeLocationUpdates(callback) }
+        return object : LocationSubscription {
+            override suspend fun close() {
+                closed.set(true)
+                try {
+                    registration.awaitCompletion()
+                    client.removeLocationUpdates(callback).awaitCompletion()
+                } finally { executor.shutdown() }
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
     override fun locationUpdates(config: LocationUpdateConfig): Flow<LocationSample> = callbackFlow {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, config.intervalMillis)
             .setMinUpdateIntervalMillis(config.minIntervalMillis)
@@ -75,7 +111,12 @@ class FusedLocationSource(context: Context) : LocationSource {
             .build()
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                result.locations.forEach { trySend(it.toSample()) }
+                result.locations.forEach {
+                    if (!trySend(it.toSample()).isSuccess) {
+                        close(IllegalStateException("Location delivery buffer unavailable"))
+                        return
+                    }
+                }
             }
         }
         // **null 을 넘기면 안 된다.** 콜백은 전달받을 Looper 가 필요한데, GMS 는 null 을
@@ -93,6 +134,8 @@ internal fun Location.toSample(): LocationSample = LocationSample(
     elapsedRealtimeNanos = elapsedRealtimeNanos,
     accuracyMeters = accuracy.takeIf { hasAccuracy() },
     speedMetersPerSecond = speed.takeIf { hasSpeed() },
+    speedAccuracyMetersPerSecond = speedAccuracyMetersPerSecond.takeIf { hasSpeedAccuracy() },
+    provider = provider,
     bearingDegrees = bearing.takeIf { hasBearing() },
     bearingAccuracyDegrees = bearingAccuracyDegrees.takeIf { hasBearingAccuracy() },
     // 일부 AVD의 `adb emu geo fix`는 플랫폼 mock 표식 없이 내려온다. 그 값만 믿으면
@@ -121,3 +164,11 @@ internal fun isMockEvidence(
     manufacturer.contains("genymotion", ignoreCase = true) ||
     device.startsWith("emu", ignoreCase = true) ||
     product.startsWith("sdk_", ignoreCase = true)
+
+
+private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitCompletion(): T =
+    suspendCancellableCoroutine { continuation ->
+        addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
+        addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
+        addOnCanceledListener { continuation.cancel() }
+    }
