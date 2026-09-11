@@ -1,6 +1,6 @@
 # GPS 속도 표시 — 4차 (#306)
 
-상태: 표시 전용 reducer·세션 소유 객체·Compose 미리보기. **현재 산책 서비스와 기존 속도계에는 아직 연결하지 않는다.**
+상태: #306에서 표시 전용 reducer·세션 소유 객체·Compose 미리보기를 구현했다. #307에서 [실제 산책 서비스와 속도계에 연결했다](gps-speed-runtime.md). 아래 구현·검증 기록 중 5차라고 부르는 후속 연결은 5-1에 해당한다.
 
 ## 범위와 소유권
 
@@ -16,7 +16,7 @@
 - 새 source·재개는 증가하는 generation과 새 sourceId로 `onSourceChanged`를 호출한다. 같은 clock이면 시작 시각은 이전 표시 처리 시각 이상이어야 한다. 다른 clock이면 이전 시각과 뺄셈하지 않는다. 종료된 객체는 재개하지 않는다.
 - `DisplaySpeedSample`은 **이동 엔진에서 표시 가능하다고 인정한 속도**를 전달한다. null은 근거 없음이고 0은 실제 측정된 정지다. 표시층이 좌표로 속도를 계산하거나 임의의 작은 속도를 0으로 바꾸지 않는다.
 - #294의 `MotionEstimate`를 연결할 때 `ref.sessionId/sourceEpoch/clockEpochId`, `observedElapsedNanos`, `speedMps`, `speedSource`, `speedQuality`, 제외 이유를 함께 확인한다. UNKNOWN·무효·mock·충돌·활동 구간 밖·역행 근거는 표시 가능 속도로 승격하지 않는다. UNVERIFIED 근거의 허용 여부도 어댑터에서 명시하고 테스트한다. 단순히 speedMps가 non-null이라는 이유로 통과시키지 않는다.
-- 이 PR은 미병합 #294의 타입을 복사하거나 종속하지 않는다. 엔진 출력→표시 입력 어댑터, runtime 생성/해제, 직렬 이벤트·tick 공급, 기존 화면 교체는 5차다.
+- #306은 당시 미병합 #294의 타입에 종속하지 않았다. #307의 별도 어댑터·runtime이 실제 엔진을 연결하고 생성/해제·직렬 이벤트·tick 공급·기존 화면 교체를 맡는다.
 
 ## 숫자와 수신 상태의 별도 전환
 

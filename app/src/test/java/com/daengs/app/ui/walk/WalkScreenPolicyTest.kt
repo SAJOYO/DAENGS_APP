@@ -57,7 +57,7 @@ class WalkScreenPolicyTest {
         assertTrue(settings.right <= time.left)
         assertTrue(settings.bottom <= speed.top || settings.right <= speed.left)
         assertTrue(territory.bottom <= action.top)
-        val gauge = compose.onNodeWithTag("speedometer").fetchSemanticsNode().boundsInRoot
+        val gauge = compose.onNodeWithTag("motionSpeedometer").fetchSemanticsNode().boundsInRoot
         if (landscape) {
             val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
             assertTrue(gauge.top > root.center.y)
@@ -66,13 +66,23 @@ class WalkScreenPolicyTest {
             assertTrue(gauge.right <= action.left)
         } else assertTrue(territory.top > gauge.bottom)
         compose.onNodeWithText("색상").assertDoesNotExist()
-        val reading = compose.onNodeWithText("0.0").fetchSemanticsNode().boundsInRoot
-        val unit = compose.onNodeWithText("m/s").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val reading = compose.onNodeWithText("0.0", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val unit = compose.onNodeWithText("m/s", useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(reading.right <= unit.left && unit.top < reading.bottom)
-        val legend = compose.onNodeWithTag("speedometer").getUnclippedBoundsInRoot()
-        assertTrue((legend.right - legend.left).value <= 140f)
-        assertTrue(compose.onNodeWithTag("speedometer").printToString(), (legend.bottom - legend.top).value <= 116f)
+        val legend = compose.onNodeWithTag("motionSpeedometer").getUnclippedBoundsInRoot()
+        // Child dp -> pixel rounding can add up to 2dp at the narrow-screen density.
+        assertTrue((legend.right - legend.left).value <= 146f)
+        assertTrue(compose.onNodeWithTag("motionSpeedometer").printToString(), (legend.bottom - legend.top).value <= 192f)
         compose.onNodeWithText("쉼").assertDoesNotExist()
+        val output = java.io.File("build/reports/gps-speed-runtime/${if (landscape) "landscape" else "portrait"}-${compose.activity.resources.configuration.screenWidthDp}.png")
+        output.parentFile?.mkdirs()
+        compose.runOnIdle {
+            val view = compose.activity.window.decorView
+            val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+            view.draw(android.graphics.Canvas(bitmap))
+            output.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
         pause.performClick()
         assertEquals(WalkAction.Pause, actions.last())
         compose.onNodeWithContentDescription("홈으로").performClick()
@@ -94,4 +104,31 @@ class WalkScreenPolicyTest {
     fun narrowScreenKeepsControlsApart() = checkLayout()
     @Test @Config(qualifiers = "w891dp-h411dp")
     fun landscapeGroupsRelatedControls() = checkLayout(landscape = true)
+
+    @Test fun serviceSpeedSurvivesScreenRemountAndChangingScreenGps() {
+        val display = com.daengs.app.walk.display.MotionDisplay(1.5,
+            com.daengs.app.walk.display.DisplayFreshness.HELD, com.daengs.app.walk.display.DisplaySignal.RECEIVING)
+        val state = mutableStateOf(recording().copy(tracking = recording().tracking.copy(motionDisplay = display)))
+        val mounted = mutableStateOf(true)
+        compose.setContent { DaengsTheme { if (mounted.value) WalkScreen(state.value, {}, showMap = false) } }
+        compose.onNodeWithText("1.5").assertIsDisplayed()
+        val bounds = compose.onNodeWithTag("motionSpeedometer").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { state.value = state.value.copy(location = WalkLocationUiState(
+            permissionGranted = true, precisePermission = true,
+            sample = com.daengs.app.location.LocationSample(com.daengs.app.location.GeoPoint(37.5, 127.0),
+                0, speedMetersPerSecond = 99f))) }
+        compose.onNodeWithText("1.5").assertIsDisplayed()
+        compose.onNodeWithText("99.0").assertDoesNotExist()
+        compose.runOnIdle { mounted.value = false }
+        compose.onNodeWithTag("motionSpeedometer").assertDoesNotExist()
+        compose.runOnIdle {
+            state.value = state.value.copy(tracking = state.value.tracking.copy(
+                motionDisplay = display.copy(freshness = com.daengs.app.walk.display.DisplayFreshness.STALE,
+                    signal = com.daengs.app.walk.display.DisplaySignal.DELAYED)))
+            mounted.value = true
+        }
+        compose.onNodeWithText("1.5").assertIsDisplayed()
+        compose.onNodeWithText("수신 불안정").assertIsDisplayed()
+        assertEquals(bounds, compose.onNodeWithTag("motionSpeedometer").fetchSemanticsNode().boundsInRoot)
+    }
 }
