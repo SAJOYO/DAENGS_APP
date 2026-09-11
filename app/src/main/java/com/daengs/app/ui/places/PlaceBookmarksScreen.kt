@@ -33,7 +33,8 @@ internal fun PlaceBookmarkState.panel() = PlaceBookmarkPanelState(
 internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: PlaceBookmarkState,
     profiles: PlaceProfiles, list: LazyListState, showMap: Boolean, onCall: (String) -> Unit,
     actions: @Composable (PlaceSearchHit) -> Unit, onRefreshProfiles: () -> Unit,
-    avatarBreed: DogBreed? = null, avatarPhoto: android.graphics.Bitmap? = null) {
+    avatarBreed: DogBreed? = null, avatarPhoto: android.graphics.Bitmap? = null,
+    onSearch: ((SearchPlanTransfer) -> Unit)? = null) {
     val snapshot = state.session.current
     val filters = snapshot.filters
     val scope = rememberCoroutineScope()
@@ -147,7 +148,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
             Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 40.dp)) {
                 PlaceDogAssistant(busy = state.aiBusy, replyAvailable = state.aiAnswer != null,
                     open = dogOpen, onOpen = { dogOpen = it },
-                    onSubmit = { if (profilesPending) controller.notice("반려견 정보를 확인한 뒤 다시 말해 주세요.") else controller.chat(it) },
+                    onSubmit = { if (profilesPending) controller.notice("반려견 정보를 확인한 뒤 다시 말해 주세요.") else controller.chat(it, onSearch) },
                     onCancel = controller::cancelConversation, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
                     searchContext = "찜한 시설 안에서 · " + (filters.radiusMeters?.let { "반경 ${it / 1000.0}km" } ?: "지역 제한 없음") +
                         " · " + category.label + (if (filters.parkingFirst) " · 주차 우선" else "") + hard.summary.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),

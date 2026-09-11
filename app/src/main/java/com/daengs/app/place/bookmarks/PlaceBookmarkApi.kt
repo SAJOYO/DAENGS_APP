@@ -15,7 +15,8 @@ data class SavedPlacePage(val items: List<SavedPlace>, val limit: Int)
 data class SavedPlaceResults(val page: SavedPlacePage, val hits: List<PlaceSearchHit>,
     val missing: Set<PlaceKey>, val distanceAvailable: Boolean)
 
-data class SavedSearchPlan(val action: String, val message: String, val filters: JsonObject?)
+data class SavedSearchPlan(val action: String, val message: String, val filters: JsonObject?,
+    val searchFilters: JsonObject? = null)
 
 internal fun PlaceKey.savedJson() = buildJsonObject { put("source", source); put("ref", ref) }
 internal fun JsonObject.savedKey() = PlaceKey(getValue("source").jsonPrimitive.content, getValue("ref").jsonPrimitive.content)
@@ -52,12 +53,16 @@ class PlaceBookmarkException(val status: Int, val code: String?) : IllegalStateE
 
 class PlaceBookmarkApi(private val baseUrl: () -> String = { BuildConfig.API_BASE_URL }) : PlaceBookmarkClient {
     override suspend fun interpret(token: String, query: String, filters: JsonObject): SavedSearchPlan {
-        val body = request(token, "POST", "/interpret", buildJsonObject { put("query", query); put("filters", filters) })
+        val body = request(token, "POST", "/interpret", buildJsonObject {
+            put("query", query); put("filters", filters); put("search_policy", "v1")
+        })
         val action = body.getValue("action").jsonPrimitive.content
-        require(action in setOf("search", "clarify", "explain", "return_search"))
+        require(action in setOf("search", "clarify", "explain", "return_search", "search_places"))
         val candidate = body["filters"]?.takeUnless { it == JsonNull }?.jsonObject
         require((action == "search") == (candidate != null))
-        return SavedSearchPlan(action, body.getValue("message").jsonPrimitive.content, candidate)
+        val search = body["search_filters"]?.takeUnless { it == JsonNull }?.jsonObject
+        require((action == "search_places") == (search != null))
+        return SavedSearchPlan(action, body.getValue("message").jsonPrimitive.content, candidate, search)
     }
     override suspend fun list(token: String) = parseSavedPage(request(token, "GET"))
     override suspend fun set(token: String, key: PlaceKey, saved: Boolean): SavedPlacePage {

@@ -25,3 +25,32 @@ internal fun PlaceBrowseFilters.withSavedPlan(candidate: JsonObject, dogs: List<
             it.getValue("all").jsonArray.isEmpty() && it.getValue("any").jsonArray.isEmpty()
         })
 }
+
+/** A normal-search handoff keeps saved origin/dogs and every hard condition. */
+internal fun PlaceBrowseFilters.withSearchPlan(candidate: JsonObject, dogs: List<PlaceDogSnapshot>): PlaceBrowseFilters {
+    require(candidate.keys == setOf("contract_version", "candidate_kinds", "spatial", "name_query",
+        "hard", "preferences", "unknown_policy", "result_policy", "dogs"))
+    require(candidate.getValue("contract_version").jsonPrimitive.content == "place-filter-v1")
+    require(candidate.getValue("unknown_policy").jsonPrimitive.content == "exclude")
+    val policy = candidate.getValue("result_policy").jsonObject
+    require(policy.getValue("limit_per_kind").jsonPrimitive.int in 1..20)
+    require(policy.getValue("uncertain_limit_per_kind").jsonPrimitive.int == 0)
+    val kinds = candidate.getValue("candidate_kinds").jsonArray
+    require(kinds.size in 1..6)
+    val preferences = candidate.getValue("preferences").jsonArray
+    require(preferences.size <= 1)
+    preferences.forEach {
+        val p = it.jsonObject
+        require(p.getValue("capability").jsonPrimitive.content == "operations.parking")
+        require(p.getValue("op").jsonPrimitive.content == "eq" && p.getValue("value").jsonPrimitive.boolean)
+        require(p.getValue("scope_kinds").jsonArray.toSet() == kinds.toSet())
+    }
+    val spatial = candidate.getValue("spatial").jsonObject
+    require(spatial.keys == setOf("lat", "lng", "radius_m") && spatial.getValue("radius_m") != JsonNull)
+    return withSavedPlan(buildJsonObject {
+        spatial.forEach { (key, value) -> put(key, value) }
+        put("kinds", kinds); put("name_query", candidate.getValue("name_query"))
+        put("hard", candidate.getValue("hard")); put("parking", preferences.isNotEmpty())
+        put("dogs", candidate.getValue("dogs"))
+    }, dogs)
+}
