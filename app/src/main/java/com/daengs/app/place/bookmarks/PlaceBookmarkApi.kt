@@ -16,7 +16,7 @@ data class SavedPlaceResults(val page: SavedPlacePage, val hits: List<PlaceSearc
     val missing: Set<PlaceKey>, val distanceAvailable: Boolean)
 
 data class SavedSearchPlan(val action: String, val message: String, val filters: JsonObject?,
-    val searchFilters: JsonObject? = null)
+    val searchFilters: JsonObject? = null, val searchPool: String = "all_places")
 
 internal fun PlaceKey.savedJson() = buildJsonObject { put("source", source); put("ref", ref) }
 internal fun JsonObject.savedKey() = PlaceKey(getValue("source").jsonPrimitive.content, getValue("ref").jsonPrimitive.content)
@@ -28,6 +28,7 @@ internal fun PlaceBrowseFilters.savedQuery(dogs: List<PlaceDogSnapshot>) = build
     put("name_query", name.trim()); put("parking", parkingFirst)
     put("hard", requiredConditions ?: buildJsonObject { put("all", JsonArray(emptyList())); put("any", JsonArray(emptyList())) })
     put("dogs", JsonArray(dogs.map { it.toJson() }))
+    if (excludedKeys.isNotEmpty()) put("excluded_keys", JsonArray(excludedKeys.map { it.savedJson() }))
 }
 
 internal fun parseSavedPage(body: JsonObject): SavedPlacePage {
@@ -54,7 +55,7 @@ class PlaceBookmarkException(val status: Int, val code: String?) : IllegalStateE
 class PlaceBookmarkApi(private val baseUrl: () -> String = { BuildConfig.API_BASE_URL }) : PlaceBookmarkClient {
     override suspend fun interpret(token: String, query: String, filters: JsonObject): SavedSearchPlan {
         val body = request(token, "POST", "/interpret", buildJsonObject {
-            put("query", query); put("filters", filters); put("search_policy", "v1")
+            put("query", query); put("filters", filters); put("search_policy", "v1"); put("candidate_pools", "v1")
         })
         val action = body.getValue("action").jsonPrimitive.content
         require(action in setOf("search", "clarify", "explain", "return_search", "search_places"))
@@ -62,7 +63,10 @@ class PlaceBookmarkApi(private val baseUrl: () -> String = { BuildConfig.API_BAS
         require((action == "search") == (candidate != null))
         val search = body["search_filters"]?.takeUnless { it == JsonNull }?.jsonObject
         require((action == "search_places") == (search != null))
-        return SavedSearchPlan(action, body.getValue("message").jsonPrimitive.content, candidate, search)
+        val pool = body["search_pool"]?.jsonPrimitive?.content ?: "all_places"
+        require(pool in setOf("all_places", "unbookmarked", "new_candidates"))
+        require(action == "search_places" || pool == "all_places")
+        return SavedSearchPlan(action, body.getValue("message").jsonPrimitive.content, candidate, search, pool)
     }
     override suspend fun list(token: String) = parseSavedPage(request(token, "GET"))
     override suspend fun set(token: String, key: PlaceKey, saved: Boolean): SavedPlacePage {

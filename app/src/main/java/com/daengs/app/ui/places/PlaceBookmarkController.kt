@@ -106,7 +106,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
                         searchingPlaces = true
                         val filters = requireNotNull(plan.searchFilters)
                         val candidate = before.withSearchPlan(filters, selectedDogs)
-                        val request = SearchPlanTransfer(filters, requireNotNull(account.ownerId), ::current)
+                        val request = SearchPlanTransfer(filters, requireNotNull(account.ownerId), plan.searchPool, before.excludedKeys, ::current)
                         requireNotNull(onSearch) { "일반 검색 연결을 사용할 수 없어요." }(request)
                         request.completion.await()
                         if (!current()) return@launch
