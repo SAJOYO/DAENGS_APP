@@ -151,6 +151,16 @@ DB 버전·초기 행 생성·기존 사진 게시자 이관은 아래 마이그
 
 ### 일기·스토리보드·기록 검색
 
+종료 후 일기 공개 시점·서버 후보 채택을 바꾸면 아래 묶음부터 선택한다.
+`WalkDiaryPublicationTest`는 DAO 계약, `WalkDiaryPublicationLifecycleTest`는 실제 조정기의
+타이머·동기화→Room→Reader 흐름, `WalkDiaryBoardSyncTest`는 상태별 HTTP 경계를 확인한다.
+준비 중·만료 후 미공개·공개 완료와 공개 행이 없는 기존 산책을 서로 대신 쓰지 않는다.
+`WalkHistorySearchTest`는 기존 분석 제목 무효화와 공개 보드 제목 보존을 구분한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.diary.WalkDiaryPublicationTest' --tests 'com.daengs.app.walk.diary.WalkDiaryPublicationLifecycleTest' --tests 'com.daengs.app.walk.sync.WalkDiaryBoardSyncTest' --tests 'com.daengs.app.walk.diary.WalkDiaryReaderTest' --tests 'com.daengs.app.walk.store.WalkHistorySearchTest'
+```
+
 parser/표현 모델은 `walk.diary`, 서버 반영은 세 sync 클래스, 캐시·검색은 저장소와 reader가 담당한다.
 화면만 바꾸면 해당 UI 클래스부터 선택하고, 일기 format·사진/핀 연결·무효화 규칙을 바꾸면
 아래 묶음을 선택한다.

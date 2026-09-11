@@ -3,6 +3,8 @@ package com.daengs.app.walk.sync
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.daengs.app.walk.WalkEntry
+import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.store.*
 import com.daengs.app.walk.support.*
@@ -19,12 +21,23 @@ import org.robolectric.annotation.Config
 class WalkDiaryBoardSyncTest {
     private val id = "00000000-0000-0000-0000-000000000001"
     private val capability get() = JSONObject("""{"diary_formats":["walk-diary-bundle-v1","walk-diary-board-v1"]}""")
-    private fun checkDb(block: suspend (WalkDao) -> Unit) = runBlocking {
+    private fun checkDb(preparing: Boolean = false, block: suspend (WalkDao) -> Unit) = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
         try {
             val dao = db.walkDao()
-            dao.insertSession(WalkSessionRow(id, 0, endedAtMillis = 10000, ownerId = "owner", serverWalkId = "remote"))
-            listOf("note", "action").forEach { dao.insertEntry(WalkEntryRow(it, id, "{}", 1, it, false)) }
+            dao.insertSession(WalkSessionRow(id, 0, endedAtMillis = if (preparing) null else 10000,
+                ownerId = "owner", serverWalkId = "remote"))
+            listOf(WalkEntry("note", id, WalkMomentType.NOTE, 500, note = "함께 걸었다"),
+                WalkEntry("action", id, WalkMomentType.SNIFFING, 700)).forEach {
+                dao.insertEntry(WalkEntryRow(it.id, id, it.toJson().toString(), 1, it.id, false))
+            }
+            if (preparing) {
+                dao.closeAndPrepareDiary(id, 10000)
+                val state = requireNotNull(dao.prepareLocalDiary(id, "owner"))
+                assertEquals(20000, state.deadlineAtMillis)
+                assertNotNull(state.baseBundle)
+                assertNull(state.publishedBundle)
+            } else assertNull(dao.diaryPublication(id)) // Completed legacy walk, outside publication.
             block(dao)
         } finally { db.close() }
     }
@@ -58,20 +71,18 @@ class WalkDiaryBoardSyncTest {
         assertTrue(storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
     }
 
-    @Test fun `publication sends only the budget left since end and never posts after publication`() = checkDb { dao ->
-        val started = 10000L
-        val base = LocalDiaryBoard.build(com.daengs.app.walk.WalkSummary(id, emptyList(), 0, 10000,
-            null, 0.0, 0, emptyList(), null), emptyList(), emptyList(), emptyList())
-        dao.insertDiaryPublication(WalkDiaryPublicationRow(id, started, started + 10000, base))
+    @Test fun `preparing publication sends only the budget left since end and stops all reads after publication`() = checkDb(preparing = true) { dao ->
         var posts = 0
+        var requests = 0
         val sync = WalkDiarySync(dao, { "owner" }, nowMillis = { 14000 }, request = { _, path, method, body ->
+            requests++
             when {
                 path.endsWith("capabilities") -> capability.put("diary_publication",
                     JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 10000))
                 method == "GET" -> diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
                 else -> {
                     posts++
-                    assertTrue(body!!.getLong("preparation_budget_ms") in 0..6000)
+                    assertEquals(6000, body!!.getLong("preparation_budget_ms"))
                     assertFalse(body.getBoolean("refresh"))
                     diaryBoardFixture()
                 }
@@ -81,22 +92,51 @@ class WalkDiaryBoardSyncTest {
         assertEquals(1, posts)
         val published = dao.diaryPublication(id)!!.publishedBundle
         assertNotNull(published)
+        val requestsBeforeRefresh = requests
         sync.sync("token", id, "remote", refresh = true)
         assertEquals(1, posts)
+        assertEquals(requestsBeforeRefresh, requests)
         assertEquals(published, dao.diaryPublication(id)!!.publishedBundle)
     }
 
-    @Test fun `new local preparation skips unsupported generation and an expired budget`() = checkDb { dao ->
-        val started = 10000L
-        dao.insertDiaryPublication(WalkDiaryPublicationRow(id, started, started + 10000, "local-base"))
+    @Test fun `preparing publication without publication capability never starts generation`() = checkDb(preparing = true) { dao ->
+        var reads = 0
         WalkDiarySync(dao, { "owner" }, nowMillis = { 14000 }, legacy = { _, _, _, _ -> error("no legacy generation") },
             request = { _, path, method, _ ->
+                reads++
                 assertEquals("GET", method)
                 if (path.endsWith("capabilities")) capability else diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
             }).sync("token", id, "remote")
-        dao.publishDiaryBase(id, started + 10000)
-        WalkDiarySync(dao, { "owner" }, request = { _, _, _, _ -> error("published means no network generation") })
-            .sync("token", id, "remote")
+        assertEquals(2, reads)
+        assertNull(dao.diaryPublication(id)!!.publishedBundle)
+    }
+
+    @Test fun `expired unpublished preparation performs no network even at the exact deadline`() = checkDb(preparing = true) { dao ->
+        val state = requireNotNull(dao.diaryPublication(id))
+        for (now in listOf(state.deadlineAtMillis, state.deadlineAtMillis + 1)) {
+            WalkDiarySync(dao, { "owner" }, nowMillis = { now },
+                request = { _, _, _, _ -> throw AssertionError("Expired unpublished preparation must not access HTTP") })
+                .sync("token", id, "remote", refresh = true)
+            assertEquals(state, dao.diaryPublication(id)) // No direct DAO publication concealing the expiry guard.
+            assertNull(dao.sceneAnalysis(id))
+        }
+    }
+
+    @Test fun `a pending read crossing the deadline cannot start a generation`() = checkDb(preparing = true) { dao ->
+        var now = 19999L
+        var reads = 0
+        WalkDiarySync(dao, { "owner" }, nowMillis = { now }, request = { _, path, method, _ ->
+            assertEquals("GET", method)
+            reads++
+            if (path.endsWith("capabilities")) capability.put("diary_publication",
+                JSONObject().put("format", ServerDiaryBoard.FORMAT))
+            else {
+                now = 20000
+                diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
+            }
+        }).sync("token", id, "remote")
+        assertEquals(2, reads)
+        assertNull(dao.diaryPublication(id)!!.publishedBundle)
     }
 
     @Test fun `pending posts negotiated contract once then reads completed board`() = checkDb { dao ->
@@ -140,7 +180,7 @@ class WalkDiaryBoardSyncTest {
         assertEquals(raw.toString(), dao.sceneAnalysis(id)!!.bundle)
     }
 
-    @Test fun `failure and account change never downgrade or publish a late board`() = checkDb { dao ->
+    @Test fun `legacy analysis rejects failed malformed foreign account and mismatched revision responses`() = checkDb { dao ->
         var owner = "owner"
         var legacy = 0
         for (mode in listOf("network", "parse", "account", "record")) {
@@ -155,7 +195,8 @@ class WalkDiaryBoardSyncTest {
                     }
                 }
             })
-            assertTrue(runCatching { sync.sync("token", id, "remote") }.isFailure)
+            val error = runCatching { sync.sync("token", id, "remote") }.exceptionOrNull()
+            assertTrue("$mode must fail as a sync error, not an assertion or fixture error: $error", error is java.io.IOException)
             assertNull(dao.sceneAnalysis(id)!!.bundle)
         }
         assertEquals(0, legacy)
