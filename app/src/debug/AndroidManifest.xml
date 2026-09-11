@@ -19,6 +19,7 @@
     <application
         android:usesCleartextTraffic="true"
         tools:targetApi="28">
+        <activity android:name=".ui.walk.TerritoryPerformanceLabActivity" android:exported="true" android:label="전봇대 성능 비교" />
         <activity android:name=".ui.walk.TerritoryPoleLabActivity" android:exported="true" android:label="전봇대 표시 검토" />
         <activity android:name=".ui.walk.TerritoryCardLabActivity" android:exported="true" android:label="점령지 카드 검토" />
         <activity android:name=".ui.walk.GeoStoryboardLabActivity" android:exported="true" android:label="geo 스토리보드 검토" />
