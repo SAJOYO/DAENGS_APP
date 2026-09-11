@@ -53,16 +53,21 @@ class WalkRecordingSync(
     },
 ) {
     suspend fun requireSupport(token: String, checkOwner: () -> Unit = {}) {
+        if (!supports(token, checkOwner))
+            throw IOException("산책은 기기에 저장됐어요. 서버의 GPS 기록 구분 지원을 기다리고 있어요.")
+    }
+
+    suspend fun supports(token: String, checkOwner: () -> Unit = {}): Boolean {
         checkOwner()
         val caps = try { request(token, "/entry-capabilities", "GET", null) }
         catch (e: WalkHttpException) {
             if (e.statusCode != 404) throw e
-            throw IOException("산책은 기기에 저장됐어요. 서버의 GPS 기록 구분 지원을 기다리고 있어요.", e)
+            checkOwner()
+            return false
         }
         checkOwner()
         val versions = caps.optJSONArray("gps_recording_versions")
-        if (versions == null || (0 until versions.length()).none { versions.optString(it) == WalkRecordingContract.VERSION })
-            throw IOException("산책은 기기에 저장됐어요. 서버의 GPS 기록 구분 지원을 기다리고 있어요.")
+        return versions != null && (0 until versions.length()).any { versions.optString(it) == WalkRecordingContract.VERSION }
     }
 
     suspend fun ensure(token: String, walkId: String, fixes: List<RecordedFix>, checkOwner: () -> Unit = {}): String {

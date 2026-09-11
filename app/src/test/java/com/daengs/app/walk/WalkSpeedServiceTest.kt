@@ -48,6 +48,8 @@ class WalkSpeedServiceTest {
         shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION,
             android.Manifest.permission.ACCESS_COARSE_LOCATION)
         db = androidx.room.Room.inMemoryDatabaseBuilder(app, WalkDatabase::class.java).build()
+        // Open the fixture before timing Service transitions; Room.build() leaves SQLite lazy.
+        runBlocking(Dispatchers.IO) { db.openHelper.writableDatabase }
         val dao = db.walkDao()
         val log = RoomWalkFixLog(dao)
         val store = WalkTrackingStore()
@@ -143,6 +145,29 @@ class WalkSpeedServiceTest {
         assertNotEquals(firstId, state.activeSessionId)
         assertEquals(MotionDisplay(), state.motionDisplay)
         assertEquals(1, source.maxActive)
+    }
+
+    @Test fun releaseRecordsFreshActionsAsV1ThroughTheActualService() {
+        command(WalkTrackingService.ACTION_START)
+        awaitState { source.callback != null && !state.recordingTransition }
+        val id = state.activeSessionId!!
+        fun record() {
+            service.get().onStartCommand(Intent(app, WalkTrackingService::class.java)
+                .setAction(WalkTrackingService.ACTION_RECORD_MOMENT)
+                .putExtra(WalkTrackingService.EXTRA_MOMENT_TYPE, WalkMomentType.SNIFFING.behaviorCode), 0, 1)
+            main.idle()
+            runBlocking { app.walkRuntime.writer.flush() }
+        }
+        record()
+        assertTrue(runBlocking { db.walkDao().entries(id).isEmpty() })
+        source.emit(1.5f)
+        awaitState { state.latestMomentFix != null }
+        record()
+        val row = runBlocking { db.walkDao().entries(id).single() }
+        assertFalse(row.isV2)
+        assertNull(row.pinPayload)
+        assertNull(row.pendingRequest)
+        assertEquals(state.latestMomentFix!!.point, row.entry()!!.point)
     }
 
     private class TestLocationSource : LocationSource {

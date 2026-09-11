@@ -30,6 +30,7 @@ class WalkSync(
     private val storyboardSync: (suspend (String, String, String) -> Unit)? = null,
     private val photoSync: (suspend (String, String, String) -> Unit)? = null,
     private val recording: WalkRecordingSync? = null,
+    private val requireRecordingSupport: Boolean = true,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -111,9 +112,8 @@ class WalkSync(
         // 남의 계정으로 남의 산책을 올리게 된다.
         if (!stillOwned(account)) return
         val fixes = log.fixes(session.id)
-        val needsRecording = fixes.any { it.recordingEligible != null }
         fun checkOwner() { check(stillOwned(account)) { "계정이 변경됐어요." } }
-        if (needsRecording) recording?.requireSupport(token, ::checkOwner)
+        val needsRecording = prepareRecording(token, fixes, ::checkOwner)
         if (!stillOwned(account)) return
         val rememberedWalkId = session.serverWalkId
             ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
@@ -145,8 +145,16 @@ class WalkSync(
         val fixes = log.fixes(session.id)
         if (fixes.none { it.recordingEligible != null }) return
         fun checkOwner() { check(stillOwned(account)) { "계정이 변경됐어요." } }
-        transport.requireSupport(token, ::checkOwner)
-        transport.ensure(token, walkId, fixes, ::checkOwner)
+        if (prepareRecording(token, fixes, ::checkOwner))
+            transport.ensure(token, walkId, fixes, ::checkOwner)
+    }
+
+    private suspend fun prepareRecording(token: String, fixes: List<com.daengs.app.walk.RecordedFix>, checkOwner: () -> Unit): Boolean {
+        val transport = recording ?: return false
+        if (fixes.none { it.recordingEligible != null }) return false
+        if (!requireRecordingSupport) return transport.supports(token, checkOwner)
+        transport.requireSupport(token, checkOwner)
+        return true
     }
 
     /** 서버에 있는데 이 기기에 없는 것을 내려받는다. */
