@@ -1,0 +1,7 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp" android:height="14dp" android:viewportWidth="14" android:viewportHeight="14">
+    <!-- Repeated by the native path overlay in route order. Transparent gaps retain speed color. -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="2.2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3,9 L7,5 L11,9" />
+</vector>

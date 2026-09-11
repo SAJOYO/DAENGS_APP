@@ -410,7 +410,8 @@ fun NaverMapSurface(
             paintWalkSpeedPath(path, walkStyle.policy, walkStyle.themeId)
         }.filter { it.isNotEmpty() }
     }
-    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths) {
+    val routePattern = remember { OverlayImage.fromResource(R.drawable.ic_walk_route_pattern) }
+    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths, routePattern) {
         val map = naverMap
         val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
         if (map != null) {
@@ -418,9 +419,13 @@ fun NaverMapSurface(
             speedPaths.forEach { parts ->
                 lines += MultipartPathOverlay().apply {
                     coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
-                    colorParts = parts.map { part -> MultipartPathOverlay.ColorPart(part.color, part.color, part.color, part.color) }
+                    colorParts = parts.map { part ->
+                        MultipartPathOverlay.ColorPart(part.color, TRAIL_OUTLINE_COLOR, part.color, TRAIL_OUTLINE_COLOR)
+                    }
                     width = TRAIL_WIDTH
-                    outlineWidth = 0
+                    outlineWidth = TRAIL_OUTLINE_WIDTH
+                    patternImage = routePattern
+                    patternInterval = TRAIL_PATTERN_INTERVAL
                     this.map = map
                 }
             }
@@ -432,7 +437,10 @@ fun NaverMapSurface(
                     coords = path.map(GeoPoint::toLatLng)
                     width = TRAIL_WIDTH
                     color = walkStyle.policy.unknownColor
-                    outlineWidth = 0
+                    outlineWidth = TRAIL_OUTLINE_WIDTH
+                    outlineColor = TRAIL_OUTLINE_COLOR
+                    patternImage = routePattern
+                    patternInterval = TRAIL_PATTERN_INTERVAL
                     this.map = map
                 }
             }
@@ -493,6 +501,8 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 private const val SELECTED_MARKER_Z = 100
 
 private const val TRAIL_WIDTH = 14
+// Screen-pixel spacing follows the existing path width, independent of GPS sampling density.
+private const val TRAIL_PATTERN_INTERVAL = TRAIL_WIDTH * 4
 
 /**
  * 산책 경로.
@@ -510,7 +520,7 @@ private val TRAIL_COLOR = DaengPinkDeep.toArgb()
  * 마커 핀에 흰 테두리를 두른 것과 같은 이유다. 지하철 노선처럼 색이 있는 선과 겹칠
  * 때도 테두리가 둘을 갈라 준다.
  */
-private const val TRAIL_OUTLINE_WIDTH = 4
+private const val TRAIL_OUTLINE_WIDTH = 2
 
 private val TRAIL_OUTLINE_COLOR = Color.WHITE
 
