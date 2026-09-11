@@ -63,6 +63,7 @@ fun PlaceSearchLabScreen(
     onRetryBookmarks: () -> Unit = {},
     resultsListState: LazyListState? = null,
     collapseRequest: Int = 0,
+    bookmarkNotices: (@Composable () -> Unit)? = null,
 ) {
     var profiles by remember { mutableStateOf(false) }
     var filters by remember { mutableStateOf(false) }
@@ -122,6 +123,7 @@ fun PlaceSearchLabScreen(
         results = {
             if (readingBookmarks && bookmarks != null && bookmarks.phase == PlaceBookmarkPhase.READY)
                 item { PlaceBookmarkSummary(bookmarks, state.hits.size, onShowAllBookmarks) }
+            if (readingBookmarks && bookmarkNotices != null) item { bookmarkNotices() }
             if (state.truncated && !readingBookmarks) item { Text("일부 업종은 결과가 더 있어요. 반경을 줄여 확인하세요.", Modifier.padding(16.dp), fontSize = 11.sp) }
             if (state.applied.kind == null && !live && !readingBookmarks) item { Text("전체보기 · 카페·음식점 표본만 포함", Modifier.padding(16.dp), fontSize = 11.sp) }
             if (readingBookmarks && bookmarks != null && (bookmarks.phase != PlaceBookmarkPhase.READY || state.hits.isEmpty())) {
@@ -129,7 +131,9 @@ fun PlaceSearchLabScreen(
             } else if (state.phase == LabPhase.RESULTS) {
                 items(state.hits, key = { placeMarkerId(it.place.key) }) { hit ->
                     PlaceResultRow(hit, state.selected == hit.place.key, { onToggle(hit.place.key) },
-                        saved = bookmarks?.savedKeys?.contains(hit.place.key), onBookmark = { onToggleBookmark(hit.place.key) })
+                        saved = bookmarks?.savedKeys?.contains(hit.place.key), onBookmark = { onToggleBookmark(hit.place.key) },
+                        bookmarkEnabled = bookmarks?.busy != true, bookmarkKnown = bookmarks == null || bookmarks.phase == PlaceBookmarkPhase.READY,
+                        showDistance = !readingBookmarks || bookmarks?.distanceAvailable != false)
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = PlaceSearchStyle.Border)
                 }
             } else item {
@@ -154,7 +158,9 @@ fun PlaceSearchLabScreen(
     )
     state.hits.firstOrNull { it.place.key == state.expanded }?.let { hit ->
         PlaceDetailSheet(hit, { onToggle(hit.place.key) }, onAction, cardActions, state.profileNames,
-            saved = bookmarks?.savedKeys?.contains(hit.place.key), onBookmark = { onToggleBookmark(hit.place.key) })
+            saved = bookmarks?.savedKeys?.contains(hit.place.key), onBookmark = { onToggleBookmark(hit.place.key) },
+            bookmarkEnabled = bookmarks?.busy != true, bookmarkKnown = bookmarks == null || bookmarks.phase == PlaceBookmarkPhase.READY,
+            showDistance = !readingBookmarks || bookmarks?.distanceAvailable != false)
     }
     if (profiles && live) AlertDialog(onDismissRequest = { profiles = false }, title = { Text("함께 갈 반려견") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
