@@ -48,6 +48,7 @@ internal fun WalkDiaryMapContent(
     generationActionLabel: String = "일기 생성·갱신",
     backLabel: String = "산책 목록으로",
     summaryContent: @Composable () -> Unit = {},
+    backupAction: @Composable () -> Unit = {},
     directionNotice: Boolean = false,
     onZoomRoute: () -> Unit = {},
     explorerSelected: Boolean = false,
@@ -80,6 +81,7 @@ internal fun WalkDiaryMapContent(
             Text(subtitle.ifBlank { "산책 일기" },
                 Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = TextMuted)
+            backupAction()
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.semantics { contentDescription = "일기 메뉴" }) {
                     Text("⋯", fontSize = 26.sp, color = TextDark)

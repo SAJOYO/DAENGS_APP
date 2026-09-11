@@ -68,6 +68,11 @@ WalkRecordsScreenTest, WalkDiaryMapScreenTest, WalkDiaryReaderTest, WalkDiaryPub
 
 ## GPS 이동 정책 엔진 (#294)
 
+#330의 경로 백업 안내는 `walk.sync.WalkRouteBackupSourceTest`,
+`ui.walk.WalkRouteBackupStatusTest`(앞에 `com.daengs.app.`)를 선택한다.
+상세 배치와 재전송 연결 소비자는 `ui.walk.WalkSessionDetailUiTest`, `walk.sync.WalkDeliveryTest`다.
+[표시 및 재전송 범위](../../../docs/gps-route-backup-status.md).
+
 #327의 정밀 백업/계산 대조는 `com.daengs.app.walk.sync.WalkPrecisionSyncTest`가 담당한다.
 32개 공동 입력은 Python 예상값과 실제 Kotlin 엔진을 비교한다. Room 17→18 이관은
 `WalkMigrationTest`, 기존 전송/복원은 `WalkMotionSyncTest`, `WalkSyncTest`,
