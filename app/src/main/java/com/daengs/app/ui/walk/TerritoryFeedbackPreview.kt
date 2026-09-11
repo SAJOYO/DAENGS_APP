@@ -26,7 +26,7 @@ import com.daengs.app.ui.theme.DaengsTheme
 internal fun TerritoryFeedbackSample(kind: TerritoryFeedbackKind, progress: Float) {
     val frame = territoryFeedbackFrame(kind, progress)
     val context = LocalContext.current
-    val icon = remember(kind) { territoryMarkerIcon(context, when (kind) {
+    val icon = remember(context, kind) { territoryMarkerIcon(context, when (kind) {
         TerritoryFeedbackKind.READY -> TerritoryMarkerOccupancy.NEUTRAL
         TerritoryFeedbackKind.MARKED -> TerritoryMarkerOccupancy.UNVERIFIED
         TerritoryFeedbackKind.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
