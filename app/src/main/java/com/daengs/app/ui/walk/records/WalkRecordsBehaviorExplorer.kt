@@ -137,7 +137,8 @@ internal fun WalkRecordsBehaviorExplorer(
             MomentMarkerState(representative.key, point,
                 representative.entry.type.label + if (records.size > 1) " ${records.size}건" else "",
                 selected = representative.key == selectedEntryKey, aboveRouteEndpoints = true,
-                sequenceLabel = records.size.takeIf { it > 1 }?.toString())
+                sequenceLabel = records.size.takeIf { it > 1 }?.toString(),
+                behaviors = records.map { it.entry.type }.toSet())
         }
     }
     val hideableIds = remember(result, prepared) {

@@ -221,18 +221,21 @@ fun NaverMapSurface(
         naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx, keepSelectionVisible)
     }
 
-    // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
+    // Capture SDK defaults before applying any portrait, so removing one cannot leave an old face.
+    val defaultLocationIcon = remember(naverMap) {
+        naverMap?.locationOverlay?.let { Triple(it.icon, it.iconWidth, it.iconHeight) }
+    }
+    // 산책은 기본 발바닥 리소스를 넘긴다. 얼굴을 요청하지 않는 장소 지도는 SDK 점을 쓴다.
     LaunchedEffect(naverMap, avatarRes, avatarPhoto) {
         val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
+        val defaults = defaultLocationIcon ?: return@LaunchedEffect
         overlay.circleColor = LOCATION_CIRCLE
         // **올린 사진이 앞선다.** 앱의 다른 얼굴이 다 그 규칙이라(`avatarSource`),
         // 지도만 견종 그림이면 같은 아이가 화면마다 다르게 보인다.
-        val bitmap = avatarPhoto?.let { circularAvatarBitmap(it, AVATAR_PX, AVATAR_RING_PX) }
-            ?: avatarRes?.let { circularAvatarBitmap(context, it, AVATAR_PX, AVATAR_RING_PX) }
-            ?: return@LaunchedEffect
-        overlay.icon = OverlayImage.fromBitmap(bitmap)
-        overlay.iconWidth = AVATAR_PX
-        overlay.iconHeight = AVATAR_PX
+        val bitmap = locationAvatarBitmap(context, avatarPhoto, avatarRes, AVATAR_PX, AVATAR_RING_PX)
+        overlay.icon = bitmap?.let(OverlayImage::fromBitmap) ?: defaults.first
+        overlay.iconWidth = if (bitmap == null) defaults.second else AVATAR_PX
+        overlay.iconHeight = if (bitmap == null) defaults.third else AVATAR_PX
     }
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
@@ -377,13 +380,18 @@ fun NaverMapSurface(
         val markers = if (map == null) emptyList() else scene.moments.map { moment ->
             Marker().apply {
                 position = moment.point.toLatLng()
-                val badge = moment.sequenceLabel?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
+                val behaviorArt = moment.takeIf { it.behaviors.isNotEmpty() }?.let {
+                    actionMarkerBitmap(context, it.behaviors, it.selected, it.sequenceLabel, badgeDensity)
+                }
+                val badge = moment.sequenceLabel?.takeIf { behaviorArt == null }
+                    ?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
                 captionText = if (badge == null) moment.label else ""
                 captionMinZoom = 12.0
-                width = badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                height = badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                anchor = if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
-                icon = badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
+                width = behaviorArt?.width ?: badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                height = behaviorArt?.height ?: badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                anchor = if (behaviorArt != null) PointF(0.5f, 0.5f)
+                    else if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
+                icon = behaviorArt?.let(OverlayImage::fromBitmap) ?: badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
                     ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
                 zIndex = if (moment.aboveRouteEndpoints) {
                     if (moment.selected) 140 else 120
@@ -416,11 +424,10 @@ fun NaverMapSurface(
                     coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
                     colorParts = parts.map { part ->
                         val color = if (completed && dimCompleted) (part.color and 0x00ffffff) or 0x60000000 else part.color
-                        val outline = if (completed && exploringSession) Color.WHITE else color
-                        MultipartPathOverlay.ColorPart(color, outline, color, outline)
+                        MultipartPathOverlay.ColorPart(color, TRAIL_OUTLINE_COLOR, color, TRAIL_OUTLINE_COLOR)
                     }
                     width = TRAIL_WIDTH
-                    outlineWidth = if (completed && exploringSession) 2 else 0
+                    outlineWidth = TRAIL_OUTLINE_WIDTH
                     this.map = map
                 }
             }
@@ -432,8 +439,8 @@ fun NaverMapSurface(
                     coords = path.map(GeoPoint::toLatLng)
                     width = TRAIL_WIDTH
                     color = walkStyle.policy.unknownColor
-                    outlineWidth = if (completed && exploringSession) 2 else 0
-                    outlineColor = Color.WHITE
+                    outlineWidth = TRAIL_OUTLINE_WIDTH
+                    outlineColor = TRAIL_OUTLINE_COLOR
                     this.map = map
                 }
             }
@@ -514,7 +521,7 @@ private val TRAIL_COLOR = DaengPinkDeep.toArgb()
  * 마커 핀에 흰 테두리를 두른 것과 같은 이유다. 지하철 노선처럼 색이 있는 선과 겹칠
  * 때도 테두리가 둘을 갈라 준다.
  */
-private const val TRAIL_OUTLINE_WIDTH = 4
+private const val TRAIL_OUTLINE_WIDTH = 2
 
 private val TRAIL_OUTLINE_COLOR = Color.WHITE
 
