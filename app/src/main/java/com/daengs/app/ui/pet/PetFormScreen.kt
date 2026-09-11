@@ -48,6 +48,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
@@ -110,6 +111,11 @@ fun PetFormScreen(
      */
     onSubmit: (PetDraft, Bitmap?) -> Unit,
     onCancel: (() -> Unit)?,
+    /**
+     * 등록 대신 **초대를 받으러** 간다. 다른 보호자가 이미 등록한 아이라면 새로 등록하면
+     * 안 되기 때문이다 — 서버는 둘을 합쳐 주지 않는다. null 이면 그 줄이 안 뜬다.
+     */
+    onAcceptInvite: (() -> Unit)? = null,
     busy: Boolean,
     error: String?,
     initial: Pet? = null,
@@ -354,6 +360,20 @@ fun PetFormScreen(
             busy = busy,
         ) { onSubmit(draft, picked) }
 
+        // **초대받은 사람은 등록할 아이가 없다.** 새로 등록하면 같은 아이가 두 마리가
+        // 되므로(서버는 합쳐 주지 않는다), 이 화면에서 바로 빠져나갈 길을 준다.
+        if (onAcceptInvite != null) {
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = !busy, onClick = onAcceptInvite)
+                    .padding(vertical = 12.dp)
+                    .testTag("form-accept-invite"),
+                contentAlignment = Alignment.Center,
+            ) { Text("공동 돌봄 초대받기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+        }
         if (onCancel != null) {
             Spacer(Modifier.height(6.dp))
             Box(

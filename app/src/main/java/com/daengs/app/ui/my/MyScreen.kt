@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -140,6 +141,8 @@ fun MyScreen(
      * 프로필 수정과 달리 소유 여부로 가리지 않는다. null 이면 그 줄이 안 뜬다.
      */
     onOpenMembers: ((Pet) -> Unit)? = null,
+    /** 받은 초대 링크를 붙여넣어 공동 보호자가 되러 간다. null 이면 그 줄이 안 뜬다. */
+    onAcceptInvite: (() -> Unit)? = null,
     /** 이미 배웅한 아이의 날짜. 없으면 아직 함께 있는 아이다 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deleteBusy: Boolean,
@@ -206,6 +209,7 @@ fun MyScreen(
                 onFarewell = onFarewell,
                 farewellOf = farewellOf,
                 onOpenMembers = onOpenMembers,
+                onAcceptInvite = onAcceptInvite,
             )
             Spacer(Modifier.height(14.dp))
         }
@@ -554,6 +558,7 @@ private fun PetSection(
     onFarewell: ((Pet) -> Unit)?,
     farewellOf: (Pet) -> java.time.LocalDate?,
     onOpenMembers: ((Pet) -> Unit)?,
+    onAcceptInvite: (() -> Unit)?,
 ) {
     Text("내 강아지", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
 
@@ -596,6 +601,22 @@ private fun PetSection(
                     Modifier.fillMaxWidth().clickable(onClick = onAdd).padding(vertical = 16.dp),
                     contentAlignment = Alignment.Center,
                 ) { Text("+ 강아지 추가", color = DaengPink, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+        // **등록 옆에 둔다.** 둘 다 "내 목록에 아이를 늘리는" 일이고, 초대받은 사람이
+        // 모르고 새로 등록하면 같은 아이가 두 마리가 된다(서버는 합쳐 주지 않는다).
+        if (onAcceptInvite != null) {
+            Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onAcceptInvite)
+                        .padding(vertical = 16.dp)
+                        .testTag("my-accept-invite"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("공동 돌봄 초대받기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

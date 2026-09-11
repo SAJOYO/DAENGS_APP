@@ -46,6 +46,7 @@ import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
+import com.daengs.app.ui.pet.InviteAcceptScreen
 import com.daengs.app.ui.pet.PetInvitesScreen
 import com.daengs.app.ui.pet.PetMembersScreen
 import com.daengs.app.ui.pet.PetPhotoPicker
@@ -65,6 +66,7 @@ import com.daengs.app.pet.InviteShare
 import com.daengs.app.pet.isOwnedBy
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.rememberInviteAcceptHolder
 import com.daengs.app.pet.rememberPetInviteHolder
 import com.daengs.app.pet.rememberPetMemberHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
@@ -230,6 +232,7 @@ class MainActivity : ComponentActivity() {
                 val petPhotos = rememberPetPhotoHolder()
                 val petMembers = rememberPetMemberHolder()
                 val petInvites = rememberPetInviteHolder()
+                val inviteAccept = rememberInviteAcceptHolder()
                 LaunchedEffect(pets.pets) {
                     // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
                     // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
@@ -335,6 +338,9 @@ class MainActivity : ComponentActivity() {
                 var membersFor by remember { mutableStateOf<Pet?>(null) }
                 // 초대를 관리하려는 아이. **대표만 들어온다** (아래 `isOwnedBy`).
                 var invitesFor by remember { mutableStateOf<Pet?>(null) }
+                // 초대받기 화면이 떠 있나. **토큰은 홀더의 메모리에만 있다** —
+                // rememberSaveable 을 쓰면 자격증명이 savedInstanceState 로 새어 나간다.
+                var acceptingInvite by remember { mutableStateOf(false) }
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
@@ -429,6 +435,10 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(session) {
                     if (session == null) {
                         pets.forget()
+                        // 로그아웃·탈퇴가 모두 여기를 지난다. **붙여넣은 초대 링크와 토큰을
+                        // 같이 버린다** — 다음 사람의 화면에 남의 자격증명이 남으면 안 된다.
+                        inviteAccept.forget()
+                        acceptingInvite = false
                         // 남의 방 이름표가 남으면 안 된다. 로그아웃하면 지어진 이름으로.
                         roomName = null
                         ocrConsent = false
@@ -611,6 +621,10 @@ class MainActivity : ComponentActivity() {
                         // 없앴다 — "강아지 없이 갈 곳이 없다" 는 이유였는데, 이제 빈 방이
                         // 갈 곳이다. 빠져나갈 수 없는 화면이 첫 진입 이탈의 큰 몫이었다.
                         onCancel = { pets.clearError(); editing = null; screen = Screen.Home },
+                        // 첫 등록일 때만 — 고치기로 들어온 사람에게는 초대받기가 할 말이 아니다.
+                        onAcceptInvite = if (editing == null) {
+                            { pets.clearError(); screen = Screen.Home; acceptingInvite = true }
+                        } else null,
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
                         onClearPhoto = editing?.let { pet ->
@@ -703,6 +717,33 @@ class MainActivity : ComponentActivity() {
                             onDelete = {
                                 removePet(pet)
                                 farewell = null
+                            },
+                        )
+                    } else if (acceptingInvite) {
+                        InviteAcceptScreen(
+                            pasted = inviteAccept.pasted,
+                            parsed = inviteAccept.parsed,
+                            busy = inviteAccept.busy,
+                            outcome = inviteAccept.outcome,
+                            canAccept = inviteAccept.canAccept,
+                            onPaste = inviteAccept::paste,
+                            onAccept = {
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    // 성공하면 목록을 **서버에서 다시 받는다** — 수락과 함께
+                                    // 서버가 대표 강아지를 세워 주기도 해서, 응답만 보고
+                                    // 앱이 상태를 지어내면 규칙이 두 벌이 된다.
+                                    if (inviteAccept.accept(token) != null) pets.refresh(token)
+                                }
+                            },
+                            onDone = {
+                                inviteAccept.forget()
+                                acceptingInvite = false
+                            },
+                            onBack = {
+                                // 화면을 닫으면 붙여넣은 글과 토큰을 같이 버린다.
+                                inviteAccept.forget()
+                                acceptingInvite = false
                             },
                         )
                     } else if (invitesFor != null) {
@@ -874,6 +915,7 @@ class MainActivity : ComponentActivity() {
                         onFarewell = { pet -> if (pet.isOwner) farewell = pet },
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
+                        onAcceptInvite = { acceptingInvite = true },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
