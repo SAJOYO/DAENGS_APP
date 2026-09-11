@@ -501,8 +501,8 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 private const val SELECTED_MARKER_Z = 100
 
 private const val TRAIL_WIDTH = 14
-// Screen-pixel spacing follows the existing path width, independent of GPS sampling density.
-private const val TRAIL_PATTERN_INTERVAL = TRAIL_WIDTH * 4
+// Dense diagonal ribbon; spacing follows screen width, not GPS sampling density.
+private const val TRAIL_PATTERN_INTERVAL = TRAIL_WIDTH
 
 /**
  * 산책 경로.

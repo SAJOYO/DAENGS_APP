@@ -1,7 +1,8 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="14dp" android:height="14dp" android:viewportWidth="14" android:viewportHeight="14">
-    <!-- Repeated by the native path overlay in route order. Transparent gaps retain speed color. -->
-    <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="2.2"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M3,9 L7,5 L11,9" />
+    <!-- A diagonal ribbon wraps across the route; transparent gaps retain the speed color.
+         This texture distinguishes the route from the map, not traversal order or direction. -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="2.7"
+        android:strokeLineCap="butt"
+        android:pathData="M0,11 C5,10 9,4 14,3" />
 </vector>
