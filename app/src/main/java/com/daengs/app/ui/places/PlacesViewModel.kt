@@ -55,7 +55,7 @@ data class PlacesUiState(
 sealed interface PlacesAction {
     data class ApplyFilters(val edit: com.daengs.app.place.ConversationFilterEdit) : PlacesAction
     data class SetAiMode(val enabled: Boolean) : PlacesAction
-    data class Discover(val query: String) : PlacesAction
+    data class Discover(val query: String, val bookmarks: com.daengs.app.place.bookmarks.BookmarkTurn? = null) : PlacesAction
     data class ChooseAi(val choice: FacilityChoice) : PlacesAction
     data object RetryAi : PlacesAction
     data object CancelAi : PlacesAction
@@ -214,7 +214,7 @@ class PlacesViewModel(
                 }
             }
             is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
-            PlacesAction.CancelAi -> { conversationRepository?.cancelPending(); facility.cancelPending() }
+            PlacesAction.CancelAi -> { conversationRepository?.cancelPending(cancelBookmarks = true); facility.cancelPending() }
             PlacesAction.UndoAi -> {
                 val repository = conversationRepository ?: return
                 runtimeScope.launch {
@@ -224,7 +224,7 @@ class PlacesViewModel(
                     } catch (_: Exception) { /* 현재 결과를 유지하고 말풍선에서 재시도한다. */ }
                 }
             }
-            is PlacesAction.Discover -> discover(action.query)
+            is PlacesAction.Discover -> discover(action.query, action.bookmarks)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
             PlacesAction.RetryAi -> {
                 if (conversationRepository != null) runtimeScope.launch { conversationRepository.completeAnswer() }
@@ -278,7 +278,7 @@ class PlacesViewModel(
         session.searchAt(point, kinds, preferParking, nameQuery)
     }
 
-    private fun discover(text: String) {
+    private fun discover(text: String, bookmarks: com.daengs.app.place.bookmarks.BookmarkTurn? = null) {
         val query = text.trim()
         if (profiles.value.ownerId == null) {
             facility.reject("AI 조건 검색은 로그인 후 사용할 수 있어요."); return
@@ -304,8 +304,8 @@ class PlacesViewModel(
             facility.invalidate()
             runtimeScope.launch {
                 try {
-                    conversationRepository.chat(query, visible)
-                    conversationRepository.state.value.result?.let(session::acceptConversation)
+                    conversationRepository.chat(query, visible, bookmarks, current.conversation.selected)
+                    conversationRepository.state.value.result?.takeUnless { it.preservesDisplay }?.let(session::acceptConversation)
                     conversationRepository.completeAnswer()
                 } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
                 } catch (_: Exception) { /* The shared conversation state retains the error and prior results. */ }
