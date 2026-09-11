@@ -53,6 +53,7 @@ internal fun WalkDiaryMapContent(
     explorerSelected: Boolean = false,
     onChooseExplorer: (Boolean) -> Unit = {},
     explorerPanel: (@Composable () -> Unit)? = null,
+    onSlotPreview: (() -> Unit)? = null,
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -92,6 +93,10 @@ internal fun WalkDiaryMapContent(
                     onGenerate?.let { generate ->
                         DropdownMenuItem(text = { Text(if (generating) "준비 중" else generationActionLabel) },
                             enabled = !loading && !generating, onClick = { menu = false; generate() })
+                    }
+                    onSlotPreview?.let { preview ->
+                        DropdownMenuItem(text = { Text("새 방식 미리보기") },
+                            enabled = !loading, onClick = { menu = false; preview() })
                     }
                 }
             }

@@ -76,7 +76,9 @@ internal fun WalkDiaryMapScreen(
     var editingScene by remember(sessionId) { mutableStateOf<DiaryScene?>(null) }
     var sceneError by remember(sessionId) { mutableStateOf<String?>(null) }
     var savingScene by remember(sessionId) { mutableStateOf(false) }
+    var slotPreviewOpen by remember(sessionId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    fun openSlotPreview() { explorer.pause(); slotPreviewOpen = true }
     val entries by remember(sessionId) { app.walkEntries.observe(sessionId) }.collectAsState(initial = emptyList())
     LaunchedEffect(sessionId) {
         app.walkDiaryPublication.start(sessionId)
@@ -161,6 +163,7 @@ internal fun WalkDiaryMapScreen(
             TextButton(onClick = onBack) { Text("‹ ${origin.backLabel}") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else if (!loaded || diary == null || diary?.preparing == true) {
+            if (detail != null) TextButton(onClick = ::openSlotPreview) { Text("새 방식 미리보기") }
             WalkDiaryPreparing(onBack = onBack, onRefresh = {
                 app.walkDiaryPublication.start(sessionId)
                 retry++
@@ -187,6 +190,7 @@ internal fun WalkDiaryMapScreen(
                 subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
                 onBack = onBack, mapSettings = { WalkMapSettingsButton() },
                 backLabel = origin.backLabel,
+                onSlotPreview = ::openSlotPreview,
                 explorerSelected = explorer.panelOpen,
                 onChooseExplorer = { open ->
                     adding = false; chosenPoint = null; selectedId = null; explorer.choosePanel(open)
@@ -222,6 +226,12 @@ internal fun WalkDiaryMapScreen(
     }
     // A removed walk must not keep an already-open editor or photo above the unavailable state.
     if (loaded && detail == null) return
+    if (slotPreviewOpen) androidx.compose.ui.window.Dialog(
+        onDismissRequest = { slotPreviewOpen = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        DiarySlotPreviewScreen(sessionId, onBack = { slotPreviewOpen = false })
+    }
     if (adding && chosenPoint != null && !editorOpen) {
         val point = requireNotNull(chosenPoint)
         AlertDialog(onDismissRequest = { chosenPoint = null }, title = { Text("이 지점에 기록 남기기") },

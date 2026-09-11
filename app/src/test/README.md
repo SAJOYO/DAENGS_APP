@@ -32,6 +32,15 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 기능별 선택 범위
 
+### 산책 파트 슬롯 미리보기
+
+`walk.diary.DiarySlotPreviewTest`는 DEV 미리보기 응답·인증·산책/계정 대응·동기화·취소를,
+`ui.walk.DiarySlotPreviewScreenTest`는 명시적 생성·중복 탭·실패 재시도·세 파트·희소 자료 표시를 확인한다.
+공통 상세 메뉴를 변경하면 `ui.walk.WalkDiaryMapScreenTest`와 `ui.walk.WalkSessionDetailUiTest`를 함께 선택한다.
+공용 `walk.support.DiarySlotResources`가 읽는 `diary-slots-preview-v1.json`은 DEV 합성 산책의
+실제 Gemini 출력이다. fixture를 바꾸면 미리보기 테스트 두 클래스를 함께 실행한다.
+[정확한 명령·서버 조건·검증 한계](../../../docs/diary-slot-preview.md).
+
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
 새 상세 경계는 WalkSessionDestinationTest, WalkSessionDetailUiTest,
