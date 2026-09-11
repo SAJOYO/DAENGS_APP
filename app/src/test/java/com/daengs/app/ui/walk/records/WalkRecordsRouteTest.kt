@@ -116,22 +116,20 @@ class WalkRecordsRouteTest {
         compose.onNodeWithTag("records-conditions-apply").performClick()
         waitTag("records-behavior-count")
         compose.onNodeWithTag("records-behavior-view-traces").performClick()
-        waitText("관련 산책 흔적 표시 8개")
-        val entryKey = WalkBehaviorRecord(records.last().entries.single(), records.last()).key
-        compose.onNodeWithTag("records-behavior-list")
-            .performScrollToNode(hasTestTag("records-behavior-entry-$entryKey"))
-        compose.onNodeWithTag("records-behavior-entry-$entryKey").performClick()
-        compose.onNodeWithTag("records-behavior-hide-$entryKey").performScrollTo().performClick()
-        compose.onNodeWithTag("records-behavior-open-$entryKey").performScrollTo().performClick()
+        waitText("선택 산책 8회 · 표시 흔적 8개")
+        selectMapRecord("record-8")
+        compose.onNodeWithTag("records-map-hide-record-8").performScrollTo().performClick()
+        compose.onNodeWithTag("records-map-open-record-8").performScrollTo().performClick()
         waitText("실제 상세 자리: record-8")
         compose.onNodeWithTag("records-behavior-count").assertDoesNotExist()
         restore.emulateSavedInstanceStateRestore()
         waitText("실제 상세 자리: record-8")
         backFromDetail()
         waitTag("records-behavior-count")
+        waitText("선택 산책 8회 · 표시 흔적 7개")
         compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
-        compose.onNodeWithTag("records-behavior-entry-$entryKey").assertIsSelected()
-        compose.onNodeWithTag("records-behavior-hide-$entryKey").assertTextContains("다시 표시", substring = true)
+        compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
+        compose.onNodeWithTag("records-map-hide-record-8").assertTextContains("다시 표시", substring = true)
         // Ordinary navigation Back also captures the records registry before it unmounts.
         compose.onNodeWithContentDescription("뒤로").performClick()
         waitText("기록 다시 열기")
@@ -139,7 +137,7 @@ class WalkRecordsRouteTest {
         compose.onNodeWithText("기록 다시 열기").performClick()
         waitTag("records-behavior-count")
         compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
-        compose.onNodeWithTag("records-behavior-entry-$entryKey").assertIsSelected()
+        compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
         assertEquals(5, syncs.get())
     }
 
@@ -222,6 +220,8 @@ class WalkRecordsRouteTest {
     }
 
     private fun selectMapRecord(id: String) {
+        if (compose.onAllNodesWithContentDescription("산책 목록 펼치기").fetchSemanticsNodes().isNotEmpty())
+            compose.onNodeWithTag("records-map-sheet-toggle").performClick()
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-$id"))
         compose.onNodeWithTag("records-map-record-$id").performClick()
     }

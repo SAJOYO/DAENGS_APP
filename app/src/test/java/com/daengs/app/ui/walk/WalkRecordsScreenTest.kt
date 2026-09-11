@@ -239,6 +239,7 @@ class WalkRecordsScreenTest {
         waitText("1 페이지")
         assertEquals(0, calls.get())
         chooseBehavior("sniffing")
+        expandMapList()
         waitText("흔적을 불러오고 있어요.")
         compose.onNodeWithTag("records-behavior-count").assertTextEquals("행동 기록 4건 · 관련 산책 3회")
         compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
@@ -262,11 +263,11 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-traces-refresh").performClick()
         waitText("흔적 없음 1회 · 계산 대기 1회")
         compose.onNodeWithTag("records-behavior-view-traces").performClick()
-        waitText("관련 산책 흔적 표시 1개")
+        waitText("선택 산책 3회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-view-walks").performClick()
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
-        waitText("관련 산책 흔적 표시 1개")
+        waitText("선택 산책 3회 · 표시 흔적 1개")
         assertEquals(2, calls.get())
     }
 
@@ -282,6 +283,7 @@ class WalkRecordsScreenTest {
         show(source)
         waitText("1 페이지")
         compose.onNodeWithTag("records-view-overview").performClick()
+        expandMapList()
         waitText("흔적을 불러오고 있어요.")
         compose.waitUntil(10_000) { delayed.get() != null }
         replaceSearch("기록-8")
@@ -326,8 +328,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-record-record-2").assertIsSelected()
         assertEquals(mapBeforeSelection, compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot())
         compose.onNodeWithTag("records-map-clear-selection").assertIsDisplayed()
-        assertTrue(compose.onNodeWithTag("records-map-clear-selection").getUnclippedBoundsInRoot().bottom <=
-            compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot().top)
+        assertTrue(compose.onNodeWithTag("records-map-clear-selection").getUnclippedBoundsInRoot().top >=
+            compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot().top)
         compose.onNodeWithText("상세: record-2").assertDoesNotExist()
         compose.onNodeWithTag("records-overview-map").assert(
             SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "강조한 산책: 기록-2"))
@@ -508,6 +510,7 @@ class WalkRecordsScreenTest {
     }
 
     private fun chooseMapRecord(id: String) {
+        expandMapList()
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-$id"))
         compose.onNodeWithTag("records-map-record-$id").performClick()
     }
@@ -587,6 +590,8 @@ class WalkRecordsScreenTest {
         replaceSearch("기록")
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("records-behavior-view-locations").assertIsSelected()
+        expandMapList()
+        compose.onNodeWithTag("records-behavior-list").performScrollToNode(hasTestTag("records-behavior-entry-$unlocated"))
         compose.onNodeWithTag("records-behavior-entry-$unlocated").assertIsNotSelected()
     }
 
@@ -606,6 +611,11 @@ class WalkRecordsScreenTest {
         waitText("선택 산책 3회 · 표시 흔적 1개")
     }
 
+    private fun expandMapList() {
+        if (compose.onAllNodesWithContentDescription("산책 목록 펼치기").fetchSemanticsNodes().isNotEmpty())
+            compose.onNodeWithTag("records-map-sheet-toggle").performClick()
+    }
+
     private fun chooseBehavior(code: String) {
         compose.onNodeWithTag("records-behavior-filter").performClick()
         compose.onNodeWithTag("records-behavior-$code").performScrollTo().performClick()
@@ -614,6 +624,7 @@ class WalkRecordsScreenTest {
     }
 
     private fun chooseBehaviorRecord(key: String) {
+        expandMapList()
         compose.onNodeWithTag("records-behavior-list").performScrollToNode(hasTestTag("records-behavior-entry-$key"))
         compose.onNodeWithTag("records-behavior-entry-$key").performClick()
     }

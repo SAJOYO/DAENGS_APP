@@ -94,6 +94,7 @@ fun WalkRecordsScreen(
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     var selectedId by rememberSaveable(query) { mutableStateOf<String?>(null) }
     var hiddenIds by rememberSaveable(query, stateSaver = HiddenWalkIdsSaver) { mutableStateOf(emptySet<String>()) }
+    var overviewExpanded by rememberSaveable(query) { mutableStateOf(false) }
     var overlapOnly by rememberSaveable(query) { mutableStateOf(false) }
     var minimumWalks by rememberSaveable(query) { mutableIntStateOf(2) }
     var overlapPoint by rememberSaveable(query, stateSaver = OverlapPointSaver) { mutableStateOf<GeoPoint?>(null) }
@@ -279,6 +280,7 @@ fun WalkRecordsScreen(
                         modifier = Modifier.weight(1f))
                 } else {
                     WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
+                        expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
                         selectedId = selectedId, hiddenIds = hiddenIds,
                         onSelect = { id ->
