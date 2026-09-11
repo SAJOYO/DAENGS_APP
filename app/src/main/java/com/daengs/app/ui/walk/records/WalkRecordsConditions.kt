@@ -45,6 +45,7 @@ import com.daengs.app.ui.walk.HistoryFilterSaver
 import com.daengs.app.walk.WalkDepartureWeather
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkSeason
+import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.records.WalkRecordsQuery
 import java.time.Instant
 import java.time.LocalDate
@@ -58,6 +59,9 @@ internal fun WalkRecordsConditions(
     onKeyword: (String) -> Unit,
     onOpenConditions: () -> Unit,
     onReset: () -> Unit,
+    showBehavior: Boolean = false,
+    behavior: WalkMomentType? = null,
+    onClearBehavior: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -87,6 +91,13 @@ internal fun WalkRecordsConditions(
                 } else labels.forEach { label ->
                     FilterChip(selected = true, onClick = onOpenConditions, label = { Text(label) })
                 }
+                if (showBehavior) {
+                    FilterChip(selected = behavior != null, onClick = onOpenConditions,
+                        label = { Text(behavior?.let { "${it.label} 기록" } ?: "행동으로 찾기") },
+                        modifier = Modifier.testTag("records-behavior-filter"))
+                    if (behavior != null) TextButton(onClick = onClearBehavior,
+                        modifier = Modifier.testTag("records-behavior-clear")) { Text("행동 해제") }
+                }
             }
             if (query.dogId != null || query.filter.active) {
                 TextButton(onClick = onReset, modifier = Modifier.testTag("records-reset")) { Text("초기화") }
@@ -103,10 +114,13 @@ internal fun WalkRecordsConditionsSheet(
     today: LocalDate,
     onApply: (WalkRecordsQuery) -> Unit,
     onDismiss: () -> Unit,
+    behavior: WalkMomentType? = null,
+    onBehaviorApply: (WalkMomentType?) -> Unit = {},
 ) {
     var draftDogId by rememberSaveable { mutableStateOf(query.dogId) }
     var draftFilter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(query.filter) }
     var periodOpen by rememberSaveable { mutableStateOf(false) }
+    var draftBehavior by rememberSaveable { mutableStateOf(behavior) }
     ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
@@ -114,7 +128,7 @@ internal fun WalkRecordsConditionsSheet(
                 Text("산책 고르기", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = onDismiss, modifier = Modifier.testTag("records-conditions-cancel")) { Text("취소") }
             }
-            Text("두 보기에서 같은 조건을 사용해요.", style = MaterialTheme.typography.bodySmall,
+            Text("산책 조건은 두 보기에, 행동은 모아보기에 적용해요.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 Spacer(Modifier.height(20.dp))
@@ -174,15 +188,31 @@ internal fun WalkRecordsConditionsSheet(
                 }
                 Text("날씨는 산책을 출발할 때의 기록이에요.", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider(Modifier.padding(vertical = 18.dp))
+                Text("행동 기록", style = MaterialTheme.typography.titleMedium)
+                Text("해당 행동의 기록과 관련 산책을 모아봐요.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = draftBehavior == null, onClick = { draftBehavior = null },
+                        label = { Text("선택 안 함") }, modifier = Modifier.testTag("records-behavior-all"))
+                    listOf(WalkMomentType.SNIFFING, WalkMomentType.EXCRETION, WalkMomentType.BARKING).forEach { type ->
+                        FilterChip(selected = draftBehavior == type, onClick = { draftBehavior = type },
+                            label = { Text(type.label) }, modifier = Modifier.testTag("records-behavior-${type.behaviorCode}"))
+                    }
+                }
                 Spacer(Modifier.height(16.dp))
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = {
                     draftDogId = null
                     draftFilter = WalkHistoryFilter(keyword = query.filter.keyword)
+                    draftBehavior = null
                 }, modifier = Modifier.testTag("records-conditions-reset")) { Text("조건 초기화") }
                 Spacer(Modifier.weight(1f))
-                Button(onClick = { onApply(WalkRecordsQuery(draftDogId, draftFilter)) },
+                Button(onClick = {
+                    onApply(WalkRecordsQuery(draftDogId, draftFilter))
+                    onBehaviorApply(draftBehavior)
+                },
                     modifier = Modifier.testTag("records-conditions-apply")) { Text("적용") }
             }
         }

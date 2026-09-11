@@ -1,8 +1,11 @@
 package com.daengs.app.walk.records
 
 import com.daengs.app.map.layers.traces.WalkTraceSheet
+import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkSummary
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import java.time.ZoneId
 
 data class WalkRecordsQuery(
@@ -18,13 +21,29 @@ data class WalkRecord(
     val title: String? = null,
     val notes: List<String> = emptyList(),
     val trace: WalkTraceSheet? = null,
+    val entries: List<WalkEntry> = emptyList(),
+    val serverWalkId: String? = null,
+    val traceState: WalkTraceState? = null,
 ) {
+    val effectiveTraceState: WalkTraceState
+        get() = traceState ?: if (trace?.cells.isNullOrEmpty()) WalkTraceState.EMPTY else WalkTraceState.READY
+
     init {
         require(summary.sessionId.isNotBlank())
         require(trace == null || trace.walkId == summary.sessionId) {
             "산책 기록과 지도 흔적의 ID가 달라요."
         }
+        require(entries.all { it.sessionId == summary.sessionId && it.id.isNotBlank() }) {
+            "산책 기록과 행동 기록의 ID가 달라요."
+        }
+        require(entries.map { it.id }.distinct().size == entries.size) {
+            "같은 행동 기록이 두 번 들어왔어요."
+        }
     }
+}
+
+enum class WalkTraceState {
+    NOT_REQUESTED, LOADING, READY, EMPTY, NOT_UPLOADED, ANALYSIS_PENDING, UNSUPPORTED, FAILED,
 }
 
 /** The full selected set is fixed before pagination; the map consumes [records], not [page]. */
@@ -39,6 +58,7 @@ class WalkRecordsSelection(query: WalkRecordsQuery, records: List<WalkRecord>) {
             ),
             notes = record.notes.toList(),
             trace = record.trace?.let { it.copy(cells = it.cells.toSet()) },
+            entries = record.entries.toList(),
         )
     }
     val sessionIds: List<String> = this.records.map { it.summary.sessionId }
@@ -57,13 +77,18 @@ class WalkRecordsSelection(query: WalkRecordsQuery, records: List<WalkRecord>) {
 }
 
 fun interface WalkRecordsSource {
+    /** Emit once on subscription and again when the saved inputs or account scope change. */
+    val changes: Flow<Unit> get() = flowOf(Unit)
     suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection
+    /** Enrich the fixed local selection only when its map is requested. */
+    suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection = selection
 }
 
 /**
  * The caller supplies walks already accepted as records. Do not introduce another countsAsWalk
  * threshold here: a short walk retained for its action entries must remain searchable.
  * Titles and notes must likewise be the current visible text supplied by the source.
+ * Entries are the source's currently valid records, with deleted or superseded versions removed.
  */
 fun selectWalkRecords(
     candidates: List<WalkRecord>,

@@ -2,6 +2,7 @@ package com.daengs.app.screening
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,14 +32,17 @@ class ScreeningReportTest {
           "stage2": {
             "shown": true,
             "groups": [
-              {"name": "표면 변화", "prob": 0.75, "percent": 75.0},
-              {"name": "융기·발진", "prob": 0.17, "percent": 17.0},
-              {"name": "미란·궤양", "prob": 0.05, "percent": 5.0},
-              {"name": "결절·종괴", "prob": 0.03, "percent": 3.0}
+              {"name": "피부 표면·색·두께 변화", "prob": 0.75, "percent": 75.0},
+              {"name": "솟아오른 변화", "prob": 0.17, "percent": 17.0},
+              {"name": "벗겨지거나 패인 상처", "prob": 0.05, "percent": 5.0},
+              {"name": "깊거나 단단한 혹", "prob": 0.03, "percent": 3.0}
             ],
             "group": {
-              "name": "표면 변화", "prob": 0.75, "percent": 75.0, "confidence": 0.6225,
-              "text": "모양만 보면 표면 변화 계열에 가깝습니다.",
+              "name": "피부 표면·색·두께 변화", "prob": 0.75, "percent": 75.0, "confidence": 0.6225,
+              "text": "모양만 보면 피부 표면·색·두께 변화에 가깝습니다.",
+              "feature": "딱지, 둥근 비늘, 검어진 피부, 두꺼워진 피부",
+              "labels": "비듬·각질·상피성잔고리·태선화·과다색소침착",
+              "detail": "병변 진행 후 흔적 또는 만성 염증성 변화",
               "caveat": "진단이 아닙니다. 같은 계열 안에서도 원인 질환은 여럿입니다."
             },
             "alert": null,
@@ -167,7 +171,7 @@ class ScreeningReportTest {
     fun `계열 네 묶음을 읽고 6종도 그대로 들고 있다`() {
         val r = ScreeningReport.parse(JSONObject(abnormalJson))
         assertEquals(4, r.groups.size)
-        assertEquals("표면 변화", r.groups[0].name)
+        assertEquals("피부 표면·색·두께 변화", r.groups[0].name)
         assertEquals(75.0f, r.groups[0].percent, 0.01f)
         // 계약이 6종을 안 줄였다는 것까지 같이 못 박는다
         assertEquals(3, r.stage2.size)
@@ -178,7 +182,7 @@ class ScreeningReportTest {
     fun `묶음 순서를 건드리지 않는다`() {
         val r = ScreeningReport.parse(JSONObject(abnormalJson))
         assertEquals(
-            listOf("표면 변화", "융기·발진", "미란·궤양", "결절·종괴"),
+            listOf("피부 표면·색·두께 변화", "솟아오른 변화", "벗겨지거나 패인 상처", "깊거나 단단한 혹"),
             r.groups.map { it.name },
         )
     }
@@ -187,7 +191,12 @@ class ScreeningReportTest {
     @Test
     fun `계열 한 줄을 그대로 읽는다`() {
         val g = ScreeningReport.parse(JSONObject(abnormalJson)).group!!
-        assertEquals("모양만 보면 표면 변화 계열에 가깝습니다.", g.text)
+        assertEquals("모양만 보면 피부 표면·색·두께 변화에 가깝습니다.", g.text)
+        // ★ 특징·자세히보기를 받는가 (2026-09-10). 이름만 오면 보호자가 자기 개
+        //    사진과 대조할 방법이 없다.
+        assertEquals("딱지, 둥근 비늘, 검어진 피부, 두꺼워진 피부", g.feature)
+        assertEquals("병변 진행 후 흔적 또는 만성 염증성 변화", g.detail)
+        assertEquals("비듬·각질·상피성잔고리·태선화·과다색소침착", g.labels)
         assertTrue("면책이 비었다", g.caveat.isNotBlank())
     }
 
@@ -245,5 +254,63 @@ class ScreeningReportTest {
         assertTrue(r.groups.isEmpty())
         assertNull(r.group)
         assertNull(r.alert)
+    }
+
+    /**
+     * ★ **옛 서버는 `feature`·`detail` 을 안 보낸다** (2026-09-10 이전).
+     *
+     * 서버가 먼저 나가고 앱이 따라가므로 **그 사이가 실제로 생긴다.** 그때
+     * 터지지 않고 빈 문자열이어야 하고, 화면은 그 줄만 안 그린다.
+     */
+    @Test
+    fun `옛 서버가 특징을 안 보내도 안 터진다`() {
+        val json = """
+            {"verdict": "abnormal", "headline": "", "body": "", "action": "",
+             "stage1": {},
+             "stage2": {"shown": true, "distribution": [],
+               "group": {"name": "피부 표면·색·두께 변화", "prob": 0.75, "percent": 75.0,
+                         "confidence": 0.62,
+                         "text": "모양만 보면 피부 표면·색·두께 변화에 가깝습니다.",
+                         "caveat": "진단이 아닙니다."}}}
+        """.trimIndent()
+        val g = ScreeningReport.parse(JSONObject(json)).group
+        assertNotNull(g)
+        assertEquals("", g!!.feature)
+        assertEquals("", g.detail)
+        assertEquals("", g.labels)
+        assertTrue(g.text.isNotBlank())
+    }
+
+    // -- 권고 줄 (2026-09-11) ---------------------------------------------------
+    //
+    // 정상 카드에서 권고가 두 번 나왔다. body 끝이 "…병원에 가보시는 것을 권합니다" 인데
+    // 바로 아래 권고 줄이 "평소와 다른 점이 있으면 진료를 받아보세요" 였다.
+
+    private val report get() = ScreeningReport.parse(JSONObject(abnormalJson))
+
+    @Test
+    fun `정상이면 권고 줄을 안 띄운다`() {
+        val normal = report.copy(
+            verdict = ScreeningReport.Verdict.NORMAL,
+            action = "평소와 다른 점이 있으면 진료를 받아보세요.",
+        )
+        assertTrue(!normal.showsAction)
+    }
+
+    /** 이상에서는 권고 줄이 카드의 유일한 행동이다. 빠지면 안 된다. */
+    @Test
+    fun `이상이면 권고 줄을 띄운다`() {
+        assertTrue(report.showsAction)
+    }
+
+    @Test
+    fun `재촬영도 권고 줄을 띄운다`() {
+        assertTrue(report.copy(verdict = ScreeningReport.Verdict.RETAKE).showsAction)
+    }
+
+    /** 옛 서버가 권고를 안 보내면 빈 줄 하나가 자리를 차지하지 않게 한다. */
+    @Test
+    fun `권고가 비어 있으면 안 띄운다`() {
+        assertTrue(!report.copy(action = "").showsAction)
     }
 }

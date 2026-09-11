@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
- * Each world-aligned tile already contains the final source-over alpha for visible walks.
+ * Each world-aligned tile already contains final alpha and, for overlap views, display RGB.
  * GroundOverlay adds no opacity scaling, density weighting, or camera-dependent recalculation.
  */
 @Composable
@@ -27,9 +27,11 @@ internal fun NaverWalkTraceLayer(map: NaverMap?, tiles: List<TraceRasterTile>) {
         val prepared = withContext(Dispatchers.Default) {
             tiles.map { tile ->
                 ensureActive()
+                val rgb = tile.rgb
+                require(rgb == null || rgb.size == tile.alpha.size)
                 val pixels = IntArray(tile.alpha.size) { index ->
                     val alpha = (tile.alpha[index].coerceIn(0f, 1f) * 255).roundToInt()
-                    (alpha shl 24) or TRACE_PIGMENT_RGB
+                    (alpha shl 24) or ((rgb?.get(index) ?: TRACE_PIGMENT_RGB) and 0xFFFFFF)
                 }
                 tile to OverlayImage.fromBitmap(
                     Bitmap.createBitmap(pixels, tile.size, tile.size, Bitmap.Config.ARGB_8888),

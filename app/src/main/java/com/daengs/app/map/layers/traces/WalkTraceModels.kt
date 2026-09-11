@@ -3,17 +3,52 @@ package com.daengs.app.map.layers.traces
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 
-const val DEFAULT_TRACE_BASE_ALPHA = 0.28
+const val DEFAULT_TRACE_BASE_ALPHA = 0.14
+const val MAX_TRACE_COMPOSITE_ALPHA = 0.40
+
+/** Fixed full-selection walk counts, never inferred from a rendered colour or blurred coverage. */
+object TraceOverlapPalette {
+    const val TEAL_RGB = 0x008F9C
+    const val YELLOW_RGB = 0xE4B000
+    const val ORANGE_RGB = 0xEB6A20
+
+    fun colorForWalkCount(count: Int): Int {
+        require(count >= 2)
+        return when {
+            count >= 5 -> ORANGE_RGB
+            count >= 3 -> YELLOW_RGB
+            else -> TEAL_RGB
+        }
+    }
+}
 
 /** One walk's positive support. Time, peak and repeat-pass weights are deliberately absent. */
 data class WalkTraceSheet(
     val walkId: String,
     val radiusU: Double = 8.0,
     val cells: Set<SpatialDiaryCellId>,
+    val provenance: WalkTraceProvenance? = null,
 ) {
     init {
         require(walkId.isNotBlank())
         require(radiusU.isFinite() && radiusU > 0 && radiusU <= 64)
+    }
+}
+
+/** Identity of a sealed server sheet; display weights never replace its original paint policy. */
+data class WalkTraceProvenance(
+    val analysisId: String,
+    val sheetFingerprint: String,
+    val paintFingerprint: String,
+    val paintVersion: Int,
+    val gridVersion: String,
+    val profileFingerprint: String,
+    val sampleStepMeters: Double,
+) {
+    init {
+        require(analysisId.isNotBlank() && sheetFingerprint.isNotBlank() && paintFingerprint.isNotBlank())
+        require(paintVersion > 0 && gridVersion.isNotBlank() && profileFingerprint.isNotBlank())
+        require(sampleStepMeters.isFinite() && sampleStepMeters > 0)
     }
 }
 
@@ -52,4 +87,8 @@ data class TraceRasterTile(
     val alpha: FloatArray,
     val southWest: GeoPoint,
     val northEast: GeoPoint,
-)
+    /** Optional unpremultiplied 0xRRGGBB per pixel. Null keeps the original single pigment. */
+    val rgb: IntArray? = null,
+) {
+    init { require(rgb == null || rgb.size == alpha.size) }
+}

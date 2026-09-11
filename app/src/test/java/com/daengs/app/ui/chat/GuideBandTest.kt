@@ -15,26 +15,25 @@ class GuideBandTest {
     /** 찍을 때 그리는 네모가 판정에서 나쁨이면, 맞춰 찍은 사람이 퇴짜를 맞는다. */
     @Test
     fun `가이드 네모는 판정에서 나쁨이 아니다`() {
-        val hint = Band.hintFor(Band.CAPTURE_WIDTH, centerOff = 0f)
+        val hint = Band.hintFor(Band.CAPTURE_WIDTH)
         assertFalse(hint.text, hint.bad)
     }
 
     /** 권장 밴드 한가운데라 "딱 좋아요" 여야 한다 — 겨우 통과하는 값이 아니다. */
     @Test
     fun `가이드 네모는 권장 밴드 안이다`() {
-        assertTrue(Band.CAPTURE_WIDTH.toString(), Band.hintFor(Band.CAPTURE_WIDTH, 0f).text.startsWith("딱 좋아요"))
+        assertTrue(Band.CAPTURE_WIDTH.toString(), Band.hintFor(Band.CAPTURE_WIDTH).text.startsWith("딱 좋아요"))
     }
 
     @Test
     fun `너무 작거나 크면 나쁨이다`() {
-        assertTrue(Band.hintFor(0.20f, 0f).bad)
-        assertTrue(Band.hintFor(0.80f, 0f).bad)
+        assertTrue(Band.hintFor(0.20f).bad)
+        assertTrue(Band.hintFor(0.80f).bad)
     }
 
-    /** 크기가 맞아도 가운데를 벗어나면 나쁨이다. 서버가 중심을 본다. */
+    /** 프레임 위치는 병변 위치일 뿐, 촬영 품질 판정 사유가 아니다. */
     @Test
-    fun `가운데를 벗어나면 나쁨이다`() {
-        assertFalse(Band.hintFor(Band.CAPTURE_WIDTH, 0.09f).bad)
-        assertTrue(Band.hintFor(Band.CAPTURE_WIDTH, 0.11f).bad)
+    fun `가이드 판정은 크기만 본다`() {
+        assertFalse(Band.hintFor(Band.CAPTURE_WIDTH).bad)
     }
 }

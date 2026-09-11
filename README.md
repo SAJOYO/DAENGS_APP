@@ -201,6 +201,9 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 로컬 연습은 debug에 `-PterritoryServerRead=false`, 온라인 액션 테스트는
 `-PterritoryServerActions=true`를 명시한다. [설정과 검증](docs/territory-server-browsing.md).
 
+점령 게임의 `점령 지도 보기`는 [내 점령지 전용 지도·목록](docs/owned-territory-browser.md)을
+연다. 이 화면은 산책이나 위치 권한 없이 DEV #418의 회원 전체·강아지별 현재 점령지를 읽는다.
+
 ```bash
 ./gradlew :app:assembleDebug :app:testDebugUnitTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk

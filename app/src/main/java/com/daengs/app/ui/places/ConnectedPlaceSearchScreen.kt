@@ -7,7 +7,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.map.features.places.*
@@ -83,12 +82,10 @@ fun ConnectedPlaceSearchScreen(
     onOpenHandoff: (String) -> Unit,
     showMap: Boolean = true,
     onRefreshProfiles: () -> Unit = {},
-    /** 지도의 "내 위치" 에 쓸 견종 그림. 없으면 기본 파란 점이 나온다. */
+    /** 고정 검색 도우미에 쓸 견종 그림. 지도상의 내 위치는 기본 위치 점을 쓴다. */
     avatarBreed: DogBreed? = null,
     /** 올린 프로필 사진. 있으면 [avatarBreed] 보다 이쪽이 앞선다. */
     avatarPhoto: android.graphics.Bitmap? = null,
-    /** SDK를 띄우지 않는 Preview의 명시적인 지도 좌표. 운영에서는 SDK projection만 쓴다. */
-    previewAvatarPosition: Offset? = null,
 ) {
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     val ai = state.facility.enabled
@@ -98,7 +95,6 @@ fun ConnectedPlaceSearchScreen(
     var camera by remember { mutableStateOf(PlaceMapCamera()) }
     var follow by remember { mutableStateOf(true) }
     var filtersOpen by remember { mutableStateOf(false) }
-    var avatarPosition by remember { mutableStateOf<Offset?>(null) }
     var dogOpen by rememberSaveable { mutableStateOf(false) }
     var dogAsked by rememberSaveable { mutableStateOf(false) }
     var dogQuery by rememberSaveable { mutableStateOf("") }
@@ -188,54 +184,54 @@ fun ConnectedPlaceSearchScreen(
         },
         map = {
             Box(Modifier.fillMaxSize()) {
-            val keys = canonicalPlaceKeysByMarker(display)
-            if (showMap) MapHost(
-                scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
-                searchOrigin = display.origin, followDevice = follow,
-                // **내 위치는 강아지다.** 안 넘기면 기본 파란 점으로 떨어진다 —
-                // 옛 화면은 넘기고 있었는데 이 화면으로 바뀌면서 빠졌다.
-                avatarRes = avatarBreed?.portraitRes, avatarPhoto = avatarPhoto,
-                onAvatarPosition = { avatarPosition = it },
-                onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
-                onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
-                modifier = Modifier.fillMaxSize(),
-            )
-            val candidate = camera.searchPoint(state.discovery.origin)
-            PlaceMapControls(candidate != null,
-                onMapSearch = { candidate?.let { point ->
-                    follow = false; camera = camera.submitted(); dogOpen = false; dogAsked = false
-                    if (ai) onAction(PlacesAction.SetAiMode(false))
-                    onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking))
-                } },
-                onDeviceSearch = {
-                    if (permission) requestPermission() else {
-                        follow = true; camera = camera.submitted(); dogOpen = false; dogAsked = false
+                val keys = canonicalPlaceKeysByMarker(display)
+                if (showMap) MapHost(
+                    scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
+                    searchOrigin = display.origin, followDevice = follow,
+                    // 내 위치는 점, 검색 도우미는 하단 고정 버튼으로 역할을 분리한다.
+                    onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
+                    onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                val candidate = camera.searchPoint(state.discovery.origin)
+                PlaceMapControls(candidate != null,
+                    onMapSearch = { candidate?.let { point ->
+                        follow = false; camera = camera.submitted(); dogOpen = false; dogAsked = false
                         if (ai) onAction(PlacesAction.SetAiMode(false))
-                        onAction(PlacesAction.Locate(category, state.discovery.preferParking))
+                        onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking))
+                    } },
+                    onDeviceSearch = {
+                        if (permission) requestPermission() else {
+                            follow = true; camera = camera.submitted(); dogOpen = false; dogAsked = false
+                            if (ai) onAction(PlacesAction.SetAiMode(false))
+                            onAction(PlacesAction.Locate(category, state.discovery.preferParking))
+                        }
+                    }) {
+                    PlaceDogAssistant(
+                        busy = if (state.conversationAvailable) state.conversation.busy || state.conversation.answerBusy else state.facility.loading,
+                        replyAvailable = dogAsked || (ai && (state.conversation.result?.answer != null || state.facility.response != null)),
+                        open = dogOpen, onOpen = { dogOpen = it },
+                        onSubmit = { query ->
+                            dogAsked = true; dogQuery = query
+                            if (!ai) onAction(PlacesAction.SetAiMode(true))
+                            onAction(PlacesAction.Discover(query))
+                        },
+                        onCancel = { onAction(PlacesAction.CancelAi) },
+                        onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,
+                        avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                        searchContext = if (display.origin == null) "검색 지역을 먼저 정해 줘"
+                            else "현재 검색 지역 · 반경 " + if (display.radiusMeters % 1000 == 0) "${display.radiusMeters / 1000}km" else "${display.radiusMeters}m",
+                    ) {
+                        if (state.conversationAvailable) {
+                            ConversationPanel(state.conversation, state.facility.error,
+                                onRetryAnswer = { onAction(PlacesAction.RetryAi) }, onRetrySearch = ::retryConversationSearch,
+                                onApplyCurrentFilters = { state.conversation.result?.let {
+                                    onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
+                                } })
+                        } else FacilitySearchPanel(state.facility,
+                            { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) })
                     }
-                })
-            PlaceDogAssistant(
-                anchor = if (showMap) avatarPosition else previewAvatarPosition,
-                busy = if (state.conversationAvailable) state.conversation.busy || state.conversation.answerBusy else state.facility.loading,
-                replyAvailable = dogAsked || (ai && (state.conversation.result?.answer != null || state.facility.response != null)),
-                open = dogOpen, onOpen = { dogOpen = it },
-                onSubmit = { query ->
-                    dogAsked = true; dogQuery = query
-                    if (!ai) onAction(PlacesAction.SetAiMode(true))
-                    onAction(PlacesAction.Discover(query))
-                },
-                onCancel = { onAction(PlacesAction.CancelAi) },
-                onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,
-            ) {
-                if (state.conversationAvailable) {
-                    ConversationPanel(state.conversation, state.facility.error,
-                        onRetryAnswer = { onAction(PlacesAction.RetryAi) }, onRetrySearch = ::retryConversationSearch,
-                        onApplyCurrentFilters = { state.conversation.result?.let {
-                            onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
-                        } })
-                } else FacilitySearchPanel(state.facility,
-                    { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) })
-            }
+                }
             }
         },
     )

@@ -19,8 +19,11 @@ class WalkDiaryReader(
         if (sessionIds.isEmpty()) return flowOf(emptyMap())
         val expectedOwner = owner()
         val records = combine(sessionIds.distinct().map { id ->
-            combine(dao.observeEntries(id), dao.observeSceneAnalysis(id), dao.observePhotoSync(id), dao.observePhotos(id)) { entries, analysis, state, images ->
-                id to storyboardAnalysisView(analysis, entries, state, images).bundle?.takeIf { it.sessionId == id }?.title
+            combine(dao.observeEntries(id), dao.observeSceneAnalysis(id), dao.observePhotoSync(id), dao.observePhotos(id),
+                dao.observeDiaryPublication(id)) { entries, analysis, state, images, publication ->
+                val bundle = if (publication != null) publication.publishedBundle?.let(GeoStoryboardBundle::parse)
+                    else storyboardAnalysisView(analysis, entries, state, images).bundle
+                id to bundle?.takeIf { it.sessionId == id }?.title
             }
         }) { it.toList() }
         return combine(records, dao.observeSessions()) { titles, sessions ->
@@ -37,15 +40,30 @@ class WalkDiaryReader(
             val photoSource = combine(dao.observePhotoSync(walk.sessionId), dao.observePhotos(walk.sessionId), photos.observe(walk.sessionId)) {
                 state, rows, images -> Triple(state, rows, images)
             }
-            combine(dao.observeEntries(walk.sessionId), dao.observeSceneAnalysis(walk.sessionId),
+            val boardState = combine(dao.observeSceneAnalysis(walk.sessionId), dao.observeDiaryPublication(walk.sessionId)) {
+                analysis, publication -> analysis to publication
+            }
+            combine(dao.observeEntries(walk.sessionId), boardState,
                 dao.observeStoryboard(walk.sessionId), photoSource,
-                dao.observeSessions()) { entries, analysis, draft, images, sessions ->
+                dao.observeSessions()) { entries, state, draft, images, sessions ->
                 if (owner() != expectedOwner || sessions.none {
                         it.id == walk.sessionId && it.ownerId == expectedOwner && it.endedAtMillis != null
                     }) null
-                else diaryWalk(walk, entries.mapNotNull { it.entry() }, images.third,
-                    StoryboardDraft.parse(draft?.payload), storyboardAnalysisView(analysis, entries, images.first, images.second),
-                    observations[walk.sessionId].orEmpty())
+                else {
+                    val publication = state.second
+                    val live = entries.mapNotNull { it.entry() }
+                    if (publication != null && publication.publishedBundle == null)
+                        DiaryWalk(walk, emptyList(), "", preparing = true)
+                    else {
+                        val analysis = if (publication?.publishedBundle != null) StoryboardAnalysisView(
+                            LocalDiaryBoard.withUserChanges(GeoStoryboardBundle.parse(publication.publishedBundle),
+                                requireNotNull(publication.baseBundle), live, images.second.map { it.id }.toSet()),
+                            true, "")
+                        else storyboardAnalysisView(state.first, entries, images.first, images.second)
+                        diaryWalk(walk, live, images.third, StoryboardDraft.parse(draft?.payload), analysis,
+                            observations[walk.sessionId].orEmpty()).copy(published = publication != null)
+                    }
+                }
             }
         }) { records -> records.filterNotNull() }.flowOn(Dispatchers.IO)
     }

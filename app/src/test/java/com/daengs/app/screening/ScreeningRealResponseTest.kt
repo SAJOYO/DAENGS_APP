@@ -48,7 +48,7 @@ class ScreeningRealResponseTest {
         val g = load().groups
         assertEquals(4, g.size)
         assertEquals(
-            listOf("융기·발진", "표면 변화", "결절·종괴", "미란·궤양"),
+            listOf("솟아오른 변화", "피부 표면·색·두께 변화", "깊거나 단단한 혹", "벗겨지거나 패인 상처"),
             g.map { it.name },
         )
         assertEquals(71.5f, g[0].percent, 0.05f)
@@ -62,8 +62,14 @@ class ScreeningRealResponseTest {
     fun `계열 한 줄이 온다`() {
         val line = load().group
         assertNotNull("확신이 충분한 응답이라 null 이면 안 됩니다", line)
-        assertEquals("융기·발진", line!!.name)
+        assertEquals("솟아오른 변화", line!!.name)
         assertTrue("서버가 준 문장을 그대로 씁니다", line.text.isNotBlank())
+        // ★ 실서버가 특징을 같이 보내는가 (2026-09-10). 이름만 오면 보호자가
+        //    자기 개 사진과 대조할 방법이 없습니다.
+        assertEquals("돌기, 넓게 솟은 부위, 고름이 찬 자리", line.feature)
+        assertTrue("자세히 보기 내용이 옵니다", line.detail.isNotBlank())
+        // ★ 병원에서 쓰는 이름이 오는가 (2026-09-10). 없으면 보호자가 전할 말이 없습니다.
+        assertEquals("구진·플라크·농포·여드름", line.labels)
         assertTrue("단서를 빼지 않습니다", line.caveat.isNotBlank())
         // ⚠️ 긴급도 문구가 서버에서 딸려 오면 안 됩니다 (과잉 52.4%).
         assertTrue(
