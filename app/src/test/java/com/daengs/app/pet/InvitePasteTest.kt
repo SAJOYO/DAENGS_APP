@@ -31,6 +31,27 @@ class InvitePasteTest {
         assertEquals(token, found(InvitePaste.parse(message)))
     }
 
+    /** 이름을 못 받은 아이의 초대장도 같은 길로 온다. */
+    @Test
+    fun `이름 없는 공유 문구도 파싱한다`() {
+        assertEquals(token, found(InvitePaste.parse(InviteShare.message(null, link))))
+    }
+
+    /**
+     * 카톡에서 대화를 복사하면 보낸 사람·시각 머리말이 앞에 붙고, 받는 사람이 인사말을
+     * 덧붙이기도 한다. **문구가 그대로 오지 않아도** 찾아내야 한다.
+     */
+    @Test
+    fun `머리말과 덧붙인 말이 섞여도 찾아낸다`() {
+        val pasted = buildString {
+            append("[네옹집사] [오후 9:12]\n")
+            append(InviteShare.message("네옹", link))
+            append("\n\n이거 눌러도 안 열리던데 앱에 넣으면 되는거지?")
+        }
+
+        assertEquals(token, found(InvitePaste.parse(pasted)))
+    }
+
     @Test
     fun `앞뒤 공백과 줄바꿈을 견딘다`() {
         assertEquals(token, found(InvitePaste.parse("  \n $link \n\n ")))

@@ -20,9 +20,41 @@ class InviteShareTest {
         val message = InviteShare.message("네옹", link)
 
         assertTrue(message.contains("네옹의 공동 돌봄 초대장이 도착했어요!"))
-        assertTrue(message.contains("초대 링크를 눌러 공동 보호자로 참여해 주세요."))
         assertTrue(message.contains("이 초대장은 24시간 동안 사용할 수 있습니다."))
         assertTrue(message.contains(link))
+    }
+
+    /**
+     * **누르라고 하면 안 된다.** App Links 가 없어 링크를 누르면 브라우저가 빈 페이지를
+     * 연다. 받는 사람이 거기서 멈추면 초대가 그대로 죽는다.
+     */
+    @Test
+    fun `링크를 누르라고 안내하지 않는다`() {
+        val message = InviteShare.message("네옹", link)
+
+        assertFalse(message.contains("링크를 눌러 "))
+        assertFalse(message.contains("눌러 참여"))
+        assertFalse(message.contains("클릭"))
+        assertFalse(message.contains("접속"))
+        assertTrue("대신 붙여넣기를 안내한다", message.contains("붙여넣"))
+    }
+
+    /** 받는 사람이 앱을 깔고 어디로 가야 하는지까지 문구가 데려다줘야 한다. */
+    @Test
+    fun `설치부터 붙여넣기까지 순서대로 안내한다`() {
+        val message = InviteShare.message("네옹", link)
+
+        val install = message.indexOf("설치")
+        val login = message.indexOf("카카오로 로그인")
+        val entry = message.indexOf("「공동 돌봄 초대받기」")
+        val paste = message.indexOf("복사해 붙여넣어")
+
+        assertTrue("설치 안내가 있어야 한다", install >= 0)
+        assertTrue("카카오 로그인 안내가 있어야 한다", login >= 0)
+        assertTrue("앱 안의 진입점 이름을 그대로 불러 줘야 한다", entry >= 0)
+        assertTrue("붙여넣기 안내가 있어야 한다", paste >= 0)
+        assertTrue("설치·로그인 → 진입점 → 붙여넣기 순서", install < entry && entry < paste)
+        assertTrue("메시지 전체를 붙여넣어도 된다고 알려 준다", message.contains("메시지 전체"))
     }
 
     /** 줄바꿈이 뭉개지면 받는 사람이 링크를 문장의 일부로 읽는다. */
@@ -31,8 +63,16 @@ class InviteShareTest {
         val message = InviteShare.message("네옹", link)
 
         assertTrue("링크 앞에 빈 줄이 있어야 한다", message.contains("사용할 수 있습니다.\n\n$link"))
-        assertTrue("제목 뒤에도 빈 줄", message.contains("도착했어요!\n\n초대 링크를"))
+        assertTrue("제목 뒤에도 빈 줄", message.contains("도착했어요!\n\n1."))
         assertTrue("링크가 맨 끝이어야 미리보기가 링크를 집는다", message.endsWith(link))
+    }
+
+    /** 두 번 적으면 붙여넣기가 "초대가 여러 개" 로 읽을 여지가 생긴다. */
+    @Test
+    fun `링크가 문구에 한 번만 들어간다`() {
+        val message = InviteShare.message("네옹", link)
+
+        assertEquals(1, message.split(link).size - 1)
     }
 
     @Test

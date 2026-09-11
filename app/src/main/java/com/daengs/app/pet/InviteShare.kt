@@ -24,15 +24,24 @@ object InviteShare {
 
     /**
      * 공유 문구. **줄바꿈이 뜻을 나른다** — 안내와 링크 사이가 붙으면 받는 사람이
-     * 링크를 문장의 일부로 읽는다. 링크는 **맨 끝**에 둔다: 카톡 같은 앱이 미리보기를
-     * 붙일 때 마지막 URL 을 집는다.
+     * 링크를 문장의 일부로 읽는다. 링크는 **맨 끝에 한 번만** 둔다: 카톡 같은 앱이
+     * 미리보기를 붙일 때 마지막 URL 을 집고, 두 번 적으면 붙여넣기가 "초대가 여러 개"로
+     * 읽힐 여지를 준다.
+     *
+     * ⚠️ **누르라고 하지 않는다.** App Links 를 아직 얹지 않아 링크를 누르면 브라우저가
+     * 빈 페이지를 연다. 받는 사람은 **앱에서 붙여넣어** 수락한다 — 문구가 그 길을
+     * 그대로 안내해야 한다. App Links 가 붙는 날 이 문구를 다시 손본다.
      */
     fun message(petName: String?, inviteLink: String): String {
         val name = petName?.trim()?.takeIf { it.isNotEmpty() } ?: UNNAMED
         return buildString {
             append("🐶 ${name}의 공동 돌봄 초대장이 도착했어요!\n")
             append("\n")
-            append("초대 링크를 눌러 공동 보호자로 참여해 주세요.\n")
+            append("1. Daengs 앱을 설치하고 카카오로 로그인해 주세요.\n")
+            append("2. 앱에서 「공동 돌봄 초대받기」를 선택해 주세요.\n")
+            append("3. 이 메시지 전체나 아래 링크를 복사해 붙여넣어 주세요.\n")
+            append("\n")
+            append("※ 링크를 눌러도 열리지 않아요. 복사해서 붙여넣어야 합니다.\n")
             append("이 초대장은 24시간 동안 사용할 수 있습니다.\n")
             append("\n")
             append(inviteLink)
