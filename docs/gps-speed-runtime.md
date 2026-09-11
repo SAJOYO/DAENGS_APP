@@ -34,6 +34,8 @@
 
 최신 dev `8c145da`의 전봇대 표시 변경을 통합한 `e7509ef`에서 debug 빌드와 영향받는 화면·ViewModel 테스트 30개(6+24)를 추가 실행해 실패·오류·skip 0개를 확인했다. 전체 저장소 테스트는 실행하지 않았다.
 
+이후 dev `13c4ca6`의 시설 찜 변경에서 `STATUS.md` 충돌만 두 기능의 설명을 유지하도록 정리했다. GPS·산책 화면·관련 테스트 코드가 바뀌지 않은 것을 대조하고 `:app:assembleDebug`만 다시 실행해 통과했다.
+
 ```powershell
 # 최초 연결 검증 범위
 ./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.walk.display.*' --tests 'com.daengs.app.walk.motion.MotionPolicyEngineTest' --tests 'com.daengs.app.walk.WalkSpeedServiceTest' --tests 'com.daengs.app.walk.WalkTrackingTest' --tests 'com.daengs.app.ui.walk.MotionSpeedometerTest' --tests 'com.daengs.app.ui.walk.WalkScreenPolicyTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest'
