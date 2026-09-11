@@ -88,11 +88,18 @@ class WalkSceneAnchoringTest {
             val detail = WalkHistory(log).sessionDetail(bundle.sessionId)!!
             assertEquals(fixes, detail.observations)
             assertTrue(detail.route.points.isNotEmpty())
+            val reader = WalkDiaryReader(dao, WalkPhotoStore(dao, File(context.cacheDir, "scene-anchor")) { "" }) { "" }
+            val pending = reader.observe(listOf(detail.summary)).first().single()
+            assertTrue(pending.preparing)
+            assertTrue(pending.scenes.isEmpty())
+            val preparation = requireNotNull(dao.prepareLocalDiary(bundle.sessionId, ""))
             val stamp = storyboardEntryStamp(emptyList())
             assertTrue(dao.acceptSceneAnalysis(WalkSceneAnalysisRow(bundle.sessionId, 1, stamp, "fixture",
-                "ready", bundle.rawJson, null), ""))
-            val reader = WalkDiaryReader(dao, WalkPhotoStore(dao, File(context.cacheDir, "scene-anchor")) { "" }) { "" }
+                "ready", bundle.rawJson, null), "", nowMillis = preparation.deadlineAtMillis - 1))
+            assertEquals(bundle.rawJson, dao.diaryPublication(bundle.sessionId)!!.publishedBundle)
             val read = reader.observe(listOf(detail.summary), mapOf(bundle.sessionId to detail.observations)).first().single()
+            assertFalse(read.preparing)
+            assertTrue(read.published)
             assertEquals(6, read.scenes.count { it.point != null })
             assertEquals(detail.route.start!!.point, read.scenes.first().point)
             assertEquals(detail.route.end!!.point, read.scenes.last().point)
