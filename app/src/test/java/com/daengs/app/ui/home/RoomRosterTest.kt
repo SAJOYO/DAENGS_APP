@@ -24,6 +24,12 @@ class RoomRosterTest {
         assertEquals(listOf(DogBreed.BEAGLE, DogBreed.WELSH_CORGI), roomRoster(pets, waitsForPet = false))
     }
 
+    @Test
+    fun `공동 돌봄 아이도 미니룸에 선다`() {
+        val shared = pet("shared", "dog_beagle").copy(isOwner = false)
+        assertEquals(listOf(DogBreed.BEAGLE), roomRoster(listOf(shared), waitsForPet = false))
+    }
+
     /**
      * null 은 **아직 못 받아 온 것**이다. 그때는 아무도 안 세운다.
      *

@@ -181,6 +181,9 @@ fun HomeScreen(
     signedIn: Boolean = false,
     /** 사람 이름. 「마이」 프로필 머리에 걸린다. null 이면 그 줄이 빠진다 */
     nickname: String? = null,
+    /** OCR 학습 이용 동의 (#258). 마이 화면까지 그대로 흘려보낸다. */
+    ocrConsent: Boolean = false,
+    onOcrConsentChange: ((Boolean) -> Unit)? = null,
     /** 이름을 고치러 간다. null 이면 「마이」에 그 자리가 안 뜬다 */
     onEditNickname: (() -> Unit)? = null,
     /**
@@ -462,6 +465,8 @@ fun HomeScreen(
                 onEditPhoto = onEditPhoto,
                 nickname = nickname,
                 onEditNickname = onEditNickname,
+                ocrConsent = ocrConsent,
+                onOcrConsentChange = onOcrConsentChange,
                 pets = pets,
                 canAddMore = canAddMore,
                 onAddPet = { onAddPet?.invoke() },

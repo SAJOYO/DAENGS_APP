@@ -12,6 +12,13 @@ import com.daengs.app.care.CareEvent
 import com.daengs.app.care.CareGateway
 import com.daengs.app.care.CareKind
 import com.daengs.app.care.CareLogCoordinator
+import com.daengs.app.care.VetReasonOption
+import com.daengs.app.care.VetVisit
+import com.daengs.app.care.VetVisitConfirmation
+import com.daengs.app.care.VetVisitCoordinator
+import com.daengs.app.care.VetVisitDraft
+import com.daengs.app.care.VetVisitGateway
+import com.daengs.app.care.VetVisitTicket
 import com.daengs.app.chat.ChatHistoryState
 import com.daengs.app.chat.ChatSummary
 import com.daengs.app.chat.ChatSummaryCoordinator
@@ -80,10 +87,33 @@ class ChatSummaryRouteTest {
             historyState = ChatHistoryState(),
             coordinator = ChatSummaryCoordinator(scope, chat),
             careCoordinator = CareLogCoordinator(scope, care),
+            vetCoordinator = VetVisitCoordinator(scope, SilentVetGateway),
             accessTokenProvider = { "token" },
             onOpenSource = {},
             onOpenCitation = {},
         )
+    }
+
+    /**
+     * 이 테스트는 진료비를 안 본다. 목록만 비어 있게 답하고 나머지는 안 불린다 —
+     * 진짜 서버로 나가지 않는 것이 여기서 필요한 전부다.
+     */
+    private object SilentVetGateway : VetVisitGateway {
+        override suspend fun startDraft(accessToken: String, petId: String, clientEventId: String):
+            Result<VetVisitTicket> = Result.failure(IllegalStateException("이 테스트는 안 부른다"))
+        override suspend fun upload(ticket: VetVisitTicket, jpeg: ByteArray): Result<Unit> =
+            Result.failure(IllegalStateException("이 테스트는 안 부른다"))
+        override suspend fun extract(accessToken: String, draftId: String): Result<VetVisitDraft> =
+            Result.failure(IllegalStateException("이 테스트는 안 부른다"))
+        override suspend fun confirm(
+            accessToken: String,
+            draftId: String,
+            confirmation: VetVisitConfirmation,
+        ): Result<VetVisit> = Result.failure(IllegalStateException("이 테스트는 안 부른다"))
+        override suspend fun list(accessToken: String, petId: String) = Result.success(emptyList<VetVisit>())
+        override suspend fun reasonOptions(accessToken: String, petId: String) =
+            Result.success(emptyList<VetReasonOption>())
+        override suspend fun delete(accessToken: String, visitId: String) = Result.success(Unit)
     }
 
     private class FakeCareGateway : CareGateway {

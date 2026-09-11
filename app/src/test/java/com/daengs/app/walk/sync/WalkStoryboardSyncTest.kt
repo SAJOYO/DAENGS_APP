@@ -71,6 +71,31 @@ class WalkStoryboardSyncTest {
             .put("status", "ready").put("entry_revisions", JSONObject()).put("bundle", bundle)
     }
 
+    @Test fun `pending preparation keeps previous scenes readable without marking them current`() {
+        val stamp = storyboardEntryStamp(emptyList())
+        val pending = WalkSceneAnalysisRow("s", 0, stamp, "revision", "pending", null, null)
+        val first = storyboardAnalysisView(pending, emptyList())
+        assertNull(first.bundle)
+        assertFalse(first.canReview)
+        assertTrue(first.notice.contains("준비하고 있어요"))
+
+        val saved = pending.copy(generation = 1, status = "ready",
+            bundle = response().getJSONObject("bundle").toString(), bundleEntryStamp = stamp)
+        val ready = storyboardAnalysisView(saved, emptyList())
+        assertTrue(ready.canReview)
+        val previous = storyboardAnalysisView(saved.copy(status = "pending"), emptyList())
+        assertEquals(ready.bundle!!.scenes, previous.bundle!!.scenes)
+        assertFalse(previous.canReview)
+        assertEquals(storyboardAnalysisView(saved.copy(status = "running"), emptyList()).notice, previous.notice)
+        assertTrue(previous.notice.contains("이전에 저장한 장면"))
+
+        val dirty = listOf(WalkEntryRow("new", "s", "{}", 0, "mutation", true))
+        val changed = storyboardAnalysisView(saved.copy(status = "pending"), dirty)
+        assertNull(changed.bundle)
+        assertFalse(changed.canReview)
+        assertTrue(changed.notice.contains("기록 동기화 후"))
+    }
+
     @Test fun `network failure preserves readable source and retry restores review eligibility`() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
         try {

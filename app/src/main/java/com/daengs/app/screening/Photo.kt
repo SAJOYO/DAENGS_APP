@@ -39,10 +39,15 @@ object Photo {
 
     private const val JPEG_QUALITY = 90
 
-    suspend fun prepare(context: Context, uri: Uri): Result<PreparedPhoto> =
+    /**
+     * @param edge 서버로 보낼 사진의 긴 변. **기본값은 [MAX_EDGE] 라 기존 호출부는 안
+     *   바뀐다.** 영수증은 항목명이 잔글씨라 이보다 크게 굽는다
+     *   (`ui/storage/RECEIPT_EDGE`) — 진단 크롭과 달리 글자를 읽어야 한다.
+     */
+    suspend fun prepare(context: Context, uri: Uri, edge: Int = MAX_EDGE): Result<PreparedPhoto> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val scaled = decodeUpright(context, uri, MAX_EDGE)
+                val scaled = decodeUpright(context, uri, edge)
                 val jpeg = ByteArrayOutputStream().also {
                     scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)
                 }.toByteArray()

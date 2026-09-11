@@ -1,6 +1,11 @@
 *.iml
 .gradle
 /local.properties
+# 오타 사본도 막는다. APP#258 에서 `loca.properties` 가 이 한 글자 때문에 걸러지지 않고
+# 키가 담긴 채 올라갔다 (APP#287 에서 지웠고 키는 따로 교체한다).
+loca.properties
+local.properties.*
+*.local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
