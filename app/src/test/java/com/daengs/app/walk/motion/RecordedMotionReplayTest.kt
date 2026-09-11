@@ -1,10 +1,54 @@
 package com.daengs.app.walk.motion
 
 import com.daengs.app.walk.RecordingEpoch
+import com.daengs.app.walk.RecordedSession
 import org.junit.Assert.*
 import org.junit.Test
 
 class RecordedMotionReplayTest {
+    @Test fun `comparison uses frozen settings and shows boundary differences without rewriting legacy summary`() {
+        for (distance in listOf(49.5, 50.5)) for (end in listOf(59.999, 60.0)) {
+            val session = RecordedSession("s", startedAtMillis = 0, endedAtMillis = (end * 1000).toLong(),
+                motionPolicyJson = MotionPolicies.encode(MotionPolicies.freeze("s")))
+            val raw = (0..12).map { fix(it, distance * it / 12, .5 + 59.0 * it / 12) }
+            val legacy = com.daengs.app.walk.summarize(session, raw)
+            val input = RecordedMotionInput(session, listOf(epoch(end = end, count = 13)), raw)
+            val result = compareRecordedMotion(input) as RecordedMotionComparison.Ready
+            assertEquals(legacy.distanceMeters, result.legacyDistanceM, .00001)
+            assertEquals(distance, result.candidate.eligibleDistanceM, .00001)
+            assertFalse(result.legacyCountsAsWalk) // Fix-to-fix time is under 60s.
+            assertEquals(distance > 50 && end >= 60, result.candidateCountsAsWalk)
+            assertEquals(legacy, com.daengs.app.walk.summarize(session, raw))
+        }
+        val session = RecordedSession("s", startedAtMillis = 0, endedAtMillis = 5000,
+            motionPolicyJson = MotionPolicies.encode(MotionPolicies.freeze("s", MotionConfig(minDistanceM = 20.0))))
+        val result = compareRecordedMotion(RecordedMotionInput(session, listOf(epoch()),
+            listOf(fix(0, 0.0, 1.0), fix(1, 8.0, 4.0)))) as RecordedMotionComparison.Ready
+        assertEquals(8.0, result.legacyDistanceM, .00001)
+        assertEquals(-8.0, result.distanceDeltaM, .00001)
+    }
+
+    @Test fun `comparison distinguishes legacy unsupported and incomplete journals without a guessed result`() {
+        val policy = MotionPolicies.encode(MotionPolicies.freeze("s"))
+        val session = RecordedSession("s", startedAtMillis = 0, endedAtMillis = 5000, motionPolicyJson = policy)
+        val input = RecordedMotionInput(session, listOf(epoch()), listOf(fix(0, 0.0, 1.0), fix(1, 4.0, 4.0)))
+        for ((json, reason) in listOf(null to "LEGACY_POLICY", "broken" to "POLICY_ENVELOPE",
+            policy.replace("motion-v1", "future") to "POLICY_VERSION")) {
+            assertEquals(RecordedMotionComparison.Unavailable(reason),
+                compareRecordedMotion(input.copy(session = session.copy(motionPolicyJson = json))))
+        }
+        for (bad in listOf(input.copy(session = session.copy(endedAtMillis = null)),
+            input.copy(session = session.copy(endedAtMillis = 6000)), input.copy(epochs = emptyList()),
+            input.copy(epochs = listOf(epoch(kind = "PAUSE"))),
+            input.copy(epochs = listOf(epoch().copy(drained = false))))) {
+            assertEquals(RecordedMotionComparison.Unavailable("INCOMPLETE_RECORDING"), compareRecordedMotion(bad))
+        }
+        for (bad in listOf(input.copy(fixes = input.fixes.reversed()), input.copy(fixes = input.fixes.take(1)),
+            input.copy(fixes = input.fixes + fix(2, 8.0, 4.5)))) {
+            assertEquals(RecordedMotionComparison.Unavailable("INVALID_RECORDING"), compareRecordedMotion(bad))
+        }
+    }
+
     private fun epoch(id: String = "e", chain: Int = 0, start: Double = 0.0, end: Double = 5.0,
         first: Long = 0, count: Long = 2, kind: String = "STOP") =
         RecordingEpoch(id, "s", "c", chain, (start * 1000).toLong(), nanos(start), first,

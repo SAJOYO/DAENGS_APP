@@ -24,6 +24,7 @@ import com.daengs.app.walk.sync.WalkDeliveryScheduler
 import com.daengs.app.walk.display.DisplayLifecycle
 import com.daengs.app.walk.display.MotionDisplay
 import com.daengs.app.walk.display.WalkSpeedRuntime
+import com.daengs.app.walk.motion.MotionPolicies
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -458,6 +459,7 @@ class WalkTrackingService : Service() {
 
     private fun openSession(dogIds: List<String>) {
         val id = UUID.randomUUID().toString()
+        val motionPolicy = MotionPolicies.freeze(id)
         synchronized(sessionLock) {
             sessionId = id
             sessionStartedAtMillis = System.currentTimeMillis()
@@ -467,7 +469,7 @@ class WalkTrackingService : Service() {
             ingressSequence.set(0)
             projectionCursor = -1L
             chainIndex = 0
-            speedRuntime = WalkSpeedRuntime(id) { error -> Log.w(TAG, "속도 표시 계산을 중단합니다. 원본 기록은 계속합니다.", error) }
+            speedRuntime = WalkSpeedRuntime(motionPolicy) { error -> Log.w(TAG, "속도 표시 계산을 중단합니다. 원본 기록은 계속합니다.", error) }
             speedTickJob?.cancel()
             speedTickJob = serviceScope.launch {
                 while (sessionId == id) {
@@ -482,6 +484,7 @@ class WalkTrackingService : Service() {
                     id = id,
                     dogIds = dogIds,
                     startedAtMillis = checkNotNull(sessionStartedAtMillis),
+                    motionPolicyJson = MotionPolicies.encode(motionPolicy),
                 ),
             )
         }

@@ -11,7 +11,7 @@ import androidx.sqlite.execSQL
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
     entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -253,6 +253,13 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /** Old and restored walks have no known policy; keep their envelope absent. */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN motionPolicyJson TEXT")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -270,6 +277,7 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_12_13,
                     MIGRATION_13_14,
                     MIGRATION_14_15,
+                    MIGRATION_15_16,
                 )
                 .build()
     }

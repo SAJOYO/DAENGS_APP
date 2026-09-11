@@ -58,7 +58,7 @@ data class MotionConfig(
     }
 }
 
-/** Storage-ready envelope. Persistence/activation belongs to the later runtime integration. */
+/** Frozen envelope stored verbatim on the session; observation schema is independent of Room's version. */
 data class StoredMotionPolicy(val version: String, val observationSchemaVersion: Int,
     val configJson: String, val configHash: String)
 
@@ -74,6 +74,28 @@ sealed interface MotionPolicySelection {
 object MotionPolicies {
     const val VERSION = "motion-v1"
     const val OBSERVATION_SCHEMA = 15
+
+    fun encode(policy: SessionMotionPolicy): String = buildJsonObject {
+        put("version", policy.stored.version)
+        put("observationSchemaVersion", policy.stored.observationSchemaVersion)
+        put("configJson", policy.stored.configJson)
+        put("configHash", policy.stored.configHash)
+    }.toString()
+
+    /** Preserve missing, corrupt and future records as distinct from today's defaults. */
+    fun resolveJson(sessionId: String, json: String?): MotionPolicySelection {
+        require(sessionId.isNotBlank())
+        if (json == null) return MotionPolicySelection.Legacy
+        val stored = try {
+            val envelope = Json.parseToJsonElement(json).jsonObject
+            require(envelope.keys == setOf("version", "observationSchemaVersion", "configJson", "configHash"))
+            fun string(key: String) = envelope.getValue(key).jsonPrimitive.also { require(it.isString) }.content
+            val schema = envelope.getValue("observationSchemaVersion").jsonPrimitive.also { require(!it.isString) }.int
+            StoredMotionPolicy(string("version"), schema, string("configJson"), string("configHash"))
+        }
+        catch (_: IllegalArgumentException) { return MotionPolicySelection.Unsupported("POLICY_ENVELOPE") }
+        return resolve(sessionId, stored)
+    }
 
     fun freeze(sessionId: String, config: MotionConfig = MotionConfig()): SessionMotionPolicy {
         require(sessionId.isNotBlank())
