@@ -47,10 +47,9 @@ fun selectWalkRecordBehaviors(
     behavior: WalkMomentType,
 ): WalkRecordBehaviors {
     require(behavior in BEHAVIOR_TYPES)
-    val dogId = selection.query.dogId
     val records = selection.records.asSequence().flatMap { walk ->
         walk.entries.asSequence()
-            .filter { it.type == behavior && (dogId == null || it.petId == dogId) }
+            .filter { it.type == behavior && selection.query.includesEntryDog(it.petId) }
             .map { WalkBehaviorRecord(it, walk) }
     }.sortedWith(compareByDescending<WalkBehaviorRecord> { it.entry.recordedAtMillis }
         .thenBy { it.key }).toList()

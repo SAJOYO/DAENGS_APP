@@ -55,6 +55,19 @@ class RoomWalkRecordsSourceTest {
 
     @After fun close() = db.close()
 
+    @Test fun `multiple selected dogs include shared walks once and exclude other dogs`() = runBlocking {
+        listOf("shared" to listOf("a", "b"), "a-only" to listOf("a"),
+            "b-only" to listOf("b"), "other" to listOf("c"), "unknown" to emptyList()).forEach { (id, dogs) ->
+            log.openSession(RecordedSession(id, dogIds = dogs, startedAtMillis = 0, endedAtMillis = 600_000))
+            note(id, "함께 남긴 메모")
+        }
+        val selected = source.select(WalkRecordsQuery(setOf("a", "b")))
+        assertEquals(setOf("shared", "a-only", "b-only"), selected.sessionIds.toSet())
+        assertEquals(3, selected.sessionIds.size)
+        assertEquals(setOf("shared", "a-only"), source.select(WalkRecordsQuery("a")).sessionIds.toSet())
+        assertEquals(5, source.select(WalkRecordsQuery()).sessionIds.size)
+    }
+
     @Test fun `upload acknowledgement carries the server mapping without claiming a ready sheet`() = runBlocking {
         seedSearchWalk(log, "local", 1)
         val before = source.select(WalkRecordsQuery()).records.single()

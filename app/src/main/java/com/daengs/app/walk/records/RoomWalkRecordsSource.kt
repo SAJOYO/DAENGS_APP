@@ -61,7 +61,7 @@ class RoomWalkRecordsSource(
         checkOwner()
         val dao = database.walkDao()
         // Reuse the history's date/weather rules before loading a walk's heavier input rows.
-        val sessions = dao.finishedRecordSessions(expectedOwner, query.dogId)
+        val sessions = dao.finishedRecordSessions(expectedOwner, query.dogIds?.singleOrNull())
             .filter { query.filter.matches(it.toModel(), zone) }
         val records = mutableListOf<RecordSnapshot>()
         for (batch in sessions.chunked(QUERY_BATCH_SIZE)) {
@@ -72,6 +72,7 @@ class RoomWalkRecordsSource(
             val analyses = dao.historySearchAnalyses(ids).associateBy { it.sessionId }
             for (session in batch) {
                 currentCoroutineContext().ensureActive()
+                if (!query.includesDogs(dogs[session.id].orEmpty())) continue
                 val rows = entries[session.id].orEmpty()
                 val photoSync = dao.photoSync(session.id)
                 val photos = dao.photos(session.id)

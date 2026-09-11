@@ -222,6 +222,26 @@ class WalkRecordsSelectionTest {
         }
     }
 
+    @Test fun `multiple dogs form a union of walks and restrict attributed behavior`() {
+        val ids = mutableSetOf("a", "b")
+        val shared = record("shared", dogs = listOf("a", "b", "c"), entries = listOf(
+            entry("a-sniff", "shared", petId = "a"), entry("b-sniff", "shared", petId = "b"),
+            entry("c-sniff", "shared", petId = "c"), entry("unknown", "shared", petId = null)))
+        val candidates = listOf(shared, record("a-only", dogs = listOf("a")),
+            record("b-only", dogs = listOf("b")), record("c-only", dogs = listOf("c")),
+            record("unassigned", dogs = emptyList()))
+        val selected = selectWalkRecords(candidates, WalkRecordsQuery(ids), KST)
+        ids.clear()
+        assertEquals(setOf("a", "b"), selected.query.dogIds)
+        assertEquals(setOf("shared", "a-only", "b-only"), selected.sessionIds.toSet())
+        assertEquals(3, selected.sessionIds.size)
+        assertEquals(setOf("a-sniff", "b-sniff"), selectWalkRecordBehaviors(selected,
+            WalkMomentType.SNIFFING).records.map { it.entry.id }.toSet())
+        val all = selectWalkRecords(candidates, WalkRecordsQuery(), KST)
+        assertEquals(5, all.sessionIds.size)
+        assertEquals(4, selectWalkRecordBehaviors(all, WalkMomentType.SNIFFING).records.size)
+    }
+
     private fun record(
         id: String, at: String = "2026-09-10T03:00:00Z", dogs: List<String> = listOf("dog"),
         weatherCode: Int? = 0, ended: Boolean = true, title: String? = null,

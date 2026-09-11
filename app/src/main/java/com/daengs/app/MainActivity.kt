@@ -1000,6 +1000,7 @@ class MainActivity : ComponentActivity() {
 
                     Screen.WalkHistory, Screen.WalkDetail -> key(recordsAccount) {
                         WalkRecordsRoute(
+                            photoOf = { petPhotos[it] },
                             accountScope = recordsAccount,
                             source = recordsSource,
                             state = recordsRouteState,
