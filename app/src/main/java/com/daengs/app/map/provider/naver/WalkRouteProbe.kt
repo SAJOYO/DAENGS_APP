@@ -9,10 +9,11 @@ internal class WalkRouteProbe {
     var updated = 0
     var prepared = 0
     var pointsPrepared = 0
+    var edgesPainted = 0
     val prepareNanos = mutableListOf<Long>()
     val sdkNanos = mutableListOf<Long>()
     fun reset() {
-        created = 0; removed = 0; updated = 0; prepared = 0; pointsPrepared = 0
+        created = 0; removed = 0; updated = 0; prepared = 0; pointsPrepared = 0; edgesPainted = 0
         prepareNanos.clear(); sdkNanos.clear()
     }
 }

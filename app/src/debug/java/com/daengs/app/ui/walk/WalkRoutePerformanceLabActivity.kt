@@ -26,7 +26,7 @@ class WalkRoutePerformanceLabActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContent { DaengsTheme { WalkRoutePerformanceLab(intent.getBooleanExtra("auto", false)) } }
+        setContent { DaengsTheme { WalkRoutePerformanceLab(intent.getBooleanExtra("auto", false), intent.getBooleanExtra("single", false)) } }
     }
 }
 
@@ -37,32 +37,33 @@ private fun routePoint(segment: Int, index: Int): WalkSpeedPoint {
 }
 
 @Composable
-private fun WalkRoutePerformanceLab(auto: Boolean) {
+private fun WalkRoutePerformanceLab(auto: Boolean, single: Boolean = false) {
+    val segmentCount = if (single) 1 else 4
     val probe = remember { WalkRouteProbe() }
     var count by remember { mutableIntStateOf(1000) }
     var extra by remember { mutableIntStateOf(0) }
     var running by remember { mutableStateOf(auto) }
     var show by remember { mutableStateOf(true) }
     var gap by remember { mutableStateOf(false) }
-    var report by remember { mutableStateOf("가상 경로 4구간 · 마지막 구간에만 좌표 추가") }
-    val base = remember(count) { List(4) { segment -> List(count / 4) { routePoint(segment, it) } } }
+    var report by remember { mutableStateOf("가상 경로 ${segmentCount}구간 · 마지막 구간에만 좌표 추가") }
+    val base = remember(count, segmentCount) { List(segmentCount) { segment -> List(count / segmentCount) { routePoint(segment, it) } } }
     val trail = remember(base, extra, show, gap) {
         val paths = if (!show) emptyList() else base.dropLast(1) + listOf(
-            base.last() + List(extra) { routePoint(3, count / 4 + it) }) +
-            if (gap) listOf(List(20) { routePoint(4, it) }) else emptyList()
+            base.last() + List(extra) { routePoint(segmentCount - 1, count / segmentCount + it) }) +
+            if (gap) listOf(List(20) { routePoint(segmentCount, it) }) else emptyList()
         TrailLayerState(paths = paths.map { segment -> segment.map { it.point } }, speedPaths = paths)
     }
     LaunchedEffect(running) {
         if (!running) return@LaunchedEffect
         delay(4000)
-        for (size in listOf(1000, 5000, 10000)) {
+        for (size in if (single) listOf(1000, 5000) else listOf(1000, 5000, 10000)) {
             count = size; extra = 0; show = true; gap = false
             delay(2000)
             probe.reset()
             repeat(20) { extra++; delay(250) }
             val line = String.format(Locale.US,
-                "n=%d phase=append20 create=%d remove=%d update=%d prepared=%d points=%d prepareMs=%.2f sdkMs=%.2f",
-                count, probe.created, probe.removed, probe.updated, probe.prepared, probe.pointsPrepared,
+                "n=%d phase=append20 create=%d remove=%d update=%d prepared=%d points=%d edges=%d prepareMs=%.2f sdkMs=%.2f",
+                count, probe.created, probe.removed, probe.updated, probe.prepared, probe.pointsPrepared, probe.edgesPainted,
                 probe.prepareNanos.sum() / 1e6, probe.sdkNanos.sum() / 1e6)
             Log.i("WalkRoutePerf", line); report = line
         }

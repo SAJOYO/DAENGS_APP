@@ -44,7 +44,8 @@ class WalkRouteOverlayStoreTest {
         }
         assertEquals(0, probe.created); assertEquals(0, probe.removed)
         assertEquals(20, probe.updated); assertEquals(20, probe.prepared)
-        assertEquals(50210, probe.pointsPrepared)
+        assertEquals(160, probe.pointsPrepared)
+        assertEquals(100, probe.edgesPainted)
         original.forEach { (key, handle) -> assertSame(handle, handles[key]) }
         assertSame(fixedParts, handles.getValue(key(0)).state.parts)
         assertEquals(0, original.getValue(key(0)).updates)
