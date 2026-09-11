@@ -115,6 +115,12 @@ fun ConnectedPlaceSearchScreen(
         if (state.discovery.response != null) expanded = ui.expanded
     }
     val category = PlaceCategorySelection.fromKinds(display.requestedKinds)
+    fun searchSnapshot() = PlaceBrowseSnapshot(PlaceBrowseFilters(
+        kinds = display.requestedKinds.toSet(), name = display.nameQuery,
+        origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
+        dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
+        requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
+    ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera)
     if (bookmarks != null && saved != null) {
         PlaceBookmarkFeedback(bookmarks, saved)
         if (saved.session.tab == PlaceBrowseTab.BOOKMARKS) {
@@ -123,7 +129,7 @@ fun ConnectedPlaceSearchScreen(
                     state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
                     onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
                     onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
-                ) }, onRefreshProfiles = onRefreshProfiles)
+                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto)
             return
         }
     }
@@ -149,12 +155,7 @@ fun ConnectedPlaceSearchScreen(
         state = ui, live = true, onBack = onBack,
         bookmarks = saved?.panel(), resultsListState = searchList,
         onBrowseTab = { tab -> if (tab == PlaceBrowseTab.BOOKMARKS) {
-            bookmarks?.enter(PlaceBrowseSnapshot(PlaceBrowseFilters(
-                kinds = display.requestedKinds.toSet(), name = display.nameQuery,
-                origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
-                dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
-                requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
-            ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera), state.profiles.snapshots())
+            bookmarks?.enter(searchSnapshot(), state.profiles.snapshots())
         } },
         onToggleBookmark = { bookmarks?.toggle(it) }, onRetryBookmarks = { bookmarks?.refresh() },
         onEdit = { draft = it }, showAiToggle = false,
@@ -246,7 +247,7 @@ fun ConnectedPlaceSearchScreen(
                         onSubmit = { query ->
                             dogAsked = true; dogQuery = query
                             if (!ai) onAction(PlacesAction.SetAiMode(true))
-                            onAction(PlacesAction.Discover(query, bookmarks?.captureTurn()))
+                            onAction(PlacesAction.Discover(query, bookmarks?.captureTurn(searchSnapshot(), state.profiles.snapshots())))
                         },
                         onCancel = { onAction(PlacesAction.CancelAi) },
                         onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,

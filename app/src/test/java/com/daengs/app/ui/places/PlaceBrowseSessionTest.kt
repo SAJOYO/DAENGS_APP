@@ -45,10 +45,11 @@ class PlaceBrowseSessionTest {
         assertEquals(search, returned.search)
     }
 
-    @Test fun changedSearchReseedsSavedConditionsInsteadOfReusingStaleFilters() {
+    @Test fun changedSearchKeepsSavedConditionsUntilExplicitCopy() {
         val changed = PlaceBrowseSession(search).showAllBookmarks().select(PlaceBrowseTab.SEARCH)
             .updateCurrent { it.copy(filters = it.filters.copy(kinds = setOf(PlaceKind.HOSPITAL), name = "")) }
-        assertEquals(changed.search.filters, changed.select(PlaceBrowseTab.BOOKMARKS).current.filters)
+        assertFalse(changed.select(PlaceBrowseTab.BOOKMARKS).current.filters.narrowsBookmarks)
+        assertEquals(changed.search.filters, changed.copySearchToBookmarks().current.filters)
         assertEquals(changed, changed.select(PlaceBrowseTab.SEARCH))
     }
 }

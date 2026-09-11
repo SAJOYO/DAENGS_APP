@@ -268,6 +268,36 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
 경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
 
+## 산책 기록의 공통 상단·독립 필터
+
+상단·선택창 변경은 `ui.walk.records.WalkRecordsFiltersTest`(5마리 복수 선택, 취소,
+빈 부분집합 금지, 기간과 독립 적용, 복원, 검색 접기, 320dp/큰 글자)와
+`WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`로 좁힌다.
+강아지 집합 조회를 변경하면 `WalkRecordsSelectionTest`, `RoomWalkRecordsSourceTest`,
+`TraceLoadingWalkRecordsSourceTest`를 더해 중복 없는 OR 선택·행동 귀속·조회 경계를 확인한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsFiltersTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.TraceLoadingWalkRecordsSourceTest' -PslimAbi=x86_64 --console=plain
+```
+
+합성 화면 렌더는 `app/build/outputs/records-filters/`에 저장한다. 실제 강아지 사진·
+네이버 지도·사용자 폰 검증을 대신하지 않는다. 위 명령은 실행 지도이며 통과 기록이 아니다.
+
+## 산책 기록의 날짜별 목록
+
+`WalkRecordsListTest`는 시작 날짜의 시간대·연도/자정 경계, 같은 날짜 머리글,
+카드별 상세 진입, 제목/경로/프로필 누락, 큰 글자·5마리, 페이지·탭·스크롤 복원을 확인한다.
+`WalkRecordsFiltersTest`는 프로필 로딩과 선택한 강아지의 일부/전체 삭제도 확인한다.
+새 목록의 소비자는 `WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`다.
+공통 상세 연결을 함께 갱신하면 `WalkSessionDestinationTest`, `WalkSessionDetailUiTest`를 추가한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsListTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsFiltersTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' -PslimAbi=x86_64 --console=plain
+```
+
+합성 기록의 렌더는 `app/build/outputs/records-list/`에 생성한다. 실제 지도·사용자 기록의
+실기기 검증과는 별개다. 이 변경은 기존 `WalkHistoryBrowser`의 카드·조회에는 적용하지 않는다.
+
 ## 산책 기록의 실제 원판 조회
 
 `walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과
@@ -422,3 +452,11 @@ nullable `File.parentFile` 경고가 있었다. 전체 테스트·APK·실기기
   실제 저장·복구·전송 계약은 관련 Room 테스트와 묶는다.
 - 결과에는 기준 커밋·명령·실행 수·실패·skip·미검증 범위를 적는다.
 - 대응 테스트가 없으면 검증 공백으로 남긴다. 전체 실행이나 새로운 설치 도구로 대신하지 않는다.
+
+## 전봇대 객체 재사용
+
+`map/provider/naver/TerritoryOverlayStoreTest`는 ID별 본체 유지·변경분 반영·지도 수명 정리와 효과 취소를 SDK handle 대역으로 검증한다. 이 경계를 바꾸면 `TerritoryPoleArtTest`와 `TerritoryBoardPresentationTest`를 함께 선택한다. 실제 네이버 SDK의 클릭·범위 원·네 가지 색상은 Debug `TerritoryPerformanceLabActivity`와 `TerritoryPoleLabActivity`에서 확인한다. 가상 장소 측정 방법과 지표 한계는 [전봇대 성능 검증](../../../docs/territory-overlay-performance.md)에 있다. 전체 테스트로 확대하지 않는다.
+
+### 전봇대 효과 대상 갱신 (2단계)
+
+store의 현재/이전 대상·새 범위 원 초기화·프레임 목록 재사용을 바꾸면 `TerritoryOverlayStoreTest`와 유한 애니메이션 소비자인 `ui.walk.TerritoryFeedbackUiTest`만 선택한다. 이미지와 회원 소유 매핑 변경이 없으면 1단계의 이미지·보드 테스트를 반복할 필요가 없다. Debug 비교의 handleFrames는 FPS가 아닌 처리 대상 호출 수다.

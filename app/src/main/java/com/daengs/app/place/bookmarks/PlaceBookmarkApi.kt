@@ -15,6 +15,8 @@ data class SavedPlacePage(val items: List<SavedPlace>, val limit: Int)
 data class SavedPlaceResults(val page: SavedPlacePage, val hits: List<PlaceSearchHit>,
     val missing: Set<PlaceKey>, val distanceAvailable: Boolean)
 
+data class SavedSearchPlan(val action: String, val message: String, val filters: JsonObject?)
+
 internal fun PlaceKey.savedJson() = buildJsonObject { put("source", source); put("ref", ref) }
 internal fun JsonObject.savedKey() = PlaceKey(getValue("source").jsonPrimitive.content, getValue("ref").jsonPrimitive.content)
 internal fun PlaceBrowseFilters.savedQuery(dogs: List<PlaceDogSnapshot>) = buildJsonObject {
@@ -43,10 +45,20 @@ interface PlaceBookmarkClient {
     suspend fun list(token: String): SavedPlacePage
     suspend fun set(token: String, key: PlaceKey, saved: Boolean): SavedPlacePage
     suspend fun search(token: String, filters: JsonObject): SavedPlaceResults
+    suspend fun interpret(token: String, query: String, filters: JsonObject): SavedSearchPlan =
+        throw PlaceBookmarkException(503, "saved_conversation_unavailable")
 }
 class PlaceBookmarkException(val status: Int, val code: String?) : IllegalStateException("Place bookmarks failed ($status)")
 
 class PlaceBookmarkApi(private val baseUrl: () -> String = { BuildConfig.API_BASE_URL }) : PlaceBookmarkClient {
+    override suspend fun interpret(token: String, query: String, filters: JsonObject): SavedSearchPlan {
+        val body = request(token, "POST", "/interpret", buildJsonObject { put("query", query); put("filters", filters) })
+        val action = body.getValue("action").jsonPrimitive.content
+        require(action in setOf("search", "clarify", "explain", "return_search"))
+        val candidate = body["filters"]?.takeUnless { it == JsonNull }?.jsonObject
+        require((action == "search") == (candidate != null))
+        return SavedSearchPlan(action, body.getValue("message").jsonPrimitive.content, candidate)
+    }
     override suspend fun list(token: String) = parseSavedPage(request(token, "GET"))
     override suspend fun set(token: String, key: PlaceKey, saved: Boolean): SavedPlacePage {
         val encode: (String) -> String = { URLEncoder.encode(it, Charsets.UTF_8.name()) }
@@ -82,7 +94,7 @@ class PlaceBookmarkApi(private val baseUrl: () -> String = { BuildConfig.API_BAS
         val connection = URL("${baseUrl().trimEnd('/')}/app/places/bookmarks$suffix").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method; connection.instanceFollowRedirects = false
-            connection.connectTimeout = 10_000; connection.readTimeout = 20_000
+            connection.connectTimeout = 10_000; connection.readTimeout = if (suffix == "/interpret") 45_000 else 20_000
             connection.setRequestProperty("Authorization", "Bearer $token")
             connection.setRequestProperty("Accept", "application/json")
             if (body != null) {
