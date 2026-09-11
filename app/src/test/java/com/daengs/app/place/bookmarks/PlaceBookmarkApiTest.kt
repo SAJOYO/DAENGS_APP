@@ -55,6 +55,19 @@ class PlaceBookmarkApiTest {
             assertFalse(error.message!!.contains("secret"))
         }
     }
+    @Test fun `interpret authenticates and cannot smuggle a write action`() {
+        val filters = PlaceBrowseFilters().allBookmarks().savedQuery(emptyList())
+        for (action in listOf("search", "save", "remove")) {
+            val body = buildJsonObject { put("action", action); put("message", ""); put("filters", filters) }
+            withServer(body.toString()) { api, captured ->
+                val result = runCatching { runBlocking { api.interpret("access", "카페만", filters) } }
+                assertEquals(action == "search", result.isSuccess)
+                assertEquals("POST", captured[0]); assertEquals("Bearer access", captured[1])
+                assertEquals("/app/places/bookmarks/interpret", captured[2])
+                assertEquals(filters, Json.parseToJsonElement(captured[3]).jsonObject["filters"])
+            }
+        }
+    }
     private fun withServer(body: String, status: Int = 200, block: (PlaceBookmarkApi, List<String>) -> Unit) {
         val captured = mutableListOf<String>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

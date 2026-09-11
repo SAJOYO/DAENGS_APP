@@ -27,6 +27,51 @@ class ConversationBookmarkTest {
     private fun repository(client: ConversationClient) = FacilityConversationRepository(client,
         PlaceSearchRepository { error("no fallback") }, { session }, { session })
 
+    @Test fun savedSearchHandoffUsesNegotiatedCommandAndPreservesNormalResults() = runTest {
+        val filters = buildJsonObject { put("parking", true) }
+        val repository = repository { _, payload ->
+            val base = conversationFixture("manual", payload)
+            if (payload["mode"]?.jsonPrimitive?.content == "chat") {
+                assertEquals("v1", payload["saved_search"]?.jsonPrimitive?.content)
+                JsonObject(base + ("receipt" to JsonObject(base.getValue("receipt").jsonObject + ("saved_search_filters" to filters))))
+            } else base
+        }
+        repository.search(request)
+        val before = repository.state.value.result!!
+        var called = false
+        val turn = object : BookmarkTurn {
+            override val supportsSearch = true
+            override suspend fun execute(requestId: String, key: PlaceKey, saved: Boolean): BookmarkOutcome = error("must not write")
+            override suspend fun search(filters: JsonObject, isCurrent: () -> Boolean): String {
+                assertTrue(isCurrent()); called = true
+                return "찜 검색 완료"
+            }
+        }
+        repository.chat("찜에서 주차 우선", before.order, turn)
+        assertTrue(called)
+        assertTrue(repository.state.value.result!!.preservesDisplay)
+        assertEquals(before.search, repository.state.value.result!!.search)
+        assertEquals("찜 검색 완료", repository.state.value.commandAnswer)
+    }
+
+    @Test fun savedScopeClarificationKeepsSelectionAndDoesNotExecute() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val repository = repository { _, payload ->
+            val base = conversationFixture("manual", payload)
+            if (payload["mode"]?.jsonPrimitive?.content == "chat") {
+                gate.await()
+                JsonObject(base + ("receipt" to JsonObject(base.getValue("receipt").jsonObject + ("code" to JsonPrimitive("saved_search_clarify")))))
+            } else base
+        }
+        repository.search(request)
+        val before = repository.state.value.result!!
+        val task = async { repository.chat("찜 검색 조건이 모호함", before.order) }
+        runCurrent(); repository.select(before.order.last())
+        gate.complete(Unit); task.await()
+        assertEquals(before.order.last(), repository.state.value.selected)
+        assertTrue(repository.state.value.result!!.preservesDisplay)
+    }
+
     @Test fun waitsForActualBookmarkCompletionAndDoesNotAskServerForSuccessText() = runTest {
         val gate = CompletableDeferred<Unit>()
         var written: PlaceKey? = null

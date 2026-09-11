@@ -35,7 +35,8 @@ data class ConversationResult(
     val matches get() = receipt.getValue("result_matches_filters").jsonPrimitive.boolean
     val failed get() = receipt["execution"]?.jsonPrimitive?.content == "failed"
     val preservesDisplay get() = receipt["bookmark_command"]?.let { it != JsonNull } == true ||
-        receipt["code"]?.jsonPrimitive?.content == "feedback_no_mutation"
+        receipt["saved_search_filters"]?.let { it != JsonNull } == true ||
+        receipt["code"]?.jsonPrimitive?.content in setOf("feedback_no_mutation", "saved_search_clarify", "saved_search_client_required")
 }
 
 data class ConversationUiState(
@@ -300,6 +301,7 @@ class FacilityConversationRepository(
                 put("visible_selected", buildJsonObject { put("source", key.source); put("ref", key.ref) })
             }
             if (mode == "chat" && bookmarks != null) put("bookmark_commands", "v1")
+            if (mode == "chat" && bookmarks?.supportsSearch == true) put("saved_search", "v1")
             put("visible_order", buildJsonArray {
                 visibleOrder.take(120).forEach { key -> add(buildJsonObject {
                     put("source", key.source); put("ref", key.ref)
@@ -311,7 +313,8 @@ class FacilityConversationRepository(
         val payload = retry?.takeIf {
             it["mode"]?.jsonPrimitive?.content == "restore" ||
                 (it["mode"] == next["mode"] && it["manual"] == next["manual"] && it["query"] == next["query"] &&
-                    it["remove_filters"] == next["remove_filters"] && it["bookmark_commands"] == next["bookmark_commands"]) ||
+                    it["remove_filters"] == next["remove_filters"] && it["bookmark_commands"] == next["bookmark_commands"] &&
+                    it["saved_search"] == next["saved_search"]) ||
                 before == null
         } ?: next
         val commandContext = if (payload === next) bookmarks else pendingBookmarks
@@ -356,6 +359,15 @@ class FacilityConversationRepository(
             // exact local request, account lifetime and utterance-time target.
             val command = result.receipt["bookmark_command"]?.takeUnless { it is JsonNull }?.jsonObject
             var commandAnswer: String? = null
+            val savedFilters = result.receipt["saved_search_filters"]?.takeUnless { it == JsonNull }?.jsonObject
+            if (savedFilters != null) {
+                checkLive(mine, session)
+                require(command == null && result.requestId == payload["client_request_id"]?.jsonPrimitive?.content &&
+                    payload["saved_search"]?.jsonPrimitive?.content == "v1" && commandContext?.supportsSearch == true)
+                require(before != null && result.filters == before.filters && result.search == before.search &&
+                    result.order == before.order && !result.failed && result.answerStatus == "none")
+                commandAnswer = commandContext!!.search(savedFilters) { mine == generation }
+            }
             if (command != null && result.requestId == payload["client_request_id"]?.jsonPrimitive?.content &&
                 payload["bookmark_commands"]?.jsonPrimitive?.content == "v1" && commandContext != null) {
                 val live = currentSession()
