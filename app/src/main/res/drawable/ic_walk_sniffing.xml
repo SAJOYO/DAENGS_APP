@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp" android:height="32dp" android:viewportWidth="32" android:viewportHeight="32">
+    <!-- Nose and scent curls have their own silhouette, without a generic pin container. -->
+    <path android:fillColor="#AFD9C6" android:strokeColor="#FFFFFF" android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:pathData="M6,14 Q6,10 11,10 L21,10 Q26,10 26,14 Q26,18 20,21 L16,25 L12,21 Q6,18 6,14 Z" />
+    <path android:fillColor="#31564B"
+        android:pathData="M11,12 Q8,12 9,15 Q10,17 12,15 Q14,13 11,12 Z M21,12 Q18,12 20,15 Q22,17 23,14 Q23,12 21,12 Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#31564B" android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M16,19 L16,23 M5,8 C1,5 8,5 5,2 M15,7 C11,4 18,4 15,1 M25,8 C21,5 28,5 25,2" />
+</vector>

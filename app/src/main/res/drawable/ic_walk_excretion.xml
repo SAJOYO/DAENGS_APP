@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp" android:height="32dp" android:viewportWidth="32" android:viewportHeight="32">
+    <!-- A stepped mound: identifiable even without color or a caption. -->
+    <path android:fillColor="#AD7958" android:strokeColor="#FFFFFF" android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:pathData="M8,27 C2,27 2,21 7,19 C5,16 8,12 12,12 C10,9 17,8 15,3 C23,5 24,10 21,13 C26,13 28,17 25,20 C30,21 30,27 25,27 Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#694932" android:strokeWidth="1.7"
+        android:strokeLineCap="round" android:pathData="M12,13 Q17,15 21,13 M8,20 Q16,23 24,20" />
+</vector>

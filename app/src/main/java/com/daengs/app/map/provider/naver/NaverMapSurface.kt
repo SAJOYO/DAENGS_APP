@@ -375,13 +375,18 @@ fun NaverMapSurface(
         val markers = if (map == null) emptyList() else scene.moments.map { moment ->
             Marker().apply {
                 position = moment.point.toLatLng()
-                val badge = moment.sequenceLabel?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
+                val behaviorArt = moment.takeIf { it.behaviors.isNotEmpty() }?.let {
+                    actionMarkerBitmap(context, it.behaviors, it.selected, it.sequenceLabel, badgeDensity)
+                }
+                val badge = moment.sequenceLabel?.takeIf { behaviorArt == null }
+                    ?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
                 captionText = if (badge == null) moment.label else ""
                 captionMinZoom = 12.0
-                width = badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                height = badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                anchor = if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
-                icon = badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
+                width = behaviorArt?.width ?: badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                height = behaviorArt?.height ?: badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
+                anchor = if (behaviorArt != null) PointF(0.5f, 0.5f)
+                    else if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
+                icon = behaviorArt?.let(OverlayImage::fromBitmap) ?: badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
                     ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
                 zIndex = if (moment.aboveRouteEndpoints) {
                     if (moment.selected) 140 else 120
