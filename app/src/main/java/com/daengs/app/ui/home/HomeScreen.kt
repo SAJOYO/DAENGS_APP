@@ -281,6 +281,8 @@ fun HomeScreen(
     onDeletePet: ((Pet) -> Unit)? = null,
     /** 아이를 배웅하는 자리로. 마이가 그 길을 연다 */
     onFarewell: ((Pet) -> Unit)? = null,
+    /** 그 아이를 함께 돌보는 사람을 보러 간다. 대표·돌보미 모두 들어간다. */
+    onOpenMembers: ((Pet) -> Unit)? = null,
     /** 이미 배웅한 아이의 날짜 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deletePetBusy: Boolean = false,
@@ -474,6 +476,7 @@ fun HomeScreen(
                 onPickPrimary = { onPickPrimary?.invoke(it) },
                 onDeletePet = { onDeletePet?.invoke(it) },
                 onFarewell = onFarewell,
+                onOpenMembers = onOpenMembers,
                 farewellOf = farewellOf,
                 deleteBusy = deletePetBusy,
                 deleteError = deletePetError,
