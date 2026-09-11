@@ -156,6 +156,9 @@ class GaitHolder(
             hasOverlay = record.hasOverlay || detail.hasOverlay,
             qualityReason = record.qualityReason ?: detail.reason,
             qualityAdvice = record.qualityAdvice ?: detail.recommendation,
+            createdBy = detail.createdBy ?: record.createdBy,
+            canConfirm = detail.canConfirm ?: record.canConfirm,
+            canDelete = detail.canDelete ?: record.canDelete,
         )
     }
 
@@ -197,6 +200,10 @@ class GaitHolder(
      * 표본 기록(`sample-` )은 서버에 없으니 부르지 않는다.
      */
     suspend fun remove(id: String) {
+        if (find(id)?.canDelete == false) {
+            error = "대표 보호자만 이 보행 기록을 지울 수 있어요."
+            return
+        }
         val before = records
         records = records.filterNot { it.id == id }
         titles?.remove(id)

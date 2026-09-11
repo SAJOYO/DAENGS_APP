@@ -1,8 +1,11 @@
 package com.daengs.app.ui.storage
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,12 +22,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.net.toUri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.care.CareLogCoordinator
+import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.chat.ChatCitation
 import com.daengs.app.chat.ChatHistoryState
 import com.daengs.app.chat.ChatLoadState
@@ -42,8 +48,11 @@ import kotlinx.coroutines.launch
 
 /**
  * Home 의 저장소 탭. **한 번에 스크롤되는 한 목록**이다 — 위에 오늘의 케어 기록(#201),
- * 그 아래 대화 보관함, 맨 밑에 사진·영상 안내. 두 코디네이터의 서버 상태를 화면에 잇는
- * 얇은 경계이고, 판단은 코디네이터에 있다.
+ * 그 아래 진료비(#258), 그 아래 대화 보관함, 맨 밑에 사진·영상 안내. 세 코디네이터의
+ * 서버 상태를 화면에 잇는 얇은 경계이고, 판단은 코디네이터에 있다.
+ *
+ * 영수증을 집는 화면과 확인 화면은 **목록 위에 덮는다** (사진 바꾸기와 같은 방식) —
+ * 목록 안의 한 줄로 두면 스크롤 안에 폼이 들어가고 키보드가 올라올 때 무너진다.
  */
 @Composable
 fun ChatSummaryRoute(
@@ -51,28 +60,43 @@ fun ChatSummaryRoute(
     historyState: ChatHistoryState,
     coordinator: ChatSummaryCoordinator,
     careCoordinator: CareLogCoordinator,
+    vetCoordinator: VetVisitCoordinator,
     accessTokenProvider: suspend () -> String?,
     onOpenSource: (String) -> Unit,
     onOpenCitation: (ChatCitation) -> Unit,
     modifier: Modifier = Modifier,
+    currentUserId: String? = null,
+    selectedPetIsOwner: Boolean = true,
 ) {
     val state by coordinator.state.collectAsState()
     val careState by careCoordinator.state.collectAsState()
+    val vetState by vetCoordinator.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var pendingDeletion by remember { mutableStateOf<ChatSummary?>(null) }
+    /** 영수증을 고르는 중. 확인 화면이 뜨기 전 단계다. */
+    var pickingReceipt by remember { mutableStateOf(false) }
+    /**
+     * 사진은 찍었는데 흐름을 못 연 경우. **침묵하면 안 된다** — 세션이 만료된 폰에서는
+     * 찍고 화면이 닫히고 아무 일도 안 일어나는 것으로 보인다.
+     */
+    var receiptStartError by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(petId, coordinator, careCoordinator) {
+    LaunchedEffect(petId, coordinator, careCoordinator, vetCoordinator) {
         coordinator.selectPet(petId)
         careCoordinator.selectPet(petId)
+        vetCoordinator.selectPet(petId)
         val token = accessTokenProvider() ?: return@LaunchedEffect
         careCoordinator.load(token)
+        vetCoordinator.load(token)
         coordinator.load(token)
     }
-    DisposableEffect(coordinator, careCoordinator) {
+    DisposableEffect(coordinator, careCoordinator, vetCoordinator) {
         onDispose {
             coordinator.cancelPending()
             careCoordinator.cancelPending()
+            vetCoordinator.cancelPending()
         }
     }
 
@@ -90,8 +114,9 @@ fun ChatSummaryRoute(
         scope.launch { accessTokenProvider()?.let { action(it) } }
     }
 
+    Box(modifier.fillMaxSize()) {
     LazyColumn(
-        modifier.fillMaxSize().background(CreamBg).testTag("storage-list"),
+        Modifier.fillMaxSize().background(CreamBg).testTag("storage-list"),
         state = listState,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -110,6 +135,26 @@ fun ChatSummaryRoute(
                     onRetryLoad = { withToken { careCoordinator.load(it) } },
                     onConfirmDelete = { event -> withToken { careCoordinator.delete(it, event.id) } },
                     onDismissError = { careCoordinator.clearErrors() },
+                    canDelete = { event -> canDeleteCareEvent(event, currentUserId, selectedPetIsOwner) },
+                )
+            }
+        }
+        item(key = "vet") {
+            if (petId != null) {
+                VetVisitSection(
+                    state = vetState,
+                    startError = receiptStartError,
+                    onPickReceipt = {
+                        receiptStartError = null
+                        pickingReceipt = true
+                    },
+                    onRetryLoad = { withToken { vetCoordinator.load(it) } },
+                    onConfirmDelete = { visit -> withToken { vetCoordinator.delete(it, visit.id) } },
+                    onDismissError = {
+                        receiptStartError = null
+                        vetCoordinator.clearErrors()
+                    },
+                    onCallHospital = { phone -> dial(context, phone) },
                 )
             }
         }
@@ -155,10 +200,50 @@ fun ChatSummaryRoute(
             withToken { coordinator.delete(it, summary.id) }
         }
     }
+
+    // 영수증 두 화면은 목록 **위에** 덮는다. 고르기가 먼저고, 사진이 손에 들어오는
+    // 순간 코디네이터가 client_event_id 를 만든다 — 업로드 버튼을 누를 때가 아니다.
+    if (pickingReceipt) {
+        ReceiptPicker { prepared ->
+            pickingReceipt = false
+            if (prepared != null) {
+                scope.launch {
+                    val token = accessTokenProvider()
+                    // beginReceipt 이 false 면 강아지가 없거나 이미 처리 중인 영수증이 있다.
+                    if (token == null ||
+                        !vetCoordinator.beginReceipt(token, prepared.jpeg, prepared)
+                    ) {
+                        receiptStartError = "지금은 영수증을 올릴 수 없어요. 다시 로그인한 뒤 시도해 주세요."
+                    }
+                }
+            }
+        }
+    }
+    vetState.receipt?.let { flow ->
+        ReceiptConfirmScreen(
+            photo = flow.photo,
+            draft = flow.draft,
+            options = vetState.reasonOptions,
+            step = flow.step,
+            error = flow.error,
+            onConfirm = { edits -> withToken { vetCoordinator.confirm(it, edits) } },
+            // ⚠️ 확정이 실패한 뒤에는 여기가 아니라 [확인] 을 다시 누르는 자리다 —
+            //    코디네이터의 재시도 표대로다. 그쪽이 거절하면 아무 일도 안 일어난다.
+            onRetry = { withToken { vetCoordinator.retryReceipt(it) } },
+            onDismiss = { vetCoordinator.dismissReceipt() },
+        )
+    }
+    }
 }
 
-/** 보관함 요약 목록 앞에 놓인 항목 수 (케어 기록 · 보관함 머리). */
-private const val HEADER_ITEMS = 2
+/** 눌러서 거는 자리. 숫자가 아닌 글자는 떼고 넘긴다 (`PlacesScreen` 과 같은 규칙). */
+private fun dial(context: Context, phone: String) {
+    val safe = phone.filter { it.isDigit() || it in "+*#," }
+    if (safe.isNotBlank()) context.startActivity(Intent(Intent.ACTION_DIAL, "tel:$safe".toUri()))
+}
+
+/** 보관함 요약 목록 앞에 놓인 항목 수 (케어 기록 · 진료비 · 보관함 머리). */
+private const val HEADER_ITEMS = 3
 
 @Composable
 private fun SummaryActionError(message: String, onRetry: () -> Unit) {
@@ -178,6 +263,7 @@ private fun ChatSummaryRoutePreview() {
             historyState = ChatHistoryState(),
             coordinator = ChatSummaryCoordinator(scope),
             careCoordinator = CareLogCoordinator(scope),
+            vetCoordinator = VetVisitCoordinator(scope),
             accessTokenProvider = { null },
             onOpenSource = {},
             onOpenCitation = {},

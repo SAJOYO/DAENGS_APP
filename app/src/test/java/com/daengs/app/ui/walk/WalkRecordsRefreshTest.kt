@@ -140,8 +140,9 @@ class WalkRecordsRefreshTest {
             compose.waitUntil(10_000) { oldStarted.get() == 1 }
             compose.onNodeWithText("기록-1").assertExists()
             compose.runOnIdle { active.value = replacement }
-            compose.waitUntil(10_000) { replacement.reads.get() == 1 }
+            // Drain the source-change recomposition before polling a background counter.
             waitText("산책 기록을 찾고 있어요.")
+            compose.waitUntil(10_000) { replacement.reads.get() == 1 }
             compose.onNodeWithText("기록-1").assertDoesNotExist()
             compose.onNodeWithTag("records-count").assertDoesNotExist()
             oldGate.complete(Unit)
