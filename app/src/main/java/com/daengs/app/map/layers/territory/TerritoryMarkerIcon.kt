@@ -18,6 +18,22 @@ import androidx.annotation.DrawableRes
 import com.daengs.app.R
 import kotlin.math.roundToInt
 
+internal enum class TerritoryPoleStyle(val occupancy: TerritoryMarkerOccupancy, val isMine: Boolean, val tint: Int) {
+    NEUTRAL(TerritoryMarkerOccupancy.NEUTRAL, false, Color.TRANSPARENT),
+    MINE_UNVERIFIED(TerritoryMarkerOccupancy.UNVERIFIED, true, 0xFF329AFF.toInt()),
+    MINE_VERIFIED(TerritoryMarkerOccupancy.VERIFIED, true, 0xFF1EF66F.toInt()),
+    OTHER_UNVERIFIED(TerritoryMarkerOccupancy.UNVERIFIED, false, 0xFFFFA600.toInt()),
+    OTHER_VERIFIED(TerritoryMarkerOccupancy.VERIFIED, false, 0xFFFF3D51.toInt());
+
+    companion object {
+        fun of(occupancy: TerritoryMarkerOccupancy, isMine: Boolean) = when (occupancy) {
+            TerritoryMarkerOccupancy.NEUTRAL -> NEUTRAL
+            TerritoryMarkerOccupancy.UNVERIFIED -> if (isMine) MINE_UNVERIFIED else OTHER_UNVERIFIED
+            TerritoryMarkerOccupancy.VERIFIED -> if (isMine) MINE_VERIFIED else OTHER_VERIFIED
+        }
+    }
+}
+
 /** tools/map_sprite.py와 같은 캔버스/밑면 접점. 지도와 Preview에서 함께 쓴다. */
 internal object TerritoryPoleArt {
     const val WIDTH = 256
@@ -42,7 +58,8 @@ internal object TerritoryPoleArt {
 }
 
 /** 본체 색과 실루엣 발광, 인증 체크. 실제 범위 원/성공 애니메이션과는 별개다. */
-internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOccupancy): Bitmap {
+internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOccupancy, isMine: Boolean = false): Bitmap {
+    val style = TerritoryPoleStyle.of(occupancy, isMine)
     val source = checkNotNull(BitmapFactory.decodeResource(context.resources, TerritoryPoleArt.resource(occupancy)))
     val result = Bitmap.createBitmap(TerritoryPoleArt.WIDTH, TerritoryPoleArt.HEIGHT, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(result)
@@ -64,23 +81,20 @@ internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOcc
     val body = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
     Canvas(body).drawBitmap(source, null, RectF(left, top,
         left + source.width * scale, top + source.height * scale), paint)
-    drawPoleBody(canvas, body, occupancy)
-    if (occupancy == TerritoryMarkerOccupancy.VERIFIED) drawVerifiedBadge(canvas)
+    drawPoleBody(canvas, body, style)
+    if (occupancy == TerritoryMarkerOccupancy.VERIFIED) drawVerifiedBadge(canvas, style.tint)
     source.recycle()
     body.recycle()
     return result
 }
 
-private fun drawPoleBody(canvas: Canvas, body: Bitmap, occupancy: TerritoryMarkerOccupancy) {
+private fun drawPoleBody(canvas: Canvas, body: Bitmap, style: TerritoryPoleStyle) {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    val tint = when (occupancy) {
-        TerritoryMarkerOccupancy.NEUTRAL -> {
-            canvas.drawBitmap(body, 0f, 0f, paint)
-            return
-        }
-        TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(255, 166, 0)
-        TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(0, 255, 181)
+    if (style == TerritoryPoleStyle.NEUTRAL) {
+        canvas.drawBitmap(body, 0f, 0f, paint)
+        return
     }
+    val tint = style.tint
     // A bright narrow core inside a wider colored bloom reads as light, not paint.
     val halo = Bitmap.createBitmap(body.width, body.height, Bitmap.Config.ARGB_8888)
     val haloCanvas = Canvas(halo)
@@ -96,8 +110,8 @@ private fun drawPoleBody(canvas: Canvas, body: Bitmap, occupancy: TerritoryMarke
     }
     bloom(26f, tint, 235)
     bloom(10f, tint, 255)
-    bloom(3f, if (occupancy == TerritoryMarkerOccupancy.UNVERIFIED) Color.rgb(255, 250, 218)
-        else Color.rgb(220, 255, 244), 255)
+    bloom(3f, Color.rgb((1020 + Color.red(tint)) / 5, (1020 + Color.green(tint)) / 5,
+        (1020 + Color.blue(tint)) / 5), 255)
     // Fade the bloom into the foot instead of clipping it at the bitmap's bottom edge.
     haloCanvas.drawRect(0f, 0f, body.width.toFloat(), body.height.toFloat(), Paint().apply {
         shader = LinearGradient(0f, 602f, 0f, 638f, Color.WHITE, Color.TRANSPARENT, Shader.TileMode.CLAMP)
@@ -109,19 +123,18 @@ private fun drawPoleBody(canvas: Canvas, body: Bitmap, occupancy: TerritoryMarke
     halo.recycle()
     canvas.drawBitmap(body, 0f, 0f, paint)
     // Only a hint of reflected color reaches the surface; retain the original material.
-    val light = if (occupancy == TerritoryMarkerOccupancy.UNVERIFIED) Color.rgb(35, 23, 10)
-        else Color.rgb(10, 35, 28)
+    val light = Color.rgb(Color.red(tint) / 8, Color.green(tint) / 8, Color.blue(tint) / 8)
     paint.colorFilter = LightingColorFilter(tint, light)
     paint.alpha = 30
     canvas.drawBitmap(body, 0f, 0f, paint)
 }
 
-private fun drawVerifiedBadge(canvas: Canvas) {
+private fun drawVerifiedBadge(canvas: Canvas, tint: Int) {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    // White rim + dark mint face keep the check readable on both land and roads.
+    // Match ownership color; a dark face keeps the white check readable.
     paint.color = Color.WHITE
     canvas.drawCircle(198f, 282f, 40f, paint)
-    paint.color = Color.rgb(17, 128, 103)
+    paint.color = Color.rgb(Color.red(tint) / 2, Color.green(tint) / 2, Color.blue(tint) / 2)
     canvas.drawCircle(198f, 282f, 33f, paint)
     paint.color = Color.WHITE
     paint.style = Paint.Style.STROKE

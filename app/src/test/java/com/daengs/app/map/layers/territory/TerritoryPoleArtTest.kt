@@ -69,43 +69,46 @@ class TerritoryPoleArtTest {
         assertEquals(48 to 120, TerritoryPoleArt.size())
     }
 
-    @Test fun `실제 지도 크기에서 본체 질감은 남고 윤곽 밖으로 형광빛이 번진다`() {
-        val icons = TerritoryMarkerOccupancy.entries.associateWith { state ->
-            val bitmap = territoryMarkerIcon(context, state)
-            for (x in 0 until bitmap.width) {
-                assertEquals(0, Color.alpha(bitmap.getPixel(x, bitmap.height - 1)))
-            }
+    @Test fun `회원 소유와 인증 조합마다 형광 색이 구별되고 질감과 체크가 유지된다`() {
+        val icons = TerritoryPoleStyle.entries.associateWith { style ->
+            assertEquals(style, TerritoryPoleStyle.of(style.occupancy, style.isMine))
+            val bitmap = territoryMarkerIcon(context, style.occupancy, style.isMine)
+            for (x in 0 until bitmap.width) assertEquals(0, Color.alpha(bitmap.getPixel(x, bitmap.height - 1)))
             for (y in 0 until bitmap.height) {
                 assertEquals(0, Color.alpha(bitmap.getPixel(0, y)))
                 assertEquals(0, Color.alpha(bitmap.getPixel(bitmap.width - 1, y)))
             }
-            assertTrue("본체에서 떨어진 바닥에는 밝은 받침을 깔지 않는다",
-                Color.alpha(bitmap.getPixel(50, 602)) <= 16)
+            assertTrue(Color.alpha(bitmap.getPixel(50, 602)) <= 16)
             Bitmap.createScaledBitmap(bitmap, 48, 120, true)
         }
-        fun count(state: TerritoryMarkerOccupancy, xs: IntRange, ys: IntRange, predicate: (Int) -> Boolean) =
-            ys.sumOf { y -> xs.count { x -> predicate(icons.getValue(state).getPixel(x, y)) } }
-        val orange: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.red(it) > Color.green(it) + 40 && Color.green(it) > Color.blue(it) + 40 }
-        val mint: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.green(it) > Color.red(it) + 60 && Color.blue(it) > Color.red(it) + 40 }
-        fun outsideTint(state: TerritoryMarkerOccupancy, predicate: (Int) -> Boolean) = (65..95).sumOf { y ->
-            (0 until 48).count { x -> Color.alpha(icons.getValue(TerritoryMarkerOccupancy.NEUTRAL).getPixel(x, y)) < 16 &&
-                predicate(icons.getValue(state).getPixel(x, y)) }
+        assertEquals(TerritoryPoleStyle.NEUTRAL, TerritoryPoleStyle.of(TerritoryMarkerOccupancy.NEUTRAL, true))
+        val hues = mapOf<TerritoryPoleStyle, (Int) -> Boolean>(
+            TerritoryPoleStyle.MINE_UNVERIFIED to { Color.blue(it) > Color.red(it) + 60 && Color.blue(it) > Color.green(it) + 35 },
+            TerritoryPoleStyle.MINE_VERIFIED to { Color.green(it) > Color.red(it) + 60 && Color.green(it) > Color.blue(it) + 50 },
+            TerritoryPoleStyle.OTHER_UNVERIFIED to { Color.red(it) > Color.green(it) + 40 && Color.green(it) > Color.blue(it) + 40 },
+            TerritoryPoleStyle.OTHER_VERIFIED to { Color.red(it) > Color.green(it) + 80 && Color.red(it) > Color.blue(it) + 80 },
+        )
+        for ((style, hue) in hues) {
+            val pixels = (65..95).sumOf { y -> (0 until 48).count { x ->
+                val color = icons.getValue(style).getPixel(x, y)
+                Color.alpha(icons.getValue(TerritoryPoleStyle.NEUTRAL).getPixel(x, y)) < 16 && Color.alpha(color) > 40 && hue(color)
+            } }
+            assertTrue("$style 윤곽 밖 상태색 픽셀: $pixels", pixels >= 30)
         }
-        val warmGlow = outsideTint(TerritoryMarkerOccupancy.UNVERIFIED, orange)
-        val mintGlow = outsideTint(TerritoryMarkerOccupancy.VERIFIED, mint)
-        assertTrue("원래 실루엣 밖 주황빛 픽셀: $warmGlow", warmGlow >= 30)
-        assertTrue("원래 실루엣 밖 민트빛 픽셀: $mintGlow", mintGlow >= 30)
-        val warmBody = icons.getValue(TerritoryMarkerOccupancy.UNVERIFIED).getPixel(24, 80)
-        val mintBody = icons.getValue(TerritoryMarkerOccupancy.VERIFIED).getPixel(24, 80)
-        for (channel in listOf<(Int) -> Int>(Color::red, Color::green, Color::blue)) {
-            assertTrue("본체 전체를 상태색 페인트로 덮지 않는다", kotlin.math.abs(channel(warmBody) - channel(mintBody)) < 65)
+        val reference = icons.getValue(TerritoryPoleStyle.OTHER_UNVERIFIED).getPixel(24, 80)
+        for (style in hues.keys) for (channel in listOf<(Int) -> Int>(Color::red, Color::green, Color::blue)) {
+            assertTrue("본체를 페인트로 덮지 않는다", kotlin.math.abs(channel(reference) - channel(icons.getValue(style).getPixel(24, 80))) < 65)
         }
-        val white: (Int) -> Boolean = { Color.alpha(it) > 200 && Color.red(it) > 230 && Color.green(it) > 230 && Color.blue(it) > 230 }
-        assertTrue("전봇대 자체의 밝은 픽셀과 별개로 인증 체크의 흰 획이 남는다",
-            count(TerritoryMarkerOccupancy.VERIFIED, 34..40, 50..56, white) >=
-                count(TerritoryMarkerOccupancy.UNVERIFIED, 34..40, 50..56, white) + 5)
+        fun whitePixels(style: TerritoryPoleStyle) = (50..56).sumOf { y -> (34..40).count { x ->
+            val c = icons.getValue(style).getPixel(x, y)
+            Color.alpha(c) > 200 && Color.red(c) > 230 && Color.green(c) > 230 && Color.blue(c) > 230
+        } }
+        for (mine in listOf(true, false)) {
+            assertTrue("내 것과 상대 것 모두 인증에는 체크를 붙인다",
+                whitePixels(TerritoryPoleStyle.of(TerritoryMarkerOccupancy.VERIFIED, mine)) >=
+                    whitePixels(TerritoryPoleStyle.of(TerritoryMarkerOccupancy.UNVERIFIED, mine)) + 5)
+        }
     }
-
     @Test fun `준비는 크기가 고정되고 성공 효과는 세로 비율과 접점을 유지한다`() {
         for (kind in TerritoryFeedbackKind.entries) for (step in 0..10) {
             val frame = territoryFeedbackFrame(kind, step / 10f)
@@ -127,10 +130,10 @@ class TerritoryPoleArtTest {
         paint.color = Color.rgb(58, 65, 68)
         canvas.drawRect(0f, 215f, 600f, 430f, paint)
         for ((row, footY) in listOf(190f, 405f).withIndex()) {
-            for ((col, state) in TerritoryMarkerOccupancy.entries.withIndex()) {
-                val bitmap = territoryMarkerIcon(context, state)
+            for ((col, style) in TerritoryPoleStyle.entries.withIndex()) {
+                val bitmap = territoryMarkerIcon(context, style.occupancy, style.isMine)
                 val (width, height) = TerritoryPoleArt.size()
-                val x = 100f + col * 200
+                val x = 60f + col * 120
                 val top = footY - height * TerritoryPoleArt.ANCHOR_Y
                 canvas.drawBitmap(bitmap, null, RectF(x - width / 2f, top, x + width / 2f, top + height), paint)
                 paint.color = if (row == 0) Color.GRAY else Color.LTGRAY

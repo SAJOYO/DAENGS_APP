@@ -30,7 +30,7 @@ internal fun TerritoryFeedbackSample(kind: TerritoryFeedbackKind, progress: Floa
         TerritoryFeedbackKind.READY -> TerritoryMarkerOccupancy.NEUTRAL
         TerritoryFeedbackKind.MARKED -> TerritoryMarkerOccupancy.UNVERIFIED
         TerritoryFeedbackKind.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
-    }).asImageBitmap() }
+    }, isMine = true).asImageBitmap() }
     val accent = if (kind == TerritoryFeedbackKind.MARKED) Color(0xffe3912d) else Color(0xff3c9673)
     val size = TerritoryPoleArt.size(scale = frame.markerScale)
     val density = LocalDensity.current
