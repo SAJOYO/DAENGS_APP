@@ -245,7 +245,8 @@ Room 준비 코드를 정리할 때는 계정·시계·세션·임시 파일과 
 ## 공용 helper 제공자와 소비자
 
 2단계에서는 테스트 파일 7곳의 공용 코드를 기능별 `support` 파일 6개로 분리했다.
-아래 표는 이번 분리 대상과 기존 시설 fixture의 참조 범위다. 경로는
+이후 추가 정리에서 대화 응답·장면 위치 근거·내 점령지·찜 fixture도 테스트 파일에서 분리했다.
+아래 표는 이 공용 코드와 기존 시설 fixture의 현재 참조 범위다. 경로는
 `java/com/daengs/app/` 기준이며 원래 제공 파일의 테스트도 소비자로 포함한다.
 Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로 import 문 검색만으로는 부족하다.
 
@@ -254,12 +255,16 @@ Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로
 | [walk/support/PinFixtures.kt](java/com/daengs/app/walk/support/PinFixtures.kt) — `PIN_TAP`, `pinRequest`, `pinPoint`, `pinFix` | `walk/pin/ActionPinEstimatorTest.kt`, `walk/pin/ActionPinReplayTest.kt` |
 | [walk/support/DiaryFixtures.kt](java/com/daengs/app/walk/support/DiaryFixtures.kt) — `diaryFixture` | `walk/diary/ServerDiaryBundleTest.kt`, `walk/diary/WalkDiaryReaderTest.kt`, `walk/sync/WalkDiarySyncTest.kt`, `ui/walk/WalkStoryboardScreenTest.kt` |
 | 같은 `DiaryFixtures.kt` — `titledDiaryFixture` | `walk/diary/WalkDiaryTitleTest.kt`, `walk/diary/WalkDiaryReaderTest.kt`, `walk/store/WalkHistorySearchTest.kt`, `walk/sync/WalkStoryboardSyncTest.kt` |
+| 같은 `DiaryFixtures.kt` — `sceneAnchorFixture` | `walk/diary/WalkSceneAnchoringTest.kt`, `walk/sync/WalkStoryboardSyncTest.kt`, `ui/walk/WalkDiaryMapScreenTest.kt` |
 | [walk/support/WalkHistoryFixtures.kt](java/com/daengs/app/walk/support/WalkHistoryFixtures.kt) — `seedSearchWalk` | `walk/store/WalkHistorySearchTest.kt`, `ui/walk/WalkHistorySearchScreenTest.kt` |
 | [territory/support/TerritoryFixtures.kt](java/com/daengs/app/territory/support/TerritoryFixtures.kt) — 식별자 상수, `MemoryActions`, `ClaimServer` | `territory/TerritoryActionSyncTest.kt`, `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionApiTest.kt`, `territory/TerritoryActionStoreTest.kt`, `territory/TerritoryPhotoApiTest.kt`; 공용 `territory/support/PhotoServer.kt`도 참조 |
 | [territory/support/PhotoServer.kt](java/com/daengs/app/territory/support/PhotoServer.kt) — `PhotoServer` | `territory/ServerTerritoryPhotosTest.kt`, `territory/CertifiedTerritoryPresentationTest.kt`, `territory/TerritoryActionStoreTest.kt` |
+| [territory/support/OwnedTerritoryFixtures.kt](java/com/daengs/app/territory/support/OwnedTerritoryFixtures.kt) — `OWNED_PET`, `OWNED_SITE`, `ownedJson` | `territory/owned/OwnedTerritoryApiTest.kt`, `territory/owned/OwnedTerritoryRepositoryTest.kt` |
+| [territory/support/BookmarkFixtures.kt](java/com/daengs/app/territory/support/BookmarkFixtures.kt) — `BOOKMARK_SITE`, `bookmarkJson`, `mutationJson` | `territory/bookmarks/TerritoryBookmarkApiTest.kt`, `territory/bookmarks/TerritoryBookmarkRepositoryTest.kt`, `ui/game/bookmarks/TerritoryBookmarkActionTest.kt`, `ui/game/bookmarks/TerritoryBookmarkControllerTest.kt`, `ui/game/bookmarks/TerritoryBookmarksScreenTest.kt` |
 | [activity/support/ActivityFixtures.kt](java/com/daengs/app/activity/support/ActivityFixtures.kt) — `ActivityFixtures` | `activity/ActivityApiTest.kt`, `activity/ActivityRepositoryTest.kt` |
 | 이미 분리된 `place/FacilityFixtures.kt` — `facilityQuery`, `facilityJson`, `facilityResponse` | `place/FacilityApiTest.kt`, `ui/places/FacilityViewModelTest.kt`, `ui/places/FacilitySearchCoordinatorTest.kt`, `ui/places/FacilitySearchPanelTest.kt`, `ui/places/FacilityConnectedUiTest.kt` |
-| [place/support/ConversationFixtures.kt](java/com/daengs/app/place/support/ConversationFixtures.kt) — `filteredConversationFixture` (기존 `conversationFixture` 응답 사용) | `place/ConversationFiltersTest.kt`, `ui/places/AppliedPlaceFiltersTest.kt`, `ui/places/ConversationConnectedTest.kt`, `ui/places/ConnectedPlaceSearchUiTest.kt` |
+| [place/support/ConversationFixtures.kt](java/com/daengs/app/place/support/ConversationFixtures.kt) — `conversationFixture` | `place/FacilityConversationTest.kt`, `place/ConversationFiltersTest.kt`, `place/ConversationUndoTest.kt`, `ui/places/ConversationConnectedTest.kt`, `ui/places/ConnectedPlaceSearchUiTest.kt`; 같은 파일의 `filteredConversationFixture`도 참조 |
+| 같은 `ConversationFixtures.kt` — `filteredConversationFixture` | `place/ConversationFiltersTest.kt`, `place/ConversationUndoTest.kt`, `ui/places/AppliedPlaceFiltersTest.kt`, `ui/places/ConversationConnectedTest.kt`, `ui/places/ConnectedPlaceSearchUiTest.kt` |
 
 각 helper의 이름·가시성·인자·기본값·반환값과 fake 동작을 보존하고 소비자는 `support`에서 import한다.
 일기 JSON은 테스트 클래스 대신 공용 파일의 `DiaryResources`를 기준으로 같은 절대 리소스 경로를 읽는다.
@@ -272,6 +277,36 @@ Kotlin은 같은 패키지의 함수를 import 없이 참조할 수 있으므로
 참조를 대조하면서 누락된 일기 소비자 `WalkStoryboardScreenTest`, `WalkStoryboardSyncTest`를 추가했다.
 기존 표의 `WalkTerritoryUiTest`, `TerritoryRangePresentationTest`는 공유 식별자가 아니라
 `MapPurpose.WALK`를 사용하므로 이 helper 검증 범위에서 제외했다.
+
+### 추가 분리한 fixture의 검증 범위
+
+대화 응답·장면 위치 근거·내 점령지·찜 fixture를 함께 변경할 때는 아래 16개 클래스를 선택한다.
+`AppliedPlaceFiltersTest`는 `filteredConversationFixture`를 통해 대화 응답을 간접 사용하므로 포함한다.
+한 묶음만 변경하면 해당 제공자 행의 소비자를 선택하되, 다른 helper를 거친 소비자까지 포함한다.
+대화 연결 화면도 검증하므로 기존 기능 플래그 `-PfacilityConversation=true`를 사용한다.
+
+```powershell
+$fixtureTests = @(
+    'com.daengs.app.place.FacilityConversationTest'
+    'com.daengs.app.place.ConversationFiltersTest'
+    'com.daengs.app.place.ConversationUndoTest'
+    'com.daengs.app.ui.places.AppliedPlaceFiltersTest'
+    'com.daengs.app.ui.places.ConversationConnectedTest'
+    'com.daengs.app.ui.places.ConnectedPlaceSearchUiTest'
+    'com.daengs.app.walk.diary.WalkSceneAnchoringTest'
+    'com.daengs.app.walk.sync.WalkStoryboardSyncTest'
+    'com.daengs.app.ui.walk.WalkDiaryMapScreenTest'
+    'com.daengs.app.territory.owned.OwnedTerritoryApiTest'
+    'com.daengs.app.territory.owned.OwnedTerritoryRepositoryTest'
+    'com.daengs.app.territory.bookmarks.TerritoryBookmarkApiTest'
+    'com.daengs.app.territory.bookmarks.TerritoryBookmarkRepositoryTest'
+    'com.daengs.app.ui.game.bookmarks.TerritoryBookmarkActionTest'
+    'com.daengs.app.ui.game.bookmarks.TerritoryBookmarkControllerTest'
+    'com.daengs.app.ui.game.bookmarks.TerritoryBookmarksScreenTest'
+)
+$testArgs = $fixtureTests | ForEach-Object { '--tests'; $_ }
+.\gradlew.bat :app:testDebugUnitTest -PfacilityConversation=true @testArgs --no-daemon --max-workers=1 --console=plain
+```
 
 ## 기준 시점에 확인한 결과
 

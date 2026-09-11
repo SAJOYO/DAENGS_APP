@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryScene
+import com.daengs.app.walk.support.sceneAnchorFixture
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -224,7 +225,7 @@ class WalkDiaryMapScreenTest {
     }
 
     @Test fun `server GPS anchors select numbered cards and gap navigation clears marker selection`() {
-        val (bundle, fixes) = com.daengs.app.walk.diary.sceneAnchorFixture()
+        val (bundle, fixes) = sceneAnchorFixture()
         val walk = WalkSummary(bundle.sessionId, emptyList(), fixes.first().atMillis,
             fixes.last().atMillis, null, 0.0, 0, emptyList(), null)
         val scenes = com.daengs.app.walk.diary.diaryWalk(walk, emptyList(), emptyList(),

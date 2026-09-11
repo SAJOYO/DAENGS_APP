@@ -12,6 +12,7 @@ import com.daengs.app.map.features.places.PlaceSearchState
 import com.daengs.app.place.*
 import com.daengs.app.place.support.filteredConversationFixture
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.place.support.conversationFixture
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Rule
