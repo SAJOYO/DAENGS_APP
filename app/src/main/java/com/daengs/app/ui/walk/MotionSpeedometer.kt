@@ -33,7 +33,7 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Display-only stage-4 component. The production WalkSpeedometer is switched in stage 5. */
+/** Read-only speed projection from the recording service; controls remain in WalkScreen. */
 @Composable
 internal fun MotionSpeedometer(display: MotionDisplay, modifier: Modifier = Modifier) {
     val selection by rememberWalkStyle()

@@ -37,6 +37,8 @@ data class WalkTrackingState(
     /** 저장과 유효성 판정까지 끝나 결과 화면으로 넘길 수 있는 세션. */
     val completedSessionId: String? = null,
     val stayStamps: List<StayStamp> = emptyList(),
+    /** Read-only speed projection, owned by the recording service and independent of screen GPS. */
+    val motionDisplay: com.daengs.app.walk.display.MotionDisplay = com.daengs.app.walk.display.MotionDisplay(),
 ) {
     val canRecordAction: Boolean get() = trail.state == TrackingState.RECORDING && activeSessionId != null && !recordingTransition
 

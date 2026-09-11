@@ -337,9 +337,8 @@ private fun WalkGameOverlay(
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
                     if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
-                    else if (!landscape) WalkSpeedometer(
-                        speed = if (locationGranted && preciseLocation && locationError == null)
-                            walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                    else if (!landscape) MotionSpeedometer(
+                        display = tracking.motionDisplay,
                         modifier = Modifier.align(Alignment.End))
                 }
             }
@@ -409,8 +408,7 @@ private fun WalkGameOverlay(
                 if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
             }
             if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
-                WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
-                    walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                MotionSpeedometer(display = tracking.motionDisplay,
                     modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { gaugeHeight = it.height })
                 Box(Modifier.align(Alignment.BottomEnd).onSizeChanged { dockWidth = it.width }) { dock() }
             }

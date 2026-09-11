@@ -26,9 +26,9 @@ internal data class DisplayEpoch(
     }
 }
 
-internal enum class DisplaySpeedSource { DEVICE, COORDINATE_WINDOW }
-internal enum class DisplayFreshness { INITIAL, LIVE, HELD, STALE, PAUSED, FINAL }
-internal enum class DisplaySignal { WAITING, RECEIVING, DELAYED }
+enum class DisplaySpeedSource { DEVICE, COORDINATE_WINDOW }
+enum class DisplayFreshness { INITIAL, LIVE, HELD, STALE, PAUSED, FINAL }
+enum class DisplaySignal { WAITING, RECEIVING, DELAYED }
 internal enum class DisplayLifecycle { ACTIVE, PAUSED, FINISHED }
 
 /** Already-qualified engine speed. Null means unavailable, never a measured stop. */
@@ -41,7 +41,7 @@ internal data class DisplaySpeedSample(
 )
 
 /** Read-only rendering value. It contains no elapsed-age ticker or recording commands. */
-internal data class MotionDisplay(
+data class MotionDisplay(
     val speedMps: Double = 0.0,
     val freshness: DisplayFreshness = DisplayFreshness.INITIAL,
     val signal: DisplaySignal = DisplaySignal.WAITING,
