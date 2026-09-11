@@ -14,6 +14,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -69,8 +71,7 @@ class WalkRecordsScreenTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-view-overview").performClick()
         // The only trace belongs to page two, but the map uses the full selection.
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-map-count").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 8회 · 표시 흔적 1개")
+        waitTagText("records-map-count", "선택 산책 8회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-view-walks").performClick()
         compose.onNodeWithText("다음 ›").performClick()
         waitText("2 페이지")
@@ -78,8 +79,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-view-overview").performClick()
         compose.onNodeWithTag("records-count").assertDoesNotExist()
         // Only the oldest walk has a trace. It must be included even when it is not on page one.
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-map-count").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 8회 · 표시 흔적 1개")
+        waitTagText("records-map-count", "선택 산책 8회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-view-walks").performClick()
         waitText("2 페이지")
         assertEquals(reads, queries.size)
@@ -624,6 +624,24 @@ class WalkRecordsScreenTest {
 
     private fun waitText(text: String) = compose.waitUntil(10_000) {
         compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    /**
+     * 태그가 붙은 칸이 **그 글씨가 될 때까지** 기다린다.
+     *
+     * 칸이 생기는 것만 기다리면 안 된다 — `records-map-count` 는 먼저 준비 중이라는 말로
+     * 떴다가 나중에 숫자로 바뀐다. 생긴 것만 보고 곧바로 글씨를 재면 준비 중인 글씨를
+     * 읽는다. 이 자리는 원래 그렇게 적혀 있었고 앞서 도는 테스트가 늘어 JVM 이 느려지자
+     * 드러났다 (APP#277 이 테스트를 더하면서). 늘 깨지던 것이 아니라 **운으로 지나가던
+     * 것이다** — 기다리는 조건을 글씨까지로 좁힌다.
+     */
+    private fun waitTagText(tag: String, text: String) {
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().any { node ->
+                node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == text } == true
+            }
+        }
+        compose.onNodeWithTag(tag).assertTextEquals(text)
     }
 
     private fun waitCard(text: String) = compose.waitUntil(10_000) {

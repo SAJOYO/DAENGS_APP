@@ -27,6 +27,11 @@ import androidx.compose.ui.unit.Velocity
  *
  * `PetFormScreen` 의 `BreedGrid` 가 먼저 쓰던 것을 두 번째 쓰임(진료 사유 칩)이 생기면서
  * 여기로 올렸다.
+ *
+ * **[Wheel] 은 이것의 반대쪽 문제를 푼다** (APP#277). 여기는 *안쪽이 끝에 닿아 바깥으로
+ * 새는 것* 을 막고, 휠은 *바깥이 움직여야 할 제스처를 안쪽이 먼저 먹는 것* 을 막는다.
+ * 방향은 반대지만 깨어 있는 휠은 이것도 같이 쓴다 — 해를 돌리다 1996년에 닿았다고 폼이
+ * 딸려 움직이면 고르던 자리를 잃는다.
  */
 val KeepScrollInside = object : NestedScrollConnection {
     override fun onPostScroll(
