@@ -100,6 +100,11 @@ data class WalkFixRow(
     val bearingAccuracyDegrees: Float? = null,
     val provider: String? = null,
     val recordingEligible: Boolean? = null,
+    // SQLite REAL normalizes -0 and NaN. Nullable Int bits preserve newly stored observations exactly.
+    val speedMpsBits: Int? = null,
+    val speedAccuracyMpsBits: Int? = null,
+    val bearingDegreesBits: Int? = null,
+    val bearingAccuracyDegreesBits: Int? = null,
 )
 
 /** 버튼을 누른 사실의 원본. 5m 장소 묶음은 저장하지 않고 읽을 때 다시 계산한다. */

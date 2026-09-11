@@ -7,6 +7,28 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMotionBackup(row: WalkMotionBackupRow)
+
+    @androidx.room.Update
+    suspend fun updateMotionBackup(row: WalkMotionBackupRow)
+
+    @Query("SELECT * FROM walk_motion_backup WHERE sessionId = :id")
+    suspend fun motionBackup(id: String): WalkMotionBackupRow?
+
+    @Query("SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL AND motionPolicyJson IS NOT NULL " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_motion_backup b WHERE b.sessionId = walk_session.id AND b.completedAtMillis IS NOT NULL)")
+    suspend fun pendingMotionSessions(): List<WalkSessionRow>
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE id = :id")
+    suspend fun recordingEpochById(id: String): RecordingEpochRow?
+
+    @androidx.room.Update
+    suspend fun updateMotionObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_session SET motionPolicyJson = :policy WHERE id = :id AND ownerId = :owner AND motionPolicyJson IS NULL")
+    suspend fun installMotionPolicy(id: String, owner: String, policy: String)
+
     /** Freeze the session, policy, raw rows and close receipts together, then calculate outside SQLite. */
     @androidx.room.Transaction
     suspend fun motionInput(sessionId: String, ownerId: String): com.daengs.app.walk.motion.RecordedMotionInput? {
@@ -36,7 +58,16 @@ interface WalkDao {
     @androidx.room.Transaction
     suspend fun appendObservation(row: WalkFixRow) {
         val existing = observation(row.sessionId, row.clientSeq)
-        if (existing != null) { check(existing == row) { "Conflicting observation identity" }; return }
+        if (existing != null) {
+            val before = existing.toModel()
+            val after = row.toModel()
+            check(before == after &&
+                before.speedMps?.toRawBits() == after.speedMps?.toRawBits() &&
+                before.speedAccuracyMps?.toRawBits() == after.speedAccuracyMps?.toRawBits() &&
+                before.bearingDegrees?.toRawBits() == after.bearingDegrees?.toRawBits() &&
+                before.bearingAccuracyDegrees?.toRawBits() == after.bearingAccuracyDegrees?.toRawBits()) { "Conflicting observation identity" }
+            return
+        }
         check(row.ingressSeq == row.clientSeq.toLong()) { "Observation sequence changed" }
         check(session(row.sessionId)?.endedAtMillis == null) { "Recording session is already closed" }
         check(advanceRecordingEpoch(requireNotNull(row.sourceEpoch), row.sessionId, row.chainIndex,
