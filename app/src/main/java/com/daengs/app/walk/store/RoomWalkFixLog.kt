@@ -22,6 +22,12 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val sessionMutex = Mutex()
     private val forgottenOwners = mutableSetOf<String>()
 
+    /** Share the withdrawal barrier with atomic network restoration, without holding it during HTTP. */
+    internal suspend fun restoringForOwner(expected: String, block: suspend () -> Unit) = sessionMutex.withLock {
+        check(expected.isNotBlank() && expected == owner() && expected !in forgottenOwners)
+        block()
+    }
+
     override val ownerId: String get() = owner()
     /** On-demand diagnostics only; history, pin upload and keep/discard still use their release policies. */
     suspend fun compareMotion(sessionId: String): com.daengs.app.walk.motion.RecordedMotionComparison? =
@@ -107,6 +113,10 @@ class RoomWalkFixLog(private val dao: WalkDao,
             bearingAccuracyDegrees = fix.bearingAccuracyDegrees,
             provider = fix.provider,
             recordingEligible = fix.recordingEligible,
+            speedMpsBits = fix.speedMps?.toRawBits(),
+            speedAccuracyMpsBits = fix.speedAccuracyMps?.toRawBits(),
+            bearingDegreesBits = fix.bearingDegrees?.toRawBits(),
+            bearingAccuracyDegreesBits = fix.bearingAccuracyDegrees?.toRawBits(),
         ),
     )
 
@@ -185,7 +195,13 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        (dao.sessionsPendingAnalysis() + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
+        (dao.sessionsPendingAnalysis() + dao.pendingMotionSessions().filter { row ->
+            when (val p = com.daengs.app.walk.motion.MotionPolicies.resolveJson(row.id, row.motionPolicyJson)) {
+                is com.daengs.app.walk.motion.MotionPolicySelection.Supported -> p.policy.stored.measurementVersion != null
+                is com.daengs.app.walk.motion.MotionPolicySelection.Unsupported -> true
+                else -> false
+            }
+        } + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
             .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**
@@ -261,10 +277,10 @@ internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     elapsedRealtimeNanos = elapsedRealtimeNanos,
     receivedElapsedNanos = receivedElapsedNanos,
     receivedAtMillis = receivedAtMillis,
-    speedMps = speedMps,
-    speedAccuracyMps = speedAccuracyMps,
-    bearingDegrees = bearingDegrees,
-    bearingAccuracyDegrees = bearingAccuracyDegrees,
+    speedMps = speedMpsBits?.let(Float::fromBits) ?: speedMps,
+    speedAccuracyMps = speedAccuracyMpsBits?.let(Float::fromBits) ?: speedAccuracyMps,
+    bearingDegrees = bearingDegreesBits?.let(Float::fromBits) ?: bearingDegrees,
+    bearingAccuracyDegrees = bearingAccuracyDegreesBits?.let(Float::fromBits) ?: bearingAccuracyDegrees,
     provider = provider,
     recordingEligible = recordingEligible,
 )

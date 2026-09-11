@@ -66,6 +66,9 @@ class WalkMigrationTest {
     @Test
     fun `15의 수신 원본과 완료 증거와 v2 대기 요청을 보존하고 정책은 만들지 않는다`() = verifyPhotoUpgrade(15)
 
+    @Test
+    fun `16의 정책과 기존 기록을 보존하고 측정 백업은 완료로 추측하지 않는다`() = verifyPhotoUpgrade(16)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -104,6 +107,7 @@ class WalkMigrationTest {
                 old.execSQL("INSERT INTO walk_recording_epoch VALUES ('epoch','s1','clock',0,1000,1000000000,0,2000,2000000000,'STOP',0,1,NULL,NULL,1)")
                 old.execSQL("INSERT INTO walk_entry (id,sessionId,payload,revision,mutationId,dirty,isV2,pinPayload,pinRevision,pinDirty,pendingRequest) VALUES ('v2','s1','content',2,'pending-id',1,1,'pin',3,1,'frozen-v2-request')")
             }
+            if (version == 16) old.execSQL("UPDATE walk_session SET motionPolicyJson='frozen-policy' WHERE id='s1'")
             old.version = version
         }
         val db = openLatest()
@@ -113,7 +117,9 @@ class WalkMigrationTest {
                 "local-base", "published-board", 2500) else null, dao.diaryPublication("s1"))
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
-            assertEquals(null, dao.session("s1")!!.motionPolicyJson)
+            assertEquals(if (version == 16) "frozen-policy" else null, dao.session("s1")!!.motionPolicyJson)
+            assertEquals(null, dao.motionBackup("s1"))
+            assertEquals(null, dao.fixes("s1").single().speedMpsBits)
             assertEquals(1, dao.fixes("s1").size)
             assertEquals(if (version == 15) 0L else null, dao.fixes("s1").single().ingressSeq)
             assertEquals(if (version == 15) 1.5f else null, dao.fixes("s1").single().speedMps)
@@ -370,6 +376,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_13_14,
                 WalkDatabase.MIGRATION_14_15,
                 WalkDatabase.MIGRATION_15_16,
+                WalkDatabase.MIGRATION_16_17,
             )
             .build()
 

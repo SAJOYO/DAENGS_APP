@@ -68,6 +68,12 @@ WalkRecordsScreenTest, WalkDiaryMapScreenTest, WalkDiaryReaderTest, WalkDiaryPub
 
 ## GPS 이동 정책 엔진 (#294)
 
+#325의 서버 백업/복원은 `com.daengs.app.walk.sync.WalkMotionSyncTest`가 담당한다.
+Room 이관/수신 저장 변경은 `WalkMigrationTest`, `RecordingJournalTest`를,
+기존 전송 연결 변경은 `WalkSyncTest`, `WalkRecordingSyncTest`, `WalkDeliveryTest`,
+`WalkSpeedServiceTest`를 해당 경계에 따라 추가한다. 별도 DB나 서버 계정 없이 실행하며
+공통 지문 fixture와 실제 SQLite를 쓴다. [계약·실증 범위](../../../docs/gps-motion-sync.md).
+
 `com.daengs.app.walk.motion.*`는 Android 없는 순수 엔진의 동결 정책, 위치·속도 품질,
 고속 뒤 재진입·구간 장벽, 작은 보폭 누적, 시각 역행·중복·누락, 개별/배치 재생 일치와
 제한된 관측 창을 검증한다. `RecordedMotionReplayTest`는 #283 완료 epoch와 원본 번호를
