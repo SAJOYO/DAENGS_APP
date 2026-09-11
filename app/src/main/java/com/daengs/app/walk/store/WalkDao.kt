@@ -69,7 +69,8 @@ interface WalkDao {
         val epochs = recordingEpochs(id)
         if (epochs.isNotEmpty()) com.daengs.app.walk.checkRecordingComplete(epochs.map { it.toModel() })
         closeSession(id, endedAt)
-        insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt, endedAt + 10_000))
+        insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt,
+            endedAt + com.daengs.app.walk.diary.DIARY_PREPARATION_BUDGET_MS))
     }
 
     @androidx.room.Transaction

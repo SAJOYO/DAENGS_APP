@@ -36,6 +36,7 @@ class WalkDiaryPublicationTest {
 
     @Test fun `close persists one deadline and never opts old completed walks in`() = runBlocking {
         val first = prepare()
+        assertEquals(21000L, first.deadlineAtMillis)
         dao.closeAndPrepareDiary("s", 9999)
         assertEquals(first, dao.diaryPublication("s"))
         dao.insertSession(WalkSessionRow("old", 0, "owner", 1000))
@@ -83,13 +84,28 @@ class WalkDiaryPublicationTest {
         val state = prepare()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var calls = 0
-        val publisher = WalkDiaryPublication(dao, { "owner" }, scope, { calls++ }, now = { 20000 })
+        val publisher = WalkDiaryPublication(dao, { "owner" }, scope, { calls++ }, now = { state.deadlineAtMillis + 1 })
         try {
             publisher.recover()
             val ready = withTimeout(10000) { dao.observeDiaryPublication("s").first { it?.publishedBundle != null }!! }
             assertEquals(state.baseBundle, ready.publishedBundle)
             assertEquals(state.deadlineAtMillis, ready.deadlineAtMillis)
             assertEquals(0, calls)
+        } finally { scope.cancel() }
+    }
+
+    @Test fun `stored ten second preparation is not extended by the new coordinator`() = runBlocking {
+        dao.insertSession(WalkSessionRow("s", 0, "owner", 1000))
+        dao.insertDiaryPublication(WalkDiaryPublicationRow("s", 1000, 11000))
+        val state = requireNotNull(dao.prepareLocalDiary("s", "owner"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val publisher = WalkDiaryPublication(dao, { "owner" }, scope,
+            { error("Expired preparation must not sync") }, now = { 11000 })
+        try {
+            publisher.recover()
+            val ready = withTimeout(10000) { dao.observeDiaryPublication("s").first { it?.publishedBundle != null }!! }
+            assertEquals(11000L, ready.deadlineAtMillis)
+            assertEquals(state.baseBundle, ready.publishedBundle)
         } finally { scope.cancel() }
     }
 

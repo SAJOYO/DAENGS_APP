@@ -66,7 +66,7 @@ internal fun WalkDiaryMapScreen(
         app.walkRuntime.delivery.enqueue(sessionId)
     }
     fun generate() {
-        if (diary?.published == true) {
+        if (!loaded || diary == null || diary?.preparing == true || diary?.published == true) {
             app.walkDiaryPublication.start(sessionId)
             retry++
             return
@@ -133,22 +133,17 @@ internal fun WalkDiaryMapScreen(
             stayStamps = detail?.stayStamps.orEmpty())))
     }
     val bounds = remember(route, detail?.summary?.anchor, scenes) {
-        route?.bounds.orEmpty().ifEmpty { listOfNotNull(detail?.summary?.anchor) } + scenes.mapNotNull { it.point }
+        diaryOverviewBounds(route?.bounds.orEmpty(), detail?.summary?.anchor, scenes)
     }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null && error == null) {
             TextButton(onClick = onBack) { Text("‹ 산책 기록") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
-        } else if (!loaded || diary == null || diary?.preparing == true) {
-            WalkDiaryPreparing(onBack = onBack, onRefresh = {
-                app.walkDiaryPublication.start(sessionId)
-                retry++
-            }, error = error)
         } else {
-            WalkDiaryMapContent(scenes, selected, !loaded || (detail != null && diary == null), error,
+            WalkDiaryMapContent(scenes, selected, !loaded || diary == null || diary?.preparing == true, error,
                 onSelect = ::selectScene, onClose = { selectedId = null },
                 onEdit = { scene -> editingScene = scene; sceneError = null },
-                onPhoto = { photo = it }, onRetry = { retry++ },
+                onPhoto = { photo = it }, onRetry = { app.walkDiaryPublication.start(sessionId); retry++ },
                 onAdd = {
                     selectedId = null; chosenPoint = null
                     if (route?.points.isNullOrEmpty()) {
@@ -160,7 +155,8 @@ internal fun WalkDiaryMapScreen(
                 adding = adding,
                 generationNotice = generationError ?: diary?.notice,
                 generating = generating, onGenerate = ::generate,
-                generationActionLabel = if (diary?.published == true) "새로고침" else "일기 생성·갱신",
+                generationActionLabel = if (diary == null || diary?.preparing == true || diary?.published == true)
+                    "새로고침" else "일기 생성·갱신",
                 title = detail?.summary?.let { walkDiaryTitle(it, diary?.title) } ?: "산책 일기",
                 subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
                 onBack = onBack, mapSettings = { WalkMapSettingsButton() },
@@ -221,6 +217,10 @@ internal fun WalkDiaryMapScreen(
     }
     photo?.let { WalkPhotoDialog(it, app.walkPhotos::delete, { photo = null }) }
 }
+
+/** A completed board must not reframe a route the user is already browsing. */
+internal fun diaryOverviewBounds(route: List<GeoPoint>, anchor: GeoPoint?, scenes: List<DiaryScene>): List<GeoPoint> =
+    route.ifEmpty { listOfNotNull(anchor) }.ifEmpty { scenes.mapNotNull { it.point } }
 
 internal fun WalkRoutePoint.toDiaryEntry(sessionId: String, type: WalkMomentType, petId: String?): WalkEntry =
     WalkEntry(sessionId = sessionId, type = type, recordedAtMillis = capturedAtMillis, point = point,
