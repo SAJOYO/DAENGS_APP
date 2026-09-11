@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.layout.onSizeChanged
@@ -374,11 +375,21 @@ fun HomeScreen(
     var tourStep by remember(tourOpen) { mutableIntStateOf(0) }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
+    // **반쯤 접혀 있으면 힌지 자리를 알아 둔다.** 창은 화면 전체로 남으므로
+    // (안드로이드는 접혀도 창을 안 줄여 준다) 여기서 두 절반을 가른다.
+    // 접히지 않았으면 null 이고 아래 판정들이 창 높이를 그대로 쓴다.
+    val flexTop = rememberFlexTopHeight(maxHeight)
     // **가로면 하단바를 왼쪽 세로 레일로 바꾼다.** 가로에서는 세로 공간이 411dp 뿐이라
     // 하단바가 설 자리가 없어서, 눕히면 바가 통째로 사라지고 다른 탭으로 갈 방법이
     // 없었다 (실기기에서 확인). 레일은 세로를 안 먹는다.
-    val rail = usesNavRail(maxWidth, maxHeight)
-    val compactTop = hidesTopBar(maxHeight)
+    //
+    // 창 높이가 아니라 **세워진 절반의 높이**로 정한다. 반접기에서 창 높이로
+    // 정하면 세로가 넉넉한 줄 알고 상단바를 펴는데, 그 상단바는 방이 설 자리인
+    // 세워진 절반을 깎아먹는다.
+    val uprightHeight = flexTop ?: maxHeight
+    val rail = usesNavRail(maxWidth, uprightHeight)
+    val compactTop = hidesTopBar(uprightHeight)
+    // **창 전체를 쓴다.** 누운 절반도 화면이다 — 거기에 카드와 바가 간다.
     Row(Modifier.fillMaxSize()) {
     if (rail) {
         DaengsNavRail(
@@ -506,8 +517,32 @@ fun HomeScreen(
         // **넓으면 두 칸이다** (폴더블 펼침·태블릿). 세로로 쌓으면 방이 가운데 작게
         // 뜨고 좌우가 텅 비는데, 나란히 두면 방은 커지고 카드는 제 폭을 찾는다.
         // 가로모드 이야기가 아니다 — 폴드는 **세로로 펼쳐도** 이 폭이 나온다.
-        BoxWithConstraints(Modifier.padding(inner).fillMaxSize()) {
+        // 콘텐츠 상자가 창 위에서 시작하는 자리. 반접기에서 방을 힌지 선에
+        // **딱 맞추는 데** 쓴다 — 상단바는 내용에 따라 크기가 달라져서 상수로
+        // 계산할 수 없고, 재는 수밖에 없다. 한 프레임 늦게 오므로 0 으로 시작한다.
+        var contentTop by remember { mutableStateOf(0.dp) }
+        val density = LocalDensity.current
+        BoxWithConstraints(
+            Modifier
+                .padding(inner)
+                // **상단바를 접으면 상태바 몫을 질 사람이 없어진다.**
+                //
+                // 인셋을 Scaffold 에 안 맡기고 자식이 각자 처리하는 구조라
+                // (위 `contentWindowInsets = WindowInsets(0)`), 그 몫은 상단바의
+                // `statusBarsPadding()` 이 지고 있었다. [hidesTopBar] 로 상단바가
+                // 접히는 순간 그게 통째로 사라져서, 플립 커버에서 TODAY 카드가
+                // 시계 위로 올라탔다.
+                .then(if (compactTop) Modifier.statusBarsPadding() else Modifier)
+                .fillMaxSize()
+                .onGloballyPositioned { coords ->
+                    val y = with(density) { coords.positionInWindow().y.toDp() }
+                    if (y != contentTop) contentTop = y
+                },
+        ) {
             val wide = maxWidth >= WIDE_BREAKPOINT
+            // 반접기에서 힌지 위에 방이 들어갈 높이. null 이면 나눌 만하지
+            // 않다는 뜻이라 아래의 한 칸 갈래로 간다.
+            val flexRoom = flexTop?.let { flexRoomHeight(it, contentTop) }
 
         val room: @Composable (Modifier) -> Unit = { roomModifier ->
             RoomSection(
@@ -621,6 +656,41 @@ fun HomeScreen(
                     Spacer(Modifier.height(10.dp))
                     cards()
                 }
+            }
+        } else if (flexRoom != null) {
+            // **반접기는 위아래 두 칸이다.**
+            //
+            // 세워진 위쪽은 눈에서 떨어진 **보는 면**, 책상에 누운 아래쪽은
+            // 손가락이 얹히는 **만지는 면**이다. 그래서 방은 위, 카드와 바는
+            // 아래로 간다 — 카메라 앱이 뷰파인더를 위에 셔터를 아래에 두는
+            // 것과 같은 이유다.
+            //
+            // 방이 힌지 선에 **딱 맞는다.** 접힌 자리를 가로지르면 방 그림이
+            // 꺾여서 두 조각으로 보인다. 그래서 잰 값을 쓴다.
+            //
+            // 플립에서는 방이 476dp 를 받는다 — **일반 폰의 409dp 보다 크다.**
+            // 좁아진 화면이 아니라 방이 제일 커지는 자리다.
+            Column(Modifier.fillMaxSize()) {
+                room(Modifier.fillMaxWidth().height(flexRoom))
+                cards()
+            }
+        } else if (homeScrolls(maxHeight)) {
+            // **세로가 짧으면 방에 자리를 떼어 주고 나머지를 흘린다.**
+            //
+            // 플립 커버(본문 337dp)에서 방이 통째로 사라졌다. 방이 `weight(1f)` 로
+            // **남는** 높이를 가져가는데 카드가 먼저 327dp 를 먹어서 10dp 가
+            // 남았기 때문이다. 남는 것을 주는 대신 [ROOM_MIN_HEIGHT] 를 먼저
+            // 떼어 주고, 넘치는 카드는 스크롤로 닿게 한다.
+            //
+            // 플렉스 모드 위쪽 절반(412dp)도 같은 길로 온다 — 세로가 짧은 건
+            // 마찬가지다.
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                room(Modifier.fillMaxWidth().height(ROOM_MIN_HEIGHT))
+                cards()
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -996,6 +1066,51 @@ private fun HomeScreenPreview() {
 @Preview(device = "spec:width=320dp,height=640dp", showBackground = true)
 @Composable
 private fun HomeScreenSmallPreview() {
+    DaengsTheme {
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+    }
+}
+
+/**
+ * 갤럭시 Z 플립 **커버 화면** (3.4", 720x748px @306dpi).
+ *
+ * 여기서 방이 통째로 사라졌었다 — 카드가 높이를 먼저 다 먹어 `weight(1f)` 에
+ * 10dp 만 남았다. [homeScrolls] 가 스크롤 갈래를 골라 방에 [ROOM_MIN_HEIGHT] 를
+ * 먼저 떼어 주는 것이 여기서 보여야 한다.
+ */
+@Preview(name = "Z 플립 커버", device = "spec:width=376dp,height=391dp", showBackground = true)
+@Composable
+private fun HomeScreenFlipCoverPreview() {
+    DaengsTheme {
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+    }
+}
+
+/**
+ * 갤럭시 Z 플립 **반접기에서 쓸 수 있는 위쪽 절반** (407x994dp 의 절반).
+ *
+ * ⚠️ **Preview 는 접힘을 흉내 내지 못한다.** `LocalInspectionMode` 에서는
+ * [rememberFlexTopHeight] 가 null 을 돌려주므로, 실제로 접힌 것이 아니라
+ * **그만큼 짧은 창**을 그린다. 배치가 같은 갈래로 가는지 보는 데까지가 이
+ * Preview 의 쓸모고, 접힘 자체는 기기에서 본다.
+ */
+@Preview(name = "Z 플립 플렉스(위쪽 절반)", device = "spec:width=407dp,height=497dp", showBackground = true)
+@Composable
+private fun HomeScreenFlipFlexPreview() {
+    DaengsTheme {
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+    }
+}
+
+/**
+ * 갤럭시 Z 플립 **펼친 메인 화면** (6.7", 1080x2640px @425dpi).
+ *
+ * 폭이 기준 411 과 거의 같아 **원래 멀쩡한 화면이다.** 고치는 자리가 아니라
+ * 안 건드렸음을 지키는 자리다 — 여기 스크롤이 생기면 뭔가 잘못된 것이다.
+ */
+@Preview(name = "Z 플립 펼침", device = "spec:width=407dp,height=994dp", showBackground = true)
+@Composable
+private fun HomeScreenFlipMainPreview() {
     DaengsTheme {
         HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
     }
