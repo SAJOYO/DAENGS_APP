@@ -298,6 +298,20 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 합성 기록의 렌더는 `app/build/outputs/records-list/`에 생성한다. 실제 지도·사용자 기록의
 실기기 검증과는 별개다. 이 변경은 기존 `WalkHistoryBrowser`의 카드·조회에는 적용하지 않는다.
 
+## 지도 중심 모아보기와 행동별 겹침
+
+`WalkRecordsMapFrameTest`는 접힌 지도 면적, 손잡이 드래그, 탭·저장 복원의 펼침 상태,
+행동 관련 산책만의 겹침 계산, 숨김 후 원래 집계 유지, 위치 없는 행동 복귀와 320dp/큰 글자를 확인한다.
+`WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRefreshTest`는 선택·숨김·상세·갱신 소비자이며,
+`WalkRecordsFiltersTest`는 상단 조건 아이콘과 독립 선택창을 확인한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsMapFrameTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsFiltersTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkRecordsRefreshTest' -PslimAbi=x86_64 --console=plain
+```
+
+합성 UI 렌더는 `app/build/outputs/records-map/`에 저장한다. 지도 SDK 카메라·타일·핀의 실제 표시와
+손가락 조작은 실기기에서 확인해야 하며, JVM 렌더 결과와 구별한다.
+
 ## 산책 기록의 실제 원판 조회
 
 `walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과

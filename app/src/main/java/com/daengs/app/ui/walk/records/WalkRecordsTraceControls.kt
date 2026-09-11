@@ -55,21 +55,31 @@ internal fun WalkRecordsTraceControls(
                     label = { Text("겹친 구간") }, colors = colors,
                     modifier = Modifier.testTag("records-traces-overlap"))
             }
-            if (overlapOnly) {
-                Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("최소", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    listOf(2, 3, 5).forEach { minimum ->
-                        FilterChip(selected = minimumWalks == minimum, onClick = { onMinimumWalks(minimum) },
-                            label = { Text("${minimum}회") }, colors = colors,
-                            modifier = Modifier.testTag("records-overlap-min-$minimum"))
-                    }
-                }
+        }
+        if (overlapOnly) WalkRecordsOverlapOptions(minimumWalks, onMinimumWalks)
+    }
+}
+
+@Composable
+internal fun WalkRecordsOverlapOptions(minimumWalks: Int, onMinimumWalks: (Int) -> Unit) {
+    Column {
+        Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("최소", style = MaterialTheme.typography.labelMedium)
+            listOf(2, 3, 5).forEach { minimum ->
+                FilterChip(colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PinkFaint, selectedLabelColor = DaengPinkDeep), selected = minimumWalks == minimum, onClick = { onMinimumWalks(minimum) },
+                    label = { Text("${minimum}회") },
+                    modifier = Modifier.testTag("records-overlap-min-$minimum"))
             }
         }
-        if (overlapOnly) OverlapColorLegend(Modifier.padding(bottom = 4.dp))
+        OverlapColorLegend(Modifier.padding(bottom = 4.dp))
     }
+}
+
+@Preview(showBackground = true, widthDp = 320)
+@Composable
+private fun WalkRecordsOverlapOptionsPreview() {
+    DaengsTheme { WalkRecordsOverlapOptions(2, {}) }
 }
 
 /** Fixed original walk-count buckets, independent of the currently selected minimum. */

@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -23,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
+import com.daengs.app.ui.theme.PinkFaint
+import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.records.WalkRecordsQuery
@@ -55,6 +58,15 @@ internal fun WalkRecordsHeader(
                     if (searchOpen) DaengsIconView(DaengsIcon.Close, Modifier.size(22.dp), MaterialTheme.colorScheme.onSurface)
                     else RecordsSearchIcon()
                 }
+                val conditionCount = query.filter.seasons.size + query.filter.weather.size
+                FilledIconButton(onClick = { onFilter(RecordsFilter.CONDITIONS) },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = if (conditionCount > 0) PinkFaint
+                            else MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.testTag("records-conditions").semantics {
+                        contentDescription = "계절과 출발 날씨 조건"
+                        stateDescription = if (conditionCount > 0) "${conditionCount}개 적용 중" else "적용한 조건 없음"
+                    }) { RecordsConditionsIcon() }
             }
             if (searchOpen) OutlinedTextField(query.filter.keyword, { onKeyword(it.take(200)) },
                 label = { Text("제목·메모 검색") }, singleLine = true,
@@ -94,9 +106,6 @@ internal fun WalkRecordsHeader(
                     "records-period-filter", { onFilter(RecordsFilter.PERIOD) })
                 RecordsFilterChip(behavior?.label ?: "행동", behavior != null,
                     "records-behavior-filter", { onFilter(RecordsFilter.BEHAVIOR) })
-                val count = query.filter.seasons.size + query.filter.weather.size
-                RecordsFilterChip(if (count == 0) "조건" else "조건 $count", count > 0,
-                    "records-conditions", { onFilter(RecordsFilter.CONDITIONS) })
             }
             // Details are only present for active filters; the empty screen keeps a short header.
             val labels = buildList {
@@ -126,7 +135,7 @@ private fun periodLabelIsCustom(query: WalkRecordsQuery, today: LocalDate): Bool
 
 @Composable
 private fun RecordsFilterChip(label: String, active: Boolean, tag: String, onClick: () -> Unit) {
-    FilterChip(selected = active, onClick = onClick, shape = RoundedCornerShape(24.dp),
+    FilterChip(selected = active, onClick = onClick, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PinkFaint, selectedLabelColor = DaengPinkDeep), shape = RoundedCornerShape(24.dp),
         label = { Text(label, Modifier.widthIn(max = 120.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.labelMedium) },
         trailingIcon = { DaengsIconView(DaengsIcon.CaretDown, Modifier.size(12.dp), MaterialTheme.colorScheme.onSurfaceVariant) },
@@ -139,6 +148,20 @@ private fun RecordsSearchIcon() {
     Canvas(Modifier.size(22.dp)) {
         drawCircle(color, size.minDimension * .29f, Offset(size.width * .42f, size.height * .42f), style = Stroke(2.dp.toPx()))
         drawLine(color, Offset(size.width * .64f, size.height * .64f), Offset(size.width * .90f, size.height * .90f), 2.dp.toPx())
+    }
+}
+
+@Composable
+private fun RecordsConditionsIcon() {
+    val color = MaterialTheme.colorScheme.onSurface
+    Canvas(Modifier.size(22.dp)) {
+        listOf(.25f to .35f, .5f to .7f, .75f to .45f).forEach { (y, x) ->
+            drawLine(color, Offset(size.width * .1f, size.height * y),
+                Offset(size.width * (x - .1f), size.height * y), 1.8.dp.toPx())
+            drawLine(color, Offset(size.width * (x + .1f), size.height * y),
+                Offset(size.width * .9f, size.height * y), 1.8.dp.toPx())
+            drawCircle(color, size.width * .09f, Offset(size.width * x, size.height * y), style = Stroke(1.8.dp.toPx()))
+        }
     }
 }
 
