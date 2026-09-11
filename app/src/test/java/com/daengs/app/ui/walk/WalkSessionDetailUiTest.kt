@@ -60,8 +60,8 @@ class WalkSessionDetailUiTest {
                     })
             }
         }
-        compose.onNodeWithText("걸은 시간").assertIsDisplayed()
-        compose.onNodeWithText("평균 속도").assertIsDisplayed()
+        compose.onNodeWithContentDescription("걸은 시간", substring = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("평균 속도", substring = true).assertIsDisplayed()
         compose.onNodeWithContentDescription("홈으로").assertExists()
         capture("walk-session-overview")
         compose.onNodeWithText("동선 탐색").performClick()
@@ -94,7 +94,7 @@ class WalkSessionDetailUiTest {
                 }
             }
         }
-        compose.onNodeWithText("걸은 시간").assertIsDisplayed()
+        compose.onNodeWithContentDescription("걸은 시간", substring = true).assertIsDisplayed()
         compose.onNodeWithText("장면 0").assertIsDisplayed()
         compose.onNodeWithText("동선 탐색").assertIsDisplayed()
         compose.onNodeWithTag("session-map").assertIsDisplayed()

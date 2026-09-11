@@ -97,7 +97,7 @@ internal fun WalkDiaryMapContent(
             }
         }
         Text(title,
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 14.dp),
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 6.dp),
             fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
             color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
         summaryContent()
@@ -124,7 +124,7 @@ internal fun WalkDiaryMapContent(
                             if (expanded) { onClose(); scope.launch { sheet.partialExpand() } }
                             else scope.launch { sheet.expand() }
                         }, color = CardWhite, modifier = Modifier.fillMaxWidth()
-                            .height(if (showSceneHeading) 52.dp else 48.dp)
+                            .height(if (showSceneHeading) 52.dp else 24.dp)
                             .testTag("diary-sheet-handle").semantics {
                                 contentDescription = if (expanded) "지도 넓게 보기" else "상세 패널 펼치기"
                             }) {
