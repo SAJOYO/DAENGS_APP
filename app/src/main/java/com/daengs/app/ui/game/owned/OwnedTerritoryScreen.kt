@@ -150,6 +150,7 @@ internal fun OwnedTerritoryCard(site: OwnedTerritory, photo: ImageBitmap?, now: 
                     Text(if (site.certification == ClaimCertification.VERIFIED) "사진 인증 완료" else "영역 표시 · 미인증",
                         color = if (site.certification == ClaimCertification.VERIFIED) DaengsColors.Success else TextDark, fontSize = 12.sp)
                 }
+                com.daengs.app.ui.game.bookmarks.TerritoryBookmarkAction(site.siteId)
             }
             Text(ownedRemaining(site.expiresAtMillis, now), color = TextDark, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             Text("${OWNED_DATE.format(Instant.ofEpochMilli(site.occupiedAtMillis))} 점령", color = TextDark.copy(alpha = .7f), fontSize = 12.sp)

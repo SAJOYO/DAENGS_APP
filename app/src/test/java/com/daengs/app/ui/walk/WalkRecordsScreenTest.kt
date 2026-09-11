@@ -140,6 +140,8 @@ class WalkRecordsScreenTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-search").performTextReplacement("느림")
         compose.waitUntil(10_000) { delayed.get() != null }
+        waitText("산책 기록을 찾고 있어요.")
+        compose.onNodeWithTag("records-count").assertDoesNotExist()
         compose.onNodeWithTag("records-search").performTextReplacement("기록-8")
         waitCard("기록-8")
         compose.runOnIdle { delayed.get()!!.let { (query, continuation) ->
@@ -158,14 +160,16 @@ class WalkRecordsScreenTest {
         assertEquals(2, failures.get())
     }
 
-    @Test fun `saved record changes reload the same query and clear old results on failure`() {
+    @Test fun `saved record refresh retains cards until replacement but clears them on failure`() {
         val revisions = MutableStateFlow(0)
         val saved = AtomicReference(records)
         val pending = AtomicReference<CompletableDeferred<Unit>?>(null)
         val fail = java.util.concurrent.atomic.AtomicBoolean(false)
+        val reads = AtomicInteger()
         val source = object : WalkRecordsSource {
             override val changes = revisions.map { Unit }
             override suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection {
+                reads.incrementAndGet()
                 pending.get()?.await()
                 check(!fail.get()) { "account is no longer current" }
                 return selectWalkRecords(saved.get(), query)
@@ -177,15 +181,19 @@ class WalkRecordsScreenTest {
         waitCard("기록-8")
 
         val release = CompletableDeferred<Unit>()
+        val beforeRefresh = reads.get()
         compose.runOnIdle {
             pending.set(release)
             saved.set(records.filter { it.summary.sessionId != "record-8" })
             revisions.value++
         }
-        waitText("산책 기록을 찾고 있어요.")
-        compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
+        compose.waitUntil(10_000) { reads.get() > beforeRefresh }
+        // An invalidation is not a replacement result: keep the current card while reading.
+        compose.onNodeWithText("산책 기록을 찾고 있어요.").assertDoesNotExist()
+        compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertExists()
         release.complete(Unit)
         waitText("조건에 맞는 산책이 없어요.")
+        compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithTag("records-search").assertTextContains("기록-8")
 
         compose.runOnIdle { pending.set(null); saved.set(records); revisions.value++ }
@@ -193,8 +201,12 @@ class WalkRecordsScreenTest {
         compose.runOnIdle { fail.set(true); revisions.value++ }
         waitText("산책 기록을 불러오지 못했어요.")
         compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
-        // Later storage changes can recover without losing the search or restarting the screen.
-        compose.runOnIdle { fail.set(false); revisions.value++ }
+        // Recovery must not reveal a snapshot discarded after a failed/account-invalid read.
+        val recovery = CompletableDeferred<Unit>()
+        compose.runOnIdle { pending.set(recovery); fail.set(false); revisions.value++ }
+        waitText("산책 기록을 찾고 있어요.")
+        compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
+        recovery.complete(Unit)
         waitCard("기록-8")
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
     }

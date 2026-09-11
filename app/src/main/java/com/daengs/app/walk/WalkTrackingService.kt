@@ -198,7 +198,10 @@ class WalkTrackingService : Service() {
                         // 거리가 0 으로 보여서, 멀쩡한 산책을 지운다.
                         finished?.let { finishOrDiscard(it) } == true
                     },
-                    enqueue = delivery::enqueue,
+                    enqueue = { id ->
+                        (application as DaengsApp).walkDiaryPublication.start(id)
+                        delivery.enqueue(id)
+                    },
                     onCompletionFailure = { error ->
                         publishCompletionFailure(error.message ?: "산책을 저장하지 못했어요.")
                     },

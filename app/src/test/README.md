@@ -52,6 +52,14 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 점령 게임 성적 화면·규칙 팝업
 
+### 전봇대 북마크 (#278)
+
+`com.daengs.app.territory.bookmarks.*`는 HTTP·목록 계약과 로그인 생애를,
+`com.daengs.app.ui.game.bookmarks.*`는 중복 탭·타임아웃 재조회·목록/지도·위치 없음·작은 화면을 검증한다.
+게임 진입 메뉴와 공용 별 연결을 변경하면 `TerritoryGameScreenTest`,
+`ui.game.owned.OwnedTerritoryScreenTest`, `ui.walk.WalkTerritoryUiTest`를 함께 선택한다.
+실기기 가상 데이터 확인은 실제 서버에 북마크가 저장됐다는 근거가 아니다.
+
 `ui/game/TerritoryGameScreenTest`는 홈 진입·조회 강아지 교체·성적 상태·팝업 복귀·320dp 큰 글자를,
 `ui/game/TerritoryGameRulesTest`는 전봇대를 누르는 두 로컬 예시·인증 구도·점수 차액·닫기/뒤로·상태 복원을 확인한다.
 팝업은 실제 점령·카메라·GPS·서버 요청을 실행하지 않는다. 점수 조회 모델을 고치면
@@ -169,12 +177,35 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 .\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonTest' --tests 'com.daengs.app.walk.diary.WalkBehaviorComparisonApiTest' --tests 'com.daengs.app.ui.walk.WalkBehaviorComparisonScreenTest'
 ```
 
+## 산책 기록의 일반 진입·상세 복귀
+
+홈·산책 화면의 기록 진입점은 `WalkRecordsRoute`에서 실제 공급부와 기존
+`WalkDiaryMapScreen`을 연결한다. 화면 연결만 바꾸면 아래 네 클래스를 선택한다.
+
+- `ui/walk/WalkRecordsRouteStateTest`: 기록 화면을 실제로 내린 뒤 상태 복원,
+  Activity 저장 시점, 같은 회원 재로그인·다른 계정·프로세스 경계의 초기화.
+- `ui/walk/records/WalkRecordsRouteTest`: 기록·모아보기·행동 보기의 상세 왕복,
+  홈으로 나갔다 복귀, nullable 프로필 로딩 중 조건 유지, 미로그인 안내,
+  계정 변경 중 늦은 응답 배제와 동기화 오류에도 로컬 기록 유지.
+- `ui/walk/WalkRecordsScreenTest`: 공통 조건·페이지·지도 선택·행동 보기의 기존 소비자.
+- `ui/walk/WalkDiaryMapScreenTest`: 기존 상세 표시·뒤로 동작의 소비자.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkDiaryMapScreenTest' -PslimAbi=x86_64 --console=plain
+```
+
+이 절은 실행 지도이며 통과 결과가 아니다. Route 테스트는 실제 기록 화면을 unmount하는
+상세 대역과 inspection 지도를 사용한다. MainActivity 초기화·native Naver 지도·배포 서버·
+사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
+경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
+
 ## 산책 기록의 실제 원판 조회
 
 `walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과
 빈 결과를, `WalkRecordSheetsApiTest`는 인증된 batch HTTP 요청과 미배포/인증 실패를 확인한다.
 `TraceLoadingWalkRecordsSourceTest`는 조회 지연·실패·재시도·계정/기록 변경 중 늦은 응답을,
-`RoomWalkRecordsSourceTest`는 실제 SQLite의 업로드 ID 전달을 확인한다.
+`RoomWalkRecordsSourceTest`는 실제 SQLite의 업로드 ID 전달과 보드 확정 시 목록 갱신,
+준비 중·늦은 AI 제목의 검색 제외를 확인한다.
 브러시 연결/겹침 정책은 `WalkRecordsTracesTest`, 화면 소비자는
 `ui/walk/WalkRecordsScreenTest`로 좁혀 실행한다. 실제 서버·DB 접속은 필요하지 않다.
 

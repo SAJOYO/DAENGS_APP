@@ -45,6 +45,7 @@ internal fun WalkDiaryMapContent(
     title: String = "산책 일기", subtitle: String = "", onBack: () -> Unit = {},
     mapSettings: @Composable () -> Unit = {},
     onOverview: () -> Unit = {},
+    generationActionLabel: String = "일기 생성·갱신",
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -82,7 +83,7 @@ internal fun WalkDiaryMapContent(
                     DropdownMenuItem(text = { Text("기록 남기기") }, enabled = !loading && error == null,
                         onClick = { menu = false; onAdd() })
                     onGenerate?.let { generate ->
-                        DropdownMenuItem(text = { Text(if (generating) "준비 중" else "일기 생성·갱신") },
+                        DropdownMenuItem(text = { Text(if (generating) "준비 중" else generationActionLabel) },
                             enabled = !loading && !generating, onClick = { menu = false; generate() })
                     }
                 }

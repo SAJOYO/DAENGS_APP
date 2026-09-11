@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.auth.Session
 import com.daengs.app.auth.SessionProvider
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.walk.RecordedFix
+import com.daengs.app.walk.RecordedSession
 import com.daengs.app.walk.WalkDepartureWeather
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkHistoryFilter
@@ -108,8 +110,12 @@ class RoomWalkRecordsSourceTest {
         ))).records.isEmpty())
     }
 
-    @Test fun `search uses current visible title and notes and removes edited deleted or stale text`() = runBlocking {
-        seedSearchWalk(log, "s", 1)
+    @Test fun `legacy search uses current visible title and notes and removes edited deleted or stale text`() = runBlocking {
+        // An already completed record predates publication; closing a new walk opts it in.
+        log.openSession(RecordedSession("s", dogIds = listOf("dog"), startedAtMillis = 0, endedAtMillis = 600_000))
+        (0..5).forEach { i -> log.append("s", RecordedFix(i, 0, i * 120_000L,
+            37.5 + i * 80.0 / 111195, 127.0, 5f, false)) }
+        assertNull(dao.diaryPublication("s"))
         val stamp = storyboardEntryStamp(emptyList())
         assertTrue(dao.acceptSceneAnalysis(WalkSceneAnalysisRow("s", 1, stamp, "private-reference", "ready",
             titledDiaryFixture().toString(), null), OWNER))
@@ -162,6 +168,40 @@ class RoomWalkRecordsSourceTest {
 
             assertTrue(search("두부와 함께 남긴 아침").records.isEmpty())
             assertEquals(2, source.select(WalkRecordsQuery()).records.single().entries.size)
+        }
+    }
+
+    @Test fun `publication alone refreshes titles while pending and late AI stay out of search`() = runBlocking {
+        withTimeout(10_000) {
+            seedSearchWalk(log, "s", 1)
+            val preparation = requireNotNull(dao.diaryPublication("s"))
+            val raw = titledDiaryFixture().toString()
+            val stamp = storyboardEntryStamp(emptyList())
+            val analysis = WalkSceneAnalysisRow("s", 1, stamp, "r", "ready", raw, null)
+            assertTrue(dao.acceptSceneAnalysis(analysis, OWNER))
+            dao.freezeDiaryBase("s", raw)
+            assertNull(source.select(WalkRecordsQuery()).records.single().title)
+            assertTrue(search("함께 남긴").records.isEmpty())
+
+            val initial = CompletableDeferred<Unit>()
+            val published = async {
+                source.changes.first {
+                    val title = source.select(WalkRecordsQuery()).records.single().title
+                    if (!initial.isCompleted) assertNull(title)
+                    initial.complete(Unit)
+                    title == "함께 남긴 산책 기록"
+                }
+            }
+            initial.await()
+            assertEquals(1, dao.publishDiaryCandidate("s", raw, preparation.startedAtMillis + 1000))
+            published.await()
+            assertEquals(listOf("s"), search("함께 남긴").sessionIds)
+
+            val late = titledDiaryFixture().put("title", "늦게 도착한 제목").toString()
+            assertTrue(dao.acceptSceneAnalysis(analysis.copy(generation = 2, bundle = late), OWNER,
+                preparation.deadlineAtMillis + 1))
+            assertEquals("함께 남긴 산책 기록", source.select(WalkRecordsQuery()).records.single().title)
+            assertTrue(search("늦게 도착한").records.isEmpty())
         }
     }
 

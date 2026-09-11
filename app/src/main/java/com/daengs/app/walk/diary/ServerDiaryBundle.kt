@@ -15,8 +15,8 @@ data class DiarySceneContent(
     val order: Int = 0,
 )
 
-data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int) {
-    fun description(): String = when (modelStatus) {
+data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int, val showFailureNotice: Boolean = true) {
+    fun description(): String = if (!showFailureNotice) "" else when (modelStatus) {
         "unavailable" -> "배경 문장을 만들지 못했어요. 남긴 기록은 그대로 볼 수 있고 다시 생성할 수 있어요."
         else -> ""
     }
