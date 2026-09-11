@@ -1035,5 +1035,50 @@ private fun HomeScreenSmallPreview() {
     }
 }
 
+/**
+ * 갤럭시 Z 플립 **커버 화면** (3.4", 720x748px @306dpi).
+ *
+ * 여기서 방이 통째로 사라졌었다 — 카드가 높이를 먼저 다 먹어 `weight(1f)` 에
+ * 10dp 만 남았다. [homeScrolls] 가 스크롤 갈래를 골라 방에 [ROOM_MIN_HEIGHT] 를
+ * 먼저 떼어 주는 것이 여기서 보여야 한다.
+ */
+@Preview(name = "Z 플립 커버", device = "spec:width=376dp,height=391dp", showBackground = true)
+@Composable
+private fun HomeScreenFlipCoverPreview() {
+    DaengsTheme {
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+    }
+}
+
+/**
+ * 갤럭시 Z 플립 **반접기에서 쓸 수 있는 위쪽 절반** (407x994dp 의 절반).
+ *
+ * ⚠️ **Preview 는 접힘을 흉내 내지 못한다.** `LocalInspectionMode` 에서는
+ * [rememberFlexTopHeight] 가 null 을 돌려주므로, 실제로 접힌 것이 아니라
+ * **그만큼 짧은 창**을 그린다. 배치가 같은 갈래로 가는지 보는 데까지가 이
+ * Preview 의 쓸모고, 접힘 자체는 기기에서 본다.
+ */
+@Preview(name = "Z 플립 플렉스(위쪽 절반)", device = "spec:width=407dp,height=497dp", showBackground = true)
+@Composable
+private fun HomeScreenFlipFlexPreview() {
+    DaengsTheme {
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+    }
+}
+
+/**
+ * 갤럭시 Z 플립 **펼친 메인 화면** (6.7", 1080x2640px @425dpi).
+ *
+ * 폭이 기준 411 과 거의 같아 **원래 멀쩡한 화면이다.** 고치는 자리가 아니라
+ * 안 건드렸음을 지키는 자리다 — 여기 스크롤이 생기면 뭔가 잘못된 것이다.
+ */
+@Preview(name = "Z 플립 펼침", device = "spec:width=407dp,height=994dp", showBackground = true)
+@Composable
+private fun HomeScreenFlipMainPreview() {
+    DaengsTheme {
+        HomeScreen(frameTimeMs = 400L, dateLabel = HomeDemoData.MOCK_DATE)
+    }
+}
+
 /** @Preview 전용. 맑고 포근한 낮 — 시안이 그린 상태다. */
 private val PREVIEW_OUTSIDE = OutsideSnapshot(OutsideView.DAY_CLEAR, temperatureC = 21f)
