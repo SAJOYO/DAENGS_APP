@@ -8,10 +8,13 @@ import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -84,7 +87,8 @@ class TraceLoadingWalkRecordsSourceTest {
         }
     }
 
-    @Test fun `cancelled fetch cannot publish even if the transport returns late`() = runBlocking {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `cancelled fetch cannot publish even if the transport returns late`() = runTest {
         val stored = selection(record("a"))
         val entered = CompletableDeferred<Unit>()
         var published = false
@@ -93,8 +97,10 @@ class TraceLoadingWalkRecordsSourceTest {
             try { awaitCancellation() } catch (_: CancellationException) { Result.success(mapOf("a" to ready("a"))) }
         }
         val job = async { source.loadTraces(stored); published = true }
-        entered.await()
-        job.cancelAndJoin()
+        try {
+            runCurrent()
+            assertTrue("The fetch must start before cancellation is tested", entered.isCompleted)
+        } finally { job.cancelAndJoin() }
         assertFalse(published)
     }
 
