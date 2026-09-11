@@ -36,7 +36,7 @@ data class ConversationResult(
     val failed get() = receipt["execution"]?.jsonPrimitive?.content == "failed"
     val preservesDisplay get() = receipt["bookmark_command"]?.let { it != JsonNull } == true ||
         receipt["saved_search_filters"]?.let { it != JsonNull } == true ||
-        receipt["code"]?.jsonPrimitive?.content in setOf("feedback_no_mutation", "saved_search_clarify", "saved_search_client_required")
+        receipt["code"]?.jsonPrimitive?.content in setOf("feedback_no_mutation", "saved_search_clarify", "saved_search_client_required", "search_already_visible")
 }
 
 data class ConversationUiState(
@@ -237,6 +237,38 @@ class FacilityConversationRepository(
         }
         run(session, "filters", filterEdit = edit)
         return true
+    }
+
+    /** Execute already compiled conditions through the existing restore/search endpoint, no LLM. */
+    suspend fun applySearchPlan(transfer: SearchPlanTransfer): ConversationResult {
+        if (!transfer.isCurrent()) throw CancellationException("Saved search changed")
+        val session = freshSession() ?: throw FacilityException(401)
+        if (!transfer.isCurrent()) throw CancellationException("Saved search changed")
+        if (session.appUserId != transfer.ownerId) throw CancellationException("Saved search owner changed")
+        if (owner != null && owner != session.appUserId) { invalidate(); throw FacilityException(401) }
+        val before = mutable.value.result
+        val mine = ++generation
+        val payload = buildJsonObject {
+            put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
+            put("restore_filters", transfer.filters)
+        }
+        // This isolated read starts a new server session. An abandoned response never replaces
+        // the current session or its pending write identity.
+        mutable.value = mutable.value.copy(busy = true, answerBusy = false, error = null)
+        try {
+            val result = client.exchange(session.accessToken, payload).toConversationResult()
+            checkLive(mine, session)
+            if (!transfer.isCurrent()) throw CancellationException("Saved search changed")
+            require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
+            require(result.filters == transfer.filters && result.sessionId != before?.sessionId && result.matches && !result.failed)
+            activeBookmarks?.cancel(); pendingBookmarks?.cancel()
+            pending = null; pendingBookmarks = null; activeBookmarks = null; undo = null
+            owner = session.appUserId
+            val count = result.search?.groups?.sumOf { it.results.size } ?: 0
+            return publish(result, "찜 여부 제한 없이 조건에 맞는 ${count}곳을 찾았어요.")
+        } finally {
+            if (mine == generation) mutable.value = mutable.value.copy(busy = false)
+        }
     }
 
     /** Called only after the committed state has reached the map and filters. */

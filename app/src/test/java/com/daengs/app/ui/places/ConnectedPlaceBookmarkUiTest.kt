@@ -28,11 +28,13 @@ class ConnectedPlaceBookmarkUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val hits = PlaceBookmarkLabModel().catalog
     private val missing = PlaceKey("kto", "missing")
+    private var ordinaryPlan: JsonObject? = null
     private var page = SavedPlacePage(listOf(SavedPlace(hits.first().place.key, hits.first().place.name, Instant.EPOCH),
         SavedPlace(missing, "사라진 시설", Instant.EPOCH)), 200)
     private val client = object : PlaceBookmarkClient {
-        override suspend fun interpret(token: String, query: String, filters: JsonObject) = SavedSearchPlan("search", "",
-            JsonObject(filters + ("radius_m" to JsonNull) + ("parking" to JsonPrimitive(true))))
+        override suspend fun interpret(token: String, query: String, filters: JsonObject) =
+            ordinaryPlan?.let { SavedSearchPlan("search_places", "", null, it) }
+                ?: SavedSearchPlan("search", "", JsonObject(filters + ("radius_m" to JsonNull) + ("parking" to JsonPrimitive(true))))
         override suspend fun list(token: String) = page
         override suspend fun set(token: String, key: PlaceKey, saved: Boolean): SavedPlacePage {
             page = page.copy(items = page.items.filterNot { it.key == key }); return page
@@ -94,6 +96,40 @@ class ConnectedPlaceBookmarkUiTest {
         compose.onNodeWithTag("place-tab-SEARCH").performClick()
         compose.onNode(hasSetTextAction()).assertTextEquals("보존할 입력")
         compose.runOnIdle { controller.close() }
+    }
+    @Test fun `connected dog sends compiled ordinary search and waits before leaving saved tab`() {
+        ordinaryPlan = JsonObject(com.daengs.app.place.support.conversationFixture("manual").getValue("filters").jsonObject + mapOf(
+            "spatial" to buildJsonObject { put("lat", 37.54); put("lng", 127.05); put("radius_m", 3000) },
+            "name_query" to JsonPrimitive("정원")))
+        lateinit var controller: PlaceBookmarkController
+        var transfer: SearchPlanTransfer? = null
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            controller = remember { PlaceBookmarkController(scope, PlaceBookmarkRepository(client,
+                { Session("owner", "access", "refresh", Long.MAX_VALUE, Long.MAX_VALUE) }, { AccountScope("owner", 1) }), AccountScope("owner", 1)) }
+            LaunchedEffect(Unit) { controller.ensureLoaded() }
+            DaengsTheme { ConnectedPlaceSearchScreen(
+                PlacesUiState(location = PlaceLocationState.Ready(GeoPoint(37.54, 127.05)),
+                    discovery = com.daengs.app.map.features.places.PlaceDiscoveryState(requestedKinds = listOf(PlaceKind.CAFE), origin = GeoPoint(37.54, 127.05)),
+                    profiles = PlaceProfiles(ready = true, message = null)),
+                { action -> if (action is PlacesAction.ApplySearchPlan) transfer = action.transfer },
+                {}, {}, {}, {}, {}, showMap = false, bookmarkController = controller) }
+        }
+        compose.onNodeWithTag("place-tab-BOOKMARKS").performClick()
+        compose.onNodeWithTag("place-dog-anchor").performClick()
+        compose.onNodeWithTag("place-dog-input").performTextInput("찜 제한 풀고 정원 찾아줘")
+        compose.onNodeWithText("말해주기").performClick()
+        compose.runOnIdle {
+            assertEquals(ordinaryPlan, transfer!!.filters)
+            assertTrue(transfer!!.isCurrent())
+            assertEquals(PlaceBrowseTab.BOOKMARKS, controller.state.value.session.tab)
+            transfer!!.completion.complete(Unit)
+        }
+        compose.onNode(hasSetTextAction()).assertTextEquals("정원")
+        compose.runOnIdle {
+            assertEquals(PlaceBrowseTab.SEARCH, controller.state.value.session.tab)
+            controller.close()
+        }
     }
     private fun capture(name: String = "connected-saved-390") {
         compose.runOnIdle {
