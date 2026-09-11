@@ -68,7 +68,7 @@ class TerritoryFeedbackUiTest {
         compose.onNodeWithText("산책을 재개하면 영역표시할 수 있어요").assertIsDisplayed()
         compose.onNodeWithText("영역표시 완료 · 미인증").assertDoesNotExist()
         compose.runOnIdle { game.value = game.value.copy(phase = TerritoryWalkPhase.BROWSING) }
-        compose.onNodeWithText("점령 연습 · 점유 정보").assertIsDisplayed()
+        compose.onNodeWithText("산책을 시작하고 가까이 가면 점령할 수 있어요").assertIsDisplayed()
     }
 
     @Test fun `실제 벡터와 효과 프레임을 검토용 이미지로 그린다`() {
