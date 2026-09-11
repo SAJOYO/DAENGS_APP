@@ -27,7 +27,7 @@ internal fun TerritoryRangePreview() {
     val context = LocalContext.current
     val density = LocalDensity.current
     val pole = remember(context) { territoryMarkerIcon(context, TerritoryMarkerOccupancy.NEUTRAL).asImageBitmap() }
-    val size = TerritoryPoleArt.size(selected = true)
+    val size = TerritoryPoleArt.size()
     DaengsTheme {
         Column(Modifier.fillMaxSize().background(Color(0xfffdf4f0)).padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             TerritoryProximityRange.entries.forEach { proximity ->
