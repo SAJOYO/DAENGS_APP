@@ -50,6 +50,19 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
 
+## GPS 이동 정책 엔진 (#294)
+
+`com.daengs.app.walk.motion.*`는 Android 없는 순수 엔진의 동결 정책, 위치·속도 품질,
+고속 뒤 재진입·구간 장벽, 작은 보폭 누적, 시각 역행·중복·누락, 개별/배치 재생 일치와
+제한된 관측 창을 검증한다. `RecordedMotionReplayTest`는 #283 완료 epoch와 원본 번호를
+대조한다. 원본/epoch 계약을 바꾸면 `RecordingJournalTest`, `RecordingCompletionTest`도
+선택한다. legacy reader를 바꾸면 `TrailRecorderTest`, `WalkSummaryTest`를 추가한다.
+현재 엔진은 운영 서비스·UI에 연결되지 않았으므로 이 테스트가 실기기 주행 검증은 아니다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'
+```
+
 ## 점령 게임 성적 화면·규칙 팝업
 
 ### 전봇대 북마크 (#278)
