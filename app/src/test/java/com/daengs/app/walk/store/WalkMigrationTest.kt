@@ -69,6 +69,9 @@ class WalkMigrationTest {
     @Test
     fun `16의 정책과 기존 기록을 보존하고 측정 백업은 완료로 추측하지 않는다`() = verifyPhotoUpgrade(16)
 
+    @Test
+    fun `17의 백업 영수증을 보존하고 원본 좌표 출처와 검증 상태를 추측하지 않는다`() = verifyPhotoUpgrade(17)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -107,7 +110,8 @@ class WalkMigrationTest {
                 old.execSQL("INSERT INTO walk_recording_epoch VALUES ('epoch','s1','clock',0,1000,1000000000,0,2000,2000000000,'STOP',0,1,NULL,NULL,1)")
                 old.execSQL("INSERT INTO walk_entry (id,sessionId,payload,revision,mutationId,dirty,isV2,pinPayload,pinRevision,pinDirty,pendingRequest) VALUES ('v2','s1','content',2,'pending-id',1,1,'pin',3,1,'frozen-v2-request')")
             }
-            if (version == 16) old.execSQL("UPDATE walk_session SET motionPolicyJson='frozen-policy' WHERE id='s1'")
+            if (version >= 16) old.execSQL("UPDATE walk_session SET motionPolicyJson='frozen-policy' WHERE id='s1'")
+            if (version == 17) old.execSQL("INSERT INTO walk_motion_backup VALUES ('s1','frozen-manifest','manifest-hash','evidence-hash',3000,NULL)")
             old.version = version
         }
         val db = openLatest()
@@ -117,8 +121,13 @@ class WalkMigrationTest {
                 "local-base", "published-board", 2500) else null, dao.diaryPublication("s1"))
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
-            assertEquals(if (version == 16) "frozen-policy" else null, dao.session("s1")!!.motionPolicyJson)
-            assertEquals(null, dao.motionBackup("s1"))
+            assertEquals(if (version >= 16) "frozen-policy" else null, dao.session("s1")!!.motionPolicyJson)
+            assertEquals(if (version == 17) WalkMotionBackupRow("s1","frozen-manifest","manifest-hash","evidence-hash",3000) else null, dao.motionBackup("s1"))
+            assertEquals(null, dao.motionPrecision("s1"))
+            assertEquals(null, dao.session("s1")!!.coordinateOrigin)
+            assertEquals(null, dao.fixes("s1").single().latBits)
+            assertEquals(null, dao.fixes("s1").single().lngBits)
+            assertEquals(null, dao.fixes("s1").single().accuracyBits)
             assertEquals(null, dao.fixes("s1").single().speedMpsBits)
             assertEquals(1, dao.fixes("s1").size)
             assertEquals(if (version == 15) 0L else null, dao.fixes("s1").single().ingressSeq)
@@ -377,6 +386,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_14_15,
                 WalkDatabase.MIGRATION_15_16,
                 WalkDatabase.MIGRATION_16_17,
+                WalkDatabase.MIGRATION_17_18,
             )
             .build()
 

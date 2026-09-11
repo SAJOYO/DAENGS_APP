@@ -61,7 +61,7 @@ internal class WalkMotionStore(private val database: WalkDatabase, private val o
         }
     }
 
-    suspend fun restore(session: RecordedSession, fixes: List<RecordedFix>, plan: WalkMotionContract.Plan?, account: String, now: Long, expectedLocal: Boolean) = database.withTransaction {
+    suspend fun restore(session: RecordedSession, fixes: List<RecordedFix>, plan: WalkMotionContract.Plan?, account: String, now: Long, expectedLocal: Boolean, precision: WalkMotionPrecisionSync.Restored? = null) = database.withTransaction {
         checkOwner(account)
         require(session.ownerId == account && session.serverWalkId != null && session.endedAtMillis != null)
         val existing = dao.session(session.id)
@@ -69,8 +69,12 @@ internal class WalkMotionStore(private val database: WalkDatabase, private val o
         if (existing != null) {
             check(existing.ownerId == account && existing.serverWalkId == session.serverWalkId && existing.endedAtMillis == session.endedAtMillis)
             // A locally recorded/previously verified policy is never replaced from the network.
-            if (existing.motionPolicyJson != null || plan == null) return@withTransaction
-            check(dao.recordingEpochs(session.id).isEmpty()) { "로컬 측정 원본을 덮어쓸 수 없어요." }
+            if (plan == null || (existing.motionPolicyJson != null && (precision == null || existing.coordinateOrigin != null))) return@withTransaction
+            if (existing.motionPolicyJson != null) {
+                val previous = WalkMotionContract.create(requireNotNull(dao.motionInput(session.id, account)))
+                check(previous.evidenceHash == plan.evidenceHash)
+                check(dao.motionBackup(session.id)?.evidenceFingerprint == plan.evidenceHash)
+            } else check(dao.recordingEpochs(session.id).isEmpty()) { "로컬 측정 원본을 덮어쓸 수 없어요." }
             val local = dao.fixes(session.id).map { it.toModel() }
             check(WalkRecordingContract.rawFingerprint(local) == WalkRecordingContract.rawFingerprint(fixes))
             check(local.map { it.recordingEligible } == fixes.map { it.recordingEligible })
@@ -87,11 +91,11 @@ internal class WalkMotionStore(private val database: WalkDatabase, private val o
         fixes.forEach { fix ->
             // Preserve local coordinate precision while attaching verified metadata to an old remote restore.
             val local = original[fix.clientSeq]
-            val row = (if (local == null) fix else fix.copy(lat = local.lat, lng = local.lng,
-                atMillis = local.atMillis, accuracyM = local.accuracyM, isMock = local.isMock)).motionRow(session.id)
+            val row = (if (local == null || precision != null) fix else fix.copy(lat = local.lat, lng = local.lng,
+                atMillis = local.atMillis, accuracyM = local.accuracyM, isMock = local.isMock)).motionRow(session.id, precision != null)
             if (existing == null) dao.insertObservation(row) else dao.updateMotionObservation(row)
         }
-        if (plan != null) {
+        if (plan != null && existing?.motionPolicyJson == null) {
             plan.input.epochs.forEach { e ->
                 check(dao.recordingEpochById(e.id) == null) { "다른 산책의 측정 구간과 충돌해요." }
                 dao.saveRecordingEpoch(RecordingEpochRow.from(e))
@@ -101,6 +105,11 @@ internal class WalkMotionStore(private val database: WalkDatabase, private val o
             // A complete motion receipt is issued only after the existing raw finalize is derived.
             dao.markDerived(session.id, now)
         }
+        if (precision != null) {
+            val row = precision.plan.row().copy(completedAtMillis = now, verifiedAtMillis = now, verificationJson = precision.receipt.toString())
+            if (dao.motionPrecision(session.id) == null) dao.insertMotionPrecision(row) else dao.updateMotionPrecision(row)
+            dao.installCoordinateOrigin(session.id, account, "verified")
+        }
         checkOwner(account)
     }
 
@@ -108,8 +117,10 @@ internal class WalkMotionStore(private val database: WalkDatabase, private val o
     companion object { fun objects(array: JSONArray) = (0 until array.length()).map { array.getJSONObject(it) } }
 }
 
-internal fun RecordedFix.motionRow(sessionId: String) = WalkFixRow(sessionId, clientSeq, chainIndex, atMillis,
+internal fun RecordedFix.motionRow(sessionId: String, exactCoordinates: Boolean = false) = WalkFixRow(sessionId, clientSeq, chainIndex, atMillis,
     lat, lng, accuracyM, isMock, ingressSeq, sourceEpoch, clockEpochId, elapsedRealtimeNanos,
     receivedElapsedNanos, receivedAtMillis, speedMps, speedAccuracyMps, bearingDegrees,
     bearingAccuracyDegrees, provider, recordingEligible, speedMps?.toRawBits(), speedAccuracyMps?.toRawBits(),
-    bearingDegrees?.toRawBits(), bearingAccuracyDegrees?.toRawBits())
+    bearingDegrees?.toRawBits(), bearingAccuracyDegrees?.toRawBits(),
+    if (exactCoordinates) lat.toRawBits() else null, if (exactCoordinates) lng.toRawBits() else null,
+    if (exactCoordinates) accuracyM?.toRawBits() else null)

@@ -11,6 +11,7 @@ import org.json.JSONObject
 class WalkMotionSync(
     database: WalkDatabase,
     private val owner: () -> String,
+    private val precision: WalkMotionPrecisionSync? = null,
     private val now: () -> Long = System::currentTimeMillis,
     private val restorationGuard: suspend (String, suspend () -> Unit) -> Unit = { _, work -> work() },
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
@@ -34,9 +35,17 @@ class WalkMotionSync(
 
     suspend fun sync(token: String, sessionId: String, walkId: String) = mutex.withLock {
         val account = owner()
+        syncBackup(token, sessionId, walkId, account)
+        precision?.sync(token, sessionId, walkId, account)
+    }
+
+    suspend fun needsPrecisionRestore(token: String, id: String, walkId: String, account: String): Boolean =
+        precision?.needsRestore(token, id, walkId, account) ?: false
+
+    private suspend fun syncBackup(token: String, sessionId: String, walkId: String, account: String) {
         try {
-            val plan = store.freeze(sessionId, walkId, account) ?: return@withLock
-            if (store.isComplete(sessionId, account)) return@withLock
+            val plan = store.freeze(sessionId, walkId, account) ?: return
+            if (store.isComplete(sessionId, account)) return
             if (!supports(token, account)) throw IOException("서버의 GPS 측정 백업 지원을 기다리고 있어요.")
             val path = "/$walkId/motion-backup"
             val status = call(account, token, path, "PUT", plan.manifest)
@@ -91,7 +100,9 @@ class WalkMotionSync(
                 WalkMotionContract.validateStatus(status, plan, complete = true)
             }
         }
-        restorationGuard(account) { store.restore(session, plan?.input?.fixes ?: detail.fixes, plan, account, now(), hadLocal) }
+        val precise = plan?.let { precision?.restore(token, it, account) }
+        val selected = precise?.plan?.base ?: plan
+        restorationGuard(account) { store.restore(session, selected?.input?.fixes ?: detail.fixes, selected, account, now(), hadLocal, precise) }
     }
 
     private suspend fun supports(token: String, account: String): Boolean {

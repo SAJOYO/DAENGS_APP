@@ -8,6 +8,18 @@ import androidx.room.Query
 @Dao
 interface WalkDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMotionPrecision(row: WalkMotionPrecisionRow)
+
+    @androidx.room.Update
+    suspend fun updateMotionPrecision(row: WalkMotionPrecisionRow)
+
+    @Query("SELECT * FROM walk_motion_precision WHERE sessionId = :id")
+    suspend fun motionPrecision(id: String): WalkMotionPrecisionRow?
+
+    @Query("UPDATE walk_session SET coordinateOrigin = :origin WHERE id = :id AND ownerId = :owner")
+    suspend fun installCoordinateOrigin(id: String, owner: String, origin: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMotionBackup(row: WalkMotionBackupRow)
 
     @androidx.room.Update
@@ -17,7 +29,9 @@ interface WalkDao {
     suspend fun motionBackup(id: String): WalkMotionBackupRow?
 
     @Query("SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL AND motionPolicyJson IS NOT NULL " +
-        "AND NOT EXISTS (SELECT 1 FROM walk_motion_backup b WHERE b.sessionId = walk_session.id AND b.completedAtMillis IS NOT NULL)")
+        "AND (NOT EXISTS (SELECT 1 FROM walk_motion_backup b WHERE b.sessionId = walk_session.id AND b.completedAtMillis IS NOT NULL) " +
+        "OR (coordinateOrigin IN ('captured', 'verified') AND NOT EXISTS " +
+        "(SELECT 1 FROM walk_motion_precision p WHERE p.sessionId = walk_session.id AND p.verifiedAtMillis IS NOT NULL)))")
     suspend fun pendingMotionSessions(): List<WalkSessionRow>
 
     @Query("SELECT * FROM walk_recording_epoch WHERE id = :id")

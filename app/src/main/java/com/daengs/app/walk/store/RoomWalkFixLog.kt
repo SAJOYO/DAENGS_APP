@@ -79,6 +79,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
                 serverWalkId = session.serverWalkId,
                 syncedAtMillis = session.syncedAtMillis,
                 motionPolicyJson = session.motionPolicyJson,
+                coordinateOrigin = if (originatedHere) "captured" else null,
             ),
         )
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
@@ -117,6 +118,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
             speedAccuracyMpsBits = fix.speedAccuracyMps?.toRawBits(),
             bearingDegreesBits = fix.bearingDegrees?.toRawBits(),
             bearingAccuracyDegreesBits = fix.bearingAccuracyDegrees?.toRawBits(),
+            latBits = fix.lat.toRawBits(), lngBits = fix.lng.toRawBits(), accuracyBits = fix.accuracyM?.toRawBits(),
         ),
     )
 
@@ -267,9 +269,9 @@ internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     clientSeq = clientSeq,
     chainIndex = chainIndex,
     atMillis = atMillis,
-    lat = lat,
-    lng = lng,
-    accuracyM = accuracyM,
+    lat = latBits?.let(Double::fromBits) ?: lat,
+    lng = lngBits?.let(Double::fromBits) ?: lng,
+    accuracyM = accuracyBits?.let(Float::fromBits) ?: accuracyM,
     isMock = isMock,
     ingressSeq = ingressSeq,
     sourceEpoch = sourceEpoch,

@@ -10,8 +10,8 @@ import androidx.sqlite.execSQL
 
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class, WalkMotionBackupRow::class],
-    version = 17,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class, WalkMotionBackupRow::class, WalkMotionPrecisionRow::class],
+    version = 18,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -273,6 +273,20 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /** Preserve source bits without inventing precision for old/restored coordinates. */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN coordinateOrigin TEXT")
+                listOf("latBits", "lngBits", "accuracyBits").forEach {
+                    connection.execSQL("ALTER TABLE walk_fix ADD COLUMN $it INTEGER")
+                }
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_motion_precision (sessionId TEXT NOT NULL, " +
+                    "manifestJson TEXT NOT NULL, manifestFingerprint TEXT NOT NULL, evidenceFingerprint TEXT NOT NULL, " +
+                    "completedAtMillis INTEGER, lastError TEXT, verifiedAtMillis INTEGER, verificationJson TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -292,6 +306,7 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_14_15,
                     MIGRATION_15_16,
                     MIGRATION_16_17,
+                    MIGRATION_17_18,
                 )
                 .build()
     }
