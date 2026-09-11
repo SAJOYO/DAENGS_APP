@@ -181,7 +181,13 @@ class WalkSync(
         val mine = log.finishedSessions().associateBy { it.id }
         for (walk in remote) {
             val existing = mine[walk.clientSessionId]
-            if (existing != null && (motion == null || existing.motionPolicyJson != null)) continue
+            if (existing != null && motion == null) continue
+            if (existing?.motionPolicyJson != null) {
+                if (owner == null) continue
+                val needs = runCatching { motion!!.needsPrecisionRestore(token, existing.id, walk.id, owner) }
+                    .getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it; it.warn("GPS 정밀 복원 확인"); false }
+                if (!needs) continue
+            }
             if (existing != null && motion != null && owner != null) {
                 try { if (!motion.hasCompletedBackup(token, walk.id, owner)) continue }
                 catch (e: kotlinx.coroutines.CancellationException) { throw e }

@@ -163,6 +163,7 @@ class DaengsApp : Application() {
                 v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
                 recording = com.daengs.app.walk.sync.WalkRecordingSync(),
                 motion = com.daengs.app.walk.sync.WalkMotionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() },
+                    precision = com.daengs.app.walk.sync.WalkMotionPrecisionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() }),
                     restorationGuard = log::restoringForOwner),
                 requireRecordingSupport = !com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
                 photoSync = photoSync::sync,

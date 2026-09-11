@@ -68,6 +68,12 @@ WalkRecordsScreenTest, WalkDiaryMapScreenTest, WalkDiaryReaderTest, WalkDiaryPub
 
 ## GPS 이동 정책 엔진 (#294)
 
+#327의 정밀 백업/계산 대조는 `com.daengs.app.walk.sync.WalkPrecisionSyncTest`가 담당한다.
+32개 공동 입력은 Python 예상값과 실제 Kotlin 엔진을 비교한다. Room 17→18 이관은
+`WalkMigrationTest`, 기존 전송/복원은 `WalkMotionSyncTest`, `WalkSyncTest`,
+수신·조회 소비자는 `RecordingJournalTest`, `WalkDaoTest`, `WalkSpeedServiceTest`를 선택한다.
+[원본 출처·완료 상태·복원 계약](../../../docs/gps-motion-precision.md).
+
 #325의 서버 백업/복원은 `com.daengs.app.walk.sync.WalkMotionSyncTest`가 담당한다.
 Room 이관/수신 저장 변경은 `WalkMigrationTest`, `RecordingJournalTest`를,
 기존 전송 연결 변경은 `WalkSyncTest`, `WalkRecordingSyncTest`, `WalkDeliveryTest`,
