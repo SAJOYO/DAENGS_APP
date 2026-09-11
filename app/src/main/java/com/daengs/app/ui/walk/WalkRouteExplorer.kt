@@ -17,6 +17,10 @@ import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.WalkSessionRoute
 import com.daengs.app.walk.routeexplorer.*
 import kotlinx.coroutines.*
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 internal enum class RouteExplorerMode { OVERVIEW, PASSAGE, REPLAY }
 
@@ -148,7 +152,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                     result.passes.forEachIndexed { index, pass ->
                         TextButton(onClick = { state.selectPass(pass.id) }, modifier = Modifier.fillMaxWidth()) {
                             Text((if (pass.id == state.selectedPassId) "● " else "○ ") + (index + 1) + "번째 통과 · " +
-                                formatWalkClock(pass.startedAtMillis) + "–" + formatWalkClock(pass.endedAtMillis))
+                                formatRouteExplorerClock(pass.startedAtMillis) + "–" + formatRouteExplorerClock(pass.endedAtMillis))
                         }
                     }
                 }
@@ -160,7 +164,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                     style = MaterialTheme.typography.titleSmall)
                 val frame = state.replayFrame
                 Text(if (frame?.inGap != false) "이 시각에는 이어지는 위치 기록이 없어요."
-                    else "기록 시각 " + formatWalkClock(requireNotNull(frame.recordedAtMillis)),
+                    else "기록 시각 " + formatRouteExplorerClock(requireNotNull(frame.recordedAtMillis)),
                     style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -171,6 +175,11 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
         Spacer(Modifier.height(20.dp))
     }
 }
+
+private val ROUTE_EXPLORER_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.KOREAN)
+
+private fun formatRouteExplorerClock(atMillis: Long): String =
+    Instant.ofEpochMilli(atMillis).atZone(ZoneId.systemDefault()).format(ROUTE_EXPLORER_CLOCK)
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 280)
 @Composable
