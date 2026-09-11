@@ -444,3 +444,11 @@ nullable `File.parentFile` 경고가 있었다. 전체 테스트·APK·실기기
   실제 저장·복구·전송 계약은 관련 Room 테스트와 묶는다.
 - 결과에는 기준 커밋·명령·실행 수·실패·skip·미검증 범위를 적는다.
 - 대응 테스트가 없으면 검증 공백으로 남긴다. 전체 실행이나 새로운 설치 도구로 대신하지 않는다.
+
+## 전봇대 객체 재사용
+
+`map/provider/naver/TerritoryOverlayStoreTest`는 ID별 본체 유지·변경분 반영·지도 수명 정리와 효과 취소를 SDK handle 대역으로 검증한다. 이 경계를 바꾸면 `TerritoryPoleArtTest`와 `TerritoryBoardPresentationTest`를 함께 선택한다. 실제 네이버 SDK의 클릭·범위 원·네 가지 색상은 Debug `TerritoryPerformanceLabActivity`와 `TerritoryPoleLabActivity`에서 확인한다. 가상 장소 측정 방법과 지표 한계는 [전봇대 성능 검증](../../../docs/territory-overlay-performance.md)에 있다. 전체 테스트로 확대하지 않는다.
+
+### 전봇대 효과 대상 갱신 (2단계)
+
+store의 현재/이전 대상·새 범위 원 초기화·프레임 목록 재사용을 바꾸면 `TerritoryOverlayStoreTest`와 유한 애니메이션 소비자인 `ui.walk.TerritoryFeedbackUiTest`만 선택한다. 이미지와 회원 소유 매핑 변경이 없으면 1단계의 이미지·보드 테스트를 반복할 필요가 없다. Debug 비교의 handleFrames는 FPS가 아닌 처리 대상 호출 수다.
