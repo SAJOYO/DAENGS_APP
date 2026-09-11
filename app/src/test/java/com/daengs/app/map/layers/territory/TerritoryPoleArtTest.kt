@@ -46,8 +46,8 @@ class TerritoryPoleArtTest {
         }
     }
 
-    @Test fun `그림만 작아지고 옅은 사선 그림자는 밑동 오른쪽에 붙는다`() {
-        TerritoryMarkerOccupancy.entries.forEach { state ->
+    @Test fun `미점유 본체 크기와 옅은 사선 그림자는 유지된다`() {
+        listOf(TerritoryMarkerOccupancy.NEUTRAL).forEach { state ->
             val bitmap = territoryMarkerIcon(context, state)
             val inkRows = (0 until bitmap.height).filter { y ->
                 (0 until bitmap.width).any { x -> Color.alpha(bitmap.getPixel(x, y)) > 128 }
@@ -69,7 +69,7 @@ class TerritoryPoleArtTest {
         assertEquals(48 to 120, TerritoryPoleArt.size())
     }
 
-    @Test fun `실제 지도 크기에서 본체가 상태색으로 빛나고 바닥 발광은 없다`() {
+    @Test fun `실제 지도 크기에서 본체 질감은 남고 윤곽 밖으로 형광빛이 번진다`() {
         val icons = TerritoryMarkerOccupancy.entries.associateWith { state ->
             val bitmap = territoryMarkerIcon(context, state)
             for (x in 0 until bitmap.width) {
@@ -79,16 +79,27 @@ class TerritoryPoleArtTest {
                 assertEquals(0, Color.alpha(bitmap.getPixel(0, y)))
                 assertEquals(0, Color.alpha(bitmap.getPixel(bitmap.width - 1, y)))
             }
-            assertEquals("본체에서 떨어진 바닥에는 발광을 깔지 않는다", 0, Color.alpha(bitmap.getPixel(50, 602)))
+            assertTrue("본체에서 떨어진 바닥에는 밝은 받침을 깔지 않는다",
+                Color.alpha(bitmap.getPixel(50, 602)) <= 16)
             Bitmap.createScaledBitmap(bitmap, 48, 120, true)
         }
         fun count(state: TerritoryMarkerOccupancy, xs: IntRange, ys: IntRange, predicate: (Int) -> Boolean) =
             ys.sumOf { y -> xs.count { x -> predicate(icons.getValue(state).getPixel(x, y)) } }
         val orange: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.red(it) > Color.green(it) + 40 && Color.green(it) > Color.blue(it) + 40 }
         val mint: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.green(it) > Color.red(it) + 60 && Color.blue(it) > Color.red(it) + 40 }
-        assertEquals(0, count(TerritoryMarkerOccupancy.NEUTRAL, 20..27, 65..95, orange))
-        assertTrue("미인증 본체의 중간 높이가 주황색이어야 한다", count(TerritoryMarkerOccupancy.UNVERIFIED, 20..27, 65..95, orange) >= 30)
-        assertTrue("인증 본체의 중간 높이가 민트색이어야 한다", count(TerritoryMarkerOccupancy.VERIFIED, 20..27, 65..95, mint) >= 30)
+        fun outsideTint(state: TerritoryMarkerOccupancy, predicate: (Int) -> Boolean) = (65..95).sumOf { y ->
+            (0 until 48).count { x -> Color.alpha(icons.getValue(TerritoryMarkerOccupancy.NEUTRAL).getPixel(x, y)) < 16 &&
+                predicate(icons.getValue(state).getPixel(x, y)) }
+        }
+        val warmGlow = outsideTint(TerritoryMarkerOccupancy.UNVERIFIED, orange)
+        val mintGlow = outsideTint(TerritoryMarkerOccupancy.VERIFIED, mint)
+        assertTrue("원래 실루엣 밖 주황빛 픽셀: $warmGlow", warmGlow >= 30)
+        assertTrue("원래 실루엣 밖 민트빛 픽셀: $mintGlow", mintGlow >= 30)
+        val warmBody = icons.getValue(TerritoryMarkerOccupancy.UNVERIFIED).getPixel(24, 80)
+        val mintBody = icons.getValue(TerritoryMarkerOccupancy.VERIFIED).getPixel(24, 80)
+        for (channel in listOf<(Int) -> Int>(Color::red, Color::green, Color::blue)) {
+            assertTrue("본체 전체를 상태색 페인트로 덮지 않는다", kotlin.math.abs(channel(warmBody) - channel(mintBody)) < 65)
+        }
         val white: (Int) -> Boolean = { Color.alpha(it) > 200 && Color.red(it) > 230 && Color.green(it) > 230 && Color.blue(it) > 230 }
         assertTrue("전봇대 자체의 밝은 픽셀과 별개로 인증 체크의 흰 획이 남는다",
             count(TerritoryMarkerOccupancy.VERIFIED, 34..40, 50..56, white) >=

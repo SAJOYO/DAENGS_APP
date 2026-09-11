@@ -69,6 +69,7 @@ private fun TerritoryCardLab(showMap: Boolean = true) {
                 searchOrigin = null, followDevice = false, centerOn = point, centerZoom = 18.0,
                 bottomPaddingPx = if (selected) cardPixels else 0,
                 onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {}, onSelectTerritorySite = { selected = true },
+                onMapTap = { selected = false },
                 modifier = Modifier.fillMaxSize())
             if (selected) TerritoryActionCard(game, onMark = { message = "일반 점령 콜백 · 서버 요청 없음" },
                 modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { cardPixels = it.height }

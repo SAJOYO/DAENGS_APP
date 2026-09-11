@@ -59,6 +59,7 @@ private fun TerritoryPoleLab() {
             centerOn = center, centerZoom = 18.0,
             onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
             onSelectTerritorySite = { selected = it; feedback = null },
+            onMapTap = { selected = null; feedback = null },
             modifier = Modifier.fillMaxWidth().weight(1f))
     }
 }

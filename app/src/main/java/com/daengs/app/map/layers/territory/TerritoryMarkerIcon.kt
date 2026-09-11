@@ -7,9 +7,13 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LightingColorFilter
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
+import android.graphics.Shader
 import androidx.annotation.DrawableRes
 import com.daengs.app.R
 import kotlin.math.roundToInt
@@ -74,24 +78,41 @@ private fun drawPoleBody(canvas: Canvas, body: Bitmap, occupancy: TerritoryMarke
             canvas.drawBitmap(body, 0f, 0f, paint)
             return
         }
-        TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(255, 182, 60)
-        TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(72, 255, 208)
+        TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(255, 166, 0)
+        TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(0, 255, 181)
     }
-    // Blur the pole's alpha, never the ground shadow. Cache the final bitmap per state.
-    val offset = IntArray(2)
-    val halo = body.extractAlpha(Paint().apply {
-        maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
-    }, offset)
-    paint.color = tint
-    paint.alpha = 150
-    canvas.drawBitmap(halo, offset[0].toFloat(), offset[1].toFloat(), paint)
-    halo.recycle()
+    // A bright narrow core inside a wider colored bloom reads as light, not paint.
+    val halo = Bitmap.createBitmap(body.width, body.height, Bitmap.Config.ARGB_8888)
+    val haloCanvas = Canvas(halo)
+    fun bloom(radius: Float, color: Int, alpha: Int) {
+        val offset = IntArray(2)
+        val mask = body.extractAlpha(Paint().apply {
+            maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
+        }, offset)
+        paint.color = color
+        paint.alpha = alpha
+        haloCanvas.drawBitmap(mask, offset[0].toFloat(), offset[1].toFloat(), paint)
+        mask.recycle()
+    }
+    bloom(26f, tint, 235)
+    bloom(10f, tint, 255)
+    bloom(3f, if (occupancy == TerritoryMarkerOccupancy.UNVERIFIED) Color.rgb(255, 250, 218)
+        else Color.rgb(220, 255, 244), 255)
+    // Fade the bloom into the foot instead of clipping it at the bitmap's bottom edge.
+    haloCanvas.drawRect(0f, 0f, body.width.toFloat(), body.height.toFloat(), Paint().apply {
+        shader = LinearGradient(0f, 602f, 0f, 638f, Color.WHITE, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+    })
     paint.color = Color.WHITE
     paint.alpha = 255
-    // Preserve the pole's shading and outline while lighting its entire surface.
+    canvas.drawBitmap(halo, 0f, 0f, paint)
+    halo.recycle()
+    canvas.drawBitmap(body, 0f, 0f, paint)
+    // Only a hint of reflected color reaches the surface; retain the original material.
     val light = if (occupancy == TerritoryMarkerOccupancy.UNVERIFIED) Color.rgb(35, 23, 10)
         else Color.rgb(10, 35, 28)
     paint.colorFilter = LightingColorFilter(tint, light)
+    paint.alpha = 30
     canvas.drawBitmap(body, 0f, 0f, paint)
 }
 
