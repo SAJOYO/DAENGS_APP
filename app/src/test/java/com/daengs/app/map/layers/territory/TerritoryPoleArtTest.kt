@@ -69,7 +69,7 @@ class TerritoryPoleArtTest {
         assertEquals(48 to 120, TerritoryPoleArt.size())
     }
 
-    @Test fun `실제 지도 크기에서도 발광 색과 인증 체크가 남고 가장자리는 잘리지 않는다`() {
+    @Test fun `실제 지도 크기에서 본체가 상태색으로 빛나고 바닥 발광은 없다`() {
         val icons = TerritoryMarkerOccupancy.entries.associateWith { state ->
             val bitmap = territoryMarkerIcon(context, state)
             for (x in 0 until bitmap.width) {
@@ -79,15 +79,16 @@ class TerritoryPoleArtTest {
                 assertEquals(0, Color.alpha(bitmap.getPixel(0, y)))
                 assertEquals(0, Color.alpha(bitmap.getPixel(bitmap.width - 1, y)))
             }
+            assertEquals("본체에서 떨어진 바닥에는 발광을 깔지 않는다", 0, Color.alpha(bitmap.getPixel(50, 602)))
             Bitmap.createScaledBitmap(bitmap, 48, 120, true)
         }
         fun count(state: TerritoryMarkerOccupancy, xs: IntRange, ys: IntRange, predicate: (Int) -> Boolean) =
             ys.sumOf { y -> xs.count { x -> predicate(icons.getValue(state).getPixel(x, y)) } }
         val orange: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.red(it) > Color.green(it) + 40 && Color.green(it) > Color.blue(it) + 40 }
         val mint: (Int) -> Boolean = { Color.alpha(it) > 40 && Color.green(it) > Color.red(it) + 60 && Color.blue(it) > Color.red(it) + 40 }
-        assertEquals(0, count(TerritoryMarkerOccupancy.NEUTRAL, 5..18, 108..117, orange))
-        assertTrue(count(TerritoryMarkerOccupancy.UNVERIFIED, 5..18, 108..117, orange) >= 15)
-        assertTrue(count(TerritoryMarkerOccupancy.VERIFIED, 5..18, 108..117, mint) >= 15)
+        assertEquals(0, count(TerritoryMarkerOccupancy.NEUTRAL, 20..27, 65..95, orange))
+        assertTrue("미인증 본체의 중간 높이가 주황색이어야 한다", count(TerritoryMarkerOccupancy.UNVERIFIED, 20..27, 65..95, orange) >= 30)
+        assertTrue("인증 본체의 중간 높이가 민트색이어야 한다", count(TerritoryMarkerOccupancy.VERIFIED, 20..27, 65..95, mint) >= 30)
         val white: (Int) -> Boolean = { Color.alpha(it) > 200 && Color.red(it) > 230 && Color.green(it) > 230 && Color.blue(it) > 230 }
         assertTrue("전봇대 자체의 밝은 픽셀과 별개로 인증 체크의 흰 획이 남는다",
             count(TerritoryMarkerOccupancy.VERIFIED, 34..40, 50..56, white) >=

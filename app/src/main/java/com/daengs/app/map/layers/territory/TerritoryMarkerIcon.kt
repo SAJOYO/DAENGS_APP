@@ -3,13 +3,13 @@ package com.daengs.app.map.layers.territory
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LightingColorFilter
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import androidx.annotation.DrawableRes
 import com.daengs.app.R
 import kotlin.math.roundToInt
@@ -37,7 +37,7 @@ internal object TerritoryPoleArt {
     }
 }
 
-/** 고정된 밑동 발광과 인증 체크. 실제 범위 원/성공 애니메이션과는 별개다. */
+/** 본체 색과 실루엣 발광, 인증 체크. 실제 범위 원/성공 애니메이션과는 별개다. */
 internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOccupancy): Bitmap {
     val source = checkNotNull(BitmapFactory.decodeResource(context.resources, TerritoryPoleArt.resource(occupancy)))
     val result = Bitmap.createBitmap(TerritoryPoleArt.WIDTH, TerritoryPoleArt.HEIGHT, Bitmap.Config.ARGB_8888)
@@ -53,35 +53,46 @@ internal fun territoryMarkerIcon(context: Context, occupancy: TerritoryMarkerOcc
         quadTo(128f, 627f, 105f, 614f)
         close()
     }, paint)
-    drawOccupancyGlow(canvas, occupancy)
     paint.color = Color.WHITE
     val scale = TerritoryPoleArt.ART_SCALE
     val left = 128f * (1f - scale)
     val top = 624f * (1f - scale)
-    canvas.drawBitmap(source, null, RectF(left, top,
+    val body = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
+    Canvas(body).drawBitmap(source, null, RectF(left, top,
         left + source.width * scale, top + source.height * scale), paint)
+    drawPoleBody(canvas, body, occupancy)
     if (occupancy == TerritoryMarkerOccupancy.VERIFIED) drawVerifiedBadge(canvas)
     source.recycle()
+    body.recycle()
     return result
 }
 
-private fun drawOccupancyGlow(canvas: Canvas, occupancy: TerritoryMarkerOccupancy) {
-    val rgb = when (occupancy) {
-        TerritoryMarkerOccupancy.NEUTRAL -> return
-        TerritoryMarkerOccupancy.UNVERIFIED -> 0xF5A623
-        TerritoryMarkerOccupancy.VERIFIED -> 0x24C9A0
+private fun drawPoleBody(canvas: Canvas, body: Bitmap, occupancy: TerritoryMarkerOccupancy) {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    val tint = when (occupancy) {
+        TerritoryMarkerOccupancy.NEUTRAL -> {
+            canvas.drawBitmap(body, 0f, 0f, paint)
+            return
+        }
+        TerritoryMarkerOccupancy.UNVERIFIED -> Color.rgb(255, 182, 60)
+        TerritoryMarkerOccupancy.VERIFIED -> Color.rgb(72, 255, 208)
     }
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader = RadialGradient(0f, 0f, 120f,
-            intArrayOf(0xDA000000.toInt() or rgb, 0xA0000000.toInt() or rgb, rgb),
-            floatArrayOf(0f, .42f, 1f), Shader.TileMode.CLAMP)
-    }
-    // 45×11px at native map size. Fits below the foot without moving its anchor.
-    canvas.save()
-    canvas.translate(128f, 602f)
-    canvas.scale(1f, .26f)
-    canvas.drawCircle(0f, 0f, 120f, paint)
-    canvas.restore()
+    // Blur the pole's alpha, never the ground shadow. Cache the final bitmap per state.
+    val offset = IntArray(2)
+    val halo = body.extractAlpha(Paint().apply {
+        maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
+    }, offset)
+    paint.color = tint
+    paint.alpha = 150
+    canvas.drawBitmap(halo, offset[0].toFloat(), offset[1].toFloat(), paint)
+    halo.recycle()
+    paint.color = Color.WHITE
+    paint.alpha = 255
+    // Preserve the pole's shading and outline while lighting its entire surface.
+    val light = if (occupancy == TerritoryMarkerOccupancy.UNVERIFIED) Color.rgb(35, 23, 10)
+        else Color.rgb(10, 35, 28)
+    paint.colorFilter = LightingColorFilter(tint, light)
+    canvas.drawBitmap(body, 0f, 0f, paint)
 }
 
 private fun drawVerifiedBadge(canvas: Canvas) {
