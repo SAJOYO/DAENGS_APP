@@ -31,3 +31,12 @@
 실기기 GPS 품질, 야외 정지·보행·고속 전환, 장기 저장 지연, 프레임·배터리 비용은 별도 검증이다. 합성 관측이나 Robolectric 화면을 실기기 주행 결과로 보고하지 않는다.
 
 2026-09-11, dev `8fede36`에서 debug 빌드와 선택 92개 테스트를 검증했다. 최초 87개 통과 후 테스트 환경·접근성 노드 조회·픽셀 반올림 문제를 수정했고, 해당 서비스·화면 8개를 다시 실행해 실패·오류·skip 0개를 확인했다. 최초 통과한 다른 클래스는 변경하지 않았다. `app/build/reports/gps-speed-runtime/`의 세로 320/411dp·가로 891dp 합성 렌더에서 속도계와 기존 제어가 겹치지 않는 것을 확인했다. 실제 지도는 이 렌더에서 제외했다.
+
+최신 dev `8c145da`의 전봇대 표시 변경을 통합한 `e7509ef`에서 debug 빌드와 영향받는 화면·ViewModel 테스트 30개(6+24)를 추가 실행해 실패·오류·skip 0개를 확인했다. 전체 저장소 테스트는 실행하지 않았다.
+
+```powershell
+# 최초 연결 검증 범위
+./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.walk.display.*' --tests 'com.daengs.app.walk.motion.MotionPolicyEngineTest' --tests 'com.daengs.app.walk.WalkSpeedServiceTest' --tests 'com.daengs.app.walk.WalkTrackingTest' --tests 'com.daengs.app.ui.walk.MotionSpeedometerTest' --tests 'com.daengs.app.ui.walk.WalkScreenPolicyTest' --tests 'com.daengs.app.ui.walk.WalkViewModelTest'
+# 최신 dev 통합 후 영향 범위만 재검증
+./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.WalkViewModelTest' --tests 'com.daengs.app.ui.walk.WalkScreenPolicyTest'
+```
