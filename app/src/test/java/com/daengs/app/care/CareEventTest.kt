@@ -22,12 +22,59 @@ class CareEventTest {
         assertEquals(1_756_701_000_000L, event.occurredAtMs) // 2025-09-01T04:30:00Z
         assertEquals("사료 반만", event.note)
         assertEquals("10000000-0000-4000-8000-000000000001", event.clientEventId)
+        assertEquals("20000000-0000-4000-8000-000000000002", event.actor?.appUserId)
+        assertEquals("키키", event.actor?.displayName)
     }
 
     @Test
     fun `메모가 null 이면 null 로 읽는다`() {
         val event = CareEvent.parse(JSONObject(EVENT_JSON).put("note", JSONObject.NULL))
         assertNull(event.note)
+    }
+
+    @Test
+    fun `옛 기록에 작성자가 없어도 읽는다`() {
+        val event = CareEvent.parse(JSONObject(EVENT_JSON).apply { remove("actor") })
+        assertNull(event.actor)
+    }
+
+    /**
+     * **저쪽은 `actor` 를 통째로 비우지 않는다.** `routers/care_event.py` 의 `_to_response`
+     * 는 `actor_app_user_id` 가 없어도 객체는 만들어 보내므로, 컬럼이 생기기 전에 쌓인
+     * 기록과 탈퇴자는 이 모양으로 온다 — 속 두 칸이 다 null 이다.
+     *
+     * 예전 `getString` 파싱은 여기서 갈렸다: 단위 테스트의 참조 `org.json` 은 예외를
+     * 던져 **그날 케어 기록이 통째로 안 읽혔고**, 안드로이드의 `org.json` 은 문자열
+     * `"null"` 을 돌려주어 **가짜 id 가 모델에 앉았다.** 두 구현이 같은 답을 내야 한다.
+     */
+    @Test
+    fun `작성자 칸이 비어 온 기록도 읽고 이전 보호자로 그린다`() {
+        val actorless = JSONObject(EVENT_JSON).put(
+            "actor",
+            JSONObject().put("app_user_id", JSONObject.NULL).put("nickname", JSONObject.NULL),
+        )
+
+        val event = CareEvent.parse(actorless)
+
+        assertNull("id 자리에 \"null\" 문자열이 앉으면 안 된다", event.actor?.appUserId)
+        assertNull(event.actor?.nickname)
+        assertEquals("이전 보호자", event.actor?.displayName)
+    }
+
+    /** 한 줄이 이러면 그날 목록 전체가 안 읽히던 자리다. 목록 파싱까지 살아야 한다. */
+    @Test
+    fun `작성자 칸이 빈 기록이 섞여도 하루 요약이 통째로 깨지지 않는다`() {
+        val summary = CareDaySummary.parse(
+            JSONObject(SUMMARY_JSON).apply {
+                getJSONArray("events").getJSONObject(0).put(
+                    "actor",
+                    JSONObject().put("app_user_id", JSONObject.NULL).put("nickname", JSONObject.NULL),
+                )
+            },
+        )
+
+        assertEquals(1, summary.events.size)
+        assertNull(summary.events.first().actor?.appUserId)
     }
 
     @Test
@@ -68,6 +115,7 @@ class CareEventTest {
              "occurred_at": "2025-09-01T13:30:00+09:00",
              "note": "사료 반만",
              "client_event_id": "10000000-0000-4000-8000-000000000001",
+             "actor": {"app_user_id":"20000000-0000-4000-8000-000000000002","nickname":"키키"},
              "created_at": "2025-09-01T13:30:05+09:00"}
         """
         const val SUMMARY_JSON = """

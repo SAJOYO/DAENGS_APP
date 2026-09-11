@@ -94,6 +94,10 @@ class ScreeningHolder(private val accessToken: suspend () -> String?) {
 
     /** 기록 하나를 지운다. 서버에서 사진까지 지워진다. */
     suspend fun delete(recordId: String): Boolean {
+        if (records?.firstOrNull { it.recordId == recordId }?.canDelete == false) {
+            error = "이 피부 기록을 지울 권한이 없어요."
+            return false
+        }
         val token = accessToken() ?: return false
         return ScreeningRecordApi.delete(token, recordId)
             .onSuccess {

@@ -1,20 +1,16 @@
 package com.daengs.app.ui.common
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import java.time.LocalTime
@@ -38,19 +34,22 @@ fun TimeWheel(
     val minutes = remember(value.minute) {
         ((0 until 60 step MINUTE_STEP) + value.minute).distinct().sorted()
     }
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(CardWhite),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+    // 시와 분이 같이 깨어난다. [DateWheel] 과 같은 규칙이다.
+    var awake by remember { mutableStateOf(false) }
+
+    WheelCard(
+        awake = awake,
+        onWake = { awake = true },
+        onSleep = { awake = false },
+        hint = "톡 눌러서 시각 돌리기",
+        modifier = modifier,
     ) {
         Wheel(
             items = hours,
             selected = value.hour,
             suffix = "시",
             width = 84.dp,
+            awake = awake,
             label = { "%02d시".format(it) },
         ) { onChange(LocalTime.of(it, value.minute)) }
         Wheel(
@@ -58,6 +57,7 @@ fun TimeWheel(
             selected = value.minute,
             suffix = "분",
             width = 84.dp,
+            awake = awake,
             label = { "%02d분".format(it) },
         ) { onChange(LocalTime.of(value.hour, it)) }
     }
@@ -65,13 +65,28 @@ fun TimeWheel(
 
 private const val MINUTE_STEP = 5
 
-@Preview(widthDp = 411, heightDp = 260)
+/** 잠든 모습. 급식 시각은 폼 안에 놓이므로 이것이 기본이다. */
+@Preview(widthDp = 411, heightDp = 280)
 @Composable
-private fun TimeWheelPreview() {
-    val time = remember { androidx.compose.runtime.mutableStateOf(LocalTime.of(8, 0)) }
+private fun TimeWheelAsleepPreview() {
+    val time = remember { mutableStateOf(LocalTime.of(8, 0)) }
     DaengsTheme {
         Box(Modifier.background(CreamBg).padding(20.dp)) {
             TimeWheel(value = time.value, onChange = { time.value = it })
+        }
+    }
+}
+
+/** 깨어난 모습. 미리보기는 눌러 볼 수 없어 [WheelCard] 를 직접 깨워 둔다. */
+@Preview(widthDp = 411, heightDp = 280)
+@Composable
+private fun TimeWheelAwakePreview() {
+    DaengsTheme {
+        Box(Modifier.background(CreamBg).padding(20.dp)) {
+            WheelCard(awake = true, onWake = {}, onSleep = {}, hint = "톡 눌러서 시각 돌리기") {
+                Wheel(items = (0..23).toList(), selected = 8, suffix = "시", width = 84.dp, awake = true, label = { "%02d시".format(it) }) {}
+                Wheel(items = (0 until 60 step 5).toList(), selected = 0, suffix = "분", width = 84.dp, awake = true, label = { "%02d분".format(it) }) {}
+            }
         }
     }
 }
