@@ -1,6 +1,7 @@
 package com.daengs.app
 
 import android.os.Bundle
+import android.widget.Toast
 import android.os.SystemClock
 import android.content.pm.ActivityInfo
 import android.content.Intent
@@ -45,6 +46,7 @@ import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
+import com.daengs.app.ui.pet.PetInvitesScreen
 import com.daengs.app.ui.pet.PetMembersScreen
 import com.daengs.app.ui.pet.PetPhotoPicker
 import com.daengs.app.ui.dogcard.CardDrawScreen
@@ -59,8 +61,11 @@ import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.devPets
+import com.daengs.app.pet.InviteShare
+import com.daengs.app.pet.isOwnedBy
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.rememberPetInviteHolder
 import com.daengs.app.pet.rememberPetMemberHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
 import com.daengs.app.screening.rememberScreeningHolder
@@ -177,6 +182,9 @@ class MainActivity : ComponentActivity() {
                 val recordsAccount by app.sessionProvider.accountScope.collectAsState()
                 val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
                 val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
+                val completedDestination = key(recordsAccount) {
+                    com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
+                }
                 val gameScreenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
                 // 로딩이 뜬 시각. **로딩은 처음 한 번만 지나는 길**이라 여기서 한 번
                 // 잡으면 된다 (`screen` 의 초기값이 곧 이 화면이다).
@@ -221,6 +229,7 @@ class MainActivity : ComponentActivity() {
                 // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
                 val petMembers = rememberPetMemberHolder()
+                val petInvites = rememberPetInviteHolder()
                 LaunchedEffect(pets.pets) {
                     // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
                     // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
@@ -324,6 +333,8 @@ class MainActivity : ComponentActivity() {
                 var farewell by remember { mutableStateOf<Pet?>(null) }
                 // 보호자 목록을 보려는 아이. **소유 여부로 가리지 않는다** — 돌보미도 본다.
                 var membersFor by remember { mutableStateOf<Pet?>(null) }
+                // 초대를 관리하려는 아이. **대표만 들어온다** (아래 `isOwnedBy`).
+                var invitesFor by remember { mutableStateOf<Pet?>(null) }
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
@@ -694,6 +705,51 @@ class MainActivity : ComponentActivity() {
                                 farewell = null
                             },
                         )
+                    } else if (invitesFor != null) {
+                        val pet = invitesFor!!
+                        // **대표인지는 내 줄의 `isOwner` 로 본다.** 목록에 대표가 있는지만
+                        // 보면 늘 참이라 돌보미도 통과한다. 대표가 아니면 조회조차 시작하지
+                        // 않는다 — 서버도 404 로 막지만 헛된 요청을 내보내지 않는다.
+                        val owns = petMembers.members
+                            .takeIf { petMembers.petId == pet.id }
+                            ?.isOwnedBy(session?.appUserId) == true
+                        LaunchedEffect(pet.id, session?.appUserId, owns) {
+                            if (!owns) return@LaunchedEffect
+                            val token = freshToken() ?: return@LaunchedEffect
+                            petInvites.load(token, pet.id)
+                        }
+                        PetInvitesScreen(
+                            petName = pet.name,
+                            isOwner = owns,
+                            invites = petInvites.invites.takeIf { petInvites.petId == pet.id },
+                            justCreated = petInvites.justCreated,
+                            statusOf = petInvites::statusOf,
+                            activeCount = petInvites.activeCount,
+                            busy = petInvites.busy,
+                            error = petInvites.error,
+                            onCreate = {
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    petInvites.create(token, pet.id)
+                                }
+                            },
+                            onCancel = { invite ->
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    petInvites.cancel(token, pet.id, invite.id)
+                                }
+                            },
+                            onDismissCreated = { petInvites.clearCreated() },
+                            onShare = { message -> InviteShare.share(context, message) },
+                            onCopy = { link ->
+                                val copied = InviteShare.copy(context, link)
+                                // 13 부터는 시스템이 "복사됨" 을 띄운다 — 여기서 또 띄우면 두 번 뜬다.
+                                if (copied && InviteShare.needsCopiedNotice()) {
+                                    Toast.makeText(context, "초대 링크를 복사했어요", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onBack = { invitesFor = null },
+                        )
                     } else if (membersFor != null) {
                         val pet = membersFor!!
                         // **들어올 때마다 새로 읽는다.** 다른 보호자가 나가거나 대표가
@@ -702,12 +758,16 @@ class MainActivity : ComponentActivity() {
                             val token = freshToken() ?: return@LaunchedEffect
                             petMembers.load(token, pet.id)
                         }
+                        val members = petMembers.members.takeIf { petMembers.petId == pet.id }
                         PetMembersScreen(
-                            members = petMembers.members.takeIf { petMembers.petId == pet.id },
+                            members = members,
                             petName = pet.name,
                             currentUserId = session?.appUserId,
                             busy = petMembers.busy,
                             error = petMembers.error,
+                            // 대표에게만 넘긴다 — null 이면 그 줄 자체가 안 뜬다.
+                            onOpenInvites = { invitesFor = pet }
+                                .takeIf { members?.isOwnedBy(session?.appUserId) == true },
                             onBack = { membersFor = null },
                         )
                     } else HomeScreen(
@@ -1014,7 +1074,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             detailContent = { id, backToRecords ->
-                                com.daengs.app.ui.walk.WalkDiaryMapScreen(id, walkRuntime.history,
+                                com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history,
                                     onBack = backToRecords, pets = pets.pets.orEmpty())
                             },
                         )
@@ -1045,7 +1105,16 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = Screen.TerritoryGame }, onSignIn = { screen = Screen.Landing },
                     )
 
-                    Screen.Walk -> WalkRoute(
+                    Screen.Walk -> key(recordsAccount) {
+                      com.daengs.app.ui.walk.WalkSessionFlow(
+                        account = recordsAccount, destination = completedDestination, controller = walkController,
+                        onExit = { screen = Screen.Home },
+                        detail = { id, close ->
+                            com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history, close,
+                                pets = pets.pets.orEmpty(), origin = com.daengs.app.ui.walk.WalkSessionOrigin.COMPLETION)
+                        },
+                      ) {
+                       WalkRoute(
                         onBack = { screen = Screen.Home },
                         onHome = { screen = Screen.Home },
                         // 산책 기록은 홈 카드와 같은 산책별/모아보기 화면으로 간다.
@@ -1067,6 +1136,8 @@ class MainActivity : ComponentActivity() {
                         photoOf = { petPhotos[it] },
                         outside = outside,
                     )
+                      }
+                    }
 
                     Screen.Dex -> CardDexScreen(
                         onClose = { screen = Screen.Home },
