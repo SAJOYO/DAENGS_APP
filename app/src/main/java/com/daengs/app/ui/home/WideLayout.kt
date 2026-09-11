@@ -133,3 +133,27 @@ fun flexContentHeight(
     if (hingeTop <= 0.dp || hingeTop >= windowHeight) return null
     return hingeTop
 }
+
+/**
+ * 반접기에서 **힌지 위 칸**에 들어갈 방의 높이. 나눌 만하지 않으면 null.
+ *
+ * 반쯤 접어 책상에 세우면 두 절반의 **성격이 달라진다.** 세워진 위쪽은 눈에서
+ * 떨어진 **보는 면**이고, 누운 아래쪽은 손가락이 얹히는 **만지는 면**이다.
+ * 그래서 방은 위로, 카드와 바는 아래로 보낸다 — 카메라 앱이 뷰파인더를 위에,
+ * 셔터를 아래에 두는 것과 같은 이유다.
+ *
+ * **방은 힌지 선에 딱 맞아야 한다.** 접힌 자리를 가로지르면 방 그림이 꺾여서
+ * 두 조각으로 보인다. 그래서 `weight` 로 적당히 나누지 않고 잰 값을 쓴다.
+ *
+ * @param contentTop 콘텐츠 상자가 창 위에서 시작하는 자리. 상태바와 (펴져
+ *   있다면) 상단바가 먹은 만큼이다. `onGloballyPositioned` 로 **한 프레임 늦게**
+ *   오므로 0 으로 시작한다 — 그 사이에도 답이 나와야 첫 프레임이 안 깨진다.
+ *
+ * null 을 돌려주면 두 칸으로 안 나누고 기존 한 칸 갈래로 간다. 위쪽이 방
+ * 최소치([ROOM_MIN_HEIGHT])도 안 되면 나눠 봐야 띠만 한 방이 남는데, 그 경우는
+ * 한 칸 스크롤이 낫다 — 커버 화면에서 이미 그 길을 쓴다.
+ */
+fun flexRoomHeight(hingeTop: Dp, contentTop: Dp): Dp? {
+    val height = hingeTop - contentTop
+    return if (height >= ROOM_MIN_HEIGHT) height else null
+}

@@ -173,3 +173,71 @@ class FlexModeTest {
         assertTrue(homeScrolls(top!! - 90.dp))
     }
 }
+
+/**
+ * 반접기에서 **위아래 두 칸**으로 나누는 규칙.
+ *
+ * 두 절반은 성격이 다르다. 세워진 위쪽은 **보는 면**이고, 책상에 누운 아래쪽은
+ * 손가락이 얹히는 **만지는 면**이다. 그래서 방은 위, 카드와 바는 아래로 간다 —
+ * 카메라 앱이 뷰파인더를 위에 셔터를 아래에 두는 것과 같은 이유다.
+ *
+ * 방이 힌지 선에 **딱 맞아야** 한다. 접힌 자리를 가로지르면 방 그림이 꺾여서
+ * 두 조각으로 보인다.
+ */
+class FlexSplitTest {
+
+    /**
+     * 플립 반접기. 힌지가 창 위에서 502dp 고 콘텐츠 상자가 상태바 아래
+     * 26dp 에서 시작하면, 힌지 위에 남는 것이 476dp 다.
+     *
+     * **일반 폰에서 방이 받는 409dp 보다 크다** — 플렉스가 이 앱에서 방이
+     * 제일 커지는 자리가 된다.
+     */
+    @Test
+    fun `힌지까지의 높이를 방에 준다`() {
+        assertEquals(476.dp, flexRoomHeight(hingeTop = 502.dp, contentTop = 26.dp))
+    }
+
+    /** 상단바가 펴져 있으면 그만큼 늦게 시작하므로 방도 그만큼 줄어든다. */
+    @Test
+    fun `상단바가 있으면 그만큼 줄어든다`() {
+        assertEquals(412.dp, flexRoomHeight(hingeTop = 502.dp, contentTop = 90.dp))
+    }
+
+    /**
+     * 힌지 위가 방 최소치도 안 되면 **두 칸으로 안 나눈다.**
+     *
+     * 나누면 위쪽에 띠만 한 방이 남는다. 그 경우는 한 칸 스크롤([homeScrolls])
+     * 이 낫다 — 커버 화면에서 이미 그 길을 쓴다.
+     */
+    @Test
+    fun `힌지 위가 너무 좁으면 나누지 않는다`() {
+        assertNull(flexRoomHeight(hingeTop = 300.dp, contentTop = 150.dp))
+    }
+
+    /** 정확히 최소치면 나눈다 — 경계는 들어가는 쪽이다. */
+    @Test
+    fun `방 최소치와 같으면 나눈다`() {
+        assertEquals(
+            ROOM_MIN_HEIGHT,
+            flexRoomHeight(hingeTop = ROOM_MIN_HEIGHT + 26.dp, contentTop = 26.dp),
+        )
+    }
+
+    /**
+     * 아직 못 잰 상태(콘텐츠 상자 자리가 0)에서도 답이 나와야 한다.
+     *
+     * 자리는 `onGloballyPositioned` 로 **한 프레임 늦게** 온다. 그 사이에
+     * 터지거나 이상한 값을 내면 첫 프레임이 깨진다.
+     */
+    @Test
+    fun `아직 못 잰 자리에서도 답이 나온다`() {
+        assertEquals(502.dp, flexRoomHeight(hingeTop = 502.dp, contentTop = 0.dp))
+    }
+
+    /** 힌지가 콘텐츠 상자보다 위면 음수가 된다. 그때도 안 나눈다. */
+    @Test
+    fun `힌지가 콘텐츠보다 위면 나누지 않는다`() {
+        assertNull(flexRoomHeight(hingeTop = 20.dp, contentTop = 90.dp))
+    }
+}
