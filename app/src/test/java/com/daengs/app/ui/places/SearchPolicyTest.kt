@@ -24,12 +24,13 @@ class SearchPolicyTest {
     private class SavedClient(val candidate: JsonObject) : PlaceBookmarkClient {
         val page = SavedPlacePage(emptyList(), 200)
         var navigation = false
+        var pool = "all_places"
         override suspend fun list(token: String) = page
         override suspend fun set(token: String, key: PlaceKey, saved: Boolean): SavedPlacePage = error("No writes")
         override suspend fun search(token: String, filters: JsonObject) = SavedPlaceResults(page, emptyList(), emptySet(), true)
         override suspend fun interpret(token: String, query: String, filters: JsonObject) =
             if (navigation) SavedSearchPlan("return_search", "", null)
-            else SavedSearchPlan("search_places", "", null, candidate)
+            else SavedSearchPlan("search_places", "", null, candidate, pool)
     }
     private fun controller(scope: CoroutineScope, client: SavedClient) = PlaceBookmarkController(scope,
         PlaceBookmarkRepository(client, { session }, { account }), account)
@@ -81,6 +82,26 @@ class SearchPolicyTest {
         assertEquals(snapshot, saved.state.value.session.search)
         assertEquals(PlaceBrowseTab.SEARCH, saved.state.value.session.tab)
         assertEquals(0, saved.state.value.searchTransfer)
+        saved.close()
+    }
+
+    @Test fun savedNewCandidatesPreserveScopeThroughTheExistingTransfer() = runTest {
+        val saved = controller(this, SavedClient(candidate).apply { pool = "new_candidates" })
+        saved.enter(snapshot, emptyList()); advanceUntilIdle()
+        val repository = repo { _, payload ->
+            assertEquals("new_candidates", payload["restore_pool"]?.jsonPrimitive?.content)
+            JsonObject(restored(payload) + ("search_pool" to JsonPrimitive("new_candidates")))
+        }
+        saved.chat("새로운 카페 보여줘") { transfer ->
+            assertEquals("new_candidates", transfer.pool)
+            launch {
+                repository.applySearchPlan(transfer)
+                transfer.completion.complete(Unit)
+            }
+        }
+        advanceUntilIdle()
+        assertEquals(PlaceBrowseTab.SEARCH, saved.state.value.session.tab)
+        assertEquals("새 후보", repository.state.value.result!!.poolLabel)
         saved.close()
     }
 

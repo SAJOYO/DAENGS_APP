@@ -24,7 +24,14 @@ data class ConversationResult(
     val answer: String?,
     val receipt: JsonObject,
     val answerStatus: String = "none",
+    val searchPool: String = "all_places",
+    val excludedKeys: Set<PlaceKey> = emptySet(),
 ) {
+    val poolLabel get() = when (searchPool) {
+        "new_candidates" -> "새 후보"
+        "unbookmarked" -> "찜하지 않은 곳"
+        else -> "전체 장소"
+    }
     val kinds get() = filters.getValue("candidate_kinds").jsonArray.map { PlaceKind.fromWire(it.jsonPrimitive.content) }
     val origin get() = filters.getValue("spatial").jsonObject.let {
         GeoPoint(it.getValue("lat").jsonPrimitive.double, it.getValue("lng").jsonPrimitive.double)
@@ -75,7 +82,11 @@ fun JsonObject.toConversationResult(): ConversationResult {
         search, selected, order,
         answer?.get("text")?.jsonPrimitive?.content,
         getValue("receipt").jsonObject, status,
+        this["search_pool"]?.jsonPrimitive?.content ?: "all_places",
+        this["excluded_keys"]?.jsonArray?.map { it.key() }?.toSet().orEmpty(),
     ).also { result ->
+        require(result.searchPool in setOf("all_places", "unbookmarked", "new_candidates"))
+        result.receipt["search_pool"]?.let { require(it.jsonPrimitive.content == result.searchPool) }
         search?.requireDogEcho(PlaceSearchRequest(result.origin, result.radius, result.kinds, dogs = search.dogs))
         if (result.matches) {
             require(search != null && search.groups.map { it.kind } == result.kinds)
@@ -137,7 +148,7 @@ class FacilityConversationRepository(
     private var pending: JsonObject? = null
     private var pendingBookmarks: BookmarkTurn? = null
     private var activeBookmarks: BookmarkTurn? = null
-    private data class Undo(val filters: JsonObject, val sessionId: String, val revision: Int)
+    private data class Undo(val filters: JsonObject, val sessionId: String, val revision: Int, val pool: String)
     private var undo: Undo? = null
 
     fun cancelPending(cancelBookmarks: Boolean = false) {
@@ -185,10 +196,10 @@ class FacilityConversationRepository(
         val before = mutable.value.result
         val result = run(session, "chat", query = query, visibleOrder = visibleOrder, bookmarks = bookmarks,
             visibleSelected = visibleSelected)
-        if (before != null && !result.failed && result.matches && result.filters != before.filters &&
+        if (before != null && !result.failed && result.matches && (result.filters != before.filters || result.searchPool != before.searchPool) &&
             result.sessionId == before.sessionId && result.revision == before.revision + 1 &&
             mutable.value.notice == null) {
-            undo = Undo(before.filters, result.sessionId, result.revision)
+            undo = Undo(before.filters, result.sessionId, result.revision, before.searchPool)
             mutable.value = mutable.value.copy(canUndo = true)
         }
     }
@@ -206,6 +217,8 @@ class FacilityConversationRepository(
             ?: buildJsonObject {
                 put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
                 put("restore_filters", target.filters)
+                put("candidate_pools", "v1"); put("restore_pool", target.pool)
+                put("source_session_id", before.sessionId); put("source_revision", before.revision)
             }
         pending = payload
         mutable.value = mutable.value.copy(busy = true, answerBusy = false, error = null)
@@ -213,7 +226,7 @@ class FacilityConversationRepository(
             val result = client.exchange(session.accessToken, payload).toConversationResult()
             checkLive(mine, session)
             require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
-            require(result.filters == target.filters && result.sessionId != before.sessionId && result.matches && !result.failed)
+            require(result.filters == target.filters && result.searchPool == target.pool && result.sessionId != before.sessionId && result.matches && !result.failed)
             pending = null; undo = null
             publish(result, "이전 검색 조건으로 되돌렸어요.")
             return true
@@ -247,10 +260,13 @@ class FacilityConversationRepository(
         if (session.appUserId != transfer.ownerId) throw CancellationException("Saved search owner changed")
         if (owner != null && owner != session.appUserId) { invalidate(); throw FacilityException(401) }
         val before = mutable.value.result
+        require(transfer.excluded.isEmpty() || before?.excludedKeys == transfer.excluded) { "탐색 제외가 바뀌었어요. 현재 검색 조건을 다시 확인해 주세요." }
         val mine = ++generation
         val payload = buildJsonObject {
             put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
             put("restore_filters", transfer.filters)
+            put("candidate_pools", "v1"); put("restore_pool", transfer.pool)
+            before?.let { put("source_session_id", it.sessionId); put("source_revision", it.revision) }
         }
         // This isolated read starts a new server session. An abandoned response never replaces
         // the current session or its pending write identity.
@@ -260,12 +276,12 @@ class FacilityConversationRepository(
             checkLive(mine, session)
             if (!transfer.isCurrent()) throw CancellationException("Saved search changed")
             require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
-            require(result.filters == transfer.filters && result.sessionId != before?.sessionId && result.matches && !result.failed)
+            require(result.filters == transfer.filters && result.searchPool == transfer.pool && result.sessionId != before?.sessionId && result.matches && !result.failed)
             activeBookmarks?.cancel(); pendingBookmarks?.cancel()
             pending = null; pendingBookmarks = null; activeBookmarks = null; undo = null
             owner = session.appUserId
             val count = result.search?.groups?.sumOf { it.results.size } ?: 0
-            return publish(result, "찜 여부 제한 없이 조건에 맞는 ${count}곳을 찾았어요.")
+            return publish(result, "${result.poolLabel} 중 조건에 맞는 ${count}곳을 찾았어요.")
         } finally {
             if (mine == generation) mutable.value = mutable.value.copy(busy = false)
         }
@@ -305,7 +321,11 @@ class FacilityConversationRepository(
     private fun publish(result: ConversationResult, notice: String? = null,
         filterRetry: ConversationFilterEdit? = null): ConversationResult {
         mutable.value = ConversationUiState(result = result, selected = result.selected,
-            notice = if (result.failed) "검색을 변경하지 못해 이전 조건과 결과를 유지했어요." else notice,
+            notice = if (result.failed) {
+                if (result.receipt["known_places"]?.jsonArray?.isNotEmpty() == true)
+                    "이미 아는 곳이라는 정정은 반영했어요. 검색을 완료하지 못해 이전 결과를 유지했어요."
+                else "검색을 변경하지 못해 이전 조건과 결과를 유지했어요."
+            } else notice,
             filterRetry = filterRetry)
         return result
     }
@@ -324,6 +344,7 @@ class FacilityConversationRepository(
         undo = null
         val next = buildJsonObject {
             put("client_request_id", UUID.randomUUID().toString()); put("mode", mode); put("query", query)
+            put("candidate_pools", "v1")
             if (before != null) {
                 put("session_id", before.sessionId); put("expected_revision", before.revision)
             }
@@ -439,11 +460,12 @@ class FacilityConversationRepository(
         val payload = buildJsonObject {
             put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
             put("restore_filters", before.filters)
+            put("candidate_pools", "v1"); put("restore_pool", before.searchPool)
         }
         pending = payload
         val result = client.exchange(session.accessToken, payload).toConversationResult()
         require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
-        require(result.filters == before.filters && result.sessionId != before.sessionId)
+        require(result.filters == before.filters && result.searchPool == before.searchPool && result.sessionId != before.sessionId)
         return result
     }
 }

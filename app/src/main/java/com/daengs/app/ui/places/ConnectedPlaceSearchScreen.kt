@@ -127,6 +127,7 @@ fun ConnectedPlaceSearchScreen(
         origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
         dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
         requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
+        excludedKeys = state.conversation.result?.excludedKeys.orEmpty(),
     ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera)
     if (bookmarks != null && saved != null) {
         PlaceBookmarkFeedback(bookmarks, saved)
@@ -176,7 +177,9 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = {
             PlacePurposeMenu(category, onLimit = { notice = "카테고리는 6개까지 함께 검색할 수 있어요." }) { search(selected = it) }
             PlaceSearchQueue(category,
-                filterSummary = if (state.conversationAvailable) appliedFilters?.summary.orEmpty()
+                filterSummary = if (state.conversationAvailable) listOfNotNull(
+                    state.conversation.result?.takeIf { it.searchPool != "all_places" }?.poolLabel,
+                    appliedFilters?.summary?.takeIf { it.isNotEmpty() }).joinToString(" · ")
                     else state.facility.confirmedLens?.let { "검색 방향 · ${it.label}" }.orEmpty(),
                 nameQuery = display.nameQuery,
                 onOpenFilters = { if (state.conversationAvailable) filtersOpen = true else dogOpen = true }) { search(selected = it) }
