@@ -503,7 +503,19 @@ fun HomeScreen(
         // **넓으면 두 칸이다** (폴더블 펼침·태블릿). 세로로 쌓으면 방이 가운데 작게
         // 뜨고 좌우가 텅 비는데, 나란히 두면 방은 커지고 카드는 제 폭을 찾는다.
         // 가로모드 이야기가 아니다 — 폴드는 **세로로 펼쳐도** 이 폭이 나온다.
-        BoxWithConstraints(Modifier.padding(inner).fillMaxSize()) {
+        BoxWithConstraints(
+            Modifier
+                .padding(inner)
+                // **상단바를 접으면 상태바 몫을 질 사람이 없어진다.**
+                //
+                // 인셋을 Scaffold 에 안 맡기고 자식이 각자 처리하는 구조라
+                // (위 `contentWindowInsets = WindowInsets(0)`), 그 몫은 상단바의
+                // `statusBarsPadding()` 이 지고 있었다. [hidesTopBar] 로 상단바가
+                // 접히는 순간 그게 통째로 사라져서, 플립 커버에서 TODAY 카드가
+                // 시계 위로 올라탔다.
+                .then(if (compactTop) Modifier.statusBarsPadding() else Modifier)
+                .fillMaxSize(),
+        ) {
             val wide = maxWidth >= WIDE_BREAKPOINT
 
         val room: @Composable (Modifier) -> Unit = { roomModifier ->
@@ -618,6 +630,24 @@ fun HomeScreen(
                     Spacer(Modifier.height(10.dp))
                     cards()
                 }
+            }
+        } else if (homeScrolls(maxHeight)) {
+            // **세로가 짧으면 방에 자리를 떼어 주고 나머지를 흘린다.**
+            //
+            // 플립 커버(본문 337dp)에서 방이 통째로 사라졌다. 방이 `weight(1f)` 로
+            // **남는** 높이를 가져가는데 카드가 먼저 327dp 를 먹어서 10dp 가
+            // 남았기 때문이다. 남는 것을 주는 대신 [ROOM_MIN_HEIGHT] 를 먼저
+            // 떼어 주고, 넘치는 카드는 스크롤로 닿게 한다.
+            //
+            // 플렉스 모드 위쪽 절반(412dp)도 같은 길로 온다 — 세로가 짧은 건
+            // 마찬가지다.
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                room(Modifier.fillMaxWidth().height(ROOM_MIN_HEIGHT))
+                cards()
             }
         } else {
             Column(Modifier.fillMaxSize()) {
