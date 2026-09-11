@@ -44,7 +44,23 @@ fun photoActionFor(
     serverUpdatedAt: String?,
     localExists: Boolean,
     localStamp: String?,
+    /** 공동 돌봄 아이는 서버 사진을 읽을 수 있지만 바꿀 수는 없다. */
+    canUpload: Boolean = true,
 ): PhotoAction = when {
+    // 대표가 아니면 서버 상태를 기기에 그대로 비춘다. 예전에 대표였을 때 남은 도장 없는
+    // 사진을 올리면 승계 뒤에도 남의 강아지 사진을 바꾸게 된다.
+    //
+    // **가지를 하나로 묶어 둔다.** 조건을 나눠 달면 어느 조합 하나가 아래로 새고, 아래는
+    // 도장 없는 사진을 올리는 자리라 그 한 조합이 곧 남의 사진을 덮는 길이 된다.
+    !canUpload -> when {
+        !serverHasPhoto -> if (localExists) PhotoAction.DELETE_LOCAL else PhotoAction.NOTHING
+        // **서버 것이라고 증명된 사본만 그대로 둔다.** 도장이 없으면 이 기기에서 고른
+        // 사진인데, 올릴 수 없는 아이라 그대로 두면 서버와 다른 얼굴을 계속 보게 된다.
+        // (`localStamp != serverUpdatedAt` 만으로는 둘 다 null 인 조합을 못 잡는다.)
+        !localExists || localStamp == null || localStamp != serverUpdatedAt -> PhotoAction.DOWNLOAD
+        else -> PhotoAction.NOTHING
+    }
+
     // 기기에 아무것도 없다 — 서버에 있으면 받아 온다 (새 폰이 여기다).
     !localExists -> if (serverHasPhoto) PhotoAction.DOWNLOAD else PhotoAction.NOTHING
 

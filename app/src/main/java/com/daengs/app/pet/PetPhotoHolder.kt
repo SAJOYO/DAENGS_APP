@@ -84,6 +84,7 @@ class PetPhotoHolder(private val files: PetPhotos) {
                 serverUpdatedAt = pet.photoUpdatedAt,
                 localExists = files.exists(pet.id),
                 localStamp = files.stamp(pet.id),
+                canUpload = pet.isOwner,
             )
             when (action) {
                 PhotoAction.NOTHING -> Unit

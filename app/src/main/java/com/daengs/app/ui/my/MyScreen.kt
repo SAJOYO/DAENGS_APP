@@ -176,8 +176,9 @@ fun MyScreen(
             dogName = primary?.name,
             nickname = nickname,
             onEditNickname = onEditNickname,
-            // 대표가 있어야 사진을 걸 자리가 있다.
-            onEditPhoto = onEditPhoto?.takeIf { primary != null },
+            // 대표 강아지는 계정의 선택값이고, 대표 보호자는 권한이다. 공동 돌봄 아이를
+            // 대표 강아지로 고를 수는 있지만 그 아이의 사진을 바꿀 수는 없다.
+            onEditPhoto = onEditPhoto?.takeIf { primary?.isOwner == true },
         )
         Spacer(Modifier.height(20.dp))
 
@@ -570,14 +571,15 @@ private fun PetSection(
                     ?.let { go -> { go(pet) } },
                 // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
                 // 묻는 화면은 떠난 아이에게 할 말이 아니다.
-                onEdit = {
-                    if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
-                    else onEdit(pet)
+                onEdit = if (!pet.isOwner) null else {
+                    {
+                        if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
+                        else onEdit(pet)
+                    }
                 },
                 onPickPrimary = { onPickPrimary(pet) },
-                onDelete = { onDelete(pet) },
+                onDelete = if (pet.isOwner) ({ onDelete(pet) }) else null,
                 sentOn = farewellOf(pet),
-                onFarewell = onFarewell?.let { go -> { go(pet) } },
             )
         }
         if (canAddMore) {
@@ -603,12 +605,11 @@ private fun PetCard(
      * 그렇다. 눌리지 않는 줄을 띄워 두면 왜 안 되는지를 화면이 설명해야 한다.
      */
     onToggleRoom: (() -> Unit)? = null,
-    onEdit: () -> Unit,
+    onEdit: (() -> Unit)?,
     onPickPrimary: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)?,
     /** 배웅한 날. 있으면 이 아이는 떠난 아이다 */
     sentOn: java.time.LocalDate? = null,
-    onFarewell: (() -> Unit)? = null,
 ) {
     // **방에 서 있는지는 테두리로 말한다.** 글씨는 누르면 무슨 일이 생기는지를
     // 말하는 자리라(`방에서 빼기`), 지금 어떤 상태인지를 같은 글씨로 읽게 하면
@@ -620,7 +621,9 @@ private fun PetCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            Modifier.clickable(onClick = onEdit).padding(14.dp),
+            Modifier
+                .then(if (onEdit == null) Modifier else Modifier.clickable(onClick = onEdit))
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PetFace(pet, 46.dp, photo)
@@ -628,6 +631,18 @@ private fun PetCard(
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    if (!pet.isOwner) {
+                        Spacer(Modifier.width(6.dp))
+                        Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp)) {
+                            Text(
+                                "공동 돌봄",
+                                color = DaengPinkDeep,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
                     // 배웅한 아이. **글자가 아니라 무지개다** — "사망" 같은 말을 목록에
                     // 붙여 두면 매번 그 단어를 읽게 된다.
                     if (sentOn != null) {
@@ -694,15 +709,17 @@ private fun PetCard(
             RoomToggle(inRoom, onToggleRoom)
             // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
             // 고치기이고, 지우기는 한 번 더 묻는다.
-            Text(
-                "삭제",
-                color = TextMuted,
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable(onClick = onDelete)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+            if (onDelete != null) {
+                Text(
+                    "삭제",
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onDelete)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
         }
     }
 }
@@ -805,7 +822,21 @@ private fun SettingRow(
 private fun MyScreenSignedInPreview() {
     DaengsTheme {
         MyScreen(
-            HomeDemoData.DOG_BREED, nickname = "네옹집사", pets = emptyList(), canAddMore = true,
+            HomeDemoData.DOG_BREED,
+            nickname = "네옹집사",
+            pets = listOf(
+                Pet(
+                    id = "mine", name = "네옹", breed = DogBreed.TOY_POODLE_LIGHT_BROWN.id,
+                    sex = null, neutered = null, weightKg = null, birthDate = null,
+                    birthDateKind = null, isPrimary = true,
+                ),
+                Pet(
+                    id = "shared", name = "몽이", breed = DogBreed.BEAGLE.id,
+                    sex = null, neutered = null, weightKg = null, birthDate = null,
+                    birthDateKind = null, isPrimary = false, isOwner = false,
+                ),
+            ),
+            canAddMore = true,
             onAddPet = {}, onEditPet = {}, onPickPrimary = {},
             onDeletePet = {}, deleteBusy = false, deleteError = null, onDismissDelete = {},
             signedIn = true, onSignIn = {}, onSignOut = {},

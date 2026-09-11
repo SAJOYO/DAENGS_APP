@@ -41,6 +41,13 @@ class PetTest {
         assertEquals(LocalDate.of(2023, 5, 14), p.birthDate)
         assertEquals(Pet.BirthDateKind.BIRTHDAY, p.birthDateKind)
         assertTrue(p.isPrimary)
+        assertTrue("이전 서버 응답은 소유한 아이로 취급한다", p.isOwner)
+    }
+
+    @Test
+    fun `공동 돌봄 아이를 is_owner로 구분한다`() {
+        val p = Pet.parse(JSONObject(full).put("is_owner", false))
+        assertFalse(p.isOwner)
     }
 
     /**
