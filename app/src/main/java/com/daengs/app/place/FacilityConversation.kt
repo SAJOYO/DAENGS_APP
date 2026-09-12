@@ -44,7 +44,8 @@ data class ConversationResult(
     val failed get() = receipt["execution"]?.jsonPrimitive?.content == "failed"
     val preservesDisplay get() = receipt["bookmark_command"]?.let { it != JsonNull } == true ||
         receipt["saved_search_filters"]?.let { it != JsonNull } == true ||
-        receipt["code"]?.jsonPrimitive?.content in setOf("feedback_no_mutation", "saved_search_clarify", "saved_search_client_required", "search_already_visible")
+        receipt["code"]?.jsonPrimitive?.content in setOf("feedback_no_mutation", "saved_search_clarify", "saved_search_client_required", "search_already_visible",
+            "facility_out_of_scope", "invalid_plan", "facility_scope_unclear", "facility_filters")
 }
 
 data class ConversationUiState(

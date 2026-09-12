@@ -7,6 +7,7 @@ import kotlinx.serialization.json.*
 
 /** Last display boundary. Structured codes and identities are never changed by wording. */
 object FacilityResponsePolicy {
+    const val OUT_OF_SCOPE = "멍, 그건 잘 몰라요. 장소 찾는 건 맡겨줘요 🐾"
     const val RESTORED = "검색을 다시 불러왔어요. 원하는 요청을 다시 말해 주세요."
     const val VIEW_CHANGED = "목록이 바뀌었어요. 지금 보이는 목록에서 다시 말해 주세요."
     const val UNKNOWN = "처리 결과를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요."
@@ -46,6 +47,7 @@ object FacilityResponsePolicy {
         if (result.failed) return if (receipt["known_places"]?.jsonArray?.isNotEmpty() == true)
             "이미 아는 곳으로 반영했어요. 다시 찾지 못해 목록은 그대로예요."
         else "다시 찾지 못했어요. 보던 목록은 그대로예요."
+        if (receipt["code"]?.jsonPrimitive?.content == "facility_out_of_scope") return OUT_OF_SCOPE
         val fallback = when {
             receipt["bookmark_command"]?.let { it != JsonNull } == true -> "찜 처리 결과를 확인하고 있어요."
             receipt["question"]?.jsonPrimitive?.content.orEmpty().isNotBlank() -> "원하는 조건을 짧게 나눠서 알려주세요."

@@ -11,6 +11,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FacilityConversationTest {
+    @Test fun outsideOrInvalidPlanKeepsClickedCardAndSearchWhileAdvancingRevision() = runTest {
+        for (code in listOf("facility_out_of_scope", "invalid_plan", "facility_filters")) {
+            val repository = repository { _, payload ->
+                val fixture = conversationFixture("manual", payload)
+                if (payload["mode"]?.jsonPrimitive?.content == "chat")
+                    JsonObject(fixture + mapOf("receipt" to JsonObject(fixture.getValue("receipt").jsonObject + mapOf(
+                        "code" to JsonPrimitive(code), "execution" to JsonPrimitive("not_run"), "action" to JsonPrimitive("clarify")))))
+                else fixture
+            }
+            repository.search(request)
+            val before = repository.state.value.result!!
+            val clicked = before.order.last()
+            repository.select(clicked)
+            repository.chat("시 써줘", before.order)
+            val after = repository.state.value.result!!
+            assertEquals(clicked, repository.state.value.selected)
+            assertEquals(before.filters, after.filters)
+            assertEquals(before.order, after.order)
+            assertEquals(before.search, after.search)
+            assertEquals(before.revision + 1, after.revision)
+        }
+    }
     private val session = Session("owner", "access", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
     private val request = PlaceSearchRequest(GeoPoint(37.5, 127.0), kinds = listOf(PlaceKind.PET_SHOP, PlaceKind.SHOPPING))
     private fun repository(client: ConversationClient) = FacilityConversationRepository(client,

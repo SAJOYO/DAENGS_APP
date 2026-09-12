@@ -7,6 +7,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FacilityResponsePolicyTest {
+    @Test fun outsideUsesBoundedPuppyLineAndFailuresStillDescribeFailure() {
+        val before = selected
+        val receipt = JsonObject(before.receipt + mapOf("code" to JsonPrimitive("facility_out_of_scope")))
+        val result = before.copy(receipt = receipt, answer = "시를 써드릴게요")
+        assertTrue(result.preservesDisplay)
+        assertEquals(FacilityResponsePolicy.OUT_OF_SCOPE, FacilityResponsePolicy.answer(result))
+        assertTrue(FacilityResponsePolicy.allowed(FacilityResponsePolicy.OUT_OF_SCOPE))
+        val failed = result.copy(receipt = JsonObject(receipt + ("execution" to JsonPrimitive("failed"))))
+        assertEquals("다시 찾지 못했어요. 보던 목록은 그대로예요.", FacilityResponsePolicy.answer(failed))
+    }
     private val selected get() = conversationFixture("picked", buildJsonObject {
         put("client_request_id", "22222222-2222-4222-8222-222222222222")
         put("revision", 2)

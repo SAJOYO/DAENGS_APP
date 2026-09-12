@@ -1,5 +1,7 @@
 # 출시 빌드의 시설 대화 연결
 
+시설 범위 밖 응답은 `facility_out_of_scope` 코드로 구분한다. “멍, 그건 잘 몰라요. 장소 찾는 건 맡겨줘요 🐾”를 표시하고 클릭한 카드·검색 화면을 유지한다. `invalid_plan`, `facility_filters`도 화면 유지 대상이다. 실제 실패와 찜 완료 문구는 계속 실제 결과가 우선이다.
+
 시설 화면과 공통 채팅은 `DaengsApp.facilityConversation` 한 개를 공유한다. 공통 채팅의
 Place 실행은 기존 시설 v2를 사용하고, 결과의 참조를 복구해 같은 조건·카드·선택을 갱신한다.
 대응 서버는 [DEV #476](https://github.com/SAJOYO/DAENGS_dev/pull/476)의

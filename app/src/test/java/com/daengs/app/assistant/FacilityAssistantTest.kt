@@ -88,6 +88,26 @@ class FacilityAssistantTest {
         assertEquals(1, recoveries)
     }
 
+    @Test fun outsideKeepsClickedCardAndDoesNotApplySearchFromCommonChat() = runTest {
+        repository.search(search)
+        val before = repository.state.value.result!!
+        repository.select(before.order.last())
+        var applied = 0
+        val assistant = FacilityAssistant(repository, send = { _, _, _, _, _, context ->
+            val response = answer(context)
+            val snapshot = recovered!!
+            recovered = JsonObject(snapshot + ("receipt" to JsonObject(snapshot.getValue("receipt").jsonObject + mapOf(
+                "code" to JsonPrimitive("facility_out_of_scope"), "execution" to JsonPrimitive("not_run"),
+                "action" to JsonPrimitive("clarify")))))
+            Result.success(response)
+        }, onSearchApplied = { applied++ })
+        val response = assistant.query("access", "시 써줘", search.origin, null, null).getOrThrow()
+        assertEquals(FacilityResponsePolicy.OUT_OF_SCOPE, response.message)
+        assertEquals(before.order.last(), repository.state.value.selected)
+        assertEquals(0, applied)
+        assertEquals(before.filters, repository.state.value.result!!.filters)
+    }
+
     @Test fun failedTransportRetriesTheFrozenRequestInsteadOfSelectingANewTarget() = runTest {
         repository.search(search)
         val sent = mutableListOf<JsonObject>()
