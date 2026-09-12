@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.daengs.app.auth.AccountScope
 import com.daengs.app.ui.theme.DaengsTheme
@@ -31,13 +32,17 @@ class WalkDetailDataUiTest {
     @get:Rule val compose = createComposeRule()
 
     private class Source(val id: String = "s", published: Boolean = false) : WalkDetailSource {
+        var loadGate: CompletableDeferred<Unit>? = null
         val detail = readCompletedRoute(RecordedSession(id, startedAtMillis = 0, endedAtMillis = 1000), emptyList())
         val diary = DiaryWalk(detail.summary, listOf(DiaryScene("$id/scene", id, 500,
             "저장된 장면 $id", "함께 걸었다.", null, "")), "", published = published)
         override val changes = flowOf(Unit)
         override val entries = flowOf(emptyList<WalkEntry>())
         override fun isCurrentAccount() = true
-        override suspend fun load() = detail
+        override suspend fun load(): WalkSessionDetail {
+            loadGate?.await()
+            return detail
+        }
         override fun observeDiary(detail: WalkSessionDetail) = flowOf(diary)
     }
 
@@ -70,6 +75,32 @@ class WalkDetailDataUiTest {
         }
     }
     private fun menu() = compose.onNodeWithContentDescription("일기 메뉴").performClick()
+
+    @Test fun `saved scene and compact drawer survive delayed reload in the actual detail screen`() {
+        val source = Source(); val actions = Actions()
+        val restore = StateRestorationTester(compose)
+        restore.setContent { Screen(source, actions) }
+        awaitScene()
+        compose.onNodeWithText("저장된 장면 s").performClick()
+        compose.onNodeWithText("함께 걸었다.").assertIsDisplayed()
+        compose.onNodeWithTag("diary-sheet-handle").performTouchInput {
+            swipeDown(startY = 10f, endY = 600f)
+        }
+        val compact = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        val reload = CompletableDeferred<Unit>()
+        source.loadGate = reload
+        restore.emulateSavedInstanceStateRestore()
+        assertEquals(compact, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.runOnIdle { reload.complete(Unit) }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("diary-scene-body").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(compact, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithText("함께 걸었다.").assertIsNotDisplayed()
+        compose.onNode(hasText("장면 1") and hasClickAction()).performClick()
+        compose.onNodeWithText("함께 걸었다.").assertIsDisplayed()
+        // Source is injected; this exercises production UI/read adoption, not Room or process restart.
+    }
 
     @Test fun `injected generation keeps duplicate prevention and failure retry in the screen`() {
         val source = Source(); val actions = Actions()
