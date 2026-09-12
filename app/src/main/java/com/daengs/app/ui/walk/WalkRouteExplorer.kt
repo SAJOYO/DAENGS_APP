@@ -114,14 +114,14 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         if (review?.observed?.sections?.none { it.id == id } != false) return
         replaceSelection(WalkRouteSelection.Auxiliary(id)); panelOpen = true
     }
-    fun selectContext(id: String) {
+    fun selectContext(id: String, openExplorer: Boolean = true) {
         val context = review?.context?.context(id) ?: return
         replaceSelection(when (context.kind) {
             RecordContextKind.GAP -> WalkRouteSelection.Gap(id)
             RecordContextKind.TRANSITION -> WalkRouteSelection.Transition(id)
             else -> WalkRouteSelection.Event(id)
         })
-        panelOpen = true
+        panelOpen = openExplorer
     }
     fun replaceRoute(source: RouteExplorerIndex, completed: CompletedRouteReview, duration: Long) {
         // Keep a scene identity, but derive its correspondence again against the new route/scene.

@@ -60,7 +60,7 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
         value.point?.let { center = it; request++ }
     }
     fun selectContext(value: com.daengs.app.walk.trajectory.RecordContext) {
-        explorer.selectContext(value.id); center = null
+        explorer.selectContext(value.id, openExplorer = value.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP); center = null
         value.locations.takeIf { it.isNotEmpty() }?.let { bounds = it }; request++
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -82,14 +82,17 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
             onOverview = ::overview, selectedRouteNotice = focus?.let(::sceneRouteNotice),
             explorerFocusId = explorer.selectedContext?.id,
             onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
-            sceneContextContent = { selected?.let { SceneRecordContext(it, explorer.review, scenes, ::selectContext, ::selectScene) } },
+            gapContexts = explorer.review?.context?.contexts.orEmpty(),
+            selectedGap = explorer.selectedContext?.takeIf { it.kind == com.daengs.app.walk.trajectory.RecordContextKind.GAP },
+            onSelectGap = ::selectContext,
             map = { viewport ->
                 if (LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint))
                 else MapHost(scene, null, false, fitBounds = bounds, centerOn = center,
                     onRouteDirectionCount = { directionCount = it },
                     centerMinZoom = if (selected != null && paths.isNotEmpty()) SCENE_ROUTE_MIN_ZOOM else null,
                     cameraRequestKey = request, keepSelectionVisible = true,
-                    bottomPaddingPx = if (explorer.selectedContext != null) viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
+                    bottomPaddingPx = if (explorer.selectedContext?.kind?.let { it != com.daengs.app.walk.trajectory.RecordContextKind.GAP } == true)
+                        viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
                     centerYFraction = viewport.selectionYFraction,
                     onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
                     onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let(::selectScene) },

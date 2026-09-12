@@ -9,7 +9,6 @@ import androidx.compose.ui.unit.dp
 import com.daengs.app.map.layers.completedroute.*
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.distanceTo
-import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.routeexplorer.CompletedRouteReview
 import com.daengs.app.walk.trajectory.*
 import java.util.Locale
@@ -116,50 +115,9 @@ internal fun RecordContextDetail(value: RecordContext) {
     Text(recordContextDescription(value), style = MaterialTheme.typography.bodyMedium)
 }
 
-/** Temporal neighbors explain order, never move the scene pin or create a binding to a guide. */
-@Composable
-internal fun SceneRecordContext(scene: DiaryScene, review: CompletedRouteReview?, scenes: List<DiaryScene>,
-    onContext: (RecordContext) -> Unit, onScene: (DiaryScene) -> Unit) {
-    val context = review?.context ?: return
-    if (!context.available) return
-    val event = context.eventFor(scene)
-    val gap = context.gapAt(scene.atMillis)
-    if (event == null && gap == null && scene.point != null) return
-    Text("기록 시각 ${formatRouteExplorerClock(scene.atMillis)}", style = MaterialTheme.typography.labelMedium)
-    if (event != null) {
-        val location = if (event.kind == RecordContextKind.START) event.after else event.before
-        Text(locationLine("확인 위치", location, scene.atMillis.takeIf { event.durationMillis != null }),
-            style = MaterialTheme.typography.bodySmall)
-    } else {
-        val neighbors = context.temporalNeighbors(scene)
-        Text(if (neighbors == null) "관측 시각의 순서를 확정하지 못해 앞뒤 위치를 연결하지 않아요."
-            else locationLine("이전 관측", neighbors.first) + "\n" + locationLine("다음 관측", neighbors.second),
-            style = MaterialTheme.typography.bodySmall)
-    }
-    (event ?: gap)?.let { value -> TextButton(onClick = { onContext(value) }) {
-        Text(if (event != null) "${if (event.kind == RecordContextKind.START) "시작과" else "종료와"} 확인 위치 보기" else "이 시간의 공백 보기")
-    } }
-    val before = scenes.filter { it.sessionId == scene.sessionId && it.atMillis < scene.atMillis }.maxByOrNull { it.atMillis }
-    val after = scenes.filter { it.sessionId == scene.sessionId && it.atMillis > scene.atMillis }.minByOrNull { it.atMillis }
-    Row {
-        before?.let { TextButton(onClick = { onScene(it) }) { Text("앞 장면 · ${formatWalkClock(it.atMillis)}") } }
-        after?.let { TextButton(onClick = { onScene(it) }) { Text("뒤 장면 · ${formatWalkClock(it.atMillis)}") } }
-    }
-    Spacer(Modifier.height(8.dp))
-}
-
 @Preview(showBackground = true, widthDp = 360)
 @Composable
 private fun RecordContextPreview() { DaengsTheme { Column(Modifier.padding(20.dp)) {
     RecordContextDetail(RecordContext("preview", RecordContextKind.GAP, 1, 2, 0, 30_000, 30_000,
         null, null, RecordMovement.WALKING, RecordMovement.EXCLUDED))
-} } }
-
-@Preview(showBackground = true, widthDp = 360)
-@Composable
-private fun SceneRecordContextPreview() { DaengsTheme { Column {
-    val detail = com.daengs.app.walk.readCompletedRoute(com.daengs.app.walk.RecordedSession("preview",
-        startedAtMillis = 0, endedAtMillis = 20_000), emptyList())
-    SceneRecordContext(DiaryScene("s", "preview", 5_000, "위치 없는 메모", "", null, ""),
-        CompletedRouteReview(detail), emptyList(), {}, {})
 } } }

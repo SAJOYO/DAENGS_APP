@@ -185,7 +185,7 @@ internal fun WalkDiaryMapScreen(
         selectedOriginal?.let { currentReview?.recordSceneFocus(it, selectedEntry) }
     }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext) {
-        explorer.selectContext(context.id)
+        explorer.selectContext(context.id, openExplorer = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP)
         requestCamera(null); cameraContextId = context.id
     }
     val presentation = recordPresentationLayer(explorer, detail, sceneFocus)
@@ -214,7 +214,9 @@ internal fun WalkDiaryMapScreen(
                 selectedRouteNotice = sceneFocus?.let(::sceneRouteNotice),
                 explorerFocusId = explorer.selectedContext?.id,
                 onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
-                sceneContextContent = { selected?.let { SceneRecordContext(it, currentReview, scenes, ::selectContext, ::selectScene) } },
+                gapContexts = currentReview?.context?.contexts.orEmpty(),
+                selectedGap = explorer.selectedContext?.takeIf { it.kind == com.daengs.app.walk.trajectory.RecordContextKind.GAP },
+                onSelectGap = ::selectContext,
                 onEdit = { scene ->
                     explorer.pause()
                     editingScene = originalScenes.firstOrNull { it.id == scene.id }
@@ -282,7 +284,8 @@ internal fun WalkDiaryMapScreen(
                         centerZoom = cameraZoom, onRouteDirectionCount = { directionCount = it },
                         centerMinZoom = if (selectedId != null && highlightPaths.isNotEmpty()) SCENE_ROUTE_MIN_ZOOM else null,
                         cameraRequestKey = cameraRequest, centerYFraction = viewport.selectionYFraction,
-                        bottomPaddingPx = if (explorer.selectedContext != null) viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
+                        bottomPaddingPx = if (explorer.selectedContext?.kind?.let { it != com.daengs.app.walk.trajectory.RecordContextKind.GAP } == true)
+                            viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
                         keepSelectionVisible = true,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
                         onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let(::selectScene) },
