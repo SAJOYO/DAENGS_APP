@@ -11,11 +11,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
-import com.daengs.app.DaengsApp
 import com.daengs.app.BuildConfig
 import com.daengs.app.auth.AccountScope
 import com.daengs.app.location.GeoPoint
@@ -25,43 +23,20 @@ import com.daengs.app.map.shell.*
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.*
+import com.daengs.app.walk.detail.WalkDetailActions
+import com.daengs.app.walk.detail.WalkDetailSource
 import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.routeexplorer.SceneRouteRelation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.map
 
-/** One selected session; entries, map styling and raw-history reconstruction are shared with walking. */
+/** The route keys this composition by session and login generation. */
 @Composable
-internal fun WalkSessionDetailRoute(
-    sessionId: String, history: WalkHistory, onBack: () -> Unit,
-    modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
-    origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
+internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource, actions: WalkDetailActions,
+    onBack: () -> Unit, modifier: Modifier, pets: List<Pet>, origin: WalkSessionOrigin, backupAccount: AccountScope,
+    backupAction: @Composable () -> Unit,
+    readComparison: suspend (DiaryComparisonSnapshot) -> DiaryPlaceComparison?,
 ) {
-    WalkDiaryMapScreen(sessionId, history, onBack, modifier, pets, origin)
-}
-
-@Composable
-internal fun WalkDiaryMapScreen(
-    sessionId: String, history: WalkHistory, onBack: () -> Unit,
-    modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
-    origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
-) {
-    val app = LocalContext.current.applicationContext as DaengsApp
-    val backupAccount by app.sessionProvider.accountScope.collectAsState()
-    key(sessionId, backupAccount) {
-        WalkDiaryMapForAccount(sessionId, history, onBack, modifier, pets, origin, app, backupAccount)
-    }
-}
-
-@Composable
-private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBack: () -> Unit,
-    modifier: Modifier, pets: List<Pet>, origin: WalkSessionOrigin, app: DaengsApp, backupAccount: AccountScope,
-) {
-    val backupSource = remember(app, backupAccount) { app.routeBackupSource(backupAccount) }
-    val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
-        app.tokenStore.load()?.appUserId.orEmpty()
-    } }
     var readView by remember(sessionId) { mutableStateOf<WalkDiaryReadView?>(null) }
     val detail = readView?.route?.detail
     val route = detail?.route
@@ -94,14 +69,13 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
     var comparisonEvidenceOpen by remember(sessionId, backupAccount) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun openSlotPreview() { if (BuildConfig.DEBUG) { explorer.pause(); slotPreviewOpen = true } }
-    val entries by remember(sessionId) { app.walkEntries.observe(sessionId) }.collectAsState(initial = emptyList())
-    LaunchedEffect(sessionId) {
-        app.walkDiaryPublication.start(sessionId)
-        app.walkRuntime.delivery.enqueue(sessionId)
+    val entries by source.entries.collectAsState(initial = emptyList())
+    LaunchedEffect(actions) {
+        actions.open()
     }
     fun generate() {
         if (!loaded || diary == null || diary?.preparing == true || diary?.published == true) {
-            app.walkDiaryPublication.start(sessionId)
+            actions.prepareDiary()
             retry++
             return
         }
@@ -109,24 +83,19 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
         generating = true; generationError = null
         scope.launch {
             try {
-                val auth = app.sessionProvider.freshSession() ?: error("로그인 후 일기를 만들 수 있어요.")
-                app.walkRuntime.sync.syncPendingSession(auth.accessToken, sessionId, includeStoryboard = false)
-                val remoteId = app.walkEntryDao.session(sessionId)?.serverWalkId ?: error("산책 동기화를 먼저 완료해 주세요.")
-                app.walkStoryboardSync.sync(auth.accessToken, sessionId, remoteId, refresh = true)
+                actions.generateDiary()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 generationError = "일기를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요."
             } finally { generating = false }
         }
     }
-    LaunchedEffect(sessionId, history, retry, backupAccount) {
+    LaunchedEffect(source, retry) {
         error = null
-        walkDiaryReadUpdates(history.changes, load = { history.sessionDetail(sessionId) },
-            observe = { source -> reader.observe(listOf(source.summary), mapOf(sessionId to source.observations))
-                .map { it.singleOrNull() } },
-            isCurrentAccount = { app.sessionProvider.accountScope.value == backupAccount },
+        walkDiaryReadUpdates(source.changes, load = source::load, observe = source::observeDiary,
+            isCurrentAccount = source::isCurrentAccount,
         ).collect { update ->
-            if (app.sessionProvider.accountScope.value != backupAccount) return@collect
+            if (!source.isCurrentAccount()) return@collect
             Snapshot.withMutableSnapshot {
                 loaded = true
                 when (update) {
@@ -141,8 +110,7 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
         busy = true; entryError = null
         scope.launch {
             try {
-                if (delete) app.walkEntries.deleteAndEnqueue(value.id, app.walkRuntime.delivery::enqueue)
-                else { app.walkEntries.save(value); app.walkRuntime.delivery.enqueue(sessionId) }
+                if (delete) actions.deleteEntry(value.id) else actions.saveEntry(value)
                 editorOpen = false; adding = false; chosenPoint = null
             } catch (e: Exception) { if (e is CancellationException) throw e; entryError = e.message ?: "저장하지 못했어요." }
             finally { busy = false }
@@ -171,7 +139,7 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
     LaunchedEffect(comparisonSnapshot?.digest) {
         val snapshot = comparisonSnapshot ?: return@LaunchedEffect
         // Re-entry may restore a matching local result. It never calls a provider or writes the diary.
-        try { placeComparison = DiaryComparisonFiles.read(app, snapshot) }
+        try { placeComparison = readComparison(snapshot) }
         catch (e: Exception) {
             if (e is CancellationException) throw e
             placeComparison = null
@@ -234,7 +202,7 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
                     sceneError = null
                 },
                 onPhoto = { explorer.pause(); photo = it },
-                onRetry = { app.walkDiaryPublication.start(sessionId); retry++ },
+                onRetry = { actions.prepareDiary(); retry++ },
                 onAdd = {
                     explorer.choosePanel(false)
                     chosenPoint = null
@@ -281,11 +249,7 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
                     WalkSessionSummary(summary, pets.filter { it.id in summary.dogIds }.map { it.name })
                     ObservedRouteLegend(presentation.observedParts.map { it.role })
                 } },
-                backupAction = {
-                    key(sessionId, backupAccount) {
-                        backupSource?.let { WalkRouteBackupStatus(sessionId, it) }
-                    }
-                },
+                backupAction = backupAction,
                 onOverview = ::wholeRecord,
                 modifier = Modifier.weight(1f), map = { viewport ->
                     val query = MapVisibilityQuery(readView?.revisionKey.orEmpty(), visibilityTargets, viewport.bottomOcclusionPx,
@@ -373,8 +337,7 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
                 savingScene = true; sceneError = null
                 scope.launch {
                     try {
-                        val owner = app.tokenStore.load()?.appUserId.orEmpty()
-                        app.walkEntryDao.saveDiarySceneEdit(sessionId, owner, source, title, body)
+                        actions.saveScene(source, title, body)
                         editingScene = null
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
@@ -384,7 +347,7 @@ private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBa
             }
         }, onDismiss = { editingScene = null })
     }
-    photo?.let { WalkPhotoDialog(it, app.walkPhotos::delete, { photo = null }) }
+    photo?.let { WalkPhotoDialog(it, actions::deletePhoto, { photo = null }) }
 }
 
 /** A completed board must not reframe a route the user is already browsing. */
