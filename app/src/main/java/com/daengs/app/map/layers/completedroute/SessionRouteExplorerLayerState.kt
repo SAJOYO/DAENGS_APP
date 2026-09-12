@@ -9,6 +9,7 @@ data class SessionRouteExplorerLayerState(
     /** An unresolved scene/passage has no direction to assert; empty emphasis is not overview. */
     val useOverviewDirections: Boolean = true,
     val observedParts: List<RouteRenderPart> = emptyList(),
+    val recordContext: RecordContextLayerState? = null,
 ) {
     val emphasisPaths get() = highlightPaths + observedParts.filter { it.selected }.map { it.path }
     val observedDirectionEdges get() = observedParts.filter { it.selected || useOverviewDirections && !it.selected }

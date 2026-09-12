@@ -37,7 +37,8 @@ internal fun recordPresentationLayer(state: WalkRouteExplorerState, detail: Walk
     } else emptyList()
     return SessionRouteExplorerLayerState(
         highlightPaths = if (state.mode == RouteExplorerMode.SCENE) focus?.paths.orEmpty() else state.highlightPaths,
-        cursor = state.replayFrame?.point, useOverviewDirections = overview, observedParts = parts)
+        cursor = state.replayFrame?.point, useOverviewDirections = overview, observedParts = parts,
+        recordContext = recordContextLayer(review, state.selectedContext))
 }
 
 private fun ObservedRouteSection.toRenderPart(selected: Boolean) = RouteRenderPart(id, role(), path, selected,

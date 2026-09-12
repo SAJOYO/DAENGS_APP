@@ -31,7 +31,8 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /** Stable map geometry; sheet position is deliberately not part of this value. */
-internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float)
+internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float,
+    val contextBottomPaddingPx: Int = bottomPaddingPx)
 
 /** The sheet overlays one fixed map. Swiping it never issues a camera request. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +56,9 @@ internal fun WalkDiaryMapContent(
     onChooseExplorer: (Boolean) -> Unit = {},
     explorerPanel: (@Composable () -> Unit)? = null,
     selectedRouteNotice: String? = null,
+    sceneContextContent: @Composable () -> Unit = {},
+    explorerFocusId: String? = null,
+    onContextDismiss: () -> Unit = {},
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -64,15 +68,15 @@ internal fun WalkDiaryMapContent(
     val latestClose by rememberUpdatedState(onClose)
     var menu by remember { mutableStateOf(false) }
     val expanded = sheet.targetValue == SheetValue.Expanded
-    LaunchedEffect(selected?.id, adding) {
-        if (selected != null && !adding) sheet.expand() else sheet.partialExpand()
+    LaunchedEffect(selected?.id, adding, explorerFocusId) {
+        if ((selected != null || explorerFocusId != null) && !adding) sheet.expand() else sheet.partialExpand()
     }
     LaunchedEffect(sheet) {
         snapshotFlow { sheet.currentValue }.drop(1).collect {
             if (it == SheetValue.PartiallyExpanded) latestClose()
         }
     }
-    BackHandler(enabled = expanded && selected == null) { scope.launch { sheet.partialExpand() } }
+    BackHandler(enabled = expanded && selected == null) { onContextDismiss(); scope.launch { sheet.partialExpand() } }
     Column(modifier.fillMaxSize().background(CreamBg)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -113,7 +117,8 @@ internal fun WalkDiaryMapContent(
             // Padding/fit use the browsing viewport even while the sheet covers more of the map.
             // Only an explicit scene selection uses the upper, still-visible band as its pivot.
             val viewport = DiaryMapViewport(with(LocalDensity.current) { peek.roundToPx() },
-                (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f))
+                (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f),
+                with(LocalDensity.current) { panelHeight.roundToPx() })
             BottomSheetScaffold(
                 scaffoldState = scaffold, sheetPeekHeight = peek,
                 sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -124,7 +129,7 @@ internal fun WalkDiaryMapContent(
                     Column(Modifier.fillMaxWidth().height(panelHeight).testTag("diary-sheet")) {
                         val showSceneHeading = selected != null || explorerPanel == null
                         Surface(onClick = {
-                            if (expanded) { onClose(); scope.launch { sheet.partialExpand() } }
+                            if (expanded) { onClose(); onContextDismiss(); scope.launch { sheet.partialExpand() } }
                             else scope.launch { sheet.expand() }
                         }, color = CardWhite, modifier = Modifier.fillMaxWidth()
                             .height(if (showSceneHeading) 52.dp else 24.dp)
@@ -220,6 +225,7 @@ internal fun WalkDiaryMapContent(
                                         Spacer(Modifier.height(16.dp))
                                         selectedRouteNotice?.let { Text(it, Modifier.padding(bottom = 12.dp),
                                             style = MaterialTheme.typography.bodySmall, color = TextMuted) }
+                                        sceneContextContent()
                                         DiarySceneText(selected.body)
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
                                             Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)

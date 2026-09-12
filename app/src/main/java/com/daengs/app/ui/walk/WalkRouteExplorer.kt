@@ -19,19 +19,24 @@ import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.*
 import com.daengs.app.walk.routeexplorer.*
 import com.daengs.app.walk.trajectory.ObservedRouteSection
+import com.daengs.app.walk.trajectory.RecordContext
+import com.daengs.app.walk.trajectory.RecordContextKind
 import kotlinx.coroutines.*
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal enum class RouteExplorerMode { OVERVIEW, SECTION, AUXILIARY, SCENE, PASSAGE, REPLAY }
+internal enum class RouteExplorerMode { OVERVIEW, SECTION, AUXILIARY, SCENE, PASSAGE, REPLAY, CONTEXT }
 
 /** Exactly one selection owns the map emphasis. Camera requests remain separate user actions. */
 internal sealed interface WalkRouteSelection {
     data object Overview : WalkRouteSelection
     data class Section(val index: Int) : WalkRouteSelection
     data class Auxiliary(val id: String) : WalkRouteSelection
+    data class Gap(val id: String) : WalkRouteSelection
+    data class Transition(val id: String) : WalkRouteSelection
+    data class Event(val id: String) : WalkRouteSelection
     data class Scene(val id: String) : WalkRouteSelection
     data class Passage(val result: RoutePassages?, val selectedId: String?) : WalkRouteSelection
     data class Replay(val elapsedMillis: Long) : WalkRouteSelection
@@ -55,11 +60,13 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         private set
     private var selectionJob: Job? = null
     private var selectionRevision = 0
-    val duration get() = maxOf(activeDuration, index?.durationMillis ?: 0)
+    val duration get() = review?.context?.takeIf { it.available }?.let { it.durationMillis ?: 0 }
+        ?: maxOf(activeDuration, index?.durationMillis ?: 0)
     val mode get() = when (selection) {
         WalkRouteSelection.Overview -> RouteExplorerMode.OVERVIEW
         is WalkRouteSelection.Section -> RouteExplorerMode.SECTION
         is WalkRouteSelection.Auxiliary -> RouteExplorerMode.AUXILIARY
+        is WalkRouteSelection.Gap, is WalkRouteSelection.Transition, is WalkRouteSelection.Event -> RouteExplorerMode.CONTEXT
         is WalkRouteSelection.Scene -> RouteExplorerMode.SCENE
         is WalkRouteSelection.Passage -> RouteExplorerMode.PASSAGE
         is WalkRouteSelection.Replay -> RouteExplorerMode.REPLAY
@@ -76,7 +83,14 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         review?.observed?.sections?.firstOrNull { it.id == selected.id }
     }
     val selectedPass get() = passages?.passes?.firstOrNull { it.id == selectedPassId }
-    val replayFrame get() = if (mode == RouteExplorerMode.REPLAY) index?.frameAt(elapsed) else null
+    val selectedContext get() = when (val target = selection) {
+        is WalkRouteSelection.Gap -> review?.context?.context(target.id)
+        is WalkRouteSelection.Transition -> review?.context?.context(target.id)
+        is WalkRouteSelection.Event -> review?.context?.context(target.id)
+        else -> null
+    }
+    val replayFrame get() = if (mode != RouteExplorerMode.REPLAY) null else
+        review?.context?.takeIf { it.available }?.frameAt(elapsed) ?: index?.frameAt(elapsed)
 
     fun choosePanel(open: Boolean) {
         panelOpen = open
@@ -99,6 +113,15 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     fun selectAuxiliary(id: String) {
         if (review?.observed?.sections?.none { it.id == id } != false) return
         replaceSelection(WalkRouteSelection.Auxiliary(id)); panelOpen = true
+    }
+    fun selectContext(id: String) {
+        val context = review?.context?.context(id) ?: return
+        replaceSelection(when (context.kind) {
+            RecordContextKind.GAP -> WalkRouteSelection.Gap(id)
+            RecordContextKind.TRANSITION -> WalkRouteSelection.Transition(id)
+            else -> WalkRouteSelection.Event(id)
+        })
+        panelOpen = true
     }
     fun replaceRoute(source: RouteExplorerIndex, completed: CompletedRouteReview, duration: Long) {
         // Keep a scene identity, but derive its correspondence again against the new route/scene.
@@ -189,6 +212,7 @@ internal fun rememberWalkRouteExplorer(sessionId: String, detail: WalkSessionDet
 internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: () -> Unit,
     onSection: (CompletedRouteSection) -> Unit = {},
     onAuxiliary: (ObservedRouteSection) -> Unit = {},
+    onContext: (RecordContext) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -203,6 +227,13 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 (review.summary.endedAtMillis?.let(::formatRouteExplorerClock) ?: "진행 중"),
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
+            if (review.context.available && review.context.durationMillis == null)
+                Text("기록 시간의 순서를 확정하지 못해 자동 재생을 제공하지 않아요. 아래 전후 관계에서 범위를 열 수 있어요.",
+                    style = MaterialTheme.typography.bodySmall)
+            if (state.mode == RouteExplorerMode.CONTEXT) {
+                state.selectedContext?.let { RecordContextDetail(it) }
+                TextButton(onClick = { state.overview(); onOverview() }) { Text("기록 흐름 전체") }
+            }
             if (state.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.SECTION, RouteExplorerMode.AUXILIARY)) {
                 review.sections.forEachIndexed { ordinal, section ->
                     OutlinedButton(onClick = { state.selectSection(section.index); onSection(section) },
@@ -218,6 +249,15 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                         Text((if (state.selectedAuxiliary?.id == section.id) "● " else "○ ") +
                             "관측 경로 ${ordinal + 1} · " + observedRouteLabel(section) + "\n" +
                             formatRouteExplorerClock(section.startedAtMillis) + "–" + formatRouteExplorerClock(section.endedAtMillis))
+                    }
+                }
+                if (review.context.contexts.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("기록의 전후 관계", style = MaterialTheme.typography.titleSmall)
+                    review.context.contexts.forEach { value ->
+                        OutlinedButton(onClick = { state.selectContext(value.id); onContext(value) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(recordContextTitle(value) + "\n" + recordContextTime(value))
+                        }
                     }
                 }
             }
@@ -241,6 +281,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                     " 이동 방향을 표시할 근거는 충분하지 않아요." else " 이동 근거가 있는 부분에 진행 방향을 표시해요.")
             }
             RouteExplorerMode.SCENE -> Unit // Scenes use the reading panel on the same selection state.
+            RouteExplorerMode.CONTEXT -> Unit
             RouteExplorerMode.PASSAGE -> {
                 val result = state.passages
                 if (result?.uncertain == true) Text("위치 오차나 기록 간격 때문에 통과를 확실하게 구분하기 어려워요.")
@@ -261,9 +302,11 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 Text(formatWalkDuration(state.elapsed) + " / " + formatWalkDuration(state.duration),
                     style = MaterialTheme.typography.titleSmall)
                 val frame = state.replayFrame
-                Text(if (frame?.inGap != false) "이 시각에는 이어지는 위치 기록이 없어요."
+                Text(if (frame?.inGap != false) "${frame?.recordedAtMillis?.let { formatRouteExplorerClock(it) + " · " }.orEmpty()}이 시각에는 재생할 위치 근거가 충분하지 않아요."
                     else "기록 시각 " + formatRouteExplorerClock(requireNotNull(frame.recordedAtMillis)),
                     style = MaterialTheme.typography.bodyMedium)
+                if (state.review?.context?.available == true && state.review?.context?.durationMillis == null)
+                    Text("기록 시간의 순서를 확정하지 못해 자동 재생을 제공하지 않아요. 전후 관계에서 해당 범위를 열 수 있어요.")
             }
         }
         if (state.mode != RouteExplorerMode.REPLAY) {

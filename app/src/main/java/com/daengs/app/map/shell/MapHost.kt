@@ -40,6 +40,7 @@ fun MapHost(
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
     onRouteDirectionCount: (Int) -> Unit = {},
+    onSelectRecordContext: (String) -> Unit = {},
 ) {
     NaverMapSurface(
         scene = scene,
@@ -67,6 +68,7 @@ fun MapHost(
         initialCamera = initialCamera,
         onCameraSnapshot = onCameraSnapshot,
         onRouteDirectionCount = onRouteDirectionCount,
+        onSelectRecordContext = onSelectRecordContext,
     )
 }
 

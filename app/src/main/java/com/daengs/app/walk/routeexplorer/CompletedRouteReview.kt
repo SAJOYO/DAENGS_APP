@@ -6,6 +6,7 @@ import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.diary.StoryboardObservationIndex
 import com.daengs.app.walk.trajectory.ObservedRouteReview
 import com.daengs.app.walk.trajectory.ObservedRouteSection
+import com.daengs.app.walk.trajectory.RecordContextReview
 
 /** References belong to this loaded route only. Never persist segment/point indices as scene identity. */
 internal data class CompletedRouteSection(val segment: WalkRouteSegment) {
@@ -51,6 +52,7 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
     private val segments = detail.route.segments.associateBy { it.index }
     private val legacyEvidence = detail.legacyRouteEvidence?.takeIf { it.matches(detail) }
     val observed = ObservedRouteReview(detail)
+    val context = RecordContextReview(detail, observed)
 
     /** Combined record presentation. sceneFocus remains the unchanged walking-only correspondence. */
     fun recordSceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
