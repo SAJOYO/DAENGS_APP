@@ -48,30 +48,22 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val camera = navigation.camera
     var visibility by remember { mutableStateOf<MapVisibilityResult?>(null) }
     var directionCount by remember(sessionId) { mutableStateOf<Int?>(null) }
-    var adding by rememberSaveable(sessionId) { mutableStateOf(false) }
-    var chosenPoint by remember(sessionId) { mutableStateOf<WalkRoutePoint?>(null) }
-    var entry by remember(sessionId) { mutableStateOf<WalkEntry?>(null) }
-    var editorOpen by remember(sessionId) { mutableStateOf(false) }
-    var photo by remember(sessionId) { mutableStateOf<WalkPhoto?>(null) }
-    var editingScene by remember(sessionId) { mutableStateOf<DiaryScene?>(null) }
+    val editors = rememberWalkDiaryEditorState(sessionId)
+    val chosenPoint = editors.chosenPoint
     var slotPreviewOpen by remember(sessionId) { mutableStateOf(false) }
     var comparisonOpen by remember(sessionId, backupAccount) { mutableStateOf(false) }
     var placeComparison by remember(sessionId, backupAccount) { mutableStateOf<DiaryPlaceComparison?>(null) }
     var usePlaceExplanation by remember(sessionId, backupAccount) { mutableStateOf(false) }
     var comparisonEvidenceOpen by remember(sessionId, backupAccount) { mutableStateOf(false) }
     fun openSlotPreview() { if (BuildConfig.DEBUG) { explorer.pause(); slotPreviewOpen = true } }
-    fun entrySaved() {
-        editorOpen = false; adding = false; chosenPoint = null
-    }
     LaunchedEffect(loaded, detail == null) {
         if (loaded && detail == null) {
-            explorer.overview(); adding = false; chosenPoint = null
-            entry = null; editorOpen = false; editingScene = null; photo = null
+            explorer.overview(); editors.clear()
         }
     }
     BackHandler { when {
         loaded && detail == null -> onBack()
-        adding -> { adding = false; chosenPoint = null }
+        editors.adding -> editors.cancelAdding()
         explorer.panelOpen -> explorer.choosePanel(false)
         selectedId != null -> explorer.closeScene()
         else -> onBack()
@@ -145,21 +137,18 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 onSelectGap = { selectContext(it) },
                 onEdit = { scene ->
                     explorer.pause()
-                    editingScene = originalScenes.firstOrNull { it.id == scene.id }
+                    editors.editScene(originalScenes.firstOrNull { it.id == scene.id })
                     state.clearSceneError()
                 },
-                onPhoto = { explorer.pause(); photo = it },
+                onPhoto = { explorer.pause(); editors.showPhoto(it) },
                 onRetry = state::retry,
                 onAdd = {
                     explorer.choosePanel(false)
-                    chosenPoint = null
-                    if (route?.points.isNullOrEmpty()) {
-                        entry = WalkEntry(sessionId = sessionId, type = WalkMomentType.NOTE,
-                            recordedAtMillis = requireNotNull(detail).summary.startedAtMillis)
-                        state.clearEntryError(); editorOpen = true
-                    } else adding = !adding
+                    val hasRoute = !route?.points.isNullOrEmpty()
+                    editors.beginAdding(requireNotNull(detail).summary, hasRoute)
+                    if (!hasRoute) state.clearEntryError()
                 },
-                adding = adding,
+                adding = editors.adding,
                 generationNotice = state.generationError ?: diary?.notice,
                 generating = state.generating, onGenerate = state::generateDiary,
                 generationActionLabel = if (state.canGenerateDiary) "일기 생성·갱신" else "새로고침",
@@ -175,7 +164,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 },
                 explorerSelected = explorer.panelOpen,
                 onChooseExplorer = { open ->
-                    adding = false; chosenPoint = null; explorer.overview(); explorer.choosePanel(open)
+                    editors.cancelAdding(); explorer.overview(); explorer.choosePanel(open)
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
                     onSection = { section -> navigation.fit(section.path) },
@@ -217,7 +206,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         onSelectRecordContext = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                         onSelectRouteEndpoint = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                         onMapTap = { point ->
-                            if (adding) chosenPoint = route?.nearestPointTo(point, 30.0)
+                            if (editors.adding) editors.choosePoint(route?.nearestPointTo(point, 30.0))
                             else if (explorer.panelOpen) explorer.inspect(point)
                         },
                         modifier = Modifier.fillMaxSize())
@@ -256,32 +245,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     ) {
         DiarySlotPreviewScreen(sessionId, onBack = { slotPreviewOpen = false })
     }
-    if (adding && chosenPoint != null && !editorOpen) {
-        val point = requireNotNull(chosenPoint)
-        AlertDialog(onDismissRequest = { chosenPoint = null }, title = { Text("이 지점에 기록 남기기") },
-            text = { Column {
-                Text("${formatWalkClock(point.capturedAtMillis)}에 저장된 위치예요.")
-                // A loop may visit one spot repeatedly. Let the user choose the observed time explicitly.
-                val nearby = route?.points.orEmpty().filter { it.point.distanceTo(point.point) <= 6.0 }
-                val alternatives = nearby.filterIndexed { i, p -> i == 0 || p.capturedAtMillis - nearby[i-1].capturedAtMillis > 30_000 }
-                if (alternatives.size > 1) Row {
-                    alternatives.take(6).forEach { p -> TextButton(onClick = { chosenPoint = p }) { Text(formatWalkClock(p.capturedAtMillis)) } }
-                }
-                WalkMomentType.entries.forEach { type -> TextButton(onClick = {
-                    entry = point.toDiaryEntry(sessionId, type, detail?.summary?.dogIds?.singleOrNull())
-                    state.clearEntryError(); editorOpen = true
-                }) { Text(type.label) } }
-            } }, confirmButton = {}, dismissButton = { TextButton(onClick = { chosenPoint = null }) { Text("다른 위치") } })
-    }
-    if (editorOpen) WalkEntryEditor(state.entries, entry, pets.filter { it.id in detail?.summary?.dogIds.orEmpty() },
-        state.entryError, state.savingEntry, { state.saveEntry(it, ::entrySaved) },
-        { state.deleteEntry(it.id, ::entrySaved) }, { editorOpen = false; chosenPoint = null })
-    editingScene?.let { scene ->
-        DiarySceneEditor(scene, state.savingScene, state.sceneError, onSave = { title, body ->
-            state.saveScene(scene, title, body) { editingScene = null }
-        }, onDismiss = { editingScene = null })
-    }
-    photo?.let { WalkPhotoDialog(it, actions::deletePhoto, { photo = null }) }
+    WalkDiaryEditorDialogs(editors, state, route, detail?.summary?.dogIds.orEmpty(), pets, actions::deletePhoto)
 }
 
 /** A completed board must not reframe a route the user is already browsing. */
@@ -305,10 +269,6 @@ internal fun sceneRouteNotice(relation: SceneRouteRelation): String = when (rela
 private fun WalkDiaryObservedSummaryPreview() { DaengsTheme {
     ObservedRouteLegend(com.daengs.app.map.layers.completedroute.RecordRouteRole.entries)
 } }
-
-internal fun WalkRoutePoint.toDiaryEntry(sessionId: String, type: WalkMomentType, petId: String?): WalkEntry =
-    WalkEntry(sessionId = sessionId, type = type, recordedAtMillis = capturedAtMillis, point = point,
-        locationCapturedAtMillis = capturedAtMillis, accuracyMeters = accuracyMeters, petId = petId)
 
 /** Same-location labels list sequence numbers, never a count of nearby observations. */
 internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): List<MomentMarkerState> {

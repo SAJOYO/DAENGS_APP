@@ -122,20 +122,20 @@ class WalkDetailDataUiTest {
 
     @Test fun `entry draft survives a failed save and closes only after successful retry`() {
         val source = Source(); val actions = Actions()
-        val note = WalkEntry("note", "s", WalkMomentType.NOTE, 500, note = "원래 메모")
         val submitted = mutableListOf<WalkEntry>()
         val first = CompletableDeferred<Unit>()
         actions.save = { submitted += it; first.await() }
         compose.setContent {
             val scope = rememberCoroutineScope()
             val state = remember { WalkDetailState(source, actions, scope, {}) }
-            var opened by remember { mutableStateOf(true) }
-            if (opened) WalkEntryEditorContent(listOf(note), note, emptyList(), state.entryError, state.savingEntry,
-                { state.saveEntry(it) { opened = false } }, {}, {},
+            val editors = rememberWalkDiaryEditorState("s")
+            LaunchedEffect(Unit) { editors.beginAdding(source.detail.summary, false) }
+            if (editors.editorOpen) WalkEntryEditorContent(emptyList(), editors.entry, emptyList(), state.entryError, state.savingEntry,
+                { state.saveEntry(it, editors::entrySaved) }, {}, editors::dismissEntry,
                 // Same text fields and buttons; avoid Robolectric's native-dialog idle limitation.
                 container = { title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() } })
         }
-        compose.onNodeWithText("원래 메모").performTextReplacement("실패해도 남을 초안")
+        compose.onNodeWithText("기억하고 싶은 내용을 적어 주세요").performTextReplacement("실패해도 남을 초안")
         compose.onNodeWithText("저장").performClick()
         compose.runOnIdle { first.completeExceptionally(IllegalStateException("편집 충돌")) }
         compose.onNodeWithText("편집 충돌").assertExists()
@@ -155,9 +155,10 @@ class WalkDetailDataUiTest {
         compose.setContent {
             val scope = rememberCoroutineScope()
             val state = remember { WalkDetailState(source, actions, scope, {}) }
-            var opened by remember { mutableStateOf(true) }
-            if (opened) DiarySceneEditor(scene, state.savingScene, state.sceneError,
-                { title, body -> state.saveScene(scene, title, body) { opened = false } }, {},
+            val editors = rememberWalkDiaryEditorState("s")
+            LaunchedEffect(Unit) { editors.editScene(scene) }
+            if (editors.editingScene != null) DiarySceneEditor(scene, state.savingScene, state.sceneError,
+                { title, body -> state.saveScene(scene, title, body, editors::dismissScene) }, editors::dismissScene,
                 dialog = { title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() } })
         }
         compose.onNodeWithText("장면 제목").performTextReplacement("바꾼 제목")

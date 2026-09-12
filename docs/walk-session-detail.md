@@ -81,6 +81,40 @@
 계정/종료 검사와 삭제 반영은 `WalkDiaryReaderTest`, 공개 작업과 원본 위치의 연결은 기존
 `WalkDiaryPublicationTest`·`WalkDiaryPublicationLifecycleTest`·`WalkSceneAnchoringTest`가 검사한다.
 
+## 편집 대상과 대화상자 (#363)
+
+`WalkDiaryEditorState`가 위치 추가 모드·선택한 원본 지점·기록/장면 편집 대상·열린 사진을 관리한다.
+`WalkDiaryEditorDialogs`가 기존 위치 안내, 기록 편집기, 장면 편집기와 사진창을 연결한다.
+상세 화면은 지도 선택을 전달하고, 화면 이탈·산책 누락에 따라 대상을 정리한다.
+
+- 기록 편집 취소는 선택 지점과 편집창을 닫되 위치 추가 모드는 유지한다.
+  저장/삭제 성공은 추가 모드까지 닫는다. 실패는 편집창을 닫지 않아 입력을 유지한다.
+- 위치와 시각·정확도는 선택한 `WalkRoutePoint`에서 가져온다. 반복 방문 시각 선택과
+  경로 없는 산책의 시작 시각·위치 없는 메모 처리를 유지한다.
+- 저장 가능한 상태는 기존과 같이 추가 모드 여부뿐이다. 편집 대상과 선택 지점·사진은
+  복원하지 않는다. 상위 `key(sessionId, accountScope)`가 로그인 세대와 산책 수명을 구분한다.
+- 입력 중인 문장은 기존 편집창, 비동기 저장/오류는 `WalkDetailState`, 사진 삭제 진행은
+  `WalkPhotoDialog`, 서랍과 탐색/카메라는 기존 담당이 관리한다.
+
+실기기 검사는 `tools/naver-map-review.init.gradle`로만 포함되는
+`DiaryEditorReviewActivity`와 `DiaryEditorDeviceTest`를 사용한다. `.locationreview` 앱의
+합성 기록·메모리 Room·검증 사진에 실제 Reader, 저장 서비스, 편집창과 SDK 지도를 연결한다.
+인증·서버 전달은 연결하지 않는다. 일반 앱의 계정/기록을 검증 데이터로 사용하지 않는다.
+
+지도 검증 앱과 같이 `DAENGS_NAVER_NCP_KEY_ID`를 설정한 환경에서 실행한다.
+
+```powershell
+.\gradlew.bat -I tools/naver-map-review.init.gradle :app:assembleDebug :app:assembleDebugAndroidTest -PslimAbi=arm64-v8a
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w -e class com.daengs.app.ui.walk.review.DiaryEditorDeviceTest com.daengs.app.locationreview.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Samsung SM-S931N / Android 16에서 네 가지 시나리오를 확인했다: 원본 재방문 시각 선택과
+실패 후 저장 재시도, 위치 없는 메모의 취소/저장, 장면 수정 재조회와 사진 삭제 확인,
+로그인 세대 교체/산책 삭제 시 열린 편집창 해제. 지도 터치는 장면 핀 옆의 기존 30m 선택
+범위 안에서 주입하며, 저장된 좌표·시각·정확도를 Room 값과 대조한다.
+
 ## 화면
 
 상단은 제목·날짜·강아지·가용한 날씨와 시간·거리·평균 속도다.
