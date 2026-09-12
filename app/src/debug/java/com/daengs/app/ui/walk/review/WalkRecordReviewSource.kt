@@ -103,8 +103,8 @@ internal class WalkRecordReviewSource(private val sessions: SessionProvider, pri
         }
         return withContext(Dispatchers.Default) {
             // Explicit historical comparison, not an inferred restoration of a missing motion policy.
-            val summary = summarizeLegacy(remote.walk.toSession(0), remote.fixes, Int.MAX_VALUE)
-            val detail = WalkSessionDetail(summary, summary.toSessionRoute(), emptyList(), observations = remote.fixes)
+            val detail = readCompletedRoute(remote.walk.toSession(0), remote.fixes, explicitLegacyComparison = true)
+            val summary = detail.summary
             val response = JSONObject(storyboard)
             require(response.getString("session_id") == walk.clientSessionId && response.getString("status") == "ready")
             val bundle = GeoStoryboardBundle.parse(if (format.startsWith("walk-storyboard-candidates-"))
@@ -147,7 +147,12 @@ internal class WalkRecordReviewSource(private val sessions: SessionProvider, pri
                         .put("observation_at_ms", scene.source?.observation?.atMillis ?: JSONObject.NULL)
                         .put("observation_disposition", scene.source?.observation?.clientSeq
                             ?.let(dispositionBySeq::get) ?: JSONObject.NULL)
-                        .put("relation", focus.relation.name).put("highlight_path_count", focus.paths.size))
+                        .put("relation", focus.relation.name).put("highlight_path_count", focus.paths.size)
+                        .put("binding_reader", focus.binding?.readerVersion ?: JSONObject.NULL)
+                        .put("binding_from_seq", focus.binding?.fromSeq ?: JSONObject.NULL)
+                        .put("binding_to_seq", focus.binding?.toSeq ?: JSONObject.NULL)
+                        .put("binding_event_at_ms", focus.binding?.eventAtMillis ?: JSONObject.NULL)
+                        .put("binding_location_at_ms", focus.binding?.locationAtMillis ?: JSONObject.NULL))
                 } })
             }
             withContext(Dispatchers.IO) {

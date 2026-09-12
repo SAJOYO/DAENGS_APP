@@ -139,17 +139,17 @@ class WalkHistory(private val log: WalkFixLog) {
 
     /** 완료 직후와 지난 기록에서 같은 저장 원본을 읽는다. 프로세스 메모리는 보지 않는다. */
     suspend fun sessionDetail(sessionId: String): WalkSessionDetail? = withContext(Dispatchers.IO) {
+        val owner = log.ownerId
         val session = log.session(sessionId) ?: return@withContext null
         // 전체 경로는 사용자가 한 세션을 연 이 자리에서만 만든다. 목록과 오늘 합계까지
         // 모든 과거 좌표를 무제한으로 펼치면 기록이 쌓일수록 읽기 비용이 폭증한다.
         val fixes = log.fixes(sessionId)
-        val summary = summarize(session, fixes, maxRouteSamples = Int.MAX_VALUE, epochs = log.recordingEpochs(sessionId))
-        WalkSessionDetail(
-            summary = summary,
-            route = summary.toSessionRoute(),
+        val read = readCompletedRoute(session, fixes, log.recordingEpochs(sessionId))
+        val detail = read.copy(
             moments = log.moments(sessionId),
             stayStamps = detectStayStamps(fixes),
-            observations = fixes,
         )
+        check(log.ownerId == owner) { "산책을 읽는 동안 계정이 변경됐어요." }
+        detail
     }
 }
