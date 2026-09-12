@@ -138,6 +138,10 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
                 scene = MapScene(places = hits.map { hit -> PlaceMarkerState(placeMarkerId(hit.place.key), hit.place.point,
                     hit.place.name, selected = hit.place.key == snapshot.selected, iconGroup = hit.place.iconGroup) }),
                 searchOrigin = filters.origin, followDevice = false,
+                // 🔒 **잠긴 디자인 — 내 위치는 사용자 프로필(대표 강아지 사진·얼굴)이다.**
+                //    SDK 파란 점으로 바꾸지 않는다. `docs/design-locks.md` 1절.
+                //    두 번 파란 점으로 돌아갔다 (2026-08-31 · 2026-09-10) — 그래서 잠갔다.
+                avatarRes = avatarBreed?.portraitRes, avatarPhoto = avatarPhoto,
                 initialCamera = snapshot.camera, centerOn = center, cameraRequestKey = cameraRequest, centerYFraction = .3f,
                 fitBounds = hits.map { it.place.point }.takeIf { snapshot.camera == null && it.isNotEmpty() },
                 onCameraSnapshot = { camera -> if (controller.state.value.session.tab == PlaceBrowseTab.BOOKMARKS) controller.updateSnapshot { it.copy(camera = camera) } },
