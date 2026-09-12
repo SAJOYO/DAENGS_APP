@@ -55,6 +55,8 @@ internal fun WalkDiaryMapContent(
     onChooseExplorer: (Boolean) -> Unit = {},
     explorerPanel: (@Composable () -> Unit)? = null,
     onSlotPreview: (() -> Unit)? = null,
+    onPlaceComparison: (() -> Unit)? = null,
+    comparisonContent: @Composable () -> Unit = {},
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -96,6 +98,10 @@ internal fun WalkDiaryMapContent(
                         DropdownMenuItem(text = { Text(if (generating) "준비 중" else generationActionLabel) },
                             enabled = !generating, onClick = { menu = false; generate() })
                     }
+                    onPlaceComparison?.let { compare ->
+                        DropdownMenuItem(text = { Text("현재 장면 장소 설명 비교") }, enabled = !loading,
+                            onClick = { menu = false; compare() })
+                    }
                     onSlotPreview?.let { preview ->
                         DropdownMenuItem(text = { Text("개발용 일기 미리보기") },
                             enabled = !loading, onClick = { menu = false; preview() })
@@ -108,6 +114,7 @@ internal fun WalkDiaryMapContent(
             fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
             color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
         summaryContent()
+        comparisonContent()
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val mapPeek = (maxHeight * .25f).coerceIn(96.dp, 180.dp).coerceAtMost(maxHeight * .4f)
             val panelHeight = maxHeight - mapPeek
