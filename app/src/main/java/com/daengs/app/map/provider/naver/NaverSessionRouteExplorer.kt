@@ -4,7 +4,6 @@ import android.graphics.Color
 import android.graphics.PointF
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.*
@@ -128,12 +127,4 @@ internal fun NaverSessionRouteExplorer(
         }
     }
     DisposableEffect(cursor) { onDispose { cursor?.map = null } }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun SessionObservedRouteStylePreview() {
-    com.daengs.app.ui.theme.DaengsTheme {
-        com.daengs.app.ui.walk.ObservedRouteLegend(RecordRouteRole.entries)
-    }
 }

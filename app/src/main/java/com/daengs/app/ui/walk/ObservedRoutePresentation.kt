@@ -73,6 +73,7 @@ internal fun ObservedRouteLegend(roles: List<RecordRouteRole>) {
     }
 }
 
+@Preview(showBackground = true)
 @Preview(showBackground = true, widthDp = 320)
 @Composable
 private fun ObservedRouteLegendPreview() { DaengsTheme {
