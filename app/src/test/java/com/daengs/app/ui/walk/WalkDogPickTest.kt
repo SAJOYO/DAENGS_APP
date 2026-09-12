@@ -66,12 +66,27 @@ class WalkDogPickTest {
     }
 
     /**
-     * ⚠️ **둘러보기는 예외다.** 로그인 전에는 문이 안 서고 등록한 아이도 없다.
-     * 여기까지 막으면 둘러보기가 아무것도 못 하는 화면이 된다.
+     * 🔒 **강아지 없이는 못 나간다 — 둘러보기도 예외가 아니다** (`docs/design-locks.md` 4절).
+     *
+     * 예전에는 "둘러보기가 아무것도 못 하는 화면이 된다" 며 열어 두었다. 사용자가 "강아지와
+     * 하는 산책 앱이니 강아지 없이는 안 되게" 로 정했다. 목록이 비는 것은 등록 전 · 불러오기
+     * 실패 · 둘러보기 셋 다다 — 셋 다 막는다.
      */
     @Test
-    fun `등록한 아이가 없으면 막지 않는다`() {
-        assertTrue(canStartWalk(emptyList(), emptySet()))
+    fun `등록한 아이가 없으면 못 나간다`() {
+        assertFalse(canStartWalk(emptyList(), emptySet()))
+    }
+
+    /** 지운 아이 id 가 선택에 남아 있어도 나가지 않는다 — 실제로 데려갈 아이가 없다. */
+    @Test
+    fun `목록에 없는 아이만 골랐으면 못 나간다`() {
+        assertFalse(canStartWalk(listOf(pet("a")), setOf("없는아이")))
+    }
+
+    @Test
+    fun `아이가 없으면 데려오라고 말한다`() {
+        val reason = walkStartBlockedReason(emptyList(), emptySet())
+        assertTrue(reason != null && "데려와" in reason)
     }
 
     // -- 막았으면 이유를 말한다 --------------------------------------------------
@@ -79,7 +94,7 @@ class WalkDogPickTest {
     @Test
     fun `막았을 때만 이유가 있다`() {
         assertNull(walkStartBlockedReason(listOf(pet("a")), setOf("a")))
-        assertNull(walkStartBlockedReason(emptyList(), emptySet()))
+        assertTrue(walkStartBlockedReason(emptyList(), emptySet()) != null)
         val reason = walkStartBlockedReason(listOf(pet("a"), pet("b")), emptySet())
         assertTrue(reason != null && reason.isNotBlank())
     }
