@@ -4,6 +4,7 @@ import com.daengs.app.auth.Session
 import com.daengs.app.walk.WalkSyncState
 import com.daengs.app.walk.store.WalkSessionRow
 import com.daengs.app.walk.support.diarySlotFixture
+import com.daengs.app.walk.support.diarySlotTemperatureFixture
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -23,6 +24,7 @@ class DiarySlotPreviewTest {
         val fixture = diarySlotFixture()
         val preview = DiarySlotPreview.parse(fixture)
         assertEquals("accepted", preview.modelStatus)
+        assertEquals("diary-part-slots-v2", preview.policyVersion)
         assertEquals(5, preview.scenes.size)
         val scene = preview.scenes[1]
         assertEquals(3, scene.evidence.count { it.part == "space" })
@@ -32,6 +34,29 @@ class DiarySlotPreviewTest {
             .getJSONArray("scenes").getJSONObject(1).getString("body"), scene.baseBody)
         assertTrue(scene.body.endsWith("  벤치 옆에서 물을 마셨다.\n"))
         assertTrue(scene.citations.isNotEmpty())
+    }
+
+    @Test fun `v3 grid observation retains its times provenance and actual citation`() {
+        val preview = DiarySlotPreview.parse(diarySlotTemperatureFixture())
+        assertEquals("diary-part-slots-v3", preview.policyVersion)
+        val scene = preview.scenes[1]
+        val temperature = scene.evidence.single { it.part == "environment" }
+        assertEquals("grid_temperature_observation", temperature.role)
+        val facts = JSONObject(temperature.facts)
+        assertEquals(22.5, facts.getDouble("temperature_c"), 0.0)
+        assertEquals("2026-09-11T08:00:00Z", facts.getString("observed_at"))
+        assertEquals(80.0, facts.getDouble("observation_age_s"), 0.0)
+        assertEquals(listOf(61, 125), facts.getJSONArray("grid").let { listOf(it.getInt(0), it.getInt(1)) })
+        val original = JSONObject(requireNotNull(temperature.raw))
+        assertEquals("environment-1", original.getString("source_id"))
+        assertEquals(original.getString("source_version"), original.getJSONArray("sources")
+            .getJSONObject(0).getString("source_version"))
+        assertEquals(setOf(temperature.id), scene.citations)
+        assertTrue(scene.body.endsWith(scene.baseBody))
+        // A stale observation and a missing source both stay absent after real DEV selection.
+        assertTrue(preview.scenes[2].evidence.none { it.part == "environment" })
+        assertTrue(preview.scenes[3].evidence.none { it.part == "environment" })
+        assertTrue(preview.scenes[2].evidence.any { it.part == "space" })
     }
 
     @Test fun `location reference is separate from space slot count and can be cited`() {

@@ -13,6 +13,7 @@ data class DiarySlotPreview(
     val contextPending: Boolean,
     val excludedBackgroundCount: Int,
     val scenes: List<DiarySlotScene>,
+    val policyVersion: String = "",
 ) {
     companion object {
         fun parse(response: JSONObject): DiarySlotPreview {
@@ -49,6 +50,7 @@ data class DiarySlotPreview(
                     DiarySlotScene(id, scene.getString("title"), scene.getString("body"),
                         originals[index].getString("body"), evidence, location, cited)
                 },
+                preview.getJSONObject("policy").getString("version"),
             )
         }
     }
@@ -64,13 +66,16 @@ data class DiarySlotScene(
     val citations: Set<String> = emptySet(),
 )
 
-data class DiarySlotEvidence(val id: String, val part: String, val role: String, val facts: String) {
+data class DiarySlotEvidence(
+    val id: String, val part: String, val role: String, val facts: String,
+    val raw: String? = null,
+) {
     companion object {
         fun parse(json: JSONObject): DiarySlotEvidence {
             val part = json.getString("part")
             require(part in setOf("space", "environment", "motion"))
             return DiarySlotEvidence(json.getString("id"), part, json.getString("role"),
-                json.getJSONObject("facts").toString())
+                json.getJSONObject("facts").toString(), json.toString(2))
         }
     }
 }

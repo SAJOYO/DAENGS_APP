@@ -94,6 +94,8 @@ internal fun DiarySlotPreviewContent(
             if (result != null) {
                 item {
                     Text(result.title, style = MaterialTheme.typography.titleLarge)
+                    if (result.policyVersion.isNotBlank()) Text("슬롯 정책: ${result.policyVersion}",
+                        style = MaterialTheme.typography.labelMedium, color = TextMuted)
                     Text(when (result.modelStatus) {
                         "accepted" -> "배경 문장을 더한 미리보기예요."
                         "not_requested" -> "배경 문장을 생성하지 않은 기본 장면이에요."
@@ -131,9 +133,16 @@ private fun DiarySlotSceneCard(scene: DiarySlotScene) {
                 }
                 if (scene.evidence.isEmpty() && scene.locationReference == null) Text("이 장면에 연결된 배경 자료가 없어요.", color = TextMuted)
                 (scene.evidence + listOfNotNull(scene.locationReference)).forEach { evidence ->
+                    var rawExpanded by remember(evidence) { mutableStateOf(false) }
                     Text(slotEvidenceTitle(evidence.role) + if (evidence.id in scene.citations) " · 문장에 인용" else " · 선택된 자료",
                         style = MaterialTheme.typography.labelLarge)
                     Text(slotEvidenceDescription(evidence), style = MaterialTheme.typography.bodyMedium)
+                    evidence.raw?.let { raw ->
+                        TextButton(onClick = { rawExpanded = !rawExpanded }) {
+                            Text(if (rawExpanded) "근거 원문 접기" else "근거 원문 보기")
+                        }
+                        if (rawExpanded) Text(raw, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }

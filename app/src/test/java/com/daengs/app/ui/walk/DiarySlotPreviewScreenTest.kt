@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.Density
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.support.diarySlotFixture
+import com.daengs.app.walk.support.diarySlotTemperatureFixture
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Rule
@@ -70,7 +71,9 @@ class DiarySlotPreviewScreenTest {
         compose.onNodeWithText("배경을 더하기 전").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(sample.scenes.single().baseBody).assertExists()
         compose.onNodeWithText("지역 환경 관측 · 문장에 인용").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("기온 (°C): 23\n풍속 (m/s): 2.1").assertExists()
+        compose.onNode(hasText("기온 (°C): 23\n풍속 (m/s): 2.1", substring = true) and
+            hasText("자료 조회 시각: 2026-09-11T08:05:30+00:00", substring = true))
+            .performScrollTo().assertIsDisplayed()
         compose.runOnIdle { capture(requireNotNull(view), "diary-slot-preview-evidence") }
         compose.onNodeWithText("개발용 일기 미리보기").performScrollTo()
         compose.runOnIdle { capture(requireNotNull(view), "diary-slot-preview-result") }
@@ -85,6 +88,32 @@ class DiarySlotPreviewScreenTest {
         compose.onNodeWithText("장면 자료 보기").performScrollTo().performClick()
         compose.onNodeWithText("이 장면에 연결된 배경 자료가 없어요.").assertExists()
         compose.onNodeWithText("저장").assertDoesNotExist()
+    }
+
+    @Test fun `v3 temperature shows observation age grid and expandable source on a small screen`() {
+        var view: android.view.View? = null
+        val sample = DiarySlotPreview.parse(diarySlotTemperatureFixture()).let { it.copy(scenes = listOf(it.scenes[1])) }
+        compose.setContent {
+            val current = LocalView.current
+            SideEffect { view = current.rootView }
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                DaengsTheme { DiarySlotPreviewContent(sample, false, null, {}, {}) }
+            }
+        }
+        compose.onNodeWithText("슬롯 정책: diary-part-slots-v3").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("장면 자료 보기").performScrollTo().performClick()
+        compose.onNodeWithText("격자 기온 관측 · 문장에 인용").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("관측 시각: 2026-09-11T08:00:00Z", substring = true).assertExists()
+        compose.onNodeWithText("기록보다 앞선 시간 (초): 80", substring = true).assertExists()
+        compose.onNodeWithText("격자 (nx, ny): [61,125]", substring = true).assertExists()
+        compose.onNodeWithText("관측 출처: kma-vilage-fcst:ncst", substring = true).performScrollTo().assertIsDisplayed()
+        compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle { capture(requireNotNull(view), "diary-slot-preview-temperature") }
+        compose.onAllNodesWithText("근거 원문 보기")[1].performScrollTo().performClick()
+        compose.onNodeWithText("\"source_id\": \"environment-1\"", substring = true).performScrollTo().assertExists()
+        compose.onNodeWithText("근거 원문 접기").performScrollTo().performClick()
+        compose.onNodeWithText("\"source_id\": \"environment-1\"", substring = true).assertDoesNotExist()
     }
 
     @Test fun `diary menu opens preview separately from published generation`() {
