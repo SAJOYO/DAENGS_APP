@@ -45,6 +45,33 @@ class DesignLockTest {
         return calls
     }
 
+    // -- 0. 색은 앱 테마에서만 가져온다 -------------------------------------------
+
+    /**
+     * 산책 · 장소 · 점령 화면 파일에서 `Color(0x…)` 로 **새 색을 만들지 않는다.**
+     *
+     * 2026-09-12 에 이틀 동안 들어온 화면을 훑어보니 AI 검색의 파란 팔레트 · 연두 썸네일 ·
+     * 회색 빈 칸 · 비슷한 날것 의미색이 여덟 파일에 있었다. 하나씩 보면 그럴듯한데 모이면
+     * 다른 앱이 된다. 필요한 색이 없으면 `ui/theme/Color.kt` 에 이유와 함께 더한다.
+     */
+    @Test
+    fun `산책 장소 점령 화면에 날것 색이 없다`() {
+        // Compose 의 `Color(0x…)` 만 보면 안드로이드 Paint 의 `0x….toInt()` 가 빠져나간다 — 산책 목록
+        // 썸네일의 「출발 · 도착」 글자가 그렇게 초록으로 남았었다. `0xFF000000` 은 색이 아니라
+        // 불투명 틀(`or rgb`)이라 뺀다.
+        val raw = Regex("Color\\(0x[0-9A-Fa-f]{6,8}\\)|0x(?![Ff]{2}000000)[0-9A-Fa-f]{8}\\.toInt\\(\\)|Color\\.(rgb|argb|parseColor)\\(")
+        val hits = listOf("ui/walk", "ui/places", "ui/game").flatMap { dir ->
+            File(root, "com/daengs/app/$dir").walkTopDown().filter { it.extension == "kt" }.mapNotNull { file ->
+                raw.find(file.readText())?.let { "${file.name}: ${it.value}" }
+            }.toList()
+        }
+        assertTrue(
+            "⛔ 잠긴 디자인 위반 — 날것 색: $hits. 색은 ui/theme 의 토큰에서 가져온다. " +
+                "docs/design-locks.md 0절. 테스트를 고치지 말고 변경을 되돌릴 것.",
+            hits.isEmpty(),
+        )
+    }
+
     // -- 1. 지도의 「내 위치」는 사용자 프로필이다 --------------------------------
 
     private val liveLocationMaps = listOf(

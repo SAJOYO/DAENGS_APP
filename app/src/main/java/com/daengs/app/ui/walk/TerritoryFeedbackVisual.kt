@@ -21,6 +21,7 @@ import com.daengs.app.map.features.territory.TerritoryGameState
 import com.daengs.app.map.layers.territory.*
 import com.daengs.app.territory.ClaimPhotoStatus
 import com.daengs.app.ui.theme.TextMuted
+import com.daengs.app.ui.theme.DaengsColors
 
 /** 기존 산책 UI 호출 계약은 유지하고 애니메이션 구현은 지도 공용 계층에 위임한다. */
 @Composable
@@ -46,7 +47,7 @@ internal fun TerritoryFeedbackLine(game: TerritoryGameState, nowNanos: () -> Lon
     Row(verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
         if (success != null) Icon(painterResource(R.drawable.ic_territory_paw), contentDescription = null,
-            tint = if (success.kind == TerritoryFeedbackKind.MARKED) Color(0xffb67c2e) else Color(0xff3c9673),
+            tint = if (success.kind == TerritoryFeedbackKind.MARKED) DaengsColors.Warning else DaengsColors.Success,
             modifier = Modifier.size(16.dp).graphicsLayer { scaleX = frame.markerScale; scaleY = frame.markerScale })
         if (success != null) Spacer(Modifier.width(5.dp))
         Text(territoryFeedbackLabel(game, feedback), color = TextMuted, fontSize = 11.sp)

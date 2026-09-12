@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.trajectory.*
+import com.daengs.app.ui.theme.PinkFaint
+import com.daengs.app.ui.theme.TextMuted
 
 /** Insert display-only gaps without renumbering, editing or synthesizing diary scenes. */
 internal fun diaryGapSlots(scenes: List<DiaryScene>, contexts: List<RecordContext>): Map<Int, List<RecordContext>> =
@@ -35,8 +37,8 @@ internal fun diaryGapTitle(gap: RecordContext): String {
 internal fun DiaryGapItem(gap: RecordContext, onClick: () -> Unit) {
     TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
-        Surface(shape = CircleShape, color = Color(0xffe6e6e6), modifier = Modifier.size(32.dp)) {
-            Box(contentAlignment = Alignment.Center) { Text("–", color = Color(0xff777777)) }
+        Surface(shape = CircleShape, color = PinkFaint, modifier = Modifier.size(32.dp)) {
+            Box(contentAlignment = Alignment.Center) { Text("–", color = TextMuted) }
         }
         Text(diaryGapTitle(gap), Modifier.weight(1f).padding(start = 12.dp),
             color = TextMuted, fontSize = 18.sp, lineHeight = 24.sp)

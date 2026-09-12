@@ -32,6 +32,7 @@ import com.daengs.app.walk.TrackingState
 import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
+import com.daengs.app.ui.theme.DaengsColors
 
 /** Display-only freshness check; does not alter stored points or tracking. */
 internal fun walkGaugeSpeed(sample: LocationSample?, state: TrackingState, nowNanos: Long): Float? {
@@ -76,7 +77,7 @@ internal fun WalkSpeedometer(speed: Float?, modifier: Modifier = Modifier) {
                         contentDescription = "속도 수신 상태"
                         stateDescription = signalDescription
                     }) {
-                        val lamp = if (validSpeed == null) Color(0xffc99522) else TextMuted.copy(alpha = .22f)
+                        val lamp = if (validSpeed == null) DaengsColors.Warning else TextMuted.copy(alpha = .22f)
                         val triangle = Path().apply {
                             moveTo(size.width*.5f, size.height*.12f)
                             lineTo(size.width*.92f, size.height*.88f)
