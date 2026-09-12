@@ -52,6 +52,8 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         private set
     var selection by mutableStateOf<WalkRouteSelection>(WalkRouteSelection.Overview)
         private set
+    var selectionFromMap by mutableStateOf(false)
+        private set
     var analyzing by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
@@ -97,13 +99,13 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         if (!open) overview()
     }
     fun pause() { playing = false }
-    private fun replaceSelection(value: WalkRouteSelection) {
+    private fun replaceSelection(value: WalkRouteSelection, fromMap: Boolean = false) {
         selectionRevision++; selectionJob?.cancel(); analyzing = false; playing = false
-        error = null; selection = value
+        error = null; selection = value; selectionFromMap = fromMap
     }
     fun overview() { replaceSelection(WalkRouteSelection.Overview) }
-    fun selectScene(id: String) {
-        replaceSelection(WalkRouteSelection.Scene(id)); panelOpen = false
+    fun selectScene(id: String, fromMap: Boolean = false) {
+        replaceSelection(WalkRouteSelection.Scene(id), fromMap); panelOpen = false
     }
     fun closeScene() { if (selection is WalkRouteSelection.Scene) overview() }
     fun selectSection(index: Int) {
@@ -114,19 +116,20 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         if (review?.observed?.sections?.none { it.id == id } != false) return
         replaceSelection(WalkRouteSelection.Auxiliary(id)); panelOpen = true
     }
-    fun selectContext(id: String, openExplorer: Boolean = true) {
+    fun selectContext(id: String, openExplorer: Boolean = true, fromMap: Boolean = false) {
         val context = review?.context?.context(id) ?: return
         replaceSelection(when (context.kind) {
             RecordContextKind.GAP -> WalkRouteSelection.Gap(id)
             RecordContextKind.TRANSITION -> WalkRouteSelection.Transition(id)
             else -> WalkRouteSelection.Event(id)
-        })
+        }, fromMap)
         panelOpen = openExplorer
     }
     fun replaceRoute(source: RouteExplorerIndex, completed: CompletedRouteReview, duration: Long) {
         // Keep a scene identity, but derive its correspondence again against the new route/scene.
         val scene = selectedSceneId
-        replaceSelection(scene?.let { WalkRouteSelection.Scene(it) } ?: WalkRouteSelection.Overview)
+        replaceSelection(scene?.let { WalkRouteSelection.Scene(it) } ?: WalkRouteSelection.Overview,
+            fromMap = scene != null && selectionFromMap)
         index = source; review = completed; activeDuration = duration
         preparationError = null
     }

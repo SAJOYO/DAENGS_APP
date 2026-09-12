@@ -87,7 +87,7 @@ internal fun recordContextLayer(review: CompletedRouteReview, selection: RecordC
                     if (starting) "첫 확인" else "마지막 확인", selected)
             }
             RecordContextKind.GAP -> listOfNotNull(value.before, value.after).distinctBy { it.point }.forEach {
-                markers += RecordContextMarker(value.id, it.point, if (selected) "경로 미확인" else "?", selected)
+                markers += RecordContextMarker(value.id, it.point, "–", selected, gapBoundary = true)
             }
             RecordContextKind.TRANSITION -> value.before?.let {
                 markers += RecordContextMarker(value.id, it.point, "전환", selected)
@@ -104,7 +104,14 @@ internal fun recordContextLayer(review: CompletedRouteReview, selection: RecordC
         if (group.size == 1) group.single() else (group.firstOrNull { it.selected } ?: group.last())
             .copy(label = "보행 시작 · 끝", kind = RouteEndpointKind.START_END)
     }
-    return RecordContextLayerState(markers.distinctBy { it.contextId to it.point }, guide, groupedEndpoints)
+    // A gap boundary and an endpoint stamp both sit below their coordinate. Give that slot to
+    // the gap consistently, even while an event is selected; its event remains in the flow list.
+    // Scene numbers sit above the coordinate and keep their independent click target.
+    val gapPoints = markers.filter { it.gapBoundary }.map { it.point }
+    return RecordContextLayerState(
+        markers.distinctBy { it.contextId to it.point }.filter { marker ->
+            marker.gapBoundary || gapPoints.none { it.distanceTo(marker.point) <= 1.0 }
+        }, guide, groupedEndpoints.filter { endpoint -> gapPoints.none { it.distanceTo(endpoint.point) <= 1.0 } })
 }
 
 @Composable

@@ -64,9 +64,10 @@ internal fun WalkDiaryMapContent(
     onSelectGap: (RecordContext) -> Unit = {},
     explorerFocusId: String? = null,
     onContextDismiss: () -> Unit = {},
+    selectionFromMap: Boolean = false,
 ) {
     val sheet = rememberStandardBottomSheetState(
-        initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
+        initialValue = if (selected == null || selectionFromMap) SheetValue.PartiallyExpanded else SheetValue.Expanded)
     val scaffold = rememberBottomSheetScaffoldState(bottomSheetState = sheet)
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
@@ -74,7 +75,9 @@ internal fun WalkDiaryMapContent(
     val latestClose by rememberUpdatedState(onClose)
     var menu by remember { mutableStateOf(false) }
     val expanded = sheet.targetValue == SheetValue.Expanded
-    LaunchedEffect(selected?.id, adding, explorerFocusId) {
+    LaunchedEffect(selected?.id, adding, explorerFocusId, selectionFromMap) {
+        // A visible marker is already in view. Keep the user's map and sheet framing on a map tap.
+        if (selectionFromMap && !adding) return@LaunchedEffect
         if (selectedGap == null && (selected != null || explorerFocusId != null) && !adding) sheet.expand()
         else sheet.partialExpand()
     }

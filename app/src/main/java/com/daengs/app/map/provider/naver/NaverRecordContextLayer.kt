@@ -24,10 +24,13 @@ internal fun NaverRecordContextLayer(map: NaverMap?, state: RecordContextLayerSt
     val select by rememberUpdatedState(onSelect)
     DisposableEffect(map, state, density) {
         val markers = if (map == null) emptyList() else state?.markers.orEmpty().map { item ->
-            val bitmap = diaryPinBitmap(item.label, item.selected, density, endpoint = true)
+            val bitmap = if (item.gapBoundary) diaryGapPinBitmap(item.selected, density)
+                else diaryPinBitmap(item.label, item.selected, density, endpoint = true)
             Marker(LatLng(item.point.latitude, item.point.longitude)).apply {
                 icon = OverlayImage.fromBitmap(bitmap); width = bitmap.width; height = bitmap.height
-                anchor = PointF(.5f, 0f); zIndex = if (item.selected) 101 else 79
+                anchor = PointF(.5f, 0f)
+                // Selection changes ink, never the gap's footprint or hit-test priority.
+                zIndex = if (item.gapBoundary) 81 else if (item.selected) 101 else 79
                 isHideCollidedMarkers = false
                 setOnClickListener { select(item.contextId); true }
                 this.map = map

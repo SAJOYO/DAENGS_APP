@@ -49,4 +49,30 @@ class RecordContextPresentationTest {
         assertEquals(start.id, recordContextLayer(review, start)!!.endpoints.single().id)
         assertEquals(end.id, recordContextLayer(review, end)!!.endpoints.single().id)
     }
+
+    @Test fun `gap at the last location keeps the same marker and hit target across selections`() {
+        val detail = readCompletedRoute(RecordedSession("gap-end", startedAtMillis = 0, endedAtMillis = 100_000),
+            (0..17).map { i -> RecordedFix(i, if (i < 9) 0 else 1,
+                if (i < 9) 10_000 + i * 2_000L else 60_000 + (i - 9) * 2_000L,
+                0.0, minOf(i, 9) * 4.0 / 111_195, 1f, false) })
+        val review = CompletedRouteReview(detail)
+        val gap = review.context.contexts.single { it.kind == RecordContextKind.GAP }
+        val end = review.context.contexts.last { it.kind == RecordContextKind.END }
+        val normal = recordContextLayer(review, null)!!
+        val selected = recordContextLayer(review, gap)!!
+        val eventSelected = recordContextLayer(review, end)!!
+        assertEquals(2, normal.markers.count { it.gapBoundary })
+        assertTrue(normal.markers.filter { it.gapBoundary }.all { it.label == "–" })
+        assertEquals(normal.markers, selected.markers.map { it.copy(selected = false) })
+        assertEquals(normal.markers, eventSelected.markers)
+        assertEquals(normal.endpoints, selected.endpoints)
+        assertEquals(normal.endpoints, eventSelected.endpoints)
+        assertTrue(normal.endpoints.none { it.id == end.id })
+        assertEquals(end, review.context.context(end.id)) // Event access stays in the list.
+        val scene = com.daengs.app.walk.diary.DiaryScene("seventh", detail.summary.sessionId, 70_000,
+            "일곱 번째 장면", "", gap.after!!.point, "")
+        assertTrue(diarySceneMarkers(listOf(scene), null).single().aboveRouteEndpoints)
+        assertEquals(diarySceneMarkers(listOf(scene), null).single().point,
+            diarySceneMarkers(listOf(scene), scene.id).single().point)
+    }
 }

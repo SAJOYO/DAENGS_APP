@@ -1,12 +1,37 @@
 package com.daengs.app.ui.walk
 
 import com.daengs.app.walk.routeexplorer.*
+import com.daengs.app.walk.*
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class WalkRouteExplorerStateTest {
+    @Test fun `map origin survives route refresh but the next list selection clears it`() = runTest {
+        // Use the actual completed reader: handmade route fixtures have no adopted observation evidence.
+        val detail = readCompletedRoute(RecordedSession("map-selection", startedAtMillis = 0, endedAtMillis = 100_000),
+            (0..17).map { i -> RecordedFix(i, if (i < 9) 0 else 1,
+                if (i < 9) 10_000 + i * 2_000L else 60_000 + (i - 9) * 2_000L,
+                0.0, i * 4.0 / 111_195, 1f, false) })
+        val review = CompletedRouteReview(detail)
+        val state = WalkRouteExplorerState(this, 70_000)
+        state.replaceRoute(RouteExplorerIndex(detail.route), review, 70_000)
+        state.selectScene("scene-7", fromMap = true)
+        state.replaceRoute(RouteExplorerIndex(detail.route), review, 70_000)
+        assertTrue(state.selectionFromMap)
+        val gap = review.context.contexts.first { it.kind == com.daengs.app.walk.trajectory.RecordContextKind.GAP }
+        state.selectContext(gap.id, openExplorer = false, fromMap = true)
+        assertTrue(state.selectionFromMap)
+        assertFalse(state.panelOpen)
+        assertEquals(gap.id, state.selectedContext?.id)
+        state.selectContext(gap.id, openExplorer = false)
+        assertFalse(state.selectionFromMap)
+        state.selectScene("scene-7", fromMap = true)
+        state.selectScene("scene-7")
+        assertFalse(state.selectionFromMap)
+    }
+
     @Test fun `section scene passage and replay share one selection and close cannot clear another mode`() = runTest {
         val detail = reviewDetail(listOf(-10.0 to 10_000L, 0.0 to 20_000L, 10.0 to 30_000L),
             listOf(2_000.0 to 40_000L, 2_010.0 to 50_000L))
