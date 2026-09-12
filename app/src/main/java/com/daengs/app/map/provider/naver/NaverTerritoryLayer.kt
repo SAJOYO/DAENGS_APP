@@ -2,7 +2,6 @@ package com.daengs.app.map.provider.naver
 
 import androidx.compose.runtime.*
 import com.daengs.app.map.layers.territory.*
-import com.daengs.app.ui.walk.rememberTerritoryFeedbackProgress
 import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.OverlayImage
 
@@ -25,14 +24,10 @@ internal fun NaverTerritoryLayer(map: NaverMap?, sites: List<TerritorySiteMarker
     }
     val rendered = remember(sites) { sites.map { it.renderState() } }
     val feedback = remember(sites) { sites.firstOrNull { it.selected && it.feedback != null }?.feedback }
-    val progress = rememberTerritoryFeedbackProgress(feedback)
+    val progress = rememberTerritoryFeedbackAnimationProgress(feedback)
     DisposableEffect(store) { onDispose { store?.clear() } }
     SideEffect {
         store?.sync(rendered)
         store?.frame(feedback, progress)
     }
 }
-
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true, widthDp = 320, heightDp = 620)
-@Composable
-private fun NaverTerritoryLayerPreview() { com.daengs.app.ui.walk.TerritoryRangePreview() }
