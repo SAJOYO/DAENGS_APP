@@ -1,10 +1,12 @@
 package com.daengs.app.walk.store
 
+import com.daengs.app.walk.support.seedSearchWalk
+import com.daengs.app.walk.support.titledDiaryFixture
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.*
-import com.daengs.app.walk.diary.titledDiaryFixture
+import com.daengs.app.walk.diary.WalkDiaryReader
 import com.daengs.app.walk.sync.storyboardEntryStamp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -14,24 +16,19 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.*
-
-internal suspend fun seedSearchWalk(log: RoomWalkFixLog, id: String, day: Int) {
-    val at = LocalDate.of(2026, 9, day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    log.openSession(RecordedSession(id, dogIds = listOf("dog"), startedAtMillis = at,
-        weather = RecordedWeather(61, true, 20f)))
-    (0..5).forEach { i -> log.append(id, RecordedFix(i, 0, at + i * 120_000L,
-        37.5 + i * 80.0 / 111195, 127.0, 5f, false)) }
-    log.closeSession(id, at + 600_000)
-}
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WalkHistorySearchTest {
     private lateinit var db: WalkDatabase
     private lateinit var log: RoomWalkFixLog
+    private lateinit var reader: WalkDiaryReader
     @Before fun setUp() {
-        db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        db = Room.inMemoryDatabaseBuilder(context, WalkDatabase::class.java).build()
         log = RoomWalkFixLog(db.walkDao())
+        reader = WalkDiaryReader(db.walkDao(), WalkPhotoStore(db.walkDao(), File(context.cacheDir, "history-search")) { "" }) { "" }
     }
     @After fun close() = db.close()
     private suspend fun note(id: String, text: String) {
@@ -63,18 +60,27 @@ class WalkHistorySearchTest {
         assertTrue(reads.all { it.startsWith("s-") && it.removePrefix("s-").toInt() in 2..18 && it.removePrefix("s-").toInt() % 2 == 0 })
     }
 
-    @Test fun `search uses current visible title and notes not JSON metadata and drops stale title`() = runBlocking {
+    @Test fun `search keeps the published title and live notes without exposing metadata or a late title`() = runBlocking {
         seedSearchWalk(log, "s", 1)
         val dao = db.walkDao()
+        val preparation = requireNotNull(dao.prepareLocalDiary("s", ""))
         val stamp = storyboardEntryStamp(emptyList())
-        dao.acceptSceneAnalysis(WalkSceneAnalysisRow("s",1,stamp,"private-reference","ready",titledDiaryFixture().toString(),null), "")
+        val source = WalkSceneAnalysisRow("s",1,stamp,"private-reference","ready",titledDiaryFixture().toString(),null)
+        assertTrue(dao.acceptSceneAnalysis(source, "", nowMillis = preparation.deadlineAtMillis - 1))
+        assertEquals(source.bundle, dao.diaryPublication("s")!!.publishedBundle)
         assertTrue(log.historySearchText(listOf("s"))["s"]!!.contains("함께 남긴 산책 기록"))
         val history = WalkHistory(log)
         assertEquals(1, history.finishedPage(filter = WalkHistoryFilter("함께 남긴")).walks.size)
         assertTrue(history.finishedPage(filter = WalkHistoryFilter("private-reference")).walks.isEmpty())
         note("s", "100% 호수_산책")
-        assertTrue(history.finishedPage(filter = WalkHistoryFilter("함께 남긴")).walks.isEmpty())
+        assertEquals(1, history.finishedPage(filter = WalkHistoryFilter("함께 남긴")).walks.size)
         assertEquals(1, history.finishedPage(filter = WalkHistoryFilter("100% 호수_")).walks.size)
+        val late = source.copy(generation = 2, entryStamp = storyboardEntryStamp(dao.entries("s")),
+            bundle = titledDiaryFixture().put("title", "늦게 도착한 제목").toString())
+        assertTrue(dao.acceptSceneAnalysis(late, "", nowMillis = preparation.deadlineAtMillis + 1))
+        assertEquals(late.bundle, dao.sceneAnalysis("s")!!.bundle)
+        assertTrue(history.finishedPage(filter = WalkHistoryFilter("늦게 도착한")).walks.isEmpty())
+        assertEquals("함께 남긴 산책 기록", reader.observeTitles(listOf("s")).first()["s"])
         val store = WalkEntryStore(dao)
         val entry = dao.entry("note-s")!!.entry()!!
         store.save(entry.copy(note = "변경한 메모"))
@@ -82,13 +88,32 @@ class WalkHistorySearchTest {
         assertEquals(1, history.finishedPage(filter = WalkHistoryFilter("변경한")).walks.size)
         store.delete("note-s")
         assertTrue(history.finishedPage(filter = WalkHistoryFilter("변경한")).walks.isEmpty())
+        assertEquals(1, history.finishedPage(filter = WalkHistoryFilter("함께 남긴")).walks.size)
         log.deleteSession("s")
         assertTrue(log.historySearchText(listOf("s")).isEmpty())
     }
 
-    @Test fun `title writes invalidate history search without changing GPS or session rows`() = runBlocking {
-        seedSearchWalk(log, "s", 1)
+    @Test fun `legacy analysis title is removed from search when its inputs change`() = runBlocking {
+        val dao = db.walkDao()
+        // Already-completed records predate publication and retain their original read contract.
+        dao.insertSession(WalkSessionRow("s", 0, "", 1000))
+        assertNull(dao.diaryPublication("s"))
         val stamp = storyboardEntryStamp(emptyList())
+        assertTrue(dao.acceptSceneAnalysis(WalkSceneAnalysisRow("s", 1, stamp, "legacy", "ready",
+            titledDiaryFixture().toString(), null), ""))
+        assertTrue(log.historySearchText(listOf("s"))["s"]!!.contains("함께 남긴 산책 기록"))
+        note("s", "기존 기록에 추가한 메모")
+        assertEquals(listOf("기존 기록에 추가한 메모"), log.historySearchText(listOf("s"))["s"])
+        assertTrue(reader.observeTitles(listOf("s")).first().isEmpty())
+    }
+
+    @Test fun `publication invalidates title search without changing GPS or session rows`() = runBlocking {
+        seedSearchWalk(log, "s", 1)
+        val dao = db.walkDao()
+        val preparation = requireNotNull(dao.prepareLocalDiary("s", ""))
+        val sessionBefore = dao.session("s")
+        val fixesBefore = dao.fixes("s")
+        assertTrue(reader.observeTitles(listOf("s")).first().isEmpty())
         val ready = CompletableDeferred<Unit>()
         val waiter = async { withTimeout(5000) {
             log.historyChanges.first {
@@ -98,8 +123,12 @@ class WalkHistorySearchTest {
             }
         } }
         ready.await()
-        db.walkDao().acceptSceneAnalysis(WalkSceneAnalysisRow("s",1,stamp,"revision","ready",titledDiaryFixture().toString(),null), "")
+        // Only publication changes: its notification must refresh the title search on its own.
+        assertEquals(1, dao.publishDiaryCandidate("s", titledDiaryFixture().toString(), preparation.deadlineAtMillis - 1))
         waiter.await()
+        assertEquals("함께 남긴 산책 기록", reader.observeTitles(listOf("s")).first()["s"])
+        assertEquals(sessionBefore, dao.session("s"))
+        assertEquals(fixesBefore, dao.fixes("s"))
     }
 
     @Test fun `date and season use local start day and unknown weather is not clear`() {

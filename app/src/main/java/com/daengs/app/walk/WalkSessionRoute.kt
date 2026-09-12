@@ -9,7 +9,7 @@ data class WalkRoutePoint(
     val point: GeoPoint,
     val capturedAtMillis: Long,
     val accuracyMeters: Float?,
-    /** 일시정지로 끊긴 시간은 뺀, 세션 첫 원본 fix부터의 활동 시간. */
+    /** 일시정지를 뺀 활동 시점. 새 측정은 기록 시작, 이전 계산은 첫 원본 fix가 기준이다. */
     val activeElapsedMillis: Long,
     /** 세그먼트 사이를 직선으로 잇지 않고 더한 누적 거리. */
     val cumulativeDistanceMeters: Double,
@@ -17,6 +17,8 @@ data class WalkRoutePoint(
     val derivedSpeedMetersPerSecond: Double?,
     val segmentIndex: Int,
     val pointIndex: Int,
+    /** Original observation clock, retained for matching a scene after wall-clock corrections. */
+    val elapsedRealtimeNanos: Long? = null,
 )
 
 data class WalkRouteSegment(
@@ -103,15 +105,17 @@ fun WalkSummary.toSessionRoute(): WalkSessionRoute {
     var activeElapsed = 0L
     val routeSegments = segments.mapIndexed { segmentIndex, samples ->
         var previousCapturedAt: Long? = null
+        var previousActiveElapsed: Long? = null
         var previousPoint: GeoPoint? = null
         val points = samples.mapIndexed { pointIndex, sample ->
             val deltaDistance = previousPoint?.distanceTo(sample.point) ?: 0.0
-            val deltaMillis = previousCapturedAt
-                ?.let { (sample.capturedAtMillis - it).coerceAtLeast(0L) }
-                ?: 0L
+            val mappedElapsed = sample.elapsedRealtimeNanos?.let { activeElapsedAtNanos[it] }
+                ?: activeElapsedAtMillis[sample.capturedAtMillis]
+            val deltaMillis = if (mappedElapsed != null && previousActiveElapsed != null)
+                (mappedElapsed - requireNotNull(previousActiveElapsed)).coerceAtLeast(0L)
+            else previousCapturedAt?.let { (sample.capturedAtMillis - it).coerceAtLeast(0L) } ?: 0L
             cumulativeDistance += deltaDistance
-            activeElapsed = activeElapsedAtMillis[sample.capturedAtMillis]
-                ?: (activeElapsed + deltaMillis)
+            activeElapsed = mappedElapsed ?: (activeElapsed + deltaMillis)
             val derivedSpeed = if (previousPoint != null && deltaMillis > 0L) {
                 deltaDistance / (deltaMillis / 1_000.0)
             } else {
@@ -126,8 +130,10 @@ fun WalkSummary.toSessionRoute(): WalkSessionRoute {
                 derivedSpeedMetersPerSecond = derivedSpeed,
                 segmentIndex = segmentIndex,
                 pointIndex = pointIndex,
+                elapsedRealtimeNanos = sample.elapsedRealtimeNanos,
             ).also {
                 previousCapturedAt = sample.capturedAtMillis
+                previousActiveElapsed = activeElapsed
                 previousPoint = sample.point
             }
         }

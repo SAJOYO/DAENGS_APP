@@ -37,6 +37,14 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
+    <!--
+      채팅 입력칸의 음성 인식. 안드로이드 내장 SpeechRecognizer 가 마이크를 열려면
+      이 권한이 든다 (ui/chat/VoiceInput.kt). 보행 영상은 소리를 안 담으므로 이 권한을
+      쓰는 곳은 음성 입력 하나다. 거부하면 글로 치면 된다 — 채팅은 그대로 돈다.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
     <!-- 카카오톡으로 로그인하려면 그 앱이 깔려 있는지 물어봐야 한다. API 30 부터는
          여기 적어 두지 않으면 isKakaoTalkLoginAvailable() 이 무조건 false 라,
          톡이 깔려 있어도 웹 로그인으로 넘어간다. -->
@@ -64,7 +72,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Daengs">
@@ -81,7 +89,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
+            android:label="${appLabel}"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Daengs.Splash"

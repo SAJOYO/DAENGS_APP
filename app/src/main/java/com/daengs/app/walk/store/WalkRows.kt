@@ -26,6 +26,10 @@ data class WalkSessionRow(
     val serverWalkId: String? = null,
     /** 마지막 동기화 상태 전이 시각. */
     val syncedAtMillis: Long? = null,
+    /** Stored with the first session INSERT; never backfilled with current defaults. */
+    val motionPolicyJson: String? = null,
+    /** Only known local capture or verified precision restore; old records remain unknown. */
+    val coordinateOrigin: String? = null,
 )
 
 /**
@@ -75,7 +79,7 @@ data class WalkSessionDogRow(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("sessionId")],
+    indices = [Index("sessionId"), Index(value = ["sessionId", "ingressSeq"], unique = true)],
 )
 data class WalkFixRow(
     val sessionId: String,
@@ -86,6 +90,26 @@ data class WalkFixRow(
     val lng: Double,
     val accuracyM: Float?,
     val isMock: Boolean,
+    val ingressSeq: Long? = null,
+    val sourceEpoch: String? = null,
+    val clockEpochId: String? = null,
+    val elapsedRealtimeNanos: Long? = null,
+    val receivedElapsedNanos: Long? = null,
+    val receivedAtMillis: Long? = null,
+    val speedMps: Float? = null,
+    val speedAccuracyMps: Float? = null,
+    val bearingDegrees: Float? = null,
+    val bearingAccuracyDegrees: Float? = null,
+    val provider: String? = null,
+    val recordingEligible: Boolean? = null,
+    // SQLite REAL normalizes -0 and NaN. Nullable Int bits preserve newly stored observations exactly.
+    val speedMpsBits: Int? = null,
+    val speedAccuracyMpsBits: Int? = null,
+    val bearingDegreesBits: Int? = null,
+    val bearingAccuracyDegreesBits: Int? = null,
+    val latBits: Long? = null,
+    val lngBits: Long? = null,
+    val accuracyBits: Int? = null,
 )
 
 /** 버튼을 누른 사실의 원본. 5m 장소 묶음은 저장하지 않고 읽을 때 다시 계산한다. */

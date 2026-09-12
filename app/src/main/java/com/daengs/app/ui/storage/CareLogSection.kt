@@ -57,6 +57,7 @@ fun CareLogSection(
     onRetryLoad: () -> Unit = {},
     onConfirmDelete: (CareEvent) -> Unit = {},
     onDismissError: () -> Unit = {},
+    canDelete: (CareEvent) -> Boolean = { true },
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
     var pendingDeletion by remember { mutableStateOf<CareEvent?>(null) }
@@ -101,6 +102,7 @@ fun CareLogSection(
                 deletingEventId = state.deletingEventId,
                 zone = zone,
                 onRequestDelete = { pendingDeletion = it },
+                canDelete = canDelete,
             )
         }
     }
@@ -128,6 +130,7 @@ private fun CareDayContent(
     deletingEventId: String?,
     zone: ZoneId,
     onRequestDelete: (CareEvent) -> Unit,
+    canDelete: (CareEvent) -> Boolean,
 ) {
     Column(
         Modifier
@@ -149,10 +152,15 @@ private fun CareDayContent(
         } else {
             summary.events.forEach { event ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(eventLabel(event, zone), color = TextDark, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text(eventLabel(event, zone), color = TextDark, fontSize = 14.sp)
+                        event.actor?.let {
+                            Text(it.displayName, color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
                     if (event.id == deletingEventId) {
                         Text("지우는 중", color = TextMuted, fontSize = 13.sp)
-                    } else {
+                    } else if (canDelete(event)) {
                         DaengsTextAction("삭제", { onRequestDelete(event) }, tint = DaengsColors.Error)
                     }
                 }
@@ -173,6 +181,19 @@ private val TIME = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun eventLabel(event: CareEvent, zone: ZoneId): String =
     "${event.kind.label} · ${Instant.ofEpochMilli(event.occurredAtMs).atZone(zone).format(TIME)}"
+
+/**
+ * 이 줄에 삭제를 띄울까. 대표는 전부, 돌보미는 **자기가 쓴 것만** 지운다.
+ *
+ * **작성자를 모르는 기록은 내 것이 아니다.** 옛 기록·탈퇴자의 `actor` 는 id 가 비어
+ * 오는데(`CareActor` 머리말), 그때 "모르니까 나겠지" 로 기울면 돌보미가 남의 기록을
+ * 지우려다 서버에서 막힌다.
+ */
+internal fun canDeleteCareEvent(event: CareEvent, currentUserId: String?, petIsOwner: Boolean): Boolean {
+    if (petIsOwner) return true
+    val authorId = event.actor?.appUserId ?: return false
+    return currentUserId != null && authorId == currentUserId
+}
 
 /** `2025-09-01` → `9월 1일`. 서버가 준 날짜를 못 읽으면 그대로 보여 준다. */
 private fun dayLabel(day: String): String =

@@ -9,6 +9,7 @@ import com.daengs.app.walk.RecordedWalkAction
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -32,9 +33,10 @@ import org.robolectric.annotation.Config
 class WalkMigrationTest {
     private val context: Application = ApplicationProvider.getApplicationContext()
 
-    @Before
+    @Before @After
     fun clean() {
-        context.getDatabasePath(NAME).also { it.parentFile?.mkdirs() }.delete()
+        context.deleteDatabase(NAME)
+        context.getDatabasePath(NAME).parentFile?.mkdirs()
     }
 
     @Test
@@ -48,6 +50,27 @@ class WalkMigrationTest {
 
     @Test
     fun `10의 정상 분석과 검토본을 보존하고 원본 stamp를 이관한다`() = verifyPhotoUpgrade(10)
+
+    @Test
+    fun `11의 경로 행동 사진 검토본을 보존하고 핀 대기 상태를 빈 값으로 추가한다`() = verifyPhotoUpgrade(11)
+
+    @Test
+    fun `12의 기존 사진은 전송 대상으로 남고 사진 없는 복원 세션은 게시자가 되지 않는다`() = verifyPhotoUpgrade(12)
+
+    @Test
+    fun `13의 보드와 사용자 수정은 보존하며 기존 세션을 다시 준비하지 않는다`() = verifyPhotoUpgrade(13)
+
+    @Test
+    fun `14의 원본과 공개 상태를 보존하고 수신 필드는 결손으로 남긴다`() = verifyPhotoUpgrade(14)
+
+    @Test
+    fun `15의 수신 원본과 완료 증거와 v2 대기 요청을 보존하고 정책은 만들지 않는다`() = verifyPhotoUpgrade(15)
+
+    @Test
+    fun `16의 정책과 기존 기록을 보존하고 측정 백업은 완료로 추측하지 않는다`() = verifyPhotoUpgrade(16)
+
+    @Test
+    fun `17의 백업 영수증을 보존하고 원본 좌표 출처와 검증 상태를 추측하지 않는다`() = verifyPhotoUpgrade(17)
 
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
@@ -63,9 +86,9 @@ class WalkMigrationTest {
                 }
             }
             old.execSQL("INSERT INTO walk_session (id, ownerId, startedAtMillis, endedAtMillis, syncState) VALUES ('s1','owner',1000,2000,'derived')")
-            old.execSQL("INSERT INTO walk_fix VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
+            old.execSQL("INSERT INTO walk_fix (sessionId,clientSeq,chainIndex,atMillis,lat,lng,accuracyM,isMock) VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
             old.execSQL("INSERT INTO walk_session_dog VALUES ('s1','dog')")
-            old.execSQL("INSERT INTO walk_entry VALUES ('e','s1','kept',3,'mutation',1,NULL)")
+            old.execSQL("INSERT INTO walk_entry (id,sessionId,payload,revision,mutationId,dirty,syncError) VALUES ('e','s1','kept',3,'mutation',1,NULL)")
             if (version >= 8) old.execSQL("INSERT INTO walk_storyboard VALUES ('s1','reviewed-story')")
             if (version >= 9) old.execSQL("INSERT INTO walk_photo VALUES ('p','s1','owner',1500,1400,37.5,127.0,5.0)")
             if (version == 10) {
@@ -73,20 +96,69 @@ class WalkMigrationTest {
                 old.execSQL("INSERT INTO walk_session (id, ownerId, startedAtMillis, endedAtMillis, syncState) VALUES ('s2','owner',1000,2000,'derived')")
                 old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s2',2,'failed-stamp','input','failed',NULL,'failure')")
             }
+            if (version == 11) old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL,'original-stamp')")
+            if (version == 12) old.execSQL("INSERT INTO walk_session (id,ownerId,startedAtMillis,endedAtMillis) VALUES ('restored','owner',1000,2000)")
+            if (version >= 13) {
+                old.execSQL("INSERT INTO walk_photo_sync VALUES ('s1','owner','publisher',1,0,NULL)")
+                old.execSQL("INSERT INTO walk_scene_analysis VALUES ('s1',5,'original-stamp','input','ready','saved-bundle',NULL,'original-stamp')")
+            }
+            if (version >= 14) {
+                old.execSQL("INSERT INTO walk_diary_publication VALUES ('s1',2000,12000,'local-base','published-board',2500)")
+            }
+            if (version == 15) {
+                old.execSQL("UPDATE walk_fix SET ingressSeq=0,sourceEpoch='epoch',clockEpochId='clock',elapsedRealtimeNanos=1100000000,receivedElapsedNanos=1200000000,recordingEligible=0,speedMps=1.5")
+                old.execSQL("INSERT INTO walk_recording_epoch VALUES ('epoch','s1','clock',0,1000,1000000000,0,2000,2000000000,'STOP',0,1,NULL,NULL,1)")
+                old.execSQL("INSERT INTO walk_entry (id,sessionId,payload,revision,mutationId,dirty,isV2,pinPayload,pinRevision,pinDirty,pendingRequest) VALUES ('v2','s1','content',2,'pending-id',1,1,'pin',3,1,'frozen-v2-request')")
+            }
+            if (version >= 16) old.execSQL("UPDATE walk_session SET motionPolicyJson='frozen-policy' WHERE id='s1'")
+            if (version == 17) old.execSQL("INSERT INTO walk_motion_backup VALUES ('s1','frozen-manifest','manifest-hash','evidence-hash',3000,NULL)")
             old.version = version
         }
         val db = openLatest()
         try {
             val dao = db.walkDao()
+            assertEquals(if (version >= 14) WalkDiaryPublicationRow("s1", 2000, 12000,
+                "local-base", "published-board", 2500) else null, dao.diaryPublication("s1"))
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
+            assertEquals(if (version >= 16) "frozen-policy" else null, dao.session("s1")!!.motionPolicyJson)
+            assertEquals(if (version == 17) WalkMotionBackupRow("s1","frozen-manifest","manifest-hash","evidence-hash",3000) else null, dao.motionBackup("s1"))
+            assertEquals(null, dao.motionPrecision("s1"))
+            assertEquals(null, dao.session("s1")!!.coordinateOrigin)
+            assertEquals(null, dao.fixes("s1").single().latBits)
+            assertEquals(null, dao.fixes("s1").single().lngBits)
+            assertEquals(null, dao.fixes("s1").single().accuracyBits)
+            assertEquals(null, dao.fixes("s1").single().speedMpsBits)
             assertEquals(1, dao.fixes("s1").size)
+            assertEquals(if (version == 15) 0L else null, dao.fixes("s1").single().ingressSeq)
+            assertEquals(if (version == 15) 1.5f else null, dao.fixes("s1").single().speedMps)
+            if (version == 15) {
+                assertEquals(false, dao.fixes("s1").single().recordingEligible)
+                assertEquals("clock", dao.fixes("s1").single().clockEpochId)
+                assertEquals(RecordingEpochRow("epoch", "s1", "clock", 0, 1000, 1_000_000_000, 0,
+                    2000, 2_000_000_000, "STOP", 0, 1, null, null, true), dao.recordingEpochs("s1").single())
+                assertEquals("frozen-v2-request", dao.entry("v2")!!.pendingRequest)
+                assertEquals(true, dao.entry("v2")!!.isV2)
+                assertEquals(3, dao.entry("v2")!!.pinRevision)
+                assertEquals(true, dao.entry("v2")!!.pinDirty)
+            } else assertEquals(emptyList<RecordingEpochRow>(), dao.recordingEpochs("s1"))
             assertEquals("dog", dao.sessionDogs("s1").single().dogId)
             assertEquals("kept", dao.entry("e")!!.payload)
             assertEquals(3, dao.entry("e")!!.revision)
             assertEquals(true, dao.entry("e")!!.dirty)
+            assertEquals(null, dao.entry("e")!!.pinPayload)
+            assertEquals(null, dao.entry("e")!!.pendingRequest)
+            assertEquals(false, dao.entry("e")!!.isV2)
+            assertEquals(0, dao.entry("e")!!.pinRevision)
             assertEquals(if (version >= 9) listOf("p") else emptyList<String>(), dao.photoIds())
+            assertEquals(if (version >= 9) 1L else null, dao.photoSync("s1")?.revision)
+            assertEquals(if (version >= 9) 0L else null, dao.photoSync("s1")?.acknowledgedRevision)
+            assertEquals(null, dao.photoSync("restored"))
             assertEquals(if (version >= 8) "reviewed-story" else null, dao.storyboard("s1")?.payload)
+            if (version == 11 || version >= 13) {
+                assertEquals("saved-bundle", dao.sceneAnalysis("s1")!!.bundle)
+                assertEquals("original-stamp", dao.sceneAnalysis("s1")!!.bundleEntryStamp)
+            }
             if (version == 10) {
                 assertEquals("saved-bundle", dao.sceneAnalysis("s1")!!.bundle)
                 assertEquals("original-stamp", dao.sceneAnalysis("s1")!!.bundleEntryStamp)
@@ -137,27 +209,27 @@ class WalkMigrationTest {
         }
 
         val db = openLatest()
-        val log = RoomWalkFixLog(db.walkDao())
+        try {
+            val log = RoomWalkFixLog(db.walkDao())
 
-        val kept = log.finishedSessions()
-        assertEquals(listOf("s2", "s1"), kept.map { it.id })
+            val kept = log.finishedSessions()
+            assertEquals(listOf("s2", "s1"), kept.map { it.id })
 
-        // 있던 강아지는 조인으로 옮겨진다. 없던 것은 빈 목록이다.
-        assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
-        assertEquals(emptyList<String>(), log.session("s2")?.dogIds)
+            // 있던 강아지는 조인으로 옮겨진다. 없던 것은 빈 목록이다.
+            assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
+            assertEquals(emptyList<String>(), log.session("s2")?.dogIds)
 
-        // 좌표는 손대지 않는다. 표를 다시 만드는 동안 쓸려 나가면 안 된다.
-        assertEquals(listOf(0, 1), log.fixes("s1").map { it.clientSeq })
+            // 좌표는 손대지 않는다. 표를 다시 만드는 동안 쓸려 나가면 안 된다.
+            assertEquals(listOf(0, 1), log.fixes("s1").map { it.clientSeq })
 
-        // 날씨와 "올라간 시각"도 그대로다. 예전 synced는 계산 완료가 아니라 원본
-        // 업로드만 뜻했으므로 raw_uploaded로 옮겨져 다음 sync에서 finalize된다.
-        assertEquals(61, log.session("s1")?.weather?.weatherCode)
-        assertEquals(9000L, log.session("s2")?.syncedAtMillis)
-        assertEquals(WalkSyncState.LOCAL_ONLY, log.session("s1")?.syncState)
-        assertEquals(WalkSyncState.RAW_UPLOADED, log.session("s2")?.syncState)
-        assertEquals(null, log.session("s2")?.serverWalkId)
-
-        db.close()
+            // 날씨와 "올라간 시각"도 그대로다. 예전 synced는 계산 완료가 아니라 원본
+            // 업로드만 뜻했으므로 raw_uploaded로 옮겨져 다음 sync에서 finalize된다.
+            assertEquals(61, log.session("s1")?.weather?.weatherCode)
+            assertEquals(9000L, log.session("s2")?.syncedAtMillis)
+            assertEquals(WalkSyncState.LOCAL_ONLY, log.session("s1")?.syncState)
+            assertEquals(WalkSyncState.RAW_UPLOADED, log.session("s2")?.syncState)
+            assertEquals(null, log.session("s2")?.serverWalkId)
+        } finally { db.close() }
     }
 
     @Test
@@ -172,28 +244,28 @@ class WalkMigrationTest {
         }
 
         val db = openLatest()
-        val log = RoomWalkFixLog(db.walkDao())
+        try {
+            val log = RoomWalkFixLog(db.walkDao())
 
-        assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
-        assertEquals(WalkSyncState.RAW_UPLOADED, log.session("s1")?.syncState)
-        assertEquals("server-1", log.session("s1")?.serverWalkId)
-        assertEquals(1, log.fixes("s1").size)
-        assertEquals(emptyList<RecordedWalkAction>(), log.actions("s1"))
+            assertEquals(listOf("dog-1"), log.session("s1")?.dogIds)
+            assertEquals(WalkSyncState.RAW_UPLOADED, log.session("s1")?.syncState)
+            assertEquals("server-1", log.session("s1")?.serverWalkId)
+            assertEquals(1, log.fixes("s1").size)
+            assertEquals(emptyList<RecordedWalkAction>(), log.actions("s1"))
 
-        log.appendAction(
-            RecordedWalkAction(
-                id = "a1",
-                sessionId = "s1",
-                type = WalkMomentType.SNIFFING,
-                recordedAtMillis = 1_500L,
-                locationCapturedAtMillis = 1_400L,
-                point = GeoPoint(37.5, 127.0),
-                accuracyMeters = 5f,
-            ),
-        )
-        assertEquals(listOf("a1"), log.actions("s1").map { it.id })
-
-        db.close()
+            log.appendAction(
+                RecordedWalkAction(
+                    id = "a1",
+                    sessionId = "s1",
+                    type = WalkMomentType.SNIFFING,
+                    recordedAtMillis = 1_500L,
+                    locationCapturedAtMillis = 1_400L,
+                    point = GeoPoint(37.5, 127.0),
+                    accuracyMeters = 5f,
+                ),
+            )
+            assertEquals(listOf("a1"), log.actions("s1").map { it.id })
+        } finally { db.close() }
     }
 
     /** 옮긴 뒤에도 아이를 더 붙일 수 있다 — 새 표가 제대로 선 것을 확인한다. */
@@ -204,95 +276,95 @@ class WalkMigrationTest {
         }
 
         val db = openLatest()
-        val log = RoomWalkFixLog(db.walkDao())
-        db.walkDao().insertSessionDog(WalkSessionDogRow(sessionId = "s1", dogId = "dog-2"))
+        try {
+            val log = RoomWalkFixLog(db.walkDao())
+            db.walkDao().insertSessionDog(WalkSessionDogRow(sessionId = "s1", dogId = "dog-2"))
 
-        assertEquals(listOf("dog-1", "dog-2"), log.session("s1")?.dogIds)
-
-        db.close()
+            assertEquals(listOf("dog-1", "dog-2"), log.session("s1")?.dogIds)
+        } finally { db.close() }
     }
 
     /** 버전 3 짜리 DB 파일을 손으로 만든다. */
     private fun legacyV3(fill: SQLiteDatabase.() -> Unit) {
-        val legacy = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(NAME), null)
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS `walk_session` (`id` TEXT NOT NULL, `dogId` TEXT, " +
-                "`startedAtMillis` INTEGER NOT NULL, `endedAtMillis` INTEGER, " +
-                "`weatherCode` INTEGER, `isDay` INTEGER, `temperatureC` REAL, " +
-                "`syncedAtMillis` INTEGER, PRIMARY KEY(`id`))",
-        )
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS `walk_fix` (`sessionId` TEXT NOT NULL, " +
-                "`clientSeq` INTEGER NOT NULL, `chainIndex` INTEGER NOT NULL, " +
-                "`atMillis` INTEGER NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, " +
-                "`accuracyM` REAL, `isMock` INTEGER NOT NULL, " +
-                "PRIMARY KEY(`sessionId`, `clientSeq`), FOREIGN KEY(`sessionId`) " +
-                "REFERENCES `walk_session`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        )
-        legacy.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_walk_fix_sessionId` ON `walk_fix` (`sessionId`)",
-        )
-        // Room 은 이 표의 해시로 "내가 아는 스키마인가"를 판단한다. 없으면 열자마자
-        // 무결성 확인 실패로 터진다.
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS room_master_table " +
-                "(id INTEGER PRIMARY KEY, identity_hash TEXT)",
-        )
-        legacy.execSQL(
-            "INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES (42, ?)",
-            arrayOf(V3_IDENTITY_HASH),
-        )
-        legacy.fill()
-        legacy.version = 3
-        legacy.close()
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(NAME), null).use { legacy ->
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS `walk_session` (`id` TEXT NOT NULL, `dogId` TEXT, " +
+                    "`startedAtMillis` INTEGER NOT NULL, `endedAtMillis` INTEGER, " +
+                    "`weatherCode` INTEGER, `isDay` INTEGER, `temperatureC` REAL, " +
+                    "`syncedAtMillis` INTEGER, PRIMARY KEY(`id`))",
+            )
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS `walk_fix` (`sessionId` TEXT NOT NULL, " +
+                    "`clientSeq` INTEGER NOT NULL, `chainIndex` INTEGER NOT NULL, " +
+                    "`atMillis` INTEGER NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, " +
+                    "`accuracyM` REAL, `isMock` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`sessionId`, `clientSeq`), FOREIGN KEY(`sessionId`) " +
+                    "REFERENCES `walk_session`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            legacy.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_walk_fix_sessionId` ON `walk_fix` (`sessionId`)",
+            )
+            // Room 은 이 표의 해시로 "내가 아는 스키마인가"를 판단한다. 없으면 열자마자
+            // 무결성 확인 실패로 터진다.
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS room_master_table " +
+                    "(id INTEGER PRIMARY KEY, identity_hash TEXT)",
+            )
+            legacy.execSQL(
+                "INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES (42, ?)",
+                arrayOf(V3_IDENTITY_HASH),
+            )
+            legacy.fill()
+            legacy.version = 3
+        }
     }
 
     /** 버전 5의 실제 표 모양. 행동 표가 없는 상태에서 6으로 올린다. */
     private fun legacyV5(fill: SQLiteDatabase.() -> Unit) {
-        val legacy = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(NAME), null)
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS `walk_session` (`id` TEXT NOT NULL, " +
-                "`startedAtMillis` INTEGER NOT NULL, `endedAtMillis` INTEGER, " +
-                "`weatherCode` INTEGER, `isDay` INTEGER, `temperatureC` REAL, " +
-                "`syncState` TEXT NOT NULL DEFAULT 'local_only', `serverWalkId` TEXT, " +
-                "`syncedAtMillis` INTEGER, PRIMARY KEY(`id`))",
-        )
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS `walk_session_dog` (`sessionId` TEXT NOT NULL, " +
-                "`dogId` TEXT NOT NULL, PRIMARY KEY(`sessionId`, `dogId`), " +
-                "FOREIGN KEY(`sessionId`) REFERENCES `walk_session`(`id`) " +
-                "ON UPDATE NO ACTION ON DELETE CASCADE )",
-        )
-        legacy.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_walk_session_dog_sessionId` " +
-                "ON `walk_session_dog` (`sessionId`)",
-        )
-        legacy.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_walk_session_dog_dogId` " +
-                "ON `walk_session_dog` (`dogId`)",
-        )
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS `walk_fix` (`sessionId` TEXT NOT NULL, " +
-                "`clientSeq` INTEGER NOT NULL, `chainIndex` INTEGER NOT NULL, " +
-                "`atMillis` INTEGER NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, " +
-                "`accuracyM` REAL, `isMock` INTEGER NOT NULL, " +
-                "PRIMARY KEY(`sessionId`, `clientSeq`), FOREIGN KEY(`sessionId`) " +
-                "REFERENCES `walk_session`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        )
-        legacy.execSQL(
-            "CREATE INDEX IF NOT EXISTS `index_walk_fix_sessionId` ON `walk_fix` (`sessionId`)",
-        )
-        legacy.execSQL(
-            "CREATE TABLE IF NOT EXISTS room_master_table " +
-                "(id INTEGER PRIMARY KEY, identity_hash TEXT)",
-        )
-        legacy.execSQL(
-            "INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES (42, ?)",
-            arrayOf(V5_IDENTITY_HASH),
-        )
-        legacy.fill()
-        legacy.version = 5
-        legacy.close()
+        SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(NAME), null).use { legacy ->
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS `walk_session` (`id` TEXT NOT NULL, " +
+                    "`startedAtMillis` INTEGER NOT NULL, `endedAtMillis` INTEGER, " +
+                    "`weatherCode` INTEGER, `isDay` INTEGER, `temperatureC` REAL, " +
+                    "`syncState` TEXT NOT NULL DEFAULT 'local_only', `serverWalkId` TEXT, " +
+                    "`syncedAtMillis` INTEGER, PRIMARY KEY(`id`))",
+            )
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS `walk_session_dog` (`sessionId` TEXT NOT NULL, " +
+                    "`dogId` TEXT NOT NULL, PRIMARY KEY(`sessionId`, `dogId`), " +
+                    "FOREIGN KEY(`sessionId`) REFERENCES `walk_session`(`id`) " +
+                    "ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            legacy.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_walk_session_dog_sessionId` " +
+                    "ON `walk_session_dog` (`sessionId`)",
+            )
+            legacy.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_walk_session_dog_dogId` " +
+                    "ON `walk_session_dog` (`dogId`)",
+            )
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS `walk_fix` (`sessionId` TEXT NOT NULL, " +
+                    "`clientSeq` INTEGER NOT NULL, `chainIndex` INTEGER NOT NULL, " +
+                    "`atMillis` INTEGER NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, " +
+                    "`accuracyM` REAL, `isMock` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`sessionId`, `clientSeq`), FOREIGN KEY(`sessionId`) " +
+                    "REFERENCES `walk_session`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            )
+            legacy.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_walk_fix_sessionId` ON `walk_fix` (`sessionId`)",
+            )
+            legacy.execSQL(
+                "CREATE TABLE IF NOT EXISTS room_master_table " +
+                    "(id INTEGER PRIMARY KEY, identity_hash TEXT)",
+            )
+            legacy.execSQL(
+                "INSERT OR REPLACE INTO room_master_table (id, identity_hash) VALUES (42, ?)",
+                arrayOf(V5_IDENTITY_HASH),
+            )
+            legacy.fill()
+            legacy.version = 5
+        }
     }
 
     private fun openLatest(): WalkDatabase =
@@ -308,6 +380,13 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_8_9,
                 WalkDatabase.MIGRATION_9_10,
                 WalkDatabase.MIGRATION_10_11,
+                WalkDatabase.MIGRATION_11_12,
+                WalkDatabase.MIGRATION_12_13,
+                WalkDatabase.MIGRATION_13_14,
+                WalkDatabase.MIGRATION_14_15,
+                WalkDatabase.MIGRATION_15_16,
+                WalkDatabase.MIGRATION_16_17,
+                WalkDatabase.MIGRATION_17_18,
             )
             .build()
 

@@ -41,11 +41,15 @@ data class WalkHistoryFilter(
 ) {
     init { require(from == null || through == null || from <= through) }
     val active get() = keyword.isNotBlank() || from != null || through != null || seasons.isNotEmpty() || weather.isNotEmpty()
-    fun matches(session: RecordedSession, zone: ZoneId): Boolean {
-        val date = Instant.ofEpochMilli(session.startedAtMillis).atZone(zone).toLocalDate()
+    fun matches(session: RecordedSession, zone: ZoneId): Boolean =
+        matches(session.startedAtMillis, session.weather?.weatherCode, zone)
+    fun matches(summary: WalkSummary, zone: ZoneId): Boolean =
+        matches(summary.startedAtMillis, summary.weather?.weatherCode, zone)
+    private fun matches(startedAtMillis: Long, weatherCode: Int?, zone: ZoneId): Boolean {
+        val date = Instant.ofEpochMilli(startedAtMillis).atZone(zone).toLocalDate()
         return (from == null || date >= from) && (through == null || date <= through) &&
             (seasons.isEmpty() || WalkSeason.of(date.monthValue) in seasons) &&
-            (weather.isEmpty() || WalkDepartureWeather.of(session.weather?.weatherCode) in weather)
+            (weather.isEmpty() || WalkDepartureWeather.of(weatherCode) in weather)
     }
     fun matchesText(fields: List<String>): Boolean = keyword.isBlank() || fields.any {
         normalized(it).contains(normalized(keyword.trim()), ignoreCase = true)

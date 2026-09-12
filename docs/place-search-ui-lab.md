@@ -1,5 +1,7 @@
 # 시설 검색 Kotlin 검토 화면
 
+하단 찜 열람의 UI 1단계와 새 검토 진입점은 [시설 찜 UI](place-bookmarks-ui.md)에 기록한다.
+
 Geo 웹 검토판에서 합의한 UI를 Kotlin으로 옮기는 1단계 개발 화면이다.
 일반 운영 진입점은 유지하고 debug 소스셋의 별도 Activity에서 저장 응답으로 검토한다.
 

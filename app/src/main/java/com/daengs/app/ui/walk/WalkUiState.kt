@@ -61,6 +61,7 @@ data class WalkUiState(
     val completion: WalkCompletionUiState = WalkCompletionUiState(),
     val momentNotice: String? = null,
     val diaryPhotos: List<com.daengs.app.walk.WalkPhoto> = emptyList(),
+    val nearbyTerritory: com.daengs.app.map.features.territory.TerritoryNearbyState = com.daengs.app.map.features.territory.TerritoryNearbyState(),
 )
 
 val WalkUiState.trackingActive: Boolean
@@ -91,6 +92,15 @@ sealed interface WalkAction {
     data object OpenAppSettings : WalkAction
     data object ClearTerritory : WalkAction
     data object OpenEntries : WalkAction
+
+    /**
+     * 산책 기록 **목록**으로 나간다.
+     *
+     * [OpenEntries] 와 다른 자리다 — 저쪽은 지금 걷는 산책 한 건에 남긴 것이고,
+     * 이쪽은 지난 산책들의 목록이다. 걷는 중인 산책은 끝나야 목록에 들어가므로
+     * 둘을 하나로 합칠 수 없다.
+     */
+    data object OpenDiaryList : WalkAction
     data object PhotographWalk : WalkAction
     data class SelectClaimingPet(val siteId: String, val petId: String) : WalkAction
     data object RetryTerritory : WalkAction

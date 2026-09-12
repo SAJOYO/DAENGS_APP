@@ -3,6 +3,8 @@ package com.daengs.app.activity
 import java.math.BigInteger
 import java.util.UUID
 
+data class ActivitySeason(val id: String, val endsMs: Long, val serverNowMs: Long)
+
 /** DEV #281. 기간은 산책 종료 시각 기준 [fromMs, toMs), 단위는 epoch milliseconds. */
 data class ActivityWalkWindow(val fromMs: Long, val toMs: Long, val petId: String? = null) {
     init {
@@ -52,6 +54,7 @@ data class ActivityScore(
     val bonus: Long, val holdingUnits: BigInteger, val heldSiteMs: Long,
     val currentCount: Long, val scoringCount: Long, val peak: Long,
     val claims: Long, val takeovers: Long, val lastMs: Long,
+    val baseBonus: Long? = null, val takeoverBonus: Long? = null,
 )
 data class ActivityHoldingSource(
     val periodId: String, val siteId: String, val claimId: String?, val gameSessionId: String?,
@@ -60,5 +63,5 @@ data class ActivityTerritorySummary(
     val seasonId: String, val petId: String, val status: ActivityTerritoryStatus,
     val sourceRevision: Long, val processedRevision: Long,
     val statistics: ActivityTerritoryStatistics?, val score: ActivityScore?, val scoreAsOfMs: Long?,
-    val sources: List<ActivityHoldingSource>,
+    val sources: List<ActivityHoldingSource>, val finalRank: Long? = null,
 )

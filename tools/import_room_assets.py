@@ -36,6 +36,7 @@ frankie516c/dog-training-rag 의 `ui-experiments/main-screen/assets` 아래에�
     <받은폴더>/window/<시간>_<날씨>.png  (없어도 된다)
     <받은폴더>/door/<시간>_<날씨>.png    (없어도 된다)
     <받은폴더>/map/<이름>.png          (지도 마커, 흰 배경 또는 알파)
+    <받은폴더>/map_prepared/<이름>.png (256×640 완성 마커, 여백/알파 보존, 무손실)
 
 출력폴더 기본값은 `app/src/main/res/drawable-nodpi` 다.
 """
@@ -63,7 +64,7 @@ def resource_name(*parts: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in joined)
 
 
-def to_webp(src: Path, dst: Path) -> tuple[int, int]:
+def to_webp(src: Path, dst: Path, *, lossless: bool = False) -> tuple[int, int]:
     image = Image.open(src).convert("RGBA")
     # 알파가 처음부터 끝까지 불투명하면 채널을 버린다. 프로필 그림이 그런
     # 경우인데, 쓸모없는 알파를 남기면 파일이 근거 없이 커진다. 방·소품·강아지
@@ -71,8 +72,20 @@ def to_webp(src: Path, dst: Path) -> tuple[int, int]:
     if image.getchannel("A").getextrema()[0] == 255:
         image = image.convert("RGB")
     dst.parent.mkdir(parents=True, exist_ok=True)
-    image.save(dst, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+    image.save(dst, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD, lossless=lossless)
     return src.stat().st_size, dst.stat().st_size
+
+
+def import_prepared_map(src: Path, dst: Path) -> tuple[int, int]:
+    """이미 합성된 마커: 기준점/발광 여백을 재계산하지 않고 그대로 보존한다."""
+    with Image.open(src) as image:
+        if image.size != (256, 640):
+            raise ValueError(f"완성 지도 마커는 256×640이어야 한다: {src}")
+        if "A" not in image.getbands() or image.getchannel("A").getextrema()[0] == 255:
+            raise ValueError(f"완성 지도 마커에는 투명 알파가 필요하다: {src}")
+        if image.getchannel("A").getextrema()[1] == 0:
+            raise ValueError(f"완성 지도 마커가 비어 있다: {src}")
+    return to_webp(src, dst, lossless=True)
 
 
 def main(drop: Path, out: Path) -> None:
@@ -176,9 +189,16 @@ def main(drop: Path, out: Path) -> None:
         made += 1
         staged.unlink()
 
+    # 원본 map/과 분리: 완성 그림은 실루엣 crop/resize가 형광과 발 위치를 바꾼다.
+    for png in sorted((drop / "map_prepared").glob("*.png")):
+        a, b = import_prepared_map(png, out / f"{resource_name('map', png.stem, 'ready')}.webp")
+        before += a
+        after += b
+        made += 1
+
     if made == 0:
         raise SystemExit(
-            f"구울 게 없다: {drop} 아래에 themes/ · dogs/ · portraits/ · window/ · door/ · map/ 가 없다."
+            f"구울 게 없다: {drop} 아래에 themes/ · dogs/ · portraits/ · window/ · door/ · map/ · map_prepared/ 가 없다."
         )
 
     print(f"{made}개  {before / 1e6:.1f}MB -> {after / 1e6:.1f}MB  ({after / before * 100:.0f}%)")

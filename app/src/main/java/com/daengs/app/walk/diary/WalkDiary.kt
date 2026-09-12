@@ -41,16 +41,18 @@ data class DiaryScene(
     val sessionId: String,
     val atMillis: Long,
     val title: String,
-    val body: String,
+    val body: String, // The complete editable scene, already assembled from internal source pieces.
     val point: GeoPoint?,
     val evidence: String,
     val needsReview: Boolean = false,
     val photo: WalkPhoto? = null,
     val entryId: String? = null,
+    val content: DiarySceneContent? = null,
+    val source: StoryboardScene? = null,
 )
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
-    val title: String? = null)
+    val title: String? = null, val preparing: Boolean = false, val published: Boolean = false)
 
 /** Read-only projection: never mutates saved text, hiding choices, or the reviewed snapshot. */
 fun diaryWalk(
@@ -71,19 +73,28 @@ fun diaryWalk(
         else applyStoryboardEdits(sources, draft)).filter { it.available && !it.hidden }.map { scene ->
         val entryId = scene.entryReference?.entryId ?: scene.id.takeIf { it.startsWith("entry:") }
             ?.removePrefix("entry:")
-        val point = if (entryId != null) localEntries.firstOrNull { it.id == entryId }?.point
+        val entry = localEntries.firstOrNull { it.id == entryId }
+        val point = if (scene.diary != null) {
+            if (scene.observation != null) index.resolve(scene.observation) else scene.diary.point
+        } else if (entryId != null) entry?.let { it.pin?.point ?: it.point }
             else index.resolve(scene.observation)
+        val image = scene.diary?.photoId?.let { id -> photos.firstOrNull { it.id == id && it.sessionId == walk.sessionId } }
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
-            scene.title, scene.body, point, scene.evidence, scene.needsReview, entryId = entryId)
-    } + photos.filter { it.sessionId == walk.sessionId }.map { photo ->
-        DiaryScene("${walk.sessionId}/photo:${photo.id}", walk.sessionId, photo.capturedAtMillis,
-            "산책 사진", "이날 남긴 사진", photo.point, "촬영할 때 저장한 위치", photo = photo)
+            scene.title, scene.sceneBody(), point, entry?.pin?.label ?: scene.evidence, scene.needsReview,
+            photo = image, entryId = entryId, content = scene.diary, source = scene)
+    } + photos.filter { photo -> photo.sessionId == walk.sessionId && sources.orEmpty().none { it.diary?.photoId == photo.id } }.mapNotNull { photo ->
+        val source = StoryboardScene("photo:${photo.id}", photo.capturedAtMillis,
+            "산책 사진", "이날 남긴 사진", "촬영할 때 저장한 위치", photo.id)
+        val scene = applyStoryboardEdits(listOf(source), draft).first { it.id == source.id }
+        if (scene.hidden) return@mapNotNull null
+        DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,
+            scene.title, scene.body, photo.point, scene.evidence, photo = photo, source = scene)
     }
-    return DiaryWalk(walk, scenes.sortedWith(compareBy<DiaryScene> { it.atMillis }.thenBy { it.id }),
+    return DiaryWalk(walk, scenes.sortedWith(compareBy<DiaryScene> { it.atMillis }.thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { it.id }),
         analysis.notice, analysis.bundle?.takeIf { it.sessionId == walk.sessionId }?.title)
 }
 
 /** Same coordinate records share a marker; membership stays distinct and chronological. */
 fun diaryLocationGroups(scenes: List<DiaryScene>): List<List<DiaryScene>> = scenes
     .filter { it.point != null }.groupBy { it.point }.values
-    .map { it.sortedWith(compareBy<DiaryScene> { scene -> scene.atMillis }.thenBy { scene -> scene.id }) }
+    .map { it.sortedWith(compareBy<DiaryScene> { scene -> scene.atMillis }.thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { scene -> scene.id }) }

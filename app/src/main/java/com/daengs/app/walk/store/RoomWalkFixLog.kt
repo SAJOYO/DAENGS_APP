@@ -8,6 +8,8 @@ import com.daengs.app.walk.RecordedWeather
 import com.daengs.app.walk.WalkFixLog
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSyncState
+import com.daengs.app.walk.toEntryMoments
+import com.daengs.app.walk.toMomentGroups
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -20,8 +22,25 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val sessionMutex = Mutex()
     private val forgottenOwners = mutableSetOf<String>()
 
+    /** Share the withdrawal barrier with atomic network restoration, without holding it during HTTP. */
+    internal suspend fun restoringForOwner(expected: String, block: suspend () -> Unit) = sessionMutex.withLock {
+        check(expected.isNotBlank() && expected == owner() && expected !in forgottenOwners)
+        block()
+    }
+
     override val ownerId: String get() = owner()
-    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(), dao.observePhotoIds(), dao.observeAnalysisChanges()) { _, _, _, _ -> Unit }
+    /** On-demand diagnostics only; history, pin upload and keep/discard still use their release policies. */
+    suspend fun compareMotion(sessionId: String): com.daengs.app.walk.motion.RecordedMotionComparison? =
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val expectedOwner = owner()
+            val input = dao.motionInput(sessionId, expectedOwner) ?: return@withContext null
+            val result = com.daengs.app.walk.motion.compareRecordedMotion(input)
+            check(owner() == expectedOwner) { "산책을 읽는 동안 계정이 변경됐어요." }
+            result
+        }
+
+    override val historyChanges = kotlinx.coroutines.flow.combine(dao.observeSessions(), dao.observeEntryRevisions(),
+        dao.observePhotoIds(), dao.observeAnalysisChanges(), dao.observeDiaryPublicationCount()) { _, _, _, _, _ -> Unit }
 
     override suspend fun historySearchText(sessionIds: List<String>): Map<String, List<String>> {
         val expectedOwner = owner()
@@ -37,14 +56,14 @@ class RoomWalkFixLog(private val dao: WalkDao,
         if (existing != null && existing.ownerId.isEmpty()) {
             dao.restoreOwner(session.id, verifiedOwner, requireNotNull(session.serverWalkId))
         }
-        openSessionLocked(session)
+        openSessionLocked(session, originatedHere = false)
     }
 
     override suspend fun openSession(session: RecordedSession) = sessionMutex.withLock {
-        openSessionLocked(session)
+        openSessionLocked(session, originatedHere = true)
     }
 
-    private suspend fun openSessionLocked(session: RecordedSession) {
+    private suspend fun openSessionLocked(session: RecordedSession, originatedHere: Boolean) {
         val capturedOwner = session.ownerId ?: owner()
         check(capturedOwner !in forgottenOwners) { "탈퇴한 계정의 산책입니다." }
         val inserted = dao.insertSession(
@@ -59,17 +78,21 @@ class RoomWalkFixLog(private val dao: WalkDao,
                 syncState = session.syncState.storedValue,
                 serverWalkId = session.serverWalkId,
                 syncedAtMillis = session.syncedAtMillis,
+                motionPolicyJson = session.motionPolicyJson,
+                coordinateOrigin = if (originatedHere) "captured" else null,
             ),
         )
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
         // 나가지 않은 아이가 그 산책에 섞인다 (시작 시각을 안 덮어쓰는 것과 같은 이유).
         if (inserted == -1L) return
+        if (originatedHere) dao.insertPhotoSync(WalkPhotoSyncRow(session.id, capturedOwner,
+            java.util.UUID.randomUUID().toString()))
         for (dogId in session.dogIds) {
             dao.insertSessionDog(WalkSessionDogRow(sessionId = session.id, dogId = dogId))
         }
     }
 
-    override suspend fun append(sessionId: String, fix: RecordedFix) = dao.insertFix(
+    override suspend fun append(sessionId: String, fix: RecordedFix) = appendFix(
         WalkFixRow(
             sessionId = sessionId,
             clientSeq = fix.clientSeq,
@@ -79,8 +102,37 @@ class RoomWalkFixLog(private val dao: WalkDao,
             lng = fix.lng,
             accuracyM = fix.accuracyM,
             isMock = fix.isMock,
+            ingressSeq = fix.ingressSeq,
+            sourceEpoch = fix.sourceEpoch,
+            clockEpochId = fix.clockEpochId,
+            elapsedRealtimeNanos = fix.elapsedRealtimeNanos,
+            receivedElapsedNanos = fix.receivedElapsedNanos,
+            receivedAtMillis = fix.receivedAtMillis,
+            speedMps = fix.speedMps,
+            speedAccuracyMps = fix.speedAccuracyMps,
+            bearingDegrees = fix.bearingDegrees,
+            bearingAccuracyDegrees = fix.bearingAccuracyDegrees,
+            provider = fix.provider,
+            recordingEligible = fix.recordingEligible,
+            speedMpsBits = fix.speedMps?.toRawBits(),
+            speedAccuracyMpsBits = fix.speedAccuracyMps?.toRawBits(),
+            bearingDegreesBits = fix.bearingDegrees?.toRawBits(),
+            bearingAccuracyDegreesBits = fix.bearingAccuracyDegrees?.toRawBits(),
+            latBits = fix.lat.toRawBits(), lngBits = fix.lng.toRawBits(), accuracyBits = fix.accuracyM?.toRawBits(),
         ),
     )
+
+    private suspend fun appendFix(row: WalkFixRow) {
+        if (row.ingressSeq == null) dao.insertFix(row) else dao.appendObservation(row)
+    }
+
+    override suspend fun saveRecordingEpoch(epoch: com.daengs.app.walk.RecordingEpoch) =
+        dao.saveRecordingEpoch(RecordingEpochRow.from(epoch))
+
+    override suspend fun recordingEpochs(sessionId: String) = dao.recordingEpochs(sessionId).map { it.toModel() }
+
+    override suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int) =
+        dao.observationsAfter(sessionId, afterSeq, limit).map(WalkFixRow::toModel)
 
     override suspend fun appendAction(action: RecordedWalkAction) {
         if (dao.entry(action.id) != null) return
@@ -97,7 +149,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.entries(sessionId).any { it.payload != null } || dao.hasPhotos(sessionId)
 
     override suspend fun closeSession(sessionId: String, endedAtMillis: Long) =
-        dao.closeSession(sessionId, endedAtMillis)
+        dao.closeAndPrepareDiary(sessionId, endedAtMillis)
 
     override suspend fun stampWeather(sessionId: String, weather: RecordedWeather) =
         dao.stampWeather(
@@ -145,7 +197,13 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        (dao.sessionsPendingAnalysis() + dao.dirtyEntrySessions().mapNotNull { dao.session(it) }
+        (dao.sessionsPendingAnalysis() + dao.pendingMotionSessions().filter { row ->
+            when (val p = com.daengs.app.walk.motion.MotionPolicies.resolveJson(row.id, row.motionPolicyJson)) {
+                is com.daengs.app.walk.motion.MotionPolicySelection.Supported -> p.policy.stored.measurementVersion != null
+                is com.daengs.app.walk.motion.MotionPolicySelection.Unsupported -> true
+                else -> false
+            }
+        } + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
             .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**
@@ -181,6 +239,14 @@ class RoomWalkFixLog(private val dao: WalkDao,
         }.map { entry -> RecordedWalkAction(entry.id, entry.sessionId, entry.type,
             entry.recordedAtMillis, requireNotNull(entry.locationCapturedAtMillis),
             requireNotNull(entry.point), entry.accuracyMeters) }
+
+    override suspend fun moments(sessionId: String): List<com.daengs.app.walk.WalkMoment> {
+        val rows = dao.entries(sessionId)
+        val legacyIds = rows.filter { !it.isV2 }.map { it.id }.toSet()
+        // Keep the pre-existing history grouping for v1; v2 pins retain their action identity.
+        val legacy = actions(sessionId).filter { it.id in legacyIds }.toMomentGroups()
+        return legacy + rows.filter { it.isV2 }.mapNotNull { it.entry() }.toEntryMoments()
+    }
 }
 
 fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession = RecordedSession(
@@ -196,16 +262,29 @@ fun WalkSessionRow.toModel(dogIds: List<String> = emptyList()): RecordedSession 
     syncState = WalkSyncState.fromStored(syncState),
     serverWalkId = serverWalkId,
     syncedAtMillis = syncedAtMillis,
+    motionPolicyJson = motionPolicyJson,
 )
 
-private fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
+internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     clientSeq = clientSeq,
     chainIndex = chainIndex,
     atMillis = atMillis,
-    lat = lat,
-    lng = lng,
-    accuracyM = accuracyM,
+    lat = latBits?.let(Double::fromBits) ?: lat,
+    lng = lngBits?.let(Double::fromBits) ?: lng,
+    accuracyM = accuracyBits?.let(Float::fromBits) ?: accuracyM,
     isMock = isMock,
+    ingressSeq = ingressSeq,
+    sourceEpoch = sourceEpoch,
+    clockEpochId = clockEpochId,
+    elapsedRealtimeNanos = elapsedRealtimeNanos,
+    receivedElapsedNanos = receivedElapsedNanos,
+    receivedAtMillis = receivedAtMillis,
+    speedMps = speedMpsBits?.let(Float::fromBits) ?: speedMps,
+    speedAccuracyMps = speedAccuracyMpsBits?.let(Float::fromBits) ?: speedAccuracyMps,
+    bearingDegrees = bearingDegreesBits?.let(Float::fromBits) ?: bearingDegrees,
+    bearingAccuracyDegrees = bearingAccuracyDegreesBits?.let(Float::fromBits) ?: bearingAccuracyDegrees,
+    provider = provider,
+    recordingEligible = recordingEligible,
 )
 
 /** 모르는 미래 코드는 버린다. 앱이 오래됐다고 산책 상세 전체가 열리지 않으면 안 된다. */

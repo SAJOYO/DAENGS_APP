@@ -1,6 +1,7 @@
 package com.daengs.app.ui.walk
 
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.location.travelHeading
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.territory.TerritorySiteMarkerState
@@ -22,6 +23,9 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
     val route = completion.detail?.route
     val summary = completedSummary
     val gameSites = territoryGame.sites.associateBy { it.site.id }
+    val visibleSites = (territory.sites + territoryGame.sites.filter {
+        it.site.id in territoryGame.visibleRangeSiteIds
+    }.map { it.site }).distinctBy { it.id }
     val fitBounds = (route?.bounds.orEmpty().ifEmpty {
         listOfNotNull(summary?.anchor)
     } + diaryPhotos.map { it.point }).takeIf { summary != null && it.isNotEmpty() }
@@ -30,10 +34,13 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
         scene = composeMapScene(
             purpose = map.purpose,
             sources = MapSceneSources(
+                travelHeading = location.sample?.travelHeading().takeIf {
+                    summary == null && location.permissionGranted && location.precisePermission
+                },
                 currentPosition = location.currentPosition.takeIf {
                     summary == null && location.permissionGranted
                 },
-                territorySites = territory.sites.map { site ->
+                territorySites = visibleSites.map { site ->
                     val gameSite = gameSites[site.id]
                     val target = if (territoryGame.enabled) site.id == territoryGame.targetId
                         else site.id == territory.selectedSiteId
@@ -46,11 +53,16 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
                             ClaimCertification.UNVERIFIED -> TerritoryMarkerOccupancy.UNVERIFIED
                             ClaimCertification.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
                         },
-                        label = gameSite?.occupancyLabel ?: "미점유",
+                        label = gameSite?.occupancyLabel ?: "점유 확인 전",
+                        occupancyKnown = gameSite?.occupancyKnown == true,
+                        isMine = gameSite?.isOwnedByMe == true,
                         ready = target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING &&
                             (territoryGame.canMark || territoryGame.canPhotograph),
                         feedback = territoryGame.feedback?.takeIf { target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
-                        radiusMeters = territoryGame.radiusMeters.takeIf { territoryGame.enabled && !territoryGame.readOnly && target && territoryGame.phase == com.daengs.app.map.features.territory.TerritoryWalkPhase.WALKING },
+                        radiusMeters = territoryGame.radiusMeters.takeIf {
+                            territoryGame.enabled && (target || site.id in territoryGame.visibleRangeSiteIds)
+                        },
+                        proximity = gameSite?.proximity?.range ?: com.daengs.app.territory.TerritoryProximityRange.UNAVAILABLE,
                     )
                 },
                 moments = displayedMoments.map { moment ->
@@ -59,6 +71,7 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
                         point = moment.point,
                         label = moment.markerLabel,
                         selected = moment.id == map.selectedMomentId,
+                        behaviors = moment.types,
                     )
                 } + diaryPhotos.photoMarkers(),
                 stayStamps = completion.detail?.stayStamps ?: tracking.stayStamps,
@@ -74,7 +87,8 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
             walkActive = trackingActive,
         ),
         fitBounds = fitBounds ?: territoryGame.target?.takeIf {
-            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory
+            map.purpose == com.daengs.app.map.shell.MapPurpose.TERRITORY && map.frameSelectedTerritory &&
+                !territoryGame.readOnly
         }?.let { listOfNotNull(it.site.point, location.currentPosition) },
     )
 }

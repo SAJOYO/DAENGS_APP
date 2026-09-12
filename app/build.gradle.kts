@@ -22,6 +22,10 @@ fun localSetting(key: String): String =
 val kakaoNativeAppKey = localSetting("daengs.kakaoNativeAppKey")
 val apiBaseUrl = localSetting("daengs.apiBaseUrl")
 
+// 출시 앱의 산책 원본을 남겨 두고 같은 폰에서 미리보기를 검토한다.
+// 이 옵션을 준 Debug만 별도 패키지/저장 공간을 쓴다. Release에는 적용하지 않는다.
+val sideBySide = providers.gradleProperty("sideBySide").orNull == "true"
+
 // 피부 스크리닝은 이제 **우리 서버(apiBaseUrl) 안**이다. 저쪽이 D-040 으로 backend
 // 로 옮겼고, 앱은 #134 에서 옛 경로(/screen/v1/screen)를 뗐다. 그래서 `daengs.screenUrl`
 // 은 더 안 읽는다 — local.properties 에 남아 있어도 아무 데도 안 쓰인다.
@@ -168,6 +172,7 @@ android {
 
         // 카카오 리다이렉트 스킴. 매니페스트가 이 자리를 비워 두고 여기서 꽂는다.
         manifestPlaceholders["kakaoScheme"] = "kakao$kakaoNativeAppKey"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
     // 디버그 서명 키를 저장소에 넣어 공유한다.
@@ -195,9 +200,16 @@ android {
 
     buildTypes {
         debug {
-            // Explicit test build only; ordinary debug stays local, release stays disabled.
+            if (sideBySide) {
+                applicationIdSuffix = ".preview"
+                versionNameSuffix = "-preview"
+                manifestPlaceholders["appLabel"] = "댕스 미리보기"
+            }
+            buildConfigField("Boolean", "FACILITY_CONVERSATION",
+                (providers.gradleProperty("facilityConversation").orNull != "false").toString())
+            // Browsing is available by default. Explicit false keeps the local practice build.
             buildConfigField("Boolean", "TERRITORY_SERVER_READ",
-                (providers.gradleProperty("territoryServerRead").orNull == "true").toString())
+                (providers.gradleProperty("territoryServerRead").orNull != "false").toString())
             buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS",
                 (providers.gradleProperty("territoryServerActions").orNull == "true").toString())
             // 개발 서버. `http://` 라서 디버그 소스셋의 usesCleartextTraffic 이 필요하다
@@ -210,7 +222,8 @@ android {
             buildConfigField("Boolean", "GAIT_ENABLED", "${gaitUrl.isNotBlank()}")
         }
         release {
-            buildConfigField("Boolean", "TERRITORY_SERVER_READ", "false")
+            buildConfigField("Boolean", "FACILITY_CONVERSATION", "true")
+            buildConfigField("Boolean", "TERRITORY_SERVER_READ", "true")
             buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS", "false")
             optimization {
                 enable = false
@@ -264,6 +277,7 @@ ksp {
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.window)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

@@ -78,10 +78,10 @@ class PetHolder(private val listPets: suspend (String) -> Result<PetList> = PetA
         guard { PetApi.create(token, draft) } andThen { refresh(token) }
 
     suspend fun edit(token: String, id: String, draft: PetDraft): Boolean =
-        guard { PetApi.update(token, id, draft) } andThen { refresh(token) }
+        if (canManage(id)) guard { PetApi.update(token, id, draft) } andThen { refresh(token) } else false
 
     suspend fun remove(token: String, id: String): Boolean =
-        guard { PetApi.delete(token, id) } andThen { refresh(token) }
+        if (canManage(id)) guard { PetApi.delete(token, id) } andThen { refresh(token) } else false
 
     /**
      * 아이를 배웅한다. [day] 가 null 이면 되돌린다.
@@ -94,6 +94,13 @@ class PetHolder(private val listPets: suspend (String) -> Result<PetList> = PetA
 
     suspend fun choosePrimary(token: String, id: String): Boolean =
         guard { PetApi.setPrimary(token, id) } andThen { refresh(token) }
+
+    /** 화면 진입이 남아 있거나 늦은 탭이 도착해도 대표 전용 요청을 보내지 않는다. */
+    private fun canManage(id: String): Boolean {
+        if (pets?.firstOrNull { it.id == id }?.isOwner != false) return true
+        error = "대표 보호자만 강아지 정보를 바꿀 수 있어요."
+        return false
+    }
 
     /**
      * 한 번의 서버 왕복. 실패하면 서버가 준 문장을 [error] 에 남기고 false 를 준다.

@@ -2,10 +2,8 @@ package com.daengs.app.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,14 +18,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
@@ -63,31 +63,37 @@ fun DateWheel(
         (1..YearMonth.of(value.year, value.monthValue).lengthOfMonth()).toList()
     }
 
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(CardWhite),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+    // **세 줄이 같이 깨어난다.** 해를 돌리려고 깨웠는데 달을 돌리려면 또 눌러야 한다면
+    // 날짜 하나 고르는 데 탭이 셋이다.
+    var awake by remember { mutableStateOf(false) }
+
+    WheelCard(
+        awake = awake,
+        onWake = { awake = true },
+        onSleep = { awake = false },
+        hint = "톡 눌러서 날짜 돌리기",
+        modifier = modifier,
     ) {
         Wheel(
             items = yearList,
             selected = value.year,
             suffix = "년",
             width = 96.dp,
+            awake = awake,
         ) { onChange(safeDate(it, value.monthValue, value.dayOfMonth)) }
         Wheel(
             items = monthList,
             selected = value.monthValue,
             suffix = "월",
             width = 76.dp,
+            awake = awake,
         ) { onChange(safeDate(value.year, it, value.dayOfMonth)) }
         Wheel(
             items = dayList,
             selected = value.dayOfMonth,
             suffix = "일",
             width = 76.dp,
+            awake = awake,
         ) { onChange(safeDate(value.year, value.monthValue, it)) }
     }
 }
@@ -110,6 +116,7 @@ internal fun Wheel(
     selected: Int,
     suffix: String,
     width: androidx.compose.ui.unit.Dp,
+    awake: Boolean,
     label: (Int) -> String = { "$it$suffix" },
     onSelect: (Int) -> Unit,
 ) {
@@ -145,9 +152,14 @@ internal fun Wheel(
         )
         LazyColumn(
             state = state,
+            // 잠든 동안은 드래그를 안 받는다. 그래야 그 제스처가 바깥 폼으로 간다 —
+            // 이 한 줄이 "휠 위에서 폼이 안 움직이던 것" 의 고침이다.
+            userScrollEnabled = awake,
             flingBehavior = rememberSnapFlingBehavior(state),
             contentPadding = PaddingValues(vertical = row * ((VISIBLE - 1) / 2)),
             horizontalAlignment = Alignment.CenterHorizontally,
+            // 깨어 있을 때 해가 끝에 닿았다고 폼이 딸려 움직이면 고르던 자리를 잃는다.
+            modifier = Modifier.nestedScroll(KeepScrollInside),
         ) {
             itemsIndexed(items) { _, item ->
                 val on = item == selected
@@ -176,15 +188,35 @@ private val ROW_HEIGHT = 40.dp
 /** 보이는 칸 수. **홀수여야 한다** — 가운데가 하나여야 고른 값이 하나다. */
 private const val VISIBLE = 5
 
-@androidx.compose.ui.tooling.preview.Preview(widthDp = 411, heightDp = 260)
+/** 잠든 모습. 폼 안에 처음 놓였을 때가 이것이다 — 테두리가 없고 밑에 안내가 붙는다. */
+@androidx.compose.ui.tooling.preview.Preview(widthDp = 411, heightDp = 280)
 @Composable
-private fun DateWheelPreview() {
-    val day = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(LocalDate.of(2023, 5, 14))
-    }
+private fun DateWheelAsleepPreview() {
+    val day = remember { mutableStateOf(LocalDate.of(2023, 5, 14)) }
     com.daengs.app.ui.theme.DaengsTheme {
         Box(Modifier.background(com.daengs.app.ui.theme.CreamBg).padding(20.dp)) {
             DateWheel(value = day.value, onChange = { day.value = it })
+        }
+    }
+}
+
+/**
+ * 깨어난 모습. 미리보기는 눌러 볼 수 없어 [WheelCard] 를 직접 깨워 둔다.
+ *
+ * 이 둘을 나란히 놓고 보는 것이 요점이다 — **테두리 하나로 "지금 이 휠이 손을 받는다"
+ * 가 읽혀야 한다.** 안 읽히면 유저는 잠든 휠을 고장 난 것으로 본다.
+ */
+@androidx.compose.ui.tooling.preview.Preview(widthDp = 411, heightDp = 280)
+@Composable
+private fun DateWheelAwakePreview() {
+    val day = remember { mutableStateOf(LocalDate.of(2023, 5, 14)) }
+    com.daengs.app.ui.theme.DaengsTheme {
+        Box(Modifier.background(com.daengs.app.ui.theme.CreamBg).padding(20.dp)) {
+            WheelCard(awake = true, onWake = {}, onSleep = {}, hint = "톡 눌러서 날짜 돌리기") {
+                Wheel(items = (1993..2023).toList(), selected = day.value.year, suffix = "년", width = 96.dp, awake = true) {}
+                Wheel(items = (1..12).toList(), selected = day.value.monthValue, suffix = "월", width = 76.dp, awake = true) {}
+                Wheel(items = (1..31).toList(), selected = day.value.dayOfMonth, suffix = "일", width = 76.dp, awake = true) {}
+            }
         }
     }
 }

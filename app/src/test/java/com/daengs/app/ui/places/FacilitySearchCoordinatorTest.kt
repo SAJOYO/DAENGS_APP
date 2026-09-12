@@ -9,6 +9,18 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FacilitySearchCoordinatorTest {
+    @Test fun nextProposalKeepsConfirmedResultsUntilAnotherConfirmation() = runTest {
+        val coordinator = FacilitySearchCoordinator(Repository(), backgroundScope)
+        coordinator.search("owner", facilityQuery()); runCurrent()
+        coordinator.choose(FacilityChoice.Confirm("lens:cafe")); runCurrent()
+        val applied = coordinator.state.value.confirmedResponse
+        coordinator.search("owner", facilityQuery().copy(query = "다른 조건")); runCurrent()
+        assertNull(coordinator.state.value.response!!.confirmedLens)
+        assertEquals(applied, coordinator.state.value.confirmedResponse)
+        coordinator.cancelPending()
+        assertEquals(applied, coordinator.state.value.confirmedResponse)
+    }
+
     private open class Repository : FacilityRepository {
         override suspend fun discover(owner: String, query: FacilityQuery) = facilityResponse().copy(request = query)
         override suspend fun act(owner: String, previous: FacilityResponse, action: FacilityAction) = previous.copy(
@@ -86,7 +98,7 @@ class FacilitySearchCoordinatorTest {
         coordinator.choose(FacilityChoice.Confirm("lens:cafe")); runCurrent()
         assertEquals(0, actions)
         assertNull(coordinator.state.value.response)
-        assertTrue(coordinator.state.value.error!!.contains("만료"))
+        assertTrue(coordinator.state.value.error!!.contains("오래됐어요"))
         coordinator.retry(); runCurrent()
         assertEquals(2, searches)
     }

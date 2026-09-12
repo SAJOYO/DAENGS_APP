@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class WalkTrackingState(
     val savedEntryCount: Int = 0,
+    val recordingTransition: Boolean = false,
+    val ingressProgress: IngressProgress? = null,
     val ownerId: String? = null,
     /** Service-owned identity and participants; survives screen recreation and map toggles. */
     val activeSessionId: String? = null,
@@ -35,7 +37,11 @@ data class WalkTrackingState(
     /** 저장과 유효성 판정까지 끝나 결과 화면으로 넘길 수 있는 세션. */
     val completedSessionId: String? = null,
     val stayStamps: List<StayStamp> = emptyList(),
+    /** Read-only speed projection, owned by the recording service and independent of screen GPS. */
+    val motionDisplay: com.daengs.app.walk.display.MotionDisplay = com.daengs.app.walk.display.MotionDisplay(),
 ) {
+    val canRecordAction: Boolean get() = trail.state == TrackingState.RECORDING && activeSessionId != null && !recordingTransition
+
     fun elapsedMillisAt(realtimeMillis: Long): Long =
         activeDurationMillis + activeSinceRealtimeMillis
             ?.let { (realtimeMillis - it).coerceAtLeast(0L) }
@@ -66,7 +72,7 @@ interface WalkTrackingController {
 
     fun stop()
 
-    /** 화면은 행동 종류만 보낸다. 좌표 선택과 5m 묶음 판정은 산책 서비스가 한다. */
+    /** 화면은 행동 종류만 보낸다. 서비스가 원본 저장과 별도의 핀 추정을 예약한다. */
     fun recordMoment(type: WalkMomentType)
 
     /** 결과 화면을 닫은 뒤 같은 완료 결과가 다시 뜨지 않게 소비한다. */
@@ -97,6 +103,7 @@ class WalkTrackingStore {
 
 /** Application과 Service가 공유하는 산책 기록 의존성. 화면에는 제어 계약만 공개한다. */
 class WalkRuntime internal constructor(
+    internal val recordingScope: kotlinx.coroutines.CoroutineScope,
     internal val locationSource: LocationSource,
     internal val store: WalkTrackingStore,
     val controller: WalkTrackingController,

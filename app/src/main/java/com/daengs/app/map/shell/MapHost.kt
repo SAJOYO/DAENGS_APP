@@ -20,6 +20,13 @@ fun MapHost(
     rightPaddingPx: Int = 0,
     centerOn: GeoPoint? = null,
     centerZoom: Double? = null,
+    /** Lower bound for an explicit selection; keeps a user's closer zoom. */
+    centerMinZoom: Double? = null,
+    /** Explicit camera intent; repeated selection of the same coordinate is also an event. */
+    cameraRequestKey: Int = 0,
+    centerYFraction: Float = .5f,
+    /** Reframe on actual map size changes, not on an overlay's drag position. */
+    keepSelectionVisible: Boolean = false,
     fitBounds: List<GeoPoint>? = null,
     onCameraIdle: (GeoPoint) -> Unit,
     onCameraGesture: () -> Unit,
@@ -29,6 +36,11 @@ fun MapHost(
     onSelectRouteEndpoint: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Only read when the map is created; later snapshots must not drive the camera. */
+    initialCamera: MapCameraSnapshot? = null,
+    onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
+    onRouteDirectionCount: (Int) -> Unit = {},
+    onSelectRecordContext: (String) -> Unit = {},
 ) {
     NaverMapSurface(
         scene = scene,
@@ -40,6 +52,10 @@ fun MapHost(
         leftPaddingPx = leftPaddingPx, topPaddingPx = topPaddingPx, rightPaddingPx = rightPaddingPx,
         centerOn = centerOn,
         centerZoom = centerZoom,
+        centerMinZoom = centerMinZoom,
+        cameraRequestKey = cameraRequestKey,
+        centerYFraction = centerYFraction,
+        keepSelectionVisible = keepSelectionVisible,
         fitBounds = fitBounds,
         onCameraIdle = onCameraIdle,
         onCameraGesture = onCameraGesture,
@@ -49,5 +65,16 @@ fun MapHost(
         onSelectRouteEndpoint = onSelectRouteEndpoint,
         onMapTap = onMapTap,
         modifier = modifier,
+        initialCamera = initialCamera,
+        onCameraSnapshot = onCameraSnapshot,
+        onRouteDirectionCount = onRouteDirectionCount,
+        onSelectRecordContext = onSelectRecordContext,
     )
+}
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun SessionMapHostPreview() {
+    MapHost(MapScene(sessionExplorer = com.daengs.app.map.layers.completedroute.SessionRouteExplorerLayerState()),
+        searchOrigin = null, followDevice = false, onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {})
 }

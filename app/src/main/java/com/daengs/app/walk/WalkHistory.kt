@@ -33,7 +33,8 @@ class WalkHistory(private val log: WalkFixLog) {
                 for (session in candidates) {
                     cursor = WalkHistoryCursor(session.startedAtMillis, session.id)
                     if (session !in matching || !filter.matchesText(text[session.id].orEmpty())) continue
-                    val summary = summarize(session, log.fixes(session.id), maxRouteSamples = Int.MAX_VALUE)
+                    val summary = summarize(session, log.fixes(session.id), maxRouteSamples = Int.MAX_VALUE,
+                        epochs = log.recordingEpochs(session.id))
                     if (summary.countsAsWalk || log.hasEntries(session.id)) walks += summary.forHistoryThumbnail()
                     if (walks.size > size) break
                 }
@@ -55,7 +56,7 @@ class WalkHistory(private val log: WalkFixLog) {
      */
     suspend fun finished(): List<WalkSummary> = withContext(Dispatchers.IO) {
         log.finishedSessions()
-            .map { session -> summarize(session, log.fixes(session.id)) }
+            .map { session -> summarize(session, log.fixes(session.id), epochs = log.recordingEpochs(session.id)) }
             // **옛 기록도 지금 기준으로 다시 본다.** 이 규칙([countsAsWalk])이 생기기
             // 전에 쌓인 0m 짜리가 목록에 남아 있으면, "너무 짧아서 기록하지 않았어요"
             // 라고 말해 놓고 목록에는 0m 이 보이는 앞뒤 안 맞는 화면이 된다.
@@ -133,22 +134,22 @@ class WalkHistory(private val log: WalkFixLog) {
 
     suspend fun detail(sessionId: String): WalkSummary? = withContext(Dispatchers.IO) {
         val session = log.session(sessionId) ?: return@withContext null
-        summarize(session, log.fixes(sessionId))
+        summarize(session, log.fixes(sessionId), epochs = log.recordingEpochs(sessionId))
     }
 
     /** 완료 직후와 지난 기록에서 같은 저장 원본을 읽는다. 프로세스 메모리는 보지 않는다. */
     suspend fun sessionDetail(sessionId: String): WalkSessionDetail? = withContext(Dispatchers.IO) {
+        val owner = log.ownerId
         val session = log.session(sessionId) ?: return@withContext null
         // 전체 경로는 사용자가 한 세션을 연 이 자리에서만 만든다. 목록과 오늘 합계까지
         // 모든 과거 좌표를 무제한으로 펼치면 기록이 쌓일수록 읽기 비용이 폭증한다.
         val fixes = log.fixes(sessionId)
-        val summary = summarize(session, fixes, maxRouteSamples = Int.MAX_VALUE)
-        WalkSessionDetail(
-            summary = summary,
-            route = summary.toSessionRoute(),
-            moments = log.actions(sessionId).toMomentGroups(),
+        val read = readCompletedRoute(session, fixes, log.recordingEpochs(sessionId))
+        val detail = read.copy(
+            moments = log.moments(sessionId),
             stayStamps = detectStayStamps(fixes),
-            observations = fixes,
         )
+        check(log.ownerId == owner) { "산책을 읽는 동안 계정이 변경됐어요." }
+        detail
     }
 }

@@ -11,6 +11,7 @@ data class RouteEndpointMarkerState(
     val label: String,
     val kind: RouteEndpointKind,
     val selected: Boolean = false,
+    val compact: Boolean = false,
 )
 
 /**

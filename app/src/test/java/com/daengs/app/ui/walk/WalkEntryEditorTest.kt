@@ -35,6 +35,23 @@ class WalkEntryEditorTest {
     private val initial = WalkEntry(id = "n", sessionId = "s", type = WalkMomentType.NOTE,
         recordedAtMillis = 0, note = "처음 메모", baseVersion = WalkEntryVersion(1, "first"))
 
+    @Test fun `위치 없는 행동도 목록 편집과 저장을 제공하며 동기화 대기를 표시한다`() {
+        val entry = WalkEntry(id = "action", sessionId = "s", type = WalkMomentType.BARKING,
+            recordedAtMillis = 1000, syncPending = true)
+        var saved: WalkEntry? = null
+        compose.setContent { DaengsTheme {
+            WalkEntryEditorContent(listOf(entry), entry, emptyList(), null, false, { saved = it }, {}, {}) {
+                title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() }
+            }
+        } }
+        compose.onNodeWithText("위치 없이 남긴 행동").assertExists()
+        compose.onNodeWithText("기기에 저장했어요 · 동기화 대기 중").assertExists()
+        compose.onNodeWithText("저장").assertIsEnabled().performClick()
+        assertEquals(entry.id, saved?.id)
+        assertNull(saved?.point)
+        assertTrue(listOf(entry).entryMoments().isEmpty())
+    }
+
     /** 다이얼로그 대신 그냥 세로로 쌓는다. 슬롯 넷을 그대로 받는다. */
     private fun 편집기를연다(entries: () -> List<WalkEntry>, onSave: (WalkEntry) -> Unit = {}) =
         compose.setContent { DaengsTheme {

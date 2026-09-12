@@ -7,6 +7,352 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMotionPrecision(row: WalkMotionPrecisionRow)
+
+    @androidx.room.Update
+    suspend fun updateMotionPrecision(row: WalkMotionPrecisionRow)
+
+    @Query("SELECT * FROM walk_motion_precision WHERE sessionId = :id")
+    suspend fun motionPrecision(id: String): WalkMotionPrecisionRow?
+
+    @Query("UPDATE walk_session SET coordinateOrigin = :origin WHERE id = :id AND ownerId = :owner")
+    suspend fun installCoordinateOrigin(id: String, owner: String, origin: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMotionBackup(row: WalkMotionBackupRow)
+
+    @androidx.room.Update
+    suspend fun updateMotionBackup(row: WalkMotionBackupRow)
+
+    @Query("SELECT * FROM walk_motion_backup WHERE sessionId = :id")
+    suspend fun motionBackup(id: String): WalkMotionBackupRow?
+
+    @Query("SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL AND motionPolicyJson IS NOT NULL " +
+        "AND (NOT EXISTS (SELECT 1 FROM walk_motion_backup b WHERE b.sessionId = walk_session.id AND b.completedAtMillis IS NOT NULL) " +
+        "OR (coordinateOrigin IN ('captured', 'verified') AND NOT EXISTS " +
+        "(SELECT 1 FROM walk_motion_precision p WHERE p.sessionId = walk_session.id AND p.verifiedAtMillis IS NOT NULL)))")
+    suspend fun pendingMotionSessions(): List<WalkSessionRow>
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE id = :id")
+    suspend fun recordingEpochById(id: String): RecordingEpochRow?
+
+    @androidx.room.Update
+    suspend fun updateMotionObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_session SET motionPolicyJson = :policy WHERE id = :id AND ownerId = :owner AND motionPolicyJson IS NULL")
+    suspend fun installMotionPolicy(id: String, owner: String, policy: String)
+
+    /** Freeze the session, policy, raw rows and close receipts together, then calculate outside SQLite. */
+    @androidx.room.Transaction
+    suspend fun motionInput(sessionId: String, ownerId: String): com.daengs.app.walk.motion.RecordedMotionInput? {
+        val row = session(sessionId)?.takeIf { it.ownerId == ownerId } ?: return null
+        return com.daengs.app.walk.motion.RecordedMotionInput(row.toModel(),
+            recordingEpochs(sessionId).map { it.toModel() }, fixes(sessionId).map { it.toModel() })
+    }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveRecordingEpoch(row: RecordingEpochRow)
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE sessionId = :sessionId ORDER BY firstIngressSeq, chainIndex")
+    suspend fun recordingEpochs(sessionId: String): List<RecordingEpochRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND ingressSeq > :afterSeq ORDER BY ingressSeq LIMIT :limit")
+    suspend fun observationsAfter(sessionId: String, afterSeq: Long, limit: Int): List<WalkFixRow>
+
+    @Query("SELECT * FROM walk_fix WHERE sessionId = :sessionId AND clientSeq = :clientSeq")
+    suspend fun observation(sessionId: String, clientSeq: Int): WalkFixRow?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_recording_epoch SET persistedCount = persistedCount + 1 WHERE id = :epochId AND sessionId = :sessionId AND chainIndex = :chainIndex AND clockEpochId = :clockEpochId AND drained = 0")
+    suspend fun advanceRecordingEpoch(epochId: String, sessionId: String, chainIndex: Int, clockEpochId: String): Int
+
+    @androidx.room.Transaction
+    suspend fun appendObservation(row: WalkFixRow) {
+        val existing = observation(row.sessionId, row.clientSeq)
+        if (existing != null) {
+            val before = existing.toModel()
+            val after = row.toModel()
+            check(before == after &&
+                before.speedMps?.toRawBits() == after.speedMps?.toRawBits() &&
+                before.speedAccuracyMps?.toRawBits() == after.speedAccuracyMps?.toRawBits() &&
+                before.bearingDegrees?.toRawBits() == after.bearingDegrees?.toRawBits() &&
+                before.bearingAccuracyDegrees?.toRawBits() == after.bearingAccuracyDegrees?.toRawBits()) { "Conflicting observation identity" }
+            return
+        }
+        check(row.ingressSeq == row.clientSeq.toLong()) { "Observation sequence changed" }
+        check(session(row.sessionId)?.endedAtMillis == null) { "Recording session is already closed" }
+        check(advanceRecordingEpoch(requireNotNull(row.sourceEpoch), row.sessionId, row.chainIndex,
+            requireNotNull(row.clockEpochId)) == 1) { "Recording epoch is unavailable" }
+        insertObservation(row)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertDiaryPublication(row: WalkDiaryPublicationRow): Long
+
+    @Query("SELECT * FROM walk_diary_publication WHERE sessionId = :id")
+    suspend fun diaryPublication(id: String): WalkDiaryPublicationRow?
+
+    @Query("SELECT * FROM walk_diary_publication WHERE sessionId = :id")
+    fun observeDiaryPublication(id: String): kotlinx.coroutines.flow.Flow<WalkDiaryPublicationRow?>
+
+    @Query("SELECT sessionId FROM walk_diary_publication WHERE publishedBundle IS NULL")
+    suspend fun pendingDiaryPublications(): List<String>
+
+    @Query("SELECT COUNT(publishedBundle) FROM walk_diary_publication")
+    fun observeDiaryPublicationCount(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("UPDATE walk_diary_publication SET baseBundle = :bundle WHERE sessionId = :id AND baseBundle IS NULL")
+    suspend fun freezeDiaryBase(id: String, bundle: String)
+
+    @Query("UPDATE walk_diary_publication SET publishedBundle = :bundle, publishedAtMillis = :now " +
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now < deadlineAtMillis")
+    suspend fun publishDiaryCandidate(id: String, bundle: String, now: Long): Int
+
+    @Query("UPDATE walk_diary_publication SET publishedBundle = baseBundle, publishedAtMillis = :now " +
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now >= deadlineAtMillis")
+    suspend fun publishDiaryBase(id: String, now: Long): Int
+
+    @androidx.room.Transaction
+    suspend fun closeAndPrepareDiary(id: String, endedAt: Long) {
+        val current = session(id) ?: return
+        if (current.endedAtMillis != null) return
+        val epochs = recordingEpochs(id)
+        if (epochs.isNotEmpty()) com.daengs.app.walk.checkRecordingComplete(epochs.map { it.toModel() })
+        closeSession(id, endedAt)
+        insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt,
+            endedAt + com.daengs.app.walk.diary.DIARY_PREPARATION_BUDGET_MS))
+    }
+
+    @androidx.room.Transaction
+    suspend fun prepareLocalDiary(id: String, ownerId: String): WalkDiaryPublicationRow? {
+        val row = diaryPublication(id) ?: return null
+        val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
+        if (row.baseBundle == null) {
+            val source = fixes(id).map { it.toModel() }
+            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE,
+                epochs = recordingEpochs(id).map { it.toModel() })
+            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source.filter { it.recordingEligible != false },
+                entries(id).mapNotNull { it.entry() }, photos(id)))
+        }
+        return diaryPublication(id)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPhotoSync(row: WalkPhotoSyncRow): Long
+
+    @Query("SELECT * FROM walk_photo_sync WHERE sessionId = :sessionId")
+    suspend fun photoSync(sessionId: String): WalkPhotoSyncRow?
+
+    @Query("SELECT * FROM walk_photo_sync WHERE sessionId = :sessionId")
+    fun observePhotoSync(sessionId: String): kotlinx.coroutines.flow.Flow<WalkPhotoSyncRow?>
+
+    @Query("SELECT * FROM walk_photo WHERE sessionId = :sessionId ORDER BY id")
+    suspend fun photos(sessionId: String): List<WalkPhotoRow>
+
+    @Query("SELECT sessionId FROM walk_photo_sync WHERE revision > acknowledgedRevision OR pendingPayload IS NOT NULL")
+    suspend fun dirtyPhotoSessions(): List<String>
+
+    @Query("UPDATE walk_photo_sync SET revision = revision + 1 WHERE sessionId = :sessionId AND ownerId = :ownerId")
+    suspend fun touchPhotoSync(sessionId: String, ownerId: String)
+
+    @androidx.room.Transaction
+    suspend fun savePhotoAndQueue(row: WalkPhotoRow) {
+        check(session(row.sessionId)?.ownerId == row.ownerId)
+        insertPhoto(row)
+        insertPhotoSync(WalkPhotoSyncRow(row.sessionId, row.ownerId, java.util.UUID.randomUUID().toString()))
+        touchPhotoSync(row.sessionId, row.ownerId)
+    }
+
+    @androidx.room.Transaction
+    suspend fun deletePhotoAndQueue(id: String, ownerId: String) {
+        val row = photo(id) ?: return
+        check(row.ownerId == ownerId && session(row.sessionId)?.ownerId == ownerId)
+        // Also covers photos present before migration or saved by an earlier app version.
+        insertPhotoSync(WalkPhotoSyncRow(row.sessionId, ownerId, java.util.UUID.randomUUID().toString()))
+        deletePhoto(id)
+        touchPhotoSync(row.sessionId, ownerId)
+    }
+
+    @androidx.room.Transaction
+    suspend fun photoUploadSnapshot(sessionId: String, ownerId: String, walkId: String): WalkPhotoUploadSnapshot? {
+        val walk = session(sessionId) ?: return null
+        if (walk.ownerId != ownerId || walk.endedAtMillis == null || walk.serverWalkId != walkId) return null
+        val state = photoSync(sessionId) ?: return null
+        if (state.ownerId != ownerId) return null
+        val photos = photos(sessionId)
+        check(photos.all { it.ownerId == ownerId })
+        return WalkPhotoUploadSnapshot(state, photos)
+    }
+
+    @Query("UPDATE walk_photo_sync SET pendingPayload = :payload WHERE sessionId = :sessionId " +
+        "AND ownerId = :ownerId AND revision = :revision AND pendingPayload IS NULL")
+    suspend fun freezePhotoUpload(sessionId: String, ownerId: String, revision: Long, payload: String): Int
+
+    @Query("UPDATE walk_photo_sync SET acknowledgedRevision = :revision, pendingPayload = NULL " +
+        "WHERE sessionId = :sessionId AND ownerId = :ownerId AND pendingPayload = :payload " +
+        "AND acknowledgedRevision < :revision")
+    suspend fun acknowledgePhotoUpload(sessionId: String, ownerId: String, revision: Long, payload: String): Int
+
+    // A definitive 422 did not write a server revision. Preserve edits and the last ACK.
+    @Query("UPDATE walk_photo_sync SET pendingPayload = NULL WHERE sessionId = :sessionId " +
+        "AND ownerId = :ownerId AND pendingPayload = :payload AND acknowledgedRevision = :expectedRevision")
+    suspend fun rejectPhotoUpload(sessionId: String, ownerId: String, expectedRevision: Long, payload: String): Int
+
+    @androidx.room.Transaction
+    suspend fun rejectPinRequest(id: String, sent: String, ownerId: String, message: String) {
+        val row = entry(id) ?: return
+        if (row.pendingRequest != sent || session(row.sessionId)?.ownerId != ownerId) return
+        updatePinRow(row.copy(pendingRequest = null, syncError = message))
+    }
+
+    @androidx.room.Transaction
+    suspend fun rebaseLegacyEntry(id: String, response: String, ownerId: String, requiresV2: Boolean = false) {
+        val row = entry(id) ?: return
+        if (session(row.sessionId)?.ownerId != ownerId) return
+        val remote = org.json.JSONObject(response)
+        if (remote.optBoolean("deleted")) { acceptDeletedEntry(id, remote.getInt("revision")); return }
+        val pin = remote.optJSONObject("pin")
+        // A null note pin cannot identify its storage version; a v1 426 can.
+        val upgraded = row.isV2 || requiresV2 || (pin != null && pin.optString("policy_version") != "legacy-v1")
+        updatePinRow(row.copy(revision = maxOf(row.revision, remote.getInt("revision")),
+            mutationId = java.util.UUID.randomUUID().toString(), isV2 = upgraded,
+            pinPayload = if (row.payload != null) pin?.toString() else null,
+            pinRevision = if (row.payload != null) remote.getInt("pin_revision") else 0,
+            syncError = if (row.payload == null) null else "다른 기기에서 바뀐 기록이에요. 내용을 확인하고 저장해 주세요."))
+    }
+
+    @androidx.room.Transaction
+    suspend fun preparePinRequest(id: String, ownerId: String, cutoffSupported: Boolean = true, recordingEvidence: String? = null): String? {
+        val row = entry(id) ?: return null
+        if (session(row.sessionId)?.ownerId != ownerId) return null
+        row.pendingRequest?.let { return it }
+        if (!row.dirty && !row.pinDirty) return null
+        val pending = com.daengs.app.walk.sync.PinPending.from(row, cutoffSupported, recordingEvidence).json.toString()
+        updatePinRow(row.copy(pendingRequest = pending))
+        return pending
+    }
+
+    @androidx.room.Transaction
+    suspend fun retryLegacyPinSourceErrors(sessionId: String, ownerId: String) {
+        if (session(sessionId)?.ownerId != ownerId) return
+        for (row in entries(sessionId)) {
+            if (row.isV2 && row.revision == 0 && row.payload != null && row.pendingRequest == null &&
+                row.syncError == com.daengs.app.walk.sync.LEGACY_PIN_SOURCE_ERROR &&
+                row.pinPayload?.let { org.json.JSONObject(it).optString("state") } == "unlocated") {
+                // The new rejection text differs, so an unrelated 422 is not retried forever.
+                updatePinRow(row.copy(syncError = null))
+            }
+        }
+    }
+
+    @androidx.room.Transaction
+    suspend fun ackPinRequest(id: String, sent: String, response: String, ownerId: String) {
+        val row = entry(id) ?: return
+        if (row.pendingRequest != sent || session(row.sessionId)?.ownerId != ownerId) return
+        val remote = org.json.JSONObject(response)
+        if (remote.optBoolean("deleted")) {
+            acceptDeletedEntry(id, maxOf(row.revision, remote.getInt("revision")))
+            return
+        }
+        val pending = com.daengs.app.walk.sync.PinPending(org.json.JSONObject(sent))
+        // An old successful receipt advances acknowledgement, never overwrites current content/pin.
+        updatePinRow(row.copy(revision = maxOf(row.revision, remote.getInt("revision")),
+            pinRevision = maxOf(row.pinRevision, remote.getInt("pin_revision")), pendingRequest = null,
+            dirty = if (pending.kind in listOf("create", "content")) row.payload != pending.snapshot else row.dirty,
+            pinDirty = if (pending.kind in listOf("create", "pin")) row.pinPayload != pending.pin else row.pinDirty,
+            mutationId = if (row.mutationId == pending.localVersion) remote.getString("mutation_id") else row.mutationId))
+    }
+
+    @androidx.room.Transaction
+    suspend fun conflictPinRequest(id: String, sent: String, response: String, ownerId: String) {
+        val row = entry(id) ?: return
+        if (row.pendingRequest != sent || session(row.sessionId)?.ownerId != ownerId) return
+        val remote = org.json.JSONObject(response)
+        if (remote.optBoolean("deleted")) {
+            acceptDeletedEntry(id, maxOf(row.revision, remote.getInt("revision")))
+            return
+        }
+        val pending = com.daengs.app.walk.sync.PinPending(org.json.JSONObject(sent))
+        val remotePin = remote.optJSONObject("pin")
+        val terminal = remotePin?.optString("state") != "provisional"
+        // A local edit may have arrived after this pin request was frozen. Compare semantic
+        // content, since server normalization changes JSON field order and timestamp spelling.
+        fun content(payload: String) = com.daengs.app.walk.WalkEntry.parse(id, row.sessionId, org.json.JSONObject(payload))
+        val contentConflict = pending.kind in listOf("create", "content") ||
+            (row.dirty && pending.kind == "pin" &&
+                pending.snapshot?.let(::content) != content(remote.getJSONObject("content").toString()))
+        updatePinRow(row.copy(revision = maxOf(row.revision, remote.getInt("revision")),
+            pendingRequest = null, mutationId = java.util.UUID.randomUUID().toString(),
+            pinRevision = remote.getInt("pin_revision"),
+            pinPayload = if (row.payload == null) null else if (terminal) remotePin?.toString() else row.pinPayload,
+            pinDirty = row.payload != null && !terminal && row.pinDirty,
+            syncError = if (row.payload != null && contentConflict)
+                "다른 기기에서 바뀐 기록이에요. 내용을 확인하고 저장해 주세요." else null))
+    }
+
+    @androidx.room.Transaction
+    suspend fun acceptPinRemote(sessionId: String, response: String, ownerId: String) {
+        if (session(sessionId)?.ownerId != ownerId) return
+        val remote = org.json.JSONObject(response)
+        val id = remote.getString("id")
+        val row = entry(id)
+        if (row != null && row.sessionId != sessionId) return
+        val revision = remote.getInt("revision")
+        if (remote.optBoolean("deleted")) {
+            if (row == null) insertEntry(WalkEntryRow(id, sessionId, null, revision,
+                remote.getString("mutation_id"), false, isV2 = true))
+            else acceptDeletedEntry(id, maxOf(row.revision, revision))
+            return
+        }
+        if (row != null && (revision < row.revision || row.pendingRequest != null || row.payload == null)) return
+        val pin = remote.optJSONObject("pin")
+        val preserveLocalPin = row?.pinDirty == true && pin?.optString("state") == "provisional"
+        val fresh = WalkEntryRow(id, sessionId, remote.getJSONObject("content").toString(), revision,
+            remote.getString("mutation_id"), false, pinPayload = pin?.toString(),
+            pinRevision = remote.getInt("pin_revision"),
+            pinChainIndex = -1,
+            isV2 = row?.isV2 == true || (pin != null && pin.optString("policy_version") != "legacy-v1"))
+        if (row == null) insertEntry(fresh) else updatePinRow(fresh.copy(
+            payload = if (row.dirty) row.payload else fresh.payload, dirty = row.dirty,
+            syncError = if (row.dirty && revision > row.revision)
+                "다른 기기에서 바뀐 기록이에요. 내용을 확인하고 저장해 주세요." else row.syncError,
+            pinPayload = if (preserveLocalPin) row.pinPayload else fresh.pinPayload,
+            pinDirty = preserveLocalPin, pinChainIndex = row.pinChainIndex,
+            mutationId = if (row.dirty || preserveLocalPin) row.mutationId else fresh.mutationId))
+    }
+
+    @androidx.room.Update
+    suspend fun updatePinRow(row: WalkEntryRow)
+
+    @Query("SELECT * FROM walk_entry WHERE pinPayload IS NOT NULL AND payload IS NOT NULL")
+    suspend fun pendingPinEntries(): List<WalkEntryRow>
+
+    @androidx.room.Transaction
+    suspend fun createPinEntry(row: WalkEntryRow, ownerId: String): Boolean {
+        if (session(row.sessionId)?.ownerId != ownerId || entry(row.id) != null) return false
+        insertEntry(row)
+        return true
+    }
+
+    @androidx.room.Transaction
+    suspend fun finishPinEntry(id: String, previous: String, pin: String, mutation: String, ownerId: String) {
+        val row = entry(id) ?: return
+        if (row.payload == null || row.pinPayload != previous || session(row.sessionId)?.ownerId != ownerId) return
+        updatePinRow(row.copy(pinPayload = pin, pinDirty = true, mutationId = mutation))
+    }
+
+    @androidx.room.Transaction
+    suspend fun deletePinAwareEntry(id: String, mutation: String) {
+        val row = entry(id) ?: return
+        if (row.payload == null) return
+        // A late ACK cannot restore these coordinates or the request's content snapshot.
+        updatePinRow(row.copy(payload = null, pinPayload = null, pinRevision = 0, pinDirty = false,
+            pendingRequest = null, mutationId = mutation, dirty = true, syncError = null))
+    }
+
     @Query("SELECT sessionId FROM walk_scene_analysis")
     fun observeAnalysisChanges(): kotlinx.coroutines.flow.Flow<List<String>>
 
@@ -25,8 +371,11 @@ interface WalkDao {
         val analyses = historySearchAnalyses(allowed).associateBy { it.sessionId }
         return allowed.associateWith { id ->
             val rows = entries[id].orEmpty()
-            val title = com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows)
-                .bundle?.takeIf { it.sessionId == id }?.title
+            val publication = diaryPublication(id)
+            val board = if (publication != null) publication.publishedBundle?.let {
+                com.daengs.app.walk.diary.GeoStoryboardBundle.parse(it)
+            } else com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows).bundle
+            val title = board?.takeIf { it.sessionId == id }?.title
             listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
         }
     }
@@ -40,15 +389,23 @@ interface WalkDao {
     @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
     suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
     @androidx.room.Transaction
-    suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String): Boolean {
+    suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String, nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (session(row.sessionId)?.ownerId != ownerId) return false
-        if (com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId)) != row.entryStamp) return false
+        val stamp = if (row.entryStamp.startsWith("diary:"))
+            com.daengs.app.walk.sync.diaryInputStamp(entries(row.sessionId), photoSync(row.sessionId), photos(row.sessionId))
+            else com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId))
+        if (stamp != row.entryStamp) return false
         val current = sceneAnalysis(row.sessionId)
         if (current != null && current.generation > row.generation) return false
         // A pending/failed/stale response must not erase the last successful source or relabel it
         // as belonging to the new input. Acceptance of that input is still checked above.
         saveSceneAnalysis(if (row.status == "ready") row.copy(bundleEntryStamp = row.entryStamp)
             else row.copy(bundle = current?.bundle, bundleEntryStamp = current?.bundleEntryStamp))
+        if (row.status == "ready" && row.bundle != null && diaryPublication(row.sessionId) != null) {
+            val parsed = com.daengs.app.walk.diary.GeoStoryboardBundle.parse(row.bundle)
+            check(parsed.sessionId == row.sessionId)
+            publishDiaryCandidate(row.sessionId, row.bundle, nowMillis)
+        }
         return true
     }
 
@@ -75,6 +432,22 @@ interface WalkDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStoryboard(row: WalkStoryboardRow)
+
+    /** Merge one inline edit into the latest draft, keeping other scenes and original records. */
+    @androidx.room.Transaction
+    suspend fun saveDiarySceneEdit(sessionId: String, ownerId: String,
+        scene: com.daengs.app.walk.diary.StoryboardScene, title: String, body: String) {
+        check(ownerId.isNotBlank() && session(sessionId)?.let {
+            it.ownerId == ownerId && it.endedAtMillis != null
+        } == true) { "현재 계정의 완료된 산책이 아닙니다." }
+        require(title.isNotBlank() && title.length <= 80 &&
+            body.length <= com.daengs.app.walk.diary.MAX_DIARY_SCENE_BODY_LENGTH)
+        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
+        saveStoryboard(WalkStoryboardRow(sessionId,
+            draft.edit(scene, title = title, body = body, acknowledge = true,
+                bodyScope = com.daengs.app.walk.diary.SceneBodyScope.SCENE).toJson()))
+    }
 
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
     fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
@@ -121,13 +494,13 @@ interface WalkDao {
     @Query("UPDATE walk_entry SET payload = :payload, revision = :revision, mutationId = :mutationId WHERE id = :id AND dirty = 0")
     suspend fun acceptEntry(id: String, payload: String?, revision: Int, mutationId: String)
 
-    @Query("SELECT DISTINCT sessionId FROM walk_entry WHERE dirty = 1")
+    @Query("SELECT DISTINCT sessionId FROM walk_entry WHERE dirty = 1 OR pinDirty = 1 OR pendingRequest IS NOT NULL")
     suspend fun dirtyEntrySessions(): List<String>
 
     @Query("UPDATE walk_entry SET revision = :revision, syncError = :message WHERE id = :id AND mutationId = :mutationId")
     suspend fun conflictEntry(id: String, revision: Int, mutationId: String, message: String)
 
-    @Query("UPDATE walk_entry SET payload = NULL, revision = :revision, dirty = 0, syncError = NULL WHERE id = :id")
+    @Query("UPDATE walk_entry SET payload = NULL, pinPayload = NULL, pendingRequest = NULL, pinDirty = 0, pinRevision = 0, revision = :revision, dirty = 0, syncError = NULL WHERE id = :id")
     suspend fun acceptDeletedEntry(id: String, revision: Int)
 
     @Query("SELECT * FROM walk_session ORDER BY startedAtMillis DESC")
@@ -235,6 +608,12 @@ interface WalkDao {
             "ORDER BY startedAtMillis DESC",
     )
     suspend fun finishedSessions(): List<WalkSessionRow>
+
+    /** Complete account-owned selection for records exploration, before UI pagination. */
+    @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
+        "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +
+        "ORDER BY startedAtMillis DESC, id DESC")
+    suspend fun finishedRecordSessions(ownerId: String, dogId: String?): List<WalkSessionRow>
 
     @Query("SELECT * FROM walk_session WHERE ownerId = :ownerId AND endedAtMillis IS NOT NULL " +
         "AND (:dogId IS NULL OR EXISTS (SELECT 1 FROM walk_session_dog d WHERE d.sessionId = walk_session.id AND d.dogId = :dogId)) " +

@@ -98,6 +98,8 @@ data class RemoteWalkDetail(val walk: RemoteWalk, val fixes: List<RecordedFix>) 
                             point.getDouble("accuracy_m").toFloat()
                         },
                         isMock = point.optBoolean("is_mock"),
+                        recordingEligible = if (point.isNull("recording_eligible")) null
+                            else point.getBoolean("recording_eligible"),
                     )
                 },
             )

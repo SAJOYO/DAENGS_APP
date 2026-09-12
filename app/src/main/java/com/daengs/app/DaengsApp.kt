@@ -41,6 +41,39 @@ import com.daengs.app.territory.*
  */
 class DaengsApp : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val facilityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val facilityConversationLazy = lazy {
+        com.daengs.app.place.FacilityConversationRepository(
+            com.daengs.app.place.ConversationApi { BuildConfig.API_BASE_URL },
+            com.daengs.app.place.PlaceRepository(com.daengs.app.place.PlaceApi(baseUrl = { BuildConfig.API_BASE_URL })),
+            sessionProvider::freshSession, tokenStore::load,
+            { sessionProvider.accountScope.value },
+        )
+    }
+    val facilityConversation get() = facilityConversationLazy.value
+    val facilityAssistant by lazy {
+        com.daengs.app.assistant.FacilityAssistant(facilityConversation,
+            captureBookmarks = { placeBookmarks().captureTurn() },
+            onSearchApplied = { placeBookmarks().returnToSearch() },
+        )
+    }
+    private var facilityBookmarkAccount: com.daengs.app.auth.AccountScope? = null
+    private var facilityBookmarks: com.daengs.app.ui.places.PlaceBookmarkController? = null
+
+    /** Map and assistant commands share the same account and per-place write sequence. */
+    fun placeBookmarks(): com.daengs.app.ui.places.PlaceBookmarkController {
+        val account = sessionProvider.accountScope.value
+        if (facilityBookmarkAccount != account || facilityBookmarks == null) {
+            facilityBookmarks?.close()
+            facilityBookmarkAccount = account
+            facilityBookmarks = com.daengs.app.ui.places.PlaceBookmarkController(facilityScope,
+                com.daengs.app.place.bookmarks.PlaceBookmarkRepository(
+                    com.daengs.app.place.bookmarks.PlaceBookmarkApi(), sessionProvider::freshSession,
+                    { sessionProvider.accountScope.value },
+                ), account)
+        }
+        return requireNotNull(facilityBookmarks)
+    }
 
     lateinit var tokenStore: TokenStore
         private set
@@ -49,6 +82,9 @@ class DaengsApp : Application() {
         private set
 
     lateinit var activityRepository: com.daengs.app.activity.ActivityRepository
+        private set
+
+    lateinit var ownedTerritoryRepository: com.daengs.app.territory.owned.OwnedTerritoryRepository
         private set
 
     lateinit var walkRuntime: WalkRuntime
@@ -64,14 +100,31 @@ class DaengsApp : Application() {
     lateinit var cardStore: CardStore
         private set
 
+    lateinit var actionPins: com.daengs.app.walk.pin.ActionPinStore
+    lateinit var actionPinScheduler: com.daengs.app.walk.pin.ActionPinScheduler
     lateinit var walkEntries: com.daengs.app.walk.store.WalkEntryStore
         private set
     lateinit var walkPhotos: com.daengs.app.walk.store.WalkPhotoStore
         private set
-    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkStoryboardSync
+    lateinit var walkStoryboardSync: com.daengs.app.walk.sync.WalkDiarySync
         private set
     lateinit var walkEntryDao: com.daengs.app.walk.store.WalkDao
         private set
+    lateinit var walkDiaryPublication: com.daengs.app.walk.diary.WalkDiaryPublication
+        private set
+    private lateinit var walkDatabase: WalkDatabase
+
+    /** Keep the returned source for this login; request a new one after accountScope changes. */
+    fun walkRecordsSource(): com.daengs.app.walk.records.WalkRecordsSource? =
+        com.daengs.app.walk.records.accountWalkRecordsSource(walkDatabase, sessionProvider)
+
+    fun routeBackupSource(scope: com.daengs.app.auth.AccountScope): com.daengs.app.walk.sync.WalkRouteBackupSource? {
+        val owner = scope.ownerId?.takeIf { it.isNotBlank() } ?: return null
+        if (sessionProvider.accountScope.value != scope) return null
+        return com.daengs.app.walk.sync.WalkRouteBackupSource(walkDatabase, owner,
+            isCurrentAccount = { sessionProvider.accountScope.value == scope },
+            enqueue = walkRuntime.delivery::enqueue)
+    }
 
     /** CameraX 완료 뒤 저장은 화면 회전/이탈보다 오래 살아야 한다. */
     fun saveWalkPhoto(capture: com.daengs.app.walk.WalkPhotoCapture, file: java.io.File) = applicationScope.async {
@@ -100,8 +153,23 @@ class DaengsApp : Application() {
 
         tokenStore = TokenStore(this)
         sessionProvider = SessionProvider(tokenStore)
+        facilityScope.launch {
+            var previous = sessionProvider.accountScope.value
+            sessionProvider.accountScope.collect { account ->
+                if (account != previous) {
+                    if (facilityConversationLazy.isInitialized()) facilityConversation.invalidate()
+                    facilityBookmarks?.close()
+                    facilityBookmarks = null
+                    facilityBookmarkAccount = null
+                    previous = account
+                }
+            }
+        }
         activityRepository = com.daengs.app.activity.ActivityRepository(
             com.daengs.app.activity.ActivityApi(), sessionProvider::freshSession, tokenStore::load,
+        )
+        ownedTerritoryRepository = com.daengs.app.territory.owned.OwnedTerritoryRepository(
+            com.daengs.app.territory.owned.OwnedTerritoryApi(), sessionProvider::freshSession, tokenStore::load,
         )
 
         cardFiles = CardFiles(this)
@@ -111,34 +179,67 @@ class DaengsApp : Application() {
         )
 
         val store = WalkTrackingStore()
-        val dao = WalkDatabase.open(this).walkDao()
-        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos")) {
+        walkDatabase = WalkDatabase.open(this)
+        val dao = walkDatabase.walkDao()
+        walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos"),
+            onChanged = { sessionId -> applicationScope.launch {
+                runCatching { walkRuntime.delivery.enqueue(sessionId) }
+            } }) {
             tokenStore.load()?.appUserId.orEmpty()
         }
         val log = RoomWalkFixLog(dao, prunePhotos = walkPhotos::prune) { tokenStore.load()?.appUserId.orEmpty() }
         applicationScope.launch { walkPhotos.prune() }
         walkEntries = com.daengs.app.walk.store.WalkEntryStore(dao) { tokenStore.load()?.appUserId.orEmpty() }
         walkEntryDao = dao
-        walkStoryboardSync = com.daengs.app.walk.sync.WalkStoryboardSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
+        actionPins = com.daengs.app.walk.pin.ActionPinStore(dao, { tokenStore.load()?.appUserId.orEmpty() },
+            activeSessionId = { store.state.value.activeSessionId })
+        actionPinScheduler = com.daengs.app.walk.pin.ActionPinScheduler(this, applicationScope)
+        walkStoryboardSync = com.daengs.app.walk.sync.WalkDiarySync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         val writer = WalkFixWriter(
             log = log,
             // 저장 명령은 산책 서비스의 종료보다 오래 살아 flush까지 마쳐야 한다.
             scope = applicationScope,
         )
         val delivery = WorkManagerWalkDeliveryScheduler(this, log)
+        val photoSync = com.daengs.app.walk.sync.WalkPhotoSync(dao, { tokenStore.load()?.appUserId.orEmpty() })
         walkRuntime = WalkRuntime(
+            recordingScope = applicationScope,
             locationSource = FusedLocationSource(this),
             store = store,
             controller = ForegroundWalkTrackingController(this, store),
             writer = writer,
             log = log,
             history = WalkHistory(log),
-            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao),
+            sync = WalkSync(log, entrySync = com.daengs.app.walk.sync.WalkEntrySync(dao,
+                preferLegacy = com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
+                owner = { tokenStore.load()?.appUserId.orEmpty() },
+                v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
+                recording = com.daengs.app.walk.sync.WalkRecordingSync(),
+                motion = com.daengs.app.walk.sync.WalkMotionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() },
+                    precision = com.daengs.app.walk.sync.WalkMotionPrecisionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() }),
+                    restorationGuard = log::restoringForOwner),
+                requireRecordingSupport = !com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
+                photoSync = photoSync::sync,
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
             delivery = delivery,
         )
         // close와 enqueue 사이에서 프로세스가 죽어도 다음 시작에서 다시 발견한다.
-        applicationScope.launch { delivery.enqueuePending() }
+        // Queue recovery before the service can enqueue a new session/action.
+        walkDiaryPublication = com.daengs.app.walk.diary.WalkDiaryPublication(dao,
+            { tokenStore.load()?.appUserId.orEmpty() }, applicationScope, sync = { id ->
+                sessionProvider.freshSession()?.let { auth ->
+                    walkRuntime.sync.syncPendingSession(auth.accessToken, id)
+                }
+            })
+        val recoveredPins = writer.ordered {
+            actionPins.recover()
+            com.daengs.app.walk.recoverDrainedRecordings(log) { id, cutoff -> actionPins.finishSession(id, cutoff) }
+        }
+        applicationScope.launch {
+            recoveredPins.await()
+            walkDiaryPublication.recover()
+            delivery.enqueuePending()
+        }
         if (BuildConfig.DEBUG && BuildConfig.TERRITORY_SERVER_ACTIONS) {
             val actions = TerritoryActionSync(TerritoryActionDatabase.open(this).actions(),
                 TerritoryActionApi { BuildConfig.API_BASE_URL }, sessionProvider::freshSession,

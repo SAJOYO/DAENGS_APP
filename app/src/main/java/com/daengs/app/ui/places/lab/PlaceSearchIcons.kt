@@ -56,7 +56,22 @@ private fun SearchIconsPreview() {
         RobotSearchIcon(Modifier.size(24.dp), true)
         BackSearchIcon(Modifier.size(24.dp))
         NearbyLocationIcon(Modifier.size(24.dp))
+        FilterSearchIcon(Modifier.size(24.dp), true)
     } }
+}
+
+@Composable
+internal fun FilterSearchIcon(modifier: Modifier, active: Boolean) {
+    val tint = if (active) DaengsColors.BrandPrimary else DaengsColors.TextPrimary
+    Canvas(modifier) {
+        scale(size.minDimension / 24f, pivot = Offset.Zero) {
+            listOf(6f to 8f, 12f to 16f, 18f to 10f).forEach { (y, x) ->
+                drawLine(tint, Offset(3f, y), Offset(x - 3f, y), 1.8f, StrokeCap.Round)
+                drawLine(tint, Offset(x + 3f, y), Offset(21f, y), 1.8f, StrokeCap.Round)
+                drawCircle(tint, 2.5f, Offset(x, y), style = Stroke(1.8f))
+            }
+        }
+    }
 }
 
 @Composable

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -84,7 +85,6 @@ import com.daengs.app.walk.MIN_WALK_MILLIS
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.countsAsWalk
 import com.daengs.app.walk.WalkTrackingState
-import com.daengs.app.walk.isFreshEnoughForMoment
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -112,7 +112,7 @@ fun WalkScreen(
     val face = walkFaceOverride(state.selection.pets, state.selection.selectedDogIds)
     // **사진과 견종을 같이 옮긴다.** 사진만 바꾸면, 그 아이가 사진을 안 올렸을 때
     // 대표의 견종 그림이 남아서 반쯤 다른 아이가 된다.
-    val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
+    val faceRes = walkFacePortraitRes(face, avatarBreed)
     val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
 
     val mapPresentation = state.toMapPresentation()
@@ -170,6 +170,7 @@ fun WalkScreen(
             onCloseTerritory = { onAction(WalkAction.ClearTerritory) },
             onSelectClaimingPet = { site, pet -> onAction(WalkAction.SelectClaimingPet(site, pet)) },
             onOpenEntries = { onAction(WalkAction.OpenEntries) },
+            onOpenDiaryList = { onAction(WalkAction.OpenDiaryList) },
             onPhotographWalk = { onAction(WalkAction.PhotographWalk) },
             onMarkTerritory = { onAction(WalkAction.MarkTerritory(it)) },
             onPhotographTerritory = { onAction(WalkAction.PhotographTerritory(it)) },
@@ -219,6 +220,12 @@ private fun WalkGameOverlay(
     onCloseTerritory: () -> Unit = {},
     onSelectClaimingPet: (String, String) -> Unit = { _, _ -> },
     onOpenEntries: () -> Unit = {},
+    /**
+     * 산책 기록 **목록**으로 나간다. [onOpenEntries] 와 다른 자리다 — 저쪽은 지금
+     * 걷는 산책 한 건에 남긴 것이고, 이쪽은 지난 산책들의 목록이다. 걷는 중인
+     * 산책은 아직 목록에 없어서(끝나야 들어간다) 둘을 하나로 합칠 수 없다.
+     */
+    onOpenDiaryList: () -> Unit = {},
     onPhotographWalk: () -> Unit = {},
     onMarkTerritory: (String) -> Unit = {},
     onPhotographTerritory: (String) -> Unit = {},
@@ -257,6 +264,9 @@ private fun WalkGameOverlay(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val layoutMode = walkLayoutMode(maxWidth.value, maxHeight.value)
+        val territoryCardMaxHeight = maxHeight * if (layoutMode == WalkLayoutMode.LANDSCAPE) .7f else .65f
+        val territoryCardVisible = summary == null && mapPurpose == MapPurpose.TERRITORY &&
+            territory.selectedSiteId != null && territoryGame.enabled && territoryGame.target != null
         val stackMapTools = maxWidth < 380.dp
         val elapsedMillis = summary?.activeDurationMillis ?: tracking.elapsedMillisAt(realtimeMillis)
         val distanceMeters = summary?.distanceMeters ?: tracking.trail.distanceMeters
@@ -271,8 +281,7 @@ private fun WalkGameOverlay(
             tracking.trail.state == TrackingState.PAUSED -> "산책이 잠시 멈춰 있어요"
             else -> "산책을 시작하면 지나온 동선이 지도에 남아요"
         }
-        val momentEnabled = tracking.latestMomentFix
-            ?.isFreshEnoughForMoment(realtimeMillis * 1_000_000L) == true
+        val momentEnabled = tracking.canRecordAction
 
         Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
             val landscape = layoutMode == WalkLayoutMode.LANDSCAPE
@@ -328,9 +337,8 @@ private fun WalkGameOverlay(
                 }
                 if (tracking.trail.state != TrackingState.OFF || summary != null) {
                     if (summary != null) WalkSpeedLegend(Modifier.align(Alignment.End))
-                    else if (!landscape) WalkSpeedometer(
-                        speed = if (locationGranted && preciseLocation && locationError == null)
-                            walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                    else if (!landscape) MotionSpeedometer(
+                        display = tracking.motionDisplay,
                         modifier = Modifier.align(Alignment.End))
                 }
             }
@@ -348,7 +356,7 @@ private fun WalkGameOverlay(
                             momentsOpen = !momentsOpen; onCloseTerritory()
                         }, enabled = tracking.trail.state == TrackingState.RECORDING, active = momentsOpen,
                             caption = "기록", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
-                        WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries,
+                        WalkToolButton(WalkTool.ENTRIES, "이 산책에 남긴 것", onOpenEntries,
                             caption = "일기", minSize = DOCK_BUTTON, iconSize = DOCK_ICON)
                         WalkToolButton(WalkTool.LOCATE, "내 위치", onLocate,
                             enabled = locationGranted && !locating,
@@ -365,9 +373,14 @@ private fun WalkGameOverlay(
                 if (momentsOpen && tracking.trail.state == TrackingState.RECORDING) WalkMomentDock(
                     layoutMode = WalkLayoutMode.PORTRAIT, enabled = momentEnabled,
                     onAddMoment = { momentsOpen = false; onAddMoment(it) })
-                if (summary == null && mapPurpose == MapPurpose.TERRITORY && territory.selectedSiteId != null && territoryGame.enabled) {
+                if (territoryCardVisible) {
+                    val ownerPet = territoryGame.target?.takeIf { it.occupancyKnown && it.isOwnedByMe == true }
+                        ?.claim?.occupancy?.ownerPetId?.let { id -> pets.firstOrNull { it.id == id } }
                     TerritoryActionCard(territoryGame, onMarkTerritory, onPhotograph = onPhotographTerritory,
-                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet)
+                        modifier = Modifier.fillMaxWidth().heightIn(max = territoryCardMaxHeight),
+                        onClose = onCloseTerritory, onSelectPet = onSelectClaimingPet,
+                        ownerPhoto = ownerPet?.id?.let(photoOf), ownerBreed = ownerPet?.breedArt,
+                        onPrepareWalk = onCloseTerritory)
                 }
                 if (tracking.errorMessage != null || (mapPurpose == MapPurpose.TERRITORY &&
                     (territory.failure != null || territory.sites.isEmpty()))) {
@@ -375,26 +388,27 @@ private fun WalkGameOverlay(
                         if (territory.failure != null) "다시 시도" else null, onRetryTerritory)
                 }
                 if (tracking.trail.state == TrackingState.OFF && summary == null) {
-                    // **일기는 산책 전에도 열린다.** 지난 산책을 보는 화면인데 도크에만
-                    // 두면 산책을 시작해야 지난 기록을 볼 수 있다 — 앞뒤가 바뀐다.
+                    // **산책 전에는 목록으로 간다.** 도크의 `일기` 는 지금 걷는 산책에
+                    // 묶여 있어서(`activeSessionId ?: completedSessionId`), 걷기 전에
+                    // 누르면 묶일 산책이 없어 늘 빈 창이 떴다. 여기서 사람이 보고 싶은
+                    // 것은 지난 산책이다 — 홈의 `지난 산책` 과 같은 화면으로 보낸다.
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) { WalkMapModeButton(mapPurpose, onMapPurposeChange) }
                         Surface(shape = RoundedCornerShape(12.dp), color = CardWhite) {
-                            WalkToolButton(WalkTool.ENTRIES, "산책 기록 목록", onOpenEntries,
-                                caption = "일기", captionBeside = true)
+                            WalkToolButton(WalkTool.ENTRIES, "산책 기록", onOpenDiaryList,
+                                caption = "산책 기록", captionBeside = true)
                         }
                     }
                 }
-                if (tracking.trail.state == TrackingState.OFF || summary != null) WalkPrimaryControl(
+                if ((tracking.trail.state == TrackingState.OFF && !territoryCardVisible) || summary != null) WalkPrimaryControl(
                     tracking, resultExpanded, pets, selectedDogIds, locationGranted && preciseLocation,
                     onToggleDog, onStart, onPause, onShowResult, photoOf = photoOf)
-                else if (!landscape) dock()
+                else if (!landscape && tracking.trail.state != TrackingState.OFF) dock()
                 if (summary != null) TextButton(onClick = onOpenEntries) { Text("기록 ${tracking.savedEntryCount}") }
             }
             if (landscape && tracking.trail.state != TrackingState.OFF && summary == null) {
-                WalkSpeedometer(speed = if (locationGranted && preciseLocation && locationError == null)
-                    walkGaugeSpeed(locationSample, tracking.trail.state, realtimeMillis * 1_000_000L) else null,
+                MotionSpeedometer(display = tracking.motionDisplay,
                     modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { gaugeHeight = it.height })
                 Box(Modifier.align(Alignment.BottomEnd).onSizeChanged { dockWidth = it.width }) { dock() }
             }
@@ -538,7 +552,7 @@ private fun WalkPrimaryControl(
             selectedDogIds = selectedDogIds,
             onToggleDog = onToggleDog,
             // **위치만 준비돼서는 부족하다.** 강아지 앱이라 아이 없이는 안 나간다
-            // (`WalkDogPick.canStartWalk`). 둘러보기(목록이 빔)는 예외다.
+            // (`WalkDogPick.canStartWalk`). 강아지가 없으면 못 나간다 — 잠금 4절.
             enabled = locationReady && canStartWalk(pets, selectedDogIds),
             blockedReason = walkStartBlockedReason(pets, selectedDogIds),
             onStart = onStart,
@@ -932,14 +946,9 @@ private fun ReadyCard(
                     modifier = Modifier.fillMaxWidth(),
                     photoOf = photoOf,
                 )
-            } else {
-                Text(
-                    "등록한 강아지가 없어도 산책은 기록할 수 있어요.",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center,
-                )
             }
+            // 🔒 강아지가 없을 때 **"없어도 된다" 고 말하지 않는다** — `docs/design-locks.md` 4절.
+            //    못 나가는 이유는 바로 아래 한 줄(`walkStartBlockedReason`)이 말한다.
             // **왜 안 눌리는지 말해 준다.** 흐린 버튼만 두면 고장으로 읽힌다.
             blockedReason?.let {
                 Text(it, color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)

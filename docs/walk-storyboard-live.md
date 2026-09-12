@@ -1,6 +1,8 @@
 # 실제 산책 장면 분석
 
-아래는 현재 앱의 장면 분석·검토 구현을 설명한다.
+새 서버 일기 연결은 [산책 일기 생성](walk-diary-generation.md)에 정리한다.
+서버 capability가 새 형식을 지원하면 해당 경로를 사용하며, 아래는 기존 후보 형식의
+장면 분석·검토 구현과 이력을 설명한다.
 전체 이해 → 장면별 갱신 → 재검토 → 검토본 → 선택적 일기는 geo에서 실험 중이며,
 설계와 구현 범위의 기준은 DAENGS_geo `docs/explorations/walk/diary-storyboard-plan.md`다.
 

@@ -7,30 +7,51 @@ import org.json.JSONObject
 /** 위치 finalize와 별도로 현재 기록을 전송/복원한다. 실패는 Worker에 전달한다. */
 class WalkEntrySync(
     private val dao: WalkDao,
+    private val v2: WalkEntryV2Sync? = null,
+    private val preferLegacy: Boolean = false,
+    private val owner: (() -> String)? = null,
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
-        WalkApi.call(token, path, method, body, ::JSONObject).getOrThrow()
+        WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
     },
 ) {
     private val mutex = kotlinx.coroutines.sync.Mutex()
     suspend fun sync(token: String, sessionId: String, walkId: String) {
         mutex.lock()
-        try { syncLocked(token, sessionId, walkId) } finally { mutex.unlock() }
+        try {
+            try { syncLocked(token, sessionId, walkId) }
+            catch (e: WalkHttpException) {
+                // A server-owned v2 record may predate the local v1 projection.
+                if (e.statusCode != 426 || !preferLegacy || v2?.sync(token, sessionId, walkId) != true) throw e
+            }
+        } finally { mutex.unlock() }
     }
 
     private suspend fun syncLocked(token: String, sessionId: String, walkId: String) {
-        for (row in dao.entries(sessionId).filter { it.dirty && it.syncError == null }) {
+        val account = owner?.invoke()
+        if (owner != null && (account.isNullOrEmpty() || dao.session(sessionId)?.ownerId != account)) return
+        fun checkAccount() { check(owner == null || owner.invoke() == account) { "계정이 변경됐어요." } }
+        suspend fun call(path: String, method: String, body: JSONObject?): JSONObject {
+            checkAccount()
+            val response = request(token, path, method, body)
+            checkAccount()
+            return response
+        }
+        checkAccount()
+        if (!preferLegacy && v2?.sync(token, sessionId, walkId) == true) return
+        // The release can prefer v1 without rewriting any existing v2 payload or outbox.
+        for (row in dao.entries(sessionId).filter { !it.isV2 && it.dirty && it.syncError == null }) {
             val response = try { if (row.payload == null) {
-                request(token, "/$walkId/entries/${row.id}?expected_revision=${row.revision}&mutation_id=${row.mutationId}",
+                call("/$walkId/entries/${row.id}?expected_revision=${row.revision}&mutation_id=${row.mutationId}",
                     "DELETE", null)
             } else {
-                request(token, "/$walkId/entries/${row.id}", "PUT", JSONObject().apply {
+                call("/$walkId/entries/${row.id}", "PUT", JSONObject().apply {
                     put("expected_revision", row.revision)
                     put("mutation_id", row.mutationId)
                     put("content", JSONObject(row.payload))
                 })
             } } catch (e: WalkHttpException) {
                 if (e.statusCode != 409) throw e
-                val latest = request(token, "/$walkId/entries", "GET", null).getJSONArray("entries")
+                val latest = call("/$walkId/entries", "GET", null).getJSONArray("entries")
                 val remote = (0 until latest.length()).map { latest.getJSONObject(it) }
                     .firstOrNull { it.getString("id") == row.id } ?: throw e
                 if (remote.isNull("content")) dao.acceptDeletedEntry(row.id, remote.getInt("revision"))
@@ -45,10 +66,16 @@ class WalkEntrySync(
             // 요청 중 사용자가 다시 수정한 경우 새 payload는 유지하고 서버 버전만 전진시킨다.
             dao.acknowledgeEntry(row.id, response.getInt("revision"), row.mutationId)
         }
-        val result = request(token, "/$walkId/entries", "GET", null)
+        if (dao.entries(sessionId).any { it.isV2 }) {
+            if (preferLegacy && v2?.sync(token, sessionId, walkId) == true) return
+            throw java.io.IOException("새 형식의 기존 행동은 기기에 보관 중이며 서버 지원을 기다리고 있어요.")
+        }
+        val result = call("/$walkId/entries", "GET", null)
         val entries = result.getJSONArray("entries")
         for (i in 0 until entries.length()) {
+            checkAccount()
             val entry = entries.getJSONObject(i)
+            if (dao.entry(entry.getString("id"))?.isV2 == true) continue
             val row = WalkEntryRow(entry.getString("id"), sessionId,
                 entry.optJSONObject("content")?.toString(), entry.getInt("revision"),
                 entry.getString("mutation_id"), false)

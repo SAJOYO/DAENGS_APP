@@ -1,10 +1,12 @@
 package com.daengs.app.walk.sync
 
+import com.daengs.app.walk.support.titledDiaryFixture
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.store.*
 import com.daengs.app.walk.diary.storyboardAnalysisView
+import com.daengs.app.walk.support.sceneAnchorFixture
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -16,12 +18,17 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WalkStoryboardSyncTest {
+    @Test fun `기존 기록의 분석 stamp는 마이그레이션 후에도 그대로다`() {
+        val row = WalkEntryRow("e", "s", "content", 3, "mutation", false)
+        val old = org.json.JSONArray().put(org.json.JSONArray(listOf("e", 3, "mutation", false, null))).toString()
+        assertEquals(com.daengs.app.walk.diary.storyboardHash(old), storyboardEntryStamp(listOf(row)))
+    }
     @Test fun `v4 source GPS identity survives Room storage`() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), WalkDatabase::class.java).build()
         try {
             val dao = db.walkDao()
             dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
-            val fixture = com.daengs.app.walk.diary.sceneAnchorFixture().first
+            val fixture = sceneAnchorFixture().first
             val bundle = JSONObject(fixture.rawJson).put("session_id", "s")
             WalkStoryboardSync(dao, { owner }) { _, _, body ->
                 assertEquals("walk-storyboard-candidates-v4", body.getString("bundle_format"))
@@ -37,7 +44,7 @@ class WalkStoryboardSyncTest {
             val dao = db.walkDao()
             dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
             WalkStoryboardSync(dao, { owner }) { _, _, _ -> response().put("bundle",
-                com.daengs.app.walk.diary.titledDiaryFixture()) }.sync(token, "s", "remote")
+                titledDiaryFixture()) }.sync(token, "s", "remote")
             assertEquals("함께 남긴 산책 기록", storyboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!.title)
             val formats = mutableListOf<String>()
             WalkStoryboardSync(dao, { owner }) { _, _, body ->
@@ -63,6 +70,31 @@ class WalkStoryboardSyncTest {
             .put("session_id", "s").put("synthetic", false)
         return JSONObject().put("session_id", "s").put("generation", generation).put("input_revision", "revision")
             .put("status", "ready").put("entry_revisions", JSONObject()).put("bundle", bundle)
+    }
+
+    @Test fun `pending preparation keeps previous scenes readable without marking them current`() {
+        val stamp = storyboardEntryStamp(emptyList())
+        val pending = WalkSceneAnalysisRow("s", 0, stamp, "revision", "pending", null, null)
+        val first = storyboardAnalysisView(pending, emptyList())
+        assertNull(first.bundle)
+        assertFalse(first.canReview)
+        assertTrue(first.notice.contains("준비하고 있어요"))
+
+        val saved = pending.copy(generation = 1, status = "ready",
+            bundle = response().getJSONObject("bundle").toString(), bundleEntryStamp = stamp)
+        val ready = storyboardAnalysisView(saved, emptyList())
+        assertTrue(ready.canReview)
+        val previous = storyboardAnalysisView(saved.copy(status = "pending"), emptyList())
+        assertEquals(ready.bundle!!.scenes, previous.bundle!!.scenes)
+        assertFalse(previous.canReview)
+        assertEquals(storyboardAnalysisView(saved.copy(status = "running"), emptyList()).notice, previous.notice)
+        assertTrue(previous.notice.contains("이전에 저장한 장면"))
+
+        val dirty = listOf(WalkEntryRow("new", "s", "{}", 0, "mutation", true))
+        val changed = storyboardAnalysisView(saved.copy(status = "pending"), dirty)
+        assertNull(changed.bundle)
+        assertFalse(changed.canReview)
+        assertTrue(changed.notice.contains("기록 동기화 후"))
     }
 
     @Test fun `network failure preserves readable source and retry restores review eligibility`() = runBlocking {

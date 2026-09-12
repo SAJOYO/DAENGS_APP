@@ -42,6 +42,8 @@ import com.daengs.app.walk.WalkTrackingController
 @Composable
 fun WalkRoute(
     onBack: () -> Unit,
+    /** 산책 기록 목록으로 나간다. 홈의 `지난 산책` 과 같은 화면이다. */
+    onOpenDiaryList: () -> Unit = onBack,
     onRequestOrientation: (WalkOrientation) -> Unit,
     walkController: WalkTrackingController,
     history: WalkHistory,
@@ -53,11 +55,16 @@ fun WalkRoute(
     /** 그 아이가 올린 프로필 사진. 없으면 견종 그림이다. */
     photoOf: (String) -> ImageBitmap? = { null },
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
+    /** A navigation request changes the map layer, never the active walking session. */
+    requestedMapPurpose: com.daengs.app.map.shell.MapPurpose? = null,
+    onMapPurposeConsumed: () -> Unit = {},
+    onHome: () -> Unit = onBack,
     viewModel: WalkViewModel = viewModel(
         factory = WalkViewModel.factory(LocalContext.current, walkController, history),
     ),
 ) {
     val context = LocalContext.current
+    var homeRequested by remember { mutableStateOf(false) }
     val app = context.applicationContext as com.daengs.app.DaengsApp
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
     val editScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -139,13 +146,23 @@ fun WalkRoute(
             locationPermissionLauncher.launch(LOCATION_PERMISSIONS)
         }
     }
+    LaunchedEffect(viewModel, requestedMapPurpose) {
+        requestedMapPurpose?.let {
+            viewModel.onAction(WalkAction.ChangeMapPurpose(it))
+            onMapPurposeConsumed()
+        }
+    }
     LaunchedEffect(pets) {
         viewModel.updatePets(pets)
     }
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                WalkEffect.NavigateHome -> onBack()
+                WalkEffect.NavigateHome -> {
+                    val navigate = if (homeRequested) onHome else onBack
+                    homeRequested = false
+                    navigate()
+                }
                 WalkEffect.OpenAppSettings -> settingsLauncher.launch(appSettingsIntent(context))
                 WalkEffect.RequestNotificationPermission -> {
                     if (
@@ -199,7 +216,7 @@ fun WalkRoute(
         }
     }
 
-    BackHandler { viewModel.onAction(WalkAction.Back) }
+    BackHandler { homeRequested = false; viewModel.onAction(WalkAction.Back) }
 
     Column(modifier) {
       TerritoryPhotoStatus(photos, viewModel::retryTerritoryPhoto, Modifier.statusBarsPadding())
@@ -211,10 +228,13 @@ fun WalkRoute(
         avatarPhoto = avatarPhoto,
         photoOf = photoOf,
         onAction = { action ->
+            if (action == WalkAction.Home) homeRequested = true
             if (action == WalkAction.PhotographWalk) {
                 diaryCaptureSession = state.tracking.activeSessionId
             } else if (action == WalkAction.OpenEntries) {
                 initialEntry = null; entryError = null; editorOpen = true
+            } else if (action == WalkAction.OpenDiaryList) {
+                onOpenDiaryList()
             } else if (action is WalkAction.AddMoment && action.type == com.daengs.app.walk.WalkMomentType.NOTE) {
                 entrySessionId?.let { sessionId ->
                     val sample = state.tracking.latestMomentFix?.takeIf {

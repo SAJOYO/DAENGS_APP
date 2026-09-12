@@ -1,5 +1,8 @@
 package com.daengs.app.territory
 
+import com.daengs.app.territory.support.DOG
+import com.daengs.app.territory.support.SITE
+import com.daengs.app.territory.support.WALK
 import com.daengs.app.location.*
 import java.net.ServerSocket
 import java.math.BigDecimal

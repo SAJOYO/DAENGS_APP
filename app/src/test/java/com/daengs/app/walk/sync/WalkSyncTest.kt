@@ -19,6 +19,87 @@ import org.junit.Test
  */
 class WalkSyncTest {
 
+    @Test fun `v1 release keeps uploading to an old server without losing local GPS eligibility`() = runBlocking {
+        for (state in WalkSyncState.entries) {
+            val log = FakeLog()
+            val api = FakeApi()
+            log.sessions += session("gps", ended = true, state = state,
+                serverWalkId = if (state == WalkSyncState.LOCAL_ONLY) null else "server-gps")
+            val original = fix(0).copy(recordingEligible = false)
+            log.append("gps", original)
+            var consumers = 0
+            val sync = WalkSync(log, api, { NOW },
+                photoSync = { _, _, _ -> consumers++ },
+                storyboardSync = { _, _, _ -> consumers++ },
+                recording = WalkRecordingSync { _, path, _, _ ->
+                    assertEquals("/entry-capabilities", path)
+                    throw WalkHttpException(404, "old server")
+                }, requireRecordingSupport = false, warn = { _, _ -> })
+            sync.syncPendingSession("token", "gps")
+            assertEquals(WalkSyncState.DERIVED, log.session("gps")!!.syncState)
+            assertEquals(listOf(original), log.fixes("gps"))
+            assertEquals(if (state == WalkSyncState.LOCAL_ONLY) 1 else 0, api.uploadCalls)
+            if (state == WalkSyncState.LOCAL_ONLY) assertEquals(listOf(original), api.uploadedPoints)
+            assertEquals(if (state == WalkSyncState.DERIVED) 0 else 1, api.finalizeCalls)
+            assertEquals(2, consumers)
+        }
+    }
+
+    @Test fun `GPS evidence readiness gates new uploaded and already derived sessions`() = runBlocking {
+        for (state in WalkSyncState.entries) {
+            val log = FakeLog()
+            val api = FakeApi()
+            log.sessions += session("gps", ended = true, state = state,
+                serverWalkId = if (state == WalkSyncState.LOCAL_ONLY) null else "server-gps")
+            log.append("gps", fix(0).copy(recordingEligible = false))
+            var probes = 0
+            var consumers = 0
+            val sync = WalkSync(log, api, { NOW },
+                photoSync = { _, _, _ -> consumers++ },
+                storyboardSync = { _, _, _ -> consumers++ },
+                recording = WalkRecordingSync { _, _, _, _ -> probes++; throw java.io.IOException("unsupported") },
+                warn = { _, _ -> })
+            assertTrue(runCatching { sync.syncPendingSession("token", "gps") }.isFailure)
+            assertEquals(1, probes)
+            assertEquals(0, api.uploadCalls)
+            assertEquals(0, api.finalizeCalls)
+            assertEquals(0, consumers)
+            assertEquals(state, log.session("gps")!!.syncState)
+            assertEquals(false, log.fixes("gps").single().recordingEligible)
+        }
+    }
+
+    @Test fun `manual diary refresh synchronizes photos without generating twice`() = runBlocking {
+        val log = FakeLog()
+        val api = FakeApi()
+        log.sessions += session("photos", ended = true)
+        var photos = 0; var scenes = 0
+        val sync = WalkSync(log, api, { NOW }, photoSync = { _, _, _ -> photos++ },
+            storyboardSync = { _, _, _ -> scenes++ }, warn = { _, _ -> })
+        sync.syncPendingSession("token", "photos", includeStoryboard = false)
+        assertEquals(1, photos); assertEquals(0, scenes)
+        assertEquals(1, api.finalizeCalls)
+    }
+
+    @Test fun `photo delivery retries before scene synchronization without reuploading GPS`() = runBlocking {
+        val log = FakeLog()
+        val api = FakeApi()
+        log.sessions += session("photos", ended = true)
+        var photos = 0
+        var scenes = 0
+        val sync = WalkSync(log, api, { NOW }, photoSync = { _, _, _ ->
+            photos++
+            if (photos == 1) throw java.io.IOException("offline")
+        }, storyboardSync = { _, _, _ -> scenes++ }, warn = { _, _ -> })
+        assertTrue(runCatching { sync.syncPendingSession("token", "photos") }.isFailure)
+        assertEquals(0, scenes)
+        sync.syncPendingSession("token", "photos")
+        assertEquals(2, photos)
+        assertEquals(1, scenes)
+        assertEquals(1, api.uploadCalls)
+        assertEquals(1, api.finalizeCalls)
+    }
+
     @Test fun `worker analyzes scenes only after GPS finalization and retries without reupload`() = runBlocking {
         val log = FakeLog()
         val api = FakeApi()
@@ -159,6 +240,76 @@ class WalkSyncTest {
         assertEquals(0, api.finalizeCalls)
     }
 
+    @Test fun `청크 응답을 잃으면 같은 세션과 범위로 재전송한 뒤 봉인한다`() = runBlocking {
+        log.sessions += session("long", ended = true)
+        log.fixes["long"] = (0 until 4_500).map { fix(it) }
+        api.appendFails = true
+
+        assertTrue(runCatching { sync.syncPendingSession("token", "long") }.isFailure)
+        assertEquals(WalkSyncState.LOCAL_ONLY, log.sessions.single().syncState)
+        assertNull(log.sessions.single().serverWalkId)
+        assertEquals(0, api.finalizeCalls)
+
+        api.appendFails = false
+        sync.syncPendingSession("token", "long")
+
+        assertEquals(listOf("long", "long"), api.uploaded.map { it.id })
+        assertEquals(listOf(2_000, 2_000, 4_000), api.appended.map { it.first().clientSeq })
+        assertEquals(listOf("server-long" to "long", "server-long" to "long", "server-long" to "long"), api.appendedIds)
+        assertEquals(WalkFinalizeManifest(4_500, 4_499), api.finalized.single().second)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single().syncState)
+    }
+
+    @Test fun `첫 업로드나 청크 응답 중 계정이 바뀌면 다음 전송과 완료 표시를 멈춘다`() = runBlocking {
+        for (duringCreate in listOf(true, false)) {
+            val log = FakeLog().apply {
+                owner = "first"
+                sessions += session("long", ended = true)
+                sessions += session("next", ended = true)
+                fixes["long"] = (0 until 4_500).map { fix(it) }
+            }
+            val api = FakeApi()
+            if (duringCreate) api.afterUpload = { log.owner = "second" }
+            else api.afterAppend = { log.owner = "second" }
+
+            WalkSync(log, api, warn = { _, _ -> }).syncOnce("old-token")
+
+            assertEquals(1, api.uploadCalls)
+            assertEquals(if (duringCreate) 0 else 1, api.appended.size)
+            assertEquals(0, api.finalizeCalls)
+            assertEquals(0, api.listCalls)
+            assertTrue(log.sessions.all { it.syncState == WalkSyncState.LOCAL_ONLY && it.serverWalkId == null })
+        }
+    }
+
+    @Test fun `봉인 응답 중 계정이 바뀌면 로컬 완료나 후속 업로드를 기록하지 않는다`() = runBlocking {
+        log.owner = "first"
+        log.sessions += session("done", ended = true)
+        api.afterFinalize = { log.owner = "second" }
+        var consumers = 0
+        val sync = WalkSync(log, api, photoSync = { _, _, _ -> consumers++ }, warn = { _, _ -> })
+
+        assertTrue(runCatching { sync.syncPendingSession("old-token", "done") }.isFailure)
+
+        assertEquals(WalkSyncState.RAW_UPLOADED, log.sessions.single().syncState)
+        assertEquals(0, consumers)
+    }
+
+    @Test fun `청크 취소는 조용한 동기화에서도 다음 산책으로 넘어가지 않는다`() = runBlocking {
+        log.sessions += session("long", ended = true)
+        log.sessions += session("next", ended = true)
+        log.fixes["long"] = (0 until 2_500).map { fix(it) }
+        api.afterAppend = { throw kotlinx.coroutines.CancellationException("cancelled upload") }
+
+        val failure = runCatching { sync.syncOnce("token") }.exceptionOrNull()
+
+        assertTrue(failure is kotlinx.coroutines.CancellationException)
+        assertEquals(1, api.uploadCalls)
+        assertEquals(0, api.finalizeCalls)
+        assertEquals(0, api.listCalls)
+        assertTrue(log.sessions.all { it.syncState == WalkSyncState.LOCAL_ONLY })
+    }
+
     /** finalize만 실패하면 원본은 다시 보내지 않고 다음 실행에서 finalize부터 잇는다. */
     @Test
     fun `계산 응답을 못 받으면 raw uploaded에서 finalize만 다시 시도한다`() = runBlocking {
@@ -285,9 +436,51 @@ class WalkSyncTest {
         fixes = listOf(fix(0), fix(1)),
     )
 
+
+    /**
+     * 액세스 토큰은 **JWE** 다 — 앱이 열 수 없다.
+     *
+     * 예전에는 세 조각 JWT 로 보고 `parts[1]` 을 payload 로 파싱해 `sub` 를 계정과
+     * 맞춰 봤다. JWE 는 다섯 조각이고 그 자리는 `alg="dir"` 에서 빈 문자열이라 늘
+     * 실패했고, 관문이 항상 닫혀 **올리기도 되찾기도 통째로 멈춰 있었다.** 로그도
+     * 안 남아 "기록이 없다" 와 구분되지 않았다.
+     *
+     * 이 판이 없으면 같은 일이 또 조용히 지나간다 — 다른 판들은 계정이 `null`(경계
+     * 없음)이라 관문을 그냥 지나가기 때문이다.
+     */
+    @Test fun `열 수 없는 JWE 토큰이어도 계정이 맞으면 동기화한다`() = runBlocking {
+        // 헤더.빈칸.iv.본문.태그 — 실기기에서 받은 것과 같은 모양이다.
+        val jwe = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..DcQCyIhK2QNc.Zm9vYmFy.Xy1abc"
+        log.owner = "de5f95e5-f2b9-4b13-8565-65626454cfa4"
+        log.sessions += session("done", ended = true)
+
+        sync.syncOnce(jwe)
+
+        assertEquals(1, api.uploadCalls)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single().syncState)
+    }
+
+    /** 로그인 전(빈 계정)에는 아무 것도 올리지 않는다. 아직 누구의 기록도 아니다. */
+    @Test fun `계정이 비어 있으면 올리지 않는다`() = runBlocking {
+        log.owner = ""
+        log.sessions += session("done", ended = true)
+
+        sync.syncOnce("token")
+
+        assertEquals(0, api.uploadCalls)
+    }
+
     private class FakeLog : WalkFixLog {
         val sessions = mutableListOf<RecordedSession>()
         val fixes = mutableMapOf<String, List<RecordedFix>>()
+
+        /**
+         * 로그인한 계정. **기본은 `null` — 계정 경계 없음**이라 대부분의 테스트는
+         * 이걸 안 본다. 그래서 이 값이 실제로 채워진 판을 하나 두지 않으면,
+         * 계정 관문이 통째로 막혀 있어도 테스트가 전부 초록으로 남는다.
+         */
+        var owner: String? = null
+        override val ownerId: String? get() = owner
 
         override suspend fun openSession(session: RecordedSession) {
             sessions += session
@@ -358,6 +551,10 @@ class WalkSyncTest {
         val uploaded = mutableListOf<RecordedSession>()
         val uploadedPoints = mutableListOf<RecordedFix>()
         val appended = mutableListOf<List<RecordedFix>>()
+        val appendedIds = mutableListOf<Pair<String, String>>()
+        var afterUpload: () -> Unit = {}
+        var afterAppend: () -> Unit = {}
+        var afterFinalize: () -> Unit = {}
         val remote = mutableListOf<RemoteWalkDetail>()
         var uploadFails = false
         var appendFails = false
@@ -367,6 +564,7 @@ class WalkSyncTest {
         var finalizeCalls = 0
         val finalized = mutableListOf<Pair<String, WalkFinalizeManifest>>()
         var detailCalls = 0
+        var listCalls = 0
 
         override suspend fun upload(
             token: String,
@@ -379,15 +577,19 @@ class WalkSyncTest {
             }
             uploaded += session
             uploadedPoints += fixes
+            afterUpload()
             return Result.success("server-" + session.id)
         }
 
         override suspend fun appendPoints(
             token: String,
             walkId: String,
+            clientSessionId: String,
             fixes: List<RecordedFix>,
         ): Result<Unit> {
             appended += fixes
+            appendedIds += walkId to clientSessionId
+            afterAppend()
             if (appendFails) {
                 return Result.failure(IllegalStateException("이어붙이지 못했습니다."))
             }
@@ -404,11 +606,14 @@ class WalkSyncTest {
                 return Result.failure(IllegalStateException("응답을 잃었습니다."))
             }
             finalized += walkId to manifest
+            afterFinalize()
             return Result.success(Unit)
         }
 
-        override suspend fun list(token: String): Result<List<RemoteWalk>> =
-            Result.success(remote.map { it.walk })
+        override suspend fun list(token: String): Result<List<RemoteWalk>> {
+            listCalls++
+            return Result.success(remote.map { it.walk })
+        }
 
         override suspend fun detail(token: String, walkId: String): Result<RemoteWalkDetail> {
             detailCalls++

@@ -11,9 +11,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkEntry
+import com.daengs.app.walk.toEntryMoments
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkMoment
-import com.daengs.app.walk.WalkMomentAction
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -92,7 +92,10 @@ internal fun WalkEntryEditorContent(
     val latest = entries.firstOrNull { it.id == current?.id }
     val changed = current?.baseVersion != null && current.baseVersion != latest?.baseVersion
     container(
-        { Text(current?.type?.label ?: "산책 기록") },
+        // **목록(`산책 기록`)과 이름이 갈려야 한다.** 이건 산책 한 건 안에 남긴
+        // 것이고 저건 산책들의 목록이다. "지금" 을 넣지 않는 이유는 이 편집기가
+        // 지난 산책 상세(`WalkDiaryMapScreen`)에서도 열리기 때문이다.
+        { Text(current?.type?.label ?: "이 산책에 남긴 것") },
         {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (current == null) {
@@ -105,7 +108,7 @@ internal fun WalkEntryEditorContent(
                             val photo = row.photo
                             Text(if (photo != null) "사진 · ${entryClock(photo.capturedAtMillis)}" else
                                 "${entry!!.type.label} · ${entryClock(entry.recordedAtMillis)}" +
-                                    (entry.note?.let { "\n$it" } ?: ""),
+                                    (entry.note?.let { "\n$it" } ?: "\n${entry.locationLabel}"),
                                 Modifier.fillMaxWidth().clickable {
                                     if (photo != null) onOpenPhoto(photo) else selected = entry
                                 }.padding(vertical = 12.dp))
@@ -129,7 +132,8 @@ internal fun WalkEntryEditorContent(
                         }
                     }
                     current.syncError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                    Text(current.point?.let { "위치와 함께 남긴 기록" } ?: "위치 없이 남긴 메모")
+                    Text(current.locationLabel)
+                    if (current.syncPending) Text("기기에 저장했어요 · 동기화 대기 중")
                     if (current.type == WalkMomentType.NOTE) {
                         OutlinedTextField(value = text, onValueChange = { if (it.length <= 2000) text = it },
                             label = { Text("기억하고 싶은 내용을 적어 주세요") }, modifier = Modifier.fillMaxWidth(),
@@ -169,6 +173,9 @@ internal fun WalkEntryEditorContent(
     )
 }
 
+internal val WalkEntry.locationLabel: String get() = pin?.label
+    ?: if (point != null) "위치와 함께 남긴 기록" else if (type == WalkMomentType.NOTE) "위치 없이 남긴 메모" else "위치 없이 남긴 행동"
+
 private fun entryClock(at: Long) = SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(at))
 
 private data class DiaryRow(val at: Long, val entry: WalkEntry? = null,
@@ -177,13 +184,7 @@ private data class DiaryRow(val at: Long, val entry: WalkEntry? = null,
 }
 
 /** 같은 위치여도 ID가 다른 기록을 원본 단계에서 합치지 않는다. */
-internal fun List<WalkEntry>.entryMoments(): List<WalkMoment> = mapNotNull { entry ->
-    entry.point?.let { point -> WalkMoment(
-        id = "moment-${entry.id}", point = point,
-        actions = mapOf(entry.type to WalkMomentAction(entry.type, entry.recordedAtMillis,
-            entry.locationCapturedAtMillis ?: entry.recordedAtMillis)),
-    ) }
-}
+internal fun List<WalkEntry>.entryMoments(): List<WalkMoment> = toEntryMoments()
 
 @Preview
 @Composable

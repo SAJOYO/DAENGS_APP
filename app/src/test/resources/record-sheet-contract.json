@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "client_session_id": "00000000-0000-0000-0000-000000000065",
+      "walk_id": "00000000-0000-0000-0000-000000000001",
+      "status": "ready",
+      "analysis_id": "00000000-0000-0000-0000-0000000000c9",
+      "sheet_fingerprint": "sha256:9f14e0f4ff705dfb5c2b9dfc1652fc4d22067279dc4f036f4beb1cab16d3ad62",
+      "sheet": {
+        "v": 1,
+        "walk_id": "00000000-0000-0000-0000-000000000001",
+        "at": "2026-09-10T00:00:00Z",
+        "paint": {
+          "paint_version": 2,
+          "grid_version": "hex-v1",
+          "radius_u": 8.0,
+          "profile": "계단 3·8·20",
+          "profile_fp": "903fab223ba8",
+          "sample_step_m": 1.5,
+          "paint_fp": "3bb02412877d"
+        },
+        "cols": [
+          "q",
+          "r",
+          "occupancy_s",
+          "peak"
+        ],
+        "cell_count": 2,
+        "cells": [
+          [
+            10,
+            -3,
+            0.0,
+            0.45
+          ],
+          [
+            11,
+            -3,
+            4.5,
+            1.0
+          ]
+        ]
+      }
+    },
+    {
+      "client_session_id": "00000000-0000-0000-0000-000000000066",
+      "walk_id": "00000000-0000-0000-0000-000000000002",
+      "status": "ready",
+      "analysis_id": "00000000-0000-0000-0000-0000000000ca",
+      "sheet_fingerprint": "sha256:e2d8a89d63d7c145f1a8da396c8fec76f2bcc55b962992b3d3e474d2b4cb3296",
+      "sheet": {
+        "v": 1,
+        "walk_id": "00000000-0000-0000-0000-000000000002",
+        "at": "2026-09-10T00:00:00Z",
+        "paint": {
+          "paint_version": 2,
+          "grid_version": "hex-v1",
+          "radius_u": 8.0,
+          "profile": "계단 3·8·20",
+          "profile_fp": "903fab223ba8",
+          "sample_step_m": 1.5,
+          "paint_fp": "3bb02412877d"
+        },
+        "cols": [
+          "q",
+          "r",
+          "occupancy_s",
+          "peak"
+        ],
+        "cell_count": 0,
+        "cells": []
+      }
+    },
+    {
+      "client_session_id": "00000000-0000-0000-0000-000000000067",
+      "walk_id": "00000000-0000-0000-0000-000000000003",
+      "status": "pending",
+      "analysis_id": null,
+      "sheet_fingerprint": null,
+      "sheet": null
+    },
+    {
+      "client_session_id": "00000000-0000-0000-0000-000000000068",
+      "walk_id": null,
+      "status": "unavailable",
+      "analysis_id": null,
+      "sheet_fingerprint": null,
+      "sheet": null
+    }
+  ]
+}

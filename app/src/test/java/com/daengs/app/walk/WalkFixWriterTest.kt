@@ -17,6 +17,18 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WalkFixWriterTest {
+    @Test fun `핀 저장과 확정도 원본 GPS 뒤 세션 종료 전에 완료한다`() {
+        val log = RecordingLog()
+        withWriter(log) { writer ->
+            writer.openSession(session("s1"))
+            writer.append("s1", fix(0))
+            writer.ordered { log.calls += "pin:create" }
+            writer.append("s1", fix(1))
+            writer.ordered { log.calls += "pin:finish" }
+            writer.closeSession("s1", 100L)
+        }
+        assertEquals(listOf("open:s1", "append:0", "pin:create", "append:1", "pin:finish", "close:s1"), log.calls)
+    }
     @Test
     fun `commands land in submission order so a fix cannot outrun its session`() {
         val log = RecordingLog()

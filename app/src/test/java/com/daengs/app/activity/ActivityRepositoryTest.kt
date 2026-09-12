@@ -1,5 +1,6 @@
 package com.daengs.app.activity
 
+import com.daengs.app.activity.support.ActivityFixtures
 import com.daengs.app.auth.Session
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking

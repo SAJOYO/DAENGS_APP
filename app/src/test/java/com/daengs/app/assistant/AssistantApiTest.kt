@@ -23,6 +23,15 @@ import org.junit.Test
  */
 class AssistantApiTest {
 
+    @Test fun `시설 문맥은 문자열이 아닌 중첩 객체로 보낸다`() {
+        val facility = kotlinx.serialization.json.Json.parseToJsonElement("""
+            {"client_request_id":"22222222-2222-4222-8222-222222222222"}
+        """).let { it as kotlinx.serialization.json.JsonObject }
+        val body = JSONObject(AssistantApi.requestBody("카페 찾아줘", null, null, null, facility))
+        assertEquals("22222222-2222-4222-8222-222222222222", body.getJSONObject("facility").getString("client_request_id"))
+        assertEquals(setOf("query", "facility"), body.keys().asSequence().toSet())
+    }
+
     private val 광화문 = GeoPoint(37.5665, 126.9780)
 
     private val 대화 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
@@ -44,7 +53,7 @@ class AssistantApiTest {
                 "우리 애 비행기 태울 수 있나요?",
                 where = null,
                 activeDogId = 강아지,
-                persistence = null,
+                persistence = null, facility = null,
             ),
         )
         assertEquals("우리 애 비행기 태울 수 있나요?", body.getString("query"))
@@ -56,7 +65,7 @@ class AssistantApiTest {
     @Test
     fun `무상태 질의는 저장 id 를 싣지 않는다`() {
         val body = JSONObject(
-            AssistantApi.requestBody("밤에 짖어요", where = null, activeDogId = 강아지, persistence = null),
+            AssistantApi.requestBody("밤에 짖어요", where = null, activeDogId = 강아지, persistence = null, facility = null),
         )
         assertFalse("무상태인데 chat_session_id 가 실렸다", body.has("chat_session_id"))
         assertFalse("무상태인데 client_message_id 가 실렸다", body.has("client_message_id"))
@@ -73,7 +82,7 @@ class AssistantApiTest {
     fun `대표 강아지가 없으면 칸 자체를 뺀다`() {
         listOf(null, "", "   ").forEach { 없는_값 ->
             val body = JSONObject(
-                AssistantApi.requestBody("질문", where = null, activeDogId = 없는_값, persistence = null),
+                AssistantApi.requestBody("질문", where = null, activeDogId = 없는_값, persistence = null, facility = null),
             )
             assertFalse("[$없는_값] 이 실리면 서버가 422 로 질문을 통째로 버린다", body.has("active_dog_id"))
             assertEquals(1, body.keys().asSequence().count())
@@ -110,7 +119,7 @@ class AssistantApiTest {
                 "밤에 짖어요",
                 where = null,
                 activeDogId = 강아지,
-                persistence = ChatPersistence(대화, 메시지),
+                persistence = ChatPersistence(대화, 메시지), facility = null,
             ),
         )
         assertEquals("밤에 짖어요", body.getString("query"))
@@ -141,14 +150,14 @@ class AssistantApiTest {
     @Test
     fun `저장을 얹어도 대표 강아지는 같은 자리에 그대로 있다`() {
         val 무상태 = JSONObject(
-            AssistantApi.requestBody("같은 질문", where = null, activeDogId = 강아지, persistence = null),
+            AssistantApi.requestBody("같은 질문", where = null, activeDogId = 강아지, persistence = null, facility = null),
         )
         val 저장 = JSONObject(
             AssistantApi.requestBody(
                 "같은 질문",
                 where = null,
                 activeDogId = 강아지,
-                persistence = ChatPersistence(대화, 메시지),
+                persistence = ChatPersistence(대화, 메시지), facility = null,
             ),
         )
         assertEquals(무상태.getString("active_dog_id"), 저장.getString("active_dog_id"))
@@ -160,14 +169,14 @@ class AssistantApiTest {
     @Test
     fun `저장해도 위치 규칙은 그대로다`() {
         val inside = JSONObject(
-            AssistantApi.requestBody("산책?", 광화문, 강아지, ChatPersistence(대화, 메시지)),
+            AssistantApi.requestBody("산책?", 광화문, 강아지, ChatPersistence(대화, 메시지), null),
         )
         assertEquals(37.5665, inside.getJSONObject("location").getDouble("lat"), 1e-9)
         assertEquals(5, inside.keys().asSequence().count())
 
         val 도쿄 = GeoPoint(35.6762, 139.6503)
         val outside = JSONObject(
-            AssistantApi.requestBody("산책?", 도쿄, 강아지, ChatPersistence(대화, 메시지)),
+            AssistantApi.requestBody("산책?", 도쿄, 강아지, ChatPersistence(대화, 메시지), null),
         )
         assertFalse(outside.has("location"))
         assertEquals(대화, outside.getString("chat_session_id"))
@@ -178,7 +187,7 @@ class AssistantApiTest {
     @Test
     fun `좌표도 대표 강아지도 없으면 query 하나만 담는다`() {
         val body = JSONObject(
-            AssistantApi.requestBody("강아지가 손을 물어요", where = null, activeDogId = null, persistence = null),
+            AssistantApi.requestBody("강아지가 손을 물어요", where = null, activeDogId = null, persistence = null, facility = null),
         )
         assertEquals("강아지가 손을 물어요", body.getString("query"))
         assertFalse(body.has("requested_capability"))
@@ -198,7 +207,7 @@ class AssistantApiTest {
     @Test
     fun `좌표가 있으면 location 을 같이 담는다`() {
         val body = JSONObject(
-            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 광화문, activeDogId = null, persistence = null),
+            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 광화문, activeDogId = null, persistence = null, facility = null),
         )
         assertEquals("오늘 산책 나가도 될까?", body.getString("query"))
         val location = body.getJSONObject("location")
@@ -219,7 +228,7 @@ class AssistantApiTest {
     fun `한국 밖 좌표는 빼고 질문만 보낸다`() {
         val 도쿄 = GeoPoint(35.6762, 139.6503)
         val body = JSONObject(
-            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 도쿄, activeDogId = null, persistence = null),
+            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 도쿄, activeDogId = null, persistence = null, facility = null),
         )
         assertFalse("범위 밖 좌표가 실리면 서버가 422 로 질문을 통째로 버린다", body.has("location"))
         assertEquals("오늘 산책 나가도 될까?", body.getString("query"))
@@ -229,7 +238,7 @@ class AssistantApiTest {
     fun `경계값은 실린다`() {
         listOf(GeoPoint(33.0, 124.0), GeoPoint(39.0, 132.0)).forEach {
             val body = JSONObject(
-                AssistantApi.requestBody("질문", where = it, activeDogId = null, persistence = null),
+                AssistantApi.requestBody("질문", where = it, activeDogId = null, persistence = null, facility = null),
             )
             assertTrue("$it 는 한국 범위 안이다", body.has("location"))
         }

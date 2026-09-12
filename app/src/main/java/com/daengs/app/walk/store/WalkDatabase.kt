@@ -10,8 +10,8 @@ import androidx.sqlite.execSQL
 
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class],
-    version = 11,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class, WalkMotionBackupRow::class, WalkMotionPrecisionRow::class],
+    version = 18,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
@@ -198,6 +198,95 @@ abstract class WalkDatabase : RoomDatabase() {
             }
         }
 
+        /** Keep existing content/revisions/outbox untouched; old records remain v1. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinPayload TEXT")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinRevision INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN isV2 INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinDirty INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pinChainIndex INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE walk_entry ADD COLUMN pendingRequest TEXT")
+            }
+        }
+
+        /** Only existing photo collections become publishers. Restored empty walks stay unknown. */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_photo_sync (sessionId TEXT NOT NULL, " +
+                    "ownerId TEXT NOT NULL, publisherId TEXT NOT NULL, revision INTEGER NOT NULL, " +
+                    "acknowledgedRevision INTEGER NOT NULL, pendingPayload TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("INSERT OR IGNORE INTO walk_photo_sync " +
+                    "SELECT s.id, s.ownerId, s.id, 1, 0, NULL FROM walk_session s " +
+                    "WHERE EXISTS (SELECT 1 FROM walk_photo p WHERE p.sessionId = s.id AND p.ownerId = s.ownerId)")
+            }
+        }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_diary_publication (" +
+                    "sessionId TEXT NOT NULL, startedAtMillis INTEGER NOT NULL, deadlineAtMillis INTEGER NOT NULL, " +
+                    "baseBundle TEXT, publishedBundle TEXT, publishedAtMillis INTEGER, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
+        /** Nullable raw fields preserve legacy rows; no existing session becomes recording evidence. */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN ingressSeq INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN sourceEpoch TEXT")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN clockEpochId TEXT")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN elapsedRealtimeNanos INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN receivedElapsedNanos INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN receivedAtMillis INTEGER")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN speedMps REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN speedAccuracyMps REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN bearingDegrees REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN bearingAccuracyDegrees REAL")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN provider TEXT")
+                connection.execSQL("ALTER TABLE walk_fix ADD COLUMN recordingEligible INTEGER")
+                connection.execSQL("CREATE UNIQUE INDEX index_walk_fix_sessionId_ingressSeq ON walk_fix(sessionId, ingressSeq)")
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_recording_epoch (id TEXT NOT NULL, sessionId TEXT NOT NULL, clockEpochId TEXT NOT NULL, chainIndex INTEGER NOT NULL, startedAtMillis INTEGER NOT NULL, startedElapsedNanos INTEGER NOT NULL, firstIngressSeq INTEGER NOT NULL, endedAtMillis INTEGER, endedElapsedNanos INTEGER, endKind TEXT, targetIngressSeq INTEGER, persistedCount INTEGER NOT NULL, failureReason TEXT, firstFailedSeq INTEGER, drained INTEGER NOT NULL, PRIMARY KEY(id), FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("CREATE INDEX IF NOT EXISTS index_walk_recording_epoch_sessionId ON walk_recording_epoch(sessionId)")
+            }
+        }
+
+        /** Old and restored walks have no known policy; keep their envelope absent. */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN motionPolicyJson TEXT")
+            }
+        }
+
+        /** Independent pending receipt; no old session is fabricated into a measured backup. */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_motion_backup (sessionId TEXT NOT NULL, " +
+                    "manifestJson TEXT NOT NULL, manifestFingerprint TEXT NOT NULL, " +
+                    "evidenceFingerprint TEXT NOT NULL, completedAtMillis INTEGER, lastError TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                listOf("speedMpsBits", "speedAccuracyMpsBits", "bearingDegreesBits", "bearingAccuracyDegreesBits").forEach {
+                    connection.execSQL("ALTER TABLE walk_fix ADD COLUMN $it INTEGER")
+                }
+            }
+        }
+
+        /** Preserve source bits without inventing precision for old/restored coordinates. */
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE walk_session ADD COLUMN coordinateOrigin TEXT")
+                listOf("latBits", "lngBits", "accuracyBits").forEach {
+                    connection.execSQL("ALTER TABLE walk_fix ADD COLUMN $it INTEGER")
+                }
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_motion_precision (sessionId TEXT NOT NULL, " +
+                    "manifestJson TEXT NOT NULL, manifestFingerprint TEXT NOT NULL, evidenceFingerprint TEXT NOT NULL, " +
+                    "completedAtMillis INTEGER, lastError TEXT, verifiedAtMillis INTEGER, verificationJson TEXT, PRIMARY KEY(sessionId), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
         fun open(context: Context): WalkDatabase =
             Room.databaseBuilder(context.applicationContext, WalkDatabase::class.java, NAME)
                 .addMigrations(
@@ -211,6 +300,13 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13,
+                    MIGRATION_13_14,
+                    MIGRATION_14_15,
+                    MIGRATION_15_16,
+                    MIGRATION_16_17,
+                    MIGRATION_17_18,
                 )
                 .build()
     }

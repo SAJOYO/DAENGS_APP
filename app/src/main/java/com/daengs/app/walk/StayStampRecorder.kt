@@ -107,7 +107,7 @@ private fun GeoPoint.valid(): Boolean = latitude.isFinite() && longitude.isFinit
 fun detectStayStamps(fixes: List<RecordedFix>): List<StayStamp> {
     val recorder = StayStampRecorder()
     var chain: Int? = null
-    for (fix in fixes.sortedBy { it.clientSeq }) {
+    for (fix in fixes.filter { it.recordingEligible != false }.sortedBy { it.clientSeq }) {
         if (chain != null && fix.chainIndex != chain) recorder.breakContinuity()
         chain = fix.chainIndex
         recorder.add(LocationSample(GeoPoint(fix.lat, fix.lng), fix.atMillis,

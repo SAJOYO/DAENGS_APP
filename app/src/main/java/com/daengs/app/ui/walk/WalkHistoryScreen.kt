@@ -38,7 +38,13 @@ fun WalkHistoryScreen(
     val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
         app.tokenStore.load()?.appUserId.orEmpty()
     } }
-    WalkHistoryBrowser(history, reader, onBack, onOpen, modifier, onSync, pets, photoOf)
+    var comparisonOpen by rememberSaveable { mutableStateOf(false) }
+    val savedHistory = rememberSaveableStateHolder()
+    if (comparisonOpen) WalkBehaviorComparisonScreen(pets, { comparisonOpen = false }, onOpen)
+    else savedHistory.SaveableStateProvider("history-list") {
+        WalkHistoryBrowser(history, reader, onBack, onOpen, modifier, onSync, pets, photoOf,
+            onCompare = { comparisonOpen = true })
+    }
 }
 
 @Composable
@@ -46,6 +52,7 @@ internal fun WalkHistoryBrowser(
     history: WalkHistory, reader: WalkDiaryReader, onBack: () -> Unit, onOpen: (String) -> Unit,
     modifier: Modifier = Modifier, onSync: (() -> Unit)? = null,
     pets: List<Pet> = emptyList(), photoOf: (String) -> ImageBitmap? = { null },
+    onCompare: (() -> Unit)? = null,
 ) {
     var dogId by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
@@ -80,10 +87,12 @@ internal fun WalkHistoryBrowser(
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹ 뒤로") }
+            // 완료된 산책 세션을 찾는 목록이다. 장면을 구성해 내보내는 일기와 구분한다.
             Text("산책 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         if (pets.size >= 2) DogFilterRow(pets, dogId, { dogId = it },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), photoOf = photoOf)
+        onCompare?.let { TextButton(onClick = it, modifier = Modifier.padding(horizontal = 10.dp)) { Text("행동 기록 돌아보기") } }
         WalkHistorySearchLayout(filter, { filter = it }, page == null, error, page?.walks?.isEmpty() == true,
             hasAny, { retry++ }, { filter = WalkHistoryFilter(); dogId = null }, Modifier.weight(1f)) {
             savedLists.SaveableStateProvider(position) {

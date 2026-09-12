@@ -8,7 +8,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
-private val DaengsColorScheme = lightColorScheme(
+internal val DaengsColorScheme = lightColorScheme(
     primary = DaengPink,
     onPrimary = CardWhite,
     primaryContainer = PinkSoft,
@@ -33,6 +33,49 @@ private val DaengsColorScheme = lightColorScheme(
     onError = CardWhite,
     errorContainer = DaengsColors.ErrorSoft,
     onErrorContainer = DaengsColors.Error,
+
+    // 🔒 **나머지 칸도 전부 채운다** — `docs/design-locks.md` 0절 (2026-09-12).
+    //
+    // 위의 error 와 같은 사고가 **열일곱 칸**에 남아 있었다. 안 채운 칸은 M3 기본값(연보라 ·
+    // 회보라)으로 메워지는데, 그 칸을 쓰는 부품이 이 앱에 흔하다:
+    //   FilterChip 고른 칩 → secondaryContainer     Card(채움) · 입력칸 → surfaceContainerHighest
+    //   AlertDialog → surfaceContainerHigh          ModalBottomSheet → surfaceContainerLow
+    //   DropdownMenu → surfaceContainer              구분선 → outlineVariant
+    //   높이가 있는 면(메뉴·시트) → surfaceTint 로 분홍 물이 든다
+    // 점령·산책 화면에 Card 40곳 · FilterChip 31곳 · AlertDialog 12곳이 있다.
+    // `ThemeColorLockTest` 가 **M3 기본값과 같은 칸이 하나라도 있으면** 깨진다.
+    secondaryContainer = PinkSoft,
+    onSecondaryContainer = TextDark,
+    tertiaryContainer = PinkFaint,
+    onTertiaryContainer = TextDark,
+    // 높이가 있는 면에 섞는 색. 면과 같게 두어 분홍 물이 들지 않게 한다.
+    surfaceTint = CardWhite,
+    inverseSurface = TextDark,
+    inverseOnSurface = CreamBg,
+    inversePrimary = PinkSoft,
+    outlineVariant = DaengsColors.BorderNeutral,
+    // 어둡게 덮는 막. 검정 대신 이 앱의 진한 갈색 — 뒤가 차갑게 꺼지지 않는다.
+    scrim = TextDark,
+    surfaceBright = CardWhite,
+    surfaceDim = PinkFaint,
+    surfaceContainerLowest = CardWhite,
+    surfaceContainerLow = CreamBg,
+    surfaceContainer = CreamBg,
+    surfaceContainerHigh = CardWhite,
+    surfaceContainerHighest = PinkFaint,
+    // Material 1.4 의 Fixed 칸. 쓰는 부품은 드물지만 비워 두면 같은 보라가 남는다.
+    primaryFixed = PinkSoft,
+    primaryFixedDim = DaengPink,
+    onPrimaryFixed = TextDark,
+    onPrimaryFixedVariant = DaengPinkDeep,
+    secondaryFixed = PinkSoft,
+    secondaryFixedDim = PinkFaint,
+    onSecondaryFixed = TextDark,
+    onSecondaryFixedVariant = TextMuted,
+    tertiaryFixed = PinkFaint,
+    tertiaryFixedDim = DaengsColors.BorderNeutral,
+    onTertiaryFixed = TextDark,
+    onTertiaryFixedVariant = TextMuted,
 )
 
 /**

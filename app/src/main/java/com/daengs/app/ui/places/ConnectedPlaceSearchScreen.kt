@@ -2,6 +2,7 @@ package com.daengs.app.ui.places
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -11,23 +12,28 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.map.features.places.*
 import com.daengs.app.map.shell.MapHost
+import com.daengs.app.map.shell.MapCameraSnapshot
+import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.place.*
 import com.daengs.app.ui.places.lab.*
 import com.daengs.app.ui.theme.DaengsTheme
+import kotlinx.serialization.json.JsonObject
 
 /** AI 확정 결과는 서버가 실행한 응답 그대로 그린다. 일반 검색을 다시 호출하면 조건을 잃는다. */
 internal fun PlacesUiState.visibleDiscovery(): PlaceDiscoveryState {
+    if (conversationAvailable) return discovery
     if (!facility.enabled) return discovery
-    val lens = facility.confirmedLens
-    val response = lens?.search
+    val lens = facility.confirmedLens ?: return discovery
+    val response = lens.search
     return discovery.copy(
-        origin = facility.response?.request?.origin ?: discovery.origin,
-        preferParking = lens?.parking ?: discovery.preferParking,
+        requestedKinds = lens.kinds,
+        origin = facility.confirmedResponse?.request?.origin ?: discovery.origin,
+        radiusMeters = facility.confirmedResponse?.request?.radiusMeters ?: discovery.radiusMeters,
+        nameQuery = "",
+        preferParking = lens.parking,
         selectedPlaceKey = facility.selectedPlaceKey,
         search = when {
-            facility.loading -> PlaceSearchState.Loading
-            facility.error != null || response == null -> PlaceSearchState.Idle
             response.groups.all { it.results.isEmpty() } -> PlaceSearchState.Empty(response)
             else -> PlaceSearchState.Content(response)
         },
@@ -45,9 +51,6 @@ fun PlacesUiState.toConnectedSearchState(draft: String, ai: Boolean, expanded: P
     val hits = if (facility.enabled || discovery.requestedKinds.size > 1) response?.overviewHits(discovery.preferParking).orEmpty()
         else response?.groups?.flatMap { it.results }.orEmpty().distinctBy { it.place.key }
     val phase = when {
-        facility.enabled && facility.loading -> LabPhase.LOADING
-        facility.enabled && facility.error != null -> LabPhase.ERROR
-        facility.enabled && facility.confirmedLens == null -> LabPhase.EMPTY
         location is PlaceLocationState.PermissionRequired || location is PlaceLocationState.PermissionPermanentlyDenied -> LabPhase.PERMISSION
         locationFailed -> LabPhase.ERROR
         discovery.loading || waitingForSearchLocation || profileMismatch -> LabPhase.LOADING
@@ -82,7 +85,17 @@ fun ConnectedPlaceSearchScreen(
     onOpenHandoff: (String) -> Unit,
     showMap: Boolean = true,
     onRefreshProfiles: () -> Unit = {},
+    /** 고정 검색 도우미에 쓸 견종 그림. 지도상의 내 위치는 기본 위치 점을 쓴다. */
+    avatarBreed: DogBreed? = null,
+    /** 올린 프로필 사진. 있으면 [avatarBreed] 보다 이쪽이 앞선다. */
+    avatarPhoto: android.graphics.Bitmap? = null,
+    bookmarkController: PlaceBookmarkController? = null,
 ) {
+    val bookmarks = bookmarkController ?: rememberPlaceBookmarks()
+    val saved = bookmarks?.let { key(it) { it.state.collectAsState().value } }
+    val searchList = rememberLazyListState()
+    val savedList = rememberLazyListState()
+    var searchCamera by remember { mutableStateOf<MapCameraSnapshot?>(null) }
     var draft by rememberSaveable { mutableStateOf(state.discovery.nameQuery) }
     val ai = state.facility.enabled
     val display = state.visibleDiscovery()
@@ -90,52 +103,119 @@ fun ConnectedPlaceSearchScreen(
     var notice by remember { mutableStateOf<String?>(null) }
     var camera by remember { mutableStateOf(PlaceMapCamera()) }
     var follow by remember { mutableStateOf(true) }
+    var filtersOpen by remember { mutableStateOf(false) }
+    var dogOpen by rememberSaveable { mutableStateOf(false) }
+    var dogAsked by rememberSaveable { mutableStateOf(false) }
+    var dogQuery by rememberSaveable { mutableStateOf("") }
+    val appliedFilters = state.conversation.result?.appliedPlaceFilters()
+    LaunchedEffect(saved?.searchTransfer) {
+        if ((saved?.searchTransfer ?: 0) > 0) {
+            draft = saved!!.session.search.draft
+            searchCamera = null
+            searchList.scrollToItem(0)
+        }
+    }
     val keyboard = LocalSoftwareKeyboardController.current
-    val ui = state.toConnectedSearchState(draft, ai, expanded, notice)
+    val ui = state.toConnectedSearchState(draft, false, expanded, notice)
     LaunchedEffect(state.discovery.response) {
         // A loading frame has no response; only completed results can remove an expanded card.
         if (state.discovery.response != null) expanded = ui.expanded
     }
-    val category = PlaceCategorySelection.fromKinds(state.discovery.requestedKinds)
+    val category = PlaceCategorySelection.fromKinds(display.requestedKinds)
+    fun searchSnapshot() = PlaceBrowseSnapshot(PlaceBrowseFilters(
+        kinds = display.requestedKinds.toSet(), name = display.nameQuery,
+        origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
+        dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
+        requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
+        excludedKeys = state.conversation.result?.excludedKeys.orEmpty(),
+    ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera)
+    if (bookmarks != null && saved != null) {
+        PlaceBookmarkFeedback(bookmarks, saved)
+        if (saved.session.tab == PlaceBrowseTab.BOOKMARKS) {
+            PlaceBookmarksScreen(bookmarks, saved, state.profiles, savedList, showMap, onCall,
+                actions = { hit -> PlaceJourneyAction(
+                    state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
+                    onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
+                    onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
+                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                onSearch = { onAction(PlacesAction.ApplySearchPlan(it)) })
+            return
+        }
+    }
     val permission = state.location is PlaceLocationState.PermissionRequired || state.location is PlaceLocationState.PermissionPermanentlyDenied
     fun requestPermission() { if (state.location is PlaceLocationState.PermissionPermanentlyDenied) onOpenSettings() else onRequestPermission() }
-    fun search(selected: PlaceCategorySelection = category, parking: Boolean = state.discovery.preferParking, query: String? = null) {
+    fun search(selected: PlaceCategorySelection = category, parking: Boolean = display.preferParking, query: String? = null) {
         if (permission) { requestPermission(); return }
         notice = null
+        dogOpen = false
+        dogAsked = false
+        if (ai) onAction(PlacesAction.SetAiMode(false))
         onAction(PlacesAction.Search(selected, parking, query))
     }
     BackHandler(onBack = onBack)
+    fun retryConversationSearch() {
+        val filterRetry = state.conversation.filterRetry
+        onAction(if (filterRetry != null) PlacesAction.ApplyFilters(filterRetry)
+            else if (ai) PlacesAction.Discover(dogQuery) else PlacesAction.RetrySearch)
+    }
+    if (filtersOpen && state.conversationAvailable) ConversationFiltersDialog(state.conversation,
+        onApply = { onAction(PlacesAction.ApplyFilters(it)) }, onDismiss = { filtersOpen = false })
     PlaceSearchLabScreen(
         state = ui, live = true, onBack = onBack,
-        onEdit = { draft = it }, onAi = { onAction(PlacesAction.SetAiMode(!ai)); notice = null },
+        bookmarks = saved?.panel(), resultsListState = searchList,
+        onBrowseTab = { tab -> if (tab == PlaceBrowseTab.BOOKMARKS) {
+            bookmarks?.enter(searchSnapshot(), state.profiles.snapshots())
+        } },
+        onToggleBookmark = { bookmarks?.toggle(it) }, onRetryBookmarks = { bookmarks?.refresh() },
+        onEdit = { draft = it }, showAiToggle = false,
         onSubmit = {
             when {
-                ai -> { keyboard?.hide(); onAction(PlacesAction.Discover(draft)) }
                 !isValidPlaceNameQuery(draft) -> notice = "장소명은 120자까지 입력할 수 있어요."
                 else -> { keyboard?.hide(); search(query = draft.trim()) }
             }
         },
-        categoryContent = { PlacePurposeMenu(category) { search(selected = it) } },
-        resultLabel = if (ai) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
+        categoryContent = {
+            PlacePurposeMenu(category, onLimit = { notice = "카테고리는 6개까지 함께 검색할 수 있어요." }) { search(selected = it) }
+            PlaceSearchQueue(category,
+                filterSummary = if (state.conversationAvailable) listOfNotNull(
+                    state.conversation.result?.takeIf { it.searchPool != "all_places" }?.poolLabel,
+                    appliedFilters?.summary?.takeIf { it.isNotEmpty() }).joinToString(" · ")
+                    else state.facility.confirmedLens?.let { "검색 방향 · ${it.label}" }.orEmpty(),
+                nameQuery = display.nameQuery,
+                onOpenFilters = { if (state.conversationAvailable) filtersOpen = true else dogOpen = true }) { search(selected = it) }
+        },
+        resultLabel = if (ai && !state.conversationAvailable) state.facility.confirmedLens?.label ?: "AI 조건 검색" else category.label,
         aiConnected = true,
-        conditionContent = if (state.facility.enabled) ({ FacilitySearchPanel(state.facility, { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) }) }) else null,
-        emptyMessage = if (ai && state.facility.confirmedLens == null) "검색 방향을 확정하면 장소가 여기에 표시돼요." else "검색 결과가 없어요.",
+        onSearchFilters = if (state.conversationAvailable) ({ filtersOpen = true }) else null,
+        searchFilterCount = appliedFilters?.count ?: 0,
+        answerContent = if (state.conversationAvailable && !ai &&
+            (state.conversation.error != null || state.conversation.notice != null || state.conversation.result?.matches == false)) ({
+            ConversationPanel(state.conversation.copy(busy = false, answerBusy = false), showAnswer = false,
+                onRetryAnswer = { onAction(PlacesAction.RetryAi) },
+                onRetrySearch = ::retryConversationSearch,
+                onApplyCurrentFilters = { state.conversation.result?.let {
+                    onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
+                } },
+                onOpenFilters = { filtersOpen = true })
+        }) else null,
+        emptyMessage = if (category == PlaceCategorySelection.None) "카테고리를 담으면 주변 장소를 찾아드려요." else "검색 결과가 없어요.",
         onParking = { value ->
             if (category.kinds.any(PlaceKind::supportsParkingPreference)) search(parking = value)
             else notice = "이 업종은 주차 정보를 제공하지 않아요."
         },
-        onRadius = { meters -> onAction(PlacesAction.SetRadius(meters)) },
-        onDog = { id -> onAction(PlacesAction.ToggleDog(id)) },
+        onRadius = { meters -> dogOpen = false; dogAsked = false; onAction(PlacesAction.SetRadius(meters)) },
+        onDog = { id -> dogOpen = false; dogAsked = false; onAction(PlacesAction.ToggleDog(id)) },
         onRefreshProfiles = onRefreshProfiles,
         onToggle = { key ->
             expanded = key.takeUnless { it == expanded }
             onAction(PlacesAction.Select(key))
         },
         onRetry = {
-            if (ai) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
+            if (state.conversationAvailable) retryConversationSearch()
+            else if (ai) { if (state.facility.canRetry) onAction(PlacesAction.RetryAi) }
             else if (permission) requestPermission() else onAction(PlacesAction.RetrySearch)
         },
-        showRetry = !ai || state.facility.canRetry,
+        showRetry = !ai || (state.conversationAvailable && state.conversation.error != null) || state.facility.canRetry,
         cardActions = { hit ->
             if (ai) state.facility.confirmedLens?.presentations?.firstOrNull { it.key == hit.place.key }?.let { FacilityPresentationDetails(it) }
             hit.place.facts.phone?.let { phone -> TextButton(onClick = { onCall(phone) }) { Text("전화로 확인") } }
@@ -147,26 +227,58 @@ fun ConnectedPlaceSearchScreen(
         },
         map = {
             Box(Modifier.fillMaxSize()) {
-            val keys = canonicalPlaceKeysByMarker(display)
-            if (showMap) MapHost(
-                scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
-                searchOrigin = display.origin, followDevice = follow,
-                onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
-                onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
-                modifier = Modifier.fillMaxSize(),
-            )
-            val candidate = camera.searchPoint(state.discovery.origin)
-            PlaceMapControls(candidate != null,
-                onMapSearch = { candidate?.let { point ->
-                    follow = false; camera = camera.submitted()
-                    onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking))
-                } },
-                onDeviceSearch = {
-                    if (permission) requestPermission() else {
-                        follow = true; camera = camera.submitted()
-                        onAction(PlacesAction.Locate(category, state.discovery.preferParking))
+                val keys = canonicalPlaceKeysByMarker(display)
+                if (showMap) MapHost(
+                    scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
+                    searchOrigin = display.origin, followDevice = follow,
+                    // 🔒 **잠긴 디자인 — 내 위치는 사용자 프로필(대표 강아지 사진·얼굴)이다.**
+                    //    SDK 파란 점으로 바꾸지 않는다. `docs/design-locks.md` 1절.
+                    //    두 번 파란 점으로 돌아갔다 (2026-08-31 · 2026-09-10) — 그래서 잠갔다.
+                    avatarRes = com.daengs.app.map.provider.naver.locationFaceRes(avatarBreed?.portraitRes), avatarPhoto = avatarPhoto,
+                    initialCamera = searchCamera, onCameraSnapshot = { searchCamera = it },
+                    onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
+                    onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                val candidate = camera.searchPoint(state.discovery.origin)
+                PlaceMapControls(candidate != null,
+                    onMapSearch = { candidate?.let { point ->
+                        follow = false; camera = camera.submitted(); dogOpen = false; dogAsked = false
+                        if (ai) onAction(PlacesAction.SetAiMode(false))
+                        onAction(PlacesAction.SearchAt(point, category, state.discovery.preferParking))
+                    } },
+                    onDeviceSearch = {
+                        if (permission) requestPermission() else {
+                            follow = true; camera = camera.submitted(); dogOpen = false; dogAsked = false
+                            if (ai) onAction(PlacesAction.SetAiMode(false))
+                            onAction(PlacesAction.Locate(category, state.discovery.preferParking))
+                        }
+                    }) {
+                    PlaceDogAssistant(
+                        busy = if (state.conversationAvailable) state.conversation.busy || state.conversation.answerBusy else state.facility.loading,
+                        replyAvailable = dogAsked || (ai && (state.conversation.result?.answer != null || state.facility.response != null)),
+                        open = dogOpen, onOpen = { dogOpen = it },
+                        onSubmit = { query ->
+                            dogAsked = true; dogQuery = query
+                            if (!ai) onAction(PlacesAction.SetAiMode(true))
+                            onAction(PlacesAction.Discover(query, bookmarks?.captureTurn(searchSnapshot(), state.profiles.snapshots())))
+                        },
+                        onCancel = { onAction(PlacesAction.CancelAi) },
+                        onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,
+                        avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                        searchContext = if (display.origin == null) "검색 지역을 먼저 정해 줘"
+                            else "현재 검색 지역 · 반경 " + if (display.radiusMeters % 1000 == 0) "${display.radiusMeters / 1000}km" else "${display.radiusMeters}m",
+                    ) {
+                        if (state.conversationAvailable) {
+                            ConversationPanel(state.conversation, state.facility.error,
+                                onRetryAnswer = { onAction(PlacesAction.RetryAi) }, onRetrySearch = ::retryConversationSearch,
+                                onApplyCurrentFilters = { state.conversation.result?.let {
+                                    onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
+                                } })
+                        } else FacilitySearchPanel(state.facility,
+                            { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) })
                     }
-                })
+                }
             }
         },
     )
