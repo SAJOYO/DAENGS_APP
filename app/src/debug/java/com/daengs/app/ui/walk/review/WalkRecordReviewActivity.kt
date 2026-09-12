@@ -53,7 +53,8 @@ class WalkRecordReviewActivity : ComponentActivity() {
             val record = selected
             if (record != null) key(record.detail.summary.sessionId) {
                 WalkRouteReviewContent(record.detail, record.scenes,
-                    "실제 서버 기록 · 기존 앱 정책 비교값 · ${record.detail.observations.size}개 관측",
+                    if (record.folder.isEmpty()) "가상 기록 · 왕복 / 공백 / 제외 이동 / 작은 흔들림"
+                        else "실제 서버 기록 · 기존 앱 정책 비교값 · ${record.detail.observations.size}개 관측",
                     onBack = { selected = null })
             } else ReviewControls(busy, notice, walks, onLogin = { run {
                 val login = loginWithKakao(this@WalkRecordReviewActivity).getOrThrow()
@@ -63,7 +64,7 @@ class WalkRecordReviewActivity : ComponentActivity() {
             } }, onList = { run {
                 walks = source.list()
                 notice = "${walks.size}건을 찾았어요."
-            } }, onWalk = { walk -> run {
+            } }, onFixture = { selected = observedRouteMapFixture() }, onWalk = { walk -> run {
                 selected = source.read(walk)
                 notice = "원본과 비교 보고서를 검토 앱 안에 보관했어요."
             } })
@@ -74,6 +75,7 @@ class WalkRecordReviewActivity : ComponentActivity() {
 @Composable
 private fun ReviewControls(busy: Boolean, notice: String, walks: List<RemoteWalk>,
     onLogin: () -> Unit, onList: () -> Unit, onWalk: (RemoteWalk) -> Unit,
+    onFixture: () -> Unit = {},
 ) {
     val time = remember { DateTimeFormatter.ofPattern("M/d HH:mm:ss").withZone(ZoneId.of("Asia/Seoul")) }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
@@ -84,6 +86,7 @@ private fun ReviewControls(busy: Boolean, notice: String, walks: List<RemoteWalk
         Button(onClick = onLogin, enabled = !busy) { Text("카카오 계정으로 기록 확인") }
         OutlinedButton(onClick = onList, enabled = !busy) { Text("로그인한 계정의 목록 읽기") }
         Text(notice)
+        OutlinedButton(onClick = onFixture, enabled = !busy) { Text("가상 반례 지도 확인") }
         if (busy) CircularProgressIndicator()
         walks.forEach { walk ->
             OutlinedButton(onClick = { onWalk(walk) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {

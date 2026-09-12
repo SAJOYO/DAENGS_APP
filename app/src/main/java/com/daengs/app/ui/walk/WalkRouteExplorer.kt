@@ -18,18 +18,20 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.*
 import com.daengs.app.walk.routeexplorer.*
+import com.daengs.app.walk.trajectory.ObservedRouteSection
 import kotlinx.coroutines.*
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal enum class RouteExplorerMode { OVERVIEW, SECTION, SCENE, PASSAGE, REPLAY }
+internal enum class RouteExplorerMode { OVERVIEW, SECTION, AUXILIARY, SCENE, PASSAGE, REPLAY }
 
 /** Exactly one selection owns the map emphasis. Camera requests remain separate user actions. */
 internal sealed interface WalkRouteSelection {
     data object Overview : WalkRouteSelection
     data class Section(val index: Int) : WalkRouteSelection
+    data class Auxiliary(val id: String) : WalkRouteSelection
     data class Scene(val id: String) : WalkRouteSelection
     data class Passage(val result: RoutePassages?, val selectedId: String?) : WalkRouteSelection
     data class Replay(val elapsedMillis: Long) : WalkRouteSelection
@@ -57,6 +59,7 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     val mode get() = when (selection) {
         WalkRouteSelection.Overview -> RouteExplorerMode.OVERVIEW
         is WalkRouteSelection.Section -> RouteExplorerMode.SECTION
+        is WalkRouteSelection.Auxiliary -> RouteExplorerMode.AUXILIARY
         is WalkRouteSelection.Scene -> RouteExplorerMode.SCENE
         is WalkRouteSelection.Passage -> RouteExplorerMode.PASSAGE
         is WalkRouteSelection.Replay -> RouteExplorerMode.REPLAY
@@ -69,6 +72,9 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         review?.sections?.firstOrNull { it.index == selected.index }
     }
     val highlightPaths get() = listOfNotNull(selectedSection?.path ?: selectedPass?.path)
+    val selectedAuxiliary get() = (selection as? WalkRouteSelection.Auxiliary)?.let { selected ->
+        review?.observed?.sections?.firstOrNull { it.id == selected.id }
+    }
     val selectedPass get() = passages?.passes?.firstOrNull { it.id == selectedPassId }
     val replayFrame get() = if (mode == RouteExplorerMode.REPLAY) index?.frameAt(elapsed) else null
 
@@ -89,6 +95,10 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     fun selectSection(index: Int) {
         if (review?.sections?.none { it.index == index } != false) return
         replaceSelection(WalkRouteSelection.Section(index)); panelOpen = true
+    }
+    fun selectAuxiliary(id: String) {
+        if (review?.observed?.sections?.none { it.id == id } != false) return
+        replaceSelection(WalkRouteSelection.Auxiliary(id)); panelOpen = true
     }
     fun replaceRoute(source: RouteExplorerIndex, completed: CompletedRouteReview, duration: Long) {
         // Keep a scene identity, but derive its correspondence again against the new route/scene.
@@ -178,6 +188,7 @@ internal fun rememberWalkRouteExplorer(sessionId: String, detail: WalkSessionDet
 @Composable
 internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: () -> Unit,
     onSection: (CompletedRouteSection) -> Unit = {},
+    onAuxiliary: (ObservedRouteSection) -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -192,17 +203,27 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 (review.summary.endedAtMillis?.let(::formatRouteExplorerClock) ?: "진행 중"),
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
-            if (state.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.SECTION)) review.sections.forEachIndexed { ordinal, section ->
-                OutlinedButton(onClick = { state.selectSection(section.index); onSection(section) },
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text((if (state.selectedSection?.index == section.index) "● " else "○ ") +
-                        "동선 ${ordinal + 1} · " + formatRouteExplorerClock(section.startedAtMillis) + "–" +
-                        formatRouteExplorerClock(section.endedAtMillis))
+            if (state.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.SECTION, RouteExplorerMode.AUXILIARY)) {
+                review.sections.forEachIndexed { ordinal, section ->
+                    OutlinedButton(onClick = { state.selectSection(section.index); onSection(section) },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text((if (state.selectedSection?.index == section.index) "● " else "○ ") +
+                            "동선 ${ordinal + 1} · " + formatRouteExplorerClock(section.startedAtMillis) + "–" +
+                            formatRouteExplorerClock(section.endedAtMillis))
+                    }
+                }
+                review.observed.sections.forEachIndexed { ordinal, section ->
+                    OutlinedButton(onClick = { state.selectAuxiliary(section.id); onAuxiliary(section) },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text((if (state.selectedAuxiliary?.id == section.id) "● " else "○ ") +
+                            "관측 경로 ${ordinal + 1} · " + observedRouteLabel(section) + "\n" +
+                            formatRouteExplorerClock(section.startedAtMillis) + "–" + formatRouteExplorerClock(section.endedAtMillis))
+                    }
                 }
             }
             if (review.sections.size > 1 && state.mode == RouteExplorerMode.OVERVIEW) Text("구간을 누르면 해당 동선으로 확대해요. 끊긴 사이는 연결하지 않아요.",
                 style = MaterialTheme.typography.bodySmall)
-            if (review.sections.isEmpty()) Text("이어지는 동선이 없어요. 확인된 위치와 장면은 볼 수 있어요.",
+            if (review.sections.isEmpty()) Text("이어지는 보행선이 없어요. 확인된 위치와 장면은 볼 수 있어요.",
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
         }
@@ -215,6 +236,10 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 style = MaterialTheme.typography.bodyMedium)
             RouteExplorerMode.SECTION -> Text("선택한 동선과 진행 방향을 강조했어요. 겹친 길을 누르면 통과 시각을 고를 수 있어요.",
                 style = MaterialTheme.typography.bodyMedium)
+            RouteExplorerMode.AUXILIARY -> state.selectedAuxiliary?.let { section ->
+                Text(observedRouteDescription(section) + if (section.directions.isEmpty())
+                    " 이동 방향을 표시할 근거는 충분하지 않아요." else " 이동 근거가 있는 부분에 진행 방향을 표시해요.")
+            }
             RouteExplorerMode.SCENE -> Unit // Scenes use the reading panel on the same selection state.
             RouteExplorerMode.PASSAGE -> {
                 val result = state.passages

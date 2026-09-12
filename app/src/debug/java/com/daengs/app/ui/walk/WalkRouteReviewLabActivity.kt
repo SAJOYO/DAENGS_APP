@@ -15,7 +15,6 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.DaengsApp
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
-import com.daengs.app.map.layers.completedroute.SessionRouteExplorerLayerState
 import com.daengs.app.map.shell.*
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.*
@@ -45,36 +44,42 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
 ) {
     val explorer = rememberWalkRouteExplorer(detail.summary.sessionId, detail)
     val selected = scenes.firstOrNull { it.id == explorer.selectedSceneId }
-    val focus = remember(selected, explorer.review) { selected?.let { explorer.review?.sceneFocus(it) } }
-    val paths = if (selected != null) focus?.paths.orEmpty() else explorer.highlightPaths
+    val focus = remember(selected, explorer.review) { selected?.let { explorer.review?.recordSceneFocus(it) } }
+    val presentation = recordPresentationLayer(explorer, detail, focus)
+    val paths = presentation.emphasisPaths
     var bounds by remember { mutableStateOf(detail.route.bounds) }
     var center by remember { mutableStateOf<GeoPoint?>(null) }
     var request by remember { mutableIntStateOf(0) }
+    var directionCount by remember { mutableIntStateOf(0) }
     val scene = diaryDisplayScene(composeMapScene(MapPurpose.WALK, MapSceneSources(
         completedRoute = detail.route.toCompletedRouteLayerState(), moments = diarySceneMarkers(scenes, selected?.id),
-    ))).copy(sessionExplorer = SessionRouteExplorerLayerState(paths, explorer.replayFrame?.point,
-        useOverviewDirections = explorer.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.REPLAY)))
+    ))).copy(sessionExplorer = presentation)
     fun overview() { explorer.overview(); center = null; bounds = detail.route.bounds; request++ }
     fun selectScene(value: DiaryScene) {
         explorer.selectScene(value.id)
         value.point?.let { center = it; request++ }
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Text(label, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        Text("$label · 방향 $directionCount", Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
         WalkDiaryMapContent(scenes, selected, false, null,
             onSelect = ::selectScene, onClose = explorer::closeScene,
             onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {}, title = "동선과 장면 함께 보기",
             onBack = onBack,
-            subtitle = formatWalkDay(detail.summary.startedAtMillis), summaryContent = { WalkSessionSummary(detail.summary) },
+            subtitle = formatWalkDay(detail.summary.startedAtMillis), summaryContent = {
+                WalkSessionSummary(detail.summary)
+                ObservedRouteLegend(presentation.observedParts.map { it.role })
+            },
             explorerSelected = explorer.panelOpen,
             onChooseExplorer = { explorer.overview(); explorer.choosePanel(it) },
             explorerPanel = { WalkRouteExplorerPanel(explorer, ::overview, onSection = {
                 center = null; bounds = it.path; request++
-            }) }, onOverview = ::overview, selectedRouteNotice = focus?.relation?.let(::sceneRouteNotice),
+            }, onAuxiliary = { center = null; bounds = it.path; request++ }) },
+            onOverview = ::overview, selectedRouteNotice = focus?.let(::sceneRouteNotice),
             map = { viewport ->
                 if (LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint))
                 else MapHost(scene, null, false, fitBounds = bounds, centerOn = center,
+                    onRouteDirectionCount = { directionCount = it },
                     centerMinZoom = if (selected != null && paths.isNotEmpty()) SCENE_ROUTE_MIN_ZOOM else null,
                     cameraRequestKey = request, keepSelectionVisible = true,
                     bottomPaddingPx = viewport.bottomPaddingPx, centerYFraction = viewport.selectionYFraction,
