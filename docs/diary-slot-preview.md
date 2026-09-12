@@ -137,3 +137,37 @@ APK 내부의 개발 API 주소·카카오 네이티브 키·네이버 키가 �
 
 설정 포함 APK SHA-256: `d50f056e21c0392dc81ccca1c70e5d2f7c9189d4ef5b5073cdfae87597cd58a5`.
 이 단계에서는 앱 코드 변경 없이 설정만 적용해 `:app:assembleDebug`를 실행했다.
+
+### 기존 산책을 보존하는 별도 설치
+
+출시 앱의 로컬 산책을 계속 검토할 수 있도록, `-PsideBySide=true`를 준 Debug는
+`com.daengs.app.preview` / **댕스 미리보기**로 빌드한다. 저장 공간과 FileProvider도
+패키지별로 분리된다. 옵션 없는 Debug와 Release는 기존 패키지·앱 이름을 유지한다.
+
+```powershell
+.\gradlew.bat :app:assembleDebug -PsideBySide=true --max-workers=2 --console=plain
+apkanalyzer manifest application-id app/build/outputs/apk/debug/app-debug.apk
+# 위 출력이 com.daengs.app.preview인지 확인한 뒤 새 앱으로 설치한다.
+adb install app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.daengs.app.preview/com.daengs.app.MainActivity
+```
+
+같은 출력 경로를 사용하므로 설치할 APK의 패키지를 확인한다. 이미 설치한 미리보기 앱을
+갱신할 때만 `adb install -r`을 사용한다. 원본 `com.daengs.app`의 삭제·데이터 초기화는 필요 없다.
+서버에 동기화된 기록은 해당 서버의 동일 계정으로 로그인하면 기존 복원 흐름으로 내려받는다.
+출시 서버와 개발 서버의 기록이 같다는 뜻은 아니며, 원본 앱의 로컬 전용 기록을 복사하지 않는다.
+
+2026-09-12 연결된 Galaxy S25에서 다음을 확인했다.
+
+- 별도 APK 빌드·서명 검증과 신규 설치 `Success`, `MainActivity` 실행 성공.
+- 옵션을 켠 상태에서도 Release의 패키지 `com.daengs.app`와 앱 이름 리소스가 유지됨.
+- 기존 Release 1.1.2의 설치/갱신 시각과 저장 경로가 유지됐고, 기존 산책의 지도·6개 장면을 다시 열어 확인함.
+- 미리보기 앱에서 로그인 상태와 개발 서버 산책 3건 복원, 지도 표시와 6개 장면, 개발용 메뉴 진입을 확인함.
+- 실제 회원 산책의 생성 버튼을 1회 눌렀으나 HTTP 404에 대응하는 “이 서버에서는 새 방식 미리보기를 아직 사용할 수 없어요.”가 표시됨. 생성 결과 검증은 완료되지 않음.
+
+개발 서버 OpenAPI에는 경로가 있으며, 현재 DEV 라우터는 두 미리보기 플래그 중 하나라도 꺼져
+있으면 404를 반환한다. 서버 설정을 직접 읽은 것은 아니므로 활성화 상태 확인이 남아 있다.
+기존 일기 발행이나 원본 산책을 수정하지 않았으며, 실제 산책 화면 캡처는 로컬 검증 자료로만 보관한다.
+
+별도 설치 APK SHA-256: `bfd883cc91b0840d865aa4b95023b38458557a389b3e43083e055bc5efbc424e`.
+이번 변경은 빌드 패키지·매니페스트 이름 분리이며, 위 43개 테스트 뒤 앱 동작 코드를 추가로 바꾸지 않았다.
