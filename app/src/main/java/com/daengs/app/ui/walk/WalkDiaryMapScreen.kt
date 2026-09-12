@@ -3,6 +3,8 @@ package com.daengs.app.ui.walk
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -13,6 +15,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.DaengsApp
+import com.daengs.app.BuildConfig
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
@@ -83,7 +86,13 @@ internal fun WalkDiaryMapScreen(
     var editingScene by remember(sessionId) { mutableStateOf<DiaryScene?>(null) }
     var sceneError by remember(sessionId) { mutableStateOf<String?>(null) }
     var savingScene by remember(sessionId) { mutableStateOf(false) }
+    var slotPreviewOpen by remember(sessionId) { mutableStateOf(false) }
+    var comparisonOpen by remember(sessionId, backupAccount) { mutableStateOf(false) }
+    var placeComparison by remember(sessionId, backupAccount) { mutableStateOf<DiaryPlaceComparison?>(null) }
+    var usePlaceExplanation by remember(sessionId, backupAccount) { mutableStateOf(false) }
+    var comparisonEvidenceOpen by remember(sessionId, backupAccount) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    fun openSlotPreview() { if (BuildConfig.DEBUG) { explorer.pause(); slotPreviewOpen = true } }
     val entries by remember(sessionId) { app.walkEntries.observe(sessionId) }.collectAsState(initial = emptyList())
     LaunchedEffect(sessionId) {
         app.walkDiaryPublication.start(sessionId)
@@ -144,18 +153,36 @@ internal fun WalkDiaryMapScreen(
         selectedId != null -> explorer.closeScene()
         else -> onBack()
     } }
-    val scenes = diary?.scenes.orEmpty()
+    val originalScenes = diary?.scenes.orEmpty()
+    val comparisonSnapshot = remember(originalScenes, backupAccount, diary?.preparing) {
+        if (BuildConfig.DEBUG && diary?.preparing != true && originalScenes.size in 1..12 && !backupAccount.ownerId.isNullOrBlank())
+            DiaryComparisonSnapshot.create(requireNotNull(backupAccount.ownerId), sessionId, originalScenes)
+        else null
+    }
+    val activeComparison = placeComparison?.takeIf { it.snapshotDigest == comparisonSnapshot?.digest }
+    LaunchedEffect(comparisonSnapshot?.digest) {
+        val snapshot = comparisonSnapshot ?: return@LaunchedEffect
+        // Re-entry may restore a matching local result. It never calls a provider or writes the diary.
+        try { placeComparison = DiaryComparisonFiles.read(app, snapshot) }
+        catch (e: Exception) {
+            if (e is CancellationException) throw e
+            placeComparison = null
+        }
+    }
+    val scenes = if (activeComparison != null && comparisonSnapshot != null)
+        activeComparison.project(comparisonSnapshot, usePlaceExplanation) else originalScenes
     val selected = scenes.firstOrNull { it.id == selectedId }
+    val selectedOriginal = originalScenes.firstOrNull { it.id == selectedId }
     fun selectScene(scene: DiaryScene) {
         explorer.selectScene(scene.id)
         scene.point?.let(::requestCamera)
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
-    val markers = remember(scenes, selectedId) { diarySceneMarkers(scenes, selectedId) }
+    val markers = remember(originalScenes, selectedId) { diarySceneMarkers(originalScenes, selectedId) }
     val currentReview = explorer.review?.takeIf { it.detail == detail }
-    val selectedEntry = entries.firstOrNull { it.id == selected?.entryId }
-    val sceneFocus = remember(selected, currentReview, selectedEntry) {
-        selected?.let { currentReview?.recordSceneFocus(it, selectedEntry) }
+    val selectedEntry = entries.firstOrNull { it.id == selectedOriginal?.entryId }
+    val sceneFocus = remember(selectedOriginal, currentReview, selectedEntry) {
+        selectedOriginal?.let { currentReview?.recordSceneFocus(it, selectedEntry) }
     }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext) {
         explorer.selectContext(context.id)
@@ -169,8 +196,8 @@ internal fun WalkDiaryMapScreen(
             stayStamps = detail?.stayStamps.orEmpty()))).copy(
                 sessionExplorer = presentation)
     }
-    val overviewBounds = remember(route, detail?.summary?.anchor, scenes) {
-        diaryOverviewBounds(route?.bounds.orEmpty(), detail?.summary?.anchor, scenes)
+    val overviewBounds = remember(route, detail?.summary?.anchor, originalScenes) {
+        diaryOverviewBounds(route?.bounds.orEmpty(), detail?.summary?.anchor, originalScenes)
     }
     val bounds = cameraContextId?.let { currentReview?.context?.context(it)?.locations?.takeIf { points -> points.isNotEmpty() } }
         ?: cameraAuxiliaryId?.let { id -> currentReview?.observed?.sections?.firstOrNull { it.id == id }?.path }
@@ -188,7 +215,11 @@ internal fun WalkDiaryMapScreen(
                 explorerFocusId = explorer.selectedContext?.id,
                 onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
                 sceneContextContent = { selected?.let { SceneRecordContext(it, currentReview, scenes, ::selectContext, ::selectScene) } },
-                onEdit = { scene -> explorer.pause(); editingScene = scene; sceneError = null },
+                onEdit = { scene ->
+                    explorer.pause()
+                    editingScene = originalScenes.firstOrNull { it.id == scene.id }
+                    sceneError = null
+                },
                 onPhoto = { explorer.pause(); photo = it },
                 onRetry = { app.walkDiaryPublication.start(sessionId); retry++ },
                 onAdd = {
@@ -209,6 +240,12 @@ internal fun WalkDiaryMapScreen(
                 subtitle = detail?.summary?.let { formatWalkDay(it.startedAtMillis) }.orEmpty(),
                 onBack = onBack, mapSettings = { WalkMapSettingsButton() },
                 backLabel = origin.backLabel,
+                onSlotPreview = if (BuildConfig.DEBUG) ::openSlotPreview else null,
+                onPlaceComparison = if (comparisonSnapshot != null) ({ explorer.pause(); comparisonOpen = true }) else null,
+                comparisonContent = {
+                    if (activeComparison != null) DiaryPlaceComparisonSwitch(usePlaceExplanation,
+                        onChange = { usePlaceExplanation = it }, onEvidence = { comparisonEvidenceOpen = true })
+                },
                 explorerSelected = explorer.panelOpen,
                 onChooseExplorer = { open ->
                     adding = false; chosenPoint = null; explorer.overview(); explorer.choosePanel(open)
@@ -261,6 +298,36 @@ internal fun WalkDiaryMapScreen(
     }
     // A removed walk must not keep an already-open editor or photo above the unavailable state.
     if (loaded && detail == null) return
+    if (BuildConfig.DEBUG && comparisonOpen && comparisonSnapshot != null) androidx.compose.ui.window.Dialog(
+        onDismissRequest = { comparisonOpen = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        key(comparisonSnapshot.digest) {
+            DiaryPlaceComparisonScreen(comparisonSnapshot, onBack = { comparisonOpen = false }, onApply = {
+                placeComparison = it; usePlaceExplanation = true; comparisonOpen = false
+            })
+        }
+    }
+    if (comparisonEvidenceOpen && activeComparison != null) AlertDialog(
+        onDismissRequest = { comparisonEvidenceOpen = false }, title = { Text("장면 설명 근거") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("${activeComparison.model} · 수집 근거와 원래 장면 기준\n${activeComparison.retrievedAt}")
+            originalScenes.filter { selectedId == null || it.id == selectedId }.forEach { scene ->
+                Text(scene.title, style = MaterialTheme.typography.titleSmall)
+                val narration = activeComparison.narrations.getValue(scene.id)
+                Text(narration.coverage, style = MaterialTheme.typography.bodySmall)
+                val evidence = narration.evidence
+                if (evidence.isEmpty()) Text("이 장면에는 배경 설명을 추가하지 않았어요.")
+                else evidence.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        } }, confirmButton = { TextButton(onClick = { comparisonEvidenceOpen = false }) { Text("닫기") } },
+    )
+    if (BuildConfig.DEBUG && slotPreviewOpen) androidx.compose.ui.window.Dialog(
+        onDismissRequest = { slotPreviewOpen = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        DiarySlotPreviewScreen(sessionId, onBack = { slotPreviewOpen = false })
+    }
     if (adding && chosenPoint != null && !editorOpen) {
         val point = requireNotNull(chosenPoint)
         AlertDialog(onDismissRequest = { chosenPoint = null }, title = { Text("이 지점에 기록 남기기") },
