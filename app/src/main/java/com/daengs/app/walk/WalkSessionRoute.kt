@@ -17,6 +17,8 @@ data class WalkRoutePoint(
     val derivedSpeedMetersPerSecond: Double?,
     val segmentIndex: Int,
     val pointIndex: Int,
+    /** Original observation clock, retained for matching a scene after wall-clock corrections. */
+    val elapsedRealtimeNanos: Long? = null,
 )
 
 data class WalkRouteSegment(
@@ -128,6 +130,7 @@ fun WalkSummary.toSessionRoute(): WalkSessionRoute {
                 derivedSpeedMetersPerSecond = derivedSpeed,
                 segmentIndex = segmentIndex,
                 pointIndex = pointIndex,
+                elapsedRealtimeNanos = sample.elapsedRealtimeNanos,
             ).also {
                 previousCapturedAt = sample.capturedAtMillis
                 previousActiveElapsed = activeElapsed

@@ -34,6 +34,13 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
+#333의 구간·장면 선택은 `walk.routeexplorer.CompletedRouteReviewTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkCompletedRoutePresentationTest`, `map.layers.completedroute.SessionRouteExplorerLayerStateTest`로
+확인한다. 각 클래스 앞에는 `com.daengs.app.`을 붙인다. 장면 위치 시각은
+`walk.diary.ServerDiaryBundleTest`, 원본 시각 보존은 `walk.WalkSessionRouteTest`와 함께 본다.
+[구간과 장면 대응 계약](../../../docs/walk-route-section-selection.md).
+
 새 상세 경계는 WalkSessionDestinationTest, WalkSessionDetailUiTest,
 WalkRouteExplorerStateTest로 확인한다. 지도 배치는
 map.layers.completedroute.RouteDirectionLayoutTest, 단일 세션 통과·재생 계산은

@@ -26,6 +26,41 @@ import org.robolectric.annotation.GraphicsMode
 class WalkDiaryMapScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `unlocated scene remains readable and section selection returns a bounded path`() {
+        val detail = com.daengs.app.walk.routeexplorer.reviewDetail(
+            listOf(0.0 to 10_000L, 10.0 to 20_000L), listOf(2_000.0 to 40_000L, 2_010.0 to 50_000L))
+        val scene = DiaryScene("s/gap", "s", 30_000, "공백 메모", "위치를 몰라도 메모는 남아 있어요.", null, "")
+        var zoomed: List<GeoPoint>? = null
+        var mounts = 0
+        lateinit var explorer: WalkRouteExplorerState
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            explorer = remember { WalkRouteExplorerState(scope, 70_000).apply {
+                replaceRoute(com.daengs.app.walk.routeexplorer.RouteExplorerIndex(detail.route),
+                    com.daengs.app.walk.routeexplorer.CompletedRouteReview(detail), 70_000)
+            } }
+            val selected = scene.takeIf { explorer.selectedSceneId == it.id }
+            WalkDiaryMapContent(listOf(scene), selected, false, null,
+                { explorer.selectScene(it.id) }, explorer::closeScene, {}, {}, {}, {},
+                selectedRouteNotice = selected?.let { sceneRouteNotice(explorer.review!!.sceneFocus(it).relation) },
+                explorerSelected = explorer.panelOpen,
+                onChooseExplorer = { explorer.overview(); explorer.choosePanel(it) },
+                explorerPanel = { WalkRouteExplorerPanel(explorer, {}, { zoomed = it.path }) },
+                map = { DisposableEffect(Unit) { mounts++; onDispose {} }; Box(Modifier.fillMaxSize()) })
+        }
+        compose.onNodeWithText("공백 메모").performClick()
+        compose.onNodeWithText("위치를 몰라도 메모는 남아 있어요.").assertIsDisplayed()
+        compose.onNodeWithText("이 장면에는 확인된 위치가 없어요.").assertIsDisplayed()
+        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
+        assertEquals(detail.route.segments[1].points.map { it.point }, zoomed)
+        assertEquals(1, explorer.selectedSection?.index)
+        assertNull(explorer.selectedSceneId)
+        compose.onNodeWithText("전체 동선").performScrollTo().performClick()
+        assertEquals(RouteExplorerMode.OVERVIEW, explorer.mode)
+        assertEquals(1, mounts)
+    }
+
     @Test fun `preparation loads only scenes while map stays interactive and mounted after publication`() {
         val scene = DiaryScene("s/n", "s", 0, "완성된 장면", "함께 걸었다.", null, "")
         var loading by mutableStateOf(true)
