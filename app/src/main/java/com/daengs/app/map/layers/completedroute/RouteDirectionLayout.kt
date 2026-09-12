@@ -78,14 +78,16 @@ internal fun placeRouteDirections(
         }) continue
         val id = edge.id + ":" + t
         val preferred = previousSides[id] ?: 1
-        for (side in listOf(preferred, -preferred)) {
-            val center = RouteScreenPoint(anchor.x - dy * offset * side, anchor.y + dx * offset * side)
+        placement@ for (distance in listOf(offset, 48 * density)) for (side in listOf(preferred, -preferred)) {
+            // Numbered scene pins can occupy the entire short visible passage. Try a wider lane
+            // after both normal sides fail, while keeping all marker/route/viewport exclusions.
+            val center = RouteScreenPoint(anchor.x - dy * distance * side, anchor.y + dx * distance * side)
             if (!visible.contains(center, radius) || exclusions.any { it.near(center, radius) } ||
                 arrows.any { it.center.distance(center) < spacing } ||
-                routeObstacles.any { it.distance(center) < radius + 4 * density }) continue
+                routeObstacles.any { it.distance(center) < max(radius + 4 * density, edge.distance(center) - 3 * density) }) continue
             val angle = (Math.toDegrees(atan2(dy, dx)) + 450) % 360
             arrows += RouteDirectionArrow(id, center, angle.toFloat(), side)
-            break
+            break@placement
         }
         if (arrows.size == 6) break
     }

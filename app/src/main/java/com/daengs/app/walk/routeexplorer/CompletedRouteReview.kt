@@ -4,6 +4,8 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.diary.StoryboardObservationIndex
+import com.daengs.app.walk.trajectory.ObservedRouteReview
+import com.daengs.app.walk.trajectory.ObservedRouteSection
 
 /** References belong to this loaded route only. Never persist segment/point indices as scene identity. */
 internal data class CompletedRouteSection(val segment: WalkRouteSegment) {
@@ -13,7 +15,7 @@ internal data class CompletedRouteSection(val segment: WalkRouteSegment) {
     val endedAtMillis get() = segment.points.last().capturedAtMillis
 }
 
-internal enum class SceneRouteRelation { CONNECTED, NO_ROUTE, UNLOCATED, EARLIER_LOCATION, AMBIGUOUS }
+internal enum class SceneRouteRelation { CONNECTED, NO_ROUTE, UNLOCATED, EARLIER_LOCATION, AMBIGUOUS, OBSERVED_EXCLUDED, OBSERVED_UNRESOLVED }
 
 /** Event and location addresses remain separate; source ranges belong only to this read. */
 internal data class SceneRouteBinding(
@@ -23,6 +25,7 @@ internal data class SceneRouteBinding(
     val readerVersion: String,
     val fromSeq: Int?,
     val toSeq: Int?,
+    val displayPolicyVersion: String? = null,
 )
 
 /** A display-time correspondence, not a new walking assessment or a persisted SceneBinding. */
@@ -31,6 +34,7 @@ internal data class SceneRouteFocus(
     val paths: List<List<GeoPoint>> = emptyList(),
     val point: GeoPoint? = null,
     val binding: SceneRouteBinding? = null,
+    val observedParts: List<ObservedRouteSection> = emptyList(),
 )
 
 /**
@@ -46,6 +50,14 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
     private val observationIndex = StoryboardObservationIndex(summary, detail.observations)
     private val segments = detail.route.segments.associateBy { it.index }
     private val legacyEvidence = detail.legacyRouteEvidence?.takeIf { it.matches(detail) }
+    val observed = ObservedRouteReview(detail)
+
+    /** Combined record presentation. sceneFocus remains the unchanged walking-only correspondence. */
+    fun recordSceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
+        val walking = sceneFocus(scene, entry)
+        return if (walking.relation == SceneRouteRelation.CONNECTED) walking
+            else observed.sceneFocus(scene, entry) ?: walking
+    }
 
     fun sceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
         fun unavailable(relation: SceneRouteRelation = SceneRouteRelation.NO_ROUTE) = SceneRouteFocus(relation)

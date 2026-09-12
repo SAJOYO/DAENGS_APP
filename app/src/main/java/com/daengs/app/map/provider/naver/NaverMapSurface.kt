@@ -406,7 +406,7 @@ fun NaverMapSurface(
     }
 
     NaverWalkRouteLayer(naverMap, scene.trail, scene.completedRoute, walkStyle.policy, walkStyle.themeId,
-        dimCompleted = scene.sessionExplorer?.highlightPaths?.isNotEmpty() == true)
+        dimCompleted = scene.sessionExplorer?.emphasisPaths?.isNotEmpty() == true)
 
     NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,

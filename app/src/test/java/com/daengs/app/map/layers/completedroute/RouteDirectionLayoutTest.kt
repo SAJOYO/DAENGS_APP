@@ -8,6 +8,16 @@ class RouteDirectionLayoutTest {
     private fun edge(id: String, ax: Double, ay: Double, bx: Double, by: Double) =
         RouteScreenEdge(id, RouteScreenPoint(ax, ay), RouteScreenPoint(bx, by))
 
+    @Test fun `short passage beside numbered pins can use a wider lane without crossing another path`() {
+        val source = listOf(edge("observed:8-9", 200.0, 40.0, 200.0, 260.0))
+        val pins = listOf(RouteScreenRect(172.0, 0.0, 228.0, 300.0))
+        val arrows = placeRouteDirections(source, viewport, pins, 1.0)
+        assertTrue(arrows.isNotEmpty())
+        assertTrue(arrows.all { kotlin.math.abs(it.center.x - 200) == 48.0 })
+        val sidesBlocked = source + listOf(edge("left", 160.0, 0.0, 160.0, 300.0), edge("right", 240.0, 0.0, 240.0, 300.0))
+        assertTrue(placeRouteDirections(source, viewport, pins, 1.0, collisionEdges = sidesBlocked).isEmpty())
+    }
+
     @Test fun `overview already shows arrows outside a dense GPS path`() {
         val edges = (0 until 60).map { edge("0:$it", 40.0 + it * 5, 140.0, 45.0 + it * 5, 140.0) }
         val arrows = placeRouteDirections(edges, viewport, emptyList(), 1.0)

@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.DaengsApp
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
@@ -60,10 +61,12 @@ internal fun WalkDiaryMapScreen(
     var cameraRequest by rememberSaveable(sessionId) { mutableIntStateOf(0) }
     var cameraZoom by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
     var cameraSectionIndex by remember(route) { mutableStateOf<Int?>(null) }
+    var cameraAuxiliaryId by remember(detail) { mutableStateOf<String?>(null) }
     var directionCount by remember(sessionId) { mutableStateOf<Int?>(null) }
     val cameraTarget = cameraLatitude?.let { lat -> cameraLongitude?.let { lng -> GeoPoint(lat, lng) } }
     fun requestCamera(point: GeoPoint?) {
         cameraSectionIndex = null
+        cameraAuxiliaryId = null
         cameraLatitude = point?.latitude; cameraLongitude = point?.longitude; cameraZoom = null; cameraRequest++
     }
     var adding by rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -150,24 +153,21 @@ internal fun WalkDiaryMapScreen(
     val currentReview = explorer.review?.takeIf { it.detail == detail }
     val selectedEntry = entries.firstOrNull { it.id == selected?.entryId }
     val sceneFocus = remember(selected, currentReview, selectedEntry) {
-        selected?.let { currentReview?.sceneFocus(it, selectedEntry) }
+        selected?.let { currentReview?.recordSceneFocus(it, selectedEntry) }
     }
-    val highlightPaths = if (selectedId != null) sceneFocus?.paths.orEmpty()
-        else if (explorer.index?.route == route) explorer.highlightPaths else emptyList()
-    val replayPoint = explorer.replayFrame?.point?.takeIf { explorer.index?.route == route }
-    // Scenes already have their numbered pin. The playback triangle is not a direction marker.
-    val cursor = replayPoint
+    val presentation = recordPresentationLayer(explorer, detail, sceneFocus)
+    val highlightPaths = presentation.emphasisPaths
     val overviewDirections = explorer.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.REPLAY)
-    val mapScene = remember(completed, markers, detail?.stayStamps, highlightPaths, cursor, overviewDirections) {
+    val mapScene = remember(completed, markers, detail?.stayStamps, presentation) {
         diaryDisplayScene(composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
             stayStamps = detail?.stayStamps.orEmpty()))).copy(
-                sessionExplorer = com.daengs.app.map.layers.completedroute.SessionRouteExplorerLayerState(
-                    highlightPaths, cursor, useOverviewDirections = overviewDirections))
+                sessionExplorer = presentation)
     }
     val overviewBounds = remember(route, detail?.summary?.anchor, scenes) {
         diaryOverviewBounds(route?.bounds.orEmpty(), detail?.summary?.anchor, scenes)
     }
-    val bounds = cameraSectionIndex?.let { index ->
+    val bounds = cameraAuxiliaryId?.let { id -> currentReview?.observed?.sections?.firstOrNull { it.id == id }?.path }
+        ?: cameraSectionIndex?.let { index ->
         explorer.review?.takeIf { it.detail.route == route }?.sections?.firstOrNull { it.index == index }?.path
     } ?: overviewBounds
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -177,7 +177,7 @@ internal fun WalkDiaryMapScreen(
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || diary == null || diary?.preparing == true, error,
                 onSelect = ::selectScene, onClose = explorer::closeScene,
-                selectedRouteNotice = sceneFocus?.relation?.let(::sceneRouteNotice),
+                selectedRouteNotice = sceneFocus?.let(::sceneRouteNotice),
                 onEdit = { scene -> explorer.pause(); editingScene = scene; sceneError = null },
                 onPhoto = { explorer.pause(); photo = it },
                 onRetry = { app.walkDiaryPublication.start(sessionId); retry++ },
@@ -204,9 +204,11 @@ internal fun WalkDiaryMapScreen(
                     adding = false; chosenPoint = null; explorer.overview(); explorer.choosePanel(open)
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = { requestCamera(null) },
-                    onSection = { section -> requestCamera(null); cameraSectionIndex = section.index }) },
+                    onSection = { section -> requestCamera(null); cameraSectionIndex = section.index },
+                    onAuxiliary = { section -> requestCamera(null); cameraAuxiliaryId = section.id }) },
                 directionNotice = directionCount == 0 &&
-                    (highlightPaths.any { it.size >= 2 } || overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),
+                    (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
+                        overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),
                 onZoomRoute = {
                     (highlightPaths.flatten().takeIf { it.isNotEmpty() } ?: route?.bounds)?.let { points ->
                         points.getOrNull(points.size / 2)
@@ -216,6 +218,7 @@ internal fun WalkDiaryMapScreen(
                 },
                 summaryContent = { detail?.summary?.let { summary ->
                     WalkSessionSummary(summary, pets.filter { it.id in summary.dogIds }.map { it.name })
+                    ObservedRouteLegend(presentation.observedParts.map { it.role })
                 } },
                 backupAction = {
                     key(sessionId, backupAccount) {
@@ -297,7 +300,15 @@ internal fun sceneRouteNotice(relation: SceneRouteRelation): String = when (rela
     SceneRouteRelation.UNLOCATED -> "이 장면에는 확인된 위치가 없어요."
     SceneRouteRelation.EARLIER_LOCATION -> "이전에 확인한 위치예요. 이 장면 시각의 동선은 확인되지 않아요."
     SceneRouteRelation.AMBIGUOUS -> "같은 시각의 위치 기록이 겹쳐 해당 동선을 구분하기 어려워요."
+    SceneRouteRelation.OBSERVED_EXCLUDED -> "보행거리에서 제외된 관측 경로예요."
+    SceneRouteRelation.OBSERVED_UNRESOLVED -> "보행 여부가 확정되지 않은 관측 경로예요."
 }
+
+@Preview(showBackground = true, widthDp = 390)
+@Composable
+private fun WalkDiaryObservedSummaryPreview() { DaengsTheme {
+    ObservedRouteLegend(com.daengs.app.map.layers.completedroute.RecordRouteRole.entries)
+} }
 
 internal fun WalkRoutePoint.toDiaryEntry(sessionId: String, type: WalkMomentType, petId: String?): WalkEntry =
     WalkEntry(sessionId = sessionId, type = type, recordedAtMillis = capturedAtMillis, point = point,
