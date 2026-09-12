@@ -36,6 +36,7 @@ class WalkRecordOverviewUiTest {
         compose.waitUntil(15_000) { input?.scene?.moments?.any { it.id == "far" } == true && input?.camera?.bounds?.isNotEmpty() == true }
         val walking = input!!.camera.bounds
         compose.onNodeWithText("전체 기록", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("장면 ${scenes.size}").performClick()
         compose.runOnIdle {
             assertTrue(input!!.camera.bounds.last().longitude > walking.last().longitude)
             val query = input!!.query
