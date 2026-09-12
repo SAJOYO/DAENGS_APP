@@ -64,7 +64,9 @@ class WalkDiaryMapScreenTest {
                 explorerPanel = { WalkRouteExplorerPanel(explorer, {}, { zoomed = it.path }) },
                 map = { DisposableEffect(Unit) { mounts++; onDispose {} }; Box(Modifier.fillMaxSize()) })
         }
+        compose.onNodeWithText("장면 1").performClick()
         compose.onNodeWithText("공백 메모").performClick()
+        compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeUp(startY = 10f, endY = -450f) }
         compose.onNodeWithText("위치를 몰라도 메모는 남아 있어요.").assertIsDisplayed()
         compose.onNodeWithText("이 장면에는 확인된 위치가 없어요.").assertIsDisplayed()
         compose.onNodeWithText("동선 탐색").performClick()
