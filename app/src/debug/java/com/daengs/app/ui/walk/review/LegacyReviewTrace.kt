@@ -4,9 +4,11 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.walk.RecordedFix
 import com.daengs.app.walk.TrailRecorder
+import com.daengs.app.walk.TrailDecision
 import com.daengs.app.walk.WalkPace
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 /** Diagnostics of the actual historical recorder, never an alternative measurement policy. */
 internal fun legacyReviewTrace(
@@ -16,6 +18,8 @@ internal fun legacyReviewTrace(
 ): JSONObject {
     val recorder = TrailRecorder(maxSamples = Int.MAX_VALUE,
         maxSpeedMetersPerSecond = speedLimit, minDistanceMeters = minDistance)
+    var decision: TrailDecision? = null
+    recorder.onDecision = { decision = it }
     recorder.start()
     var chain: Int? = null
     val decisions = JSONArray()
@@ -31,12 +35,8 @@ internal fun legacyReviewTrace(
             accuracyMeters = fix.accuracyM, isMock = fix.isMock)
         val before = recorder.snapshot()
         val after = recorder.add(sample)
-        val disposition = when {
-            after.lastSample === sample -> "retained"
-            after.skippedLowAccuracy > before.skippedLowAccuracy -> "low_accuracy"
-            after.skippedTooFast > before.skippedTooFast -> "too_fast"
-            else -> "below_min_distance"
-        }
+        val assessed = checkNotNull(decision).also { check(it.sample === sample) }
+        val disposition = assessed.disposition.name.lowercase(Locale.ROOT)
         decisions.put(row.put("disposition", disposition)
             .put("distance_delta_m", after.distanceMeters - before.distanceMeters))
     }

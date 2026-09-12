@@ -22,6 +22,8 @@ data class WalkSessionDetail(
     val stayStamps: List<StayStamp> = emptyList(),
     /** Original upload identities for automatic scene anchoring; loaded only for this session. */
     val observations: List<RecordedFix> = emptyList(),
+    /** In-memory legacy read provenance; never a persisted measurement or scene identity. */
+    val legacyRouteEvidence: LegacyRouteEvidence? = null,
 )
 
 /** 저장 원본에서 현재의 장소 묶음 반경으로 지도 순간을 다시 만든다. */

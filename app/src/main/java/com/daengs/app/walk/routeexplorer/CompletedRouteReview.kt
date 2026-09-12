@@ -15,11 +15,22 @@ internal data class CompletedRouteSection(val segment: WalkRouteSegment) {
 
 internal enum class SceneRouteRelation { CONNECTED, NO_ROUTE, UNLOCATED, EARLIER_LOCATION, AMBIGUOUS }
 
+/** Event and location addresses remain separate; source ranges belong only to this read. */
+internal data class SceneRouteBinding(
+    val eventAtMillis: Long,
+    val locationAtMillis: Long,
+    val observationSeq: Int,
+    val readerVersion: String,
+    val fromSeq: Int?,
+    val toSeq: Int?,
+)
+
 /** A display-time correspondence, not a new walking assessment or a persisted SceneBinding. */
 internal data class SceneRouteFocus(
     val relation: SceneRouteRelation,
     val paths: List<List<GeoPoint>> = emptyList(),
     val point: GeoPoint? = null,
+    val binding: SceneRouteBinding? = null,
 )
 
 /**
@@ -34,6 +45,7 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
     private val observations = detail.observations.groupBy { it.clientSeq }
     private val observationIndex = StoryboardObservationIndex(summary, detail.observations)
     private val segments = detail.route.segments.associateBy { it.index }
+    private val legacyEvidence = detail.legacyRouteEvidence?.takeIf { it.matches(detail) }
 
     fun sceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
         fun unavailable(relation: SceneRouteRelation = SceneRouteRelation.NO_ROUTE) = SceneRouteFocus(relation)
@@ -61,6 +73,21 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
             val raw = observations[anchor.clientSeq]?.singleOrNull() ?: return unavailable()
             val verified = observationIndex.resolve(anchor) ?: return unavailable()
             if (scene.atMillis != anchor.atMillis || location.distanceTo(verified) > 1.0) return unavailable()
+            // Follow recorder provenance before looking for a display vertex. A minimum-distance
+            // omission can belong to an accepted edge; exclusions cannot borrow a matching vertex.
+            val evidence = legacyEvidence
+            val disposition = evidence?.disposition(raw.clientSeq)
+            if (evidence != null && disposition != TrailDisposition.RETAINED) {
+                val edge = evidence.omittedEdge(raw.clientSeq)?.takeIf {
+                    // A long display interval can contain frequent, verified stationary fixes.
+                    // The evidence checks every raw neighbor, so it is not an observation gap.
+                    disposition == TrailDisposition.BELOW_MIN_DISTANCE
+                }
+                val result = if (edge == null) SceneRouteFocus(SceneRouteRelation.NO_ROUTE, point = location)
+                    else focus(edge.before, edge.after, location, evidence::supports)
+                return result.copy(binding = SceneRouteBinding(scene.atMillis, raw.atMillis, raw.clientSeq,
+                    evidence.readerVersion, edge?.fromSeq, edge?.toSeq))
+            }
             // An excluded observation cannot borrow a nearby accepted point or another visit.
             // Retain the monotonic clock too: wall time and position can repeat after a clock change.
             val matches = byTime[raw.atMillis].orEmpty().filter {
@@ -95,7 +122,8 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
         return if (point.distanceTo(location) <= SCENE_LOCATION_TOLERANCE_METERS) focus(a, b, point) else unavailable()
     }
 
-    private fun focus(a: WalkRoutePoint, b: WalkRoutePoint, point: GeoPoint): SceneRouteFocus {
+    private fun focus(a: WalkRoutePoint, b: WalkRoutePoint, point: GeoPoint,
+        supports: (WalkRoutePoint, WalkRoutePoint) -> Boolean = { _, _ -> true }): SceneRouteFocus {
         val samples = segments.getValue(a.segmentIndex).points
         var first = samples.indexOf(a)
         var last = samples.indexOf(b)
@@ -103,6 +131,7 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
         val anchorLast = last
         var distance = 0.0
         while (first > 0 && locallyTimed(samples[first - 1], samples[first]) &&
+            supports(samples[first - 1], samples[first]) &&
             a.capturedAtMillis - samples[first - 1].capturedAtMillis <= 30_000) {
             distance += samples[first - 1].point.distanceTo(samples[first].point)
             if (distance > 40.0 && first < anchorFirst) break
@@ -110,6 +139,7 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
         }
         distance = 0.0
         while (last < samples.lastIndex && locallyTimed(samples[last], samples[last + 1]) &&
+            supports(samples[last], samples[last + 1]) &&
             samples[last + 1].capturedAtMillis - b.capturedAtMillis <= 30_000) {
             distance += samples[last].point.distanceTo(samples[last + 1].point)
             if (distance > 40.0 && last > anchorLast) break
@@ -125,7 +155,7 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
 /** Presentation interpolation uses the existing explorer's conservative time window, not a GPS policy. */
 private fun locallyTimed(a: WalkRoutePoint, b: WalkRoutePoint): Boolean =
     a.segmentIndex == b.segmentIndex && b.pointIndex == a.pointIndex + 1 &&
-        b.capturedAtMillis - a.capturedAtMillis in 1L..15_000L &&
-        b.activeElapsedMillis - a.activeElapsedMillis in 1L..15_000L
+        b.capturedAtMillis - a.capturedAtMillis in 1L..SCENE_OBSERVATION_WINDOW_MILLIS &&
+        b.activeElapsedMillis - a.activeElapsedMillis in 1L..SCENE_OBSERVATION_WINDOW_MILLIS
 
 private const val SCENE_LOCATION_TOLERANCE_METERS = 12.0

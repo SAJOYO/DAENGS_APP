@@ -125,14 +125,40 @@ fun summarize(
     maxRouteSamples: Int = WALK_SUMMARY_ROUTE_SAMPLE_LIMIT,
     epochs: List<RecordingEpoch> = emptyList(),
 ): WalkSummary {
+    return summarizeWithEvidence(session, fixes, maxRouteSamples, epochs)
+}
+
+private fun summarizeWithEvidence(
+    session: RecordedSession,
+    fixes: List<RecordedFix>,
+    maxRouteSamples: Int,
+    epochs: List<RecordingEpoch>,
+    evidence: LegacyRouteEvidence.Collector? = null,
+): WalkSummary {
     return when (val selection = com.daengs.app.walk.motion.MotionPolicies.resolveJson(session.id, session.motionPolicyJson)) {
-        com.daengs.app.walk.motion.MotionPolicySelection.Legacy -> summarizeLegacy(session, fixes, maxRouteSamples)
+        com.daengs.app.walk.motion.MotionPolicySelection.Legacy -> summarizeLegacy(session, fixes, maxRouteSamples, evidence)
         is com.daengs.app.walk.motion.MotionPolicySelection.Unsupported ->
             error("지원하지 않는 GPS 기록 정책이에요: ${selection.reason}")
         is com.daengs.app.walk.motion.MotionPolicySelection.Supported ->
-            if (selection.policy.stored.measurementVersion == null) summarizeLegacy(session, fixes, maxRouteSamples)
+            if (selection.policy.stored.measurementVersion == null) summarizeLegacy(session, fixes, maxRouteSamples, evidence)
             else com.daengs.app.walk.motion.summarizeMotion(session, selection.policy, epochs, fixes, maxRouteSamples)
     }
+}
+
+/** Full completed reader: evidence and route come from one replay of the stored policy. */
+internal fun readCompletedRoute(
+    session: RecordedSession,
+    fixes: List<RecordedFix>,
+    epochs: List<RecordingEpoch> = emptyList(),
+    explicitLegacyComparison: Boolean = false,
+): WalkSessionDetail {
+    val source = fixes.toList()
+    val collector = LegacyRouteEvidence.Collector()
+    val summary = if (explicitLegacyComparison) summarizeLegacy(session, source, Int.MAX_VALUE, collector)
+        else summarizeWithEvidence(session, source, Int.MAX_VALUE, epochs, collector)
+    val route = summary.toSessionRoute()
+    return WalkSessionDetail(summary, route, emptyList(), observations = source,
+        legacyRouteEvidence = collector.finish(summary, route, source))
 }
 
 /** Historical reader and explicit comparison baseline; never selected as recovery for a new policy. */
@@ -140,11 +166,13 @@ internal fun summarizeLegacy(
     session: RecordedSession,
     fixes: List<RecordedFix>,
     maxRouteSamples: Int = WALK_SUMMARY_ROUTE_SAMPLE_LIMIT,
+    evidence: LegacyRouteEvidence.Collector? = null,
 ): WalkSummary {
     // 목록·오늘 합계는 경로 전체를 소비하지 않으므로 기본 상한을 지킨다. 한 세션 상세만
     // Int.MAX_VALUE를 넘겨 실제 출발점을 보존한다. addAll은 중간 화면을 만들지 않아
     // 원본마다 경로 목록을 다시 복사하던 O(n²) 비용을 피한다.
     val recorder = TrailRecorder(maxSamples = maxRouteSamples)
+    recorder.onDecision = evidence?.let { it::record }
     recorder.start()
     var previousChain: Int? = null
     var activeMillis = 0L
@@ -165,7 +193,7 @@ internal fun summarizeLegacy(
         // 같은 구간 안에서 흐른 시간만 더한다. 끊긴 구간을 건너뛴 시간은 안 걸은 시간이다.
         previousAtMillis?.let { activeMillis += (fix.atMillis - it).coerceAtLeast(0L) }
         activeElapsedAtMillis[fix.atMillis] = activeMillis
-        pendingChainSamples += fix.toSample()
+        pendingChainSamples += fix.toSample().also { evidence?.source(it, fix) }
         previousAtMillis = fix.atMillis
         previousChain = fix.chainIndex
     }

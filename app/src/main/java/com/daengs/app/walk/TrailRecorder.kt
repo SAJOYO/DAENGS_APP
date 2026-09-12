@@ -9,6 +9,16 @@ import kotlin.math.sqrt
 
 enum class TrackingState { OFF, RECORDING, PAUSED }
 
+internal enum class TrailDisposition { RETAINED, BELOW_MIN_DISTANCE, LOW_ACCURACY, TOO_FAST, NOT_RECORDING }
+
+/** Emitted by the actual branch, using sample identity (wall time/coordinates can repeat). */
+internal data class TrailDecision(
+    val sample: LocationSample,
+    val disposition: TrailDisposition,
+    val previousAccepted: LocationSample?,
+    val startsSegment: Boolean = false,
+)
+
 /**
  * 지도에 그릴 산책 동선의 현재 상태.
  *
@@ -51,6 +61,8 @@ class TrailRecorder(
     /** 걷는 속도로 볼 상한. 넘으면 그 fix 를 안 담는다 ([WalkPace]). */
     private val maxSpeedMetersPerSecond: Double = WalkPace.MAX_METERS_PER_SECOND,
 ) {
+    /** Optional read/diagnostic evidence. Does not publish a snapshot or alter acceptance. */
+    internal var onDecision: ((TrailDecision) -> Unit)? = null
     private var state = TrackingState.OFF
     private val segments = mutableListOf<MutableList<LocationSample>>()
     private var storedSampleCount = 0
@@ -127,13 +139,16 @@ class TrailRecorder(
     }
 
     private fun accept(sample: LocationSample, trimAfter: Boolean): Boolean {
-        if (state != TrackingState.RECORDING) return false
+        val previous = segments.lastOrNull()?.lastOrNull()
+        if (state != TrackingState.RECORDING) {
+            onDecision?.invoke(TrailDecision(sample, TrailDisposition.NOT_RECORDING, previous))
+            return false
+        }
         if (sample.accuracyMeters != null && sample.accuracyMeters > maxAccuracyMeters) {
+            onDecision?.invoke(TrailDecision(sample, TrailDisposition.LOW_ACCURACY, previous))
             skippedLowAccuracy += 1
             return true
         }
-
-        val previous = segments.lastOrNull()?.lastOrNull()
 
         // **걷는 속도 밖이면 안 담는다.** 차·버스·기차로 이동한 것이 산책 거리로
         // 합산되면 "오늘 얼마나 걸었나" 가 뜻을 잃는다.
@@ -142,12 +157,14 @@ class TrailRecorder(
         // 멈춰 있던 시간이 간격에 섞이면 속도가 뜻을 잃는다.
         val pacePrevious = previous?.takeUnless { breakBeforeNext }
         if (WalkPace.tooFast(pacePrevious, sample, maxSpeedMetersPerSecond)) {
+            onDecision?.invoke(TrailDecision(sample, TrailDisposition.TOO_FAST, previous))
             skippedTooFast += 1
             return true
         }
 
         val delta = previous?.point?.distanceTo(sample.point) ?: 0.0
         if (previous != null && !breakBeforeNext && delta < minDistanceMeters) {
+            onDecision?.invoke(TrailDecision(sample, TrailDisposition.BELOW_MIN_DISTANCE, previous))
             val changed = skippedLowAccuracy != 0 || skippedTooFast != 0
             skippedLowAccuracy = 0
             skippedTooFast = 0
@@ -155,6 +172,7 @@ class TrailRecorder(
         }
 
         val startsSegment = previous == null || breakBeforeNext || delta > maxJumpMeters
+        onDecision?.invoke(TrailDecision(sample, TrailDisposition.RETAINED, previous, startsSegment))
         breakBeforeNext = false
         if (startsSegment) {
             segments += mutableListOf(sample)
