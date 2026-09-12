@@ -10,6 +10,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -65,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -670,6 +676,59 @@ fun ChatScreen(
         }
     }
 
+    // ── 음성 입력 ───────────────────────────────────────────────────────────
+    //
+    // 인식한 글은 **입력칸에 넣기만** 한다. 오인식을 보내기 전에 잡을 수 있어야
+    // 해서다. "바로 보내기" 는 설정으로 켠다 — 그때도 물어보는 중이면 보내지 않고
+    // 입력칸에 남긴다 (아래 [asking] 규칙과 같다).
+    //
+    // 잠긴 동안(busy)에도 듣기는 된다. 답을 기다리며 다음 질문을 말해 두는 건
+    // 글로 치는 것과 같은 일이다.
+    val voiceAutoSend by rememberVoiceAutoSend()
+    val voiceHoldToStop by rememberVoiceHoldToStop()
+    // 듣기 시작할 때의 초안. 부분 결과는 매번 이 뒤에 갈아 끼운다 ([mergeVoiceText]).
+    var voiceBase by remember { mutableStateOf("") }
+    val inputBusy = asking || historyState.sending ||
+        (historyCoordinator != null && dogId != null && !historyState.canSend)
+    val voice = rememberVoiceInput(
+        holdToStop = voiceHoldToStop,
+        onPartial = { draft = mergeVoiceText(voiceBase, it) },
+        onSegment = {
+            draft = mergeVoiceText(voiceBase, it)
+            voiceBase = draft
+        },
+        onFinished = {
+            val text = draft.trim()
+            if (voiceAutoSend && text.isNotEmpty() && !inputBusy) {
+                draft = ""
+                sendQuery(text)
+            }
+        },
+        onError = { notice = it },
+    )
+    val beginVoice: () -> Unit = {
+        voiceBase = draft
+        voice.start()
+    }
+    val askMic = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) beginVoice() else notice = VOICE_DENIED }
+    // 한 단추로 시작하고 멈춘다. 듣는 중에 누르면 지금까지 인식한 것으로 마무리한다.
+    val toggleVoice: () -> Unit = {
+        when {
+            voice.listening -> voice.stop()
+            hasMicPermission(context) -> beginVoice()
+            else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    // **무언가가 대화 위에 덮이면 듣기를 멈춘다.** 오버레이는 이 화면을 합성에서 빼지
+    // 않아서 인식기가 그대로 산다 — 시트 뒤에서 한 말이 입력칸에 꽂히고, 보행 촬영은
+    // 마이크를 같이 쓰려다 부딪힌다. 마이크 단추가 가려져 껐는지 볼 수도 없다.
+    val overlayOpen = chooserMode != null || pending != null || skinCapture || gaitCapture ||
+        gaitPicking != null || gaitPairPicking || gaitHistoryOpen || gaitTitlePending != null ||
+        gaitComparing != null || gaitDetail != null || recentOpen
+    LaunchedEffect(overlayOpen) { if (overlayOpen) voice.stop() }
+
     // ── 위치-CLARIFY ────────────────────────────────────────────────────────
     //
     // [ChatEntry.LocationNeeded] 의 액션이 누르는 자리. 권한을 다시 청하고, 받으면
@@ -851,8 +910,7 @@ fun ChatScreen(
         ChatInput(
             value = draft,
             onValueChange = { draft = it },
-            busy = asking || historyState.sending ||
-                (historyCoordinator != null && dogId != null && !historyState.canSend),
+            busy = inputBusy,
             onSend = {
                 val text = draft.trim()
                 // 물어보는 중에는 안 받는다 — 위 [asking] 주석.
@@ -861,10 +919,8 @@ fun ChatScreen(
                     sendQuery(text)
                 }
             },
-            // 음성은 **아직 껍데기다.** 버튼 자리와 크기를 먼저 잡아 두고, 녹음과
-            // 인식이 붙을 때 여기만 갈아 끼운다. 눌러도 아무 일이 없으면 고장으로
-            // 보이므로 준비 중이라고 말은 한다.
-            onVoice = { notice = "음성 입력은 준비 중이에요." },
+            listening = voice.listening,
+            onVoice = toggleVoice,
             // **시트는 항상 연다.** 기능이 둘이 되면서 진단 서버 유무로 시트 전체를
             // 막으면 보행 쪽까지 같이 닫힌다. 못 하는 이유는 그 줄을 눌렀을 때 말한다.
             onDiagnose = { chooserMode = ChooserMode.Full },
@@ -2335,6 +2391,8 @@ private fun ChatInput(
     onDiagnose: () -> Unit,
     /** 물어보는 중인가. 보내기 단추를 눌러도 안 되는 상태를 **눈에도 보이게** 한다. */
     busy: Boolean = false,
+    /** 음성을 듣는 중인가. 마이크가 색을 바꾸고 안내문이 바뀐다 — 눌렀는데 표시가 안 바뀌면 고장으로 읽힌다. */
+    listening: Boolean = false,
 ) {
     Surface(color = CardWhite, shadowElevation = 4.dp) {
         Row(
@@ -2351,7 +2409,13 @@ private fun ChatInput(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
-                        if (value.isEmpty()) Text("메시지를 입력하세요", color = TextMuted, fontSize = 14.sp)
+                        if (value.isEmpty()) {
+                            Text(
+                                if (listening) "듣고 있어요…" else "메시지를 입력하세요",
+                                color = if (listening) DaengPink else TextMuted,
+                                fontSize = 14.sp,
+                            )
+                        }
                         BasicTextField(
                             value = value,
                             onValueChange = onValueChange,
@@ -2362,7 +2426,20 @@ private fun ChatInput(
                     }
                     // 음성은 "입력하세요" 바로 옆이다 — 말로 넣는 것도 입력이라,
                     // 입력칸 안에 있는 편이 무엇을 대신하는 버튼인지 바로 읽힌다.
-                    InputAction(DaengsIcon.Mic, onVoice, size = 36.dp, iconSize = 19.dp)
+                    //
+                    // 듣는 동안은 마이크 뒤에서 물결이 퍼진다. 색만 바꾸면 글이 차기
+                    // 시작한 뒤에는 "듣고 있어요…" 가 글에 가려져 분홍 점 하나만 남는다 —
+                    // 움직이는 것이 있어야 잠깐 말을 멈춰도 아직 듣는 중인지 보인다.
+                    Box(contentAlignment = Alignment.Center) {
+                        if (listening) ListeningRipple(Modifier.size(36.dp))
+                        InputAction(
+                            DaengsIcon.Mic,
+                            onVoice,
+                            size = 36.dp,
+                            iconSize = 19.dp,
+                            tint = if (listening) DaengPink else TextMuted,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -2390,17 +2467,67 @@ private fun InputAction(
     onClick: () -> Unit,
     size: Dp = 44.dp,
     iconSize: Dp = 22.dp,
+    tint: Color = TextMuted,
 ) {
     Box(
         Modifier.size(size).clip(RoundedCornerShape(50)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { DaengsIconView(icon, Modifier.size(iconSize), tint = TextMuted) }
+    ) { DaengsIconView(icon, Modifier.size(iconSize), tint = tint) }
+}
+
+/**
+ * 듣는 중의 물결. 마이크 뒤에서 동심원 둘이 반 주기 어긋나 번갈아 퍼지며 옅어진다.
+ *
+ * 마이크 단추(36dp) 안에서만 그린다 — 입력칸 높이가 48dp 라 밖으로 나가면 잘린다.
+ * 안쪽 반지름은 아이콘(19dp)을 살짝 감싸는 크기에서 시작해 단추 가장자리까지 간다.
+ */
+@Composable
+private fun ListeningRipple(modifier: Modifier = Modifier) {
+    val wave = rememberInfiniteTransition(label = "listening")
+    val phase by wave.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
+        label = "listening-phase",
+    )
+    Canvas(modifier) {
+        val edge = size.minDimension / 2f
+        val inner = edge * 0.55f
+        val stroke = Stroke(width = 1.5.dp.toPx())
+        repeat(2) { ring ->
+            val p = (phase + ring * 0.5f) % 1f
+            drawCircle(
+                color = DaengPink,
+                radius = inner + (edge - inner) * p,
+                alpha = (1f - p) * 0.5f,
+                style = stroke,
+            )
+        }
+    }
 }
 
 @Preview(widthDp = 411, heightDp = 891, showBackground = true)
 @Composable
 private fun ChatScreenPreview() {
     DaengsTheme { ChatScreen({}) }
+}
+
+/** 듣는 중의 입력줄. 마이크가 분홍이고 안내문이 "듣고 있어요…" 다. */
+@Preview(widthDp = 411, showBackground = true)
+@Composable
+private fun ChatInputListeningPreview() {
+    DaengsTheme {
+        ChatInput(value = "", onValueChange = {}, onSend = {}, onVoice = {}, onDiagnose = {}, listening = true)
+    }
+}
+
+/** 부분 결과가 차는 중. 글이 있으면 안내문 대신 글이 보이고 마이크만 분홍이다. */
+@Preview(widthDp = 411, showBackground = true)
+@Composable
+private fun ChatInputListeningWithTextPreview() {
+    DaengsTheme {
+        ChatInput(value = "우리 강아지가 사료를", onValueChange = {}, onSend = {}, onVoice = {}, onDiagnose = {}, listening = true)
+    }
 }
 
 /**
