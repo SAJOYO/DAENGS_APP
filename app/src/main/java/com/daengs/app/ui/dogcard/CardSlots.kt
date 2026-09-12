@@ -114,6 +114,40 @@ data class CardTemplate(
      * 세로로 이으면 줄무늬). 복원을 포기하고 덮는다.
      */
     val codeChip: Boolean = false,
+    /**
+     * 이름바 자리에 **우리가 판을 깔지** 여부. 번호의 [codeChip] 과 같은 처방이다.
+     *
+     * ## 왜 필요한가 — 지운 자리가 판판한 검정이 돼 버렸다
+     *
+     * `card_text_slots.py` 는 인쇄된 제목을 지울 때 글자 화소를 **같은 줄의 좌우
+     * 이웃으로 잇는다.** 제목이 바를 거의 꽉 채우는 글씨라 한 줄이 통째로 한 덩이가
+     * 되고, 그 줄은 바 양끝의 검정 사이를 잇는 것이 되어 **바 속의 은색 베벨과
+     * 대각선 잘림이 같이 사라진다.** 남는 것은 윤곽 없는 검은 널판이다.
+     *
+     * 그 널판이 아바타 원 **바로 옆까지** 온다. 원화에서는 바가 원보다 오른쪽에서
+     * 시작하고 그 사이에 은테와 홀로그램이 있었는데, 지우고 나면 원과 검정이 맞닿아
+     * **둘이 한 덩이로 읽힌다** — 사용자가 "이름 자리가 얼굴 사진과 뭉갠다" 고 한 것이
+     * 이것이다.
+     *
+     * ## 왜 판을 다시 안 그리고 덮는가
+     *
+     * 되살리려면 저쪽 원화가 있어야 하는데 **이 저장소에 없다.** 배추·상추·고구마 셋만
+     * 옛 캔버스(810x1125)로 남아 있고 지금 쓰는 25장(1080x1440 등)은 지운 판뿐이다.
+     * git 이력을 다 뒤져도 없다. 원화를 다시 받아 오기 전에는 복원이 불가능하다.
+     *
+     * 그래서 [codeChip] 과 같은 길을 간다 — **복원을 포기하고 덮는다.** 저쪽 번호판을
+     * 못 지워서 칩을 깔기로 한 그 판단이 여기에도 그대로 든다. 게다가 칩과 같은 잉크·
+     * 레일을 쓰므로 한 카드 안에서 이름판과 번호판이 **같은 물건으로 보인다.**
+     *
+     * ## 아바타를 비켜서 시작한다
+     *
+     * 판은 카드 **위에** 그려지므로 아바타 원까지 덮으면 그때는 진짜로 얼굴이 잘린다.
+     * [namePlateBox] 가 원의 오른쪽 끝([CLIP_BLEED] 까지 친 값)을 넘어서만 시작하게
+     * 잡는다. 글자도 **칸이 아니라 판**의 한가운데에 앉는다 — 칸은 왼쪽 끝이 원 속에
+     * 들어가 있어서(스물다섯 중 스물넷) 칸 기준으로 가운데를 잡으면 이름이 왼쪽으로
+     * 치우친다.
+     */
+    val namePlate: Boolean = true,
 )
 
 val CABBAGE_CARD = CardTemplate(
@@ -540,7 +574,10 @@ fun PersonalCard(
             }
             // 글자는 카드 **위에** 그린다. 비운 바가 이미 카드 안에 있으므로,
             // 아래에 두면 카드가 덮어 버린다.
-            drawNameAndCode(measurer, name, code, template.name, template.code, template.codeChip)
+            drawNameAndCode(
+                measurer, name, code, template.name, template.code,
+                template.codeChip, template.avatar, template.namePlate,
+            )
         }
     }
 }
@@ -636,7 +673,10 @@ fun DrawScope.drawPersonalCardAt(
         alpha = alpha,
         filterQuality = FilterQuality.High,
     )
-    drawNameAndCode(measurer, name, code, template.name, template.code, template.codeChip, at, box)
+    drawNameAndCode(
+        measurer, name, code, template.name, template.code,
+        template.codeChip, template.avatar, template.namePlate, at, box,
+    )
 }
 
 /**
@@ -650,10 +690,12 @@ fun DrawScope.drawSlotTextAt(
     nameSlot: Slot?,
     codeSlot: Slot?,
     chip: Boolean,
+    avatar: Hole?,
+    plate: Boolean,
     at: Offset,
     box: Size,
 ) {
-    drawNameAndCode(measurer, name, code, nameSlot, codeSlot, chip, at, box)
+    drawNameAndCode(measurer, name, code, nameSlot, codeSlot, chip, avatar, plate, at, box)
 }
 
 /** 이름·번호판. 카드 **위에** 그린다 — 아래에 두면 카드가 덮는다. */
@@ -663,7 +705,10 @@ fun DrawScope.drawCardText(
     name: String,
     code: String,
 ) {
-    drawNameAndCode(measurer, name, code, template.name, template.code, template.codeChip)
+    drawNameAndCode(
+        measurer, name, code, template.name, template.code,
+        template.codeChip, template.avatar, template.namePlate,
+    )
 }
 
 /** 칩 속. 당근형 카드에 인쇄된 번호 상자 안쪽을 재서 넣었다 (밝기 0~13). */
@@ -710,6 +755,67 @@ internal fun chipBox(slot: Slot, ratio: Float): Slot {
     return Slot(slot.x0 - padW, slot.y0 - padH, slot.x1, slot.y1 + padH)
 }
 
+/**
+ * 이름판이 아바타 원에서 떨어질 거리. **원 반지름 대비**다.
+ *
+ * 카드 폭 대비로 두면 구멍이 3.4배 차이 나는 판들에서(피망 18.44% · 상추 9.97%) 한쪽은
+ * 붙고 한쪽은 멀어진다. 원에서 재야 어느 카드에서나 같은 간격으로 보인다.
+ */
+private const val PLATE_CLEAR = 0.06f
+
+/**
+ * 이름판이 실제로 덮는 자리. 카드 크기 대비 % 그대로 돌려준다 — 테스트가 이걸 잰다.
+ *
+ * 위아래는 [CHIP_PAD] 만큼, 오른쪽은 칸 그대로([chipBox] 와 같은 이유로 안 넘긴다),
+ * **왼쪽만 아바타를 비켜서** 잡는다.
+ *
+ * @param avatar null 이면 비킬 것이 없다 (이머시브 창틀에 아바타가 없는 경우)
+ * @param ratio 카드 가로/세로. 같은 **길이**를 폭 대비 % 로 바꾸는 데 쓴다
+ */
+internal fun namePlateBox(slot: Slot, avatar: Hole?, ratio: Float): Slot {
+    val padH = (slot.y1 - slot.y0) * CHIP_PAD
+    val padW = if (ratio > 0f) padH / ratio else padH
+    val clear = avatar?.let { it.cx + it.rx * CLIP_BLEED * (1f + PLATE_CLEAR) }
+    return Slot(maxOf(slot.x0 - padW, clear ?: Float.NEGATIVE_INFINITY),
+                slot.y0 - padH, slot.x1, slot.y1 + padH)
+}
+
+/**
+ * 이름 자리를 덮는 어두운 판. [CardTemplate.namePlate] 가 켜진 카드만 그린다.
+ *
+ * 칩과 **같은 잉크·같은 레일**이다 ([ChipInk] · [ChipRail]). 한 카드 안에서 이름판과
+ * 번호판이 따로 놀면 둘 다 덧댄 티가 난다.
+ *
+ * 모서리만 칩보다 덜 둥글다. 이름바는 번호판보다 훨씬 길어서 같은 비율(0.28)을 주면
+ * 양끝이 알약처럼 부풀어 원화의 각진 결에서 벗어난다.
+ */
+private const val PLATE_RADIUS = 0.18f
+
+private fun DrawScope.drawNamePlate(slot: Slot, at: Offset, box: Size) {
+    val left = at.x + box.width * slot.x0 / 100f
+    val top = at.y + box.height * slot.y0 / 100f
+    val right = at.x + box.width * slot.x1 / 100f
+    val bottom = at.y + box.height * slot.y1 / 100f
+    val w = right - left
+    val h = bottom - top
+    if (w <= 0f || h <= 0f) return
+
+    val corner = CornerRadius(h * PLATE_RADIUS, h * PLATE_RADIUS)
+    drawRoundRect(
+        color = ChipInk,
+        topLeft = Offset(left, top),
+        size = Size(w, h),
+        cornerRadius = corner,
+    )
+    drawRoundRect(
+        color = ChipRail,
+        topLeft = Offset(left, top),
+        size = Size(w, h),
+        cornerRadius = corner,
+        style = Stroke(width = h * CHIP_STROKE),
+    )
+}
+
 private fun DrawScope.drawCodeChip(slot: Slot, at: Offset, box: Size) {
     val chip = chipBox(slot, if (box.height > 0f) box.width / box.height else 1f)
     val left = at.x + box.width * chip.x0 / 100f
@@ -751,11 +857,19 @@ private fun DrawScope.drawNameAndCode(
     nameSlot: Slot?,
     codeSlot: Slot?,
     chip: Boolean,
+    avatar: Hole?,
+    plate: Boolean,
     at: Offset = Offset.Zero,
     box: Size = size,
 ) {
+    // **판을 먼저 깔고 그 판에 글자를 앉힌다.** 칸이 아니라 판이 기준이다 —
+    // 이유는 [CardTemplate.namePlate] 에 적었다.
+    val nameBox = nameSlot?.takeIf { plate }
+        ?.let { namePlateBox(it, avatar, if (box.height > 0f) box.width / box.height else 1f) }
+        ?: nameSlot
+    if (plate && nameBox != null) drawNamePlate(nameBox, at, box)
     if (chip && codeSlot != null) drawCodeChip(codeSlot, at, box)
-    drawSlotText(measurer, name, nameSlot, TITLE, at, box)
+    drawSlotText(measurer, name, nameBox, TITLE, at, box)
     drawSlotText(measurer, code, codeSlot, CODE, at, box)
 }
 

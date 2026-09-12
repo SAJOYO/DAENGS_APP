@@ -419,9 +419,13 @@ private fun DrawScope.drawStage(
                 // **얼굴이 먼저다.** 아바타 원이 이름 바 왼쪽 끝에 걸쳐 있어서, 글자를
                 // 먼저 찍으면 그 위를 얼굴이 덮는다 (`PersonalCard` 도 얼굴 → 글자 순서다).
                 scene.frameAvatar?.let { hole -> drawInHoleOf(h.face, hole, fp, fs) }
+                // 이름판도 카드와 같은 것을 깐다 — 창틀은 카드가 녹은 자리에 드러나므로
+                // 둘이 다르면 녹는 순간 이름 자리만 모양이 바뀐다. 비킬 아바타도
+                // 같은 것을 넘긴다 (`CardTemplate.namePlate`).
                 drawSlotTextAt(
                     measurer, h.name, h.code,
-                    scene.frameName, scene.frameCode, scene.frameChip, fp, fs,
+                    scene.frameName, scene.frameCode, scene.frameChip,
+                    scene.frameAvatar, h.template?.namePlate ?: true, fp, fs,
                 )
             }
         }
