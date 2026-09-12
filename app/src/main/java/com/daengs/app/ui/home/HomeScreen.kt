@@ -288,8 +288,6 @@ fun HomeScreen(
     onOpenMembers: ((Pet) -> Unit)? = null,
     /** 받은 초대 링크를 붙여넣어 공동 보호자가 되러 간다. */
     onAcceptInvite: (() -> Unit)? = null,
-    /** 여러 아이를 한 링크로 부르는 자리로. 마이 탭이 받는다. */
-    onInvitePeople: (() -> Unit)? = null,
     /** 이미 배웅한 아이의 날짜 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deletePetBusy: Boolean = false,
@@ -495,7 +493,6 @@ fun HomeScreen(
                 onFarewell = onFarewell,
                 onOpenMembers = onOpenMembers,
                 onAcceptInvite = onAcceptInvite,
-                onInvitePeople = onInvitePeople,
                 farewellOf = farewellOf,
                 deleteBusy = deletePetBusy,
                 deleteError = deletePetError,

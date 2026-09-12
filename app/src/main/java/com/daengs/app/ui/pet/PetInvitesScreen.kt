@@ -208,10 +208,11 @@ private fun CreateRow(activeCount: Int, enabled: Boolean, onCreate: () -> Unit) 
     }
 }
 
-/** 방금 만든 초대장. **링크가 보이는 유일한 자리다.** */
 /**
- * 방금 만든 초대장. **묶음 초대([InviteBundleScreen])도 같은 것을 쓴다** — 그쪽은
- * [petName] 자리에 담긴 아이들 이름을 이어 붙여 넘긴다. 초대장이 두 벌이 되면 토큰을
+ * 방금 만든 초대장. **링크가 보이는 유일한 자리다.**
+ *
+ * **묶음 초대([InviteBundleScreen])도 같은 것을 쓴다** — 그쪽은 [petName] 자리에 담긴
+ * 아이들 이름을 이어 붙여 넘긴다. 초대장이 두 벌이 되면 토큰을
  * 다루는 규칙(글자로 안 띄운다·공유와 복사 둘뿐)이 두 군데로 갈린다.
  */
 @Composable
@@ -242,7 +243,7 @@ internal fun InviteTicket(
             // 브라우저가 빈 페이지를 연다 — 받는 사람은 앱에 붙여넣어 수락한다.
             // 공유 문구(`InviteShare.message`)도 같은 길을 안내한다.
             Text(
-                "받는 사람이 앱에서 「공동 돌봄 초대받기」에 붙여넣으면 참여할 수 있어요.",
+                "받는 사람이 앱에서 「받은 초대 링크 넣기」에 붙여넣으면 참여할 수 있어요.",
                 color = TextMuted,
                 fontSize = 13.sp,
             )

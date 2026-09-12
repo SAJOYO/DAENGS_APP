@@ -46,7 +46,7 @@ class InviteShareTest {
 
         val install = message.indexOf("설치")
         val login = message.indexOf("카카오로 로그인")
-        val entry = message.indexOf("「공동 돌봄 초대받기」")
+        val entry = message.indexOf("「받은 초대 링크 넣기」")
         val paste = message.indexOf("복사해 붙여넣어")
 
         assertTrue("설치 안내가 있어야 한다", install >= 0)

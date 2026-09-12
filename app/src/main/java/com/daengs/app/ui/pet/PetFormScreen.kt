@@ -372,7 +372,7 @@ fun PetFormScreen(
                     .padding(vertical = 12.dp)
                     .testTag("form-accept-invite"),
                 contentAlignment = Alignment.Center,
-            ) { Text("공동 돌봄 초대받기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+            ) { Text("받은 초대 링크 넣기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
         }
         if (onCancel != null) {
             Spacer(Modifier.height(6.dp))

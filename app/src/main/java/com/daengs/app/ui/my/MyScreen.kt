@@ -145,8 +145,6 @@ fun MyScreen(
     onOpenMembers: ((Pet) -> Unit)? = null,
     /** 받은 초대 링크를 붙여넣어 공동 보호자가 되러 간다. null 이면 그 줄이 안 뜬다. */
     onAcceptInvite: (() -> Unit)? = null,
-    /** 여러 아이를 한 링크로 부르는 자리로. null 이면 그 줄이 안 뜬다. */
-    onInvitePeople: (() -> Unit)? = null,
     /** 이미 배웅한 아이의 날짜. 없으면 아직 함께 있는 아이다 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deleteBusy: Boolean,
@@ -216,7 +214,6 @@ fun MyScreen(
                 farewellOf = farewellOf,
                 onOpenMembers = onOpenMembers,
                 onAcceptInvite = onAcceptInvite,
-                onInvitePeople = onInvitePeople,
             )
             Spacer(Modifier.height(14.dp))
         }
@@ -579,7 +576,6 @@ private fun PetSection(
     farewellOf: (Pet) -> java.time.LocalDate?,
     onOpenMembers: ((Pet) -> Unit)?,
     onAcceptInvite: (() -> Unit)?,
-    onInvitePeople: (() -> Unit)?,
 ) {
     Text("내 강아지", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
 
@@ -626,6 +622,10 @@ private fun PetSection(
         }
         // **등록 옆에 둔다.** 둘 다 "내 목록에 아이를 늘리는" 일이고, 초대받은 사람이
         // 모르고 새로 등록하면 같은 아이가 두 마리가 된다(서버는 합쳐 주지 않는다).
+        //
+        // **여기에는 받는 쪽만 둔다.** 보내는 쪽은 강아지 카드의 「함께 돌보는 사람」
+        // 안에 있다 — 「누구를 부를까」는 그 아이의 맥락에서 시작하는 일이고, 여기에
+        // 나란히 두면 「초대받기/초대하기」가 한 글자만 달라 서로 헷갈린다.
         if (onAcceptInvite != null) {
             Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                 Box(
@@ -636,24 +636,7 @@ private fun PetSection(
                         .testTag("my-accept-invite"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("공동 돌봄 초대받기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        // **초대받기 옆에 둔다.** 보내는 쪽도 받는 쪽도 여기서 시작한다 — 강아지 카드
-        // 안쪽(보호자 목록 → 초대 관리)은 아이 하나짜리 초대라, 여러 마리를 한 링크로
-        // 부르는 길은 계정 단위인 이 자리에 둔다.
-        if (onInvitePeople != null) {
-            Surface(color = CardWhite, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onInvitePeople)
-                        .padding(vertical = 16.dp)
-                        .testTag("my-invite-people"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("공동 돌봄 초대하기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("받은 초대 링크 넣기", color = DaengPinkDeep, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

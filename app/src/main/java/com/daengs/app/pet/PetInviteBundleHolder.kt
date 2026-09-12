@@ -89,6 +89,17 @@ class PetInviteBundleHolder(
         selected = emptyList()
     }
 
+    /**
+     * 그 아이를 고른 채로 화면을 연다. 강아지 카드에서 들어온 경우다.
+     *
+     * **이미 고르는 중이면 건드리지 않는다** — 화면에 다시 들어올 때마다 초기화하면
+     * 사용자가 두 마리째를 고르다가 뒤로 갔다 오는 순간 처음으로 돌아간다.
+     * 다른 아이를 **더** 고르는 것은 그대로 된다.
+     */
+    fun startWith(petId: String) {
+        if (selected.isEmpty()) selected = listOf(petId)
+    }
+
     fun forget() {
         generation++
         invites = null
