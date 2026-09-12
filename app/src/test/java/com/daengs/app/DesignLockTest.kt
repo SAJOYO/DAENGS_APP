@@ -101,6 +101,29 @@ class DesignLockTest {
         assertEquals(123, com.daengs.app.map.provider.naver.locationFaceRes(123))
     }
 
+    // -- 3. 점령 · 산책의 주요 버튼은 분홍이다 --------------------------------------
+
+    /**
+     * 점령 쪽 주요 버튼만 **진한 갈색으로 채워져** 있었다(「점령 지도 보기」 · 규칙 창의
+     * 「직접 해보기」 · 「촬영하고 산책 계속」). 앱의 다른 주요 버튼(「산책 시작」)은 분홍이라
+     * 같은 앱 안에서 다른 앱처럼 보였다. 채움 버튼의 바탕을 진한 갈색으로 되돌리지 않는다.
+     */
+    @Test
+    fun `점령 산책의 채움 버튼은 진한 갈색이 아니다`() {
+        val dark = Regex("buttonColors\\(\\s*containerColor\\s*=\\s*(TextDark|DaengsColors\\.TextPrimary)")
+        listOf("ui/game", "ui/walk").forEach { dir ->
+            File(root, "com/daengs/app/$dir").walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+                dark.find(file.readText())?.let {
+                    fail(
+                        "⛔ 잠긴 디자인 위반 (${file.name}): 채움 버튼 바탕이 진한 갈색이다. 주요 버튼은 " +
+                            "DaengPink 다 (「산책 시작」과 같게). docs/design-locks.md 3절. " +
+                            "테스트를 고치지 말고 변경을 되돌릴 것.",
+                    )
+                }
+            }
+        }
+    }
+
     @Test
     fun `얼굴 인자에 null 을 박아 넣지 않는다`() {
         val nullFace = Regex("avatar(Res|Photo)\\s*=\\s*null")

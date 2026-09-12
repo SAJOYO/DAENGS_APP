@@ -25,6 +25,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.daengs.app.ui.*
 import com.daengs.app.ui.theme.*
+import com.daengs.app.ui.theme.DaengPink
 
 /** Read-only, local examples. No walk, location, camera, or game repository enters this boundary. */
 @Composable
@@ -129,7 +130,7 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
                 if (tab == -1) {
                     Button(onClick = { state.tab = 0 }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                         .testTag("game-rules-example-open"), shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
+                        colors = ButtonDefaults.buttonColors(containerColor = DaengPink)) {
                         Text("직접 해보기", fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                     OutlinedButton(onClick = { state.tab = 1 }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
@@ -141,11 +142,11 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
                         colors = ButtonDefaults.textButtonColors(contentColor = TextDark),
                         modifier = Modifier.testTag("game-guide-previous")) { Text("이전") }
                     Button(onClick = advance, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("game-guide-next"),
-                        colors = ButtonDefaults.buttonColors(containerColor = TextDark), shape = RoundedCornerShape(14.dp)) {
+                        colors = ButtonDefaults.buttonColors(containerColor = DaengPink), shape = RoundedCornerShape(14.dp)) {
                         Text(step.action(scenario), fontSize = 13.sp, textAlign = TextAlign.Center)
                     }
                 } else Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = TextDark), shape = RoundedCornerShape(14.dp)) { Text("확인") }
+                    colors = ButtonDefaults.buttonColors(containerColor = DaengPink), shape = RoundedCornerShape(14.dp)) { Text("확인") }
             }
         }
     }
