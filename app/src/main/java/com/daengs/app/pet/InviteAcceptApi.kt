@@ -3,6 +3,7 @@ package com.daengs.app.pet
 import com.daengs.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -21,7 +22,20 @@ class InviteAcceptApi(private val baseUrl: () -> String = { BuildConfig.API_BASE
     val configured: Boolean
         get() = baseUrl().isNotBlank()
 
-    suspend fun accept(accessToken: String, inviteToken: String): AcceptOutcome =
+    /**
+     * @param links 초대 강아지별 선택. **묶음이면 모든 항목을 보내야 한다** — 빠지면 서버가
+     *   409 `link_selection_required` 로 막는다. 비워 보내는 것은 옛 계약(전부 연결 없이
+     *   참여)이라 **한 마리 묶음에서만** 통과한다.
+     *
+     *   ⚠️ **구 서버에 [links] 를 보내면 조용히 무시되고 200 이 온다** (pydantic
+     *   `extra="ignore"`). 그래서 부르는 쪽은 미리보기가 200 이었을 때만 값을 채운다 —
+     *   [InvitePreview] 의 주석을 보라.
+     */
+    suspend fun accept(
+        accessToken: String,
+        inviteToken: String,
+        links: List<InviteLinkChoice> = emptyList(),
+    ): AcceptOutcome =
         withContext(Dispatchers.IO) {
             if (!configured) {
                 return@withContext AcceptOutcome.Failed("서버 주소가 없습니다. local.properties 의 daengs.apiBaseUrl 을 채우세요.")
@@ -39,7 +53,7 @@ class InviteAcceptApi(private val baseUrl: () -> String = { BuildConfig.API_BASE
                 }
                 conn.use {
                     it.outputStream.use { out ->
-                        out.write(JSONObject().put("token", inviteToken).toString().toByteArray())
+                        out.write(body(inviteToken, links).toString().toByteArray())
                     }
                     when (val code = it.responseCode) {
                         in 200..299 -> AcceptOutcome.Joined(
@@ -47,8 +61,13 @@ class InviteAcceptApi(private val baseUrl: () -> String = { BuildConfig.API_BASE
                         )
                         404 -> AcceptOutcome.NotFound
                         410 -> AcceptOutcome.Expired
-                        409 -> AcceptOutcome.Conflict(it.detail() ?: "지금은 참여할 수 없어요.")
-                        else -> AcceptOutcome.Failed(it.detail() ?: "서버 오류 ($code)")
+                        409 -> it.failure("지금은 참여할 수 없어요.").let { f ->
+                            AcceptOutcome.Conflict(f.message, f.code, f.missingPetIds, f.reason)
+                        }
+                        422 -> it.failure("초대 정보가 바뀌었어요. 다시 불러와 주세요.").let { f ->
+                            AcceptOutcome.Invalid(f.message, f.code)
+                        }
+                        else -> AcceptOutcome.Failed(it.failure("서버 오류 ($code)").message)
                     }
                 }
             }.getOrElse { cause ->
@@ -58,17 +77,31 @@ class InviteAcceptApi(private val baseUrl: () -> String = { BuildConfig.API_BASE
             }
         }
 
-    /** 저쪽이 사용자에게 보여 줄 문장으로 `detail` 을 써 놨다. 모르는 모양이면 null 이다. */
-    private fun HttpURLConnection.detail(): String? {
-        val body = runCatching {
-            JSONObject(errorStream?.bufferedReader()?.readText().orEmpty())
-        }.getOrNull()
-        return when (val raw = body?.opt("detail")) {
-            is String -> raw.takeIf(String::isNotBlank)
-            is JSONObject -> raw.optString("message").takeIf(String::isNotBlank)
-            else -> null
+    /**
+     * 요청 본문. **선택이 없으면 `links` 키를 아예 넣지 않는다** — 빈 배열을 보내도 서버는
+     * 같게 읽지만, 옛 계약과 바이트가 같아야 구 서버에서도 뜻이 안 흔들린다.
+     */
+    private fun body(inviteToken: String, links: List<InviteLinkChoice>): JSONObject {
+        val json = JSONObject().put("token", inviteToken)
+        if (links.isEmpty()) return json
+        val arr = JSONArray()
+        links.forEach { choice ->
+            arr.put(
+                JSONObject()
+                    .put("pet_id", choice.petId)
+                    // `null` 은 "연결 없이 참여" 라는 **선택**이다. 키를 빼면 뜻이 달라진다.
+                    .put("link_to_pet_id", choice.linkToPetId ?: JSONObject.NULL),
+            )
         }
+        return json.put("links", arr)
     }
+
+    /**
+     * 저쪽이 사용자에게 보여 줄 문장으로 `detail` 을 써 놨다. 연결 관련 오류는 `code` 가
+     * 붙은 객체이고 상한·이미 대표는 문장 한 줄이라, [InviteFailure] 가 둘 다 읽는다.
+     */
+    private fun HttpURLConnection.failure(fallback: String): InviteFailure =
+        InviteFailure.parse(errorStream?.bufferedReader()?.readText(), fallback)
 
     private inline fun <T> HttpURLConnection.use(body: (HttpURLConnection) -> T): T =
         try {

@@ -203,6 +203,9 @@ private fun Failure(outcome: AcceptOutcome) {
         is AcceptOutcome.NotFound -> "사용할 수 없는 초대예요. 링크가 잘못됐거나 다른 분이 이미 사용했어요."
         is AcceptOutcome.Expired -> "만료된 초대예요. 대표 보호자에게 새 초대를 요청해 주세요."
         is AcceptOutcome.Conflict -> outcome.message // 서버가 사용자에게 보여 줄 문장으로 써 놨다.
+        // 422 는 사용자 잘못이 아니다 — 화면이 중복 선택을 막고 있으므로, 여기까지 왔으면
+        // 미리보기 이후 상태가 바뀐 것이다. 다시 불러오라고만 말한다.
+        is AcceptOutcome.Invalid -> outcome.message
         is AcceptOutcome.Failed -> outcome.message
     }
     Notice(message, tag = "accept-error", tint = DaengsColors.Error)

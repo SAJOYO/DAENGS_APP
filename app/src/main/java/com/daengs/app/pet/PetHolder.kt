@@ -96,8 +96,19 @@ class PetHolder(private val listPets: suspend (String) -> Result<PetList> = PetA
         guard { PetApi.setPrimary(token, id) } andThen { refresh(token) }
 
     /** 화면 진입이 남아 있거나 늦은 탭이 도착해도 대표 전용 요청을 보내지 않는다. */
+    /**
+     * 공통 정보를 고치거나 지울 수 있나.
+     *
+     * **`isOwner` 가 아니라 [Pet.isGroupOwner] 로 본다.** 내가 등록한 아이라도 남의 아이와
+     * 연결되면 그룹 주보호자는 초대한 쪽이고, 전체 PUT·삭제는 서버가 409
+     * (`not_group_owner`) 로 막는다 — `isOwner` 로 재면 앱이 버튼을 열어 두고 사용자는
+     * 눌러 봐야 실패를 안다. 연결이 없는 아이에서는 두 값이 같아 판정이 안 바뀐다.
+     *
+     * **이름 바꾸기는 여기를 지나지 않는다** — 그건 보호자마다 자기 값이라
+     * [PetApi.updateDisplayName] 로 따로 간다.
+     */
     private fun canManage(id: String): Boolean {
-        if (pets?.firstOrNull { it.id == id }?.isOwner != false) return true
+        if (pets?.firstOrNull { it.id == id }?.isGroupOwner != false) return true
         error = "대표 보호자만 강아지 정보를 바꿀 수 있어요."
         return false
     }

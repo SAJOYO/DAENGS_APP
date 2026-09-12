@@ -125,6 +125,135 @@ class InviteAcceptApiTest {
         }
     }
 
+    // -- 다중 초대 -------------------------------------------------------------
+
+    /**
+     * **선택이 없으면 `links` 키를 넣지 않는다.** 옛 계약과 바이트가 같아야 구 서버에서도
+     * 뜻이 안 흔들린다 — 빈 배열은 서버가 같게 읽지만 굳이 다르게 보낼 이유가 없다.
+     */
+    @Test
+    fun `선택이 없으면 옛 계약 그대로 토큰만 보낸다`() = runTest {
+        val stub = Stub(200, """{"pet_id":"p1","name":"네옹"}""")
+        try {
+            InviteAcceptApi { stub.base }.accept("t", inviteToken)
+
+            assertEquals(setOf("token"), stub.body.keys().asSequence().toSet())
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** `null` 은 "연결 없이 참여" 라는 **선택**이다. 키를 빼면 뜻이 달라진다. */
+    @Test
+    fun `연결 선택을 항목마다 싣고 null 도 값으로 보낸다`() = runTest {
+        val stub = Stub(200, """{"pet_id":"m1","name":"롱롱씨","pets":[]}""")
+        try {
+            InviteAcceptApi { stub.base }.accept(
+                "t",
+                inviteToken,
+                listOf(InviteLinkChoice("p1", "m1"), InviteLinkChoice("p2", null)),
+            )
+
+            val links = stub.body.getJSONArray("links")
+            assertEquals(2, links.length())
+            assertEquals("p1", links.getJSONObject(0).getString("pet_id"))
+            assertEquals("m1", links.getJSONObject(0).getString("link_to_pet_id"))
+            assertEquals("p2", links.getJSONObject(1).getString("pet_id"))
+            assertTrue("키가 있어야 한다", links.getJSONObject(1).has("link_to_pet_id"))
+            assertTrue("값은 JSON null 이다", links.getJSONObject(1).isNull("link_to_pet_id"))
+        } finally {
+            stub.stop()
+        }
+    }
+
+    @Test
+    fun `성공 응답의 항목별 결과를 읽는다`() = runTest {
+        val stub = Stub(
+            200,
+            """
+            {"pet_id":"m1","name":"롱롱씨",
+             "pets":[{"invited_pet_id":"p1","display_pet_id":"m1","name":"롱롱씨","result":"linked"},
+                     {"invited_pet_id":"p2","display_pet_id":"p2","name":"몽이","result":"joined"}]}
+            """.trimIndent(),
+        )
+        try {
+            val joined = InviteAcceptApi { stub.base }.accept("t", inviteToken) as AcceptOutcome.Joined
+
+            assertEquals(2, joined.pet.pets.size)
+            assertEquals("m1", joined.pet.pets[0].displayPetId)
+            assertEquals(AcceptResult.JOINED, joined.pet.pets[1].result)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 구 앱이 묶음을 조용히 수락하는 것을 막는 자리. 새 앱에서는 나오면 안 되는 오류다. */
+    @Test
+    fun `선택 누락 409 를 code 로 가른다`() = runTest {
+        val stub = Stub(
+            409,
+            """
+            {"detail":{"code":"link_selection_required","message":"이 초대에는 아이가 여러 마리예요.",
+                       "missing_pet_ids":["p1","p2"]}}
+            """.trimIndent(),
+        )
+        try {
+            val conflict = InviteAcceptApi { stub.base }.accept("t", inviteToken) as AcceptOutcome.Conflict
+
+            assertEquals(InviteErrorCode.LINK_SELECTION_REQUIRED, conflict.code)
+            assertEquals(listOf("p1", "p2"), conflict.missingPetIds)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    @Test
+    fun `부적격 연결 409 는 사유를 함께 읽는다`() = runTest {
+        val stub = Stub(
+            409,
+            """
+            {"detail":{"code":"link_not_allowed","message":"선택한 아이는 연결할 수 없어요.",
+                       "pet_id":"p1","link_to_pet_id":"m1","reason":"has_other_members"}}
+            """.trimIndent(),
+        )
+        try {
+            val conflict = InviteAcceptApi { stub.base }.accept("t", inviteToken) as AcceptOutcome.Conflict
+
+            assertEquals(InviteErrorCode.LINK_NOT_ALLOWED, conflict.code)
+            assertEquals("has_other_members", conflict.reason)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 422 는 상한 409 와 다른 뜻이다 — 다시 눌러도 같고, 불러오기부터 다시 해야 한다. */
+    @Test
+    fun `422 는 Conflict 가 아니라 Invalid 로 가른다`() = runTest {
+        val stub = Stub(422, """{"detail":{"code":"duplicate_link_target","message":"같은 아이를 두 번 골랐어요."}}""")
+        try {
+            val invalid = InviteAcceptApi { stub.base }.accept("t", inviteToken) as AcceptOutcome.Invalid
+
+            assertEquals(InviteErrorCode.DUPLICATE_LINK_TARGET, invalid.code)
+            assertEquals("같은 아이를 두 번 골랐어요.", invalid.message)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 상한 409 는 `code` 가 없는 문장 한 줄이다. 그때도 문구는 서버 것을 쓴다. */
+    @Test
+    fun `code 없는 409 도 문장을 그대로 쓴다`() = runTest {
+        val stub = Stub(409, """{"detail":"돌보는 아이가 너무 많습니다."}""")
+        try {
+            val conflict = InviteAcceptApi { stub.base }.accept("t", inviteToken) as AcceptOutcome.Conflict
+
+            assertEquals(null, conflict.code)
+            assertEquals("돌보는 아이가 너무 많습니다.", conflict.message)
+        } finally {
+            stub.stop()
+        }
+    }
+
     private class Stub(status: Int, response: String) {
         private val server: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         val base get() = "http://127.0.0.1:${server.address.port}"
