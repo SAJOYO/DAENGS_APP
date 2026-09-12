@@ -131,8 +131,12 @@ class GaitAnalysisWorker(
         val open = PendingIntent.getActivity(
             context,
             recordId.hashCode(),
+            // **CLEAR_TOP 을 쓰지 않는다.** 그걸 주면 액티비티가 다시 만들어지면서
+            // 보던 화면이 홈으로 초기화된다 — 챗에서 기다리던 사람이 알림을 눌렀는데
+            // 챗이 사라진다(에뮬레이터에서 실제로 그랬다). SINGLE_TOP 은 이미 떠 있는
+            // 것을 그대로 살리므로, 알림은 **앱을 앞으로 데려오기만** 한다.
             Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
