@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,8 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     var preparationError by mutableStateOf<String?>(null)
     var playing by mutableStateOf(false)
         private set
+    var playbackSpeed by mutableStateOf(RoutePlaybackSpeed.ONE)
+        private set
     private var selectionJob: Job? = null
     private var selectionRevision = 0
     val duration get() = review?.context?.takeIf { it.available }?.let { it.durationMillis ?: 0 }
@@ -99,6 +102,7 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         if (!open) overview()
     }
     fun pause() { playing = false }
+    fun choosePlaybackSpeed(speed: RoutePlaybackSpeed) { playbackSpeed = speed }
     private fun replaceSelection(value: WalkRouteSelection, fromMap: Boolean = false) {
         selectionRevision++; selectionJob?.cancel(); analyzing = false; playing = false
         error = null; selection = value; selectionFromMap = fromMap
@@ -169,18 +173,28 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     }
     fun tick(delta: Long) {
         if (!playing) return
-        selection = WalkRouteSelection.Replay(advanceRoutePlayback(elapsed, delta, duration))
+        selection = WalkRouteSelection.Replay(advanceRoutePlayback(elapsed, delta, duration, playbackSpeed))
         if (elapsed >= duration) playing = false
     }
 }
 
+internal fun walkRouteExplorerSaver(scope: CoroutineScope) = Saver<WalkRouteExplorerState, Any>(
+    save = { listOf(it.selectedSceneId.orEmpty(), it.playbackSpeed.name) },
+    restore = { saved ->
+        // Accept the scene-only value saved by earlier app versions as well.
+        val values = saved as? List<*>
+        val id = (saved as? String) ?: (values?.getOrNull(0) as? String).orEmpty()
+        WalkRouteExplorerState(scope, 0).apply {
+            if (id.isNotEmpty()) selectScene(id)
+            RoutePlaybackSpeed.entries.firstOrNull { it.name == values?.getOrNull(1) }?.let(::choosePlaybackSpeed)
+        }
+    },
+)
+
 @Composable
 internal fun rememberWalkRouteExplorer(sessionId: String, detail: WalkSessionDetail?): WalkRouteExplorerState {
     val scope = rememberCoroutineScope()
-    val state = rememberSaveable(sessionId, saver = Saver(
-        save = { it: WalkRouteExplorerState -> it.selectedSceneId.orEmpty() },
-        restore = { id -> WalkRouteExplorerState(scope, 0).apply { if (id.isNotEmpty()) selectScene(id) } },
-    )) { WalkRouteExplorerState(scope, 0) }
+    val state = rememberSaveable(sessionId, saver = walkRouteExplorerSaver(scope)) { WalkRouteExplorerState(scope, 0) }
     LaunchedEffect(detail, state) {
         if (detail != null) try {
             val (index, review) = withContext(Dispatchers.Default) {
@@ -190,7 +204,9 @@ internal fun rememberWalkRouteExplorer(sessionId: String, detail: WalkSessionDet
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { state.preparationError = "동선 탐색을 준비하지 못했어요. 상세를 다시 열어 주세요." }
     }
-    LaunchedEffect(state, state.playing) {
+    // Start a fresh interval at the displayed position when the speed changes. A pending old
+    // interval must not be retroactively multiplied by the newly selected speed.
+    LaunchedEffect(state, state.playing, state.playbackSpeed) {
         if (state.playing) {
             var previous = SystemClock.elapsedRealtime()
             while (isActive && state.playing) {
@@ -220,8 +236,11 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { state.overview(); onOverview() }) { Text("전체 동선") }
-            Button(onClick = state::togglePlayback, enabled = state.index != null && state.duration > 0) {
-                Text(if (state.playing) "일시정지" else "동선 재생")
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed)
+                Button(onClick = state::togglePlayback, enabled = state.index != null && state.duration > 0) {
+                    Text(if (state.playing) "일시정지" else "동선 재생")
+                }
             }
         }
         Spacer(Modifier.height(4.dp))
