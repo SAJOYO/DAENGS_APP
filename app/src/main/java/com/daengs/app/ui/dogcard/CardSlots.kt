@@ -7,18 +7,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -28,9 +34,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.R
@@ -532,6 +540,38 @@ private const val CLIP_BLEED = 1.12f
 private const val CORE_OVERFILL = 1.15f
 
 /**
+ * 잘리는 가장자리를 흐리는 폭. **구멍 반지름 대비**다 — 고정 픽셀이면 안 된다.
+ * 피망 `rx` 18.44% 와 상추 9.97% 로 구멍이 3.4배 차이 나서, 한 카드에서 맞춘 띠가
+ * 다른 카드에서는 두 배로 보이거나 사라진다.
+ *
+ * **띠는 [CLIP_BLEED] 의 바깥쪽 끝에만 둔다** (구멍 반지름의 1.07~1.12배).
+ * 카드 스물다섯 장의 판 알파를 3도 간격으로 재 보니 판이 불투명해지는 자리가
+ * 구멍 반지름의 **1.000~1.050배**였다 (제일 바깥이 브로콜리 1.050). 즉 이 띠는
+ * 카드에서는 전부 판 밑에 깔린다 — 안쪽으로 더 들이면 판이 안 덮는 자리가
+ * 반투명해져서 [CardFace] 가 경고하는 **찢어진 자국**이 그대로 난다.
+ *
+ * 그래서 카드에서는 한 픽셀도 안 바뀌고, **판을 안 덮는 세 자리**에서만 듣는다 —
+ * 이머시브의 튀어나온 누끼(`drawPopOut`)와 창틀 아바타는 얼굴 위에 아무것도 안
+ * 얹어서 [CLIP_BLEED] 타원의 톱니가 그대로 드러나 있었다.
+ */
+private const val CLIP_FEATHER = 0.05f
+
+/**
+ * 얼굴을 한 번 더, 이만큼 크게 **밑에 깔고** 그 위에 제 크기로 덮는다.
+ *
+ * 구멍 테까지 실루엣이 못 닿는 자리가 남아 있었다. 내보낸 카드 세 장에서 창 안의
+ * **완전히 투명한 화소**를 세어 보니 키위 650 · 피망 248 · 토마토 76 개였고,
+ * 자리는 두 창 모두 **아래쪽 턱선**이었다 — 거기는 카드에 구멍이 뚫린 것이라
+ * 받는 사람 배경색이 그대로 비친다.
+ *
+ * [CORE_OVERFILL] 이 같은 문제를 얼굴 전체를 키워서 막던 것인데, 키우면 얼굴이
+ * 더 잘린다. 밑판은 **보이는 얼굴을 안 건드린다** — 제 크기 얼굴이 투명한
+ * 자리에만 드러나므로, 맞춘 얼굴(`framed`)이 본 것과 달라지지도 않는다.
+ * 흰 띠가 아니라 **얼굴 제 색**이라 [CardFace] 가 경고하는 밝은 테도 안 생긴다.
+ */
+private const val GAP_PLUG = 1.05f
+
+/**
  * 구멍에 얼굴을 끼운다.
  *
  * **비트맵 사각형이 아니라 [CardFace.core] 를 구멍에 맞춘다.** 사각형으로 맞추면
@@ -700,6 +740,7 @@ fun DrawScope.drawInHoleOf(face: CardFace, hole: Hole, at: Offset, box: Size) {
     val cy = at.y + box.height * hole.cy / 100f
     val rx = box.width * hole.rx / 100f * CLIP_BLEED
     val ry = box.height * hole.ry / 100f * CLIP_BLEED
+    if (rx <= 0f || ry <= 0f) return
 
     // 사용자가 맞춘 얼굴은 **키우지 않는다.** 원 안에서 보고 정한 크기라 여기서 또
     // 1.15배 하면 본 것보다 크게 나온다.
@@ -708,31 +749,70 @@ fun DrawScope.drawInHoleOf(face: CardFace, hole: Hole, at: Offset, box: Size) {
     // 맞춰야 구멍이 찬다.
     val scale = maxOf(rx * 2f / core.width, ry * 2f / core.height) * overfill
 
-    val clip = Path().apply { addOval(Rect(cx - rx, cy - ry, cx + rx, cy + ry)) }
-    clipPath(clip) {
-        // 가로는 비트맵 한가운데가 아니라 **또렷한 얼굴의 한가운데**에 맞춘다.
-        val left = cx - (core.left + core.width / 2f) * scale
-        val top = if (face.framed) {
-            // **맞춘 얼굴은 가운데다.** 원 안에서 가운데에 놓고 본 것이므로
-            // 카드에서도 가운데여야 같은 그림이 된다.
-            cy - (core.top + core.height / 2f) * scale
-        } else {
-            // 세로는 한가운데가 아니라 **턱을 구멍 아래에 건다.**
-            //
-            // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
-            // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
-            // 잘리고 이마만 남았다 — 실기기에서 봤다.
-            cy + box.height * hole.ry / 100f - core.bottom * scale
-        }
+    // 가로는 비트맵 한가운데가 아니라 **또렷한 얼굴의 한가운데**에 맞춘다.
+    val left = cx - (core.left + core.width / 2f) * scale
+    val top = if (face.framed) {
+        // **맞춘 얼굴은 가운데다.** 원 안에서 가운데에 놓고 본 것이므로
+        // 카드에서도 가운데여야 같은 그림이 된다.
+        cy - (core.top + core.height / 2f) * scale
+    } else {
+        // 세로는 한가운데가 아니라 **턱을 구멍 아래에 건다.**
+        //
+        // 구멍보다 크게 그리니 어딘가는 잘려야 하는데, 이마와 귀가 잘리는 것은
+        // 괜찮고 **코가 잘리면 개로 안 보인다.** 한가운데에 맞췄더니 코가 먼저
+        // 잘리고 이마만 남았다 — 실기기에서 봤다.
+        cy + box.height * hole.ry / 100f - core.bottom * scale
+    }
+    val faceW = face.image.width * scale
+    val faceH = face.image.height * scale
+
+    // 구멍 한가운데에서 밖으로 [spread] 배 벌려 그린다. 1f 이면 제자리다.
+    fun DrawScope.paintFace(spread: Float) {
+        val l = cx + (left - cx) * spread
+        val t = cy + (top - cy) * spread
         drawImage(
             image = face.image,
-            dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-            dstSize = IntSize(
-                (face.image.width * scale).roundToInt(),
-                (face.image.height * scale).roundToInt(),
-            ),
+            dstOffset = IntOffset(l.roundToInt(), t.roundToInt()),
+            dstSize = IntSize((faceW * spread).roundToInt(), (faceH * spread).roundToInt()),
             filterQuality = FilterQuality.High,
         )
+    }
+
+    val bleed = Rect(cx - rx, cy - ry, cx + rx, cy + ry)
+    val clip = Path().apply { addOval(bleed) }
+
+    // **띠가 한 화소도 안 되면 레이어를 안 뜬다.** 도감 그리드의 작은 카드가 그렇다 —
+    // 거기서는 흐려 봐야 안 보이는데 칸마다 오프스크린 레이어만 두 장씩 늘어난다.
+    val feather = minOf(rx, ry) * CLIP_FEATHER / CLIP_BLEED
+    val soft = feather >= 0.75f
+    val canvas = drawContext.canvas
+    if (soft) canvas.saveLayer(bleed, Paint())
+
+    clipPath(clip) {
+        paintFace(GAP_PLUG)
+        paintFace(1f)
+    }
+
+    if (soft) {
+        // 블러가 아니라 **알파를 깎는다.** `RenderEffect` 는 API 31 부터인데
+        // minSdk 26 이라 `Cutout` 도 같은 벽에서 같은 수를 쓴다.
+        val inner = (CLIP_BLEED - CLIP_FEATHER) / CLIP_BLEED
+        // 원 하나를 세로로 눌러 타원으로 쓴다. 구멍은 카드마다 rx != ry 다.
+        scale(scaleX = 1f, scaleY = ry / rx, pivot = Offset(cx, cy)) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    0f to Color.Black,
+                    inner to Color.Black,
+                    1f to Color.Transparent,
+                    center = Offset(cx, cy),
+                    radius = rx,
+                ),
+                radius = rx,
+                center = Offset(cx, cy),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        canvas.restore()
     }
 }
 
@@ -954,4 +1034,110 @@ private fun LongNamePreview() {
 @Composable
 private fun LatinNamePreview() {
     PersonalCard(SPINACH_CARD, face = null, name = "Bella", code = birthCode(7, 3), modifier = Modifier.size(200.dp))
+}
+
+// -- 프리뷰 · 구멍 가장자리 ----------------------------------------------------
+//
+// 위의 판 프리뷰는 전부 `face = null` 이다. 가장자리는 **얼굴이 있어야** 보이는데
+// 진짜 누끼는 기기에서 사진을 찍어야 나온다. 그래서 여기서는 **가짜 누끼를 그려
+// 넣는다** — 사진일 필요가 없다. 필요한 것은 "투명한 바탕에 앉은, 창보다 작을 수도
+// 있고 아래가 턱에서 끊기는 실루엣" 하나뿐이고, 그게 [GAP_PLUG] 와 [CLIP_FEATHER]
+// 가 다루는 전부다.
+
+/**
+ * 프리뷰용 가짜 누끼. 귀 둘과 턱에서 끊긴 머리 — 실루엣이 창 안으로 파고드는 자리와
+ * 창 아래 테에 못 닿는 자리를 **일부러** 만든다. 실기기에서 그 두 자리가 비쳤다.
+ */
+private fun fakeFace(side: Int = 512): CardFace {
+    val image = ImageBitmap(side, side)
+    val s = side.toFloat()
+    CanvasDrawScope().draw(
+        density = Density(1f),
+        layoutDirection = LayoutDirection.Ltr,
+        canvas = androidx.compose.ui.graphics.Canvas(image),
+        size = Size(s, s),
+    ) {
+        // `bakeFramed` 가 굽는 대로, **또렷한 얼굴이 정사각형을 꽉 채운다.** 아래만
+        // 턱에서 끊긴다 — 실기기에서 비친 자리가 거기다.
+        drawOval(Color(0xFFB08E62), Offset(0f, 0f), Size(s * 0.30f, s * 0.40f))
+        drawOval(Color(0xFFB08E62), Offset(s * 0.70f, 0f), Size(s * 0.30f, s * 0.40f))
+        drawOval(Color(0xFFCBA97E), Offset(0f, s * 0.04f), Size(s, s * 0.84f))
+        drawOval(Color(0xFF2B2118), Offset(s * 0.40f, s * 0.50f), Size(s * 0.20f, s * 0.14f))
+    }
+    return CardFace(image, IntRect(0, 0, side, side), framed = true)
+}
+
+/**
+ * **판을 안 덮는 자리.** 이머시브의 튀어나온 누끼와 창틀 아바타가 이렇게 그린다 —
+ * 얼굴 위에 아무것도 안 얹으므로 [CLIP_BLEED] 타원이 맨살로 드러난다. 카드 프리뷰로는
+ * [CLIP_FEATHER] 가 한 화소도 안 보인다 (띠가 판 밑에 깔리게 잡아 뒀다).
+ */
+@Preview(name = "구멍 가장자리 · 판 없이 (흐린 띠가 보이는 유일한 자리)", widthDp = 260, heightDp = 260)
+@Composable
+private fun BareHoleEdgePreview() {
+    val face = remember { fakeFace() }
+    Canvas(Modifier.size(240.dp)) {
+        drawRect(Color(0xFF2E4A1E))
+        drawInHoleOf(face, PEPPER_CARD.face, Offset.Zero, size)
+    }
+}
+
+/**
+ * 구멍이 제일 큰 카드와 제일 작은 카드에 **같은 얼굴**을 끼운다. 띠도 밑판도
+ * 구멍 반지름 대비라서, 3.4배 차이 나는 두 창에서 같은 두께로 읽혀야 한다.
+ */
+@Preview(name = "피망 · 얼굴을 끼운 판 (구멍 제일 큼)", widthDp = 220, heightDp = 310)
+@Composable
+private fun PepperFacePreview() {
+    val face = remember { fakeFace() }
+    PersonalCard(PEPPER_CARD, face = face, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(200.dp))
+}
+
+@Preview(name = "상추 · 얼굴을 끼운 판 (구멍 제일 작음)", widthDp = 220, heightDp = 310)
+@Composable
+private fun LettuceFacePreview() {
+    val face = remember { fakeFace() }
+    PersonalCard(LETTUCE_CARD, face = face, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(200.dp))
+}
+
+/** 화면 크기로도 본다. 도감 그리드에서는 띠가 한 화소가 안 돼서 굳은 테로 물러선다. */
+@Preview(name = "도감 칸 크기 · 얼굴을 끼운 판", widthDp = 130, heightDp = 190)
+@Composable
+private fun GridSizeFacePreview() {
+    val face = remember { fakeFace() }
+    PersonalCard(TOMATO_CARD, face = face, name = "몽이", code = birthCode(4, 12), modifier = Modifier.size(110.dp))
+}
+
+// 칩이 **은테를 밟는지**는 220dp 프리뷰에서 안 보인다. 칩 오른쪽 끝과 판 안쪽 선의
+// 차이가 카드 폭의 1~2%p 라 220dp 에서 두세 화소다 — 그래서 `94.44` 가 스물네 장에
+// 그대로 남아 있었다. **크게 띄워 놓고 오른쪽 위를 본다.**
+
+@Preview(name = "번호칩이 은테를 밟는지 · 토마토 크게", widthDp = 430, heightDp = 580)
+@Composable
+private fun ChipAgainstFramePreview() {
+    PersonalCard(TOMATO_CARD, face = null, name = "몽이", code = birthCode(8, 24), modifier = Modifier.size(400.dp))
+}
+
+// 번호칸이 제일 오른쪽까지 가는 카드. 여기서 안 넘으면 어디서도 안 넘는다.
+
+@Preview(name = "번호칩 · 칸이 제일 오른쪽인 키위", widthDp = 430, heightDp = 580)
+@Composable
+private fun ChipRightMostPreview() {
+    PersonalCard(KIWI_CARD, face = null, name = "몽이", code = birthCode(5, 24), modifier = Modifier.size(400.dp))
+}
+
+// 번호가 길면 줄어든다. 칩의 둥근 끝에 닿지 않는지 본다 — 여백이 0 이던 때는 닿았다.
+
+@Preview(name = "번호가 긴 경우", widthDp = 430, heightDp = 580)
+@Composable
+private fun LongCodePreview() {
+    PersonalCard(TOMATO_CARD, face = null, name = "몽이", code = "DG-12251225", modifier = Modifier.size(400.dp))
+}
+
+// 칩을 안 까는 넷(번호가 카드 아래 왼쪽)은 이 변경에 안 흔들려야 한다.
+
+@Preview(name = "가지 판 · 칩을 안 까는 쪽", widthDp = 430, heightDp = 580)
+@Composable
+private fun EggplantNoChipPreview() {
+    PersonalCard(EGGPLANT_CARD, face = null, name = "몽이", code = birthCode(8, 24), modifier = Modifier.size(400.dp))
 }
