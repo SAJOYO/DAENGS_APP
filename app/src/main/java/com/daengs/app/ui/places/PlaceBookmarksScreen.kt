@@ -33,7 +33,8 @@ internal fun PlaceBookmarkState.panel() = PlaceBookmarkPanelState(
 internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: PlaceBookmarkState,
     profiles: PlaceProfiles, list: LazyListState, showMap: Boolean, onCall: (String) -> Unit,
     actions: @Composable (PlaceSearchHit) -> Unit, onRefreshProfiles: () -> Unit,
-    avatarBreed: DogBreed? = null, avatarPhoto: android.graphics.Bitmap? = null) {
+    avatarBreed: DogBreed? = null, avatarPhoto: android.graphics.Bitmap? = null,
+    onSearch: ((SearchPlanTransfer) -> Unit)? = null) {
     val snapshot = state.session.current
     val filters = snapshot.filters
     val scope = rememberCoroutineScope()
@@ -137,6 +138,10 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
                 scene = MapScene(places = hits.map { hit -> PlaceMarkerState(placeMarkerId(hit.place.key), hit.place.point,
                     hit.place.name, selected = hit.place.key == snapshot.selected, iconGroup = hit.place.iconGroup) }),
                 searchOrigin = filters.origin, followDevice = false,
+                // 🔒 **잠긴 디자인 — 내 위치는 사용자 프로필(대표 강아지 사진·얼굴)이다.**
+                //    SDK 파란 점으로 바꾸지 않는다. `docs/design-locks.md` 1절.
+                //    두 번 파란 점으로 돌아갔다 (2026-08-31 · 2026-09-10) — 그래서 잠갔다.
+                avatarRes = com.daengs.app.map.provider.naver.locationFaceRes(avatarBreed?.portraitRes), avatarPhoto = avatarPhoto,
                 initialCamera = snapshot.camera, centerOn = center, cameraRequestKey = cameraRequest, centerYFraction = .3f,
                 fitBounds = hits.map { it.place.point }.takeIf { snapshot.camera == null && it.isNotEmpty() },
                 onCameraSnapshot = { camera -> if (controller.state.value.session.tab == PlaceBrowseTab.BOOKMARKS) controller.updateSnapshot { it.copy(camera = camera) } },
@@ -147,7 +152,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
             Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 40.dp)) {
                 PlaceDogAssistant(busy = state.aiBusy, replyAvailable = state.aiAnswer != null,
                     open = dogOpen, onOpen = { dogOpen = it },
-                    onSubmit = { if (profilesPending) controller.notice("반려견 정보를 확인한 뒤 다시 말해 주세요.") else controller.chat(it) },
+                    onSubmit = { if (profilesPending) controller.notice("반려견 정보를 확인한 뒤 다시 말해 주세요.") else controller.chat(it, onSearch) },
                     onCancel = controller::cancelConversation, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
                     searchContext = "찜한 시설 안에서 · " + (filters.radiusMeters?.let { "반경 ${it / 1000.0}km" } ?: "지역 제한 없음") +
                         " · " + category.label + (if (filters.parkingFirst) " · 주차 우선" else "") + hard.summary.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),

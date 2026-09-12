@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
+import com.daengs.app.ui.chat.rememberVoiceAutoSend
+import com.daengs.app.ui.chat.rememberVoiceHoldToStop
 import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -160,6 +162,8 @@ fun MyScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var voiceAutoSend by rememberVoiceAutoSend()
+    var voiceHoldToStop by rememberVoiceHoldToStop()
     var confirming by rememberSaveable { mutableStateOf(false) }
     // 어느 아이를 지우려는지. **카드가 아니라 화면이 들고 있다** — 목록이 새로
     // 오면서 카드가 다시 만들어져도 창이 안 닫힌다.
@@ -226,6 +230,19 @@ fun MyScreen(
                 SettingDivider()
             }
             SettingRow("개인정보처리방침", onClick = { openPrivacyPolicy(context) })
+            // 음성 입력 설정. 채팅 화면과 같은 SharedPreferences 를 읽으므로 배선이 없다.
+            SettingDivider()
+            SettingToggleRow(
+                "음성 인식 후 바로 보내기",
+                "말이 끝나면 확인 없이 질문으로 보내요. 꺼져 있으면 입력칸에 넣기만 해요.",
+                voiceAutoSend,
+            ) { voiceAutoSend = it }
+            SettingDivider()
+            SettingToggleRow(
+                "정지를 누를 때까지 듣기",
+                "말이 잠깐 끊겨도 마이크를 다시 누르기 전까지 계속 들어요.",
+                voiceHoldToStop,
+            ) { voiceHoldToStop = it }
             if (OCR_CONSENT_VISIBLE && onOcrConsentChange != null) {
                 SettingDivider()
                 OcrConsentRow(ocrConsent, onOcrConsentChange)
@@ -850,9 +867,19 @@ private fun Section(content: @Composable () -> Unit) {
  */
 private const val OCR_CONSENT_VISIBLE = false
 
-/** 켜짐/꺼짐이 글자로 보이는 한 줄. 스위치 그림을 새로 들이지 않는다. */
 @Composable
 private fun OcrConsentRow(on: Boolean, onChange: (Boolean) -> Unit) {
+    SettingToggleRow(
+        "영수증 학습 이용 동의",
+        "읽어 낸 진료 항목을 인식 개선에 써요. 꺼도 진료비 기록은 그대로 남아요.",
+        on,
+        onChange,
+    )
+}
+
+/** 켜짐/꺼짐이 글자로 보이는 한 줄. 스위치 그림을 새로 들이지 않는다. */
+@Composable
+private fun SettingToggleRow(title: String, subtitle: String, on: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -861,12 +888,8 @@ private fun OcrConsentRow(on: Boolean, onChange: (Boolean) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("영수증 학습 이용 동의", color = TextDark, fontSize = 15.sp)
-            Text(
-                "읽어 낸 진료 항목을 인식 개선에 써요. 꺼도 진료비 기록은 그대로 남아요.",
-                color = TextMuted,
-                fontSize = 12.sp,
-            )
+            Text(title, color = TextDark, fontSize = 15.sp)
+            Text(subtitle, color = TextMuted, fontSize = 12.sp)
         }
         Spacer(Modifier.width(8.dp))
         Text(if (on) "켜짐" else "꺼짐", color = if (on) DaengPink else TextMuted, fontSize = 13.sp)

@@ -140,6 +140,16 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
     val durationMillis: Long = timedPoints.lastOrNull()?.activeElapsedMillis ?: 0
 }
 
-internal fun advanceRoutePlayback(at: Long, elapsed: Long, duration: Long): Long =
-    (at.coerceAtLeast(0) + elapsed.coerceAtLeast(0).coerceAtMost(duration.coerceAtLeast(0)))
-        .coerceIn(0, duration.coerceAtLeast(0))
+internal enum class RoutePlaybackSpeed(val multiplier: Int) {
+    ONE(1), TWO(2), FOUR(4), EIGHT(8), SIXTEEN(16),
+}
+
+/** Advance only the viewing clock; clamp before multiplying to avoid wrapping past the end. */
+internal fun advanceRoutePlayback(at: Long, elapsed: Long, duration: Long,
+    speed: RoutePlaybackSpeed = RoutePlaybackSpeed.ONE): Long {
+    val end = duration.coerceAtLeast(0)
+    val position = at.coerceIn(0, end)
+    val remaining = end - position
+    val delta = elapsed.coerceAtLeast(0)
+    return if (delta > remaining / speed.multiplier) end else position + delta * speed.multiplier
+}

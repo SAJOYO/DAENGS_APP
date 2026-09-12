@@ -31,6 +31,7 @@ class WalkSync(
     private val photoSync: (suspend (String, String, String) -> Unit)? = null,
     private val recording: WalkRecordingSync? = null,
     private val requireRecordingSupport: Boolean = true,
+    private val motion: WalkMotionSync? = null,
     /**
      * 실패를 어디에 적을지. 기본은 logcat 이다.
      *
@@ -59,6 +60,7 @@ class WalkSync(
         val owner = log.ownerId
         if (!api.configured || !stillOwned(owner)) return@withContext
         runCatching { pushMutex.withLock { push(token) } }.onFailure { it.warn("올리기") }
+        if (!stillOwned(owner)) return@withContext
         runCatching { pull(token, owner) }.onFailure { it.warn("되찾기") }
         for (session in log.finishedSessions()) {
             if (!stillOwned(owner)) return@withContext
@@ -69,6 +71,9 @@ class WalkSync(
                     photoSync?.invoke(token, session.id, remoteId)
                     storyboardSync?.invoke(token, session.id, remoteId)
                 }.onFailure { it.warn("기록 맞추기") }
+                // Backup unavailability must not prevent existing entries/photos from being delivered.
+                if (stillOwned(owner)) runCatching { motion?.sync(token, session.id, remoteId) }
+                    .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it else it.warn("측정 백업") }
             }
         }
     }
@@ -88,16 +93,27 @@ class WalkSync(
                 if (session.syncState != WalkSyncState.DERIVED) pushOne(accessToken, session)
                 else session.serverWalkId?.let { verifyRecording(accessToken, session, it) }
                 log.session(sessionId)?.serverWalkId?.let {
-                    entrySync?.sync(accessToken, sessionId, it)
-                    photoSync?.invoke(accessToken, sessionId, it)
-                    if (includeStoryboard) storyboardSync?.invoke(accessToken, sessionId, it)
+                    var failure: Throwable? = null
+                    suspend fun attempt(block: suspend () -> Unit) {
+                        try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { if (failure == null) failure = e }
+                    }
+                    attempt {
+                        entrySync?.sync(accessToken, sessionId, it)
+                        photoSync?.invoke(accessToken, sessionId, it)
+                        if (includeStoryboard) storyboardSync?.invoke(accessToken, sessionId, it)
+                    }
+                    attempt { motion?.sync(accessToken, sessionId, it) }
+                    failure?.let { throw it }
                 }
             }
         }
 
     /** 끝났지만 아직 계산 완료되지 않은 것을 현재 단계부터 이어간다. */
     private suspend fun push(token: String) {
+        val owner = log.ownerId
         for (session in log.sessionsPendingAnalysis()) {
+            if (!stillOwned(owner)) return
             runCatching { if (session.syncState != WalkSyncState.DERIVED) pushOne(token, session) }.onFailure {
                 // 한 건이 실패해도 나머지는 시도한다 — 큰 산책 하나에 다른 기록까지
                 // 볼모가 되면 안 된다.
@@ -119,9 +135,12 @@ class WalkSync(
             ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
         val walkId = rememberedWalkId ?: run {
             val id = api.upload(token, session, fixes.take(POINTS_PER_REQUEST)).getOrThrow()
-            // 긴 산책은 나눠 보낸다. 좌표 순번이 서버 PK 라 재전송해도 중복이 안 생긴다.
+            checkOwner()
+            // 각 청크의 수신 확인을 검증한 뒤에만 다음 청크를 보낸다.
             for (chunk in fixes.drop(POINTS_PER_REQUEST).chunked(POINTS_PER_REQUEST)) {
-                api.appendPoints(token, id, chunk).getOrThrow()
+                checkOwner()
+                api.appendPoints(token, id, session.id, chunk).getOrThrow()
+                checkOwner()
             }
             // 여기까지 왔으면 원본은 전부 있다. finalize 응답을 잃더라도 다음 실행에서
             // 원본을 다시 보내지 않고 이 id로 finalize만 재시도한다.
@@ -136,6 +155,7 @@ class WalkSync(
             terminalClientSeq = fixes.lastOrNull()?.clientSeq,
         )
         api.finalize(token, walkId, manifest).getOrThrow()
+        checkOwner()
         log.markDerived(session.id, now())
     }
 
@@ -165,9 +185,21 @@ class WalkSync(
         }
         // 로컬에 이미 있는지는 **세션 id 하나로** 판단한다. 기기가 만든 id 를 서버가
         // 그대로 들고 있어서다.
-        val mine = log.finishedSessions().map { it.id }.toSet()
+        val mine = log.finishedSessions().associateBy { it.id }
         for (walk in remote) {
-            if (walk.clientSessionId in mine) continue
+            val existing = mine[walk.clientSessionId]
+            if (existing != null && motion == null) continue
+            if (existing?.motionPolicyJson != null) {
+                if (owner == null) continue
+                val needs = runCatching { motion!!.needsPrecisionRestore(token, existing.id, walk.id, owner) }
+                    .getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it; it.warn("GPS 정밀 복원 확인"); false }
+                if (!needs) continue
+            }
+            if (existing != null && motion != null && owner != null) {
+                try { if (!motion.hasCompletedBackup(token, walk.id, owner)) continue }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { e.warn("측정 백업 확인"); continue }
+            }
             val detail = api.detail(token, walk.id).getOrElse {
                 it.warn("산책 ${walk.id.take(8)} 받기")
                 continue
@@ -175,6 +207,13 @@ class WalkSync(
             // 목록에는 분석 상태가 없으므로 원본 업로드까지만 확실한 것으로 저장한다.
             // 다음 sync가 finalize를 멱등 호출한다.
             if (!stillOwned(owner)) return
+            check(detail.walk.id == walk.id && detail.walk.clientSessionId == walk.clientSessionId)
+            if (motion != null && owner != null) {
+                try { motion.restore(token, detail, owner, expectedLocal = existing != null) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { e.warn("측정 자료 되찾기") }
+                continue
+            }
             log.restoreSession(detail.walk.toSession(rawUploadedAtMillis = now()).copy(ownerId = owner))
             for (fix in detail.fixes) log.append(detail.walk.clientSessionId, fix)
         }
@@ -205,6 +244,7 @@ class WalkSync(
         owner == null || (owner.isNotEmpty() && log.ownerId == owner)
 
     private fun Throwable.warn(what: String) {
+        if (this is kotlinx.coroutines.CancellationException) throw this
         warn("산책 동기화 — $what 에 실패했다. 다음에 다시 시도한다.", this)
     }
 
@@ -236,6 +276,7 @@ interface WalkApiClient {
     suspend fun appendPoints(
         token: String,
         walkId: String,
+        clientSessionId: String,
         fixes: List<com.daengs.app.walk.RecordedFix>,
     ): Result<Unit>
 
@@ -263,8 +304,9 @@ private object DefaultWalkApiClient : WalkApiClient {
     override suspend fun appendPoints(
         token: String,
         walkId: String,
+        clientSessionId: String,
         fixes: List<com.daengs.app.walk.RecordedFix>,
-    ) = WalkApi.appendPoints(token, walkId, fixes)
+    ) = WalkApi.appendPoints(token, walkId, clientSessionId, fixes)
 
     override suspend fun finalize(
         token: String,

@@ -190,7 +190,8 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 - 화면을 나가거나 꺼도 위치 Foreground Service가 기록을 이어 간다.
 - 지도에는 흔들림과 정확도 낮은 점을 걸러낸 경로가 보인다.
 - 기기가 보고한 원본 위치는 `daengs_walk.db`에 먼저 저장한다.
-- 현재는 **로컬 기록만 한다.** 백엔드 업로드·점수·영토·기록 목록은 연결하지 않았다.
+- 종료한 산책은 원본 업로드·GPS 기록 구분 확인·분석 봉인 순서로 동기화한다.
+  청크 응답과 재전송 규칙은 [산책 업로드 수신 확인](docs/walk-upload-receipts.md)에 있다.
 - 강제 종료로 닫히지 않은 세션은 DB에 남지만, 이어 기록/폐기 화면은 아직 없다.
 
 ### 빌드 · 테스트 · 설치
@@ -211,6 +212,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Windows 에서는 `gradlew.bat` 을 쓴다.
 기능 변경의 테스트만 확인할 때는 [실행 지도](app/src/test/README.md)에 따라 `--tests`로 범위를 선택한다.
+
+Debug 빌드의 산책 상세 `⋯ → 개발용 일기 미리보기`에서 파트 슬롯의 생성 문장·선정 자료를 확인한다.
+Release에는 이 진입점이 없으며 기존 일기에는 저장하지 않는다. [사용 방법과 서버 활성화 조건](docs/diary-slot-preview.md).
 
 ### 스토어에 올릴 빌드
 

@@ -22,6 +22,12 @@ class RoomWalkFixLog(private val dao: WalkDao,
     private val sessionMutex = Mutex()
     private val forgottenOwners = mutableSetOf<String>()
 
+    /** Share the withdrawal barrier with atomic network restoration, without holding it during HTTP. */
+    internal suspend fun restoringForOwner(expected: String, block: suspend () -> Unit) = sessionMutex.withLock {
+        check(expected.isNotBlank() && expected == owner() && expected !in forgottenOwners)
+        block()
+    }
+
     override val ownerId: String get() = owner()
     /** On-demand diagnostics only; history, pin upload and keep/discard still use their release policies. */
     suspend fun compareMotion(sessionId: String): com.daengs.app.walk.motion.RecordedMotionComparison? =
@@ -73,6 +79,7 @@ class RoomWalkFixLog(private val dao: WalkDao,
                 serverWalkId = session.serverWalkId,
                 syncedAtMillis = session.syncedAtMillis,
                 motionPolicyJson = session.motionPolicyJson,
+                coordinateOrigin = if (originatedHere) "captured" else null,
             ),
         )
         // **처음 열 때만 붙인다.** 이미 있는 세션에 나중 목록을 덧붙이면 그날 데리고
@@ -107,6 +114,11 @@ class RoomWalkFixLog(private val dao: WalkDao,
             bearingAccuracyDegrees = fix.bearingAccuracyDegrees,
             provider = fix.provider,
             recordingEligible = fix.recordingEligible,
+            speedMpsBits = fix.speedMps?.toRawBits(),
+            speedAccuracyMpsBits = fix.speedAccuracyMps?.toRawBits(),
+            bearingDegreesBits = fix.bearingDegrees?.toRawBits(),
+            bearingAccuracyDegreesBits = fix.bearingAccuracyDegrees?.toRawBits(),
+            latBits = fix.lat.toRawBits(), lngBits = fix.lng.toRawBits(), accuracyBits = fix.accuracyM?.toRawBits(),
         ),
     )
 
@@ -185,7 +197,13 @@ class RoomWalkFixLog(private val dao: WalkDao,
         dao.finishedSessionsPage(owner(), dogId, before?.startedAtMillis, before?.sessionId, limit).withDogs()
 
     override suspend fun sessionsPendingAnalysis(): List<RecordedSession> =
-        (dao.sessionsPendingAnalysis() + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
+        (dao.sessionsPendingAnalysis() + dao.pendingMotionSessions().filter { row ->
+            when (val p = com.daengs.app.walk.motion.MotionPolicies.resolveJson(row.id, row.motionPolicyJson)) {
+                is com.daengs.app.walk.motion.MotionPolicySelection.Supported -> p.policy.stored.measurementVersion != null
+                is com.daengs.app.walk.motion.MotionPolicySelection.Unsupported -> true
+                else -> false
+            }
+        } + (dao.dirtyEntrySessions() + dao.dirtyPhotoSessions()).mapNotNull { dao.session(it) }
             .filter { it.endedAtMillis != null }).distinctBy { it.id }.withDogs()
 
     /**
@@ -251,9 +269,9 @@ internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     clientSeq = clientSeq,
     chainIndex = chainIndex,
     atMillis = atMillis,
-    lat = lat,
-    lng = lng,
-    accuracyM = accuracyM,
+    lat = latBits?.let(Double::fromBits) ?: lat,
+    lng = lngBits?.let(Double::fromBits) ?: lng,
+    accuracyM = accuracyBits?.let(Float::fromBits) ?: accuracyM,
     isMock = isMock,
     ingressSeq = ingressSeq,
     sourceEpoch = sourceEpoch,
@@ -261,10 +279,10 @@ internal fun WalkFixRow.toModel(): RecordedFix = RecordedFix(
     elapsedRealtimeNanos = elapsedRealtimeNanos,
     receivedElapsedNanos = receivedElapsedNanos,
     receivedAtMillis = receivedAtMillis,
-    speedMps = speedMps,
-    speedAccuracyMps = speedAccuracyMps,
-    bearingDegrees = bearingDegrees,
-    bearingAccuracyDegrees = bearingAccuracyDegrees,
+    speedMps = speedMpsBits?.let(Float::fromBits) ?: speedMps,
+    speedAccuracyMps = speedAccuracyMpsBits?.let(Float::fromBits) ?: speedAccuracyMps,
+    bearingDegrees = bearingDegreesBits?.let(Float::fromBits) ?: bearingDegrees,
+    bearingAccuracyDegrees = bearingAccuracyDegreesBits?.let(Float::fromBits) ?: bearingAccuracyDegrees,
     provider = provider,
     recordingEligible = recordingEligible,
 )

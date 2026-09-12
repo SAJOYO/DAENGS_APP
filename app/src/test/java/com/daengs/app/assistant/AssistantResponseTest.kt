@@ -13,6 +13,30 @@ import org.junit.Test
  */
 class AssistantResponseTest {
 
+    @Test fun `시설 v2 참조는 일반 후보 카드와 구분해 읽는다`() {
+        val response = AssistantResponse.parse(JSONObject("""
+            {"request_id":"r", "status":"ANSWERED", "message":"골라뒀어요!", "results":[
+              {"capability":"place", "status":"OK", "data":{
+                "contract_version":"place-facility-v2", "answer":"골라뒀어요!",
+                "facility":{"session_id":"11111111-1111-4111-8111-111111111111",
+                  "revision":2,"client_request_id":"22222222-2222-4222-8222-222222222222"}}}]}
+        """))
+        assertEquals(2, response.facility!!.revision)
+        assertNull(response.places)
+        assertNull(response.facilityError)
+    }
+
+    @Test fun `시설 만료는 HTTP 성공에서도 별도로 읽는다`() {
+        val response = AssistantResponse.parse(JSONObject("""
+            {"request_id":"r", "status":"FAILED", "message":"검색이 만료됐어요.", "results":[
+              {"capability":"place", "status":"ERROR", "error":{
+                "kind":"facility_expired", "detail":"검색이 만료됐어요."}}]}
+        """))
+        assertEquals("facility_expired", response.facilityError)
+        assertEquals("검색이 만료됐어요.", response.facilityErrorMessage)
+        assertNull(response.facility)
+    }
+
     @Test
     fun `ANSWERED 응답을 통째로 읽는다`() {
         val json = """

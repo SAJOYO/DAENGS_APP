@@ -113,6 +113,7 @@ data class PlaceSuggestions(
                 val result = results!!.optJSONObject(i) ?: continue
                 if (result.optString("capability") != CAPABILITY) continue
                 val data = result.optJSONObject("data") ?: return null
+                if (data.optString("contract_version", "place-capability-v1") != "place-capability-v1") return null
                 return parse(data)
             }
             return null

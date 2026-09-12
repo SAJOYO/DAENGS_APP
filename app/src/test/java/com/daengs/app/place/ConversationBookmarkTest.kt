@@ -92,7 +92,7 @@ class ConversationBookmarkTest {
         assertTrue(repository.state.value.answerBusy)
         repository.select(before.order[0])
         gate.complete(Unit); task.await()
-        assertEquals("저장 확인", repository.state.value.commandAnswer)
+        assertEquals("현재 찜에 저장돼 있어요.", repository.state.value.commandAnswer)
         assertEquals(before.order[0], repository.state.value.selected)
         assertEquals(before.search, repository.state.value.result!!.search)
         repository.completeAnswer()

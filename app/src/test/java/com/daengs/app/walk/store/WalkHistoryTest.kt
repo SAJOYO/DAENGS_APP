@@ -68,6 +68,24 @@ class WalkHistoryTest {
     @After
     fun tearDown() = db.close()
 
+    @Test fun `completed Room reader carries the same minimum distance scene evidence as replay`() = runBlocking {
+        val id = "omitted-scene"
+        log.openSession(RecordedSession(id, startedAtMillis = 0))
+        val raw = listOf(0.0, 1.0, 4.0).mapIndexed { i, meters ->
+            RecordedFix(i, 0, 10_000L + i * 2_000, 0.0, meters / 111_195, 3f, false)
+        }
+        raw.forEach { log.append(id, it) }
+        log.closeSession(id, 20_000)
+        val detail = checkNotNull(history.sessionDetail(id))
+        val source = com.daengs.app.walk.diary.StoryboardObservation(1, 0, raw[1].atMillis, GeoPoint(raw[1].lat, raw[1].lng))
+        val scene = com.daengs.app.walk.diary.DiaryScene("scene", id, raw[1].atMillis, "장면", "", source.point, "",
+            source = com.daengs.app.walk.diary.StoryboardScene("observed", raw[1].atMillis, "장면", "", "", "r1", observation = source))
+        val focus = com.daengs.app.walk.routeexplorer.CompletedRouteReview(detail).sceneFocus(scene)
+        assertEquals(com.daengs.app.walk.routeexplorer.SceneRouteRelation.CONNECTED, focus.relation)
+        assertEquals(0, focus.binding!!.fromSeq); assertEquals(2, focus.binding.toSeq)
+        assertEquals(checkNotNull(history.detail(id)), detail.summary)
+    }
+
     @Test fun `keyset pages isolate owners skip short walks and avoid loading other pages`() = runBlocking {
         for (i in 0..8) walked("walk-$i", startedAt = 10_000L, meters = 400.0, seconds = 600)
         walked("tiny", startedAt = 20_000L, meters = 1.0, seconds = 2)

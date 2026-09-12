@@ -32,7 +32,61 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 기능별 선택 범위
 
+### 네이버 지도 현재 위치·얼굴 표시
+
+지도 재생성 시 실제 Surface 준비는 [네이버 지도 실기기 회귀 검사](../../../tools/naver-map-review/README.md)의
+`MapFirstFrameTest`로 확인한다. shadow 검사로 native Surface 생성 여부를 대신 판정하지 않는다.
+
+`map.provider.naver.NaverLocationLayerTest`는 실제 Compose Effect와 SDK shadow로 늦은 지도 준비,
+좌표 누락/갱신, 얼굴 교체, 지도 교체·화면 이탈 때 리스너와 오버레이 수명을 확인한다.
+`LocationAvatarTest`는 사진 우선·발바닥 복구·견종 리소스·기본 아이콘 반환을 검사한다.
+SDK 기본 아이콘과 크기는 지도마다 기억하며, 좌표 갱신으로 얼굴을 다시 만들지 않아야 한다.
+이 레이어는 위치가 없어도 호출을 유지한다. 기기 추적 카메라와 지도 생명주기는 Surface 소유다.
+카메라/상세 연결을 바꾸면 `ui.places.PlaceMapCameraTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`map.shell.MapScenePolicyTest`를 함께 선택한다. 각 클래스 앞에 `com.daengs.app.`을 붙인다.
+SDK shadow는 Windows JVM에서 네이티브 지도 대신 호출을 기록한다. 실제 지도 렌더링과
+앱의 백그라운드 복귀는 실기기 검증 대상이며 이 테스트의 통과 범위에 포함하지 않는다.
+
+### 산책 파트 슬롯 미리보기
+
+`walk.diary.DiarySlotPreviewTest`는 DEV 미리보기 응답·인증·산책/계정 대응·동기화·취소를,
+`ui.walk.DiarySlotPreviewScreenTest`는 명시적 생성·중복 탭·실패 재시도·세 파트·희소 자료 표시를 확인한다.
+`ui.walk.DiarySlotEvidenceTextTest`는 기온 누락/null·0도·0초·원본 시간대 표시를 확인한다.
+공통 상세 메뉴를 변경하면 `ui.walk.WalkDiaryMapScreenTest`와 `ui.walk.WalkSessionDetailUiTest`를 함께 선택한다.
+설명 비교는 `walk.diary.DiaryPlaceComparisonTest`와 `ui.walk.DiaryPlaceComparisonUiTest`로 확인한다.
+UI 검사는 설명 전환 전후의 선택 장면·경로 안내·지도 배치 유지와 추가 생성 호출이 없는지도 확인한다.
+공용 `walk.support.DiarySlotResources`가 읽는 `diary-slots-preview-v1.json`은 DEV 합성 산책의
+실제 Gemini 출력이다. `diary-slots-preview-v3.json`은 최신 DEV 선정/조립 코드를 실행한
+합성 기온·고정 writer fixture이며, 실제 기상청/Gemini 호출 결과와 구별한다.
+fixture를 바꾸면 미리보기 API와 화면 테스트 두 클래스를 함께 실행한다.
+[정확한 명령·서버 조건·검증 한계](../../../docs/diary-slot-preview.md).
+
+### 산책 업로드 수신 확인
+
+`walk.sync.WalkUploadReceiptTest`는 새/구형 응답 검증, `WalkUploadHttpTest`는 실제 loopback
+HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상태 전이의 연결을 검사한다.
+동기화 순서와 계정 변경은 `WalkSyncTest`, GPS 확인/보완은 `WalkRecordingSyncTest`, 측정 자료
+소비자는 `WalkMotionSyncTest`, 실제 원본 상태 저장은 `walk.store.WalkDaoTest`를 함께 선택한다.
+각 클래스 앞에 `com.daengs.app.`을 붙인다. [계약과 실행 명령](../../../docs/walk-upload-receipts.md).
+
 ### 산책 종료·기록 공통 상세와 동선 탐색
+
+상세 데이터 경계(#358)는 `walk.detail.StoredWalkDetailDataTest`에서 실제 Room을 사용해
+저장/삭제 후 예약, 예약 실패 뒤 영속 상태, 편집 충돌, 인증/동기화 순서, 취소·재로그인,
+장면 공개/편집과 사진 정리를 확인한다. 네트워크·인증·예약은 대역이므로 실제 서버 전송 성공을 뜻하지 않는다.
+`ui.walk.WalkDetailDataUiTest`는 앱 전역 객체 없이 실제 상세 화면에 계약을 주입해
+중복 생성 차단·실패 재시도·공개 일기 새로고침·상세 교체 시 취소를 확인한다.
+`ui.walk.WalkDiaryReadViewTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `walk.store.WalkEntryStoreTest`,
+`walk.diary.WalkDiaryPublicationTest`, `DesignLockTest`를 함께 선택한다.
+각 클래스 앞에는 `com.daengs.app.`을 붙인다. 이 묶음은 네이티브 지도 실기기 검증을 포함하지 않는다.
+
+#333의 구간·장면 선택은 `walk.routeexplorer.CompletedRouteReviewTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkCompletedRoutePresentationTest`, `map.layers.completedroute.SessionRouteExplorerLayerStateTest`로
+확인한다. 각 클래스 앞에는 `com.daengs.app.`을 붙인다. 장면 위치 시각은
+`walk.diary.ServerDiaryBundleTest`, 원본 시각 보존은 `walk.WalkSessionRouteTest`와 함께 본다.
+[구간과 장면 대응 계약](../../../docs/walk-route-section-selection.md).
 
 새 상세 경계는 WalkSessionDestinationTest, WalkSessionDetailUiTest,
 WalkRouteExplorerStateTest로 확인한다. 지도 배치는
@@ -67,6 +121,23 @@ WalkRecordsScreenTest, WalkDiaryMapScreenTest, WalkDiaryReaderTest, WalkDiaryPub
 `ExampleUnitTest`의 덧셈 예제는 제품 기능 검증으로 세지 않는다.
 
 ## GPS 이동 정책 엔진 (#294)
+
+#330의 경로 백업 안내는 `walk.sync.WalkRouteBackupSourceTest`,
+`ui.walk.WalkRouteBackupStatusTest`(앞에 `com.daengs.app.`)를 선택한다.
+상세 배치와 재전송 연결 소비자는 `ui.walk.WalkSessionDetailUiTest`, `walk.sync.WalkDeliveryTest`다.
+[표시 및 재전송 범위](../../../docs/gps-route-backup-status.md).
+
+#327의 정밀 백업/계산 대조는 `com.daengs.app.walk.sync.WalkPrecisionSyncTest`가 담당한다.
+32개 공동 입력은 Python 예상값과 실제 Kotlin 엔진을 비교한다. Room 17→18 이관은
+`WalkMigrationTest`, 기존 전송/복원은 `WalkMotionSyncTest`, `WalkSyncTest`,
+수신·조회 소비자는 `RecordingJournalTest`, `WalkDaoTest`, `WalkSpeedServiceTest`를 선택한다.
+[원본 출처·완료 상태·복원 계약](../../../docs/gps-motion-precision.md).
+
+#325의 서버 백업/복원은 `com.daengs.app.walk.sync.WalkMotionSyncTest`가 담당한다.
+Room 이관/수신 저장 변경은 `WalkMigrationTest`, `RecordingJournalTest`를,
+기존 전송 연결 변경은 `WalkSyncTest`, `WalkRecordingSyncTest`, `WalkDeliveryTest`,
+`WalkSpeedServiceTest`를 해당 경계에 따라 추가한다. 별도 DB나 서버 계정 없이 실행하며
+공통 지문 fixture와 실제 SQLite를 쓴다. [계약·실증 범위](../../../docs/gps-motion-sync.md).
 
 `com.daengs.app.walk.motion.*`는 Android 없는 순수 엔진의 동결 정책, 위치·속도 품질,
 고속 뒤 재진입·구간 장벽, 작은 보폭 누적, 시각 역행·중복·누락, 개별/배치 재생 일치와

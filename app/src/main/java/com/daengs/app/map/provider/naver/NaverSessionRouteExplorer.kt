@@ -25,7 +25,8 @@ internal fun NaverSessionRouteExplorer(
     val cursorIcon = remember { OverlayImage.fromResource(R.drawable.ic_walk_replay_cursor) }
     val latestCount by rememberUpdatedState(onDirectionCount)
     val highlight = state?.highlightPaths.orEmpty()
-    DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight) {
+    val parts = state?.observedParts.orEmpty()
+    DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight, state?.useOverviewDirections, parts) {
         val arrows = mutableListOf<Marker>()
         var sides = emptyMap<String, Int>()
         fun clear() { arrows.forEach { it.map = null }; arrows.clear() }
@@ -39,25 +40,31 @@ internal fun NaverSessionRouteExplorer(
                 val xy = projection.toScreenLocation(LatLng(p.latitude, p.longitude))
                 return RouteScreenPoint(xy.x.toDouble(), xy.y.toDouble())
             }
-            val source = highlight.ifEmpty { paths }
+            val source = state.directionPaths(paths)
             fun projectEdges(input: List<List<GeoPoint>>) = input.flatMapIndexed { segment, points ->
                 points.map(::project).zipWithNext().mapIndexed { index, (a, b) ->
                     RouteScreenEdge("$segment:$index", a, b)
                 }
             }
-            val edges = projectEdges(source)
+            val observedEdges = state.observedDirectionEdges.map { edge ->
+                RouteScreenEdge(edge.id, project(edge.from), project(edge.to))
+            }
+            val edges = projectEdges(source) + observedEdges
             val exclusions = obstacles.map(::project).filter { it.valid }.map {
                 RouteScreenRect(it.x - 28 * density, it.y - 46 * density,
                     it.x + 28 * density, it.y + 14 * density)
             } + RouteScreenRect(size.width - 68.0 * density, 0.0, size.width.toDouble(), 68.0 * density)
             val placements = placeRouteDirections(edges, visible, exclusions, density.toDouble(), sides,
-                distinguishPasses = highlight.isNotEmpty(),
-                collisionEdges = if (highlight.isEmpty()) edges else projectEdges(paths))
+                distinguishPasses = highlight.isNotEmpty() || parts.any { it.selected },
+                collisionEdges = projectEdges(paths + parts.filterNot { it.selected }.map { it.path }))
             sides = placements.associate { it.id to it.side }
             for (placement in placements) {
                 val coordinate = projection.fromScreenLocation(PointF(placement.center.x.toFloat(), placement.center.y.toFloat()))
                 if (!coordinate.isValid) continue
                 arrows += Marker(coordinate, arrowIcon).apply {
+                    parts.firstOrNull { placement.id.startsWith(it.id + ":") }?.let {
+                        iconTintColor = RecordPresentationPolicy.stroke(it.role, it.selected || parts.any { p -> p.id == it.id && p.selected }).color
+                    }
                     width = (24 * density).toInt(); height = width
                     anchor = PointF(.5f, .5f); angle = placement.angle
                     isFlat = false; zIndex = 110
@@ -77,13 +84,30 @@ internal fun NaverSessionRouteExplorer(
             clear()
         }
     }
-    DisposableEffect(map, highlight) {
+    DisposableEffect(map, highlight, density) {
         val lines = if (map == null) emptyList() else highlight.filter { it.size >= 2 }.map { points ->
             PathOverlay().apply {
                 coords = points.map { LatLng(it.latitude, it.longitude) }
                 width = (6 * density).toInt(); color = Color.rgb(194, 54, 103)
                 outlineWidth = (2 * density).toInt(); outlineColor = Color.WHITE
                 zIndex = 10; this.map = map
+            }
+        }
+        onDispose { lines.forEach { it.map = null } }
+    }
+    DisposableEffect(map, parts, density) {
+        val lines = if (map == null) emptyList() else parts.filter { part ->
+            part.path.size >= 2 && part.path.any { it != part.path.first() }
+        }.map { part ->
+            val style = RecordPresentationPolicy.stroke(part.role, part.selected)
+            PathOverlay().apply {
+                coords = part.path.map { LatLng(it.latitude, it.longitude) }
+                width = (style.widthDp * density).toInt().coerceAtLeast(1)
+                color = style.centerColor
+                outlineWidth = (style.railWidthDp * density).toInt().coerceAtLeast(1)
+                outlineColor = style.color
+                zIndex = if (part.selected) 12 else 8
+                this.map = map
             }
         }
         onDispose { lines.forEach { it.map = null } }

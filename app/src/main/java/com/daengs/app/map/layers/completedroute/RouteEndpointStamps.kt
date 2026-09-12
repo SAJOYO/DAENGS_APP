@@ -6,6 +6,7 @@ internal const val LIVE_ROUTE_START_ID = "walk-live-start"
 
 /** Completed endpoints replace the live start; recording never guesses an arrival. */
 internal fun MapScene.routeEndpointStamps(): List<RouteEndpointMarkerState> {
+    sessionExplorer?.recordContext?.let { return it.endpoints }
     val completed = listOfNotNull(completedRoute.start, completedRoute.end)
     if (completed.isNotEmpty()) return completed
     return listOfNotNull(trail.startPoint?.let {

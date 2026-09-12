@@ -17,9 +17,10 @@ data class PlaceBrowseFilters(
     val dogIds: Set<String> = emptySet(),
     val parkingFirst: Boolean = false,
     val requiredConditions: JsonObject? = null,
+    val excludedKeys: Set<PlaceKey> = emptySet(),
 ) {
     val narrowsBookmarks: Boolean
-        get() = kinds.isNotEmpty() || name.isNotBlank() || radiusMeters != null || requiredConditions != null
+        get() = kinds.isNotEmpty() || name.isNotBlank() || radiusMeters != null || requiredConditions != null || excludedKeys.isNotEmpty()
 
     fun allBookmarks() = copy(kinds = emptySet(), name = "", origin = null,
         radiusMeters = null, parkingFirst = false, requiredConditions = null)

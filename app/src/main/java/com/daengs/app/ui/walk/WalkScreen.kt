@@ -112,7 +112,7 @@ fun WalkScreen(
     val face = walkFaceOverride(state.selection.pets, state.selection.selectedDogIds)
     // **사진과 견종을 같이 옮긴다.** 사진만 바꾸면, 그 아이가 사진을 안 올렸을 때
     // 대표의 견종 그림이 남아서 반쯤 다른 아이가 된다.
-    val faceRes = face?.breedArt?.portraitRes ?: avatarBreed?.portraitRes
+    val faceRes = walkFacePortraitRes(face, avatarBreed)
     val facePhoto = if (face == null) avatarPhoto else photoOf(face.id)?.asAndroidBitmap()
 
     val mapPresentation = state.toMapPresentation()
@@ -552,7 +552,7 @@ private fun WalkPrimaryControl(
             selectedDogIds = selectedDogIds,
             onToggleDog = onToggleDog,
             // **위치만 준비돼서는 부족하다.** 강아지 앱이라 아이 없이는 안 나간다
-            // (`WalkDogPick.canStartWalk`). 둘러보기(목록이 빔)는 예외다.
+            // (`WalkDogPick.canStartWalk`). 강아지가 없으면 못 나간다 — 잠금 4절.
             enabled = locationReady && canStartWalk(pets, selectedDogIds),
             blockedReason = walkStartBlockedReason(pets, selectedDogIds),
             onStart = onStart,
@@ -946,14 +946,9 @@ private fun ReadyCard(
                     modifier = Modifier.fillMaxWidth(),
                     photoOf = photoOf,
                 )
-            } else {
-                Text(
-                    "등록한 강아지가 없어도 산책은 기록할 수 있어요.",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center,
-                )
             }
+            // 🔒 강아지가 없을 때 **"없어도 된다" 고 말하지 않는다** — `docs/design-locks.md` 4절.
+            //    못 나가는 이유는 바로 아래 한 줄(`walkStartBlockedReason`)이 말한다.
             // **왜 안 눌리는지 말해 준다.** 흐린 버튼만 두면 고장으로 읽힌다.
             blockedReason?.let {
                 Text(it, color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)

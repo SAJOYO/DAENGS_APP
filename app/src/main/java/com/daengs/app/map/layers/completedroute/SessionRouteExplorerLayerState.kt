@@ -6,4 +6,15 @@ import com.daengs.app.location.GeoPoint
 data class SessionRouteExplorerLayerState(
     val highlightPaths: List<List<GeoPoint>> = emptyList(),
     val cursor: GeoPoint? = null,
-)
+    /** An unresolved scene/passage has no direction to assert; empty emphasis is not overview. */
+    val useOverviewDirections: Boolean = true,
+    val observedParts: List<RouteRenderPart> = emptyList(),
+    val recordContext: RecordContextLayerState? = null,
+) {
+    val emphasisPaths get() = highlightPaths + observedParts.filter { it.selected }.map { it.path }
+    val observedDirectionEdges get() = observedParts.filter { it.selected || useOverviewDirections && !it.selected }
+        .flatMap { it.directions }.distinctBy { it.id }
+}
+
+internal fun SessionRouteExplorerLayerState.directionPaths(overview: List<List<GeoPoint>>): List<List<GeoPoint>> =
+    highlightPaths.ifEmpty { if (useOverviewDirections) overview else emptyList() }

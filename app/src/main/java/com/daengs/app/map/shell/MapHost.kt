@@ -20,6 +20,8 @@ fun MapHost(
     rightPaddingPx: Int = 0,
     centerOn: GeoPoint? = null,
     centerZoom: Double? = null,
+    /** Lower bound for an explicit selection; keeps a user's closer zoom. */
+    centerMinZoom: Double? = null,
     /** Explicit camera intent; repeated selection of the same coordinate is also an event. */
     cameraRequestKey: Int = 0,
     centerYFraction: Float = .5f,
@@ -38,6 +40,9 @@ fun MapHost(
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
     onRouteDirectionCount: (Int) -> Unit = {},
+    onSelectRecordContext: (String) -> Unit = {},
+    visibilityQuery: MapVisibilityQuery? = null,
+    onVisibility: (MapVisibilityResult) -> Unit = {},
 ) {
     NaverMapSurface(
         scene = scene,
@@ -49,6 +54,7 @@ fun MapHost(
         leftPaddingPx = leftPaddingPx, topPaddingPx = topPaddingPx, rightPaddingPx = rightPaddingPx,
         centerOn = centerOn,
         centerZoom = centerZoom,
+        centerMinZoom = centerMinZoom,
         cameraRequestKey = cameraRequestKey,
         centerYFraction = centerYFraction,
         keepSelectionVisible = keepSelectionVisible,
@@ -64,6 +70,8 @@ fun MapHost(
         initialCamera = initialCamera,
         onCameraSnapshot = onCameraSnapshot,
         onRouteDirectionCount = onRouteDirectionCount,
+        onSelectRecordContext = onSelectRecordContext,
+        visibilityQuery = visibilityQuery, onVisibility = onVisibility,
     )
 }
 

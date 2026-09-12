@@ -1,5 +1,15 @@
 # 서버 산책 일기를 앱에서 읽기
 
+후속 사용자 결정과 그 경위는 **[장면 서술 상세 인계](https://github.com/rkbuhtig/DAENGS_geo/blob/2345c5b3d2b24f5754f55b802aab59905b807eb9/docs/explorations/walk/diary/narrative-design/README.md)**를 읽는다.
+특별한 순간은 기록마다 별도 장면이며 AI가 자유 서술 본문에 관여하지 않고 공간·환경만 보조한다.
+행동 핀은 가까운 시선으로 담으며 어디서·누가·무엇을·어떻게·환경 α를 구별한다.
+지정 공공 API의 실제 필드 분류와 최신 서술 품질은 아직 미검증이다. 아래 기존 구현을 그 완료로 읽지 않는다.
+
+기획 기준은 [산책 장면과 일기 생성](https://github.com/rkbuhtig/DAENGS_geo/blob/2345c5b3d2b24f5754f55b802aab59905b807eb9/docs/explorations/walk/diary/plan.md)
+([GEO #266](https://github.com/rkbuhtig/DAENGS_geo/pull/266))이다.
+아래는 앱의 기존 생성·표시·편집 계약이다. 장면을 완성된 글로 보여주는 기획과,
+현재 배경·원본 조립의 구현을 구별한다. 새 본문·편집 계약의 구현 반영은 별도 작업이다.
+
 서버 [DAENGS_dev #378](https://github.com/SAJOYO/DAENGS_dev/pull/378)의
 `walk-diary-response-v1` / `walk-diary-bundle-v1`을 산책 목록과 지도 위 장면에 연결한다.
 새 경로는 `WalkDiarySync`, 이전 후보 계약은 `WalkStoryboardSync`가 맡는다.

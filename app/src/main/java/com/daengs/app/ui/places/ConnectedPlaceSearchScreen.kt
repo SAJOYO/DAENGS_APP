@@ -108,6 +108,13 @@ fun ConnectedPlaceSearchScreen(
     var dogAsked by rememberSaveable { mutableStateOf(false) }
     var dogQuery by rememberSaveable { mutableStateOf("") }
     val appliedFilters = state.conversation.result?.appliedPlaceFilters()
+    LaunchedEffect(saved?.searchTransfer) {
+        if ((saved?.searchTransfer ?: 0) > 0) {
+            draft = saved!!.session.search.draft
+            searchCamera = null
+            searchList.scrollToItem(0)
+        }
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, false, expanded, notice)
     LaunchedEffect(state.discovery.response) {
@@ -120,6 +127,7 @@ fun ConnectedPlaceSearchScreen(
         origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
         dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
         requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
+        excludedKeys = state.conversation.result?.excludedKeys.orEmpty(),
     ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera)
     if (bookmarks != null && saved != null) {
         PlaceBookmarkFeedback(bookmarks, saved)
@@ -129,7 +137,8 @@ fun ConnectedPlaceSearchScreen(
                     state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
                     onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
                     onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
-                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto)
+                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                onSearch = { onAction(PlacesAction.ApplySearchPlan(it)) })
             return
         }
     }
@@ -168,7 +177,9 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = {
             PlacePurposeMenu(category, onLimit = { notice = "카테고리는 6개까지 함께 검색할 수 있어요." }) { search(selected = it) }
             PlaceSearchQueue(category,
-                filterSummary = if (state.conversationAvailable) appliedFilters?.summary.orEmpty()
+                filterSummary = if (state.conversationAvailable) listOfNotNull(
+                    state.conversation.result?.takeIf { it.searchPool != "all_places" }?.poolLabel,
+                    appliedFilters?.summary?.takeIf { it.isNotEmpty() }).joinToString(" · ")
                     else state.facility.confirmedLens?.let { "검색 방향 · ${it.label}" }.orEmpty(),
                 nameQuery = display.nameQuery,
                 onOpenFilters = { if (state.conversationAvailable) filtersOpen = true else dogOpen = true }) { search(selected = it) }
@@ -220,8 +231,11 @@ fun ConnectedPlaceSearchScreen(
                 if (showMap) MapHost(
                     scene = MapScene(currentPosition = state.location.currentPosition, places = canonicalPlaceMarkers(display)),
                     searchOrigin = display.origin, followDevice = follow,
+                    // 🔒 **잠긴 디자인 — 내 위치는 사용자 프로필(대표 강아지 사진·얼굴)이다.**
+                    //    SDK 파란 점으로 바꾸지 않는다. `docs/design-locks.md` 1절.
+                    //    두 번 파란 점으로 돌아갔다 (2026-08-31 · 2026-09-10) — 그래서 잠갔다.
+                    avatarRes = com.daengs.app.map.provider.naver.locationFaceRes(avatarBreed?.portraitRes), avatarPhoto = avatarPhoto,
                     initialCamera = searchCamera, onCameraSnapshot = { searchCamera = it },
-                    // 내 위치는 점, 검색 도우미는 하단 고정 버튼으로 역할을 분리한다.
                     onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
                     onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },
                     modifier = Modifier.fillMaxSize(),
