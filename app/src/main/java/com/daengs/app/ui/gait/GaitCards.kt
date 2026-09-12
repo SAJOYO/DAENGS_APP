@@ -160,6 +160,41 @@ fun GaitProgressCard(progress: GaitProgress, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * 접수됐고 서버가 분석 중인 카드 (#220).
+ *
+ * **단계를 안 그린다.** 네 줄짜리 [GaitProgressCard] 는 앱이 끝까지 지켜보던 시절의
+ * 것이다. 이제 앱은 접수만 하고 나가므로 어느 단계인지 알 방법이 없고, 모르는 것을
+ * 그럴듯하게 그리면 거짓말이 된다.
+ *
+ * 대신 **나가도 된다는 것**을 말한다. 그게 이 변경으로 사용자가 새로 얻은 것이고,
+ * 말해 주지 않으면 예전처럼 화면을 붙들고 기다린다.
+ */
+@Composable
+fun GaitSubmittedCard(title: String?, modifier: Modifier = Modifier) {
+    GaitCard(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SpinningRing(DaengPinkDeep)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "보행 분석 중이에요",
+                color = TextDark,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(
+            // 제목을 정했으면 어느 영상인지 되짚어 준다 — 여러 편을 연달아 올리면
+            // 카드가 여럿 쌓여서 어느 것이 어느 것인지 흐려진다.
+            title?.let { "「$it」 분석이 끝나면 알려드릴게요." } ?: "완료되면 알려드릴게요.",
+            color = TextDark,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+        )
+        GaitHintRow("앱을 나가도 분석은 계속돼요.")
+    }
+}
+
 @Composable
 private fun GaitStageRow(stage: GaitStage, state: GaitStageState) {
     // 진행 중만 분홍이다. 완료까지 분홍으로 두면 네 줄이 다 같은 색이 되어

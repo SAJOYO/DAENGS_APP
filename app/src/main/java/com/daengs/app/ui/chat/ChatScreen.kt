@@ -3,6 +3,8 @@ package com.daengs.app.ui.chat
 import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
@@ -53,6 +55,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.work.WorkManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -97,7 +101,10 @@ import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
 import com.daengs.app.gait.PreparedVideo
+import com.daengs.app.gait.GaitStatus
 import com.daengs.app.gait.rememberGaitHolder
+import com.daengs.app.gait.work.GaitAnalysisWorker
+import com.daengs.app.gait.work.scheduleGaitAnalysisWatch
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
@@ -126,6 +133,7 @@ import com.daengs.app.ui.gait.GaitPickSheet
 import com.daengs.app.ui.gait.GaitTitleDialog
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
+import com.daengs.app.ui.gait.GaitSubmittedCard
 import com.daengs.app.ui.home.HomeDemoData
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
@@ -205,8 +213,22 @@ internal sealed interface ChatEntry {
     /** 보행 흐름의 첫 카드. 영상을 어디서 가져올지 고르는 자리다. */
     data object GaitIntro : ChatEntry
 
-    /** 분석 중. 단계가 넘어갈 때마다 이 자리가 새 [GaitProgress] 로 갈린다. */
+    /**
+     * 분석 중. 단계가 넘어갈 때마다 이 자리가 새 [GaitProgress] 로 갈린다.
+     *
+     * 쓰이는 구간이 **업로드·확인까지로 줄었다** (#220). 앱이 완료를 안 기다리므로
+     * 그 뒤는 [GaitSubmitted] 가 맡는다.
+     */
     data class GaitRunning(val progress: GaitProgress) : ChatEntry
+
+    /**
+     * 접수됐고 서버가 분석 중 (#220).
+     *
+     * **여기서 화면이 풀린다.** 사용자는 나가도 되고 앱을 내려도 된다 — 끝나는 것은
+     * `GaitAnalysisWorker` 가 지켜보고 알림으로 알린다. 앱이 앞에 있으면 이 자리가
+     * 완료 말풍선 + [GaitDone] 으로 갈린다.
+     */
+    data class GaitSubmitted(val recordId: String, val title: String?) : ChatEntry
 
     /**
      * 끝난 기록.
@@ -501,18 +523,100 @@ fun ChatScreen(
      * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
      * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
      */
+    // 접수해 둔 기록이 끝나는 것을 **WorkManager 가 들고 있는 상태로** 안다.
+    //
+    // 따로 저장소를 두지 않는 이유: Worker 는 Compose 밖에 있어서 화면이 저절로는
+    // 모른다. 그렇다고 완료 여부를 담을 자리를 새로 만들면 **같은 사실이 두 군데**가
+    // 되어 어긋난다 — WorkManager 가 이미 정확히 그 상태를 들고 있다.
+    //
+    // 앱이 뒤에 있으면 이 관찰이 멈춰 있다가 돌아올 때 이어진다. 그래서 홈으로 나갔다
+    // 와도 결과가 반영된다 — 알림은 알림대로 Worker 가 띄운다.
+    val submitted = entries.filterIsInstance<ChatEntry.GaitSubmitted>()
+    submitted.forEach { pending ->
+        key(pending.recordId) {
+            // LiveData 가 아니라 Flow 다 — `runtime-livedata` 를 새로 들이지 않으려는
+            // 것이다. WorkManager 가 둘 다 주고, 이쪽이 의존성이 없다.
+            val works by WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkFlow(GaitAnalysisWorker.workName(pending.recordId))
+                .collectAsState(initial = null)
+
+            LaunchedEffect(works) {
+                val info = works?.firstOrNull() ?: return@LaunchedEffect
+                if (!info.state.isFinished) return@LaunchedEffect
+                // Worker 는 끝난 이유를 출력에 남긴다 — DONE 인지, 상한에 닿아 손을 든
+                // 것인지. 뒤엣것이면 카드를 그대로 두고 기다린다(목록에는 결과가 있다).
+                when (info.outputData.getString(GaitAnalysisWorker.KEY_STATUS)) {
+                    GaitStatus.DONE -> {
+                        dogId?.let { gait.load(it) }
+                        val at = entries.indexOf(pending)
+                        if (at >= 0) {
+                            entries[at] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                            entries.add(at + 1, ChatEntry.GaitDone(pending.recordId))
+                        }
+                    }
+                    GaitStatus.FAILED -> {
+                        val at = entries.indexOf(pending)
+                        if (at >= 0) {
+                            entries[at] = ChatEntry.Failed(
+                                "분석을 마치지 못했어요. 잠시 뒤에 다시 시도해 주세요.",
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+
+    // 완료를 알림으로 알리므로 **보내도 되는지 먼저 묻는다** (Android 13+).
+    //
+    // 거절해도 분석은 그대로 돈다 — 알림만 없고, 앱으로 돌아오면 화면에 결과가 있다.
+    // 그래서 결과를 막지 않고 조용히 넘어간다. 산책이 쓰는 것과 같은 자리다
+    // (`WalkRoute.kt` 의 RequestNotificationPermission).
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* 주든 안 주든 하던 일을 계속한다 */ }
+
+    val askNotificationOnce: () -> Unit = {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
         scope.launch {
             entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
             val slot = entries.size
             entries += ChatEntry.GaitRunning(GaitProgress.START)
-            val record = gait.analyze(video, title) { entries[slot] = ChatEntry.GaitRunning(it) }
-            if (record == null) {
-                entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
-                gait.clearError()
-            } else {
-                entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
-                entries += ChatEntry.GaitDone(record.id)
+
+            // 올리고 접수까지만. **완료를 여기서 기다리지 않는다** (#220) — 분석이 분
+            // 단위라 기다리면 사용자가 화면에 묶이고, 나가면 결과를 못 받았다.
+            val submission = gait.submit(video, title)
+            when {
+                submission == null -> {
+                    entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 올리지 못했어요.")
+                    gait.clearError()
+                }
+                // 아주 짧은 영상이면 접수 직후에 이미 끝나 있다. 그때는 Worker 를 걸 것
+                // 없이 바로 결과로 간다 — 20초를 기다렸다 알림을 띄우면 더 이상하다.
+                submission.settled -> {
+                    dogId?.let { gait.load(it) }
+                    entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                    entries += ChatEntry.GaitDone(submission.recordId)
+                }
+                else -> {
+                    entries[slot] = ChatEntry.GaitSubmitted(submission.recordId, submission.title)
+                    scheduleGaitAnalysisWatch(context, submission.recordId)
+                    // **접수가 된 뒤에 묻는다.** 올리기도 전에 물으면 실패했을 때
+                    // 쓸데없이 물은 것이 된다.
+                    askNotificationOnce()
+                }
             }
         }
     }
@@ -886,6 +990,10 @@ fun ChatScreen(
                         }
 
                         is ChatEntry.GaitRunning -> BesideAvatar { GaitProgressCard(entry.progress) }
+
+                        is ChatEntry.GaitSubmitted -> BesideAvatar {
+                            GaitSubmittedCard(title = entry.title)
+                        }
 
                         is ChatEntry.GaitDone -> gait.find(entry.recordId)?.let { record ->
                             BesideAvatar {
