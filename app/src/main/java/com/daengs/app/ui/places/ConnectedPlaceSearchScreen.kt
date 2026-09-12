@@ -234,7 +234,7 @@ fun ConnectedPlaceSearchScreen(
                     // 🔒 **잠긴 디자인 — 내 위치는 사용자 프로필(대표 강아지 사진·얼굴)이다.**
                     //    SDK 파란 점으로 바꾸지 않는다. `docs/design-locks.md` 1절.
                     //    두 번 파란 점으로 돌아갔다 (2026-08-31 · 2026-09-10) — 그래서 잠갔다.
-                    avatarRes = avatarBreed?.portraitRes, avatarPhoto = avatarPhoto,
+                    avatarRes = com.daengs.app.map.provider.naver.locationFaceRes(avatarBreed?.portraitRes), avatarPhoto = avatarPhoto,
                     initialCamera = searchCamera, onCameraSnapshot = { searchCamera = it },
                     onCameraIdle = { camera = camera.idle(it) }, onCameraGesture = { follow = false; camera = camera.gesture() },
                     onSelectPlace = { id -> keys[id]?.let { expanded = it; onAction(PlacesAction.Select(it)) } },

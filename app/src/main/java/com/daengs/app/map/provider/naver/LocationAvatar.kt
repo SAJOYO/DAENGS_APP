@@ -11,6 +11,19 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.daengs.app.R
 
+/**
+ * 「내 위치」에 넘길 얼굴 리소스. **얼굴을 모르면 발바닥이다 — 절대 null 이 아니다.**
+ *
+ * 🔒 잠긴 디자인 — `docs/design-locks.md` 1절. 지도의 내 위치는 사용자 프로필이다.
+ *
+ * `MapHost` 는 `avatarRes` 와 `avatarPhoto` 가 **둘 다 null 이면 SDK 파란 점**을 쓴다
+ * (아래 [locationAvatarBitmap]). 그런데 강아지 정보가 없는 때가 흔하다 — 불러오는 중,
+ * 로그인 전, 강아지를 아직 안 데려옴, 통신 실패. 견종 얼굴만 넘기면 그때마다 파란
+ * 점으로 떨어진다. 2026-09-12 실기기에서 인자를 다 넘기고도 파란 점이 뜬 이유가 이것이다.
+ */
+@DrawableRes
+fun locationFaceRes(@DrawableRes portraitRes: Int?): Int = portraitRes ?: R.drawable.ic_location_paw
+
 /** Null means this screen requested the SDK dot; failed portraits use a local paw instead. */
 internal fun locationAvatarBitmap(
     context: Context,

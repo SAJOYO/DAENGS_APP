@@ -1,5 +1,6 @@
 package com.daengs.app
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -65,6 +66,39 @@ class DesignLockTest {
                 )
             }
         }
+    }
+
+    /**
+     * **얼굴을 모를 때도 파란 점이 아니다.** 강아지 정보가 없는 때(불러오는 중 · 로그인 전 ·
+     * 강아지 없음 · 통신 실패)에 견종 얼굴만 넘기면 두 인자가 다 null 이 되어 SDK 점으로
+     * 떨어진다. 그래서 얼굴 리소스는 늘 발바닥 폴백을 거친다.
+     */
+    @Test
+    fun `얼굴을 모르면 발바닥으로 떨어진다`() {
+        val fallbacks = mapOf(
+            "ui/places/ConnectedPlaceSearchScreen.kt" to "locationFaceRes(",
+            "ui/places/PlaceBookmarksScreen.kt" to "locationFaceRes(",
+            "ui/walk/WalkScreen.kt" to "avatarRes = faceRes",
+        )
+        fallbacks.forEach { (path, needle) ->
+            mapHostCalls(source(path)).forEach { call ->
+                if (needle !in call) fail(
+                    "⛔ 잠긴 디자인 위반 ($path): 얼굴을 모를 때 파란 점으로 떨어진다. " +
+                        "avatarRes 는 발바닥 폴백(locationFaceRes / walkFacePortraitRes)을 거친다. " +
+                        "docs/design-locks.md 1절. 테스트를 고치지 말고 변경을 되돌릴 것.",
+                )
+            }
+        }
+        assertTrue(
+            "WalkScreen 의 faceRes 가 발바닥 폴백을 안 거친다",
+            "walkFacePortraitRes(" in source("ui/walk/WalkScreen.kt"),
+        )
+    }
+
+    @Test
+    fun `발바닥 폴백은 null 을 돌려주지 않는다`() {
+        assertEquals(R.drawable.ic_location_paw, com.daengs.app.map.provider.naver.locationFaceRes(null))
+        assertEquals(123, com.daengs.app.map.provider.naver.locationFaceRes(123))
     }
 
     @Test
