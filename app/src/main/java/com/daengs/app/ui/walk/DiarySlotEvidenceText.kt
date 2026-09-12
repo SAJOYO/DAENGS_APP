@@ -18,6 +18,7 @@ internal fun slotEvidenceTitle(role: String): String = when (role) {
 /** Show the supplied facts, without turning a nearby point into a visit or slow motion into a stop. */
 internal fun slotEvidenceDescription(evidence: DiarySlotEvidence): String {
     val facts = JSONObject(evidence.facts)
+    normalizedSpaceDescription(facts)?.let { return it }
     val labels = mapOf(
         "name" to "이름", "distance_m" to "거리 (m)", "radius_m" to "집계 반경 (m)",
         "temperature_c" to "기온 (°C)", "wind_mps" to "풍속 (m/s)",
@@ -41,4 +42,28 @@ internal fun slotEvidenceDescription(evidence: DiarySlotEvidence): String {
     if (facts.has("complete") && !facts.getBoolean("complete")) lines += "수집된 일부 자료에 한한 결과예요."
     // Timestamps keep the provider's explicit offset. Full evidence is available in the raw view.
     return lines.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: facts.toString(2)
+}
+
+/** The server owns the case dictionary; the client displays its meaning and scope. */
+private fun normalizedSpaceDescription(facts: JSONObject): String? {
+    if (facts.optString("format") != "space-material-v1") return null
+    val material = facts.optJSONObject("material") ?: return null
+    val relation = facts.optJSONObject("relation") ?: return null
+    val lines = material.keys().asSequence().mapNotNull { key ->
+        (material.opt(key) as? String)?.takeIf { it.isNotBlank() }?.let { "$key: $it" }
+    }.toMutableList()
+    fun distance(key: String, label: String) {
+        val value = (relation.opt(key) as? Number)?.toDouble()
+        if (value != null && value.isFinite() && value >= 0) lines += "$label: ${relation.get(key)}m"
+    }
+    when (relation.optString("kind")) {
+        "registered_park_point_distance" -> distance("distance_m", "공원 등록 지점까지")
+        "registered_distribution_in_query_circle" -> {
+            distance("radius_m", "분포를 확인한 반경")
+            distance("nearest_registered_point_m", "가장 가까운 등록 업소까지")
+            distance("centroid_distance_m", "분포 중심까지")
+        }
+        "land_cover_at_query_point" -> lines += "적용 범위: 장면 좌표의 피복"
+    }
+    return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
 }

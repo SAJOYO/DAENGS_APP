@@ -2,6 +2,7 @@
 
 | 파일 | 내용 |
 | --- | --- |
+| [walk-space-materials.md](walk-space-materials.md) | DEV 정규화 공간 재료 표시와 서버 일기 수신·Room 저장·재진입 검증 |
 | [산책 장면·일기 기획](https://github.com/rkbuhtig/DAENGS_geo/blob/2345c5b3d2b24f5754f55b802aab59905b807eb9/docs/explorations/walk/diary/plan.md) · [GEO #266](https://github.com/rkbuhtig/DAENGS_geo/pull/266) | 개별 장면 우선·별도 전체 일기 생성의 기획 기준. 아래 구현 문서와 적용 상태를 구별 |
 | [장면 서술 기획 경위·인계](https://github.com/rkbuhtig/DAENGS_geo/blob/2345c5b3d2b24f5754f55b802aab59905b807eb9/docs/explorations/walk/diary/narrative-design/README.md) | 대화 전개·장면/행동 서술·특별한 순간·슬롯/API·실험 실패·실제 출력 40개·다음 작업. 최신 기획 채택과 구현 미반영을 구별 |
 | [gps-motion-policy-architecture.md](gps-motion-policy-architecture.md) | GPS 정책층 1차 설계 — 단계별 수집·저장·판정·표시·복구 계약 |
