@@ -37,7 +37,8 @@ internal fun recordPresentationLayer(state: WalkRouteExplorerState, detail: Walk
     } else emptyList()
     return SessionRouteExplorerLayerState(
         highlightPaths = if (state.mode == RouteExplorerMode.SCENE) focus?.paths.orEmpty() else state.highlightPaths,
-        cursor = state.replayFrame?.point, useOverviewDirections = overview, observedParts = parts)
+        cursor = state.replayFrame?.point, useOverviewDirections = overview, observedParts = parts,
+        recordContext = recordContextLayer(review, state.selectedContext))
 }
 
 private fun ObservedRouteSection.toRenderPart(selected: Boolean) = RouteRenderPart(id, role(), path, selected,
@@ -48,7 +49,7 @@ internal fun sceneRouteNotice(focus: SceneRouteFocus): String {
     val binding = focus.binding
     val context = if (binding != null && binding.locationAtMillis != binding.eventAtMillis) {
         (if (binding.locationAtMillis < binding.eventAtMillis) "이 장면 이전에" else "이 장면 이후에") +
-            " 확인된 ${formatRouteExplorerClock(binding.locationAtMillis)} 위치와 주변 경로예요. "
+            " 확인된 위치와 주변 경로예요. "
     } else "이 장면의 관측 경로를 강조했어요. "
     return context + (if (part.role() == RecordRouteRole.OBSERVED_EXCLUDED) "보행거리에는 포함되지 않아요."
         else "보행 여부는 확인되지 않았어요.") +

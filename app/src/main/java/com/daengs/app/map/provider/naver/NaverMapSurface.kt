@@ -76,6 +76,7 @@ fun NaverMapSurface(
     onSelectTerritorySite: (String) -> Unit = {},
     onSelectMoment: (String) -> Unit = {},
     onSelectRouteEndpoint: (String) -> Unit = {},
+    onSelectRecordContext: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
     initialCamera: MapCameraSnapshot? = null,
@@ -409,8 +410,10 @@ fun NaverMapSurface(
         dimCompleted = scene.sessionExplorer?.emphasisPaths?.isNotEmpty() == true)
 
     NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
+    NaverRecordContextLayer(naverMap, scene.sessionExplorer?.recordContext, density, onSelectRecordContext)
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
-        scene.moments.map { it.point } + listOfNotNull(scene.completedRoute.start?.point, scene.completedRoute.end?.point),
+        scene.moments.map { it.point } + scene.routeEndpointStamps().map { it.point } +
+            scene.sessionExplorer?.recordContext?.markers.orEmpty().map { it.point },
         viewportSize, bottomPaddingPx, density, onRouteDirectionCount)
 
     DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {

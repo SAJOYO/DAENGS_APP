@@ -50,20 +50,31 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
     var bounds by remember { mutableStateOf(detail.route.bounds) }
     var center by remember { mutableStateOf<GeoPoint?>(null) }
     var request by remember { mutableIntStateOf(0) }
+    var cameraForContext by remember { mutableStateOf(false) }
     var directionCount by remember { mutableIntStateOf(0) }
     val scene = diaryDisplayScene(composeMapScene(MapPurpose.WALK, MapSceneSources(
         completedRoute = detail.route.toCompletedRouteLayerState(), moments = diarySceneMarkers(scenes, selected?.id),
     ))).copy(sessionExplorer = presentation)
-    fun overview() { explorer.overview(); center = null; bounds = detail.route.bounds; request++ }
-    fun selectScene(value: DiaryScene) {
-        explorer.selectScene(value.id)
-        value.point?.let { center = it; request++ }
+    fun overview() { explorer.overview(); center = null; bounds = detail.route.bounds; cameraForContext = false; request++ }
+    fun selectScene(value: DiaryScene, fromMap: Boolean = false) {
+        explorer.selectScene(value.id, fromMap)
+        if (!fromMap) value.point?.let { center = it; cameraForContext = false; request++ }
+    }
+    fun selectContext(value: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
+        explorer.selectContext(value.id, openExplorer = value.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP,
+            fromMap = fromMap)
+        if (!fromMap) {
+            center = null
+            cameraForContext = value.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP
+            value.locations.takeIf { it.isNotEmpty() }?.let { bounds = it }; request++
+        }
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
         Text("$label · 방향 $directionCount", Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
         WalkDiaryMapContent(scenes, selected, false, null,
-            onSelect = ::selectScene, onClose = explorer::closeScene,
+            onSelect = { selectScene(it) }, onClose = explorer::closeScene,
+            selectionFromMap = explorer.selectionFromMap,
             onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {}, title = "동선과 장면 함께 보기",
             onBack = onBack,
             subtitle = formatWalkDay(detail.summary.startedAtMillis), summaryContent = {
@@ -73,18 +84,27 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
             explorerSelected = explorer.panelOpen,
             onChooseExplorer = { explorer.overview(); explorer.choosePanel(it) },
             explorerPanel = { WalkRouteExplorerPanel(explorer, ::overview, onSection = {
-                center = null; bounds = it.path; request++
-            }, onAuxiliary = { center = null; bounds = it.path; request++ }) },
+                center = null; bounds = it.path; cameraForContext = false; request++
+            }, onAuxiliary = { center = null; bounds = it.path; cameraForContext = false; request++ }, onContext = { selectContext(it) }) },
             onOverview = ::overview, selectedRouteNotice = focus?.let(::sceneRouteNotice),
+            explorerFocusId = explorer.selectedContext?.id,
+            onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
+            gapContexts = explorer.review?.context?.contexts.orEmpty(),
+            selectedGap = explorer.selectedContext?.takeIf { it.kind == com.daengs.app.walk.trajectory.RecordContextKind.GAP },
+            onSelectGap = { selectContext(it) },
             map = { viewport ->
                 if (LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint))
                 else MapHost(scene, null, false, fitBounds = bounds, centerOn = center,
                     onRouteDirectionCount = { directionCount = it },
                     centerMinZoom = if (selected != null && paths.isNotEmpty()) SCENE_ROUTE_MIN_ZOOM else null,
                     cameraRequestKey = request, keepSelectionVisible = true,
-                    bottomPaddingPx = viewport.bottomPaddingPx, centerYFraction = viewport.selectionYFraction,
+                    bottomPaddingPx = if (cameraForContext)
+                        viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
+                    centerYFraction = viewport.selectionYFraction,
                     onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                    onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let(::selectScene) },
+                    onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let { selectScene(it, fromMap = true) } },
+                    onSelectRecordContext = { id -> explorer.review?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
+                    onSelectRouteEndpoint = { id -> explorer.review?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                     onMapTap = { if (explorer.panelOpen) explorer.inspect(it) }, modifier = Modifier.fillMaxSize())
             })
     }

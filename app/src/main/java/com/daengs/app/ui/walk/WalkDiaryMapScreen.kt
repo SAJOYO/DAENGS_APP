@@ -65,11 +65,13 @@ internal fun WalkDiaryMapScreen(
     var cameraZoom by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
     var cameraSectionIndex by remember(route) { mutableStateOf<Int?>(null) }
     var cameraAuxiliaryId by remember(detail) { mutableStateOf<String?>(null) }
+    var cameraContextId by remember(detail) { mutableStateOf<String?>(null) }
     var directionCount by remember(sessionId) { mutableStateOf<Int?>(null) }
     val cameraTarget = cameraLatitude?.let { lat -> cameraLongitude?.let { lng -> GeoPoint(lat, lng) } }
     fun requestCamera(point: GeoPoint?) {
         cameraSectionIndex = null
         cameraAuxiliaryId = null
+        cameraContextId = null
         cameraLatitude = point?.latitude; cameraLongitude = point?.longitude; cameraZoom = null; cameraRequest++
     }
     var adding by rememberSaveable(sessionId) { mutableStateOf(false) }
@@ -171,9 +173,9 @@ internal fun WalkDiaryMapScreen(
         activeComparison.project(comparisonSnapshot, usePlaceExplanation) else originalScenes
     val selected = scenes.firstOrNull { it.id == selectedId }
     val selectedOriginal = originalScenes.firstOrNull { it.id == selectedId }
-    fun selectScene(scene: DiaryScene) {
-        explorer.selectScene(scene.id)
-        scene.point?.let(::requestCamera)
+    fun selectScene(scene: DiaryScene, fromMap: Boolean = false) {
+        explorer.selectScene(scene.id, fromMap)
+        if (!fromMap) scene.point?.let(::requestCamera)
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(originalScenes, selectedId) { diarySceneMarkers(originalScenes, selectedId) }
@@ -181,6 +183,11 @@ internal fun WalkDiaryMapScreen(
     val selectedEntry = entries.firstOrNull { it.id == selectedOriginal?.entryId }
     val sceneFocus = remember(selectedOriginal, currentReview, selectedEntry) {
         selectedOriginal?.let { currentReview?.recordSceneFocus(it, selectedEntry) }
+    }
+    fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
+        explorer.selectContext(context.id, openExplorer = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP,
+            fromMap = fromMap)
+        if (!fromMap) { requestCamera(null); cameraContextId = context.id }
     }
     val presentation = recordPresentationLayer(explorer, detail, sceneFocus)
     val highlightPaths = presentation.emphasisPaths
@@ -193,7 +200,8 @@ internal fun WalkDiaryMapScreen(
     val overviewBounds = remember(route, detail?.summary?.anchor, originalScenes) {
         diaryOverviewBounds(route?.bounds.orEmpty(), detail?.summary?.anchor, originalScenes)
     }
-    val bounds = cameraAuxiliaryId?.let { id -> currentReview?.observed?.sections?.firstOrNull { it.id == id }?.path }
+    val bounds = cameraContextId?.let { currentReview?.context?.context(it)?.locations?.takeIf { points -> points.isNotEmpty() } }
+        ?: cameraAuxiliaryId?.let { id -> currentReview?.observed?.sections?.firstOrNull { it.id == id }?.path }
         ?: cameraSectionIndex?.let { index ->
         explorer.review?.takeIf { it.detail.route == route }?.sections?.firstOrNull { it.index == index }?.path
     } ?: overviewBounds
@@ -203,8 +211,14 @@ internal fun WalkDiaryMapScreen(
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || diary == null || diary?.preparing == true, error,
-                onSelect = ::selectScene, onClose = explorer::closeScene,
+                onSelect = { selectScene(it) }, onClose = explorer::closeScene,
+                selectionFromMap = explorer.selectionFromMap,
                 selectedRouteNotice = sceneFocus?.let(::sceneRouteNotice),
+                explorerFocusId = explorer.selectedContext?.id,
+                onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
+                gapContexts = currentReview?.context?.contexts.orEmpty(),
+                selectedGap = explorer.selectedContext?.takeIf { it.kind == com.daengs.app.walk.trajectory.RecordContextKind.GAP },
+                onSelectGap = { selectContext(it) },
                 onEdit = { scene ->
                     explorer.pause()
                     editingScene = originalScenes.firstOrNull { it.id == scene.id }
@@ -242,7 +256,8 @@ internal fun WalkDiaryMapScreen(
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = { requestCamera(null) },
                     onSection = { section -> requestCamera(null); cameraSectionIndex = section.index },
-                    onAuxiliary = { section -> requestCamera(null); cameraAuxiliaryId = section.id }) },
+                    onAuxiliary = { section -> requestCamera(null); cameraAuxiliaryId = section.id },
+                    onContext = { selectContext(it) }) },
                 directionNotice = directionCount == 0 &&
                     (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
                         overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),
@@ -271,9 +286,15 @@ internal fun WalkDiaryMapScreen(
                         centerZoom = cameraZoom, onRouteDirectionCount = { directionCount = it },
                         centerMinZoom = if (selectedId != null && highlightPaths.isNotEmpty()) SCENE_ROUTE_MIN_ZOOM else null,
                         cameraRequestKey = cameraRequest, centerYFraction = viewport.selectionYFraction,
-                        bottomPaddingPx = viewport.bottomPaddingPx, keepSelectionVisible = true,
+                        // Padding belongs to the last camera request, not to marker selection.
+                        bottomPaddingPx = if (cameraContextId?.let { currentReview?.context?.context(it)?.kind }
+                            ?.let { it != com.daengs.app.walk.trajectory.RecordContextKind.GAP } == true)
+                            viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
+                        keepSelectionVisible = true,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                        onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let(::selectScene) },
+                        onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let { selectScene(it, fromMap = true) } },
+                        onSelectRecordContext = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
+                        onSelectRouteEndpoint = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                         onMapTap = { point ->
                             if (adding) chosenPoint = route?.nearestPointTo(point, 30.0)
                             else if (explorer.panelOpen) explorer.inspect(point)

@@ -64,7 +64,7 @@ class WalkRecordReviewActivity : ComponentActivity() {
             } }, onList = { run {
                 walks = source.list()
                 notice = "${walks.size}건을 찾았어요."
-            } }, onFixture = { selected = observedRouteMapFixture() }, onWalk = { walk -> run {
+            } }, onFixture = { selected = recordContextMapFixture() }, onWalk = { walk -> run {
                 selected = source.read(walk)
                 notice = "원본과 비교 보고서를 검토 앱 안에 보관했어요."
             } })

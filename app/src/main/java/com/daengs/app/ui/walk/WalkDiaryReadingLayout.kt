@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,11 +26,13 @@ import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.WalkPhoto
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.diary.DiarySceneContent
+import com.daengs.app.walk.trajectory.RecordContext
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /** Stable map geometry; sheet position is deliberately not part of this value. */
-internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float)
+internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float,
+    val contextBottomPaddingPx: Int = bottomPaddingPx)
 
 /** The sheet overlays one fixed map. Swiping it never issues a camera request. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,24 +59,34 @@ internal fun WalkDiaryMapContent(
     onPlaceComparison: (() -> Unit)? = null,
     comparisonContent: @Composable () -> Unit = {},
     selectedRouteNotice: String? = null,
+    gapContexts: List<RecordContext> = emptyList(),
+    selectedGap: RecordContext? = null,
+    onSelectGap: (RecordContext) -> Unit = {},
+    explorerFocusId: String? = null,
+    onContextDismiss: () -> Unit = {},
+    selectionFromMap: Boolean = false,
 ) {
     val sheet = rememberStandardBottomSheetState(
-        initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
+        initialValue = if (selected == null || selectionFromMap) SheetValue.PartiallyExpanded else SheetValue.Expanded)
     val scaffold = rememberBottomSheetScaffoldState(bottomSheetState = sheet)
     val scope = rememberCoroutineScope()
     val list = rememberLazyListState()
+    val gapSlots = remember(scenes, gapContexts) { diaryGapSlots(scenes, gapContexts) }
     val latestClose by rememberUpdatedState(onClose)
     var menu by remember { mutableStateOf(false) }
     val expanded = sheet.targetValue == SheetValue.Expanded
-    LaunchedEffect(selected?.id, adding) {
-        if (selected != null && !adding) sheet.expand() else sheet.partialExpand()
+    LaunchedEffect(selected?.id, adding, explorerFocusId, selectionFromMap) {
+        // A visible marker is already in view. Keep the user's map and sheet framing on a map tap.
+        if (selectionFromMap && !adding) return@LaunchedEffect
+        if (selectedGap == null && (selected != null || explorerFocusId != null) && !adding) sheet.expand()
+        else sheet.partialExpand()
     }
     LaunchedEffect(sheet) {
         snapshotFlow { sheet.currentValue }.drop(1).collect {
             if (it == SheetValue.PartiallyExpanded) latestClose()
         }
     }
-    BackHandler(enabled = expanded && selected == null) { scope.launch { sheet.partialExpand() } }
+    BackHandler(enabled = expanded && selected == null) { onContextDismiss(); scope.launch { sheet.partialExpand() } }
     Column(modifier.fillMaxSize().background(CreamBg)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -125,7 +136,8 @@ internal fun WalkDiaryMapContent(
             // Padding/fit use the browsing viewport even while the sheet covers more of the map.
             // Only an explicit scene selection uses the upper, still-visible band as its pivot.
             val viewport = DiaryMapViewport(with(LocalDensity.current) { peek.roundToPx() },
-                (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f))
+                (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f),
+                with(LocalDensity.current) { panelHeight.roundToPx() })
             BottomSheetScaffold(
                 scaffoldState = scaffold, sheetPeekHeight = peek,
                 sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -136,7 +148,7 @@ internal fun WalkDiaryMapContent(
                     Column(Modifier.fillMaxWidth().height(panelHeight).testTag("diary-sheet")) {
                         val showSceneHeading = selected != null || explorerPanel == null
                         Surface(onClick = {
-                            if (expanded) { onClose(); scope.launch { sheet.partialExpand() } }
+                            if (expanded) { onClose(); onContextDismiss(); scope.launch { sheet.partialExpand() } }
                             else scope.launch { sheet.expand() }
                         }, color = CardWhite, modifier = Modifier.fillMaxWidth()
                             .height(if (showSceneHeading) 52.dp else 24.dp)
@@ -184,14 +196,20 @@ internal fun WalkDiaryMapContent(
                             Box(Modifier.weight(1f).fillMaxWidth()) { explorerPanel() }
                         } else if (loading) {
                             WalkDiaryPreparing(onRefresh = onRetry, error = error)
+                        } else if (selectedGap != null) {
+                            DiaryGapDetail(selectedGap, onContextDismiss)
                         } else if (selected == null) {
-                            if (scenes.isEmpty() && error == null) {
+                            if (scenes.isEmpty() && gapSlots.isEmpty() && error == null) {
                                 Text("아직 남긴 장면이 없어요.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
                                 TextButton(onClick = onAdd, modifier = Modifier.padding(horizontal = 12.dp)) { Text("기록 남기기") }
                             }
-                            LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
+                            LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth().testTag("diary-scene-list"),
                                 contentPadding = PaddingValues(bottom = 20.dp)) {
-                                itemsIndexed(scenes, key = { _, it -> it.id }) { index, scene ->
+                                scenes.forEachIndexed { index, scene ->
+                                    gapSlots[index].orEmpty().forEach { gap ->
+                                        item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
+                                    }
+                                    item(key = "scene:${scene.id}") {
                                     Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                         TextButton(onClick = { onSelect(scene) }, modifier = Modifier.weight(1f),
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
@@ -211,6 +229,10 @@ internal fun WalkDiaryMapContent(
                                                 Modifier.size(20.dp), tint = TextMuted)
                                         }
                                     }
+                                    }
+                                }
+                                gapSlots[scenes.size].orEmpty().forEach { gap ->
+                                    item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
                                 }
                             }
                         } else {
