@@ -15,6 +15,7 @@ class LegacyRouteEvidence private constructor(
     private val decisions: Map<Int, SourceDecision>,
     private val omittedEdges: Map<Int, LegacySourceEdge>,
     private val safeEdges: Map<Pair<Int, Int>, LegacySourceEdge>,
+    internal val acceptedIntervals: List<LegacyAcceptedInterval>,
 ) {
     internal val readerVersion = "legacy-trail-scene-evidence-v1"
 
@@ -22,6 +23,7 @@ class LegacyRouteEvidence private constructor(
         detail.summary === summary && detail.route == route && detail.observations == observations
 
     internal fun disposition(seq: Int): TrailDisposition? = decisions[seq]?.disposition
+    internal fun previousAcceptedSeq(seq: Int): Int? = decisions[seq]?.previous?.clientSeq
     internal fun omittedEdge(seq: Int): LegacySourceEdge? = omittedEdges[seq]
     internal fun supports(a: WalkRoutePoint, b: WalkRoutePoint): Boolean =
         safeEdges[b.segmentIndex to b.pointIndex]?.let { it.before == a && it.after == b } == true
@@ -34,7 +36,7 @@ class LegacyRouteEvidence private constructor(
 
         fun record(decision: TrailDecision) {
             decisions += SourceDecision(sources.getValue(decision.sample), decision.disposition,
-                decision.previousAccepted?.let(sources::getValue), decision.startsSegment)
+                decision.previousAccepted?.let(sources::getValue), decision.startsSegment, decision.distanceContributionMeters)
         }
 
         fun finish(summary: WalkSummary, route: WalkSessionRoute, observations: List<RecordedFix>): LegacyRouteEvidence? {
@@ -51,11 +53,19 @@ class LegacyRouteEvidence private constructor(
             }
             val omitted = mutableMapOf<Int, LegacySourceEdge>()
             val safe = mutableMapOf<Pair<Int, Int>, LegacySourceEdge>()
+            val accepted = mutableListOf<LegacyAcceptedInterval>()
             for (decision in decisions) {
                 if (decision.disposition != TrailDisposition.RETAINED || decision.startsSegment) continue
                 val previous = decision.previous ?: continue
                 val first = indices.getValue(previous.clientSeq)
                 val last = indices.getValue(decision.fix.clientSeq)
+                val a = routeBySeq[previous.clientSeq] ?: continue
+                val b = routeBySeq[decision.fix.clientSeq] ?: continue
+                if (a.segmentIndex != b.segmentIndex || a.pointIndex + 1 != b.pointIndex) continue
+                val edge = LegacySourceEdge(previous.clientSeq, decision.fix.clientSeq, a, b)
+                // Keep every actual owner, including legacy bridges with skipped/excluded fixes.
+                // Scene-safe edges are a separate subset and cannot define accounting ownership.
+                accepted += LegacyAcceptedInterval(edge, decision.distanceContributionMeters)
                 if (first >= last || !validPosition(previous)) continue
                 // These disjoint accepted ranges are scanned once in total, not once per scene.
                 val valid = (first + 1..last).all { index ->
@@ -67,14 +77,10 @@ class LegacyRouteEvidence private constructor(
                         assessed.disposition == (if (index == last) TrailDisposition.RETAINED else TrailDisposition.BELOW_MIN_DISTANCE)
                 }
                 if (!valid) continue
-                val a = routeBySeq[previous.clientSeq] ?: continue
-                val b = routeBySeq[decision.fix.clientSeq] ?: continue
-                if (a.segmentIndex != b.segmentIndex || a.pointIndex + 1 != b.pointIndex) continue
-                val edge = LegacySourceEdge(previous.clientSeq, decision.fix.clientSeq, a, b)
                 safe[b.segmentIndex to b.pointIndex] = edge
                 for (index in first + 1 until last) omitted[ordered[index].clientSeq] = edge
             }
-            return LegacyRouteEvidence(summary, route, observations.toList(), bySeq, omitted, safe)
+            return LegacyRouteEvidence(summary, route, observations.toList(), bySeq, omitted, safe, accepted.toList())
         }
     }
 }
@@ -86,11 +92,15 @@ internal data class LegacySourceEdge(
     val after: WalkRoutePoint,
 )
 
+/** Only this accepted interval owns its contribution; raw sub-edges must not add it again. */
+internal data class LegacyAcceptedInterval(val edge: LegacySourceEdge, val distanceContributionMeters: Double)
+
 private data class SourceDecision(
     val fix: RecordedFix,
     val disposition: TrailDisposition,
     val previous: RecordedFix?,
     val startsSegment: Boolean,
+    val distanceContributionMeters: Double,
 )
 
 // Binding guards validate source continuity; they do not change recorder acceptance or totals.

@@ -128,6 +128,7 @@ internal class WalkRecordReviewSource(private val sessions: SessionProvider, pri
                 put("policy", "explicit-app-legacy-baseline")
                 put("storyboard_format", format)
                 put("legacy_trace", trace)
+                put("observation_connectivity", observationConnectivityReport(detail, scenes))
                 // Change one setting at a time on the same source, without adopting either result.
                 put("without_speed_limit", legacyReviewTrace(remote.fixes, speedLimit = Double.POSITIVE_INFINITY))
                 put("without_speed_or_min_distance", legacyReviewTrace(remote.fixes,
