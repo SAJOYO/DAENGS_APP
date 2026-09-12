@@ -47,6 +47,7 @@ import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.pet.InviteAcceptScreen
+import com.daengs.app.ui.pet.InviteBundleScreen
 import com.daengs.app.ui.pet.PetInvitesScreen
 import com.daengs.app.ui.pet.PetMembersScreen
 import com.daengs.app.ui.pet.PetPhotoPicker
@@ -67,6 +68,7 @@ import com.daengs.app.pet.isOwnedBy
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.rememberInviteAcceptHolder
+import com.daengs.app.pet.rememberPetInviteBundleHolder
 import com.daengs.app.pet.rememberPetInviteHolder
 import com.daengs.app.pet.rememberPetMemberHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
@@ -233,6 +235,9 @@ class MainActivity : ComponentActivity() {
                 val petMembers = rememberPetMemberHolder()
                 val petInvites = rememberPetInviteHolder()
                 val inviteAccept = rememberInviteAcceptHolder()
+                // 여러 아이를 한 링크로 부르는 자리. **강아지별 초대와 스코프가 다르다** —
+                // 저쪽은 아이 하나이고 이쪽은 계정 전체라 상한도 주보호자당 3묶음이다.
+                val inviteBundles = rememberPetInviteBundleHolder()
                 LaunchedEffect(pets.pets) {
                     // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
                     // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
@@ -341,6 +346,8 @@ class MainActivity : ComponentActivity() {
                 // 초대받기 화면이 떠 있나. **토큰은 홀더의 메모리에만 있다** —
                 // rememberSaveable 을 쓰면 자격증명이 savedInstanceState 로 새어 나간다.
                 var acceptingInvite by remember { mutableStateOf(false) }
+                // 묶음 초대 화면이 떠 있나. 여기도 토큰이 홀더의 메모리에만 있다.
+                var invitingPeople by remember { mutableStateOf(false) }
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
@@ -439,6 +446,9 @@ class MainActivity : ComponentActivity() {
                         // 같이 버린다** — 다음 사람의 화면에 남의 자격증명이 남으면 안 된다.
                         inviteAccept.forget()
                         acceptingInvite = false
+                        // 만든 초대의 평문 토큰도 같이 버린다 — 다음 사람 화면에 남으면 안 된다.
+                        inviteBundles.forget()
+                        invitingPeople = false
                         // 남의 방 이름표가 남으면 안 된다. 로그아웃하면 지어진 이름으로.
                         roomName = null
                         ocrConsent = false
@@ -719,6 +729,51 @@ class MainActivity : ComponentActivity() {
                                 farewell = null
                             },
                         )
+                    } else if (invitingPeople) {
+                        // **들어올 때마다 새로 읽는다.** 다른 기기에서 만들거나 취소한
+                        // 초대가 있으면 상한 셈이 어긋난다.
+                        LaunchedEffect(session?.appUserId) {
+                            val token = freshToken() ?: return@LaunchedEffect
+                            inviteBundles.load(token)
+                        }
+                        InviteBundleScreen(
+                            pets = pets.pets.orEmpty(),
+                            selected = inviteBundles.selected,
+                            invites = inviteBundles.invites,
+                            justCreated = inviteBundles.justCreated,
+                            statusOf = inviteBundles::statusOf,
+                            activeCount = inviteBundles.activeCount,
+                            canCreate = inviteBundles.canCreate,
+                            busy = inviteBundles.busy,
+                            error = inviteBundles.error,
+                            onToggle = inviteBundles::toggle,
+                            onCreate = {
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    inviteBundles.create(token)
+                                }
+                            },
+                            onCancel = { invite ->
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    inviteBundles.cancel(token, invite.id)
+                                }
+                            },
+                            onDismissCreated = { inviteBundles.clearCreated() },
+                            onShare = { message -> InviteShare.share(context, message) },
+                            onCopy = { link ->
+                                val copied = InviteShare.copy(context, link)
+                                // 13 부터는 시스템이 "복사됨" 을 띄운다 — 여기서 또 띄우면 두 번 뜬다.
+                                if (copied && InviteShare.needsCopiedNotice()) {
+                                    Toast.makeText(context, "초대 링크를 복사했어요", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onBack = {
+                                // 화면을 닫으면 만든 링크의 평문 토큰을 같이 버린다.
+                                inviteBundles.forget()
+                                invitingPeople = false
+                            },
+                        )
                     } else if (acceptingInvite) {
                         InviteAcceptScreen(
                             pasted = inviteAccept.pasted,
@@ -916,6 +971,7 @@ class MainActivity : ComponentActivity() {
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
                         onAcceptInvite = { acceptingInvite = true },
+                        onInvitePeople = { invitingPeople = true },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
