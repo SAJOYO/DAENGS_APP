@@ -27,6 +27,7 @@ import com.daengs.app.ui.*
 import com.daengs.app.ui.theme.*
 import java.math.BigDecimal
 import java.math.BigInteger
+import com.daengs.app.ui.theme.DaengPink
 
 /** The overview is a full destination, with a scrollable body and a reachable map action. */
 @Composable
@@ -65,7 +66,7 @@ internal fun TerritoryGameScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            DaengsIconView(DaengsIcon.Clock, Modifier.size(16.dp), DaengsColors.Success)
+                            DaengsIconView(DaengsIcon.Clock, Modifier.size(16.dp), DaengPink)
                             Text(overview.seasonTitle(), fontWeight = FontWeight.Bold, color = TextDark, fontSize = 14.sp)
                         }
                         Text(overview.seasonTime(nowNanos), fontSize = 13.sp, color = TextDark)
@@ -91,7 +92,7 @@ internal fun TerritoryGameScreen(
                     GameOverviewStatus.NO_PET -> onAddPet
                     else -> onOpenMap
                 }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("game-map-action"),
-                    shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = TextDark)) {
+                    shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = DaengPink)) {
                     DaengsIconView(DaengsIcon.Pin, Modifier.size(18.dp), CardWhite)
                     Spacer(Modifier.width(8.dp))
                     Text(label, fontWeight = FontWeight.Bold)
