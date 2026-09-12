@@ -14,7 +14,7 @@ internal object DiaryComparisonFiles {
 
     suspend fun read(context: Context, snapshot: DiaryComparisonSnapshot): DiaryPlaceComparison = withContext(Dispatchers.IO) {
         val result = File(context.noBackupFilesDir, "diary-place-comparison/result.json")
-        check(result.isFile) { "아직 준비된 장소 설명이 없어요. PC에서 생성한 뒤 결과를 확인해 주세요." }
+        check(result.isFile) { "아직 준비된 장면 설명이 없어요. PC에서 생성한 뒤 결과를 확인해 주세요." }
         check(result.length() <= 256_000) { "비교 결과가 너무 커요." }
         DiaryPlaceComparison.parse(result.readText(Charsets.UTF_8), snapshot)
     }

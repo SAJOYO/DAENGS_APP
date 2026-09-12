@@ -99,7 +99,7 @@ internal fun WalkDiaryMapContent(
                             enabled = !generating, onClick = { menu = false; generate() })
                     }
                     onPlaceComparison?.let { compare ->
-                        DropdownMenuItem(text = { Text("현재 장면 장소 설명 비교") }, enabled = !loading,
+                        DropdownMenuItem(text = { Text("현재 장면 설명 비교") }, enabled = !loading,
                             onClick = { menu = false; compare() })
                     }
                     onSlotPreview?.let { preview ->

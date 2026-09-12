@@ -172,61 +172,66 @@ adb shell am start -n com.daengs.app.preview/com.daengs.app.MainActivity
 별도 설치 APK SHA-256: `bfd883cc91b0840d865aa4b95023b38458557a389b3e43083e055bc5efbc424e`.
 이번 변경은 빌드 패키지·매니페스트 이름 분리이며, 위 43개 테스트 뒤 앱 동작 코드를 추가로 바꾸지 않았다.
 
-### 현재 장면의 장소 설명 비교
+### 현재 장면의 설명 비교
 
-서버 슬롯 API는 자체 기준으로 장면을 선정한다. 화면에 이미 있는 장면과 설명만 비교하려면
-현재 장면의 위치·시각·순서·원문을 고정해야 하므로 Debug의 별도 비교 경로를 추가했다.
-산책 상세의 `⋯ → 현재 장면 장소 설명 비교`에서 현재 장면을 준비하고, PC 도구로 생성한 결과를
-불러오면 같은 지도에서 **기본 설명 / 장소 설명**을 전환할 수 있다. `근거`에서 인용한 장소와
-거리·조회 시각을 확인한다. 별도 앱에 적용된 기존 결과는 상세 재진입 시 자동으로 읽는다.
+`⋯ → 현재 장면 설명 비교`에서 준비한 장면을 PC에서 생성하고 `결과 확인`으로 읽는다.
+같은 지도에서 **기본 설명 / 장면 설명**을 전환한다. `근거`는 실제 인용한 공간·환경·동선
+자료와 각 파트의 선정 개수, 자료 부족을 표시한다. 시간은 한국시간으로 보여 준다.
+기존 `com.daengs.app`을 보존하는 별도 `com.daengs.app.preview`에서 확인한다.
 
-- 비교는 최대 12개 현재 장면에 한정한다. 계정·산책·장면 ID·위치·시각·순서·제목·본문·사진/기록 ID를 해시로 묶는다.
-- 계정 전환, 삭제/숨김, 장면 편집·이동·순서 변경 등으로 입력이 달라지면 이전 결과를 적용하지 않는다.
-- LLM이 반환한 장면 집합과 각 인용 ID를 검사한다. 추가 설명은 화면에서 원문 앞에 붙이며 원문 공백·빈 문자열을 유지한다.
-- 편집창은 항상 원본 장면을 받는다. 비교 결과를 원래 일기·사용자 편집·DB에 저장하는 경로는 없다.
-- 비교 파일은 Debug 앱의 `no_backup/diary-place-comparison/`에만 두며 Android 백업에서 제외한다. Release는 파일 접근 구현과 메뉴 진입을 제공하지 않는다.
+이전 장소 전용 도구는 원문·장면 중심을 모델 입력에서 빼고 DEV 슬롯 판정을 건너뛰었다.
+현재 `tools/compare_diary_scenes.py`는 [DEV #474](https://github.com/SAJOYO/DAENGS_dev/pull/474)의
+공통 수집·슬롯·writer를 DEV lock 환경에서 실행하는 얇은 진입점이다. 선정 로직이나
+프롬프트를 앱 도구에 복제하지 않는다. 원래 records-first 장면 선정은 유지한다.
 
-PC 도구는 `tools/compare_diary_places.py`다. 앱에서 준비한 `request.json`을 ADB `exec-out run-as
-com.daengs.app.preview cat no_backup/diary-place-comparison/request.json`으로 읽는다. PowerShell의
-문자열 변환으로 원본 바이트가 달라지지 않도록 Python `subprocess.check_output`의 bytes를 그대로 저장한다.
-입력·결과·실제 장소 근거 파일은 저장소 밖의 개인 검증 폴더에 둔다.
+- v2 입력은 계정·산책·장면 ID·위치·시각·순서·제목·원문·사진/기록 ID에 더해
+  `source_scene`의 원본 코어·관측을 해시로 묶는다. 중심만 바뀌어도 이전 결과를 거절한다.
+- 편집·숨김·순서 변경 후에는 새 입력으로 비교한다. 배경은 화면에서 원문 앞에만 붙고,
+  편집창에는 원문이 열린다. 비교를 기존 일기나 사용자 편집에 저장하는 경로는 없다.
+- Release에는 메뉴와 파일 접근이 없다. Debug 교환 폴더는 기존
+  `no_backup/diary-place-comparison/`를 유지한다. v1 결과는 새 입력에 적용되지 않는다.
+- 앱 표시는 빈 원문도 그대로 유지한다. 다만 공통 DEV 작성 계약의 현재 PC 실행 범위는
+  본문이 비어 있지 않은 2~12개 보드 장면이다. 다른 형식·빈 본문·범위 초과는 조회 전에
+  중단하며, 원문을 채우거나 숨긴 장면을 되살리지 않는다.
 
-```powershell
-uv run tools/compare_diary_places.py --request <개인폴더>/request.json --output <개인폴더>/result.json --env-file <설정폴더>/.env --dev-src <DEV폴더>/backend/src
-```
-
-공개 Place 읽기 API에서 250m 이내 시설을 최대 3개 선택한다. 해당 카탈로그가 비어 있으면
-Kakao Local의 공원 키워드/카페 카테고리를 같은 반경으로 조회하고 등록 위치가 가까운 3개를 선택한다.
-공원 키워드는 실제 공원 카테고리만 허용한다. 주소는 Kakao 역지오코딩의 지역명만 사용한다.
-현재 카탈로그의 자료이며 과거 영업·방문·진입을 증명하지 않는다.
-Kakao 계약은 [Local REST API 문서](https://developers.kakao.com/docs/ko/local/dev-guide)를 따른다.
-
-DEV writer의 모델·예산·응답 스키마·프롬프트를 재사용하고, 장소 설명에 한정하는 지시를 추가한다.
-사용자 원문과 좌표·계정 ID는 모델 입력에서 제외하고, 장면 ID와 선택한 장소 근거만 전달한다.
-결과 파일에 프롬프트 해시를 기록한다. `accepted`는 구조·인용 검사 통과이며 문장 의미의 정확성 보장이 아니다.
-실제 결과를 검토한 뒤 ADB로 `result.json`을 같은 앱의 `no_backup/diary-place-comparison/`에 넣고
-`결과 확인`을 누른다. 서버용 키는 PC에서만 읽으며 APK나 결과 파일에 넣지 않는다.
-
-2026-09-12 실기기 검증에서는 개발 서버에서 복원한 산책 1건의 6개 장면을 사용했다.
-좌표가 있는 4개에 실제 Gemini 설명을 붙였고, 좌표가 없는 시작/종료 2개는 기본 설명을 유지했다.
-첫 호출은 주소만으로 산책로라고 서술해 적용하지 않았다. 장소 근거를 보강하고 장소 전용 지시를
-추가한 두 번째 호출 결과를 검토·적용했다. 이번 문장은 주변 시설 나열 성격이 강하며,
-일기 문체의 품질 검토는 계속 가능하다. 기온이나 새 동선 해석을 생성한 결과는 아니다.
-
-폰에서 설명 전환, 지도·선택 장면 유지, 인용 근거, 원문만 열리는 편집창과 취소,
-앱 재실행 후 비교 결과 복원을 확인했다. 출시 앱을 삭제·교체하거나 원본 산책을 수정하지 않았다.
-서버 슬롯 미리보기의 404 활성화 문제는 별도로 남아 있다. 이 실기기 결과는 PC에서 직접 생성한 비교다.
-
-검증은 첫 Android 4개 클래스 31개 통과 후 재진입 복원을 추가하고 모델/비교 UI/지도 3개 클래스
-21개를 재실행해 모두 통과했다. 합계 32개 서로 다른 테스트이며 실패·오류·skip은 0이다.
-Debug 빌드와 Release Kotlin 컴파일도 통과했다. 내보내기/불러오기 소유권 검사를 보완한 뒤
-비교 모델/UI 5개와 빌드·Release 컴파일을 다시 확인했다. APK 파일 잠금으로 패키징 1회가
-실패했으나 잠금 해제 후 재실행해 통과했다. PC 도구의 오프라인 3개 테스트와 ruff도 통과했다.
+앱에서 내보낸 bytes를 `adb exec-out run-as com.daengs.app.preview cat
+no_backup/diary-place-comparison/request.json`으로 읽어 저장한다. PowerShell 문자열 변환
+대신 Python `subprocess.check_output`의 bytes를 그대로 사용한다. 실제 `DiaryInput`과
+그 분석의 canonical 업로드 좌표, 원래 `target_scene_count`도 필요하다. 실제 자료와
+결과는 저장소 밖 개인 폴더에 둔다. DB를 접속하거나 가짜 산책을 만드는 도구가 아니다.
 
 ```powershell
-.\gradlew.bat :app:assembleDebug :app:compileReleaseKotlin :app:testDebugUnitTest -PsideBySide=true --tests 'com.daengs.app.walk.diary.DiaryPlaceComparisonTest' --tests 'com.daengs.app.ui.walk.DiaryPlaceComparisonUiTest' --tests 'com.daengs.app.ui.walk.WalkDiaryMapScreenTest' --max-workers=2 --console=plain
-uv run tools/test_compare_diary_places.py
-uvx ruff check tools/compare_diary_places.py tools/test_compare_diary_places.py
+uv run tools/compare_diary_scenes.py --dev-root <DEV폴더> --request <개인폴더>/request.json --source <개인폴더>/source.json --points <개인폴더>/points.json --target-scenes 5 --env-file <설정폴더>/.env --output <개인폴더>/새실행폴더
 ```
 
-최종 실기기 APK SHA-256: `6b4188c29c5939baf9a4c7e9efefcd4b7b79b4dbdb3085e6a0ace2e6b91d450d`.
+출력 폴더는 새로 만들어야 한다. 수집본·원응답, 보드, 전체 슬롯 판정, 모델 입력·스키마·응답,
+프롬프트·정책·해시와 receipt를 남긴다. 재작성은 `--backgrounds <이전실행>/backgrounds.json`으로
+동일 수집본을 사용한다. 키는 PC에서만 읽는다. 검토한 `result.json`만 앱 교환 폴더로 넣는다.
+`accepted`는 구조·인용 검사 통과이고 의미 검토의 대체가 아니다.
+
+2026-09-12 실제 산책 한 건으로 다음을 확인했다.
+
+- 원래 6개 장면의 표시 필드가 전부 동일했다. canonical 입력 hash와 공개 장면의
+  코어·좌표·시각·관측도 재현본과 일치했다. 발행본을 덮어쓰지 않는 별도 비교 revision이다.
+- Place가 비어 실제 Kakao 공원/카페/음식점·주소를 조회했다. 위치 있는 4개 장면에는
+  공간 3개씩, 관측 장면 1개에는 상대 저속 동선 1개가 선정됐다. 환경 자료는 0개였다.
+- 같은 수집본으로 작성한 첫 2회에서 근거 없는 상점가·산책로 표현을 발견해 적용하지 않았다.
+  현재 등록 정보의 의미를 명확히 한 세 번째 결과를 적용했다. 위치 없는 시작/종료는 원문 유지.
+  동선 장면에는 실제 상대 속도가 추가됐고 시설 나열은 장면당 대표 1개로 줄었다.
+- 문장은 아직 설명문에 가깝다. 지역 특성·날씨·감각이 풍부한 일기 품질까지 완료한 것은 아니다.
+  현재 자료의 공백을 프롬프트로 꾸미지 않는다는 한계도 함께 기록했다.
+- 실기기에서 설명 전환, 같은 선택 장면과 지도 유지, 근거, 원문만 열리는 편집창을 확인했다.
+  기존 출시 앱을 삭제·교체하거나 산책·편집 원본을 수정하지 않았다.
+
+이번 변경의 Android 모델/UI 6건, Debug 빌드, Release Kotlin 컴파일이 통과했다.
+수집·입력 결합·부족 자료·인용의 회귀 검사는 공통 구현이 있는 DEV로 이동했다.
+DEV의 검증 범위와 결과는 [파트 슬롯 문서](https://github.com/SAJOYO/DAENGS_dev/blob/feat/diary-scene-context-comparison/docs/walk/diary-part-slots.md)에 있다.
+서버 슬롯 API의 활성화·배포는 아직이며, 이 결과는 PC에서 동일 DEV 코드와 실제 API를 실행한 비교다.
+
+```powershell
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -PsideBySide=true --tests '*DiaryPlaceComparisonTest' --tests '*DiaryPlaceComparisonUiTest' --max-workers=2 --console=plain
+.\gradlew.bat :app:compileReleaseKotlin -PsideBySide=true --max-workers=2 --console=plain
+uvx ruff check tools/compare_diary_scenes.py
+```
+
+실기기 APK SHA-256: `b30099cebc6704fcd25642c470839daafb4d7e495dea17e036e191a33c68f2e5`.

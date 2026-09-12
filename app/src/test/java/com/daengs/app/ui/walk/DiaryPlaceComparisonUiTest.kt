@@ -41,7 +41,7 @@ class DiaryPlaceComparisonUiTest {
         compose.onNodeWithText("메모 원문").assertIsDisplayed()
         val before = geometry
         val bounds = compose.onNodeWithTag("comparison-map").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithText("장소 설명").performClick()
+        compose.onNodeWithText("장면 설명").performClick()
         compose.onNodeWithText("주변 장소 설명\n\n메모 원문").assertIsDisplayed()
         compose.onNodeWithText("같은 장면").assertIsDisplayed()
         compose.onNodeWithText("기본 설명").performClick()

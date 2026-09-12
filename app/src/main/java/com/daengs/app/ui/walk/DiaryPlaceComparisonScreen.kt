@@ -36,7 +36,7 @@ internal fun DiaryPlaceComparisonScreen(
         try {
             requireOwner()
             DiaryComparisonFiles.prepare(context, snapshot)
-            message = "장면을 준비했어요. PC에서 장소 설명을 생성한 뒤 결과를 확인해 주세요."
+            message = "장면을 준비했어요. PC에서 장면 설명을 생성한 뒤 결과를 확인해 주세요."
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             message = "비교 자료를 준비하지 못했어요. 화면을 다시 열어 주세요."
@@ -67,8 +67,8 @@ private fun DiaryPlaceComparisonContent(count: Int, message: String, busy: Boole
     Column(Modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TextButton(onClick = onBack) { Text("‹ 산책으로") }
-        Text("장소 설명 비교", style = MaterialTheme.typography.headlineSmall)
-        Text("현재 ${count}개 장면의 위치·시각·순서를 유지하고, 같은 지도에서 기본 설명과 장소 설명을 비교해요.")
+        Text("장면 설명 비교", style = MaterialTheme.typography.headlineSmall)
+        Text("현재 ${count}개 장면의 위치·시각·순서와 원문을 유지하고, 공간·환경·동선 근거를 보탠 설명을 비교해요.")
         Text("비교 결과는 원래 일기와 사용자 기록에 저장되지 않아요.", color = TextMuted)
         Text(message)
         Button(onClick = onRead, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("결과 확인") }
@@ -79,7 +79,7 @@ private fun DiaryPlaceComparisonContent(count: Int, message: String, busy: Boole
 internal fun DiaryPlaceComparisonSwitch(usePlaces: Boolean, onChange: (Boolean) -> Unit, onEvidence: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected = !usePlaces, onClick = { onChange(false) }, label = { Text("기본 설명") })
-        FilterChip(selected = usePlaces, onClick = { onChange(true) }, label = { Text("장소 설명") })
+        FilterChip(selected = usePlaces, onClick = { onChange(true) }, label = { Text("장면 설명") })
         TextButton(onClick = onEvidence) { Text("근거") }
     }
 }

@@ -273,13 +273,15 @@ internal fun WalkDiaryMapScreen(
         }
     }
     if (comparisonEvidenceOpen && activeComparison != null) AlertDialog(
-        onDismissRequest = { comparisonEvidenceOpen = false }, title = { Text("장소 설명 근거") },
+        onDismissRequest = { comparisonEvidenceOpen = false }, title = { Text("장면 설명 근거") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("${activeComparison.model} · 현재 조회한 장소 자료 기준\n${activeComparison.retrievedAt}")
+            Text("${activeComparison.model} · 수집 근거와 원래 장면 기준\n${activeComparison.retrievedAt}")
             originalScenes.filter { selectedId == null || it.id == selectedId }.forEach { scene ->
                 Text(scene.title, style = MaterialTheme.typography.titleSmall)
-                val evidence = activeComparison.narrations.getValue(scene.id).evidence
-                if (evidence.isEmpty()) Text("이 장면에는 장소 설명을 추가하지 않았어요.")
+                val narration = activeComparison.narrations.getValue(scene.id)
+                Text(narration.coverage, style = MaterialTheme.typography.bodySmall)
+                val evidence = narration.evidence
+                if (evidence.isEmpty()) Text("이 장면에는 배경 설명을 추가하지 않았어요.")
                 else evidence.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         } }, confirmButton = { TextButton(onClick = { comparisonEvidenceOpen = false }) { Text("닫기") } },

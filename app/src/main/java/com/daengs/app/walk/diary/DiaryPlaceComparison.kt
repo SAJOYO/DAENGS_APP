@@ -12,7 +12,7 @@ internal data class DiaryComparisonSnapshot(
             require(owner.isNotBlank() && sessionId.isNotBlank() && scenes.isNotEmpty())
             require(scenes.size <= 12 && scenes.all { it.sessionId == sessionId })
             require(scenes.map { it.id }.distinct().size == scenes.size)
-            val payload = JSONObject().put("format", "diary-place-comparison-input-v1")
+            val payload = JSONObject().put("format", "diary-scene-comparison-input-v2")
                 .put("owner_id", owner).put("session_id", sessionId)
                 .put("scenes", JSONArray(scenes.map { scene ->
                     JSONObject().put("id", scene.id).put("at_millis", scene.atMillis)
@@ -21,6 +21,7 @@ internal data class DiaryComparisonSnapshot(
                         .put("entry_id", scene.entryId ?: JSONObject.NULL)
                         .put("photo_id", scene.photo?.id ?: JSONObject.NULL)
                         .put("location_basis", scene.evidence)
+                        .put("source_scene", scene.source?.sourcePayload?.let { JSONObject(it) } ?: JSONObject.NULL)
                 }))
             val text = canonicalJson(payload)
             return DiaryComparisonSnapshot(text, storyboardHash(text), scenes.toList(), owner, sessionId)
@@ -28,7 +29,9 @@ internal data class DiaryComparisonSnapshot(
     }
 }
 
-internal data class DiaryPlaceNarration(val background: String, val evidence: List<String>)
+internal data class DiaryPlaceNarration(
+    val background: String, val evidence: List<String>, val coverage: String = "",
+)
 
 /** Temporary display only. It has no conversion to the published diary or user-edit store. */
 internal data class DiaryPlaceComparison(
@@ -50,11 +53,11 @@ internal data class DiaryPlaceComparison(
         fun parse(text: String, snapshot: DiaryComparisonSnapshot): DiaryPlaceComparison {
             require(text.toByteArray(Charsets.UTF_8).size <= 256_000)
             val root = JSONObject(text)
-            require(root.getString("format") == "diary-place-comparison-result-v1")
+            require(root.getString("format") == "diary-scene-comparison-result-v2")
             require(root.getString("snapshot_sha256") == snapshot.digest) {
                 "현재 계정·산책·장면과 다른 비교 결과예요. 장면을 다시 준비해 주세요."
             }
-            require(root.getString("model_status") == "accepted") { "장소 설명 생성이 완료되지 않았어요." }
+            require(root.getString("model_status") == "accepted") { "장면 설명 생성이 완료되지 않았어요." }
             val items = root.getJSONArray("scenes")
             require(items.length() == snapshot.scenes.size)
             val narrations = snapshot.scenes.mapIndexed { index, scene ->
@@ -63,7 +66,7 @@ internal data class DiaryPlaceComparison(
                 val background = item.getString("background").trim()
                 require(background.length <= 220)
                 val evidence = item.getJSONArray("evidence")
-                require(evidence.length() <= 8)
+                require(evidence.length() <= 17)
                 val facts = (0 until evidence.length()).associate { i ->
                     val fact = evidence.getJSONObject(i)
                     fact.getString("id") to fact.getString("description").also { require(it.length <= 2000) }
@@ -73,7 +76,8 @@ internal data class DiaryPlaceComparison(
                 val ids = (0 until refs.length()).map { refs.getString(it) }
                 require(ids.distinct().size == ids.size && ids.all { it in facts })
                 require(background.isNotBlank() == ids.isNotEmpty())
-                scene.id to DiaryPlaceNarration(background, ids.map(facts::getValue))
+                val coverage = item.getString("coverage").also { require(it.length <= 2000) }
+                scene.id to DiaryPlaceNarration(background, ids.map(facts::getValue), coverage)
             }.toMap()
             return DiaryPlaceComparison(snapshot.digest, root.getString("model"),
                 root.getString("retrieved_at"), narrations)
