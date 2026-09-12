@@ -57,7 +57,7 @@ class WalkRecordingSyncTest {
                 override suspend fun upload(token: String, session: RecordedSession, fixes: List<RecordedFix>): Result<String> {
                     uploads++; assertEquals(local, fixes); return Result.success("walk")
                 }
-                override suspend fun appendPoints(token: String, walkId: String, fixes: List<RecordedFix>): Result<Unit> = error("single batch")
+                override suspend fun appendPoints(token: String, walkId: String, clientSessionId: String, fixes: List<RecordedFix>): Result<Unit> = error("single batch")
                 override suspend fun finalize(token: String, walkId: String, manifest: WalkFinalizeManifest): Result<Unit> {
                     finalized++; return Result.success(Unit)
                 }

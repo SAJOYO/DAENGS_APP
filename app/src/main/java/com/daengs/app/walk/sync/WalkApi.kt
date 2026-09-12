@@ -24,10 +24,13 @@ import java.time.Instant
  * 시각은 **epoch 밀리초 ↔ ISO-8601** 로 오간다. 로컬 DB 는 밀리초로 들고 있고 서버는
  * `TIMESTAMPTZ` 라, 경계에서 한 번만 바꾼다.
  */
-object WalkApi {
+object WalkApi : WalkHttpApi(BuildConfig.API_BASE_URL)
+
+/** 서버 주소를 인스턴스에 묶어 실제 HTTP 경계도 독립적으로 검증한다. */
+open class WalkHttpApi internal constructor(private val baseUrl: String) {
 
     val configured: Boolean
-        get() = BuildConfig.API_BASE_URL.isNotBlank()
+        get() = baseUrl.isNotBlank()
 
     /**
      * 산책 한 건을 올린다.
@@ -39,8 +42,8 @@ object WalkApi {
         accessToken: String,
         session: RecordedSession,
         fixes: List<RecordedFix>,
-    ): Result<String> = call(accessToken, "", "POST", uploadBody(session, fixes)) {
-        JSONObject(it).getString("id")
+    ): Result<String> = call(accessToken, "?response=receipt-v1", "POST", uploadBody(session, fixes)) {
+        WalkUploadReceipt.verify(JSONObject(it), session.id, fixes, session.serverWalkId)
     }
 
     /**
@@ -53,13 +56,17 @@ object WalkApi {
     suspend fun appendPoints(
         accessToken: String,
         walkId: String,
+        clientSessionId: String,
         fixes: List<RecordedFix>,
     ): Result<Unit> = call(
         accessToken,
-        "/$walkId/points",
+        "/$walkId/points?response=receipt-v1",
         "POST",
         JSONObject().put("points", fixes.toUploadPoints()),
-    ) { }
+    ) {
+        WalkUploadReceipt.verify(JSONObject(it), clientSessionId, fixes, walkId)
+        Unit
+    }
 
     /**
      * 서버에 저장된 좌표열을 봉인하고 계산한다.
@@ -138,7 +145,7 @@ object WalkApi {
     ): Result<T> = withContext(Dispatchers.IO) {
         runCatching {
             check(configured) { "서버 주소가 없습니다. local.properties 의 daengs.apiBaseUrl 을 채우세요." }
-            val conn = (URL("${BuildConfig.API_BASE_URL.trimEnd('/')}/app/${if (v2) "v2/" else ""}walks$path")
+            val conn = (URL("${baseUrl.trimEnd('/')}/app/${if (v2) "v2/" else ""}walks$path")
                 .openConnection() as HttpURLConnection).apply {
                 requestMethod = method
                 connectTimeout = TIMEOUT_MS
@@ -180,8 +187,10 @@ object WalkApi {
             disconnect()
         }
 
-    private const val TIMEOUT_MS = 10_000
-    private const val READ_TIMEOUT_MS = 30_000
+    private companion object {
+        const val TIMEOUT_MS = 10_000
+        const val READ_TIMEOUT_MS = 30_000
+    }
 }
 
 data class WalkFinalizeManifest(

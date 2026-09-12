@@ -32,6 +32,14 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 기능별 선택 범위
 
+### 산책 업로드 수신 확인
+
+`walk.sync.WalkUploadReceiptTest`는 새/구형 응답 검증, `WalkUploadHttpTest`는 실제 loopback
+HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상태 전이의 연결을 검사한다.
+동기화 순서와 계정 변경은 `WalkSyncTest`, GPS 확인/보완은 `WalkRecordingSyncTest`, 측정 자료
+소비자는 `WalkMotionSyncTest`, 실제 원본 상태 저장은 `walk.store.WalkDaoTest`를 함께 선택한다.
+각 클래스 앞에 `com.daengs.app.`을 붙인다. [계약과 실행 명령](../../../docs/walk-upload-receipts.md).
+
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
 #333의 구간·장면 선택은 `walk.routeexplorer.CompletedRouteReviewTest`,
