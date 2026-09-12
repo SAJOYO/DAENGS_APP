@@ -1,8 +1,5 @@
 package com.daengs.app.ui.walk
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -25,19 +22,10 @@ import com.daengs.app.map.layers.territory.*
 import com.daengs.app.territory.ClaimPhotoStatus
 import com.daengs.app.ui.theme.TextMuted
 
-/** 유한 Compose animation이라 시스템 애니메이션 배율 0에서도 반복 타이머를 만들지 않는다. */
+/** 기존 산책 UI 호출 계약은 유지하고 애니메이션 구현은 지도 공용 계층에 위임한다. */
 @Composable
-internal fun rememberTerritoryFeedbackProgress(feedback: TerritoryFeedback?, nowNanos: () -> Long = System::nanoTime): Float {
-    val progress = remember(feedback?.id) { Animatable(feedback?.progressAt(nowNanos()) ?: 1f) }
-    LaunchedEffect(feedback?.id) {
-        if (feedback != null) {
-            val initial = feedback.progressAt(nowNanos())
-            progress.snapTo(initial)
-            progress.animateTo(1f, tween(((1f - initial) * feedback.durationMillis).toInt(), easing = LinearEasing))
-        }
-    }
-    return progress.value
-}
+internal fun rememberTerritoryFeedbackProgress(feedback: TerritoryFeedback?, nowNanos: () -> Long = System::nanoTime): Float =
+    rememberTerritoryFeedbackAnimationProgress(feedback, nowNanos)
 
 internal fun territoryFeedbackLabel(game: TerritoryGameState, feedback: TerritoryFeedback?): String =
     if (game.onlinePhotos) game.guidance else when (game.photoStatus) {
