@@ -1,6 +1,7 @@
 package com.daengs.app.ui.walk
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
@@ -45,12 +46,14 @@ class WalkDetailDataUiTest {
         var prepared = 0
         var generated = 0
         var generate: suspend () -> Unit = {}
+        var save: suspend (WalkEntry) -> Unit = {}
+        var saveScene: suspend (String, String) -> Unit = { _, _ -> }
         override suspend fun open() { opened++ }
         override fun prepareDiary() { prepared++ }
         override suspend fun generateDiary() { generated++; generate() }
-        override suspend fun saveEntry(entry: WalkEntry) = Unit
+        override suspend fun saveEntry(entry: WalkEntry) = save(entry)
         override suspend fun deleteEntry(id: String) = Unit
-        override suspend fun saveScene(scene: StoryboardScene, title: String, body: String) = Unit
+        override suspend fun saveScene(scene: StoryboardScene, title: String, body: String) = saveScene(title, body)
         override suspend fun deletePhoto(id: String) = Unit
     }
 
@@ -115,5 +118,59 @@ class WalkDetailDataUiTest {
         compose.onNodeWithText("저장된 장면 s").assertDoesNotExist()
         compose.runOnIdle { assertTrue(cancelled); assertEquals(1, nextActions.opened) }
         menu(); compose.onNodeWithText("일기 생성·갱신").assertIsEnabled()
+    }
+
+    @Test fun `entry draft survives a failed save and closes only after successful retry`() {
+        val source = Source(); val actions = Actions()
+        val note = WalkEntry("note", "s", WalkMomentType.NOTE, 500, note = "원래 메모")
+        val submitted = mutableListOf<WalkEntry>()
+        val first = CompletableDeferred<Unit>()
+        actions.save = { submitted += it; first.await() }
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            val state = remember { WalkDetailState(source, actions, scope, {}) }
+            var opened by remember { mutableStateOf(true) }
+            if (opened) WalkEntryEditorContent(listOf(note), note, emptyList(), state.entryError, state.savingEntry,
+                { state.saveEntry(it) { opened = false } }, {}, {},
+                // Same text fields and buttons; avoid Robolectric's native-dialog idle limitation.
+                container = { title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() } })
+        }
+        compose.onNodeWithText("원래 메모").performTextReplacement("실패해도 남을 초안")
+        compose.onNodeWithText("저장").performClick()
+        compose.runOnIdle { first.completeExceptionally(IllegalStateException("편집 충돌")) }
+        compose.onNodeWithText("편집 충돌").assertExists()
+        compose.onNodeWithText("실패해도 남을 초안").assertExists()
+        actions.save = { submitted += it }
+        compose.onNodeWithText("저장").performClick()
+        compose.onNodeWithText("실패해도 남을 초안").assertDoesNotExist()
+        assertEquals(listOf("실패해도 남을 초안", "실패해도 남을 초안"), submitted.map { it.note })
+    }
+
+    @Test fun `scene title and body survive failure and duplicate clicks stay disabled during saving`() {
+        val source = Source(); val actions = Actions()
+        val scene = source.diary.scenes.single().copy(source = StoryboardScene("scene", 500, "제목", "내용", "", "f"))
+        val submitted = mutableListOf<Pair<String, String>>()
+        val first = CompletableDeferred<Unit>()
+        actions.saveScene = { title, body -> submitted += title to body; first.await() }
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            val state = remember { WalkDetailState(source, actions, scope, {}) }
+            var opened by remember { mutableStateOf(true) }
+            if (opened) DiarySceneEditor(scene, state.savingScene, state.sceneError,
+                { title, body -> state.saveScene(scene, title, body) { opened = false } }, {},
+                dialog = { title, body, confirm, dismiss -> Column { title(); body(); confirm(); dismiss() } })
+        }
+        compose.onNodeWithText("장면 제목").performTextReplacement("바꾼 제목")
+        compose.onNodeWithText("장면 내용").performTextReplacement("남길 장면 내용")
+        compose.onNodeWithText("저장").performClick()
+        compose.onNodeWithText("저장 중").assertIsNotEnabled()
+        compose.runOnIdle { first.completeExceptionally(IllegalStateException("저장 실패")) }
+        compose.onNodeWithText("저장 실패").assertExists()
+        compose.onNodeWithText("바꾼 제목").assertExists()
+        compose.onNodeWithText("남길 장면 내용").assertExists()
+        actions.saveScene = { title, body -> submitted += title to body }
+        compose.onNodeWithText("저장").performClick()
+        compose.onNodeWithText("장면 수정").assertDoesNotExist()
+        assertEquals(listOf("바꾼 제목" to "남길 장면 내용", "바꾼 제목" to "남길 장면 내용"), submitted)
     }
 }
