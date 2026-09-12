@@ -81,16 +81,7 @@ class FacilityApi(private val baseUrl: () -> String) : FacilityClient {
 class FacilityException(val status: Int) : IllegalStateException("Facility request failed ($status)")
 
 fun Throwable.facilityMessage(): String = when (this) {
-    is FacilityException -> when (status) {
-        0 -> "AI 검색 서버 주소가 설정되지 않았어요."
-        401, 403 -> "AI 조건 검색은 로그인 후 사용할 수 있어요."
-        409 -> "검색 상태가 바뀌었어요. 문장으로 다시 검색해 주세요."
-        410 -> "검색이 만료됐어요. 문장으로 다시 검색해 주세요."
-        422 -> "현재 검색에서 선택할 수 없는 조건이에요. 다시 검색해 주세요."
-        429 -> "요청이 많아요. 잠시 후 다시 시도해 주세요."
-        504 -> "AI 검색 시간이 초과됐어요. 다시 시도해 주세요."
-        else -> "AI 검색 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요."
-    }
+    is FacilityException -> FacilityResponsePolicy.failure(status)
     is java.io.IOException -> "연결을 확인하고 다시 시도해 주세요."
-    else -> "AI 검색 결과를 확인하지 못했어요. 다시 검색해 주세요."
+    else -> FacilityResponsePolicy.UNKNOWN
 }

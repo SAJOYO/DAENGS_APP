@@ -56,6 +56,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         refresh()
     }
     fun returnToSearch() {
+        if (state.value.session.tab == PlaceBrowseTab.SEARCH) return
         mutable.value = state.value.copy(session = state.value.session.select(PlaceBrowseTab.SEARCH))
         refresh()
     }
@@ -216,6 +217,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
         }
     }
 
+
     private fun superseded() = BookmarkOutcome(BookmarkCompletion.SUPERSEDED,
         "이전 찜 요청은 더 진행하지 않아요. 현재 찜 상태를 확인해 주세요.")
 
@@ -234,7 +236,7 @@ class PlaceBookmarkController(private val scope: CoroutineScope,
                             else state.value.hits.filterNot { it.place.key == key })
                     outcome = if (page.items.any { it.key == key } == saved)
                         BookmarkOutcome(BookmarkCompletion.CONFIRMED,
-                            if (saved) "찜에 저장된 것을 확인했어요." else "찜이 해제된 것을 확인했어요.")
+                            if (saved) "여기 찜해뒀어요!" else "찜에서 빼뒀어요.")
                     else BookmarkOutcome(BookmarkCompletion.UNKNOWN,
                         "요청한 찜 상태를 확인하지 못했어요. 찜 목록을 새로고침해 주세요.")
                 } catch (cancelled: CancellationException) { throw cancelled

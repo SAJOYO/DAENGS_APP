@@ -187,6 +187,7 @@ internal sealed interface ChatEntry {
      * 거리·주소·사실 목록이다.
      */
     data class PlaceCards(val presentation: PlaceCardsPresentation) : ChatEntry
+    data object FacilityResult : ChatEntry
 
     /**
      * 위치가 없어 못 찾겠다는 CLARIFY. 말풍선(저쪽 되묻기 질문)만으로는 사용자가 할 수
@@ -273,6 +274,10 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
+    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence ->
+        AssistantApi.query(token, text, where, dog, persistence)
+    },
+    onOpenFacilities: (() -> Unit)? = null,
     /**
      * 피부 **변화 기록**으로 가는 길. null 이면 그 줄을 안 보여 준다.
      *
@@ -538,6 +543,7 @@ fun ChatScreen(
             entries[slot] = ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage())
             response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
             response.placeCards()?.let { entries += ChatEntry.PlaceCards(it) }
+            if (response.facility != null && onOpenFacilities != null) entries += ChatEntry.FacilityResult
             // 좌표가 없어 되물은 것이라면 다시 물을 거리를 준다. 무상태 CLARIFY 는
             // 이어 물을 토큰이 없어서, 문장만 띄우면 사용자에게 막다른 길이다.
             if (response.isLocationClarify()) entries += ChatEntry.LocationNeeded(asked)
@@ -652,7 +658,7 @@ fun ChatScreen(
                     asking = false
                 }
             } else {
-                AssistantApi.query(token, text, where, activeDogId = dogId, persistence = null)
+                assistantQuery(token, text, where, dogId, null)
                     .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
@@ -797,6 +803,10 @@ fun ChatScreen(
                                     }
                                 },
                             )
+                        }
+
+                        ChatEntry.FacilityResult -> BesideAvatar {
+                            androidx.compose.material3.TextButton(onClick = { onOpenFacilities?.invoke() }) { Text("현재 시설 보기") }
                         }
 
                         is ChatEntry.LocationNeeded -> BesideAvatar {

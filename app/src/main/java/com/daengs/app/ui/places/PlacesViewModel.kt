@@ -150,7 +150,9 @@ class PlacesViewModel(
     fun activate(permissionGranted: Boolean) {
         location.activate(permissionGranted)
         if (permissionGranted) {
-            startDefaultSearchIfNeeded()
+            val shared = conversationRepository?.state?.value
+            if (shared?.result != null) session.acceptConversation(shared.result.copy(selected = shared.selected))
+            else startDefaultSearchIfNeeded()
         } else {
             location.cancelLocate()
             session.clear()
@@ -158,7 +160,7 @@ class PlacesViewModel(
     }
 
     fun deactivate() {
-        conversationRepository?.invalidate()
+        conversationRepository?.cancelPending()
         facility.enable(false)
         location.deactivate()
         session.deactivate()
@@ -184,7 +186,8 @@ class PlacesViewModel(
     }
 
     private fun applyProfiles(value: PlaceProfiles) {
-        if (value.ownerId != profiles.value.ownerId || value.snapshots() != profiles.value.snapshots()) {
+        val sameSharedOwner = profiles.value.ownerId == null && conversationRepository?.belongsTo(value.ownerId) == true
+        if ((!sameSharedOwner && value.ownerId != profiles.value.ownerId) || value.snapshots() != profiles.value.snapshots()) {
             conversationRepository?.invalidate()
             facility.invalidate(if (facility.state.value.enabled) "반려견 정보가 바뀌었어요. 조건을 확인하고 다시 검색해 주세요." else null)
         }
@@ -386,10 +389,7 @@ class PlacesViewModel(
                     require(modelClass.isAssignableFrom(PlacesViewModel::class.java))
                     val app = context.applicationContext as com.daengs.app.DaengsApp
                     val regular = PlaceRepository(PlaceApi(baseUrl = { BuildConfig.API_BASE_URL }))
-                    val conversation = if (BuildConfig.FACILITY_CONVERSATION) com.daengs.app.place.FacilityConversationRepository(
-                        com.daengs.app.place.ConversationApi { BuildConfig.API_BASE_URL }, regular,
-                        app.sessionProvider::freshSession, app.tokenStore::load,
-                    ) else null
+                    val conversation = if (BuildConfig.FACILITY_CONVERSATION) app.facilityConversation else null
                     return PlacesViewModel(
                         placeRepository = conversation ?: regular,
                         conversationRepository = conversation,
