@@ -32,6 +32,7 @@ class DiarySlotPreviewApi(private val baseUrl: () -> String = { BuildConfig.API_
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("Authorization", "Bearer $token")
                 val body = JSONObject().put("target_scene_count", 3).put("generate", true)
+                    .put("collect_backgrounds", true)
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val status = connection.responseCode
                 if (status !in 200..299) {
