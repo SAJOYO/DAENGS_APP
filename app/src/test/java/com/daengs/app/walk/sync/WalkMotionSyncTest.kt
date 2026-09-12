@@ -335,7 +335,7 @@ class WalkMotionSyncTest {
     private class NoRawApi : WalkApiClient {
         override val configured=true
         override suspend fun upload(token:String,session:RecordedSession,fixes:List<RecordedFix>):Result<String> = error("already derived")
-        override suspend fun appendPoints(token:String,walkId:String,fixes:List<RecordedFix>):Result<Unit> = error("already derived")
+        override suspend fun appendPoints(token:String,walkId:String,clientSessionId:String,fixes:List<RecordedFix>):Result<Unit> = error("already derived")
         override suspend fun finalize(token:String,walkId:String,manifest:WalkFinalizeManifest):Result<Unit> = error("already derived")
         override suspend fun list(token:String):Result<List<RemoteWalk>> = Result.success(emptyList())
         override suspend fun detail(token:String,walkId:String):Result<RemoteWalkDetail> = error("not used")

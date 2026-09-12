@@ -60,6 +60,7 @@ class WalkSync(
         val owner = log.ownerId
         if (!api.configured || !stillOwned(owner)) return@withContext
         runCatching { pushMutex.withLock { push(token) } }.onFailure { it.warn("올리기") }
+        if (!stillOwned(owner)) return@withContext
         runCatching { pull(token, owner) }.onFailure { it.warn("되찾기") }
         for (session in log.finishedSessions()) {
             if (!stillOwned(owner)) return@withContext
@@ -110,7 +111,9 @@ class WalkSync(
 
     /** 끝났지만 아직 계산 완료되지 않은 것을 현재 단계부터 이어간다. */
     private suspend fun push(token: String) {
+        val owner = log.ownerId
         for (session in log.sessionsPendingAnalysis()) {
+            if (!stillOwned(owner)) return
             runCatching { if (session.syncState != WalkSyncState.DERIVED) pushOne(token, session) }.onFailure {
                 // 한 건이 실패해도 나머지는 시도한다 — 큰 산책 하나에 다른 기록까지
                 // 볼모가 되면 안 된다.
@@ -132,9 +135,12 @@ class WalkSync(
             ?.takeIf { session.syncState == WalkSyncState.RAW_UPLOADED }
         val walkId = rememberedWalkId ?: run {
             val id = api.upload(token, session, fixes.take(POINTS_PER_REQUEST)).getOrThrow()
-            // 긴 산책은 나눠 보낸다. 좌표 순번이 서버 PK 라 재전송해도 중복이 안 생긴다.
+            checkOwner()
+            // 각 청크의 수신 확인을 검증한 뒤에만 다음 청크를 보낸다.
             for (chunk in fixes.drop(POINTS_PER_REQUEST).chunked(POINTS_PER_REQUEST)) {
-                api.appendPoints(token, id, chunk).getOrThrow()
+                checkOwner()
+                api.appendPoints(token, id, session.id, chunk).getOrThrow()
+                checkOwner()
             }
             // 여기까지 왔으면 원본은 전부 있다. finalize 응답을 잃더라도 다음 실행에서
             // 원본을 다시 보내지 않고 이 id로 finalize만 재시도한다.
@@ -149,6 +155,7 @@ class WalkSync(
             terminalClientSeq = fixes.lastOrNull()?.clientSeq,
         )
         api.finalize(token, walkId, manifest).getOrThrow()
+        checkOwner()
         log.markDerived(session.id, now())
     }
 
@@ -237,6 +244,7 @@ class WalkSync(
         owner == null || (owner.isNotEmpty() && log.ownerId == owner)
 
     private fun Throwable.warn(what: String) {
+        if (this is kotlinx.coroutines.CancellationException) throw this
         warn("산책 동기화 — $what 에 실패했다. 다음에 다시 시도한다.", this)
     }
 
@@ -268,6 +276,7 @@ interface WalkApiClient {
     suspend fun appendPoints(
         token: String,
         walkId: String,
+        clientSessionId: String,
         fixes: List<com.daengs.app.walk.RecordedFix>,
     ): Result<Unit>
 
@@ -295,8 +304,9 @@ private object DefaultWalkApiClient : WalkApiClient {
     override suspend fun appendPoints(
         token: String,
         walkId: String,
+        clientSessionId: String,
         fixes: List<com.daengs.app.walk.RecordedFix>,
-    ) = WalkApi.appendPoints(token, walkId, fixes)
+    ) = WalkApi.appendPoints(token, walkId, clientSessionId, fixes)
 
     override suspend fun finalize(
         token: String,
