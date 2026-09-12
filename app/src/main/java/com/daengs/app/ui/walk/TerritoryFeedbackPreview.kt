@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.daengs.app.R
 import com.daengs.app.map.layers.territory.*
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.theme.DaengsColors
 
 /** SDK와 같은 픽셀 크기·바닥 기준점으로 그림과 효과를 검토한다. */
 @Composable
@@ -31,7 +32,7 @@ internal fun TerritoryFeedbackSample(kind: TerritoryFeedbackKind, progress: Floa
         TerritoryFeedbackKind.MARKED -> TerritoryMarkerOccupancy.UNVERIFIED
         TerritoryFeedbackKind.VERIFIED -> TerritoryMarkerOccupancy.VERIFIED
     }, isMine = true).asImageBitmap() }
-    val accent = if (kind == TerritoryFeedbackKind.MARKED) Color(0xffe3912d) else Color(0xff3c9673)
+    val accent = if (kind == TerritoryFeedbackKind.MARKED) DaengsColors.Warning else DaengsColors.Success
     val size = TerritoryPoleArt.size(scale = frame.markerScale)
     val density = LocalDensity.current
     Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) {

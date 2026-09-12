@@ -21,9 +21,7 @@ class WalkDiaryReader(
         val records = combine(sessionIds.distinct().map { id ->
             combine(dao.observeEntries(id), dao.observeSceneAnalysis(id), dao.observePhotoSync(id), dao.observePhotos(id),
                 dao.observeDiaryPublication(id)) { entries, analysis, state, images, publication ->
-                val bundle = if (publication != null) publication.publishedBundle?.let(GeoStoryboardBundle::parse)
-                    else storyboardAnalysisView(analysis, entries, state, images).bundle
-                id to bundle?.takeIf { it.sessionId == id }?.title
+                id to diaryTitle(id, DiaryBoardInput(entries, analysis, state, images, publication))
             }
         }) { it.toList() }
         return combine(records, dao.observeSessions()) { titles, sessions ->
@@ -49,21 +47,11 @@ class WalkDiaryReader(
                 if (owner() != expectedOwner || sessions.none {
                         it.id == walk.sessionId && it.ownerId == expectedOwner && it.endedAtMillis != null
                     }) null
-                else {
-                    val publication = state.second
-                    val live = entries.mapNotNull { it.entry() }
-                    if (publication != null && publication.publishedBundle == null)
-                        DiaryWalk(walk, emptyList(), "", preparing = true)
-                    else {
-                        val analysis = if (publication?.publishedBundle != null) StoryboardAnalysisView(
-                            LocalDiaryBoard.withUserChanges(GeoStoryboardBundle.parse(publication.publishedBundle),
-                                requireNotNull(publication.baseBundle), live, images.second.map { it.id }.toSet()),
-                            true, "")
-                        else storyboardAnalysisView(state.first, entries, images.first, images.second)
-                        diaryWalk(walk, live, images.third, StoryboardDraft.parse(draft?.payload), analysis,
-                            observations[walk.sessionId].orEmpty()).copy(published = publication != null)
-                    }
-                }
+                else assembleDiary(
+                    walk,
+                    DiaryBoardInput(entries, state.first, images.first, images.second, state.second),
+                    images.third, draft?.payload, observations[walk.sessionId].orEmpty(),
+                )
             }
         }) { records -> records.filterNotNull() }.flowOn(Dispatchers.IO)
     }

@@ -1,6 +1,7 @@
 package com.daengs.app.ui.places
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,29 @@ class PlaceBookmarkUiTest {
             java.io.File(directory, name).outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             image.recycle()
         }
+    }
+
+    @Test fun resultsStartVisibleAndDragClosesEverythingBelowTheTabs() {
+        val model = show()
+        val filters = model.session.current.filters
+        val selected = model.session.current.selected
+        val handle = compose.onNodeWithTag("place-results-handle")
+        val initialTop = handle.fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithText("주차 우선").assertIsDisplayed()
+        capture("initial-390.png")
+        handle.performTouchInput { swipe(center, Offset(center.x, center.y + 300f), 600) }
+        compose.onNodeWithTag("place-tab-SEARCH").assertIsDisplayed().assertIsSelected()
+        compose.onNodeWithTag("place-tab-BOOKMARKS").assertIsDisplayed()
+        compose.onNodeWithText("주차 우선").assertIsNotDisplayed()
+        compose.onNodeWithTag("place-results-list").assertIsNotDisplayed()
+        assertTrue(handle.fetchSemanticsNode().boundsInRoot.top > initialTop + 100f)
+        assertEquals(filters, model.session.current.filters)
+        assertEquals(selected, model.session.current.selected)
+        capture("collapsed-390.png")
+        compose.onNodeWithTag("place-tab-BOOKMARKS").performClick().assertIsSelected()
+        compose.onNodeWithText("주차 우선").assertIsDisplayed()
+        assertEquals(initialTop, handle.fetchSemanticsNode().boundsInRoot.top, 1f)
+        assertEquals(filters, model.session.current.filters)
     }
     @Test fun savedTabKeepsConditionsAndAllSavedCanFindFacilitiesOutsideTheSearch() {
         val model = show()
@@ -123,5 +147,11 @@ class PlaceBookmarkUiTest {
         compose.onNodeWithContentDescription("목록 보기").performClick()
         compose.onNodeWithContentDescription("오후의 정원 찜 해제").assertIsDisplayed().assertWidthIsEqualTo(48.dp)
         capture("expanded-320.png")
+        compose.onNodeWithContentDescription("지도 보기").performClick()
+        compose.onNodeWithTag("place-tab-SEARCH").assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("place-tab-BOOKMARKS").assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithText("주차 우선").assertIsNotDisplayed()
+        compose.onNodeWithTag("place-results-list").assertIsNotDisplayed()
+        capture("collapsed-320.png")
     }
 }

@@ -254,28 +254,127 @@ class GaitHolder(
      * **실패해도 화면을 비우지 않는다.** 목록이 통째로 사라지면 사용자는 기록이
      * 지워진 줄 안다. 못 받아 왔으면 들고 있던 것을 그대로 두고 [error] 로만 말한다.
      *
-     * 저쪽은 **오래된 것부터** 준다. 앱 목록은 최근이 앞이라 뒤집는다.
+     * ### 끝까지 받는다
+     *
+     * 저쪽은 **오래된 것부터** 준다(서버 설명: "한 강아지의 기록, 오래된 것부터").
+     * 그래서 첫 장은 **가장 오래된** [GaitApi.PAGE_LIMIT] 개이고, 새로 만든 기록은
+     * 뒷장에 있다. 예전에는 첫 장만 받고 `next_cursor` 를 버려서, 기록이 한 장을
+     * 넘기는 순간 **방금 분석한 것이 목록에서 사라졌다** — 분석 직후에는 [analyze] 가
+     * 앞에 끼워 넣어 보이다가, 챗을 나갔다 들어오면 이 함수가 첫 장으로 덮었다.
+     *
+     * 정렬을 바꿔 달라고 할 수는 없다. `GET /app/gait/records` 의 파라미터는
+     * `pet_id` · `limit` · `cursor` 뿐이라 **최신순을 요청할 방법이 없다.** 커서가
+     * 계약이므로 커서를 따른다.
+     *
+     * 받아 온 뒤 뒤집는다 — 앱 목록은 최근이 앞이다.
      */
     suspend fun load(petId: String) {
         if (!remote) return
         val token = accessToken() ?: return  // 로그인 전이면 조용히 둔다 — 화면이 아직 뜨는 중이다
-        GaitApi.records(token, petId)
-            .onSuccess { page ->
-                // 제목은 **로컬 수정본 → 서버 note → 기본값** 순이다. 서버에 수정 API 가
-                // 없어 고친 제목은 기기에만 있다 ([GaitTitleStore]). 옛 기록은 note 도
-                // 없어 title 이 null 이고, 화면이 "보행 기록" 을 그린다 — 마이그레이션 없음.
-                records = page.records.reversed().map { summary ->
-                    val record = summary.toRecord()
-                    titles?.get(record.id)?.let { record.copy(title = it) } ?: record
-                }
+
+        val gathered = gatherGaitPages { cursor -> GaitApi.records(token, petId, cursor = cursor) }
+
+        gathered.error?.let { error = it }
+        // **첫 장부터 실패했으면 화면을 안 건드린다.** 목록이 통째로 사라지면 사용자는
+        // 기록이 지워진 줄 안다. 뒷장에서 끊겼으면 받은 데까지는 쓴다 — 중간에 끊겼다고
+        // 앞 장까지 버리면 있던 기록이 사라져 보인다.
+        if (gathered.summaries.isNotEmpty()) publish(gathered.summaries)
+    }
+
+    /**
+     * 받아 온 요약을 화면용 기록으로 바꿔 [records] 에 얹는다.
+     *
+     * 제목은 **로컬 수정본 → 서버 note → 기본값** 순이다. 서버에 수정 API 가 없어
+     * 고친 제목은 기기에만 있다 ([GaitTitleStore]). 옛 기록은 note 도 없어 title 이
+     * null 이고, 화면이 "보행 기록" 을 그린다 — 마이그레이션 없음.
+     *
+     * **id 로 한 번 걸러 낸다.** 장 사이에 새 기록이 끼면 같은 것이 두 장에 걸쳐 올 수 있다.
+     */
+    private fun publish(summaries: List<GaitSummary>) {
+        records = summaries
+            .distinctBy { it.recordId }
+            .reversed()
+            .map { summary ->
+                val record = summary.toRecord()
+                titles?.get(record.id)?.let { record.copy(title = it) } ?: record
             }
-            .onFailure { error = it.message ?: "기록을 받아오지 못했어요." }
     }
 
     companion object {
         /** 화면을 채우려고 만든 기록의 id 접두사. 서버에 없으므로 부르지 않는다. */
         const val SAMPLE_PREFIX = "sample-"
+
+        /**
+         * [load] 가 한 번에 따라갈 장 수의 상한.
+         *
+         * 커서를 끝까지 따라가는 것이 맞지만, **끝이 없을 수도 있는 반복은 안 둔다** —
+         * 서버가 커서를 잘못 주면 화면 하나 여는 데 요청이 무한히 나간다. 장당
+         * [GaitApi.PAGE_LIMIT] 개이므로 이 값이면 기록 [GaitApi.PAGE_LIMIT] × [MAX_PAGES]
+         * 개까지 닿는다 — 한 마리가 그만큼 쌓으려면 매일 찍어도 몇 해가 걸린다.
+         *
+         * 그보다 많아지면 이 방식(전부 받아 오기) 자체가 틀린 것이고, 그때는 서버에
+         * 최신순 정렬을 요청하는 편이 맞다.
+         */
+        const val MAX_PAGES = 10
     }
+}
+
+/**
+ * 커서를 따라 모은 결과.
+ *
+ * [error] 가 있어도 [summaries] 에는 **받은 데까지** 담겨 있다 — 뒷장에서 끊긴 것과
+ * 첫 장부터 실패한 것을 부르는 쪽이 갈라야 해서다 (전자는 있는 것만이라도 보여 주고,
+ * 후자는 화면을 안 건드린다).
+ */
+internal data class GatheredGaitPages(
+    val summaries: List<GaitSummary>,
+    val error: String? = null,
+    /** 상한([GaitHolder.MAX_PAGES])에 걸려 멈췄나. 걸렸으면 최신 장에 못 닿았을 수 있다. */
+    val hitPageLimit: Boolean = false,
+)
+
+/**
+ * `next_cursor` 를 따라 목록을 끝까지 받는다.
+ *
+ * **[GaitHolder] 밖으로 뺀 이유는 테스트다.** [GaitApi] 가 오브젝트라 홀더 안에서는
+ * 가짜 응답을 끼울 자리가 없고, 그러면 "2장째에 새 기록이 온다" 같은 규칙을 사람이
+ * 눈으로만 지켜야 한다. 이 저장소는 같은 이유로 [GaitRecord.summaryLines] 도 화면
+ * 밖으로 내렸다.
+ *
+ * 멈추는 조건 셋:
+ *  - `next_cursor` 가 없다 — 마지막 장
+ *  - 같은 커서가 다시 왔다 — 서버가 잘못 준 것이다. 안 막으면 같은 장을 [maxPages] 번 받는다
+ *    (`OwnedTerritoryBrowser` 가 쓰는 방어와 같다)
+ *  - [maxPages] 를 채웠다 — 끝이 없을 수도 있는 반복은 안 둔다
+ *
+ * @param fetch 커서 하나로 한 장을 받아 오는 것. `null` 이면 첫 장
+ */
+internal suspend fun gatherGaitPages(
+    maxPages: Int = GaitHolder.MAX_PAGES,
+    fetch: suspend (cursor: String?) -> Result<GaitPage>,
+): GatheredGaitPages {
+    val gathered = mutableListOf<GaitSummary>()
+    val seen = mutableSetOf<String>()
+    var cursor: String? = null
+
+    repeat(maxPages) {
+        val result = fetch(cursor)
+        val page = result.getOrNull()
+            ?: return GatheredGaitPages(
+                gathered,
+                result.exceptionOrNull()?.message ?: "기록을 받아오지 못했어요.",
+            )
+
+        gathered += page.records
+
+        val next = page.nextCursor
+        if (next == null || next == cursor || !seen.add(next)) {
+            return GatheredGaitPages(gathered)
+        }
+        cursor = next
+    }
+
+    return GatheredGaitPages(gathered, hitPageLimit = true)
 }
 
 /**

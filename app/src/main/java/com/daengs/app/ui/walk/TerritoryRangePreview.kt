@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.daengs.app.map.layers.territory.*
 import com.daengs.app.territory.TerritoryProximityRange
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.theme.CreamBg
 
 /** Shared ring colors and actual pole art. SDK projection/zoom still require device validation. */
 @Preview(showBackground = true, widthDp = 320, heightDp = 620)
@@ -29,7 +30,7 @@ internal fun TerritoryRangePreview() {
     val pole = remember(context) { territoryMarkerIcon(context, TerritoryMarkerOccupancy.NEUTRAL).asImageBitmap() }
     val size = TerritoryPoleArt.size()
     DaengsTheme {
-        Column(Modifier.fillMaxSize().background(Color(0xfffdf4f0)).padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxSize().background(CreamBg).padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             TerritoryProximityRange.entries.forEach { proximity ->
                 val style = territoryRangeStyle(proximity)
                 val color = Color(style.outlineArgb)

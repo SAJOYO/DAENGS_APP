@@ -13,6 +13,74 @@
 - 종료 상세의 복귀는 홈, 기록 상세의 복귀는 기존 WalkRecordsRouteState가 보존한 목록이다.
 - 장면 공개와 준비 마감은 [기존 일기 정책](walk-diary-publication.md)을 따른다. 장면 준비 중에도 지도와 동선 탐색은 열며 장면·편집은 준비 결과를 기다린다.
 
+## 상세 데이터 경계 (#358)
+
+`WalkSessionDetailRoute.kt`에서 앱 의존성을 연결하고 `key(sessionId, accountScope)`로
+상세의 수명을 구분한다. `WalkDiaryMapForAccount`는 다음 두 계약을 주입받는다.
+
+| 계약 | 담당 |
+| --- | --- |
+| `WalkDetailSource` | 원본 변경 통지, 상세 조회, 같은 원본의 일기/기록 관찰, 현재 로그인 세대 검사 |
+| `WalkDetailActions` | 진입 시 준비/전달 예약, 일기 갱신, 기록 저장/삭제, 장면 편집, 사진 삭제 |
+
+`StoredWalkDetailData`는 기존 History·Reader·Room 저장소·동기화에 연결한다.
+새 coroutine scope나 작업 큐를 만들지 않는다. 진행 상태·오류·중복 요청은 아래 화면 상태 담당이 관리한다.
+화면 이탈은 호출 coroutine을 취소한다. 공개 준비 작업은 기존 `WalkDiaryPublication` 수명을 유지한다.
+
+- 기록 저장 후 전달을 예약하며 삭제는 기존 `deleteAndEnqueue`를 사용한다.
+  예약이 실패해도 이미 저장된 기록/삭제 표식을 되돌리지 않는다.
+- 일기 생성은 인증 → 산책 동기화(`includeStoryboard = false`) → 저장된 원격 ID 조회 →
+  장면 갱신(`refresh = true`) 순서다. 공개된 일기의 새로고침은 기존 준비만 깨운다.
+- 장면 편집은 DAO의 공개 상태·소유권 검사와 원본 기록 보존을 유지한다.
+  사진 삭제는 기존 파일/DB 정리 경계를 사용한다.
+- 계정 세대를 대기 전후에 검사해 이전 로그인에서 시작한 다음 단계가 실행되지 않게 한다.
+  DB의 기존 소유권/편집 revision 검사도 유지한다.
+- 경로 준비와 `WalkDiaryReadView`·탐색 상태의 일괄 반영은 아래 화면 상태 담당을 통해 유지한다.
+  [읽기 revision과 지도 계약](walk-record-overview.md)을 변경하지 않는다.
+
+백업 상태 UI와 개발용 비교 파일 읽기는 진입부에서 별도로 전달한다.
+이 분리는 로딩/선택 상태를 새 ViewModel로 옮기거나 일기 조립 계산을 다시 만드는 작업이 아니다.
+
+## 상세 진행 상태 (#361)
+
+`WalkDetailState`가 조회·기록 관찰·준비 예약·생성·기록/장면 저장의 진행 상태와 오류를 소유한다.
+`rememberWalkDetailState`는 데이터 계약과 탐색 담당을 key로 사용하며, 해당 Compose 그룹의
+`rememberCoroutineScope`와 `LaunchedEffect`로 관찰/요청을 실행한다. 상세나 계정이 바뀌어
+그룹을 떠나면 모두 취소한다. ViewModel·서비스·영속 큐를 추가하지 않는다.
+
+- 화면은 상태를 표시하고 명시적 동작을 전달한다. 지도 선택과 재생은 기존 explorer,
+  카메라는 navigation, 입력 중인 제목/본문은 기존 편집창이 소유한다.
+- 기록 저장과 삭제는 한 진행 플래그를 공유한다. 장면 저장과 생성도 요청을 시작하기 전에
+  플래그를 올려 연속 호출을 차단한다. 실패는 오류를 남기고 성공했을 때만 편집 완료 콜백을 부른다.
+- 취소를 저장 실패로 표시하지 않는다. 작업 완료 시 현재 계정과 coroutine을 다시 확인한다.
+  산책 누락 통지를 받으면 진행 중 편집/생성을 취소하고, 늦게 끝난 옛 작업이 새 요청의
+  진행 플래그나 편집창을 바꾸지 못하도록 세대를 구분한다.
+- 재조회는 기존 정상 화면을 유지하면서 진행한다. 원본/장면 읽기 오류와 준비 예약 오류는
+  따로 보관해 한쪽의 성공이 다른 오류를 지우지 않는다. 초기 준비/전달 예약 실패는 재시도로 다시 실행한다.
+- 경로 읽기 결과와 explorer 채택은 같은 `Snapshot.withMutableSnapshot`에서 반영한다.
+  `walkDiaryReadUpdates`의 원본 재사용·장면 revision·계정 검사와 삭제 후 복원 차단을 유지한다.
+
+사진 삭제의 진행/오류는 기존 `WalkPhotoDialog`가 소유한다. 개발용 설명 비교·미리보기 상태도
+각 화면에 유지하며, 공개 준비 작업의 마감과 복구는 기존 `WalkDiaryPublication` 책임이다.
+
+## 일기 조회와 조립 (#362)
+
+`WalkDiaryReader`는 Room 관찰과 사진 저장소 연결, 계정·세션 존재·종료 검사, IO 실행을 맡는다.
+`WalkDiaryAssembly.kt`의 `assembleDiary`는 조회한 값으로 공개 보드 선택·사용자 변경 반영·장면을 계산한다.
+`DiaryBoardInput`은 기존 `combine`이 전달한 값 묶음이며, 별도 DB 트랜잭션 스냅샷을 만들지는 않는다.
+
+- 공개 준비 중에는 장면을 숨긴다. 공개 후에는 저장된 보드에 메모 수정·추가·삭제와 사진 삭제를
+  반영한 뒤 검토본의 본문·숨김 편집을 적용한다. 동기화 ACK로 저장된 문장을 바꾸지 않는다.
+- 공개 행이 없는 기존 산책은 `storyboardAnalysisView`의 입력 stamp·이전 결과 재사용 규칙을 따른다.
+- 장면과 `sourceEntries`는 한 번 파싱한 같은 기록 목록에서 나온다. 지도 좌표는 전달받은 원본
+  관측값으로 기존 `diaryWalk`가 확인한다. 조립 함수가 DB·파일·네트워크를 읽지는 않는다.
+- `diaryTitle`은 제목 전용 경로다. 저장된 bundle과 입력 유효성에 필요한 행만 사용하며,
+  전체 일기·경로·사진 파일·편집 초안을 읽거나 사용자 변경을 조립하지 않는다.
+
+`WalkDiaryAssemblyTest`는 Room 없이 준비/공개·사용자 수정·분석 유효성·제목 계산을 검사한다.
+계정/종료 검사와 삭제 반영은 `WalkDiaryReaderTest`, 공개 작업과 원본 위치의 연결은 기존
+`WalkDiaryPublicationTest`·`WalkDiaryPublicationLifecycleTest`·`WalkSceneAnchoringTest`가 검사한다.
+
 ## 화면
 
 상단은 제목·날짜·강아지·가용한 날씨와 시간·거리·평균 속도다.

@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -30,6 +31,8 @@ import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.map.shell.MapCameraSnapshot
+import com.daengs.app.map.shell.MapVisibilityQuery
+import com.daengs.app.map.shell.MapVisibilityResult
 import com.daengs.app.map.shell.minimumZoom
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -81,6 +84,8 @@ fun NaverMapSurface(
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
     onRouteDirectionCount: (Int) -> Unit = {},
+    visibilityQuery: MapVisibilityQuery? = null,
+    onVisibility: (MapVisibilityResult) -> Unit = {},
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -130,6 +135,9 @@ fun NaverMapSurface(
     AndroidView(
         factory = {
             mapView.apply {
+                // Compose가 draw 중 새 AndroidView를 배치하면 SurfaceView의 pre-draw는
+                // 이미 지나갔을 수 있다. 첫 배치 뒤 한 프레임을 더 요청해 Surface를 만든다.
+                doOnLayout { view -> view.rootView.postInvalidateOnAnimation() }
                 getMapAsync { map ->
                     naverMap = map
                     map.uiSettings.isLocationButtonEnabled = false
@@ -158,9 +166,11 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = if (keepSelectionVisible || scene.sessionExplorer != null)
+        modifier = if (keepSelectionVisible || scene.sessionExplorer != null || visibilityQuery != null)
             modifier.onSizeChanged { viewportSize = it } else modifier,
     )
+
+    NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
 
     LaunchedEffect(naverMap, searchOrigin) {
         val map = naverMap ?: return@LaunchedEffect
