@@ -71,6 +71,16 @@ HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상�
 
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
+상세 데이터 경계(#358)는 `walk.detail.StoredWalkDetailDataTest`에서 실제 Room을 사용해
+저장/삭제 후 예약, 예약 실패 뒤 영속 상태, 편집 충돌, 인증/동기화 순서, 취소·재로그인,
+장면 공개/편집과 사진 정리를 확인한다. 네트워크·인증·예약은 대역이므로 실제 서버 전송 성공을 뜻하지 않는다.
+`ui.walk.WalkDetailDataUiTest`는 앱 전역 객체 없이 실제 상세 화면에 계약을 주입해
+중복 생성 차단·실패 재시도·공개 일기 새로고침·상세 교체 시 취소를 확인한다.
+`ui.walk.WalkDiaryReadViewTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `walk.store.WalkEntryStoreTest`,
+`walk.diary.WalkDiaryPublicationTest`, `DesignLockTest`를 함께 선택한다.
+각 클래스 앞에는 `com.daengs.app.`을 붙인다. 이 묶음은 네이티브 지도 실기기 검증을 포함하지 않는다.
+
 #333의 구간·장면 선택은 `walk.routeexplorer.CompletedRouteReviewTest`,
 `ui.walk.WalkRouteExplorerStateTest`, `ui.walk.WalkDiaryMapScreenTest`,
 `ui.walk.WalkCompletedRoutePresentationTest`, `map.layers.completedroute.SessionRouteExplorerLayerStateTest`로
