@@ -7,6 +7,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FacilityResponsePolicyTest {
+    @Test fun invalidProposalUsesFailureMessageEvenWithOldUnsafeOrMissingAnswer() {
+        val before = selected
+        val receipt = JsonObject(before.receipt + mapOf(
+            "code" to JsonPrimitive("invalid_plan"), "execution" to JsonPrimitive("not_run"),
+            "question" to JsonPrimitive("원하는 장소나 바꿀 조건을 짧게 알려주세요."),
+        ))
+        for (raw in listOf("원하는 장소나 바꿀 조건을 짧게 알려주세요.", "조건을 바꿨어요!", "receipt=secret", "", null)) {
+            val result = before.copy(receipt = receipt, answer = raw)
+            assertTrue(result.preservesDisplay)
+            assertEquals(FacilityResponsePolicy.PROCESSING_FAILED, FacilityResponsePolicy.answer(result))
+            assertEquals(before.selected, result.selected)
+            assertEquals(before.revision, result.revision)
+        }
+        assertTrue(FacilityResponsePolicy.allowed(FacilityResponsePolicy.PROCESSING_FAILED))
+    }
+
+    @Test fun genuineMissingTargetKeepsItsQuestion() {
+        val question = "어느 장소를 제외할까요?"
+        val result = selected.copy(answer = question, receipt = JsonObject(selected.receipt + mapOf(
+            "code" to JsonPrimitive("clarification_required"), "execution" to JsonPrimitive("not_run"),
+            "question" to JsonPrimitive(question),
+        )))
+        assertEquals(question, FacilityResponsePolicy.answer(result))
+    }
+
     @Test fun outsideUsesBoundedPuppyLineAndFailuresStillDescribeFailure() {
         val before = selected
         val receipt = JsonObject(before.receipt + mapOf("code" to JsonPrimitive("facility_out_of_scope")))
