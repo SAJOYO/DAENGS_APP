@@ -124,7 +124,7 @@ val CABBAGE_CARD = CardTemplate(
     face = Hole(51.48f, 45.14f, 20.23f, 15.17f),
     avatar = Hole(14.35f, 9.72f, 7.98f, 5.98f),
     name = Slot(19.63f, 4.03f, 70.46f, 9.58f),
-    code = Slot(72.04f, 4.58f, 94.44f, 9.03f),
+    code = Slot(72.04f, 4.58f, VEG_PLATE_RIGHT, 9.03f),
     codeChip = true,
 )
 
@@ -136,7 +136,7 @@ val SWEET_POTATO_CARD = CardTemplate(
     face = Hole(48.98f, 41.11f, 12.51f, 9.39f),
     avatar = Hole(14.72f, 9.58f, 7.94f, 5.96f),
     name = Slot(20.09f, 4.1f, 70.19f, 9.65f),
-    code = Slot(71.76f, 4.65f, 94.44f, 9.1f),
+    code = Slot(71.76f, 4.65f, VEG_PLATE_RIGHT, 9.1f),
     codeChip = true,
 )
 
@@ -149,6 +149,24 @@ val SWEET_POTATO_CARD = CardTemplate(
  * 내접원을 찾은 값이고, 저쪽 `measure_holes.py` 가 낸 값과 0.6%p 안에서 맞는다.
  */
 private const val SLOTS_RATIO = 1080f / 1440f
+
+/**
+ * 버섯형 야채 일곱 장의 **번호판 오른쪽 끝**. 1080x1440 한 판이라 틀이 같다.
+ *
+ * `94.44` 였다. 그 값은 `tools/card_text_slots.py` 의 `int(w * 0.945)` —
+ * **재서 나온 것이 아니라 박아 둔 숫자**다. 판에서 다시 재 보니 홀로그램 속살은
+ * 93.2~93.4% 에서 끝나고 그 오른쪽은 은테다. 칸이 이미 은테를 1.2%p 물고 있었고
+ * 칩은 칸을 6% 넓혀 그리던 터라 오른쪽 끝이 95.1% 까지 나가서, **은테 한가운데**에
+ * 검은 상자가 앉았다.
+ *
+ * 배추·고구마·버섯·브로콜리·오이·시금치·토마토 일곱 장을 화소 단위로 확대해 눈금과
+ * 대조했고 일곱 장 다 93.2~93.4 로 같았다. 인쇄된 `NEO-0824` 는 90.7~91.5% 에서
+ * 끝나므로 `93.15` 면 **글자를 다 덮으면서 은테를 안 밟는다** (여유 1.7%p).
+ *
+ * **한 장으로 스물다섯 장을 못 덮는다.** 상추(95.1) · 사과(94.5) · 바나나(95.3) 는
+ * 틀이 달라 이 값을 쓰면 안 된다 — `0.945` 하나로 다 덮으려던 것이 애초의 잘못이다.
+ */
+private const val VEG_PLATE_RIGHT = 93.15f
 
 val PEPPER_CARD = CardTemplate(
     id = "pepper",
@@ -206,7 +224,7 @@ val MUSHROOM_CARD = CardTemplate(
     face = Hole(51.57f, 44.93f, 14.22f, 10.67f),
     avatar = Hole(14.44f, 9.58f, 7.73f, 5.80f),
     name = Slot(19.81f, 4.03f, 70.37f, 9.58f),
-    code = Slot(71.94f, 4.58f, 94.44f, 9.03f),
+    code = Slot(71.94f, 4.58f, VEG_PLATE_RIGHT, 9.03f),
     codeChip = true,
 )
 
@@ -218,7 +236,7 @@ val BROCCOLI_CARD = CardTemplate(
     face = Hole(51.48f, 51.53f, 10.02f, 7.52f),
     avatar = Hole(14.54f, 9.86f, 7.71f, 5.78f),
     name = Slot(19.81f, 4.38f, 71.02f, 9.93f),
-    code = Slot(72.59f, 4.93f, 94.44f, 9.38f),
+    code = Slot(72.59f, 4.93f, VEG_PLATE_RIGHT, 9.38f),
     codeChip = true,
 )
 
@@ -230,7 +248,7 @@ val CUCUMBER_CARD = CardTemplate(
     face = Hole(50.56f, 47.43f, 10.29f, 7.71f),
     avatar = Hole(14.91f, 9.86f, 7.72f, 5.79f),
     name = Slot(20.28f, 4.44f, 70.19f, 10.0f),
-    code = Slot(71.76f, 5.0f, 94.44f, 9.44f),
+    code = Slot(71.76f, 5.0f, VEG_PLATE_RIGHT, 9.44f),
     codeChip = true,
 )
 
@@ -242,7 +260,7 @@ val SPINACH_CARD = CardTemplate(
     face = Hole(47.22f, 36.60f, 13.20f, 9.90f),
     avatar = Hole(14.72f, 9.79f, 7.73f, 5.80f),
     name = Slot(20.09f, 4.38f, 70.19f, 9.93f),
-    code = Slot(71.76f, 4.93f, 94.44f, 9.38f),
+    code = Slot(71.76f, 4.93f, VEG_PLATE_RIGHT, 9.38f),
     codeChip = true,
 )
 
@@ -254,7 +272,7 @@ val TOMATO_CARD = CardTemplate(
     face = Hole(51.94f, 46.18f, 15.74f, 11.80f),
     avatar = Hole(14.63f, 9.44f, 7.73f, 5.80f),
     name = Slot(19.81f, 4.17f, 70.56f, 9.58f),
-    code = Slot(72.13f, 4.65f, 94.44f, 9.03f),
+    code = Slot(72.13f, 4.65f, VEG_PLATE_RIGHT, 9.03f),
     codeChip = true,
 )
 
@@ -336,7 +354,7 @@ val KIWI_CARD = CardTemplate(
     face = Hole(34.59f, 45.47f, 11.69f, 8.20f),
     avatar = Hole(14.17f, 10.20f, 8.92f, 6.27f),
     name = Slot(19.47f, 4.67f, 74.90f, 10.33f),
-    code = Slot(76.43f, 5.20f, 94.47f, 9.73f),
+    code = Slot(76.43f, 5.20f, 95.00f, 9.73f),
     codeChip = true,
 )
 
@@ -382,7 +400,7 @@ val MANGO_CARD = CardTemplate(
     face = Hole(55.92f, 43.37f, 11.93f, 8.30f),
     avatar = Hole(13.65f, 9.97f, 8.40f, 5.90f),
     name = Slot(18.80f, 4.40f, 73.95f, 10.00f),
-    code = Slot(75.48f, 4.93f, 94.47f, 9.40f),
+    code = Slot(75.48f, 4.93f, 94.95f, 9.40f),
     codeChip = true,
 )
 
@@ -394,7 +412,7 @@ val MELON_CARD = CardTemplate(
     face = Hole(49.95f, 42.19f, 11.78f, 8.21f),
     avatar = Hole(13.88f, 9.91f, 8.25f, 5.77f),
     name = Slot(19.18f, 4.41f, 74.81f, 10.55f),
-    code = Slot(76.34f, 5.01f, 94.47f, 9.88f),
+    code = Slot(76.34f, 5.01f, 95.00f, 9.88f),
     codeChip = true,
 )
 
@@ -406,7 +424,7 @@ val PEACH_CARD = CardTemplate(
     face = Hole(51.81f, 50.40f, 12.40f, 8.68f),
     avatar = Hole(14.12f, 10.15f, 8.30f, 5.81f),
     name = Slot(18.89f, 3.94f, 75.10f, 10.48f),
-    code = Slot(76.62f, 4.54f, 94.47f, 9.81f),
+    code = Slot(76.62f, 4.54f, 95.00f, 9.81f),
     codeChip = true,
 )
 
@@ -430,7 +448,7 @@ val STRAWBERRY_CARD = CardTemplate(
     face = Hole(47.06f, 53.49f, 12.05f, 8.51f),
     avatar = Hole(13.99f, 10.09f, 8.21f, 5.80f),
     name = Slot(19.35f, 4.36f, 74.67f, 10.05f),
-    code = Slot(76.19f, 4.89f, 94.50f, 9.45f),
+    code = Slot(76.19f, 4.89f, 95.00f, 9.45f),
     codeChip = true,
 )
 
@@ -667,19 +685,41 @@ private const val CHIP_STROKE = 0.06f
  * 두 벌이 서로 달라 보이면 안 된다.
  *
  * **칸보다 조금 넓게 그린다.** 딱 맞추면 인쇄된 `NEO-0824` 의 획 끝이 테두리 밖으로
- * 삐져나온다.
+ * 삐져나온다. 넓히는 폭은 **칸 높이 대비**다 — 삐져나오는 것은 글자 획이고, 글자
+ * 크기는 칸 높이가 정하기 때문이다.
+ *
+ * **칸 크기 대비 6%(`1.06`) 였다.** 번호칸은 납작해서(카드 폭의 22%, 높이의 4.4%)
+ * 같은 6% 가 가로로는 0.67%p, 세로로는 0.13%p 였다 — 가로만 다섯 배 후했다. 그
+ * 다섯 배가 칩을 은테 위로 올려 놓았다 ([VEG_PLATE_RIGHT]). 세로로 듣던 폭은 그대로
+ * 두고(`0.03` x 칸 높이 = 예전 `1.06` 의 세로 증가분과 같다) 가로만 같은 **길이**로
+ * 맞춘다.
  */
-private const val CHIP_BLEED = 1.06f
+private const val CHIP_PAD = 0.03f
+
+/**
+ * 칩이 실제로 덮는 자리. 카드 크기 대비 % 그대로 돌려준다 — 테스트가 이걸 잰다.
+ *
+ * **오른쪽으로는 칸을 안 넘는다.** 칸 오른쪽 끝이 곧 판 안쪽 선이라 한 톨이라도
+ * 넘으면 은테를 밟는다. 왼쪽·위·아래는 넓혀도 판 안이라 괜찮다.
+ *
+ * @param ratio 카드 가로/세로. 같은 **길이**를 폭 대비 % 로 바꾸는 데 쓴다
+ */
+internal fun chipBox(slot: Slot, ratio: Float): Slot {
+    val padH = (slot.y1 - slot.y0) * CHIP_PAD
+    val padW = if (ratio > 0f) padH / ratio else padH
+    return Slot(slot.x0 - padW, slot.y0 - padH, slot.x1, slot.y1 + padH)
+}
 
 private fun DrawScope.drawCodeChip(slot: Slot, at: Offset, box: Size) {
-    val left = at.x + box.width * slot.x0 / 100f
-    val top = at.y + box.height * slot.y0 / 100f
-    val right = at.x + box.width * slot.x1 / 100f
-    val bottom = at.y + box.height * slot.y1 / 100f
+    val chip = chipBox(slot, if (box.height > 0f) box.width / box.height else 1f)
+    val left = at.x + box.width * chip.x0 / 100f
+    val top = at.y + box.height * chip.y0 / 100f
+    val right = at.x + box.width * chip.x1 / 100f
+    val bottom = at.y + box.height * chip.y1 / 100f
     val cx = (left + right) / 2f
     val cy = (top + bottom) / 2f
-    val w = (right - left) * CHIP_BLEED
-    val h = (bottom - top) * CHIP_BLEED
+    val w = right - left
+    val h = bottom - top
     if (w <= 0f || h <= 0f) return
 
     val corner = CornerRadius(h * CHIP_RADIUS, h * CHIP_RADIUS)
@@ -835,6 +875,11 @@ private data class SlotFace(
     val weight: FontWeight,
     val letterSpacing: Float,
     val fill: Float,
+    /**
+     * 칸 안에서 **좌우로 비워 두는 폭** (칸 폭 대비, 한쪽). 넘침 검사를 이 안쪽
+     * 폭으로 한다 — 0 이던 때는 긴 글자가 칸 끝에 닿을 때까지 안 줄었다.
+     */
+    val pad: Float,
 )
 
 /**
@@ -868,15 +913,31 @@ private val HikrBold = FontFamily(Font(R.font.hikr_extrabold, FontWeight.ExtraBo
  * 0.60 이던 것을 키웠다. 뒷말만 갈아 끼우던 때는 옆의 `MUSHROOM` 과 키를 맞춰야 해서
  * 작았는데, 바를 통째로 쓰기로 하면서 맞출 상대가 없어졌다. 작게 두면 넓은 바 한가운데
  * 글자만 동동 뜬다.
+ *
+ * **다시 낮추려다 말았다.** "원화보다 크다" 는 말을 듣고 재 봤는데 반대였다 —
+ * [CardTemplate.name] 은 바가 아니라 **원화 제목의 잉크 상자**다 (`card_text_slots.py`
+ * 가 인쇄된 글자를 지우면서 그 자리를 잰 값이라 그렇다). 배추·고구마 완성 카드
+ * (`*-card.webp`) 의 이름칸을 그대로 잘라 보면 `CABBAGE NEO` 가 칸을 가로 1.00 x
+ * 세로 1.00 으로 꽉 채운다. **0.90 은 이미 원화보다 작다.** 바를 기준으로 보면 바가
+ * 칸의 1.7배쯤이라 우리 글자는 바 높이의 0.53, 원화는 0.59 다.
+ *
+ * 그러니 여기를 더 낮추려면 바가 아니라 **잉크 상자와 견준 숫자**를 가져와야 한다.
+ *
+ * 좌우 여백은 0.02 만 둔다 — 칸 자체가 잉크 상자라 원화에도 좌우 여백이 없다.
  */
-private val TITLE = SlotFace(HikrBold, FontWeight.ExtraBold, 0.02f, 0.90f)
+private val TITLE = SlotFace(HikrBold, FontWeight.ExtraBold, 0.02f, 0.90f, 0.02f)
 
 /**
  * 번호판. 원화의 `NEO-0824` 는 굵은 산세리프였는데 **이름과 같은 글꼴로 통일한다.**
  * 칩은 우리가 그리는 판이고, 시스템 산세리프는 기기마다 달라서 어떤 폰에서는 칩 안에서
  * 혼자 다른 글씨가 됐다. 하이커는 획이 각져서 번호에도 맞는다.
+ *
+ * **좌우로 칸 폭의 10% 씩 비운다.** 이름칸과 달리 번호칸은 판(칩)이라 원화가 글자
+ * 양옆에 숨을 남겨 놨다 — 토마토·버섯·배추·오이 판에서 인쇄된 `NEO-0824` 는 판 폭의
+ * 76~79% 만 쓰고 좌우로 10.7~12.7% 씩 비어 있다. `0.10` 은 그 안쪽으로 잡은 값이다.
+ * 여백이 0 이던 때는 `DG-0824` 가 칩의 둥근 끝에 붙었다.
  */
-private val CODE = SlotFace(HikrBold, FontWeight.ExtraBold, 0.04f, 0.62f)
+private val CODE = SlotFace(HikrBold, FontWeight.ExtraBold, 0.04f, 0.62f, 0.10f)
 
 /**
  * 생일을 번호판 글자로.
@@ -955,9 +1016,11 @@ private fun DrawScope.drawSlotText(
         laid = measurer.measure(text, styleAt(px), maxLines = 1)
     }
 
-    // 넘치면 줄인다. 이름이 긴 개도 있다.
-    if (laid.size.width > boxW) {
-        px *= boxW / laid.size.width.toFloat()
+    // 넘치면 줄인다. 이름이 긴 개도 있다. **칸 폭이 아니라 여백을 뺀 폭**과 잰다 —
+    // 칸 끝까지 채우면 번호는 칩의 둥근 끝에, 이름은 바 끝에 붙는다.
+    val fitW = boxW * (1f - 2f * face.pad)
+    if (fitW > 0f && laid.size.width > fitW) {
+        px *= fitW / laid.size.width.toFloat()
         laid = measurer.measure(text, styleAt(px), maxLines = 1)
     }
 
