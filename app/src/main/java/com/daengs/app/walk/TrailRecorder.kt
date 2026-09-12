@@ -17,6 +17,7 @@ internal data class TrailDecision(
     val disposition: TrailDisposition,
     val previousAccepted: LocationSample?,
     val startsSegment: Boolean = false,
+    val distanceContributionMeters: Double = 0.0,
 )
 
 /**
@@ -172,7 +173,8 @@ class TrailRecorder(
         }
 
         val startsSegment = previous == null || breakBeforeNext || delta > maxJumpMeters
-        onDecision?.invoke(TrailDecision(sample, TrailDisposition.RETAINED, previous, startsSegment))
+        onDecision?.invoke(TrailDecision(sample, TrailDisposition.RETAINED, previous, startsSegment,
+            distanceContributionMeters = if (startsSegment) 0.0 else delta))
         breakBeforeNext = false
         if (startsSegment) {
             segments += mutableListOf(sample)
