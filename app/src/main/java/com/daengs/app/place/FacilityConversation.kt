@@ -1,6 +1,7 @@
 package com.daengs.app.place
 
 import com.daengs.app.auth.Session
+import com.daengs.app.auth.AccountScope
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.place.bookmarks.BookmarkTurn
 import java.net.HttpURLConnection
@@ -93,7 +94,7 @@ fun JsonObject.toConversationResult(): ConversationResult {
             val echoedDogs = this.getValue("search").jsonObject["dogs"] ?: JsonArray(emptyList())
             require(echoedDogs == result.filters["dogs"])
         }
-    }
+    }.let { it.copy(answer = FacilityResponsePolicy.answer(it)) }
 }
 
 fun interface ConversationClient {
@@ -139,6 +140,7 @@ class FacilityConversationRepository(
     private val fallback: PlaceSearchRepository,
     private val freshSession: suspend () -> Session?,
     private val currentSession: () -> Session?,
+    private val currentAccountScope: (() -> AccountScope)? = null,
 ) : PlaceSearchRepository {
     private val mutable = MutableStateFlow(ConversationUiState())
     val state = mutable.asStateFlow()
@@ -150,6 +152,112 @@ class FacilityConversationRepository(
     private var activeBookmarks: BookmarkTurn? = null
     private data class Undo(val filters: JsonObject, val sessionId: String, val revision: Int, val pool: String)
     private var undo: Undo? = null
+
+    fun belongsTo(accountId: String?) = accountId != null && owner == accountId
+
+    fun isAssistantAccountCurrent(turn: FacilityAssistantTurn): Boolean {
+        return accountCurrent(turn.session, turn.account)
+    }
+
+    private fun accountCurrent(session: Session, account: AccountScope?): Boolean {
+        val live = currentSession()
+        return live?.appUserId == session.appUserId && if (currentAccountScope != null)
+            account?.ownerId == session.appUserId && currentAccountScope.invoke() == account
+        else live.refreshToken == session.refreshToken
+    }
+
+    suspend fun assistantAccessToken(turn: FacilityAssistantTurn): String {
+        check(isAssistantTurnCurrent(turn))
+        val session = freshSession() ?: throw FacilityException(401)
+        check(isAssistantTurnCurrent(turn) && session.appUserId == turn.session.appUserId)
+        return session.accessToken
+    }
+
+    fun isAssistantTurnCurrent(turn: FacilityAssistantTurn) =
+        isAssistantAccountCurrent(turn) && generation == turn.generation && mutable.value.result == turn.before
+
+    suspend fun captureAssistantTurn(requestId: String, bookmarks: BookmarkTurn?): FacilityAssistantTurn {
+        val session = freshSession() ?: throw FacilityException(401)
+        if (owner != null && owner != session.appUserId) invalidate()
+        owner = session.appUserId
+        check(!mutable.value.busy) { "시설 검색을 마친 뒤 다시 말해 주세요." }
+        val before = mutable.value.result
+        val visible = before?.search?.overviewHits(before.parkingFirst)?.map { it.place.key }.orEmpty()
+        val context = buildJsonObject {
+            put("client_request_id", requestId)
+            before?.let {
+                put("session_id", it.sessionId); put("expected_revision", it.revision)
+                put("visible_order", buildJsonArray { visible.forEach { key -> add(buildJsonObject {
+                    put("source", key.source); put("ref", key.ref)
+                }) } })
+                mutable.value.selected?.takeIf { it in visible }?.let { key ->
+                    put("visible_selected", buildJsonObject { put("source", key.source); put("ref", key.ref) })
+                }
+                if (bookmarks != null) put("bookmark_commands", "v1")
+            }
+        }
+        val account = currentAccountScope?.invoke()
+        check(accountCurrent(session, account))
+        return FacilityAssistantTurn(generation, session, account, before, context, bookmarks)
+    }
+
+    suspend fun acceptAssistantTurn(turn: FacilityAssistantTurn, reference: com.daengs.app.assistant.FacilityAssistantReference): String? {
+        fun current() {
+            check(isAssistantTurnCurrent(turn)) {
+                "시설 검색이 바뀌었어요. 현재 목록에서 다시 말해 주세요."
+            }
+        }
+        current()
+        require(reference.requestId == turn.context.getValue("client_request_id").jsonPrimitive.content)
+        val result = client.recover(assistantAccessToken(turn), reference.recovery()).toConversationResult()
+        current()
+        require(result.sessionId == reference.sessionId && result.revision == reference.revision && result.requestId == reference.requestId)
+        turn.before?.let { require(result.sessionId == it.sessionId && result.revision == it.revision + 1) }
+        var completion: String? = null
+        val command = result.receipt["bookmark_command"]?.takeUnless { it == JsonNull }?.jsonObject
+        if (command != null) {
+            val before = requireNotNull(turn.before)
+            require(result.filters == before.filters && result.search == before.search && result.order == before.order && !result.failed && result.answerStatus == "none")
+            val key = command.getValue("key").jsonObject.let { PlaceKey(it.getValue("source").jsonPrimitive.content, it.getValue("ref").jsonPrimitive.content) }
+            require(key in before.order && turn.bookmarks != null)
+            val saved = command.getValue("saved").jsonPrimitive.boolean
+            completion = FacilityResponsePolicy.bookmark(turn.bookmarks.execute(result.requestId, key, saved), saved)
+            current()
+        }
+        val selected = mutable.value.selected
+        generation++
+        pending = null; pendingBookmarks = null; undo = null
+        publish(result)
+        if (result.preservesDisplay) mutable.value = mutable.value.copy(selected = selected, commandAnswer = completion)
+        return completion
+    }
+
+    /** Reconcile a stale/expired server view, without replaying the user's ordinal or command. */
+    suspend fun recoverAssistantView(turn: FacilityAssistantTurn): String {
+        check(isAssistantTurnCurrent(turn))
+        val before = requireNotNull(turn.before)
+        val result = try {
+            client.recover(assistantAccessToken(turn), buildJsonObject {
+                put("session_id", before.sessionId)
+                put("client_request_id", turn.context.getValue("client_request_id"))
+            }).toConversationResult().also {
+                require(it.sessionId == before.sessionId && it.revision >= before.revision)
+            }
+        } catch (error: FacilityException) {
+            if (error.status != 410) throw error
+            val restoreId = UUID.nameUUIDFromBytes(("assistant-restore:" + turn.context.getValue("client_request_id").jsonPrimitive.content).toByteArray(Charsets.UTF_8)).toString()
+            val session = freshSession() ?: throw FacilityException(401)
+            check(isAssistantTurnCurrent(turn))
+            restore(session, before, turn.generation, turn.account, restoreId)
+        }
+        check(isAssistantTurnCurrent(turn))
+        if (result.failed) return "검색을 다시 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요."
+        generation++
+        pending = null; pendingBookmarks = null; undo = null
+        val notice = FacilityResponsePolicy.RESTORED
+        publish(result, notice)
+        return notice
+    }
 
     fun cancelPending(cancelBookmarks: Boolean = false) {
         if (cancelBookmarks) { activeBookmarks?.cancel(); pendingBookmarks?.cancel() }
@@ -213,6 +321,7 @@ class FacilityConversationRepository(
         val session = freshSession() ?: throw FacilityException(401)
         if (owner != session.appUserId) { invalidate(); throw FacilityException(401) }
         val mine = ++generation
+        val account = currentAccountScope?.invoke()
         val payload = pending?.takeIf { it["mode"]?.jsonPrimitive?.content == "restore" && it["restore_filters"] == target.filters }
             ?: buildJsonObject {
                 put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
@@ -224,7 +333,7 @@ class FacilityConversationRepository(
         mutable.value = mutable.value.copy(busy = true, answerBusy = false, error = null)
         try {
             val result = client.exchange(session.accessToken, payload).toConversationResult()
-            checkLive(mine, session)
+            checkLive(mine, session, account)
             require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
             require(result.filters == target.filters && result.searchPool == target.pool && result.sessionId != before.sessionId && result.matches && !result.failed)
             pending = null; undo = null
@@ -262,6 +371,7 @@ class FacilityConversationRepository(
         val before = mutable.value.result
         require(transfer.excluded.isEmpty() || before?.excludedKeys == transfer.excluded) { "탐색 제외가 바뀌었어요. 현재 검색 조건을 다시 확인해 주세요." }
         val mine = ++generation
+        val account = currentAccountScope?.invoke()
         val payload = buildJsonObject {
             put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
             put("restore_filters", transfer.filters)
@@ -273,7 +383,7 @@ class FacilityConversationRepository(
         mutable.value = mutable.value.copy(busy = true, answerBusy = false, error = null)
         try {
             val result = client.exchange(session.accessToken, payload).toConversationResult()
-            checkLive(mine, session)
+            checkLive(mine, session, account)
             if (!transfer.isCurrent()) throw CancellationException("Saved search changed")
             require(result.requestId == payload.getValue("client_request_id").jsonPrimitive.content && result.revision == 1)
             require(result.filters == transfer.filters && result.searchPool == transfer.pool && result.sessionId != before?.sessionId && result.matches && !result.failed)
@@ -292,6 +402,7 @@ class FacilityConversationRepository(
         val before = mutable.value.result ?: return
         if (before.answerStatus != "pending" || mutable.value.busy) return
         val mine = generation
+        val account = currentAccountScope?.invoke()
         val session = freshSession() ?: return
         if (session.appUserId != owner) return
         mutable.value = mutable.value.copy(answerBusy = true, answerError = null)
@@ -300,7 +411,7 @@ class FacilityConversationRepository(
                 put("session_id", before.sessionId); put("revision", before.revision)
                 put("client_request_id", before.requestId)
             }).toConversationResult()
-            checkLive(mine, session)
+            checkLive(mine, session, account)
             require(result.sessionId == before.sessionId && result.revision == before.revision && result.requestId == before.requestId)
             require(result.copy(answer = before.answer, answerStatus = before.answerStatus) == before)
             mutable.value = mutable.value.copy(result = result, answerBusy = false)
@@ -311,9 +422,8 @@ class FacilityConversationRepository(
         }
     }
 
-    private fun checkLive(mine: Long, session: Session) {
-        val live = currentSession()
-        if (mine != generation || live?.appUserId != session.appUserId || live.refreshToken != session.refreshToken) {
+    private fun checkLive(mine: Long, session: Session, account: AccountScope?) {
+        if (mine != generation || !accountCurrent(session, account)) {
             throw CancellationException("Obsolete facility response")
         }
     }
@@ -341,6 +451,7 @@ class FacilityConversationRepository(
         owner = session.appUserId
         val before = mutable.value.result
         val mine = ++generation
+        val account = currentAccountScope?.invoke()
         undo = null
         val next = buildJsonObject {
             put("client_request_id", UUID.randomUUID().toString()); put("mode", mode); put("query", query)
@@ -388,7 +499,7 @@ class FacilityConversationRepository(
                 if (payload["mode"]?.jsonPrimitive?.content == "restore") require(result.filters == payload["restore_filters"])
                 result
             } catch (error: FacilityException) {
-                checkLive(mine, session)
+                checkLive(mine, session, account)
                 if (error.status == 409) {
                     val recovered = try {
                         client.recover(session.accessToken, buildJsonObject {
@@ -399,13 +510,13 @@ class FacilityConversationRepository(
                         }
                     } catch (expired: FacilityException) {
                         if (expired.status != 410 || before == null) throw expired
-                        restore(session, before, mine)
+                        restore(session, before, mine, account)
                     }
-                    notice = "서버에 확정된 조건과 결과를 다시 불러왔어요. 원하는 요청을 다시 입력해 주세요."
+                    notice = FacilityResponsePolicy.RESTORED
                     recovered
                 } else if (error.status == 410 && before != null) {
-                    notice = "검색 세션이 만료되어 기존 조건으로 다시 불러왔어요. 원하는 요청을 다시 입력해 주세요."
-                    restore(session, before, mine)
+                    notice = FacilityResponsePolicy.RESTORED
+                    restore(session, before, mine, account)
                 } else throw error
             }
             // A bookmark is independent of the current map generation, but bound to the
@@ -414,7 +525,7 @@ class FacilityConversationRepository(
             var commandAnswer: String? = null
             val savedFilters = result.receipt["saved_search_filters"]?.takeUnless { it == JsonNull }?.jsonObject
             if (savedFilters != null) {
-                checkLive(mine, session)
+                checkLive(mine, session, account)
                 require(command == null && result.requestId == payload["client_request_id"]?.jsonPrimitive?.content &&
                     payload["saved_search"]?.jsonPrimitive?.content == "v1" && commandContext?.supportsSearch == true)
                 require(before != null && result.filters == before.filters && result.search == before.search &&
@@ -423,8 +534,7 @@ class FacilityConversationRepository(
             }
             if (command != null && result.requestId == payload["client_request_id"]?.jsonPrimitive?.content &&
                 payload["bookmark_commands"]?.jsonPrimitive?.content == "v1" && commandContext != null) {
-                val live = currentSession()
-                if (live?.appUserId != session.appUserId || live.refreshToken != session.refreshToken)
+                if (!accountCurrent(session, account))
                     throw CancellationException("Bookmark account changed")
                 require(before != null && result.filters == before.filters && result.search == before.search &&
                     result.order == before.order && !result.failed && result.answerStatus == "none")
@@ -433,10 +543,10 @@ class FacilityConversationRepository(
                 }
                 require(key in before.order)
                 if (mine == generation) mutable.value = mutable.value.copy(answerBusy = true)
-                commandAnswer = commandContext.execute(result.requestId, key,
-                    command.getValue("saved").jsonPrimitive.boolean).message
+                val saved = command.getValue("saved").jsonPrimitive.boolean
+                commandAnswer = FacilityResponsePolicy.bookmark(commandContext.execute(result.requestId, key, saved), saved)
             }
-            checkLive(mine, session)
+            checkLive(mine, session, account)
             pending = null; pendingBookmarks = null
             val currentSelection = mutable.value.selected
             val published = publish(result, notice, if (result.failed) filterEdit?.copy(revision = result.revision) else null)
@@ -455,10 +565,10 @@ class FacilityConversationRepository(
         }
     }
 
-    private suspend fun restore(session: Session, before: ConversationResult, mine: Long): ConversationResult {
-        checkLive(mine, session)
+    private suspend fun restore(session: Session, before: ConversationResult, mine: Long, account: AccountScope?, requestId: String = UUID.randomUUID().toString()): ConversationResult {
+        checkLive(mine, session, account)
         val payload = buildJsonObject {
-            put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
+            put("client_request_id", requestId); put("mode", "restore")
             put("restore_filters", before.filters)
             put("candidate_pools", "v1"); put("restore_pool", before.searchPool)
         }

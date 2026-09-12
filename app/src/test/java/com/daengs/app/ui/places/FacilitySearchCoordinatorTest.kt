@@ -98,7 +98,7 @@ class FacilitySearchCoordinatorTest {
         coordinator.choose(FacilityChoice.Confirm("lens:cafe")); runCurrent()
         assertEquals(0, actions)
         assertNull(coordinator.state.value.response)
-        assertTrue(coordinator.state.value.error!!.contains("만료"))
+        assertTrue(coordinator.state.value.error!!.contains("오래됐어요"))
         coordinator.retry(); runCurrent()
         assertEquals(2, searches)
     }
