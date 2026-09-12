@@ -34,7 +34,7 @@ internal fun TerritoryGameRulesDialog(onDismiss: () -> Unit) {
     val state = rememberTerritoryRulesState()
     Dialog(onDismissRequest = { if (state.tab == -1) onDismiss() else state.tab = -1 },
         properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 24.dp),
+        Box(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 20.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center) {
             TerritoryGameRulesContent(onDismiss, Modifier.widthIn(max = 520.dp).fillMaxWidth()
                 .heightIn(max = 760.dp).then(if (state.tab == -1) Modifier else Modifier.fillMaxHeight()), state)
@@ -52,8 +52,11 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
     val advance = { state.page = if (page == scenario.steps.lastIndex) 0 else page + 1 }
     Surface(modifier.testTag("game-rules-dialog").semantics { paneTitle = "점령 규칙" },
         shape = RoundedCornerShape(24.dp), color = CreamBg) {
+        // 🔒 **여백은 줄이지 않는다** — `docs/design-locks.md` 3절. 제목이 창 윗변에 붙고(위 8dp)
+        //    글이 좌우 끝에 붙어(16dp) 사용자가 실기기에서 "꽉 낀다" 고 했다 (2026-09-12).
+        //    잠금 테스트: `TerritoryRulesSpacingLockTest`.
         Column {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+            Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 20.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (tab != -1) IconButton(onClick = { state.tab = -1 },
                     modifier = Modifier.testTag("game-rules-summary-back").semantics { contentDescription = "규칙 요약으로 돌아가기" }) {
@@ -69,7 +72,7 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
                     DaengsIconView(DaengsIcon.Close, Modifier.size(22.dp), TextDark)
                 }
             }
-            if (tab >= 1) Row(Modifier.fillMaxWidth().padding(12.dp).selectableGroup()) {
+            if (tab >= 1) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp).selectableGroup()) {
                 listOf("점수", "영역 유지", "시즌").forEachIndexed { position, title ->
                     val index = position + 1
                     Box(Modifier.weight(1f).background(if (tab == index) TextDark else CreamBg, RoundedCornerShape(12.dp))
@@ -84,8 +87,8 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
             // A new step starts at its illustration, even after scrolling a long rule or large text.
             key(tab, scenario, page) {
                 Column(Modifier.weight(1f, fill = tab != -1).fillMaxWidth().testTag("game-rules-body")
-                    .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     when (tab) {
                         -1 -> TerritoryRulesSummary()
                         0 -> {
@@ -125,8 +128,8 @@ internal fun TerritoryGameRulesContent(onDismiss: () -> Unit, modifier: Modifier
                 }
             }
             HorizontalDivider(color = PinkSoft)
-            Row(Modifier.fillMaxWidth().testTag("game-rules-footer").padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().testTag("game-rules-footer").padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 20.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (tab == -1) {
                     Button(onClick = { state.tab = 0 }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                         .testTag("game-rules-example-open"), shape = RoundedCornerShape(14.dp),
