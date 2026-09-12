@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.Snapshot
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.detail.WalkDetailActions
+import com.daengs.app.walk.detail.WalkDetailDeliveryPending
 import com.daengs.app.walk.detail.WalkDetailSource
 import com.daengs.app.walk.diary.DiaryScene
 import kotlinx.coroutines.*
@@ -79,7 +80,10 @@ internal class WalkDetailState(
         scope.launch {
             try { actions.open() }
             catch (e: CancellationException) { throw e }
-            catch (_: Exception) { if (current()) openingError = "산책 준비를 시작하지 못했어요. 다시 시도해 주세요." }
+            catch (_: Exception) {
+                if (current() && (!loaded || readView != null))
+                    openingError = "산책 준비를 시작하지 못했어요. 다시 시도해 주세요."
+            }
             finally { opening = false }
         }
     }
@@ -122,6 +126,12 @@ internal class WalkDetailState(
         entryJob = scope.launch {
             try { change(); checkOperation(epoch); onSuccess() }
             catch (e: CancellationException) { throw e }
+            catch (e: WalkDetailDeliveryPending) {
+                checkOperation(epoch)
+                // The local write succeeded. The screen's existing retry repeats open/enqueue only.
+                openingError = e.message
+                onSuccess()
+            }
             catch (e: Exception) {
                 if (current() && epoch == operationEpoch) entryWriteError = e.message ?: "저장하지 못했어요."
             } finally { if (epoch == operationEpoch) savingEntry = false }
@@ -153,6 +163,7 @@ internal class WalkDetailState(
         entryJob?.cancel(); sceneJob?.cancel(); generationJob?.cancel()
         savingEntry = false; savingScene = false; generating = false
         entryWriteError = null; sceneError = null; generationError = null
+        openingError = null
         entries = emptyList()
     }
 }

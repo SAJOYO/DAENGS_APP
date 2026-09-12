@@ -29,6 +29,7 @@ import com.naver.maps.map.MapView
 import com.naver.maps.map.NaverMap
 import kotlinx.coroutines.*
 import java.io.File
+import java.util.UUID
 
 /** Opt-in fixture app only: real Room/readers/editors/SDK, with no auth or server delivery. */
 class DiaryEditorReviewActivity : ComponentActivity() {
@@ -41,21 +42,29 @@ class DiaryEditorReviewActivity : ComponentActivity() {
     private var ready by mutableStateOf(false)
     private var opened by mutableStateOf(true)
     var failNextEntrySave = false
+    var failNextDelivery = false
+    var deliveryAttempts = 0; private set
     private var observedView: MapView? = null
     private var observedMap: NaverMap? = null
-    val photoFile get() = File(cacheDir, "editor-review/$PHOTO.jpg")
+    private val persistent get() = intent.getBooleanExtra("persistent", false)
+    val photoFile get() = File(if (persistent) filesDir else cacheDir, "editor-review/$PHOTO.jpg")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         check(BuildConfig.APPLICATION_ID.endsWith(".locationreview"))
-        db = Room.inMemoryDatabaseBuilder(this, WalkDatabase::class.java).build()
+        account = AccountScope(intent.getStringExtra("owner") ?: "editor-review", 1)
+        val reset = persistent && savedInstanceState == null && intent.getBooleanExtra("reset", false)
+        // This package is isolated; resets are explicit and never run in the verify/reopen phase.
+        if (reset) { deleteDatabase(WalkDatabase.NAME); photoFile.delete() }
+        db = if (persistent) WalkDatabase.open(this)
+            else Room.inMemoryDatabaseBuilder(this, WalkDatabase::class.java).build()
         dao = db.walkDao()
         val log = RoomWalkFixLog(dao) { account.ownerId.orEmpty() }
         history = WalkHistory(log)
         photos = WalkPhotoStore(dao, photoFile.parentFile!!) { account.ownerId.orEmpty() }
         entries = WalkEntryStore(dao) { account.ownerId.orEmpty() }
         lifecycleScope.launch {
-            withContext(Dispatchers.IO) { seed(log, intent.getBooleanExtra("route", true)) }
+            if (!persistent || reset) withContext(Dispatchers.IO) { seed(log, intent.getBooleanExtra("route", true)) }
             ready = true
         }
         setContent { DaengsTheme {
@@ -65,7 +74,10 @@ class DiaryEditorReviewActivity : ComponentActivity() {
                     val expected = account
                     val data = remember(expected) {
                         StoredWalkDetailData(SESSION, expected, { account }, history, dao, entries, photos,
-                            {}, {}, { null }, { _, _ -> }, { _, _, _ -> })
+                            {}, {
+                                deliveryAttempts++
+                                if (failNextDelivery) { failNextDelivery = false; error("검증용 전달 예약 실패") }
+                            }, { null }, { _, _ -> }, { _, _, _ -> })
                     }
                     val actions = remember(data) { object : WalkDetailActions by data {
                         override suspend fun saveEntry(entry: WalkEntry) {
@@ -138,6 +150,7 @@ class DiaryEditorReviewActivity : ComponentActivity() {
     }
 
     companion object {
+        val PROCESS_INSTANCE = UUID.randomUUID().toString()
         const val SESSION = "editor-review-session"
         const val PHOTO = "c0000000-0000-4000-8000-000000000001"
         const val START = 1789200000000L
