@@ -63,6 +63,24 @@
 사진 삭제의 진행/오류는 기존 `WalkPhotoDialog`가 소유한다. 개발용 설명 비교·미리보기 상태도
 각 화면에 유지하며, 공개 준비 작업의 마감과 복구는 기존 `WalkDiaryPublication` 책임이다.
 
+## 일기 조회와 조립 (#362)
+
+`WalkDiaryReader`는 Room 관찰과 사진 저장소 연결, 계정·세션 존재·종료 검사, IO 실행을 맡는다.
+`WalkDiaryAssembly.kt`의 `assembleDiary`는 조회한 값으로 공개 보드 선택·사용자 변경 반영·장면을 계산한다.
+`DiaryBoardInput`은 기존 `combine`이 전달한 값 묶음이며, 별도 DB 트랜잭션 스냅샷을 만들지는 않는다.
+
+- 공개 준비 중에는 장면을 숨긴다. 공개 후에는 저장된 보드에 메모 수정·추가·삭제와 사진 삭제를
+  반영한 뒤 검토본의 본문·숨김 편집을 적용한다. 동기화 ACK로 저장된 문장을 바꾸지 않는다.
+- 공개 행이 없는 기존 산책은 `storyboardAnalysisView`의 입력 stamp·이전 결과 재사용 규칙을 따른다.
+- 장면과 `sourceEntries`는 한 번 파싱한 같은 기록 목록에서 나온다. 지도 좌표는 전달받은 원본
+  관측값으로 기존 `diaryWalk`가 확인한다. 조립 함수가 DB·파일·네트워크를 읽지는 않는다.
+- `diaryTitle`은 제목 전용 경로다. 저장된 bundle과 입력 유효성에 필요한 행만 사용하며,
+  전체 일기·경로·사진 파일·편집 초안을 읽거나 사용자 변경을 조립하지 않는다.
+
+`WalkDiaryAssemblyTest`는 Room 없이 준비/공개·사용자 수정·분석 유효성·제목 계산을 검사한다.
+계정/종료 검사와 삭제 반영은 `WalkDiaryReaderTest`, 공개 작업과 원본 위치의 연결은 기존
+`WalkDiaryPublicationTest`·`WalkDiaryPublicationLifecycleTest`·`WalkSceneAnchoringTest`가 검사한다.
+
 ## 화면
 
 상단은 제목·날짜·강아지·가용한 날씨와 시간·거리·평균 속도다.
