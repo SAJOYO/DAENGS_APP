@@ -41,7 +41,6 @@ import com.naver.maps.map.CameraUpdate
 import com.naver.maps.map.CameraPosition
 import com.naver.maps.map.MapView
 import com.naver.maps.map.NaverMap
-import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
 import com.daengs.app.map.style.rememberWalkStyle
@@ -185,32 +184,7 @@ fun NaverMapSurface(
         if (followDevice) map.moveCamera(CameraUpdate.scrollTo(point.toLatLng()))
     }
 
-    DisposableEffect(naverMap) {
-        val map = naverMap
-        val overlay: LocationOverlay? = map?.locationOverlay
-        // LocationOverlay rotates its main icon with the map. Counteract that rotation
-        // so the portrait stays upright; travel course belongs to the separate arrow.
-        val listener = NaverMap.OnCameraChangeListener { _, _ ->
-            overlay?.bearing = map?.cameraPosition?.bearing?.toFloat() ?: 0f
-        }
-        overlay?.bearing = map?.cameraPosition?.bearing?.toFloat() ?: 0f
-        map?.addOnCameraChangeListener(listener)
-        onDispose {
-            map?.removeOnCameraChangeListener(listener)
-            overlay?.isVisible = false
-        }
-    }
-
-    LaunchedEffect(naverMap, scene.currentPosition) {
-        val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
-        val point = scene.currentPosition
-        if (point == null) {
-            overlay.isVisible = false
-        } else {
-            overlay.position = point.toLatLng()
-            overlay.isVisible = true
-        }
-    }
+    NaverLocationLayer(naverMap, scene.currentPosition, avatarRes, avatarPhoto)
 
     // 화면 아래를 패널이 덮고 있다. 그걸 알려주지 않으면 지도가 **패널 뒤를 가운데로**
     // 삼아서, 고른 장소로 움직여도 그 장소가 패널에 가려 안 보인다.
@@ -218,23 +192,6 @@ fun NaverMapSurface(
         // The diary explicitly reframes below. Do not also shift its target to preserve the old
         // visible map area: that padding-induced camera move can displace the new fit/selection.
         naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx, keepSelectionVisible)
-    }
-
-    // Capture SDK defaults before applying any portrait, so removing one cannot leave an old face.
-    val defaultLocationIcon = remember(naverMap) {
-        naverMap?.locationOverlay?.let { Triple(it.icon, it.iconWidth, it.iconHeight) }
-    }
-    // 산책은 기본 발바닥 리소스를 넘긴다. 얼굴을 요청하지 않는 장소 지도는 SDK 점을 쓴다.
-    LaunchedEffect(naverMap, avatarRes, avatarPhoto) {
-        val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
-        val defaults = defaultLocationIcon ?: return@LaunchedEffect
-        overlay.circleColor = LOCATION_CIRCLE
-        // **올린 사진이 앞선다.** 앱의 다른 얼굴이 다 그 규칙이라(`avatarSource`),
-        // 지도만 견종 그림이면 같은 아이가 화면마다 다르게 보인다.
-        val bitmap = locationAvatarBitmap(context, avatarPhoto, avatarRes, AVATAR_PX, AVATAR_RING_PX)
-        overlay.icon = bitmap?.let(OverlayImage::fromBitmap) ?: defaults.first
-        overlay.iconWidth = if (bitmap == null) defaults.second else AVATAR_PX
-        overlay.iconHeight = if (bitmap == null) defaults.third else AVATAR_PX
     }
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
@@ -587,14 +544,6 @@ private fun NaverSceneMapPreview() {
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
-
-/** 내 위치 얼굴의 한 변(px)과 흰 테두리 두께. */
-private const val AVATAR_PX = 96
-
-private const val AVATAR_RING_PX = 5f
-
-/** 위치 정확도 원. 기본 파랑 대신 앱 분홍을 옅게 깐다. */
-private val LOCATION_CIRCLE = DaengPink.copy(alpha = 0.18f).toArgb()
 
 /** 경로를 다 담을 때 가장자리에 남기는 여백(px). 선이 화면 끝에 붙으면 잘려 보인다. */
 private const val FIT_PADDING_PX = 80

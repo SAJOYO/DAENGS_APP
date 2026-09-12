@@ -32,6 +32,18 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 기능별 선택 범위
 
+### 네이버 지도 현재 위치·얼굴 표시
+
+`map.provider.naver.NaverLocationLayerTest`는 실제 Compose Effect와 SDK shadow로 늦은 지도 준비,
+좌표 누락/갱신, 얼굴 교체, 지도 교체·화면 이탈 때 리스너와 오버레이 수명을 확인한다.
+`LocationAvatarTest`는 사진 우선·발바닥 복구·견종 리소스·기본 아이콘 반환을 검사한다.
+SDK 기본 아이콘과 크기는 지도마다 기억하며, 좌표 갱신으로 얼굴을 다시 만들지 않아야 한다.
+이 레이어는 위치가 없어도 호출을 유지한다. 기기 추적 카메라와 지도 생명주기는 Surface 소유다.
+카메라/상세 연결을 바꾸면 `ui.places.PlaceMapCameraTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`map.shell.MapScenePolicyTest`를 함께 선택한다. 각 클래스 앞에 `com.daengs.app.`을 붙인다.
+SDK shadow는 Windows JVM에서 네이티브 지도 대신 호출을 기록한다. 실제 지도 렌더링과
+앱의 백그라운드 복귀는 실기기 검증 대상이며 이 테스트의 통과 범위에 포함하지 않는다.
+
 ### 산책 파트 슬롯 미리보기
 
 `walk.diary.DiarySlotPreviewTest`는 DEV 미리보기 응답·인증·산책/계정 대응·동기화·취소를,
