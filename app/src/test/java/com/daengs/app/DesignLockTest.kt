@@ -124,6 +124,23 @@ class DesignLockTest {
         }
     }
 
+    // -- 4. 산책은 강아지와 함께다 ------------------------------------------------
+
+    /** "강아지가 없어도 산책할 수 있다" 는 말을 화면에 두지 않는다. 규칙 자체는 `canStartWalk`. */
+    @Test
+    fun `강아지 없이 산책을 권하는 문구가 없다`() {
+        val words = listOf("강아지가 없어도", "강아지 없이도", "아이가 없어도")
+        File(root, "com/daengs/app/ui/walk").walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+            val text = file.readText()
+            words.firstOrNull { it in text }?.let {
+                fail(
+                    "⛔ 잠긴 디자인 위반 (${file.name}): \"$it\" — 산책은 강아지와 함께다. " +
+                        "docs/design-locks.md 4절. 테스트를 고치지 말고 변경을 되돌릴 것.",
+                )
+            }
+        }
+    }
+
     @Test
     fun `얼굴 인자에 null 을 박아 넣지 않는다`() {
         val nullFace = Regex("avatar(Res|Photo)\\s*=\\s*null")
