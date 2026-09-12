@@ -6,13 +6,14 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,6 +28,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import com.daengs.app.map.features.places.PlaceCategoryIcon
 import com.daengs.app.map.features.places.categoryLabel
 import com.daengs.app.place.*
@@ -83,35 +93,41 @@ internal fun PlacePurposeMenu(
                 Spacer(Modifier.weight(1f))
                 Text("카테고리", color = DaengsColors.TextSecondary, fontSize = 11.sp)
             }
-            DropdownMenu(expanded, { expanded = false }, modifier = Modifier.widthIn(max = 360.dp)
-                .testTag("place-purpose-grid"), containerColor = DaengsColors.Surface) {
-                val options = listOf("ALL") + PlacePurpose.entries.map { it.name } + "ETC"
-                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    options.chunked(5).forEachIndexed { rowIndex, row ->
-                        Row {
-                            row.forEachIndexed { columnIndex, id ->
-                                val group = PlacePurpose.entries.firstOrNull { it.name == id }
-                                val title = group?.let { purposePresentation.getValue(it).label } ?: if (id == "ALL") "전체" else "기타"
-                                val groupIcon = group?.let { purposePresentation.getValue(it).icon } ?: PlaceKind.ETC.takeIf { id != "ALL" }
-                                var arrived by remember { mutableStateOf(false) }
-                                LaunchedEffect(Unit) { arrived = true }
-                                Box(Modifier.weight(1f).heightIn(min = 64.dp)) {
-                                    androidx.compose.animation.AnimatedVisibility(arrived, enter = fadeIn(tween(180, (rowIndex * 5 + columnIndex) * 20)) +
-                                        slideInVertically(tween(180, (rowIndex * 5 + columnIndex) * 20)) { it / 4 }) {
-                                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                                            .background(if (browsing == id) DaengsColors.BrandPrimarySoft else DaengsColors.Surface)
-                                            .selectable(browsing == id, enabled = id != "ALL", role = Role.Tab,
-                                                onClick = { browsing = id; expanded = false })
-                                            .padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            PlaceCategoryIcon(groupIcon, Modifier.size(22.dp),
-                                                if (id == "ALL") DaengsColors.TextSecondary else DaengsColors.TextPrimary)
-                                            Text(title, fontSize = 11.sp, maxLines = 1,
-                                                color = if (id == "ALL") DaengsColors.TextSecondary else DaengsColors.TextPrimary)
+            // 🔒 **잠긴 디자인 — `docs/design-locks.md` 2절.** 막대 **바로 아래(위쪽)** 에 화면 폭으로
+            //    뜨는 판에 **세 칸씩** 연다. 사용자와 두 번 맞춰 온 자리다 (2026-09-12):
+            //    ① 막대 밑 드롭다운(최대 360dp)에 다섯 칸 · 11sp → "옹졸하다"
+            //    ② 화면 아래 시트에 큰 칸(88dp) → "너무 크고, 아래보다 위가 낫다"
+            //    지금은 그 사이다 — 위에서, 화면 폭으로, 칸은 64dp · 아이콘 24dp · 글자 13sp.
+            //    ⚠️ 다른 창(Popup)으로 연다 — 펼쳐도 지도와 버튼 자리를 밀지 않는다
+            //       (`ConnectedPlaceSearchUiTest`). 잠금 테스트: `PlacePurposeSheetLockTest`.
+            if (expanded) {
+                val density = LocalDensity.current
+                val margin = with(density) { PURPOSE_PANEL_MARGIN.roundToPx() }
+                val windowWidth = LocalWindowInfo.current.containerSize.width
+                Popup(
+                    popupPositionProvider = remember(margin) { PurposePanelPosition(margin) },
+                    onDismissRequest = { expanded = false },
+                    properties = PopupProperties(focusable = true),
+                ) {
+                    Surface(
+                        Modifier.width(with(density) { (windowWidth - 2 * margin).coerceAtLeast(0).toDp() })
+                            .testTag("place-purpose-sheet"),
+                        shape = RoundedCornerShape(18.dp), color = DaengsColors.Surface, shadowElevation = 8.dp,
+                    ) {
+                        val options = listOf("ALL") + PlacePurpose.entries.map { it.name } + "ETC"
+                        Column(Modifier.padding(12.dp).testTag("place-purpose-grid"),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            options.chunked(3).forEachIndexed { rowIndex, row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    row.forEachIndexed { columnIndex, id ->
+                                        PurposeTile(id, browsing == id, rowIndex * 3 + columnIndex, Modifier.weight(1f)) {
+                                            browsing = id
+                                            expanded = false
                                         }
                                     }
+                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                                 }
                             }
-                            repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
@@ -124,6 +140,62 @@ internal fun PlacePurposeMenu(
         }
     }
 }
+
+/**
+ * 판의 한 칸. 🔒 **잠긴 디자인 — `docs/design-locks.md` 2절.** 칸 최소 64dp · 아이콘 24dp ·
+ * 글자 13sp. 더 줄이면 "옹졸" 로, 더 키우면 "너무 크다" 로 돌아간다 — 둘 다 겪었다.
+ *
+ * 고른 칸은 **바탕 · 테두리 · 굵기**로 말한다. 분홍 글자는 크림 위에서 2.24:1 이라
+ * 색만으로 가르면 안 보인다 (`PlaceCategoryMenu` 의 같은 판단).
+ */
+@Composable
+private fun PurposeTile(id: String, chosen: Boolean, order: Int, modifier: Modifier, onClick: () -> Unit) {
+    val group = PlacePurpose.entries.firstOrNull { it.name == id }
+    val title = group?.let { purposePresentation.getValue(it).label } ?: if (id == "ALL") "전체" else "기타"
+    val groupIcon = group?.let { purposePresentation.getValue(it).icon } ?: PlaceKind.ETC.takeIf { id != "ALL" }
+    val muted = id == "ALL"
+    var arrived by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { arrived = true }
+    val shape = RoundedCornerShape(14.dp)
+    Box(modifier.heightIn(min = 64.dp)) {
+        AnimatedVisibility(arrived, enter = fadeIn(tween(180, order * 20)) +
+            slideInVertically(tween(180, order * 20)) { it / 4 }) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag("place-purpose-tile").clip(shape)
+                    .background(if (chosen) DaengsColors.BrandPrimarySoft else DaengsColors.Surface)
+                    .border(if (chosen) 2.dp else 1.dp,
+                        if (chosen) DaengsColors.BrandPrimary else DaengsColors.BorderNeutral, shape)
+                    .selectable(chosen, enabled = !muted, role = Role.Tab, onClick = onClick)
+                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+            ) {
+                PlaceCategoryIcon(groupIcon, Modifier.size(24.dp),
+                    if (muted) DaengsColors.TextSecondary else DaengsColors.TextPrimary)
+                Text(title, fontSize = 13.sp, maxLines = 1,
+                    fontWeight = if (chosen) FontWeight.Bold else FontWeight.Normal,
+                    color = if (muted) DaengsColors.TextSecondary else DaengsColors.TextPrimary)
+            }
+        }
+    }
+}
+
+private val PURPOSE_PANEL_MARGIN = 12.dp
+
+/** 카테고리 판의 자리. 🔒 `docs/design-locks.md` 2절 — **막대 바로 아래**, 양옆을 조금 들여서. */
+internal class PurposePanelPosition(private val margin: Int) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize,
+    ): IntOffset = purposePanelOffset(anchorBounds, windowSize, popupContentSize, margin)
+}
+
+/**
+ * 판의 왼쪽 위. **막대 바로 아래에 붙인다** — 화면 아래에서 올라오는 시트로 했다가 사용자가
+ * "아래보다 위가 낫다" 고 했다. 누른 자리 바로 밑에 떠야 무엇을 펼쳤는지 이어진다.
+ * 화면 아래로 넘치면 넘치는 만큼만 올린다.
+ */
+internal fun purposePanelOffset(anchor: IntRect, window: IntSize, content: IntSize, margin: Int): IntOffset =
+    IntOffset(margin, anchor.bottom.coerceAtMost((window.height - content.height).coerceAtLeast(0)))
 
 @Composable
 private fun CategoryWord(label: String, selected: Boolean, description: String = label, onClick: () -> Unit) {
