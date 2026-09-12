@@ -162,11 +162,15 @@ class WalkDiaryCompactDrawerTest {
     }
 
     @Test fun `replay continues at the selected speed while collapsed and reopening the active tab does not reset it`() {
+        val detail = readCompletedRoute(RecordedSession("s", startedAtMillis = 0, endedAtMillis = 100_000),
+            (0..17).map { i -> RecordedFix(i, if (i < 9) 0 else 1,
+                if (i < 9) 10_000 + i * 2_000L else 60_000 + (i - 9) * 2_000L,
+                0.0, i * 4.0 / 111_195, 1f, false) })
         lateinit var state: WalkRouteExplorerState
         compose.setContent {
             val scope = rememberCoroutineScope()
             state = remember { WalkRouteExplorerState(scope, 100_000).apply {
-                index = RouteExplorerIndex(explorerRoute(straightExplorerPath()))
+                replaceRoute(RouteExplorerIndex(detail.route), CompletedRouteReview(detail), 100_000)
             } }
             DaengsTheme { WalkDiaryMapContent(emptyList(), null, false, null, {}, state::closeScene, {}, {}, {}, {},
                 explorerSelected = state.panelOpen, onChooseExplorer = { state.overview(); state.choosePanel(it) },
@@ -177,7 +181,10 @@ class WalkDiaryCompactDrawerTest {
         compose.onNodeWithContentDescription("재생 속도").performClick()
         compose.onNodeWithText("16×").performClick()
         compose.onNodeWithText("동선 재생").performClick()
-        compose.runOnIdle { state.tick(1_000) }
+        compose.runOnIdle {
+            state.tick(1_000)
+            assertNotNull(recordPresentationLayer(state, detail, null).cursor)
+        }
         fold()
         compose.onNodeWithText("일시정지").assertIsNotDisplayed()
         compose.onNodeWithText("16×").assertIsNotDisplayed()
@@ -185,11 +192,18 @@ class WalkDiaryCompactDrawerTest {
             assertTrue(state.playing)
             state.tick(1_000)
             assertEquals(32_000L, state.elapsed)
+            assertTrue(state.replayFrame!!.inGap)
+            val gap = recordPresentationLayer(state, detail, null)
+            assertNull(gap.cursor)
+            assertNull(gap.recordContext!!.selectedGapGuide)
+            state.tick(2_000)
+            assertEquals(64_000L, state.elapsed)
+            assertNotNull(recordPresentationLayer(state, detail, null).cursor)
         }
         compose.onNodeWithText("동선 탐색").performClick()
         compose.onNodeWithText("일시정지").assertIsDisplayed()
         compose.onNodeWithText("16×").assertIsDisplayed()
-        compose.runOnIdle { assertTrue(state.playing); assertEquals(32_000L, state.elapsed) }
+        compose.runOnIdle { assertTrue(state.playing); assertEquals(64_000L, state.elapsed) }
         compose.onNodeWithText("장면 0").performClick()
         compose.runOnIdle { assertFalse(state.playing) }
     }
