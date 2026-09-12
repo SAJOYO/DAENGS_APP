@@ -36,8 +36,13 @@ class WalkRouteReviewLabActivity : ComponentActivity() {
 @Composable
 private fun WalkRouteReviewLab() {
     val fixture = remember { routeReviewFixture() }
-    val detail = fixture.first
-    val scenes = fixture.second
+    WalkRouteReviewContent(fixture.first, fixture.second, "가상 기록 · 왕복 / 공백 / 먼 재개 / 경로 밖 사진")
+}
+
+@Composable
+internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<DiaryScene>, label: String,
+    onBack: () -> Unit = {},
+) {
     val explorer = rememberWalkRouteExplorer(detail.summary.sessionId, detail)
     val selected = scenes.firstOrNull { it.id == explorer.selectedSceneId }
     val focus = remember(selected, explorer.review) { selected?.let { explorer.review?.sceneFocus(it) } }
@@ -55,12 +60,13 @@ private fun WalkRouteReviewLab() {
         value.point?.let { center = it; request++ }
     }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Text("가상 기록 · 왕복 / 공백 / 먼 재개 / 경로 밖 사진", Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        Text(label, Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
         WalkDiaryMapContent(scenes, selected, false, null,
             onSelect = ::selectScene, onClose = explorer::closeScene,
             onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {}, title = "동선과 장면 함께 보기",
-            subtitle = "9월 11일 · 가상 산책", summaryContent = { WalkSessionSummary(detail.summary) },
+            onBack = onBack,
+            subtitle = formatWalkDay(detail.summary.startedAtMillis), summaryContent = { WalkSessionSummary(detail.summary) },
             explorerSelected = explorer.panelOpen,
             onChooseExplorer = { explorer.overview(); explorer.choosePanel(it) },
             explorerPanel = { WalkRouteExplorerPanel(explorer, ::overview, onSection = {
