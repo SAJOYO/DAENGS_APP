@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -134,6 +135,9 @@ fun NaverMapSurface(
     AndroidView(
         factory = {
             mapView.apply {
+                // Compose가 draw 중 새 AndroidView를 배치하면 SurfaceView의 pre-draw는
+                // 이미 지나갔을 수 있다. 첫 배치 뒤 한 프레임을 더 요청해 Surface를 만든다.
+                doOnLayout { view -> view.rootView.postInvalidateOnAnimation() }
                 getMapAsync { map ->
                     naverMap = map
                     map.uiSettings.isLocationButtonEnabled = false

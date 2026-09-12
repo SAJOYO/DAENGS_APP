@@ -34,6 +34,9 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ### 네이버 지도 현재 위치·얼굴 표시
 
+지도 재생성 시 실제 Surface 준비는 [네이버 지도 실기기 회귀 검사](../../../tools/naver-map-review/README.md)의
+`MapFirstFrameTest`로 확인한다. shadow 검사로 native Surface 생성 여부를 대신 판정하지 않는다.
+
 `map.provider.naver.NaverLocationLayerTest`는 실제 Compose Effect와 SDK shadow로 늦은 지도 준비,
 좌표 누락/갱신, 얼굴 교체, 지도 교체·화면 이탈 때 리스너와 오버레이 수명을 확인한다.
 `LocationAvatarTest`는 사진 우선·발바닥 복구·견종 리소스·기본 아이콘 반환을 검사한다.
