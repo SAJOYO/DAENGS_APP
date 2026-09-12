@@ -67,14 +67,54 @@ class WalkSessionDetailUiTest {
         capture("walk-session-overview")
         compose.onNodeWithText("동선 탐색").performClick()
         capture("walk-session-explorer")
+        compose.onNodeWithContentDescription("재생 속도").performClick()
+        compose.onNodeWithText("4×").performClick()
         compose.onNodeWithText("동선 재생").performClick()
         compose.onNode(SemanticsMatcher.keyIsDefined(
             androidx.compose.ui.semantics.SemanticsActions.SetProgress)).assertIsDisplayed()
         capture("walk-session-replay")
-        compose.runOnIdle { assertTrue(explorer.playing) }
+        compose.runOnIdle {
+            assertTrue(explorer.playing)
+            explorer.tick(1_000)
+            assertEquals(4_000L, explorer.elapsed)
+        }
+        compose.onNodeWithContentDescription("재생 속도").performClick()
+        compose.onNodeWithText("8×").performClick()
+        compose.runOnIdle {
+            assertTrue(explorer.playing)
+            assertEquals(4_000L, explorer.elapsed)
+            assertEquals(RoutePlaybackSpeed.EIGHT, explorer.playbackSpeed)
+        }
         compose.onNodeWithText("장면 0").performClick()
         compose.runOnIdle { assertFalse(explorer.playing); assertEquals(1, mounts) }
         compose.onNodeWithTag("session-map").assertIsDisplayed()
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp")
+    fun `speed menu and playback stay reachable with larger text on a small screen`() {
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            val state = remember { WalkRouteExplorerState(scope, 20_000).apply {
+                index = RouteExplorerIndex(explorerRoute(straightExplorerPath()))
+            } }
+            DaengsTheme {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides
+                    androidx.compose.ui.unit.Density(density.density, 1.3f)) {
+                    WalkRouteExplorerPanel(state, {})
+                }
+            }
+        }
+        compose.onNodeWithText("전체 동선").assertIsDisplayed()
+        compose.onNodeWithText("동선 재생").assertIsDisplayed()
+        compose.onNodeWithContentDescription("재생 속도").performClick()
+        listOf("1×", "2×", "4×", "8×", "16×").forEach { label ->
+            compose.onAllNodesWithText(label).onLast().assertIsDisplayed()
+        }
+        compose.onNodeWithText("16×").performClick()
+        compose.onNodeWithText("16×").assertIsDisplayed()
+        compose.onNodeWithText("동선 재생").performClick()
+        compose.onNodeWithText("일시정지").assertIsDisplayed()
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp")

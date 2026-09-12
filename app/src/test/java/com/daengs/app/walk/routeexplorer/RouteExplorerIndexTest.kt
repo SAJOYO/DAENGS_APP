@@ -20,6 +20,14 @@ internal fun explorerRoute(vararg paths: List<Pair<Double, Double>>): WalkSessio
 internal fun straightExplorerPath(y: Double = 0.0) = (-10..10).map { it * 5.0 to y }
 
 class RouteExplorerIndexTest {
+    @Test fun `fast playback saturates at the end without overflowing or running backward`() {
+        assertEquals(Long.MAX_VALUE, advanceRoutePlayback(Long.MAX_VALUE - 5, Long.MAX_VALUE,
+            Long.MAX_VALUE, RoutePlaybackSpeed.SIXTEEN))
+        assertEquals(900L, advanceRoutePlayback(900, -10, 1_000, RoutePlaybackSpeed.FOUR))
+        assertEquals(1_000L, advanceRoutePlayback(900, 100, 1_000, RoutePlaybackSpeed.SIXTEEN))
+        assertEquals(0L, advanceRoutePlayback(100, 100, -1, RoutePlaybackSpeed.TWO))
+    }
+
     @Test fun `many nearby observations count as one passage and a turnaround as two`() {
         val line = straightExplorerPath()
         assertEquals(1, RouteExplorerIndex(explorerRoute(line)).passagesAt(explorerPoint(0.0)).passes.size)
