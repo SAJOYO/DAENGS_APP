@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.Snapshot
 import com.daengs.app.walk.*
 import com.daengs.app.walk.detail.WalkDetailActions
+import com.daengs.app.walk.detail.WalkDetailDeliveryPending
 import com.daengs.app.walk.detail.WalkDetailSource
 import com.daengs.app.walk.diary.*
 import kotlinx.coroutines.*
@@ -205,5 +206,30 @@ class WalkDetailStateTest {
             source.loadDetail = { null }; source.revision.value++; runCurrent()
             assertNull(adopted); assertNull(state.readView)
         } finally { observer.dispose() }
+    }
+
+    @Test fun `deleted walk clears a delivery notice and rejects late opening failure`() = runTest {
+        val source = Source(); val actions = Actions()
+        val state = state(source, actions)
+        actions.entryAction = { throw WalkDetailDeliveryPending(IllegalStateException("scheduler")) }
+        var saved = false
+        state.saveEntry(note) { saved = true }; runCurrent()
+        assertTrue(saved); assertNotNull(state.error)
+        val retry = CompletableDeferred<Unit>()
+        actions.openAction = { retry.await() }
+        state.retry(); runCurrent()
+        source.loadDetail = { null }; source.revision.value++; runCurrent()
+        retry.completeExceptionally(IllegalStateException("late scheduler failure")); runCurrent()
+        assertTrue(state.loaded); assertNull(state.readView); assertNull(state.error)
+    }
+
+    @Test fun `deleted walk drops an unacknowledged delivery notice`() = runTest {
+        val source = Source(); val actions = Actions()
+        val state = state(source, actions)
+        actions.entryAction = { throw WalkDetailDeliveryPending(IllegalStateException("scheduler")) }
+        state.deleteEntry(note.id) {}; runCurrent()
+        assertNotNull(state.error)
+        source.loadDetail = { null }; source.revision.value++; runCurrent()
+        assertTrue(state.loaded); assertNull(state.readView); assertNull(state.error)
     }
 }

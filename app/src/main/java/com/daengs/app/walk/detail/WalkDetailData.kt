@@ -25,3 +25,8 @@ internal interface WalkDetailActions {
     suspend fun saveScene(scene: StoryboardScene, title: String, body: String)
     suspend fun deletePhoto(id: String)
 }
+
+/** The mutation is already durable. Retry delivery, never resubmit the editor's old base version. */
+internal class WalkDetailDeliveryPending(cause: Exception) : Exception(
+    "변경은 기기에 저장했어요. 서버 전달을 예약하지 못했어요. 다시 시도해 주세요.", cause,
+)
