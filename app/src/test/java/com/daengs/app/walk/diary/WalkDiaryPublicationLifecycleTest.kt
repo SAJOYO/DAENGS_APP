@@ -67,7 +67,7 @@ class WalkDiaryPublicationLifecycleTest {
             ).forEach { dao.insertEntry(WalkEntryRow(it.id, id, it.toJson().toString(), 1, it.id, false)) }
             dao.closeAndPrepareDiary(id, ended)
             return requireNotNull(dao.prepareLocalDiary(id, owner)).also {
-                assertEquals(ended + 10_000, it.deadlineAtMillis)
+                assertEquals(ended + 20_000, it.deadlineAtMillis)
                 assertNotNull(it.baseBundle)
                 assertNull(it.publishedBundle)
             }
@@ -111,7 +111,7 @@ class WalkDiaryPublicationLifecycleTest {
         publisher.recover()
         test.runCurrent()
         assertEquals(2, requests) // One capability and one board read despite repeated entry.
-        advance(9_999)
+        advance(19_999)
         assertNull(publication().publishedBundle)
         advance(1)
         val published = publication()
@@ -136,7 +136,7 @@ class WalkDiaryPublicationLifecycleTest {
         test.runCurrent()
         assertTrue(syncFinished.isCompleted)
         assertNull(publication().publishedBundle)
-        advance(10_000)
+        advance(20_000)
         assertEquals(state.baseBundle, publication().publishedBundle)
         assertEquals(state.deadlineAtMillis, publication().publishedAtMillis)
         assertFalse(visible().single().preparing)
@@ -156,7 +156,7 @@ class WalkDiaryPublicationLifecycleTest {
         assertNotEquals(state.baseBundle, published.publishedBundle)
         assertEquals(ended + 250, published.publishedAtMillis)
         assertEquals("함께 남긴 산책", visible().single().title)
-        advance(9_750)
+        advance(19_750)
         publisher.start(id)
         publisher.recover()
         test.runCurrent()
@@ -173,7 +173,7 @@ class WalkDiaryPublicationLifecycleTest {
         test.runCurrent()
         assertTrue(responseStarted.isCompleted)
         owner = "another"
-        advance(10_000)
+        advance(20_000)
         release.complete(Unit)
         test.runCurrent()
         assertTrue(syncFinished.isCompleted)
@@ -189,7 +189,7 @@ class WalkDiaryPublicationLifecycleTest {
         assertFalse(visible().single().preparing)
     }
 
-    @Test fun `restart during preparation uses the remaining time instead of a fresh ten seconds`() = checkPublication {
+    @Test fun `restart during preparation uses the remaining time instead of a fresh twenty seconds`() = checkPublication {
         val state = prepare()
         response = { throw IOException("offline") }
         publisher().start(id)
@@ -198,7 +198,7 @@ class WalkDiaryPublicationLifecycleTest {
         jobs.single().cancelAndJoin()
         publisher().recover()
         test.runCurrent()
-        advance(5_999)
+        advance(15_999)
         assertNull(publication().publishedBundle)
         advance(1)
         assertEquals(state.baseBundle, publication().publishedBundle)

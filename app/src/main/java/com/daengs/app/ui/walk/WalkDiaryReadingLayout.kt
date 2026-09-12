@@ -87,13 +87,13 @@ internal fun WalkDiaryMapContent(
                     Text("⋯", fontSize = 26.sp, color = TextDark)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("전체 동선 보기") }, enabled = !loading,
+                    DropdownMenuItem(text = { Text("전체 동선 보기") },
                         onClick = { menu = false; onClose(); onOverview(); scope.launch { sheet.partialExpand() } })
                     DropdownMenuItem(text = { Text("기록 남기기") }, enabled = !loading && error == null,
                         onClick = { menu = false; onAdd() })
                     onGenerate?.let { generate ->
                         DropdownMenuItem(text = { Text(if (generating) "준비 중" else generationActionLabel) },
-                            enabled = !loading && !generating, onClick = { menu = false; generate() })
+                            enabled = !generating, onClick = { menu = false; generate() })
                     }
                 }
             }
@@ -136,7 +136,7 @@ internal fun WalkDiaryMapContent(
                                     .background(PinkSoft, RoundedCornerShape(4.dp)))
                                 if (showSceneHeading) Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (selected == null) "${scenes.size}개 장면 · 시간순" else "‹ 장면 목록",
+                                    Text(if (loading) "산책 장면" else if (selected == null) "${scenes.size}개 장면 · 시간순" else "‹ 장면 목록",
                                         Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     if (selected != null) Text("장면 ${scenes.indexOfFirst { it.id == selected.id } + 1}",
                                         fontSize = 13.sp, color = TextMuted)
@@ -163,15 +163,14 @@ internal fun WalkDiaryMapContent(
                                 style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             TextButton(onClick = onZoomRoute) { Text("동선 확대") }
                         }
-                        if (error != null) Row(Modifier.padding(horizontal = 20.dp)) {
+                        if (error != null && !loading) Row(Modifier.padding(horizontal = 20.dp)) {
                             Text(error, Modifier.weight(1f))
                             TextButton(onClick = onRetry) { Text("다시 시도") }
                         }
                         if (explorerSelected && explorerPanel != null) {
                             Box(Modifier.weight(1f).fillMaxWidth()) { explorerPanel() }
                         } else if (loading) {
-                            LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
-                            Text("장면을 불러오고 있어요.", Modifier.padding(20.dp))
+                            WalkDiaryPreparing(onRefresh = onRetry, error = error)
                         } else if (selected == null) {
                             if (scenes.isEmpty() && error == null) {
                                 Text("아직 남긴 장면이 없어요.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
@@ -260,5 +259,14 @@ private fun DiaryReadingPreview() {
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",
         summaryContent = { WalkSessionSummary(com.daengs.app.walk.WalkSummary("s", emptyList(), 0, 1_800_000,
             null, 1_200.0, 1_800_000, emptyList(), null), listOf("두부")) },
+        map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
+}
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun DiaryPreparingMapPreview() {
+    DaengsTheme { WalkDiaryMapContent(emptyList(), null, true, null, {}, {}, {}, {}, {}, {},
+        title = "9월 11일 산책", subtitle = "9월 11일 · 오후",
+        explorerPanel = { Text("동선 탐색") },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
 }

@@ -1,6 +1,7 @@
 package com.daengs.app.walk.sync
 
 import com.daengs.app.walk.diary.GeoStoryboardBundle
+import com.daengs.app.walk.diary.DIARY_PREPARATION_BUDGET_MS
 import com.daengs.app.walk.diary.ServerDiaryBundle
 import com.daengs.app.walk.diary.ServerDiaryBoard
 import com.daengs.app.walk.diary.storyboardHash
@@ -54,6 +55,9 @@ class WalkDiarySync(
             ServerDiaryBundle.FORMAT in offered -> ServerDiaryBundle.FORMAT
             else -> null
         }
+        val publicationCapability = capabilities?.optJSONObject("diary_publication")
+        val serverBudget = (publicationCapability?.optLong("budget_ms", 10_000) ?: 10_000)
+            .coerceIn(0, DIARY_PREPARATION_BUDGET_MS)
         if (selectedFormat == null) {
             if (publication != null) return@withLock
             legacy(token, sessionId, walkId, refresh)
@@ -126,6 +130,22 @@ class WalkDiarySync(
                 if (ready) response.toString() else null,
                 if (response.getString("status") == "failed") "일기를 만들지 못했어요. 다시 시도해 주세요." else null), account, nowMillis()))
         }
+        suspend fun generate(response: JSONObject): JSONObject? {
+            current()
+            val responseFormat = if (response.getString("format") == ServerDiaryBoard.RESPONSE)
+                ServerDiaryBoard.FORMAT else ServerDiaryBundle.FORMAT
+            if (closed()) return null
+            if (publication != null && (responseFormat != ServerDiaryBoard.FORMAT || serverBudget == 0L ||
+                    publicationCapability?.optString("format") != ServerDiaryBoard.FORMAT)) return null
+            val body = JSONObject().put("bundle_format", responseFormat)
+                .put("target_scene_count", response.getInt("target_scene_count")).put("expected_entries", expected)
+                .put("expected_photo_manifest", response.optJSONObject("photo_manifest") ?: JSONObject.NULL)
+                // Reuse a live reservation. Context retries never reset the saved local deadline.
+                .put("refresh", regenerate && response.getString("status") != "running")
+            if (publication != null) body.put("preparation_budget_ms",
+                (publication.deadlineAtMillis - nowMillis()).coerceIn(0, serverBudget))
+            return request(token, path, "POST", body)
+        }
         try {
             current()
             var response = request(token, query, "GET", null)
@@ -143,28 +163,24 @@ class WalkDiarySync(
             }
             current(); validate(response)
             if (regenerate || response.getString("status") in setOf("pending", "stale", "failed", "running")) {
-                val responseFormat = if (response.getString("format") == ServerDiaryBoard.RESPONSE)
-                    ServerDiaryBoard.FORMAT else ServerDiaryBundle.FORMAT
-                if (closed()) return@withLock
-                if (publication != null && (responseFormat != ServerDiaryBoard.FORMAT ||
-                        capabilities?.optJSONObject("diary_publication")?.optString("format") != ServerDiaryBoard.FORMAT))
-                    return@withLock
-                val body = JSONObject().put("bundle_format", responseFormat)
-                    .put("target_scene_count", response.getInt("target_scene_count")).put("expected_entries", expected)
-                    .put("expected_photo_manifest", response.optJSONObject("photo_manifest") ?: JSONObject.NULL)
-                    // A non-refresh POST reuses a live lease, or recovers one abandoned by process death.
-                    .put("refresh", regenerate && response.getString("status") != "running")
-                if (publication != null) body.put("preparation_budget_ms",
-                    (publication.deadlineAtMillis - nowMillis()).coerceIn(0, 10_000))
-                response = request(token, path, "POST", body)
+                response = generate(response) ?: return@withLock
             }
             accept(response)
-            repeat(8) {
-                if (response.getString("status") != "running") return@repeat
+            var polls = 0
+            while (polls++ < if (publication != null) 10 else 8) {
+                val status = response.getString("status")
+                if (status != "running" && !(publication != null && status == "pending")) break
                 if (closed()) return@withLock
                 pause(); current()
+                if (closed()) return@withLock
                 response = request(token, query, "GET", null)
                 accept(response)
+                // Context preparation can return pending before an LLM reservation exists.
+                // Reading alone cannot start it once the context becomes available.
+                if (publication != null && response.getString("status") == "pending") {
+                    response = generate(response) ?: return@withLock
+                    accept(response)
+                }
             }
             if (response.getString("status") != "ready")
                 throw DiaryStillPending()

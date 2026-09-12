@@ -4,6 +4,8 @@ import com.daengs.app.walk.store.WalkDao
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
+const val DIARY_PREPARATION_BUDGET_MS = 20_000L
+
 /** Durable deadline/result live in Room. These jobs only wake the same preparation. */
 class WalkDiaryPublication(
     private val dao: WalkDao,
@@ -22,7 +24,7 @@ class WalkDiaryPublication(
                 val account = owner()
                 val state = dao.prepareLocalDiary(id, account) ?: return@launch
                 if (state.publishedBundle != null) return@launch
-                val remaining = (state.deadlineAtMillis - now()).coerceIn(0, 10_000)
+                val remaining = (state.deadlineAtMillis - now()).coerceIn(0, DIARY_PREPARATION_BUDGET_MS)
                 if (remaining > 0) {
                     // Upload/auth must never hold the local deadline job.
                     scope.launch(dispatcher) {
