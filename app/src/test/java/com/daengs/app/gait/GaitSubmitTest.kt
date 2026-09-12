@@ -158,6 +158,61 @@ class GaitSubmitTest {
         assertTrue(GaitAnalysisWorker.BACKOFF_SECONDS >= 10)
     }
 
+
+    // -- 알림으로 돌아왔을 때 붙일 것 (#220) ----------------------------------
+    //
+    // 챗을 나갔다 오면 대화는 서버 이력에서 다시 그려지는데 거기에 보행 카드가 없다.
+    // 그래서 무엇을 다시 붙일지를 이 목록이 들고 있는다.
+
+    @Test
+    fun `같은 기록을 두 번 기억하지 않는다`() {
+        val done = GaitCompletions()
+        done.remember("pet-1", "rec-1")
+        done.remember("pet-1", "rec-1")
+
+        assertEquals("알림을 두 번 눌러도 카드는 하나다", 1, done.forPet("pet-1").size)
+    }
+
+    @Test
+    fun `대표가 다르면 붙이지 않는다`() {
+        val done = GaitCompletions()
+        done.remember("pet-1", "rec-1")
+
+        assertTrue("남의 아이 대화에 붙으면 안 된다", done.forPet("pet-2").isEmpty())
+        assertEquals(1, done.forPet("pet-1").size)
+    }
+
+    @Test
+    fun `어느 아이인지 모르는 것은 지금 대표에게 붙인다`() {
+        // 옛 알림이나 petId 가 없던 경로. 버리는 것보다 보여 주는 편이 낫다 —
+        // 기다리던 결과가 아무 데도 안 뜨는 것이 제일 나쁘다.
+        val done = GaitCompletions()
+        done.remember(null, "rec-1")
+
+        assertEquals(1, done.forPet("pet-1").size)
+        assertEquals(1, done.forPet(null).size)
+    }
+
+    @Test
+    fun `붙이고 나면 지워져서 다시 붙지 않는다`() {
+        val done = GaitCompletions()
+        done.remember("pet-1", "rec-1")
+        done.consume("rec-1")
+
+        assertTrue("챗에 들어갈 때마다 또 붙으면 안 된다", done.forPet("pet-1").isEmpty())
+    }
+
+    @Test
+    fun `여럿이 끝나 있으면 다 붙인다`() {
+        val done = GaitCompletions()
+        done.remember("pet-1", "rec-1")
+        done.remember("pet-1", "rec-2")
+
+        assertEquals(2, done.forPet("pet-1").size)
+        done.consume("rec-1")
+        assertEquals(listOf("rec-2"), done.forPet("pet-1").map { it.recordId })
+    }
+
     private class FailingAnalyzer(private val why: String) : GaitAnalyzer {
         override suspend fun submit(video: PreparedVideo, title: String?) =
             Result.failure<GaitSubmission>(IllegalStateException(why))

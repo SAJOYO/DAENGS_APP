@@ -101,6 +101,7 @@ import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
 import com.daengs.app.gait.PreparedVideo
+import com.daengs.app.gait.GaitCompletions
 import com.daengs.app.gait.GaitStatus
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.gait.work.GaitAnalysisWorker
@@ -313,6 +314,14 @@ fun ChatScreen(
      * null 을 준다 — 눌러 봐야 빈 화면이면 안 누르게 하는 편이 낫다.
      */
     onOpenScreeningHistory: (() -> Unit)? = null,
+    /**
+     * 알림으로 "끝났다" 고 들은 보행 기록들 (#220).
+     *
+     * **챗을 나갔다 온 사람을 위한 것이다.** 그때 대화는 서버 이력에서 다시 그려지는데
+     * 거기에는 보행 카드가 없어서([restoredChatEntries]), 이 목록이 없으면 결과를 다시
+     * 붙일 근거가 없다. 홈 버튼만 눌렀던 경우는 화면이 살아 있어 여기까지 안 온다.
+     */
+    gaitCompletions: GaitCompletions? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -589,6 +598,37 @@ fun ChatScreen(
         }
     }
 
+    // 알림으로 들은 완료를 대화에 붙인다.
+    //
+    // **복원이 끝난 뒤여야 한다** — 위 effect 가 `entries.clear()` 로 비우고 서버 이력을
+    // 채우므로, 그 전에 붙이면 곧바로 지워진다. `displayedSessionId` 가 채워진 뒤를
+    // 신호로 삼는다.
+    //
+    // 대표가 맞는 것만 붙인다. 알림을 누른 시점에 다른 아이로 바꿔 놨으면 그 아이의
+    // 대화에 남의 기록이 붙는다.
+    LaunchedEffect(displayedSessionId, dogId, gaitCompletions?.forPet(dogId)?.size) {
+        val pending = gaitCompletions?.forPet(dogId).orEmpty()
+        if (displayedSessionId == null || pending.isEmpty()) return@LaunchedEffect
+
+        // 기록 본문이 있어야 카드가 그려진다. 목록을 한 번 받아 온다 — #351 이
+        // 들어가야 최신 기록까지 닿는다.
+        dogId?.let { gait.load(it) }
+
+        pending.forEach { done ->
+            // **이미 있으면 안 붙인다.** 알림을 두 번 누르거나 화면이 다시 조합돼도
+            // 같은 카드가 겹치면 안 된다.
+            val already = entries.any {
+                it is ChatEntry.GaitDone && it.recordId == done.recordId
+            }
+            if (!already) {
+                entries += ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                entries += ChatEntry.GaitDone(done.recordId)
+            }
+            // 붙였으면 지운다. 안 그러면 챗에 들어갈 때마다 또 붙는다.
+            gaitCompletions?.consume(done.recordId)
+        }
+    }
+
     val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
         scope.launch {
             entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
@@ -612,7 +652,7 @@ fun ChatScreen(
                 }
                 else -> {
                     entries[slot] = ChatEntry.GaitSubmitted(submission.recordId, submission.title)
-                    scheduleGaitAnalysisWatch(context, submission.recordId)
+                    scheduleGaitAnalysisWatch(context, submission.recordId, dogId)
                     // **접수가 된 뒤에 묻는다.** 올리기도 전에 물으면 실패했을 때
                     // 쓸데없이 물은 것이 된다.
                     askNotificationOnce()

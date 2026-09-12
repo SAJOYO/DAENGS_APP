@@ -65,6 +65,9 @@ class GaitAnalysisWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as? DaengsApp ?: return Result.failure()
         val recordId = inputData.getString(KEY_RECORD_ID) ?: return Result.failure()
+        // 알림이 **어느 강아지의 기록인지** 같이 나른다. 알림으로 챗에 돌아왔을 때
+        // 대표가 바뀌어 있으면 엉뚱한 아이의 대화에 카드가 붙는다.
+        val petId = inputData.getString(KEY_PET_ID)
         if (!GaitApi.configured) return finished(null)
 
         // **매번 새로 받는다.** access token 이 5분이라 2분짜리 분석 하나에도 중간에
@@ -84,14 +87,14 @@ class GaitAnalysisWorker(
 
             when {
                 record.status == GaitStatus.DONE -> {
-                    notify(app, DONE_TITLE, DONE_TEXT, recordId)
+                    notify(app, DONE_TITLE, DONE_TEXT, recordId, petId)
                     finished(GaitStatus.DONE)
                 }
                 // **실패도 알린다.** 기다리던 사람에게 아무 말도 안 하면 계속 기다린다.
                 // 다만 저쪽 failure_reason 은 안 띄운다 — 운영 진단용이라 내부 경로가
                 // 들어 있을 수 있다.
                 record.status == GaitStatus.FAILED -> {
-                    notify(app, FAILED_TITLE, FAILED_TEXT, recordId)
+                    notify(app, FAILED_TITLE, FAILED_TEXT, recordId, petId)
                     // 서버가 끝을 냈으니 우리 일도 끝이다. 되풀이할 것이 없다.
                     finished(GaitStatus.FAILED)
                 }
@@ -124,7 +127,13 @@ class GaitAnalysisWorker(
      * **id 를 `recordId` 로 잡는다.** 같은 기록의 알림이 두 번 뜨지 않게 하려는 것이다 —
      * Worker 가 어떤 이유로 다시 돌아도 같은 자리에 덮어쓴다.
      */
-    private fun notify(context: Context, title: String, text: String, recordId: String) {
+    private fun notify(
+        context: Context,
+        title: String,
+        text: String,
+        recordId: String,
+        petId: String?,
+    ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
         ensureChannel(context)
 
@@ -136,7 +145,12 @@ class GaitAnalysisWorker(
             // 챗이 사라진다(에뮬레이터에서 실제로 그랬다). SINGLE_TOP 은 이미 떠 있는
             // 것을 그대로 살리므로, 알림은 **앱을 앞으로 데려오기만** 한다.
             Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                // 챗으로 데려가고, 어느 기록이 끝났는지도 같이 알린다. 화면을 나갔던
+                // 사람은 대화가 서버 이력에서 다시 그려지는데 거기에는 보행 카드가
+                // 없어서, 이 둘이 없으면 결과를 다시 붙일 근거가 없다.
+                .putExtra(EXTRA_OPEN_GAIT_RECORD, recordId)
+                .putExtra(EXTRA_OPEN_GAIT_PET, petId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -173,6 +187,13 @@ class GaitAnalysisWorker(
     companion object {
         const val KEY_RECORD_ID = "record_id"
 
+        /** 어느 강아지의 기록인가. 알림으로 챗에 돌아왔을 때 대표가 맞는지 본다. */
+        const val KEY_PET_ID = "pet_id"
+
+        /** 알림이 `MainActivity` 에 실어 보내는 것. 챗으로 가서 이 기록을 붙인다. */
+        const val EXTRA_OPEN_GAIT_RECORD = "com.daengs.app.gait.OPEN_RECORD"
+        const val EXTRA_OPEN_GAIT_PET = "com.daengs.app.gait.OPEN_PET"
+
         /** 출력 데이터의 열쇠. 값은 [GaitStatus] 의 것이거나, 모르는 채 끝났으면 없다. */
         const val KEY_STATUS = "status"
 
@@ -200,9 +221,9 @@ class GaitAnalysisWorker(
         /** 한 기록에 하나. 같은 영상으로 Worker 가 둘 생기지 않게 하는 열쇠다. */
         fun workName(recordId: String): String = "gait:$recordId"
 
-        fun request(recordId: String): OneTimeWorkRequest =
+        fun request(recordId: String, petId: String?): OneTimeWorkRequest =
             OneTimeWorkRequestBuilder<GaitAnalysisWorker>()
-                .setInputData(workDataOf(KEY_RECORD_ID to recordId))
+                .setInputData(workDataOf(KEY_RECORD_ID to recordId, KEY_PET_ID to petId))
                 .setInitialDelay(INITIAL_DELAY_SECONDS, TimeUnit.SECONDS)
                 .setBackoffCriteria(BackoffPolicy.LINEAR, BACKOFF_SECONDS, TimeUnit.SECONDS)
                 .build()
@@ -216,10 +237,10 @@ class GaitAnalysisWorker(
  * 사용자가 되돌아왔거나) 이미 도는 것을 그대로 둔다. `REPLACE` 로 두면 지켜보던 것이
  * 취소되고 처음부터 다시 세어, 완료를 아는 시점이 오히려 늦어진다.
  */
-fun scheduleGaitAnalysisWatch(context: Context, recordId: String) {
+fun scheduleGaitAnalysisWatch(context: Context, recordId: String, petId: String?) {
     WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
         GaitAnalysisWorker.workName(recordId),
         ExistingWorkPolicy.KEEP,
-        GaitAnalysisWorker.request(recordId),
+        GaitAnalysisWorker.request(recordId, petId),
     )
 }
