@@ -44,7 +44,7 @@ daengs.gaitUrlRelease=https://daengapi.weareithero.cloud
 ```
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.assistant.*' --tests 'com.daengs.app.place.*' --tests 'com.daengs.app.ui.places.*' --tests 'com.daengs.app.chat.*' --tests 'com.daengs.app.ui.chat.*'
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.assistant.*' --tests 'com.daengs.app.place.*' --tests 'com.daengs.app.ui.places.*' --tests 'com.daengs.app.chat.*' --tests 'com.daengs.app.ui.chat.*' --tests 'com.daengs.app.auth.*'
 .\gradlew.bat :app:assembleRelease :app:bundleRelease
 ```
 
@@ -57,10 +57,18 @@ Windows에서 경로에 한글이 있으면 AGP가 거절할 수 있고, 경로 
 
 ## 확인 범위
 
-2026-09-12 로컬 검증: 위 패키지의 **435개 테스트 통과, 실패·skip 0**.
+후속 리뷰에서는 토큰 문자열 대신 `SessionProvider.accountScope`로 로그인 생애를 확인하고,
+공통 요청·복구의 인증을 갱신하도록 수정했다. 정상 토큰 회전은 응답을 버리지 않고 같은 회원의
+재로그인은 차단한다. `FacilityResponsePolicy`는 내부 용어·길이와 실제 찜 완료 상태를 검사한다.
+기본 한 문장·최대 두 문장/160자이며 전체 동의 조건을 보여주는 확인 질문만 최대 300자다.
+서버의 긴·부적절한 제안은 조건을 나눠 말해 달라고 다시 묻는다. GPS 없는 검색 만료도 복구한다.
+
+설계: [DEV 응답 표시 정책](https://github.com/SAJOYO/DAENGS_dev/blob/feat/facility-orchestration-release/docs/place/response-policy.md).
+
+2026-09-12 최종 로컬 검증: 위 패키지의 **467개 테스트 통과, 실패·skip 0**.
 `assembleRelease`·`bundleRelease`와 release 필수 lint도 통과했다. 생성된 BuildConfig의
 시설 플래그 true 및 HTTPS API 주소를 확인했다. 원 작업 폴더와 영문 빌드 폴더의
-Kotlin·Gradle·XML·설정 파일 935개의 SHA-256이 일치했다. APK와 AAB는 서명 전 산출물이다.
+Kotlin·Gradle·XML·설정 파일 944개의 SHA-256이 일치했다. APK와 AAB는 서명 전 산출물이다.
 
 `FacilityAssistantTest`는 실제 공유 저장소에 응답을 적용하면서 재시도·수동 검색 우선·계정
 전환·잘못된 recovery·실제 찜 완료 대기·만료 복구·이전 명령 재실행 차단을 검사한다.

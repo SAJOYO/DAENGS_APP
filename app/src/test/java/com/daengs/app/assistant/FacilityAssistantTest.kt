@@ -1,6 +1,7 @@
 package com.daengs.app.assistant
 
 import com.daengs.app.auth.Session
+import com.daengs.app.auth.AccountScope
 import com.daengs.app.chat.ChatApiError
 import com.daengs.app.chat.ChatRequestIds
 import com.daengs.app.location.GeoPoint
@@ -17,6 +18,9 @@ import java.io.IOException
 @OptIn(ExperimentalCoroutinesApi::class)
 class FacilityAssistantTest {
     private var login = Session("owner", "access", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+    private var account = AccountScope("owner", 1)
+    private var refreshOnNextRead = false
+    private var recoveryToken: String? = null
     private val search = PlaceSearchRequest(GeoPoint(37.5, 127.0), kinds = listOf(PlaceKind.PET_SHOP, PlaceKind.SHOPPING))
     private var recovered: JsonObject? = null
     private var recoveries = 0
@@ -31,10 +35,17 @@ class FacilityAssistantTest {
         }
         override suspend fun recover(token: String, payload: JsonObject): JsonObject {
             recoveries++
+            recoveryToken = token
             if (expired) throw FacilityException(410)
             return requireNotNull(recovered)
         }
-    }, PlaceSearchRepository { error("Unexpected legacy search") }, { login }, { login })
+    }, PlaceSearchRepository { error("Unexpected legacy search") }, {
+        if (refreshOnNextRead) {
+            login = login.copy(accessToken = "new-access", refreshToken = "rotated")
+            refreshOnNextRead = false
+        }
+        login
+    }, { login }, { account })
 
     private fun answer(context: JsonObject, bookmark: Boolean = false): AssistantResponse {
         val before = repository.state.value.result
@@ -131,7 +142,7 @@ class FacilityAssistantTest {
         val before = repository.state.value
         val assistant = FacilityAssistant(repository, send = { _, _, _, _, _, context ->
             val response = answer(context)
-            login = login.copy(refreshToken = "new-login")
+            account = account.copy(generation = account.generation + 1)
             Result.success(response)
         })
         assertTrue(assistant.query("access", "골라줘", search.origin, null, null).isFailure)
@@ -148,6 +159,36 @@ class FacilityAssistantTest {
         assertEquals("반가워요!", assistant.query("access", "안녕", null, null, null).getOrThrow().message)
         assertEquals(before, repository.state.value)
         assertEquals(0, recoveries)
+    }
+
+    @Test fun recoveryObtainsFreshAuthenticationWithinTheSameLogin() = runTest {
+        repository.search(search)
+        val assistant = FacilityAssistant(repository, send = { _, _, _, _, _, context ->
+            val response = answer(context)
+            refreshOnNextRead = true
+            Result.success(response)
+        })
+        assertTrue(assistant.query("stale-caller-token", "골라줘", null, null, null).isSuccess)
+        assertEquals("new-access", recoveryToken)
+        assertEquals(2, repository.state.value.result!!.revision)
+    }
+
+    @Test fun sendUsesRefreshedAuthenticationInsteadOfTheCallersOldToken() = runTest {
+        repository.search(search)
+        refreshOnNextRead = true
+        val assistant = FacilityAssistant(repository, send = { token, _, _, _, _, context ->
+            assertEquals("new-access", token)
+            Result.success(answer(context))
+        })
+        assertTrue(assistant.query("access", "골라줘", null, null, null).isSuccess)
+    }
+
+    @Test fun missingLoginKeepsAuthenticationFailureInsteadOfAChangedViewError() = runTest {
+        val loggedOut = FacilityConversationRepository(ConversationClient { _, _ -> error("No request") },
+            PlaceSearchRepository { error("No search") }, { null }, { null }, { AccountScope(null, 2) })
+        val assistant = FacilityAssistant(loggedOut, send = { _, _, _, _, _, _ -> error("No request") })
+        val error = assistant.query("old-token", "골라줘", null, null, null).exceptionOrNull() as ChatApiError
+        assertEquals(401, error.status)
     }
 
     @Test fun bookmarkCompletionWaitsForTheActualCommandAndKeepsTheMap() = runTest {

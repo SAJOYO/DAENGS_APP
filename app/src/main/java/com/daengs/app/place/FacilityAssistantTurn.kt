@@ -1,6 +1,7 @@
 package com.daengs.app.place
 
 import com.daengs.app.auth.Session
+import com.daengs.app.auth.AccountScope
 import com.daengs.app.place.bookmarks.BookmarkTurn
 import kotlinx.serialization.json.JsonObject
 
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.JsonObject
 class FacilityAssistantTurn internal constructor(
     internal val generation: Long,
     internal val session: Session,
+    internal val account: AccountScope?,
     internal val before: ConversationResult?,
     val context: JsonObject,
     val bookmarks: BookmarkTurn?,

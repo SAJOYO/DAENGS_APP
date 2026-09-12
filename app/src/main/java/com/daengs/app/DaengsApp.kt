@@ -47,6 +47,7 @@ class DaengsApp : Application() {
             com.daengs.app.place.ConversationApi { BuildConfig.API_BASE_URL },
             com.daengs.app.place.PlaceRepository(com.daengs.app.place.PlaceApi(baseUrl = { BuildConfig.API_BASE_URL })),
             sessionProvider::freshSession, tokenStore::load,
+            { sessionProvider.accountScope.value },
         )
     }
     val facilityConversation get() = facilityConversationLazy.value
