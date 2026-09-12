@@ -67,6 +67,7 @@ import com.daengs.app.pet.InviteShare
 import com.daengs.app.pet.isOwnedBy
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.InvitePaste
 import com.daengs.app.pet.rememberInviteAcceptHolder
 import com.daengs.app.pet.rememberPetInviteBundleHolder
 import com.daengs.app.pet.rememberPetInviteHolder
@@ -775,12 +776,24 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     } else if (acceptingInvite) {
+                        // **링크를 찾자마자 무엇이 든 초대인지 물어본다.** 사용자가 버튼을
+                        // 한 번 더 누를 이유가 없고, 미리보기가 성공해야 연결 선택을 보낼
+                        // 수 있다 — 옛 서버는 선택을 조용히 무시해 버린다.
+                        LaunchedEffect(inviteAccept.parsed) {
+                            if (inviteAccept.parsed !is InvitePaste.Result.Found) return@LaunchedEffect
+                            val token = freshToken() ?: return@LaunchedEffect
+                            inviteAccept.loadPreview(token)
+                        }
                         InviteAcceptScreen(
                             pasted = inviteAccept.pasted,
                             parsed = inviteAccept.parsed,
                             busy = inviteAccept.busy,
                             outcome = inviteAccept.outcome,
                             canAccept = inviteAccept.canAccept,
+                            preview = inviteAccept.preview,
+                            choices = inviteAccept.choices,
+                            takenBy = inviteAccept::takenBy,
+                            onChoose = { petId, choice -> inviteAccept.choose(petId, choice) },
                             onPaste = inviteAccept::paste,
                             onAccept = {
                                 scope.launch {

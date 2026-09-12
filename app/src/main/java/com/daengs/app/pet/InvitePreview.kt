@@ -77,6 +77,27 @@ data class InvitePreview(
 data class InviteLinkChoice(val petId: String, val linkToPetId: String?)
 
 /**
+ * 초대된 아이 하나를 어떻게 받을 것인가.
+ *
+ * **"아직 안 골랐다" 를 [PetChoice] 로 표현하지 않는다** — 안 고른 것은 이 맵에 키가
+ * 없는 것이다. `null` 을 "새로 참여" 로도 "미선택" 으로도 쓰면 둘이 섞여서, 사용자가
+ * 아무것도 안 골랐는데 수락 버튼이 열린다.
+ */
+sealed interface PetChoice {
+    /** 연결 없이 새 공동 보호자로 참여. 서버에는 `link_to_pet_id: null` 로 간다. */
+    data object Join : PetChoice
+
+    /** 내 기존 아이와 잇는다. */
+    data class Link(val existingPetId: String) : PetChoice
+}
+
+/** 서버로 보낼 모양으로. 키가 없는 아이는 여기 안 실린다 — 그러면 서버가 409 로 막는다. */
+fun Map<String, PetChoice>.toLinks(): List<InviteLinkChoice> =
+    map { (petId, choice) ->
+        InviteLinkChoice(petId, (choice as? PetChoice.Link)?.existingPetId)
+    }
+
+/**
  * 미리보기를 못 받았을 때. **왜 못 받았는지로 화면이 갈린다.**
  */
 sealed interface PreviewOutcome {
