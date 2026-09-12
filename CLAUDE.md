@@ -14,6 +14,7 @@ Kotlin + Jetpack Compose. 이 저장소는 **홈 화면과 미니룸**을 담당
 | [`CONTEXT.md`](CONTEXT.md) | 앱 전체 기획 (백엔드·인증·데이터 포함). 이 저장소 밖 이야기도 많다 |
 | [`docs/collaboration.md`](docs/collaboration.md) | 협업 규칙. 우선순위 · Iteration · PR · 회고 |
 | [`docs/map-style.md`](docs/map-style.md) | 지도 스타일. 콘솔에 넣은 색과 편집기 제약 |
+| ⛔ [`docs/design-locks.md`](docs/design-locks.md) | **잠긴 디자인.** 사용자가 정한 화면 결정 — 에이전트가 바꾸지 않는다 |
 | [`docs/asset-workflow.md`](docs/asset-workflow.md) | 에셋을 직접 그릴 때의 격자·각도·기준점 |
 
 ## 명령어
@@ -27,6 +28,11 @@ uv run tools/import_room_assets.py <드롭폴더>          # 그림 반입
 Windows 에서는 `gradlew.bat`. 자세한 건 [`README.md`](README.md).
 
 ## 규칙
+
+- ⛔ **[`docs/design-locks.md`](docs/design-locks.md) 에 적힌 화면 결정은 바꾸지 않는다.**
+  바꿔야 할 이유가 있으면 코드를 고치지 말고 PR 본문에 제안으로 적고 멈춘다.
+  `DesignLockTest` 가 깨지면 테스트를 고치지 말고 변경을 되돌린다.
+  Codex 는 `AGENTS.md` 로 같은 규칙에 닿는다.
 
 - **브랜치는 `dev` 가 기본이다.** 작업 브랜치는 `dev` 에서 따고 PR 로 `dev` 에 머지한다.
   `main` 은 릴리즈 스냅샷이라 **작업하지 않는다.** default 를 `main` 으로 바꾸지 말 것.
