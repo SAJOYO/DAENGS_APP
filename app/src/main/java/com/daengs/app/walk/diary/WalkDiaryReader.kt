@@ -61,7 +61,7 @@ class WalkDiaryReader(
                             true, "")
                         else storyboardAnalysisView(state.first, entries, images.first, images.second)
                         diaryWalk(walk, live, images.third, StoryboardDraft.parse(draft?.payload), analysis,
-                            observations[walk.sessionId].orEmpty()).copy(published = publication != null)
+                            observations[walk.sessionId].orEmpty()).copy(published = publication != null, sourceEntries = live)
                     }
                 }
             }

@@ -30,6 +30,8 @@ import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.map.shell.MapCameraSnapshot
+import com.daengs.app.map.shell.MapVisibilityQuery
+import com.daengs.app.map.shell.MapVisibilityResult
 import com.daengs.app.map.shell.minimumZoom
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -81,6 +83,8 @@ fun NaverMapSurface(
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
     onRouteDirectionCount: (Int) -> Unit = {},
+    visibilityQuery: MapVisibilityQuery? = null,
+    onVisibility: (MapVisibilityResult) -> Unit = {},
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -158,9 +162,11 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = if (keepSelectionVisible || scene.sessionExplorer != null)
+        modifier = if (keepSelectionVisible || scene.sessionExplorer != null || visibilityQuery != null)
             modifier.onSizeChanged { viewportSize = it } else modifier,
     )
+
+    NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
 
     LaunchedEffect(naverMap, searchOrigin) {
         val map = naverMap ?: return@LaunchedEffect

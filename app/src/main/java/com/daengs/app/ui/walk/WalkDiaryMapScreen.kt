@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.DaengsApp
 import com.daengs.app.BuildConfig
+import com.daengs.app.auth.AccountScope
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
@@ -27,6 +29,7 @@ import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.routeexplorer.SceneRouteRelation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
 
 /** One selected session; entries, map styling and raw-history reconstruction are shared with walking. */
 @Composable
@@ -46,34 +49,32 @@ internal fun WalkDiaryMapScreen(
 ) {
     val app = LocalContext.current.applicationContext as DaengsApp
     val backupAccount by app.sessionProvider.accountScope.collectAsState()
+    key(sessionId, backupAccount) {
+        WalkDiaryMapForAccount(sessionId, history, onBack, modifier, pets, origin, app, backupAccount)
+    }
+}
+
+@Composable
+private fun WalkDiaryMapForAccount(sessionId: String, history: WalkHistory, onBack: () -> Unit,
+    modifier: Modifier, pets: List<Pet>, origin: WalkSessionOrigin, app: DaengsApp, backupAccount: AccountScope,
+) {
     val backupSource = remember(app, backupAccount) { app.routeBackupSource(backupAccount) }
     val reader = remember(app) { WalkDiaryReader(app.walkEntryDao, app.walkPhotos) {
         app.tokenStore.load()?.appUserId.orEmpty()
     } }
-    var detail by remember(sessionId) { mutableStateOf<WalkSessionDetail?>(null) }
+    var readView by remember(sessionId) { mutableStateOf<WalkDiaryReadView?>(null) }
+    val detail = readView?.route?.detail
     val route = detail?.route
-    val explorer = rememberWalkRouteExplorer(sessionId, detail)
-    var diary by remember(sessionId) { mutableStateOf<DiaryWalk?>(null) }
+    val explorer = rememberWalkRouteExplorer(sessionId, null)
+    val diary = readView?.diary
     var loaded by remember(sessionId) { mutableStateOf(false) }
     var error by remember(sessionId) { mutableStateOf<String?>(null) }
     var retry by remember { mutableIntStateOf(0) }
     val selectedId = explorer.selectedSceneId
-    // Camera intent is independent of sheet/card selection. Clearing a card must not reframe the map.
-    var cameraLatitude by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
-    var cameraLongitude by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
-    var cameraRequest by rememberSaveable(sessionId) { mutableIntStateOf(0) }
-    var cameraZoom by rememberSaveable(sessionId) { mutableStateOf<Double?>(null) }
-    var cameraSectionIndex by remember(route) { mutableStateOf<Int?>(null) }
-    var cameraAuxiliaryId by remember(detail) { mutableStateOf<String?>(null) }
-    var cameraContextId by remember(detail) { mutableStateOf<String?>(null) }
+    val navigation = rememberSaveable(sessionId, saver = DiaryMapNavigation.Saver) { DiaryMapNavigation() }
+    val camera = navigation.camera
+    var visibility by remember { mutableStateOf<MapVisibilityResult?>(null) }
     var directionCount by remember(sessionId) { mutableStateOf<Int?>(null) }
-    val cameraTarget = cameraLatitude?.let { lat -> cameraLongitude?.let { lng -> GeoPoint(lat, lng) } }
-    fun requestCamera(point: GeoPoint?) {
-        cameraSectionIndex = null
-        cameraAuxiliaryId = null
-        cameraContextId = null
-        cameraLatitude = point?.latitude; cameraLongitude = point?.longitude; cameraZoom = null; cameraRequest++
-    }
     var adding by rememberSaveable(sessionId) { mutableStateOf(false) }
     var chosenPoint by remember(sessionId) { mutableStateOf<WalkRoutePoint?>(null) }
     var entry by remember(sessionId) { mutableStateOf<WalkEntry?>(null) }
@@ -118,16 +119,23 @@ internal fun WalkDiaryMapScreen(
             } finally { generating = false }
         }
     }
-    LaunchedEffect(sessionId, history, retry) {
-        error = null; loaded = false
-        try { history.changes.collect { detail = history.sessionDetail(sessionId); loaded = true } }
-        catch (e: Exception) { if (e is CancellationException) throw e; error = "산책 경로를 불러오지 못했어요." }
-    }
-    LaunchedEffect(detail, retry) {
-        diary = null
-        val summary = detail?.summary ?: return@LaunchedEffect
-        try { reader.observe(listOf(summary), mapOf(sessionId to detail!!.observations)).collect { diary = it.singleOrNull() } }
-        catch (e: Exception) { if (e is CancellationException) throw e; error = "장면을 불러오지 못했어요." }
+    LaunchedEffect(sessionId, history, retry, backupAccount) {
+        error = null
+        walkDiaryReadUpdates(history.changes, load = { history.sessionDetail(sessionId) },
+            observe = { source -> reader.observe(listOf(source.summary), mapOf(sessionId to source.observations))
+                .map { it.singleOrNull() } },
+            isCurrentAccount = { app.sessionProvider.accountScope.value == backupAccount },
+        ).collect { update ->
+            if (app.sessionProvider.accountScope.value != backupAccount) return@collect
+            Snapshot.withMutableSnapshot {
+                loaded = true
+                when (update) {
+                    is DiaryReadUpdate.Ready -> { explorer.adopt(update.view); readView = update.view; error = null }
+                    DiaryReadUpdate.Missing -> { explorer.overview(); readView = null; error = null }
+                    is DiaryReadUpdate.Failed -> error = update.message
+                }
+            }
+        }
     }
     fun change(value: WalkEntry, delete: Boolean) {
         busy = true; entryError = null
@@ -175,19 +183,18 @@ internal fun WalkDiaryMapScreen(
     val selectedOriginal = originalScenes.firstOrNull { it.id == selectedId }
     fun selectScene(scene: DiaryScene, fromMap: Boolean = false) {
         explorer.selectScene(scene.id, fromMap)
-        if (!fromMap) scene.point?.let(::requestCamera)
+        navigation.locate(scene.point, fromMap, minZoom = SCENE_ROUTE_MIN_ZOOM.takeIf {
+            readView?.sceneFocus?.get(scene.id)?.let { it.paths.isNotEmpty() || it.observedParts.isNotEmpty() } == true })
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(originalScenes, selectedId) { diarySceneMarkers(originalScenes, selectedId) }
-    val currentReview = explorer.review?.takeIf { it.detail == detail }
-    val selectedEntry = entries.firstOrNull { it.id == selectedOriginal?.entryId }
-    val sceneFocus = remember(selectedOriginal, currentReview, selectedEntry) {
-        selectedOriginal?.let { currentReview?.recordSceneFocus(it, selectedEntry) }
-    }
+    val currentReview = readView?.route?.review
+    val sceneFocus = readView?.sceneFocus?.get(selectedOriginal?.id)
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
         explorer.selectContext(context.id, openExplorer = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP,
             fromMap = fromMap)
-        if (!fromMap) { requestCamera(null); cameraContextId = context.id }
+        if (!fromMap) navigation.fit(context.locations,
+            expandedContext = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP)
     }
     val presentation = recordPresentationLayer(explorer, detail, sceneFocus)
     val highlightPaths = presentation.emphasisPaths
@@ -197,22 +204,24 @@ internal fun WalkDiaryMapScreen(
             stayStamps = detail?.stayStamps.orEmpty()))).copy(
                 sessionExplorer = presentation)
     }
-    val overviewBounds = remember(route, detail?.summary?.anchor, originalScenes) {
-        diaryOverviewBounds(route?.bounds.orEmpty(), detail?.summary?.anchor, originalScenes)
-    }
-    val bounds = cameraContextId?.let { currentReview?.context?.context(it)?.locations?.takeIf { points -> points.isNotEmpty() } }
-        ?: cameraAuxiliaryId?.let { id -> currentReview?.observed?.sections?.firstOrNull { it.id == id }?.path }
-        ?: cameraSectionIndex?.let { index ->
-        explorer.review?.takeIf { it.detail.route == route }?.sections?.firstOrNull { it.index == index }?.path
-    } ?: overviewBounds
+    val walkingBounds = remember(detail, currentReview, originalScenes) { detail?.let { diaryWalkingBounds(it, currentReview, originalScenes) }.orEmpty() }
+    val wholeBounds = remember(detail, currentReview, originalScenes) { detail?.let { diaryWholeRecordBounds(it, currentReview, originalScenes) }.orEmpty() }
+    val visibilityTargets = remember(originalScenes) { diaryVisibilityTargets(originalScenes) }
+    val offscreen = diaryOffscreenScenes(originalScenes, visibility?.takeIf {
+        it.query.revisionKey == readView?.revisionKey && it.query.targets == visibilityTargets })
+    LaunchedEffect(walkingBounds) { navigation.initialize(walkingBounds) }
+    fun wholeRecord() { explorer.overview(); navigation.fit(wholeBounds, DiaryMapView.WHOLE) }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null && error == null) {
             TextButton(onClick = onBack) { Text("‹ ${origin.backLabel}") }
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
-            WalkDiaryMapContent(scenes, selected, !loaded || diary == null || diary?.preparing == true, error,
+            WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
                 onSelect = { selectScene(it) }, onClose = explorer::closeScene,
                 selectionFromMap = explorer.selectionFromMap,
+                selectionPending = selectedId != null && readView?.scenesLoading == true,
+                mapView = navigation.view, offscreenScenes = offscreen,
+                onWalkingOverview = { explorer.overview(); navigation.fit(walkingBounds, DiaryMapView.WALKING) },
                 selectedRouteNotice = sceneFocus?.let(::sceneRouteNotice),
                 explorerFocusId = explorer.selectedContext?.id,
                 onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
@@ -254,9 +263,9 @@ internal fun WalkDiaryMapScreen(
                 onChooseExplorer = { open ->
                     adding = false; chosenPoint = null; explorer.overview(); explorer.choosePanel(open)
                 },
-                explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = { requestCamera(null) },
-                    onSection = { section -> requestCamera(null); cameraSectionIndex = section.index },
-                    onAuxiliary = { section -> requestCamera(null); cameraAuxiliaryId = section.id },
+                explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
+                    onSection = { section -> navigation.fit(section.path) },
+                    onAuxiliary = { section -> navigation.fit(section.path) },
                     onContext = { selectContext(it) }) },
                 directionNotice = directionCount == 0 &&
                     (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
@@ -265,7 +274,7 @@ internal fun WalkDiaryMapScreen(
                     (highlightPaths.flatten().takeIf { it.isNotEmpty() } ?: route?.bounds)?.let { points ->
                         points.getOrNull(points.size / 2)
                     }?.let {
-                        requestCamera(it); cameraZoom = 18.0
+                        navigation.locate(it, zoom = 18.0)
                     }
                 },
                 summaryContent = { detail?.summary?.let { summary ->
@@ -277,21 +286,23 @@ internal fun WalkDiaryMapScreen(
                         backupSource?.let { WalkRouteBackupStatus(sessionId, it) }
                     }
                 },
-                onOverview = { explorer.overview(); requestCamera(null) },
+                onOverview = ::wholeRecord,
                 modifier = Modifier.weight(1f), map = { viewport ->
-                    if (bounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
+                    val query = MapVisibilityQuery(readView?.revisionKey.orEmpty(), visibilityTargets, viewport.bottomOcclusionPx,
+                        viewport.controlsWidthPx, viewport.controlsHeightPx, viewport.settingsCoverPx)
+                    val latestQuery by rememberUpdatedState(query)
+                    if (wholeBounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
                         Text(if (!loaded) "경로를 불러오고 있어요." else "표시할 위치 기록이 없어요.", color = TextMuted)
                     } else MapHost(scene = mapScene, searchOrigin = null, followDevice = false,
-                        fitBounds = bounds, centerOn = cameraTarget,
-                        centerZoom = cameraZoom, onRouteDirectionCount = { directionCount = it },
-                        centerMinZoom = if (selectedId != null && highlightPaths.isNotEmpty()) SCENE_ROUTE_MIN_ZOOM else null,
-                        cameraRequestKey = cameraRequest, centerYFraction = viewport.selectionYFraction,
-                        // Padding belongs to the last camera request, not to marker selection.
-                        bottomPaddingPx = if (cameraContextId?.let { currentReview?.context?.context(it)?.kind }
-                            ?.let { it != com.daengs.app.walk.trajectory.RecordContextKind.GAP } == true)
+                        fitBounds = camera.bounds, centerOn = camera.center,
+                        centerZoom = camera.zoom, onRouteDirectionCount = { directionCount = it },
+                        centerMinZoom = camera.minZoom,
+                        cameraRequestKey = camera.revision, centerYFraction = viewport.selectionYFraction,
+                        bottomPaddingPx = if (camera.expandedContext)
                             viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
                         keepSelectionVisible = true,
-                        onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
+                        onCameraIdle = {}, onCameraGesture = navigation::gesture, onSelectPlace = {},
+                        visibilityQuery = query, onVisibility = { if (it.query == latestQuery) visibility = it },
                         onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let { selectScene(it, fromMap = true) } },
                         onSelectRecordContext = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                         onSelectRouteEndpoint = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
@@ -407,7 +418,7 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): L
     val order = scenes.withIndex().associate { it.value.id to it.index + 1 }
     return diaryLocationGroups(scenes).map { group ->
         val chosen = group.firstOrNull { it.id == selectedId } ?: group.first()
-        MomentMarkerState(chosen.id, requireNotNull(chosen.point), group.joinToString(" · ") { order[it.id].toString() },
+        MomentMarkerState(chosen.id, requireNotNull(group.first().point), group.joinToString(" · ") { order[it.id].toString() },
             selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true,
             sequenceLabel = if (group.size <= 3) group.joinToString(" · ") { order[it.id].toString() }
                 else (group.take(2) + listOfNotNull(group.firstOrNull { it.id == selectedId }))
@@ -418,6 +429,7 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): L
 
 /** Display-only suppression at the same observed position; route and stay data stay intact. */
 internal fun diaryDisplayScene(scene: MapScene): MapScene = scene.copy(
+    allowRegionalOverview = true,
     completedRoute = scene.completedRoute.copy(
         start = scene.completedRoute.start?.copy(compact = true),
         end = scene.completedRoute.end?.copy(compact = true)),

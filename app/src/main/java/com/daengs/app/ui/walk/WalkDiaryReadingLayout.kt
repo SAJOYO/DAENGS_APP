@@ -30,9 +30,10 @@ import com.daengs.app.walk.trajectory.RecordContext
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
-/** Stable map geometry; sheet position is deliberately not part of this value. */
+/** Camera padding stays stable. Occlusion alone follows the actual sheet position. */
 internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float,
-    val contextBottomPaddingPx: Int = bottomPaddingPx)
+    val contextBottomPaddingPx: Int = bottomPaddingPx, val bottomOcclusionPx: Int = bottomPaddingPx,
+    val controlsWidthPx: Int = 0, val controlsHeightPx: Int = 0, val settingsCoverPx: Int = 0)
 
 /** The sheet overlays one fixed map. Swiping it never issues a camera request. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,6 +66,10 @@ internal fun WalkDiaryMapContent(
     explorerFocusId: String? = null,
     onContextDismiss: () -> Unit = {},
     selectionFromMap: Boolean = false,
+    selectionPending: Boolean = false,
+    mapView: DiaryMapView? = null,
+    onWalkingOverview: () -> Unit = {},
+    offscreenScenes: List<DiaryScene> = emptyList(),
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null || selectionFromMap) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -75,9 +80,9 @@ internal fun WalkDiaryMapContent(
     val latestClose by rememberUpdatedState(onClose)
     var menu by remember { mutableStateOf(false) }
     val expanded = sheet.targetValue == SheetValue.Expanded
-    LaunchedEffect(selected?.id, adding, explorerFocusId, selectionFromMap) {
+    LaunchedEffect(selected?.id, adding, explorerFocusId, selectionFromMap, selectionPending) {
         // A visible marker is already in view. Keep the user's map and sheet framing on a map tap.
-        if (selectionFromMap && !adding) return@LaunchedEffect
+        if ((selectionFromMap || selectionPending) && !adding) return@LaunchedEffect
         if (selectedGap == null && (selected != null || explorerFocusId != null) && !adding) sheet.expand()
         else sheet.partialExpand()
     }
@@ -127,6 +132,11 @@ internal fun WalkDiaryMapContent(
             color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
         summaryContent()
         comparisonContent()
+        mapView?.let { view -> Box(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
+            DiaryRecordMapButtons(view,
+                onWalking = { onClose(); onContextDismiss(); onWalkingOverview(); scope.launch { sheet.partialExpand() } },
+                onWhole = { onClose(); onContextDismiss(); onOverview(); scope.launch { sheet.partialExpand() } })
+        } }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val mapPeek = (maxHeight * .25f).coerceIn(96.dp, 180.dp).coerceAtMost(maxHeight * .4f)
             val panelHeight = maxHeight - mapPeek
@@ -135,9 +145,18 @@ internal fun WalkDiaryMapContent(
             else (maxHeight * .43f).coerceIn(210.dp, 280.dp).coerceAtMost(maxHeight * .6f)
             // Padding/fit use the browsing viewport even while the sheet covers more of the map.
             // Only an explicit scene selection uses the upper, still-visible band as its pivot.
-            val viewport = DiaryMapViewport(with(LocalDensity.current) { peek.roundToPx() },
+            val density = LocalDensity.current
+            val heightPx = with(density) { maxHeight.roundToPx() }
+            val peekPx = with(density) { peek.roundToPx() }
+            val occlusion by remember(sheet, heightPx, peekPx) { derivedStateOf {
+                val offset = runCatching { sheet.requireOffset() }.getOrNull()?.takeIf { it.isFinite() }
+                offset?.let { (heightPx - it).toInt().coerceIn(0, heightPx) } ?: peekPx
+            } }
+            val viewport = DiaryMapViewport(peekPx,
                 (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f),
-                with(LocalDensity.current) { panelHeight.roundToPx() })
+                with(density) { panelHeight.roundToPx() }, occlusion,
+                0, 0,
+                with(density) { 68.dp.roundToPx() })
             BottomSheetScaffold(
                 scaffoldState = scaffold, sheetPeekHeight = peek,
                 sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -174,6 +193,7 @@ internal fun WalkDiaryMapContent(
                             Tab(selected = explorerSelected, onClick = { onChooseExplorer(true) },
                                 text = { Text("동선 탐색") })
                         }
+                        if (offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
                         if (adding) Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("동선에서 위치를 골라 주세요.", Modifier.weight(1f), fontSize = 14.sp)
                             TextButton(onClick = onAdd) { Text("취소") }
