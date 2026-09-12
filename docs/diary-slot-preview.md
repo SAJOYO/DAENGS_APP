@@ -235,3 +235,25 @@ uvx ruff check tools/compare_diary_scenes.py
 ```
 
 실기기 APK SHA-256: `b30099cebc6704fcd25642c470839daafb4d7e495dea17e036e191a33c68f2e5`.
+
+### 최신 상세 지도와 병합 검증
+
+2026-09-12 `dev@3934f5e`를 #328의 기존 브랜치에 병합했다. 상세 지도·읽기 레이아웃·
+테스트 안내의 충돌을 해결하면서 미리보기/설명 비교와 최신 구간·장면·보조 관측 경로 표시를 함께 유지한다.
+장면 선택은 최신 `WalkRouteExplorerState`를 따르고, 지도 마커·전체 경계·장면의 경로 대응은
+원본 장면으로 계산한다. 설명 전환은 표시 본문만 바꾸며 편집창에도 원문을 전달한다.
+
+Windows의 로컬 JDK·Android SDK로 다음을 실행했다. Docker와 GitHub Actions는 사용하지 않았다.
+
+- Debug APK 빌드와 Release Kotlin 컴파일 성공.
+- 미리보기·설명 비교·상세 지도/레이아웃 7개 클래스 45건 통과.
+- 구간/장면 대응·보조 관측 경로·탐색 상태/지도 표시 7개 클래스 48건 통과.
+- 총 93건, 실패·오류·skip 0. 설명 전환 후에도 경로 안내가 유지되는 UI 회귀 검사를 보강했다.
+
+```powershell
+.\gradlew.bat --no-daemon :app:assembleDebug :app:compileReleaseKotlin :app:testDebugUnitTest --tests '*DiaryPlaceComparisonUiTest' --tests '*WalkDiaryMapScreenTest' --tests '*WalkSessionDetailUiTest' --tests '*DiarySlotPreviewScreenTest' --tests '*DiarySlotEvidenceTextTest' --tests '*DiaryPlaceComparisonTest' --tests '*DiarySlotPreviewTest' --console=plain
+.\gradlew.bat --no-daemon :app:testDebugUnitTest --tests '*CompletedRouteReviewTest' --tests '*LegacySceneBindingTest' --tests '*ObservedRouteReviewTest' --tests '*WalkRouteExplorerStateTest' --tests '*WalkCompletedRoutePresentationTest' --tests '*ObservedRoutePresentationTest' --tests '*SessionRouteExplorerLayerStateTest' --max-workers=2 --console=plain
+```
+
+이번 병합 뒤 전체 앱 테스트·실기기 설치/조작·실제 미리보기 API 호출은 실행하지 않았다.
+위의 실기기 기록과 APK hash는 병합 전 검증 자료이며, 서버 활성화·배포 여부도 이번에 변경하지 않았다.

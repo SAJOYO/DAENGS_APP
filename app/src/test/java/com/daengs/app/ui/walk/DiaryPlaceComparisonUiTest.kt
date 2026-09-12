@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
 class DiaryPlaceComparisonUiTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `switch retains selected scene and map geometry without requesting generation`() {
+    @Test fun `switch retains selected scene route notice and map geometry without requesting generation`() {
         var usePlaces by mutableStateOf(false)
         var mounts = 0
         var generations = 0
@@ -31,6 +31,7 @@ class DiaryPlaceComparisonUiTest {
                 if (usePlaces) "주변 장소 설명\n\n메모 원문" else "메모 원문", null, "")
             WalkDiaryMapContent(listOf(scene), scene, false, null, {}, {}, {}, {}, {}, {},
                 onGenerate = { generations++ },
+                selectedRouteNotice = "이 장면에는 확인된 위치가 없어요.",
                 comparisonContent = { DiaryPlaceComparisonSwitch(usePlaces, { usePlaces = it }) },
                 map = { viewport ->
                     DisposableEffect(Unit) { mounts++; onDispose {} }
@@ -39,11 +40,13 @@ class DiaryPlaceComparisonUiTest {
                 })
         }
         compose.onNodeWithText("메모 원문").assertIsDisplayed()
+        compose.onNodeWithText("이 장면에는 확인된 위치가 없어요.").assertIsDisplayed()
         val before = geometry
         val bounds = compose.onNodeWithTag("comparison-map").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithText("장면 설명").performClick()
         compose.onNodeWithText("주변 장소 설명\n\n메모 원문").assertIsDisplayed()
         compose.onNodeWithText("같은 장면").assertIsDisplayed()
+        compose.onNodeWithText("이 장면에는 확인된 위치가 없어요.").assertIsDisplayed()
         compose.onNodeWithText("기본 설명").performClick()
         compose.onNodeWithText("메모 원문").assertIsDisplayed()
         assertEquals(1, mounts)

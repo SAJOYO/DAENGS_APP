@@ -57,6 +57,7 @@ internal fun WalkDiaryMapContent(
     onSlotPreview: (() -> Unit)? = null,
     onPlaceComparison: (() -> Unit)? = null,
     comparisonContent: @Composable () -> Unit = {},
+    selectedRouteNotice: String? = null,
 ) {
     val sheet = rememberStandardBottomSheetState(
         initialValue = if (selected == null) SheetValue.PartiallyExpanded else SheetValue.Expanded)
@@ -229,6 +230,8 @@ internal fun WalkDiaryMapContent(
                                             }
                                         }
                                         Spacer(Modifier.height(16.dp))
+                                        selectedRouteNotice?.let { Text(it, Modifier.padding(bottom = 12.dp),
+                                            style = MaterialTheme.typography.bodySmall, color = TextMuted) }
                                         DiarySceneText(selected.body)
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
                                             Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
@@ -268,6 +271,7 @@ private fun DiaryReadingPreview() {
     val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다. 두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", null, "",
         content = DiarySceneContent("두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", "note", locationLabel = "기록한 위치"))
     DaengsTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
+        selectedRouteNotice = "이 장면에는 확인된 위치가 없어요.",
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",
         summaryContent = { WalkSessionSummary(com.daengs.app.walk.WalkSummary("s", emptyList(), 0, 1_800_000,
             null, 1_200.0, 1_800_000, emptyList(), null), listOf("두부")) },

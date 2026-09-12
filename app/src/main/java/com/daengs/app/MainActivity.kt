@@ -164,7 +164,12 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
                 // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
-                val chatHistory = remember(scope) { ChatHistoryCoordinator(scope) }
+                val facilityAssistantQuery: com.daengs.app.assistant.AssistantQuery = remember(app) {
+                    if (BuildConfig.FACILITY_CONVERSATION) app.facilityAssistant::query
+                    else { token, text, where, dog, persistence -> com.daengs.app.assistant.AssistantApi.query(token, text, where, dog, persistence) }
+                }
+                val chatHistory = remember(scope) { ChatHistoryCoordinator(scope,
+                    gateway = com.daengs.app.chat.RemoteChatHistoryGateway(assistantQuery = facilityAssistantQuery)) }
                 val chatSummaries = remember(scope) { ChatSummaryCoordinator(scope) }
                 // 저장소 탭의 오늘의 케어 기록 (#201). 요약 보관함과 같은 생애 — 서버 사본이고 기기에 안 남긴다.
                 val careLog = remember(scope) { CareLogCoordinator(scope) }
@@ -1021,6 +1026,8 @@ class MainActivity : ComponentActivity() {
                         dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
                         historyCoordinator = chatHistory,
+                        assistantQuery = facilityAssistantQuery,
+                        onOpenFacilities = { screen = Screen.Places },
                         // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.
                         onOpenScreeningHistory = { screen = Screen.ScreeningHistory }
                             .takeIf { session != null },

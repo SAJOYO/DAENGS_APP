@@ -64,6 +64,7 @@ fun NaverMapSurface(
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
     centerZoom: Double? = null,
+    centerMinZoom: Double? = null,
     cameraRequestKey: Int = 0,
     centerYFraction: Float = .5f,
     keepSelectionVisible: Boolean = false,
@@ -288,7 +289,7 @@ fun NaverMapSurface(
         val point = centerOn ?: return@LaunchedEffect
         // 너무 멀리서 보고 있었으면 당겨 준다. 이미 가까우면 배율은 안 건드린다 —
         // 사용자가 맞춰 놓은 화면을 마음대로 바꾸지 않는다.
-        val zoom = centerZoom ?: maxOf(map.cameraPosition.zoom, SELECTED_PLACE_MIN_ZOOM)
+        val zoom = centerZoom ?: maxOf(map.cameraPosition.zoom, centerMinZoom ?: SELECTED_PLACE_MIN_ZOOM)
         map.moveCamera(
             CameraUpdate.scrollAndZoomTo(point.toLatLng(), zoom)
                 .apply { if (centerYFraction != .5f) pivot(PointF(.5f, centerYFraction.coerceIn(0f, 1f))) }
@@ -405,7 +406,7 @@ fun NaverMapSurface(
     }
 
     NaverWalkRouteLayer(naverMap, scene.trail, scene.completedRoute, walkStyle.policy, walkStyle.themeId,
-        dimCompleted = scene.sessionExplorer?.highlightPaths?.isNotEmpty() == true)
+        dimCompleted = scene.sessionExplorer?.emphasisPaths?.isNotEmpty() == true)
 
     NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,

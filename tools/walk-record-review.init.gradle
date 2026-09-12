@@ -1,0 +1,16 @@
+// Explicit diagnostic build. Requires the original app's HTTPS origin and SDK keys in the environment.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.androidComponents.finalizeDsl { android ->
+            def base = System.getenv('DAENGS_REVIEW_API_URL') ?: ''
+            def kakao = System.getenv('DAENGS_REVIEW_KAKAO_KEY') ?: ''
+            if (!(base ==~ /https:\/\/[a-zA-Z0-9.-]+/) || !(kakao ==~ /[a-zA-Z0-9]+/))
+                throw new GradleException('An explicit HTTPS review origin and Kakao key are required.')
+            android.buildTypes.debug.applicationIdSuffix = '.walkreview'
+            android.buildTypes.debug.buildConfigField('String', 'API_BASE_URL', '"' + base + '"')
+            android.buildTypes.debug.buildConfigField('String', 'KAKAO_NATIVE_APP_KEY', '"' + kakao + '"')
+            android.buildTypes.debug.manifestPlaceholders['kakaoScheme'] = 'kakao' + kakao
+            android.sourceSets.debug.manifest.srcFile(project.rootProject.file('tools/walk-record-review/AndroidManifest.xml'))
+        }
+    }
+}

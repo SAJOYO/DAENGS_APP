@@ -75,8 +75,11 @@ interface ChatHistoryGateway {
     ): Result<AssistantResponse>
 }
 
-private class RemoteChatHistoryGateway(
+class RemoteChatHistoryGateway(
     private val chatApi: ChatApi = ChatApi(),
+    private val assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence ->
+        AssistantApi.query(token, text, where, dog, persistence)
+    },
 ) : ChatHistoryGateway {
     override suspend fun createSession(accessToken: String, petId: String) =
         chatApi.createSession(accessToken, petId)
@@ -96,7 +99,7 @@ private class RemoteChatHistoryGateway(
         where: GeoPoint?,
         activeDogId: String?,
         persistence: ChatPersistence,
-    ) = AssistantApi.query(accessToken, text, where, activeDogId, persistence)
+    ) = assistantQuery(accessToken, text, where, activeDogId, persistence)
 }
 
 /**

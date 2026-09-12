@@ -8,17 +8,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.*
 import androidx.compose.ui.window.Popup
 import com.daengs.app.DaengsApp
-import com.daengs.app.place.bookmarks.*
 
 @Composable
 internal fun rememberPlaceBookmarks(): PlaceBookmarkController? {
     val app = LocalContext.current.applicationContext as? DaengsApp ?: return null
     val sessions = app.sessionProvider
     val account by sessions.accountScope.collectAsState()
-    val scope = rememberCoroutineScope()
-    val repository = remember(sessions) { PlaceBookmarkRepository(PlaceBookmarkApi(), sessions::freshSession, { sessions.accountScope.value }) }
-    val controller = remember(repository, account) { PlaceBookmarkController(scope, repository, account) }
-    DisposableEffect(controller) { onDispose { controller.close() } }
+    val controller = remember(app, account) { app.placeBookmarks() }
     LaunchedEffect(controller) { controller.ensureLoaded() }
     return controller
 }
