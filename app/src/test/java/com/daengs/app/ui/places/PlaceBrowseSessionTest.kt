@@ -10,6 +10,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaceBrowseSessionTest {
+    @Test fun explorationExclusionsStillNarrowAnOtherwiseUnfilteredSavedList() {
+        val excluded = setOf(PlaceKey("kcisa", "a"))
+        val filters = PlaceBrowseFilters(excludedKeys = excluded).allBookmarks()
+        assertEquals(excluded, filters.excludedKeys)
+        assertTrue(filters.narrowsBookmarks)
+    }
+
     private val filters = PlaceBrowseFilters(kinds = setOf(PlaceKind.CAFE, PlaceKind.RESTAURANT), name = "정원",
         origin = GeoPoint(37.54, 127.05), dogIds = setOf("bori"), parkingFirst = true,
         requiredConditions = buildJsonObject { put("parking", true) })
@@ -45,10 +52,11 @@ class PlaceBrowseSessionTest {
         assertEquals(search, returned.search)
     }
 
-    @Test fun changedSearchReseedsSavedConditionsInsteadOfReusingStaleFilters() {
+    @Test fun changedSearchKeepsSavedConditionsUntilExplicitCopy() {
         val changed = PlaceBrowseSession(search).showAllBookmarks().select(PlaceBrowseTab.SEARCH)
             .updateCurrent { it.copy(filters = it.filters.copy(kinds = setOf(PlaceKind.HOSPITAL), name = "")) }
-        assertEquals(changed.search.filters, changed.select(PlaceBrowseTab.BOOKMARKS).current.filters)
+        assertFalse(changed.select(PlaceBrowseTab.BOOKMARKS).current.filters.narrowsBookmarks)
+        assertEquals(changed.search.filters, changed.copySearchToBookmarks().current.filters)
         assertEquals(changed, changed.select(PlaceBrowseTab.SEARCH))
     }
 }

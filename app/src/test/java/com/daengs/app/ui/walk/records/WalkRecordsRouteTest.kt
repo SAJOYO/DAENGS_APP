@@ -78,9 +78,9 @@ class WalkRecordsRouteTest {
         } } }
         waitText("1 페이지")
         compose.onNodeWithTag("records-sync-notice").assertExists()
-        compose.onNodeWithTag("records-search").performTextReplacement("기록")
+        replaceSearch("기록")
         waitText("선택 산책 8회")
-        compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-dog-filter").performClick()
         compose.onNodeWithTag("records-dog-dog-1").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
         waitText("선택 산책 8회")
@@ -95,7 +95,7 @@ class WalkRecordsRouteTest {
         backFromDetail()
         waitText("2 페이지")
         compose.onNodeWithTag("records-search").assertTextContains("기록")
-        compose.runOnIdle { assertEquals("dog-1", queryRead.get().dogId); currentPets.value = pets }
+        compose.runOnIdle { assertEquals(setOf("dog-1"), queryRead.get().dogIds); currentPets.value = pets }
         compose.onNodeWithTag("records-sync-notice").assertDoesNotExist()
 
         compose.onNodeWithTag("records-view-overview").performClick()
@@ -111,35 +111,33 @@ class WalkRecordsRouteTest {
         compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
         compose.onNodeWithTag("records-map-hide-record-8").assertTextEquals("지도에 다시 표시")
 
-        compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-behavior-filter").performClick()
         compose.onNodeWithTag("records-behavior-sniffing").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
         waitTag("records-behavior-count")
         compose.onNodeWithTag("records-behavior-view-traces").performClick()
-        waitText("관련 산책 흔적 표시 8개")
-        val entryKey = WalkBehaviorRecord(records.last().entries.single(), records.last()).key
-        compose.onNodeWithTag("records-behavior-list")
-            .performScrollToNode(hasTestTag("records-behavior-entry-$entryKey"))
-        compose.onNodeWithTag("records-behavior-entry-$entryKey").performClick()
-        compose.onNodeWithTag("records-behavior-hide-$entryKey").performScrollTo().performClick()
-        compose.onNodeWithTag("records-behavior-open-$entryKey").performScrollTo().performClick()
+        waitText("선택 산책 8회 · 표시 흔적 8개")
+        selectMapRecord("record-8")
+        compose.onNodeWithTag("records-map-hide-record-8").performScrollTo().performClick()
+        compose.onNodeWithTag("records-map-open-record-8").performScrollTo().performClick()
         waitText("실제 상세 자리: record-8")
         compose.onNodeWithTag("records-behavior-count").assertDoesNotExist()
         restore.emulateSavedInstanceStateRestore()
         waitText("실제 상세 자리: record-8")
         backFromDetail()
         waitTag("records-behavior-count")
+        waitText("선택 산책 8회 · 표시 흔적 7개")
         compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
-        compose.onNodeWithTag("records-behavior-entry-$entryKey").assertIsSelected()
-        compose.onNodeWithTag("records-behavior-hide-$entryKey").assertTextContains("다시 표시", substring = true)
+        compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
+        compose.onNodeWithTag("records-map-hide-record-8").assertTextContains("다시 표시", substring = true)
         // Ordinary navigation Back also captures the records registry before it unmounts.
-        compose.onNodeWithText("‹ 뒤로").performClick()
+        compose.onNodeWithContentDescription("뒤로").performClick()
         waitText("기록 다시 열기")
         compose.onNodeWithTag("records-search").assertDoesNotExist()
         compose.onNodeWithText("기록 다시 열기").performClick()
         waitTag("records-behavior-count")
         compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
-        compose.onNodeWithTag("records-behavior-entry-$entryKey").assertIsSelected()
+        compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
         assertEquals(5, syncs.get())
     }
 
@@ -158,7 +156,7 @@ class WalkRecordsRouteTest {
             key(current) { WalkRecordsRoute(current, source, state, pets, {}, {}, {}, { id, back -> TestDetail(id, back) }) }
         } } }
         waitText("1 페이지")
-        compose.onNodeWithTag("records-search").performTextReplacement("느림")
+        replaceSearch("느림")
         waitText("산책 기록을 찾고 있어요.")
         compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("records-search").fetchSemanticsNodes()
@@ -178,7 +176,7 @@ class WalkRecordsRouteTest {
         compose.runOnIdle { currentAccount.value = AccountScope("owner-a", 3) }
         waitText("선택 산책 8회")
         compose.onNodeWithTag("records-test-detail").assertDoesNotExist()
-        compose.onNodeWithTag("records-search").performTextReplacement("기록")
+        replaceSearch("기록")
         waitText("선택 산책 8회")
         compose.onNodeWithText("다음 ›").performClick()
         waitText("2 페이지")
@@ -214,16 +212,28 @@ class WalkRecordsRouteTest {
 
     private fun backFromDetail() = compose.onNodeWithTag("records-test-detail-back").performClick()
 
-    private fun assertSearchEmpty() = compose.onNodeWithTag("records-search").assert(
-        SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+    private fun assertSearchEmpty() {
+        compose.onNodeWithTag("records-search").assertDoesNotExist()
+        compose.onNodeWithTag("records-search-toggle").performClick()
+        compose.onNodeWithTag("records-search").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+    }
 
     private fun selectMapRecord(id: String) {
+        if (compose.onAllNodesWithContentDescription("산책 목록 펼치기").fetchSemanticsNodes().isNotEmpty())
+            compose.onNodeWithTag("records-map-sheet-toggle").performClick()
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-$id"))
         compose.onNodeWithTag("records-map-record-$id").performClick()
     }
 
     private fun waitTag(tag: String) = compose.waitUntil(10_000) {
         compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    private fun replaceSearch(text: String) {
+        if (compose.onAllNodesWithTag("records-search").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-search-toggle").performClick()
+        compose.onNodeWithTag("records-search").performTextReplacement(text)
     }
 
     private fun waitText(text: String) = compose.waitUntil(10_000) {

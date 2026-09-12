@@ -33,6 +33,10 @@ internal fun ConversationFiltersDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (result == null) Text("장소를 검색하면 적용된 조건을 여기서 확인할 수 있어요.")
                 else {
+                    Text("검색 대상: ${result.poolLabel}")
+                    if (result.searchPool != "all_places") TextButton(enabled = !state.busy, onClick = {
+                        onApply(ConversationFilterEdit(result.sessionId, result.revision, searchPool = "all_places"))
+                    }) { Text("전체 장소로 전환") }
                     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     state.error?.let { Text(it, color = DaengsColors.Error) }
                     state.notice?.let { Text(it) }

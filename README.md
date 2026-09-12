@@ -299,6 +299,7 @@ uv run tools/<이름>.py
 | 파일 | 하는 일 |
 |---|---|
 | `import_room_assets.py` | 에셋 드롭 폴더 → `drawable-nodpi` 반입. 배경 뚫기·조각 털기·WebP 변환·리소스 이름 짓기를 한 번에 |
+| `export_territory_poles.py` | 별도 debug 폰 앱에서 5종 전봇대 합성 결과를 추출하고 무손실 반입. [재생성/검증](docs/territory-pole-assets.md) |
 | `room_cutout.py` | 방 PNG 의 바깥 배경을 투명하게. 강아지 시트에서 몸과 떨어진 조각도 털어낸다 (위 스크립트가 부른다) |
 | `trace_door.py` | 방 그림에서 문 윤곽을 떠서 `DoorSpec` 값을 뽑는다. 확인용 이미지도 같이 낸다 |
 | `make_outside.py` | 창밖·문밖 풍경 12장(낮·밤 x 해·비·눈). 방 그림에서 유리를 오려 다시 칠한다. **씨앗이 고정이라 돌릴 때마다 같은 그림이 나온다** |

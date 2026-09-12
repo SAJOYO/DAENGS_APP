@@ -4,13 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -66,6 +65,10 @@ internal fun WalkRecordsOverview(
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
     modifier: Modifier = Modifier,
+    expanded: Boolean? = null,
+    onExpanded: (Boolean) -> Unit = {},
+    controls: (@Composable () -> Unit)? = null,
+    behaviorCount: String? = null,
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
     val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
@@ -86,110 +89,124 @@ internal fun WalkRecordsOverview(
     val partialTraces = selection.records.any {
         it.effectiveTraceState != WalkTraceState.READY && it.effectiveTraceState != WalkTraceState.EMPTY
     }
-    Column(modifier.fillMaxWidth()) {
-        WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
-            Modifier.padding(horizontal = 18.dp))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (visibleCount == null) "지도 흔적을 준비하고 있어요."
-                else if (overlapOnly) "선택 산책 ${selection.records.size}회 · 겹침 표시 ${visibleCount}회"
-                else "선택 산책 ${selection.records.size}회 · 표시 흔적 ${visibleCount}개",
-                Modifier.weight(1f).testTag("records-map-count"), style = MaterialTheme.typography.labelMedium)
-            if (hiddenCount > 0) {
-                TextButton(onClick = onRestoreAll, modifier = Modifier.testTag("records-map-restore-all")) {
-                    Text("모두 표시")
-                }
-            }
-        }
-        WalkRecordsTraceStatus(selection.records, traceLoading, traceError, onReloadTraces)
-        if (overlapOnly && partialTraces) Text("불러온 흔적 기준 · 아직 준비되지 않은 산책은 겹침에 포함되지 않아요.",
-            Modifier.padding(horizontal = 18.dp).testTag("records-overlap-partial"),
-            style = MaterialTheme.typography.labelSmall, color = TextMuted)
-        if (prepared != null) {
-            val missing = selection.records.size - prepared.availableWalkIds.size
-            if ((!remoteTraces && missing > 0) || hiddenCount > 0) Text(
-                listOfNotNull("숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
-                    "흔적 없음 ${missing}회".takeIf { !remoteTraces && missing > 0 }).joinToString(" · ") + " · 목록에는 모두 남아 있어요.",
-                Modifier.padding(start = 18.dp, end = 18.dp, bottom = 6.dp).testTag("records-map-status"),
-                style = MaterialTheme.typography.labelSmall, color = TextMuted)
-        }
-        // Reserve the same space before selection: camera fitting must not race a map resize.
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(when {
-                overlapHit != null -> "이 구간: ${selection.records.size}회 중 ${overlapHit.walkIds.size}회 겹침\n아래에서 관련 산책을 살펴보세요."
-                overlapMiss -> "이곳에는 ${minimumWalks}회 이상 겹친 흔적이 없어요."
-                selected == null && overlapOnly -> "겹친 구간을 누르면 관련 산책을 볼 수 있어요."
-                selected == null -> "카드를 눌러 산책 경로를 살펴보세요."
-                selected.summary.sessionId in hiddenIds -> "고른 산책은 지도에서 숨김"
-                route.paths.none { it.isNotEmpty() } -> "이 산책에는 강조할 경로가 없어요."
-                else -> "고른 산책 경로"
-            }, Modifier.weight(1f).testTag("records-inspection-summary"), style = MaterialTheme.typography.labelSmall)
-            if (overlapHit != null) TextButton(onClick = onClearOverlap, modifier = Modifier.testTag("records-overlap-clear")) {
-                Text("전체 목록")
-            } else if (selected != null) TextButton(onClick = onClearSelection, modifier = Modifier.testTag("records-map-clear-selection")) {
-                Text("강조 해제")
-            }
-        }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val wide = maxWidth >= 600.dp
-            val map: @Composable (Modifier) -> Unit = { mapModifier ->
-                Box(mapModifier.background(CreamBg).testTag("records-overview-map").semantics {
-                    stateDescription = highlighted?.takeIf { route.paths.any { it.isNotEmpty() } }
-                        ?.let { "강조한 산책: ${walkDiaryTitle(it.summary, it.title)}" }
-                        ?: "강조한 산책 없음"
-                }) {
-                    when {
-                        prepared == null && error != null -> RecordsMessage(error, "다시 시도", onRetry, Modifier.fillMaxSize())
-                        prepared == null -> RecordsMessage("산책 흔적을 준비하고 있어요.", modifier = Modifier.fillMaxSize())
-                        prepared.bounds.isEmpty() -> RecordsMessage("지도에 표시할 위치가 없어요.", modifier = Modifier.fillMaxSize())
-                        else -> {
-                            // Keep the map mounted even when every trace is hidden or composition is pending.
-                            MapHost(scene = MapScene(traceTiles = tiles.orEmpty(), completedRoute = route,
-                                allowRegionalOverview = true), searchOrigin = null, followDevice = false,
-                                fitBounds = fitBounds, cameraRequestKey = cameraRequest,
-                                initialCamera = camera, onCameraSnapshot = onCamera,
-                                onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                                onMapTap = onMapTap,
-                                modifier = Modifier.fillMaxSize())
-                            val message = when {
-                                error != null -> error
-                                tiles == null -> "흔적 표시를 바꾸고 있어요."
-                                traceLoading && visibleCount == 0 -> "흔적을 불러오는 동안 산책 카드를 살펴보세요."
-                                overlapOnly && !prepared.hasOverlap(minimumWalks) ->
-                                    (if (partialTraces) "불러온 흔적에는 " else "") + "${minimumWalks}회 이상 겹친 구간이 없어요."
-                                overlapOnly && visibleCount == 0 -> "겹친 구간의 산책 흔적을 모두 숨겼어요."
-                                visibleCount == 0 && hiddenCount > 0 -> "산책 흔적을 모두 숨겼어요."
-                                visibleCount == 0 -> "표시할 산책 흔적이 없어요."
-                                else -> null
-                            }
-                            if (message != null) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
-                                color = CreamBg.copy(alpha = .95f)) {
-                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
-                                    if (error != null) TextButton(onClick = onRetry) { Text("다시 시도") }
-                                }
-                            }
+    var localExpanded by rememberSaveable { mutableStateOf(false) }
+    val sheetExpanded = expanded ?: localExpanded
+    val setExpanded: (Boolean) -> Unit = { localExpanded = it; onExpanded(it) }
+    LaunchedEffect(overlapHit?.point) { if (overlapHit != null) setExpanded(true) }
+    val map: @Composable (Modifier) -> Unit = { mapModifier ->
+        val mapInsets = LocalRecordsMapInsets.current
+        Box(mapModifier.background(CreamBg).testTag("records-overview-map").semantics {
+            stateDescription = highlighted?.takeIf { route.paths.any { it.isNotEmpty() } }
+                ?.let { "강조한 산책: ${walkDiaryTitle(it.summary, it.title)}" }
+                ?: "강조한 산책 없음"
+        }) {
+            when {
+                prepared == null && error != null -> RecordsMessage(error, "다시 시도", onRetry, Modifier.fillMaxSize())
+                prepared == null -> RecordsMessage("산책 흔적을 준비하고 있어요.", modifier = Modifier.fillMaxSize())
+                prepared.bounds.isEmpty() -> RecordsMessage("지도에 표시할 위치가 없어요.", modifier = Modifier.fillMaxSize())
+                else -> {
+                    // Keep the map mounted even when every trace is hidden or composition is pending.
+                    MapHost(scene = MapScene(traceTiles = tiles.orEmpty(), completedRoute = route,
+                        allowRegionalOverview = true), searchOrigin = null, followDevice = false,
+                        fitBounds = fitBounds, cameraRequestKey = cameraRequest,
+                        topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
+                        initialCamera = camera, onCameraSnapshot = onCamera,
+                        onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
+                        onMapTap = onMapTap,
+                        modifier = Modifier.fillMaxSize())
+                    val message = when {
+                        error != null -> error
+                        tiles == null -> "흔적 표시를 바꾸고 있어요."
+                        traceLoading && visibleCount == 0 -> "흔적을 불러오는 동안 산책 카드를 살펴보세요."
+                        overlapOnly && !prepared.hasOverlap(minimumWalks) ->
+                            (if (partialTraces) "불러온 흔적에는 " else "") + "${minimumWalks}회 이상 겹친 구간이 없어요."
+                        overlapOnly && visibleCount == 0 -> "겹친 구간의 산책 흔적을 모두 숨겼어요."
+                        visibleCount == 0 && hiddenCount > 0 -> "산책 흔적을 모두 숨겼어요."
+                        visibleCount == 0 -> "표시할 산책 흔적이 없어요."
+                        else -> null
+                    }
+                    if (message != null) Surface(Modifier.align(Alignment.Center).padding(18.dp),
+                        color = CreamBg.copy(alpha = .95f)) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
+                            if (error != null) TextButton(onClick = onRetry) { Text("다시 시도") }
                         }
                     }
                 }
             }
-            val records: @Composable (Modifier) -> Unit = { listModifier ->
-                WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, prepared?.availableWalkIds,
-                    onSelect, onToggleHidden, onOpen, listModifier, listState)
-            }
-            if (wide) Row(Modifier.fillMaxSize()) {
-                map(Modifier.weight(1.2f).fillMaxHeight())
-                records(Modifier.weight(1f).fillMaxHeight())
-            } else Column(Modifier.fillMaxSize()) {
-                map(Modifier.weight(.55f).fillMaxWidth())
-                HorizontalDivider()
-                records(Modifier.weight(.45f).fillMaxWidth())
-            }
         }
     }
+
+    WalkRecordsMapFrame(sheetExpanded, setExpanded, "관련 산책 ${relatedRecords.size}회", modifier,
+        controls = { if (controls != null) controls() else
+            WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks) },
+        map = map,
+        summary = {
+            if (behaviorCount != null) Text(behaviorCount, Modifier.padding(horizontal = 18.dp)
+                .testTag("records-behavior-count"), style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (visibleCount == null) "지도 흔적을 준비하고 있어요."
+                    else if (overlapOnly) "선택 산책 ${selection.records.size}회 · 겹침 표시 ${visibleCount}회"
+                    else "선택 산책 ${selection.records.size}회 · 표시 흔적 ${visibleCount}개",
+                    Modifier.weight(1f).testTag("records-map-count"), style = MaterialTheme.typography.labelMedium)
+                if (hiddenCount > 0) {
+                    TextButton(onClick = onRestoreAll, modifier = Modifier.testTag("records-map-restore-all")) {
+                        Text("모두 표시")
+                    }
+                }
+            }
+
+        },
+        details = {
+            // The expanded list covers the map's center; keep result/error feedback reachable here too.
+            if (error != null) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(error, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = onRetry) { Text("다시 시도") }
+            } else if (overlapOnly && prepared != null && !prepared.hasOverlap(minimumWalks)) {
+                Text((if (partialTraces) "불러온 흔적에는 " else "") + "${minimumWalks}회 이상 겹친 구간이 없어요.",
+                    Modifier.padding(horizontal = 18.dp, vertical = 6.dp).testTag("records-overlap-empty"),
+                    style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+            WalkRecordsTraceStatus(selection.records, traceLoading, traceError, onReloadTraces)
+            if (overlapOnly && partialTraces) Text("불러온 흔적 기준 · 아직 준비되지 않은 산책은 겹침에 포함되지 않아요.",
+                Modifier.padding(horizontal = 18.dp).testTag("records-overlap-partial"),
+                style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            if (prepared != null) {
+                val missing = selection.records.size - prepared.availableWalkIds.size
+                if ((!remoteTraces && missing > 0) || hiddenCount > 0) Text(
+                    listOfNotNull("숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
+                        "흔적 없음 ${missing}회".takeIf { !remoteTraces && missing > 0 }).joinToString(" · ") + " · 목록에는 모두 남아 있어요.",
+                    Modifier.padding(start = 18.dp, end = 18.dp, bottom = 6.dp).testTag("records-map-status"),
+                    style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+            // Reserve the same space before selection: camera fitting must not race a map resize.
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(when {
+                    overlapHit != null -> "이 구간: ${selection.records.size}회 중 ${overlapHit.walkIds.size}회 겹침\n아래에서 관련 산책을 살펴보세요."
+                    overlapMiss -> "이곳에는 ${minimumWalks}회 이상 겹친 흔적이 없어요."
+                    selected == null && overlapOnly -> "겹친 구간을 누르면 관련 산책을 볼 수 있어요."
+                    selected == null -> "카드를 눌러 산책 경로를 살펴보세요."
+                    selected.summary.sessionId in hiddenIds -> "고른 산책은 지도에서 숨김"
+                    route.paths.none { it.isNotEmpty() } -> "이 산책에는 강조할 경로가 없어요."
+                    else -> "고른 산책 경로"
+                }, Modifier.weight(1f).testTag("records-inspection-summary"), style = MaterialTheme.typography.labelSmall)
+                if (overlapHit != null) TextButton(onClick = onClearOverlap, modifier = Modifier.testTag("records-overlap-clear")) {
+                    Text("전체 목록")
+                } else if (selected != null) TextButton(onClick = onClearSelection, modifier = Modifier.testTag("records-map-clear-selection")) {
+                    Text("강조 해제")
+                }
+            }
+
+        },
+        records = { listModifier ->
+            WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, prepared?.availableWalkIds,
+                { setExpanded(true); onSelect(it) }, onToggleHidden, onOpen, listModifier, listState)
+        })
 }
 
 /** Network availability is separate from brush rendering and never replaces the local record list. */

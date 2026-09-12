@@ -17,11 +17,26 @@ import org.robolectric.annotation.GraphicsMode
 class TerritoryPoleArtTest {
     private val context get() = ApplicationProvider.getApplicationContext<Application>()
 
-    @Test fun `공유 원본이어도 미인증과 인증의 합성 그림은 구분된다`() {
+    @Test fun `다섯 완성 리소스의 해상도와 소유 구분이 유지된다`() {
+        val resources = TerritoryPoleStyle.entries.map { style ->
+            val resource = TerritoryPoleArt.resource(style.occupancy, style.isMine)
+            val bitmap = territoryMarkerIcon(context, style.occupancy, style.isMine)
+            assertEquals(256, bitmap.width)
+            assertEquals(640, bitmap.height)
+            assertTrue(bitmap.hasAlpha())
+            bitmap.recycle()
+            resource
+        }
+        assertEquals(5, resources.toSet().size)
+        assertEquals(TerritoryPoleArt.resource(TerritoryMarkerOccupancy.NEUTRAL, false),
+            TerritoryPoleArt.resource(TerritoryMarkerOccupancy.NEUTRAL, true))
+    }
+
+    @Test fun `미인증과 인증은 서로 다른 완성 리소스를 사용한다`() {
         val neutral = territoryMarkerIcon(context, TerritoryMarkerOccupancy.NEUTRAL)
         val unverified = territoryMarkerIcon(context, TerritoryMarkerOccupancy.UNVERIFIED)
         val verified = territoryMarkerIcon(context, TerritoryMarkerOccupancy.VERIFIED)
-        assertEquals(TerritoryPoleArt.resource(TerritoryMarkerOccupancy.UNVERIFIED),
+        assertNotEquals(TerritoryPoleArt.resource(TerritoryMarkerOccupancy.UNVERIFIED),
             TerritoryPoleArt.resource(TerritoryMarkerOccupancy.VERIFIED))
         assertFalse(unverified.sameAs(verified))
         assertFalse(neutral.sameAs(unverified))
@@ -33,7 +48,7 @@ class TerritoryPoleArtTest {
 
     @Test fun `투명 배경과 밑동 접점이 두 상태에서 유지된다`() {
         TerritoryMarkerOccupancy.entries.forEach { state ->
-            val bitmap = BitmapFactory.decodeResource(context.resources, TerritoryPoleArt.resource(state))
+            val bitmap = BitmapFactory.decodeResource(context.resources, territoryPoleSource(state))
             assertEquals(TerritoryPoleArt.WIDTH, bitmap.width)
             assertEquals(TerritoryPoleArt.HEIGHT, bitmap.height)
             for (y in 0 until bitmap.height) {

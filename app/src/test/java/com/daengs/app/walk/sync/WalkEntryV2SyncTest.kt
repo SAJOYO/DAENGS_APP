@@ -38,6 +38,51 @@ class WalkEntryV2SyncTest {
     }
     @After fun close() = db.close()
 
+    @Test fun `v1 릴리즈는 신규 행동에 v2 지원이나 저장 영수증을 요구하지 않는다`() = runBlocking {
+        dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("old", "legacy", WalkMomentType.BARKING,
+            now, com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        val calls = mutableListOf<String>()
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, _, _, _, _ -> error("v1 산책의 v2 활성화 금지") }
+        val sync = WalkEntrySync(dao, v2, preferLegacy = true, owner = { owner }) { _, path, method, body ->
+            calls += method
+            assertTrue(path.startsWith("/walk/entries"))
+            if (method == "GET") JSONObject().put("entries", JSONArray()) else {
+                assertFalse(body!!.has("pin"))
+                assertFalse(body.has("recording_evidence_fingerprint"))
+                JSONObject().put("revision", 1).put("mutation_id", body.getString("mutation_id"))
+            }
+        }
+        sync.sync("token", "legacy", "walk")
+        assertEquals(listOf("PUT", "GET"), calls)
+        assertFalse(dao.entry("old")!!.isV2)
+        assertFalse(dao.entry("old")!!.dirty)
+    }
+
+    @Test fun `v1 릴리즈의 혼합 산책은 v1 먼저 보내고 기존 v2 동결 요청은 보존한다`() = runBlocking {
+        dao.preparePinRequest(id, owner)
+        val original = dao.entry(id)!!
+        WalkEntryStore(dao).save(com.daengs.app.walk.WalkEntry("old", "s", WalkMomentType.BARKING,
+            now, com.daengs.app.location.GeoPoint(37.5, 127.0), now - 1, 5f))
+        val calls = mutableListOf<String>()
+        val v2 = WalkEntryV2Sync(dao, { owner }) { _, path, _, _, useV2 ->
+            calls += "probe"
+            assertFalse(useV2)
+            assertEquals("/entry-capabilities", path)
+            throw WalkHttpException(404, "old server")
+        }
+        val sync = WalkEntrySync(dao, v2, preferLegacy = true, owner = { owner }) { _, path, method, body ->
+            calls += "v1"
+            assertEquals("/walk/entries/old", path)
+            assertEquals("PUT", method)
+            JSONObject().put("revision", 1).put("mutation_id", body!!.getString("mutation_id"))
+        }
+        assertTrue(runCatching { sync.sync("token", "s", "walk") }.exceptionOrNull() is IOException)
+        assertEquals(listOf("v1", "probe"), calls)
+        assertFalse(dao.entry("old")!!.dirty)
+        assertEquals(original, dao.entry(id))
+    }
+
     @Test fun `과거 v1 산책은 capabilities 미지원 확인 후 저장 조회 수정 삭제한다`() = runBlocking {
         val store = WalkEntryStore(dao)
         dao.insertSession(WalkSessionRow("legacy", 0, owner, null))
@@ -278,7 +323,7 @@ class WalkEntryV2SyncTest {
             .put("mutation_id", UUID.randomUUID().toString()).put("content", note.toJson()).put("pin", JSONObject.NULL)
         var legacyWrites = 0
         var v2Writes = 0
-        val sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
+        val v2Sync = WalkEntryV2Sync(dao, { owner }) { _, path, method, body, v2 ->
             if (path == "/walk") return@WalkEntryV2Sync storedGps()
             if (path == "/entry-capabilities") caps()
             else if (method == "GET") JSONObject().put("entries", JSONArray().put(remote))
@@ -289,12 +334,18 @@ class WalkEntryV2SyncTest {
                 ack(body, 2, 0).also { remote = it }
             }
         }
+        var releaseWrites = 0
+        val sync = WalkEntrySync(dao, v2Sync, preferLegacy = true, owner = { owner }) { _, _, _, _ ->
+            releaseWrites++
+            throw WalkHttpException(426, "walk_entry_upgrade_required")
+        }
         sync.sync("token", "s", "walk")
         assertTrue(dao.entry(id)!!.isV2)
         WalkEntryStore(dao).save(dao.entry(id)!!.entry()!!.copy(note = "confirmed note"))
         sync.sync("token", "s", "walk")
         assertEquals(1, legacyWrites)
         assertEquals(1, v2Writes)
+        assertEquals(1, releaseWrites)
         assertFalse(dao.entry(id)!!.dirty)
         assertEquals("confirmed note", remote.getJSONObject("content").getString("note"))
     }

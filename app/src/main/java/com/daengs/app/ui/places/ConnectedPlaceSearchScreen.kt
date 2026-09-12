@@ -108,6 +108,13 @@ fun ConnectedPlaceSearchScreen(
     var dogAsked by rememberSaveable { mutableStateOf(false) }
     var dogQuery by rememberSaveable { mutableStateOf("") }
     val appliedFilters = state.conversation.result?.appliedPlaceFilters()
+    LaunchedEffect(saved?.searchTransfer) {
+        if ((saved?.searchTransfer ?: 0) > 0) {
+            draft = saved!!.session.search.draft
+            searchCamera = null
+            searchList.scrollToItem(0)
+        }
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val ui = state.toConnectedSearchState(draft, false, expanded, notice)
     LaunchedEffect(state.discovery.response) {
@@ -115,6 +122,13 @@ fun ConnectedPlaceSearchScreen(
         if (state.discovery.response != null) expanded = ui.expanded
     }
     val category = PlaceCategorySelection.fromKinds(display.requestedKinds)
+    fun searchSnapshot() = PlaceBrowseSnapshot(PlaceBrowseFilters(
+        kinds = display.requestedKinds.toSet(), name = display.nameQuery,
+        origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
+        dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
+        requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
+        excludedKeys = state.conversation.result?.excludedKeys.orEmpty(),
+    ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera)
     if (bookmarks != null && saved != null) {
         PlaceBookmarkFeedback(bookmarks, saved)
         if (saved.session.tab == PlaceBrowseTab.BOOKMARKS) {
@@ -123,7 +137,8 @@ fun ConnectedPlaceSearchScreen(
                     state.journey.takeIf { it.destinationKey == hit.place.key }.toActionPresentation(),
                     onJourney = { onAction(PlacesAction.LoadJourney(hit.place)) },
                     onRetry = { onAction(PlacesAction.LoadJourney(hit.place)) }, onOpenHandoff = onOpenHandoff,
-                ) }, onRefreshProfiles = onRefreshProfiles)
+                ) }, onRefreshProfiles = onRefreshProfiles, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                onSearch = { onAction(PlacesAction.ApplySearchPlan(it)) })
             return
         }
     }
@@ -149,12 +164,7 @@ fun ConnectedPlaceSearchScreen(
         state = ui, live = true, onBack = onBack,
         bookmarks = saved?.panel(), resultsListState = searchList,
         onBrowseTab = { tab -> if (tab == PlaceBrowseTab.BOOKMARKS) {
-            bookmarks?.enter(PlaceBrowseSnapshot(PlaceBrowseFilters(
-                kinds = display.requestedKinds.toSet(), name = display.nameQuery,
-                origin = display.origin, radiusMeters = display.radiusMeters.takeIf { display.origin != null },
-                dogIds = state.profiles.selectedIds, parkingFirst = display.preferParking,
-                requiredConditions = state.conversation.result?.filters?.get("hard") as? JsonObject,
-            ), draft = draft, selected = display.selectedPlaceKey, detail = expanded, camera = searchCamera), state.profiles.snapshots())
+            bookmarks?.enter(searchSnapshot(), state.profiles.snapshots())
         } },
         onToggleBookmark = { bookmarks?.toggle(it) }, onRetryBookmarks = { bookmarks?.refresh() },
         onEdit = { draft = it }, showAiToggle = false,
@@ -167,7 +177,9 @@ fun ConnectedPlaceSearchScreen(
         categoryContent = {
             PlacePurposeMenu(category, onLimit = { notice = "카테고리는 6개까지 함께 검색할 수 있어요." }) { search(selected = it) }
             PlaceSearchQueue(category,
-                filterSummary = if (state.conversationAvailable) appliedFilters?.summary.orEmpty()
+                filterSummary = if (state.conversationAvailable) listOfNotNull(
+                    state.conversation.result?.takeIf { it.searchPool != "all_places" }?.poolLabel,
+                    appliedFilters?.summary?.takeIf { it.isNotEmpty() }).joinToString(" · ")
                     else state.facility.confirmedLens?.let { "검색 방향 · ${it.label}" }.orEmpty(),
                 nameQuery = display.nameQuery,
                 onOpenFilters = { if (state.conversationAvailable) filtersOpen = true else dogOpen = true }) { search(selected = it) }
@@ -246,7 +258,7 @@ fun ConnectedPlaceSearchScreen(
                         onSubmit = { query ->
                             dogAsked = true; dogQuery = query
                             if (!ai) onAction(PlacesAction.SetAiMode(true))
-                            onAction(PlacesAction.Discover(query))
+                            onAction(PlacesAction.Discover(query, bookmarks?.captureTurn(searchSnapshot(), state.profiles.snapshots())))
                         },
                         onCancel = { onAction(PlacesAction.CancelAi) },
                         onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,

@@ -2,6 +2,7 @@ package com.daengs.app.ui.pet
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,12 @@ fun PetMembersScreen(
     currentUserId: String? = null,
     busy: Boolean = false,
     error: String? = null,
+    /**
+     * 초대를 관리하러 간다. **대표일 때만 넘긴다** — 목록에 대표가 있는지가 아니라
+     * 지금 로그인한 사람의 줄이 `isOwner` 인지로 가른다
+     * ([isOwnedBy][com.daengs.app.pet.isOwnedBy]). null 이면 그 줄이 안 뜬다.
+     */
+    onOpenInvites: (() -> Unit)? = null,
     onBack: () -> Unit = {},
 ) {
     BackHandler { onBack() }
@@ -87,6 +94,27 @@ fun PetMembersScreen(
             members == null -> StateLine(if (busy) "불러오는 중이에요" else "", tag = "pet-members-loading")
             members.isEmpty() -> StateLine("보호자가 없어요", tag = "pet-members-empty")
             else -> members.forEach { MemberRow(it, isMe = currentUserId != null && it.appUserId == currentUserId) }
+        }
+
+        // 대표에게만 뜬다. 돌보미에게는 부를 수 있는 API 가 없어서(전부 404) 자리도 두지 않는다.
+        onOpenInvites?.let { open ->
+            Surface(
+                color = CardWhite,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = open)
+                        .padding(horizontal = 14.dp, vertical = 14.dp)
+                        .testTag("open-invites"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("보호자 초대", color = TextDark, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text("관리", color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

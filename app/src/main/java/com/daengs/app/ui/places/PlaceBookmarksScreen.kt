@@ -8,6 +8,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.daengs.app.miniroom.art.DogBreed
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.location.GeoPoint
@@ -29,7 +32,9 @@ internal fun PlaceBookmarkState.panel() = PlaceBookmarkPanelState(
 @Composable
 internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: PlaceBookmarkState,
     profiles: PlaceProfiles, list: LazyListState, showMap: Boolean, onCall: (String) -> Unit,
-    actions: @Composable (PlaceSearchHit) -> Unit, onRefreshProfiles: () -> Unit) {
+    actions: @Composable (PlaceSearchHit) -> Unit, onRefreshProfiles: () -> Unit,
+    avatarBreed: DogBreed? = null, avatarPhoto: android.graphics.Bitmap? = null,
+    onSearch: ((SearchPlanTransfer) -> Unit)? = null) {
     val snapshot = state.session.current
     val filters = snapshot.filters
     val scope = rememberCoroutineScope()
@@ -37,6 +42,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
     var center by remember { mutableStateOf<GeoPoint?>(null) }
     var cameraRequest by remember { mutableIntStateOf(0) }
     var collapse by remember { mutableIntStateOf(0) }
+    var dogOpen by rememberSaveable { mutableStateOf(false) }
     val selectedProfiles = profiles.copy(selectedIds = filters.dogIds)
     val dogs = selectedProfiles.snapshots()
     LaunchedEffect(dogs, profiles.ready) {
@@ -67,6 +73,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
                 })) } }) { Text("조합 조건 해제") }
             }
             TextButton(onClick = { controller.all(); filterDialog = false }) { Text("전체 찜 보기") }
+            TextButton(onClick = { controller.copySearchConditions(); filterDialog = false }) { Text("현재 검색 조건으로 찜 보기") }
         }
     }, confirmButton = { TextButton(onClick = { filterDialog = false }) { Text("닫기") } })
     val profilesPending = filters.dogIds.isNotEmpty() && !profiles.ready
@@ -126,6 +133,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
             actions(hit)
         },
         map = {
+            Box(Modifier.fillMaxSize()) {
             if (showMap) MapHost(
                 scene = MapScene(places = hits.map { hit -> PlaceMarkerState(placeMarkerId(hit.place.key), hit.place.point,
                     hit.place.name, selected = hit.place.key == snapshot.selected, iconGroup = hit.place.iconGroup) }),
@@ -137,6 +145,16 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
                 onSelectPlace = { id -> hits.find { placeMarkerId(it.place.key) == id }?.let { open(it.place.key) } },
                 modifier = Modifier.fillMaxSize(),
             )
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 40.dp)) {
+                PlaceDogAssistant(busy = state.aiBusy, replyAvailable = state.aiAnswer != null,
+                    open = dogOpen, onOpen = { dogOpen = it },
+                    onSubmit = { if (profilesPending) controller.notice("반려견 정보를 확인한 뒤 다시 말해 주세요.") else controller.chat(it, onSearch) },
+                    onCancel = controller::cancelConversation, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                    searchContext = "찜한 시설 안에서 · " + (filters.radiusMeters?.let { "반경 ${it / 1000.0}km" } ?: "지역 제한 없음") +
+                        " · " + category.label + (if (filters.parkingFirst) " · 주차 우선" else "") + hard.summary.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                ) { state.aiAnswer?.let { Text(it, Modifier.padding(12.dp), fontSize = 13.sp) } }
+            }
+            }
         },
     )
 }

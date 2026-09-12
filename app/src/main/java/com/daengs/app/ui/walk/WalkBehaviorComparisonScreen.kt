@@ -190,7 +190,8 @@ private fun BehaviorComparisonMap(result: WalkBehaviorComparison, matching: Bool
     var selected by remember(result.receipt.sourceRevision) { mutableStateOf<String?>(null) }
     val markers = remember(result.evidence, selected, matching) {
         if (!matching) emptyList() else result.evidence.mapNotNull { evidence -> evidence.point?.let {
-            MomentMarkerState(evidence.key, it, "${evidence.content.type.label} · ${evidence.locationLabel}", evidence.key == selected)
+            MomentMarkerState(evidence.key, it, "${evidence.content.type.label} · ${evidence.locationLabel}", evidence.key == selected,
+                behaviors = setOf(evidence.content.type))
         } }
     }
     if (LocalInspectionMode.current) Box(modifier.background(PinkFaint), contentAlignment = Alignment.Center) { Text("산책 공간 분포와 행동 핀") }

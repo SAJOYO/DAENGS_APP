@@ -127,7 +127,7 @@ fun WalkDetailScreen(
                     purpose = MapPurpose.WALK,
                     sources = MapSceneSources(
                         moments = entries.entryMoments().map { moment ->
-                            MomentMarkerState(moment.id, moment.point, moment.markerLabel)
+                            MomentMarkerState(moment.id, moment.point, moment.markerLabel, behaviors = moment.types)
                         } + diaryPhotos.photoMarkers(),
                         completedRoute = completedRoute,
                         stayStamps = detail?.stayStamps.orEmpty(),

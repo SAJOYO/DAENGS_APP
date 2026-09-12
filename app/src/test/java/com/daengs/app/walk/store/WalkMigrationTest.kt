@@ -63,6 +63,15 @@ class WalkMigrationTest {
     @Test
     fun `14의 원본과 공개 상태를 보존하고 수신 필드는 결손으로 남긴다`() = verifyPhotoUpgrade(14)
 
+    @Test
+    fun `15의 수신 원본과 완료 증거와 v2 대기 요청을 보존하고 정책은 만들지 않는다`() = verifyPhotoUpgrade(15)
+
+    @Test
+    fun `16의 정책과 기존 기록을 보존하고 측정 백업은 완료로 추측하지 않는다`() = verifyPhotoUpgrade(16)
+
+    @Test
+    fun `17의 백업 영수증을 보존하고 원본 좌표 출처와 검증 상태를 추측하지 않는다`() = verifyPhotoUpgrade(17)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -77,7 +86,7 @@ class WalkMigrationTest {
                 }
             }
             old.execSQL("INSERT INTO walk_session (id, ownerId, startedAtMillis, endedAtMillis, syncState) VALUES ('s1','owner',1000,2000,'derived')")
-            old.execSQL("INSERT INTO walk_fix VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
+            old.execSQL("INSERT INTO walk_fix (sessionId,clientSeq,chainIndex,atMillis,lat,lng,accuracyM,isMock) VALUES ('s1',0,0,1100,37.5,127.0,5.0,0)")
             old.execSQL("INSERT INTO walk_session_dog VALUES ('s1','dog')")
             old.execSQL("INSERT INTO walk_entry (id,sessionId,payload,revision,mutationId,dirty,syncError) VALUES ('e','s1','kept',3,'mutation',1,NULL)")
             if (version >= 8) old.execSQL("INSERT INTO walk_storyboard VALUES ('s1','reviewed-story')")
@@ -96,6 +105,13 @@ class WalkMigrationTest {
             if (version >= 14) {
                 old.execSQL("INSERT INTO walk_diary_publication VALUES ('s1',2000,12000,'local-base','published-board',2500)")
             }
+            if (version == 15) {
+                old.execSQL("UPDATE walk_fix SET ingressSeq=0,sourceEpoch='epoch',clockEpochId='clock',elapsedRealtimeNanos=1100000000,receivedElapsedNanos=1200000000,recordingEligible=0,speedMps=1.5")
+                old.execSQL("INSERT INTO walk_recording_epoch VALUES ('epoch','s1','clock',0,1000,1000000000,0,2000,2000000000,'STOP',0,1,NULL,NULL,1)")
+                old.execSQL("INSERT INTO walk_entry (id,sessionId,payload,revision,mutationId,dirty,isV2,pinPayload,pinRevision,pinDirty,pendingRequest) VALUES ('v2','s1','content',2,'pending-id',1,1,'pin',3,1,'frozen-v2-request')")
+            }
+            if (version >= 16) old.execSQL("UPDATE walk_session SET motionPolicyJson='frozen-policy' WHERE id='s1'")
+            if (version == 17) old.execSQL("INSERT INTO walk_motion_backup VALUES ('s1','frozen-manifest','manifest-hash','evidence-hash',3000,NULL)")
             old.version = version
         }
         val db = openLatest()
@@ -105,10 +121,27 @@ class WalkMigrationTest {
                 "local-base", "published-board", 2500) else null, dao.diaryPublication("s1"))
             assertEquals("owner", dao.session("s1")!!.ownerId)
             assertEquals("derived", dao.session("s1")!!.syncState)
+            assertEquals(if (version >= 16) "frozen-policy" else null, dao.session("s1")!!.motionPolicyJson)
+            assertEquals(if (version == 17) WalkMotionBackupRow("s1","frozen-manifest","manifest-hash","evidence-hash",3000) else null, dao.motionBackup("s1"))
+            assertEquals(null, dao.motionPrecision("s1"))
+            assertEquals(null, dao.session("s1")!!.coordinateOrigin)
+            assertEquals(null, dao.fixes("s1").single().latBits)
+            assertEquals(null, dao.fixes("s1").single().lngBits)
+            assertEquals(null, dao.fixes("s1").single().accuracyBits)
+            assertEquals(null, dao.fixes("s1").single().speedMpsBits)
             assertEquals(1, dao.fixes("s1").size)
-            assertEquals(null, dao.fixes("s1").single().ingressSeq)
-            assertEquals(null, dao.fixes("s1").single().speedMps)
-            assertEquals(emptyList<RecordingEpochRow>(), dao.recordingEpochs("s1"))
+            assertEquals(if (version == 15) 0L else null, dao.fixes("s1").single().ingressSeq)
+            assertEquals(if (version == 15) 1.5f else null, dao.fixes("s1").single().speedMps)
+            if (version == 15) {
+                assertEquals(false, dao.fixes("s1").single().recordingEligible)
+                assertEquals("clock", dao.fixes("s1").single().clockEpochId)
+                assertEquals(RecordingEpochRow("epoch", "s1", "clock", 0, 1000, 1_000_000_000, 0,
+                    2000, 2_000_000_000, "STOP", 0, 1, null, null, true), dao.recordingEpochs("s1").single())
+                assertEquals("frozen-v2-request", dao.entry("v2")!!.pendingRequest)
+                assertEquals(true, dao.entry("v2")!!.isV2)
+                assertEquals(3, dao.entry("v2")!!.pinRevision)
+                assertEquals(true, dao.entry("v2")!!.pinDirty)
+            } else assertEquals(emptyList<RecordingEpochRow>(), dao.recordingEpochs("s1"))
             assertEquals("dog", dao.sessionDogs("s1").single().dogId)
             assertEquals("kept", dao.entry("e")!!.payload)
             assertEquals(3, dao.entry("e")!!.revision)
@@ -351,6 +384,9 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_12_13,
                 WalkDatabase.MIGRATION_13_14,
                 WalkDatabase.MIGRATION_14_15,
+                WalkDatabase.MIGRATION_15_16,
+                WalkDatabase.MIGRATION_16_17,
+                WalkDatabase.MIGRATION_17_18,
             )
             .build()
 

@@ -32,7 +32,7 @@ import com.daengs.app.territory.TerritoryProximityRange
 import com.daengs.app.ui.*
 import com.daengs.app.ui.theme.*
 
-/** Uses the map's pole renderer/ring palette and existing dog art; not a map or camera session. */
+/** Uses the map's finished pole resources/ring palette and existing dog art; not a map or camera session. */
 @Composable
 internal fun TerritoryGuideScene(scenario: GuideScenario, step: GuideStep, onSelectPole: (() -> Unit)? = null) {
     val mine = step == GuideStep.RESULT || (scenario == GuideScenario.EMPTY && step >= GuideStep.MARKED)

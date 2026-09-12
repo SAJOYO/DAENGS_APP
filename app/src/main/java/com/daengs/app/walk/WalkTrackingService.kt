@@ -24,6 +24,7 @@ import com.daengs.app.walk.sync.WalkDeliveryScheduler
 import com.daengs.app.walk.display.DisplayLifecycle
 import com.daengs.app.walk.display.MotionDisplay
 import com.daengs.app.walk.display.WalkSpeedRuntime
+import com.daengs.app.walk.motion.MotionPolicies
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +55,7 @@ class WalkTrackingService : Service() {
     private var subscription: com.daengs.app.location.LocationSubscription? = null
     private var projectionJob: kotlinx.coroutines.Job? = null
     private var speedRuntime: WalkSpeedRuntime? = null
+    private var discardedMeasurement = false
     private var speedTickJob: kotlinx.coroutines.Job? = null
     private var boundaryJob: kotlinx.coroutines.Job? = null
     private var transitioning = false
@@ -114,8 +116,8 @@ class WalkTrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        ingress?.seal("INTERRUPTED")
-        speedRuntime?.onLifecycle(DisplayLifecycle.FINISHED, SystemClock.elapsedRealtimeNanos())
+        val boundary = ingress?.seal("INTERRUPTED")
+        speedRuntime?.onLifecycle(DisplayLifecycle.FINISHED, boundary?.endedElapsedNanos ?: SystemClock.elapsedRealtimeNanos())
         val closingSubscription = subscription
         (application as DaengsApp).walkRuntime.recordingScope.launch {
             runCatching { kotlinx.coroutines.withTimeout(10_000) { closingSubscription?.close() } }
@@ -262,7 +264,7 @@ class WalkTrackingService : Service() {
         val stream = ingress
         val boundary = stream?.seal(if (stop) "STOP" else "PAUSE")
         speedRuntime?.onLifecycle(if (stop) DisplayLifecycle.FINISHED else DisplayLifecycle.PAUSED,
-            SystemClock.elapsedRealtimeNanos())
+            boundary?.endedElapsedNanos ?: SystemClock.elapsedRealtimeNanos())
         if (stop) speedTickJob?.cancel()
         val cutoff = if (stop && recorder.snapshot().state == TrackingState.PAUSED) System.currentTimeMillis()
             else boundary?.endedAtMillis ?: System.currentTimeMillis()
@@ -291,10 +293,12 @@ class WalkTrackingService : Service() {
                     // Stopping an already paused recording creates an explicit STOP marker.
                     if (receipt != null && receipt.endKind == "PAUSE") {
                         val atNanos = SystemClock.elapsedRealtimeNanos()
-                        writer.saveRecordingEpoch(RecordingEpoch(UUID.randomUUID().toString(), id,
+                        val emptyStop = RecordingEpoch(UUID.randomUUID().toString(), id,
                             clockEpochId, chainIndex + 1, cutoff, atNanos, ingressSequence.get(),
                             endedAtMillis = cutoff, endedElapsedNanos = atNanos, endKind = "STOP",
-                            targetIngressSeq = ingressSequence.get() - 1, drained = true)).await()
+                            targetIngressSeq = ingressSequence.get() - 1, drained = true)
+                        writer.saveRecordingEpoch(emptyStop).await()
+                        speedRuntime?.completePausedStop(emptyStop)
                     }
                     checkRecordingComplete(log.recordingEpochs(id))
                     // Await this transaction, not a global failure flag changed by later work.
@@ -370,6 +374,10 @@ class WalkTrackingService : Service() {
             return
         }
         if (type == WalkMomentType.NOTE) return // Notes use the editor, without a GPS gate.
+        if (com.daengs.app.walk.pin.ActionPinRollout.legacyCreation) {
+            recordLegacyMoment(type)
+            return
+        }
         val activeSession = sessionId ?: return
         val capturedOwner = sessionOwnerId.orEmpty()
         val actionId = UUID.randomUUID().toString()
@@ -397,6 +405,31 @@ class WalkTrackingService : Service() {
         }
     }
 
+    private fun recordLegacyMoment(type: WalkMomentType) {
+        val activeSession = sessionId ?: return
+        val action = com.daengs.app.walk.pin.legacyWalkAction(
+            store.state.value.latestMomentFix, UUID.randomUUID().toString(), activeSession,
+            type, System.currentTimeMillis(), SystemClock.elapsedRealtimeNanos(),
+        )
+        if (action == null) {
+            store.publish(WalkEvent.MomentLocationUnavailable)
+            return
+        }
+        val capturedOwner = sessionOwnerId.orEmpty()
+        val stored = writer.ordered {
+            check(log.ownerId == capturedOwner) { "계정이 변경됐어요." }
+            log.appendAction(action)
+        }
+        serviceScope.launch {
+            try {
+                stored.await()
+                store.publish(WalkEvent.MomentRecorded(type, WalkMomentOutcome.CREATED, "moment-${action.id}"))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { /* writer.failure reports storage failure. */ }
+        }
+    }
+
     private fun acceptCommittedLocation(fix: RecordedFix) {
         val sample = com.daengs.app.location.LocationSample(
             com.daengs.app.location.GeoPoint(fix.lat, fix.lng), fix.atMillis,
@@ -420,7 +453,7 @@ class WalkTrackingService : Service() {
         }
         store.publish(
             trackingState(
-                trail = recorder.add(sample),
+                trail = if (speedRuntime?.usesMeasurement == true) recorder.snapshot() else recorder.add(sample),
                 lastSample = sample,
                 latestMomentFix = latestMomentFix,
             ),
@@ -429,6 +462,8 @@ class WalkTrackingService : Service() {
 
     private fun openSession(dogIds: List<String>) {
         val id = UUID.randomUUID().toString()
+        val motionPolicy = MotionPolicies.freeze(id, measure = true)
+        discardedMeasurement = false
         synchronized(sessionLock) {
             sessionId = id
             sessionStartedAtMillis = System.currentTimeMillis()
@@ -438,7 +473,7 @@ class WalkTrackingService : Service() {
             ingressSequence.set(0)
             projectionCursor = -1L
             chainIndex = 0
-            speedRuntime = WalkSpeedRuntime(id) { error -> Log.w(TAG, "속도 표시 계산을 중단합니다. 원본 기록은 계속합니다.", error) }
+            speedRuntime = WalkSpeedRuntime(motionPolicy) { error -> Log.w(TAG, "GPS 표시와 경로 계산을 중단합니다. 원본 기록은 계속합니다.", error) }
             speedTickJob?.cancel()
             speedTickJob = serviceScope.launch {
                 while (sessionId == id) {
@@ -453,6 +488,7 @@ class WalkTrackingService : Service() {
                     id = id,
                     dogIds = dogIds,
                     startedAtMillis = checkNotNull(sessionStartedAtMillis),
+                    motionPolicyJson = MotionPolicies.encode(motionPolicy),
                 ),
             )
         }
@@ -500,7 +536,7 @@ class WalkTrackingService : Service() {
             publishCompletionFailure("저장한 산책을 다시 읽지 못했어요.")
             return false
         }
-        val summary = summarize(session, log.fixes(sessionId))
+        val summary = summarize(session, log.fixes(sessionId), epochs = log.recordingEpochs(sessionId))
         if (!summary.countsAsWalk && !log.hasEntries(sessionId)) {
             log.deleteSession(sessionId)
             // **잰 값도 같이 지운다.** 안 지우면 방금 걸은 시간이 화면에 그대로 남아,
@@ -508,15 +544,20 @@ class WalkTrackingService : Service() {
             // 이 이미 0 으로 만들지만 시간은 이 서비스가 들고 있다.
             activeDurationMillis = 0L
             activeSinceRealtimeMillis = null
+            discardedMeasurement = true
             publishCompletionFailure(
                 "이동 거리나 시간이 너무 짧아서 산책으로 기록하지 않았어요.",
                 clearMoments = true,
             )
             return false
         }
+        activeDurationMillis = summary.activeDurationMillis
+        activeSinceRealtimeMillis = null
+        val completedTrail = (speedRuntime?.trailSnapshot(TrackingState.OFF) ?: recorder.snapshot()).copy(
+            segments = summary.segments, distanceMeters = summary.distanceMeters)
         publishIfStillInactive(
             trackingState(
-                trail = recorder.snapshot(),
+                trail = completedTrail,
                 completedSessionId = sessionId,
             ),
         )
@@ -564,8 +605,15 @@ class WalkTrackingService : Service() {
     }
 
     private fun publishSpeed() {
-        val display = speedRuntime?.display?.value ?: return
-        if (store.state.value.motionDisplay != display) store.publish(store.state.value.copy(motionDisplay = display))
+        val runtime = speedRuntime ?: return
+        val current = store.state.value
+        val timing = runtime.takeIf { it.usesMeasurement && !discardedMeasurement && current.completedSessionId == null }?.measurementTiming()
+        val next = current.copy(motionDisplay = runtime.display.value,
+            trail = if (timing != null) runtime.trailSnapshot(current.trail.state) else current.trail,
+            activeDurationMillis = timing?.closedMillis ?: current.activeDurationMillis,
+            activeSinceRealtimeMillis = if (timing != null) timing.activeSinceRealtimeMillis else current.activeSinceRealtimeMillis,
+            errorMessage = current.errorMessage ?: runtime.measurementError)
+        if (next != current) store.publish(next)
     }
 
     private fun trackingState(
@@ -576,25 +624,29 @@ class WalkTrackingService : Service() {
         errorMessage: String? = null,
         finishingSessionId: String? = null,
         completedSessionId: String? = null,
-    ): WalkTrackingState = WalkTrackingState(
+    ): WalkTrackingState {
+        val measurement = speedRuntime?.takeIf { it.usesMeasurement && !discardedMeasurement && completedSessionId == null }
+        val timing = measurement?.measurementTiming()
+        return WalkTrackingState(
         recordingTransition = transitioning,
         ingressProgress = ingress?.progress?.value,
         activeSessionId = sessionId,
         activeSessionStartedAtMillis = sessionStartedAtMillis.takeIf { sessionId != null },
         ownerId = sessionOwnerId,
         activeDogIds = sessionDogIds,
-        trail = trail,
+        trail = measurement?.trailSnapshot(trail.state) ?: trail,
         lastSample = lastSample,
         latestMomentFix = latestMomentFix,
         momentGroups = momentGroups,
-        errorMessage = errorMessage,
-        activeDurationMillis = activeDurationMillis,
-        activeSinceRealtimeMillis = activeSinceRealtimeMillis,
+        errorMessage = errorMessage ?: measurement?.measurementError,
+        activeDurationMillis = timing?.closedMillis ?: activeDurationMillis,
+        activeSinceRealtimeMillis = if (timing != null) timing.activeSinceRealtimeMillis else activeSinceRealtimeMillis,
         finishingSessionId = finishingSessionId,
         completedSessionId = completedSessionId,
         stayStamps = stayRecorder.snapshot(),
         motionDisplay = speedRuntime?.display?.value ?: MotionDisplay(),
     )
+    }
 
     private fun promote(trail: TrailSnapshot, errorMessage: String?) {
         ServiceCompat.startForeground(
