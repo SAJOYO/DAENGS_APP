@@ -2,6 +2,7 @@
 
 | 파일 | 내용 |
 | --- | --- |
+| [산책 장면·일기 기획](https://github.com/rkbuhtig/DAENGS_geo/blob/4b90be1d1ef63b758cfa0d25107a7fc9d3913fa1/docs/explorations/walk/diary/plan.md) · [GEO #265](https://github.com/rkbuhtig/DAENGS_geo/pull/265) | 개별 장면 우선·별도 전체 일기 생성의 기획 기준. 아래 구현 문서와 적용 상태를 구별 |
 | [gps-motion-policy-architecture.md](gps-motion-policy-architecture.md) | GPS 정책층 1차 설계 — 단계별 수집·저장·판정·표시·복구 계약 |
 | [gps-recording-delivery.md](gps-recording-delivery.md) | GPS 2차 — 원본 저널과 종료 drain, Room·실기기 검증 |
 | [gps-motion-engine.md](gps-motion-engine.md) | GPS 3차 — 동결 정책·이동 추정·구간 장벽·동일 저널 재생 (운영 미연결) |

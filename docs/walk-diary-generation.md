@@ -1,5 +1,10 @@
 # 서버 산책 일기를 앱에서 읽기
 
+기획 기준은 [산책 장면과 일기 생성](https://github.com/rkbuhtig/DAENGS_geo/blob/4b90be1d1ef63b758cfa0d25107a7fc9d3913fa1/docs/explorations/walk/diary/plan.md)
+([GEO #265](https://github.com/rkbuhtig/DAENGS_geo/pull/265))이다.
+아래는 앱의 기존 생성·표시·편집 계약이다. 장면을 완성된 글로 보여주는 기획과,
+현재 배경·원본 조립의 구현을 구별한다. 새 본문·편집 계약의 구현 반영은 별도 작업이다.
+
 서버 [DAENGS_dev #378](https://github.com/SAJOYO/DAENGS_dev/pull/378)의
 `walk-diary-response-v1` / `walk-diary-bundle-v1`을 산책 목록과 지도 위 장면에 연결한다.
 새 경로는 `WalkDiarySync`, 이전 후보 계약은 `WalkStoryboardSync`가 맡는다.
