@@ -35,6 +35,18 @@ class RecordingJournalTest {
         assertEquals(1L, dao.recordingEpochs("s").single().persistedCount)
     }
 
+    @Test fun `special float bits survive SQLite and duplicate ingress without double counting`() = withLog { log, dao ->
+        log.saveRecordingEpoch(epoch)
+        val sample = fix.copy(speedMps = Float.fromBits(0x7fc00001), bearingDegrees = -0.0f)
+        log.append("s", sample)
+        log.append("s", sample)
+        val restored = log.fixes("s").single()
+        assertEquals(0x7fc00001, restored.speedMps!!.toRawBits())
+        assertEquals(Int.MIN_VALUE, restored.bearingDegrees!!.toRawBits())
+        assertEquals(1L, dao.recordingEpochs("s").single().persistedCount)
+        assertTrue(runCatching { log.append("s", sample.copy(speedMps = Float.fromBits(0x7fc00002))) }.isFailure)
+    }
+
     @Test fun `epoch mismatch rolls back and only verified stop creates diary work`() = withLog { log, dao ->
         log.saveRecordingEpoch(epoch)
         assertTrue(runCatching { log.append("s", fix.copy(clockEpochId = "other")) }.isFailure)

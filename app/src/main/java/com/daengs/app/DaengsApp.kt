@@ -85,6 +85,14 @@ class DaengsApp : Application() {
     fun walkRecordsSource(): com.daengs.app.walk.records.WalkRecordsSource? =
         com.daengs.app.walk.records.accountWalkRecordsSource(walkDatabase, sessionProvider)
 
+    fun routeBackupSource(scope: com.daengs.app.auth.AccountScope): com.daengs.app.walk.sync.WalkRouteBackupSource? {
+        val owner = scope.ownerId?.takeIf { it.isNotBlank() } ?: return null
+        if (sessionProvider.accountScope.value != scope) return null
+        return com.daengs.app.walk.sync.WalkRouteBackupSource(walkDatabase, owner,
+            isCurrentAccount = { sessionProvider.accountScope.value == scope },
+            enqueue = walkRuntime.delivery::enqueue)
+    }
+
     /** CameraX 완료 뒤 저장은 화면 회전/이탈보다 오래 살아야 한다. */
     fun saveWalkPhoto(capture: com.daengs.app.walk.WalkPhotoCapture, file: java.io.File) = applicationScope.async {
         try {
@@ -162,6 +170,9 @@ class DaengsApp : Application() {
                 owner = { tokenStore.load()?.appUserId.orEmpty() },
                 v2 = com.daengs.app.walk.sync.WalkEntryV2Sync(dao, { tokenStore.load()?.appUserId.orEmpty() })),
                 recording = com.daengs.app.walk.sync.WalkRecordingSync(),
+                motion = com.daengs.app.walk.sync.WalkMotionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() },
+                    precision = com.daengs.app.walk.sync.WalkMotionPrecisionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() }),
+                    restorationGuard = log::restoringForOwner),
                 requireRecordingSupport = !com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
                 photoSync = photoSync::sync,
                 storyboardSync = { token, sessionId, remoteId -> walkStoryboardSync.sync(token, sessionId, remoteId) }),
