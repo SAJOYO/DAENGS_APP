@@ -10,6 +10,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -65,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -2420,13 +2426,20 @@ private fun ChatInput(
                     }
                     // 음성은 "입력하세요" 바로 옆이다 — 말로 넣는 것도 입력이라,
                     // 입력칸 안에 있는 편이 무엇을 대신하는 버튼인지 바로 읽힌다.
-                    InputAction(
-                        DaengsIcon.Mic,
-                        onVoice,
-                        size = 36.dp,
-                        iconSize = 19.dp,
-                        tint = if (listening) DaengPink else TextMuted,
-                    )
+                    //
+                    // 듣는 동안은 마이크 뒤에서 물결이 퍼진다. 색만 바꾸면 글이 차기
+                    // 시작한 뒤에는 "듣고 있어요…" 가 글에 가려져 분홍 점 하나만 남는다 —
+                    // 움직이는 것이 있어야 잠깐 말을 멈춰도 아직 듣는 중인지 보인다.
+                    Box(contentAlignment = Alignment.Center) {
+                        if (listening) ListeningRipple(Modifier.size(36.dp))
+                        InputAction(
+                            DaengsIcon.Mic,
+                            onVoice,
+                            size = 36.dp,
+                            iconSize = 19.dp,
+                            tint = if (listening) DaengPink else TextMuted,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -2460,6 +2473,37 @@ private fun InputAction(
         Modifier.size(size).clip(RoundedCornerShape(50)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { DaengsIconView(icon, Modifier.size(iconSize), tint = tint) }
+}
+
+/**
+ * 듣는 중의 물결. 마이크 뒤에서 동심원 둘이 반 주기 어긋나 번갈아 퍼지며 옅어진다.
+ *
+ * 마이크 단추(36dp) 안에서만 그린다 — 입력칸 높이가 48dp 라 밖으로 나가면 잘린다.
+ * 안쪽 반지름은 아이콘(19dp)을 살짝 감싸는 크기에서 시작해 단추 가장자리까지 간다.
+ */
+@Composable
+private fun ListeningRipple(modifier: Modifier = Modifier) {
+    val wave = rememberInfiniteTransition(label = "listening")
+    val phase by wave.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
+        label = "listening-phase",
+    )
+    Canvas(modifier) {
+        val edge = size.minDimension / 2f
+        val inner = edge * 0.55f
+        val stroke = Stroke(width = 1.5.dp.toPx())
+        repeat(2) { ring ->
+            val p = (phase + ring * 0.5f) % 1f
+            drawCircle(
+                color = DaengPink,
+                radius = inner + (edge - inner) * p,
+                alpha = (1f - p) * 0.5f,
+                style = stroke,
+            )
+        }
+    }
 }
 
 @Preview(widthDp = 411, heightDp = 891, showBackground = true)
