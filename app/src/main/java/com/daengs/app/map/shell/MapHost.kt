@@ -41,6 +41,8 @@ fun MapHost(
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
     onRouteDirectionCount: (Int) -> Unit = {},
     onSelectRecordContext: (String) -> Unit = {},
+    visibilityQuery: MapVisibilityQuery? = null,
+    onVisibility: (MapVisibilityResult) -> Unit = {},
 ) {
     NaverMapSurface(
         scene = scene,
@@ -69,6 +71,7 @@ fun MapHost(
         onCameraSnapshot = onCameraSnapshot,
         onRouteDirectionCount = onRouteDirectionCount,
         onSelectRecordContext = onSelectRecordContext,
+        visibilityQuery = visibilityQuery, onVisibility = onVisibility,
     )
 }
 

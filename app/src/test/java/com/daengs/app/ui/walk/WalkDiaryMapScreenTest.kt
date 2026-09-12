@@ -26,6 +26,22 @@ import org.robolectric.annotation.GraphicsMode
 class WalkDiaryMapScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `pending scene binding retains reading height until the replacement scene is ready`() {
+        val scene = DiaryScene("s/one", "s", 0, "읽던 장면", "함께 걸었다", null, "")
+        var pending by mutableStateOf(false)
+        compose.setContent {
+            WalkDiaryMapContent(if (pending) emptyList() else listOf(scene), if (pending) null else scene,
+                pending, null, {}, {}, {}, {}, {}, {}, selectionPending = pending,
+                map = { Box(Modifier.fillMaxSize()) })
+        }
+        val expanded = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        compose.runOnIdle { pending = true }
+        assertEquals(expanded, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top)
+        compose.runOnIdle { pending = false }
+        compose.onNodeWithText("읽던 장면").assertIsDisplayed()
+        assertEquals(expanded, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top)
+    }
+
     @Test fun `unlocated scene remains readable and section selection returns a bounded path`() {
         val detail = com.daengs.app.walk.routeexplorer.reviewDetail(
             listOf(0.0 to 10_000L, 10.0 to 20_000L), listOf(2_000.0 to 40_000L, 2_010.0 to 50_000L))
@@ -215,7 +231,8 @@ class WalkDiaryMapScreenTest {
         val mapBounds = compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot
         // Opening the list itself must not move/resize the map or request an overview.
         compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeUp(startY = 40f, endY = -450f) }
-        assertEquals(browsingViewport, viewport)
+        assertEquals(browsingViewport?.bottomPaddingPx, viewport?.bottomPaddingPx)
+        assertTrue(viewport!!.bottomOcclusionPx > browsingViewport!!.bottomOcclusionPx)
         assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("첫 장면").performClick()
         compose.onNodeWithText("공원 옆이었다. 직접 남긴 메모").assertIsDisplayed()
@@ -226,7 +243,8 @@ class WalkDiaryMapScreenTest {
         val readingTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         assertTrue(readingTop < peekTop - 100)
         assertTrue(readingTop > 100)
-        assertEquals(browsingViewport, viewport)
+        assertEquals(browsingViewport?.bottomPaddingPx, viewport?.bottomPaddingPx)
+        assertEquals(browsingViewport?.selectionYFraction, viewport?.selectionYFraction)
         assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
         assertEquals(1, mounts)
         compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeDown(startY = 10f, endY = 500f) }

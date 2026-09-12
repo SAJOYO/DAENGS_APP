@@ -16,16 +16,25 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlin.math.ceil
 
+internal fun diaryPinSize(label: String, density: Float, endpoint: Boolean = false): Pair<Int, Int> {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = (if (endpoint) 11f else 14f) * density
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+    }
+    val width = ceil(maxOf(if (endpoint) 36f else 32f, paint.measureText(label) / density + 20f) * density).toInt()
+    return width to ceil(((if (endpoint) 22f else 30f) + 7f) * density).toInt()
+}
+
 /** The tail anchors the true coordinate. Endpoints sit below it; scene numbers sit above it. */
 internal fun diaryPinBitmap(label: String, selected: Boolean, density: Float, endpoint: Boolean = false): Bitmap {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = (if (endpoint) 11f else 14f) * density
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
-    val width = ceil(maxOf(if (endpoint) 36f else 32f, paint.measureText(label) / density + 20f) * density).toInt()
+    val (width, height) = diaryPinSize(label, density, endpoint)
     val bodyHeight = (if (endpoint) 22f else 30f) * density
     val tail = 5f * density
-    val bitmap = Bitmap.createBitmap(width, ceil(bodyHeight + tail + 2f * density).toInt(), Bitmap.Config.ARGB_8888)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val left = density
     val right = width - density
