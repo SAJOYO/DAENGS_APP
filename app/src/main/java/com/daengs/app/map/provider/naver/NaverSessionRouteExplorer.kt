@@ -25,7 +25,7 @@ internal fun NaverSessionRouteExplorer(
     val cursorIcon = remember { OverlayImage.fromResource(R.drawable.ic_walk_replay_cursor) }
     val latestCount by rememberUpdatedState(onDirectionCount)
     val highlight = state?.highlightPaths.orEmpty()
-    DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight) {
+    DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight, state?.useOverviewDirections) {
         val arrows = mutableListOf<Marker>()
         var sides = emptyMap<String, Int>()
         fun clear() { arrows.forEach { it.map = null }; arrows.clear() }
@@ -39,7 +39,7 @@ internal fun NaverSessionRouteExplorer(
                 val xy = projection.toScreenLocation(LatLng(p.latitude, p.longitude))
                 return RouteScreenPoint(xy.x.toDouble(), xy.y.toDouble())
             }
-            val source = highlight.ifEmpty { paths }
+            val source = state.directionPaths(paths)
             fun projectEdges(input: List<List<GeoPoint>>) = input.flatMapIndexed { segment, points ->
                 points.map(::project).zipWithNext().mapIndexed { index, (a, b) ->
                     RouteScreenEdge("$segment:$index", a, b)

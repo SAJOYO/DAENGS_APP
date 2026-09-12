@@ -27,7 +27,7 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
                 RouteEndpointMarkerState(
                     id = ROUTE_START_END_ID,
                     point = endPoint.point,
-                    label = "출발 · 도착",
+                    label = if (points.size == 1) "확인 위치" else "동선 시작 · 끝",
                     kind = RouteEndpointKind.START_END,
                     selected = selectedPoint == startPoint || selectedPoint == endPoint,
                 )
@@ -38,7 +38,7 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
             RouteEndpointMarkerState(
                 id = ROUTE_START_ID,
                 point = point.point,
-                label = "출발",
+                label = "동선 시작",
                 kind = RouteEndpointKind.START,
                 selected = selectedPoint == point,
             )
@@ -47,7 +47,7 @@ internal fun WalkSessionRoute.toCompletedRouteLayerState(
             RouteEndpointMarkerState(
                 id = ROUTE_END_ID,
                 point = point.point,
-                label = "도착",
+                label = "동선 끝",
                 kind = RouteEndpointKind.END,
                 selected = selectedPoint == point,
             )

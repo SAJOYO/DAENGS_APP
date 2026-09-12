@@ -9,6 +9,18 @@ import org.junit.Test
 import java.time.Instant
 
 class ServerDiaryBundleTest {
+    @Test fun `scene display retains location time method and state for route correspondence`() {
+        val json = diaryFixture()
+        val anchor = json.getJSONObject("bundle").getJSONArray("scenes").getJSONObject(0).getJSONObject("anchor")
+        anchor.put("method", "last_known").put("position_state", "resolved")
+        val locationAt = Instant.parse(anchor.getString("event_at")).minusSeconds(30)
+        anchor.put("location_at", locationAt.toString())
+        val content = GeoStoryboardBundle.parse(json.toString()).scenes.first().diary!!
+        assertEquals("last_known", content.locationMethod)
+        assertEquals(locationAt.toEpochMilli(), content.locationAtMillis)
+        assertEquals("resolved", content.positionState)
+    }
+
     @Test fun `completed diary does not explain a scene deficit to the reader`() {
         assertEquals("", DiaryGenerationInfo("accepted", 2).description())
         assertEquals("", DiaryGenerationInfo("not_requested", 5).description())
