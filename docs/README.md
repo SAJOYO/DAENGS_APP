@@ -6,6 +6,7 @@
 | [gps-recording-delivery.md](gps-recording-delivery.md) | GPS 2차 — 원본 저널과 종료 drain, Room·실기기 검증 |
 | [gps-motion-engine.md](gps-motion-engine.md) | GPS 3차 — 동결 정책·이동 추정·구간 장벽·동일 저널 재생 (운영 미연결) |
 | [collaboration.md](collaboration.md) | 협업 규칙 — 우선순위 · Iteration · PR 기준 · 데일리 · 회고 |
+| [facility-orchestration-release.md](facility-orchestration-release.md) | 시설 v2 출시 활성화·공통 채팅의 공유 검색·찜 완료·복구와 검증 |
 | [co-care-contract.md](co-care-contract.md) | 공동 돌봄 앱 계약·미니룸 정책 제안·서버 계약 검토·화면 연결안 (#261 / DEV #388) |
 | [기능별 테스트 실행 지도](../app/src/test/README.md) | 기능별 Gradle 선택자, Room·동기화 검증 경계, 공용 helper 제공자·소비자 |
 | [walk-photo-sync.md](walk-photo-sync.md) | 산책 사진 메타데이터 전송 — Room 13, 응답 유실/편집 복구, 서버 기능 협상 |

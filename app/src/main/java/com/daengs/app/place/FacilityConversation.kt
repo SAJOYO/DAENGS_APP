@@ -151,6 +151,93 @@ class FacilityConversationRepository(
     private data class Undo(val filters: JsonObject, val sessionId: String, val revision: Int, val pool: String)
     private var undo: Undo? = null
 
+    fun belongsTo(accountId: String?) = accountId != null && owner == accountId
+
+    fun isAssistantAccountCurrent(turn: FacilityAssistantTurn): Boolean {
+        val live = currentSession()
+        return live?.appUserId == turn.session.appUserId && live.refreshToken == turn.session.refreshToken
+    }
+
+    fun isAssistantTurnCurrent(turn: FacilityAssistantTurn) =
+        isAssistantAccountCurrent(turn) && generation == turn.generation && mutable.value.result == turn.before
+
+    suspend fun captureAssistantTurn(requestId: String, bookmarks: BookmarkTurn?): FacilityAssistantTurn {
+        val session = freshSession() ?: throw FacilityException(401)
+        if (owner != null && owner != session.appUserId) invalidate()
+        owner = session.appUserId
+        check(!mutable.value.busy) { "시설 검색을 마친 뒤 다시 말해 주세요." }
+        val before = mutable.value.result
+        val visible = before?.search?.overviewHits(before.parkingFirst)?.map { it.place.key }.orEmpty()
+        val context = buildJsonObject {
+            put("client_request_id", requestId)
+            before?.let {
+                put("session_id", it.sessionId); put("expected_revision", it.revision)
+                put("visible_order", buildJsonArray { visible.forEach { key -> add(buildJsonObject {
+                    put("source", key.source); put("ref", key.ref)
+                }) } })
+                mutable.value.selected?.takeIf { it in visible }?.let { key ->
+                    put("visible_selected", buildJsonObject { put("source", key.source); put("ref", key.ref) })
+                }
+                if (bookmarks != null) put("bookmark_commands", "v1")
+            }
+        }
+        return FacilityAssistantTurn(generation, session, before, context, bookmarks)
+    }
+
+    suspend fun acceptAssistantTurn(turn: FacilityAssistantTurn, reference: com.daengs.app.assistant.FacilityAssistantReference): String? {
+        fun current() {
+            check(isAssistantTurnCurrent(turn)) {
+                "시설 검색이 바뀌었어요. 현재 목록에서 다시 말해 주세요."
+            }
+        }
+        current()
+        require(reference.requestId == turn.context.getValue("client_request_id").jsonPrimitive.content)
+        val result = client.recover(turn.session.accessToken, reference.recovery()).toConversationResult()
+        current()
+        require(result.sessionId == reference.sessionId && result.revision == reference.revision && result.requestId == reference.requestId)
+        turn.before?.let { require(result.sessionId == it.sessionId && result.revision == it.revision + 1) }
+        var completion: String? = null
+        val command = result.receipt["bookmark_command"]?.takeUnless { it == JsonNull }?.jsonObject
+        if (command != null) {
+            val before = requireNotNull(turn.before)
+            require(result.filters == before.filters && result.search == before.search && result.order == before.order && !result.failed && result.answerStatus == "none")
+            val key = command.getValue("key").jsonObject.let { PlaceKey(it.getValue("source").jsonPrimitive.content, it.getValue("ref").jsonPrimitive.content) }
+            require(key in before.order && turn.bookmarks != null)
+            completion = turn.bookmarks.execute(result.requestId, key, command.getValue("saved").jsonPrimitive.boolean).message
+            current()
+        }
+        val selected = mutable.value.selected
+        generation++
+        pending = null; pendingBookmarks = null; undo = null
+        publish(result)
+        if (result.preservesDisplay) mutable.value = mutable.value.copy(selected = selected, commandAnswer = completion)
+        return completion
+    }
+
+    /** Reconcile a stale/expired server view, without replaying the user's ordinal or command. */
+    suspend fun recoverAssistantView(turn: FacilityAssistantTurn): String {
+        check(isAssistantTurnCurrent(turn))
+        val before = requireNotNull(turn.before)
+        val result = try {
+            client.recover(turn.session.accessToken, buildJsonObject {
+                put("session_id", before.sessionId)
+                put("client_request_id", turn.context.getValue("client_request_id"))
+            }).toConversationResult().also {
+                require(it.sessionId == before.sessionId && it.revision >= before.revision)
+            }
+        } catch (error: FacilityException) {
+            if (error.status != 410) throw error
+            val restoreId = UUID.nameUUIDFromBytes(("assistant-restore:" + turn.context.getValue("client_request_id").jsonPrimitive.content).toByteArray(Charsets.UTF_8)).toString()
+            restore(turn.session, before, turn.generation, restoreId)
+        }
+        check(isAssistantTurnCurrent(turn))
+        generation++
+        pending = null; pendingBookmarks = null; undo = null
+        val notice = "검색을 다시 불러왔어요. 원하는 요청을 다시 말해 주세요."
+        publish(result, notice)
+        return notice
+    }
+
     fun cancelPending(cancelBookmarks: Boolean = false) {
         if (cancelBookmarks) { activeBookmarks?.cancel(); pendingBookmarks?.cancel() }
         generation++
@@ -455,10 +542,10 @@ class FacilityConversationRepository(
         }
     }
 
-    private suspend fun restore(session: Session, before: ConversationResult, mine: Long): ConversationResult {
+    private suspend fun restore(session: Session, before: ConversationResult, mine: Long, requestId: String = UUID.randomUUID().toString()): ConversationResult {
         checkLive(mine, session)
         val payload = buildJsonObject {
-            put("client_request_id", UUID.randomUUID().toString()); put("mode", "restore")
+            put("client_request_id", requestId); put("mode", "restore")
             put("restore_filters", before.filters)
             put("candidate_pools", "v1"); put("restore_pool", before.searchPool)
         }

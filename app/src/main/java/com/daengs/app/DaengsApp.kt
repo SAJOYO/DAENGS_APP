@@ -41,6 +41,38 @@ import com.daengs.app.territory.*
  */
 class DaengsApp : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val facilityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val facilityConversationLazy = lazy {
+        com.daengs.app.place.FacilityConversationRepository(
+            com.daengs.app.place.ConversationApi { BuildConfig.API_BASE_URL },
+            com.daengs.app.place.PlaceRepository(com.daengs.app.place.PlaceApi(baseUrl = { BuildConfig.API_BASE_URL })),
+            sessionProvider::freshSession, tokenStore::load,
+        )
+    }
+    val facilityConversation get() = facilityConversationLazy.value
+    val facilityAssistant by lazy {
+        com.daengs.app.assistant.FacilityAssistant(facilityConversation,
+            captureBookmarks = { placeBookmarks().captureTurn() },
+            onSearchApplied = { placeBookmarks().returnToSearch() },
+        )
+    }
+    private var facilityBookmarkAccount: com.daengs.app.auth.AccountScope? = null
+    private var facilityBookmarks: com.daengs.app.ui.places.PlaceBookmarkController? = null
+
+    /** Map and assistant commands share the same account and per-place write sequence. */
+    fun placeBookmarks(): com.daengs.app.ui.places.PlaceBookmarkController {
+        val account = sessionProvider.accountScope.value
+        if (facilityBookmarkAccount != account || facilityBookmarks == null) {
+            facilityBookmarks?.close()
+            facilityBookmarkAccount = account
+            facilityBookmarks = com.daengs.app.ui.places.PlaceBookmarkController(facilityScope,
+                com.daengs.app.place.bookmarks.PlaceBookmarkRepository(
+                    com.daengs.app.place.bookmarks.PlaceBookmarkApi(), sessionProvider::freshSession,
+                    { sessionProvider.accountScope.value },
+                ), account)
+        }
+        return requireNotNull(facilityBookmarks)
+    }
 
     lateinit var tokenStore: TokenStore
         private set
@@ -120,6 +152,18 @@ class DaengsApp : Application() {
 
         tokenStore = TokenStore(this)
         sessionProvider = SessionProvider(tokenStore)
+        facilityScope.launch {
+            var previous = sessionProvider.accountScope.value
+            sessionProvider.accountScope.collect { account ->
+                if (account != previous) {
+                    if (facilityConversationLazy.isInitialized()) facilityConversation.invalidate()
+                    facilityBookmarks?.close()
+                    facilityBookmarks = null
+                    facilityBookmarkAccount = null
+                    previous = account
+                }
+            }
+        }
         activityRepository = com.daengs.app.activity.ActivityRepository(
             com.daengs.app.activity.ActivityApi(), sessionProvider::freshSession, tokenStore::load,
         )

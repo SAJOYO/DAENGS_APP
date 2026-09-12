@@ -51,6 +51,7 @@ object AssistantApi {
         where: GeoPoint? = null,
         activeDogId: String?,
         persistence: ChatPersistence? = null,
+        facility: kotlinx.serialization.json.JsonObject? = null,
     ): Result<AssistantResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -58,7 +59,7 @@ object AssistantApi {
                 val conn = open()
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
                 conn.use {
-                    it.send(requestBody(text, where, activeDogId, persistence))
+                    it.send(requestBody(text, where, activeDogId, persistence, facility))
                     AssistantResponse.parse(it.readJson())
                 }
             }.recoverCatching { cause ->
@@ -94,7 +95,7 @@ object AssistantApi {
      * 붙는다 (한쪽만 있으면 저쪽이 422). [ChatPersistence] 가 둘을 한 값으로 묶어서
      * 한쪽짜리를 앱에서 만들 수 없다.
      *
-     * **기본값을 두지 않는다.** 네 칸 전부 부르는 쪽이 매번 정한다 — 기본값이 있으면
+     * **기본값을 두지 않는다.** 모든 칸을 부르는 쪽이 매번 정한다 — 기본값이 있으면
      * 빠뜨린 것과 일부러 뺀 것이 안 갈린다.
      */
     internal fun requestBody(
@@ -102,8 +103,10 @@ object AssistantApi {
         where: GeoPoint?,
         activeDogId: String?,
         persistence: ChatPersistence?,
+        facility: kotlinx.serialization.json.JsonObject?,
     ): String =
         JSONObject().put("query", text).apply {
+            facility?.let { put("facility", JSONObject(it.toString())) }
             where?.takeIf { it.inKorea() }?.let {
                 put("location", JSONObject().put("lat", it.latitude).put("lon", it.longitude))
             }

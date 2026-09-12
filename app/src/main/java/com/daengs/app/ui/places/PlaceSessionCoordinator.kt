@@ -257,6 +257,7 @@ internal class PlaceSessionCoordinator(
     }
 
     fun acceptConversation(result: com.daengs.app.place.ConversationResult) {
+        resumeIntent = null
         invalidatePendingDeviceSearch()
         discovery.acceptConversation(result)
     }
