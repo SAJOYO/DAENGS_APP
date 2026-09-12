@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.*
+import com.daengs.app.ui.theme.DaengsColors
 
 enum class WalkTool { POLE, ROTATE, CAMERA, RECORD, ENTRIES, LOCATE, PAUSE, PLAY, CLOSE, SETTINGS }
 
@@ -106,7 +107,7 @@ internal fun WalkGpsDot(good: Boolean, unavailable: Boolean, detail: String, onS
     val label = if (good) "GPS 양호" else if (unavailable) "GPS 확인 필요" else "GPS 불안정"
     IconButton(onClick = { expanded = true }, modifier = Modifier.semantics { contentDescription = label }) {
         Box(Modifier.size(8.dp).background(
-            if (good) Color(0xff4e9b70) else if (unavailable) Color(0xffbb5555) else Color(0xffe2b52b), RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+            if (good) DaengsColors.Success else if (unavailable) DaengsColors.Error else DaengsColors.Warning, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
 
         }
     }
