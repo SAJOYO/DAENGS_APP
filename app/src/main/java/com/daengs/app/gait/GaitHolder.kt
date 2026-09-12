@@ -82,6 +82,21 @@ class GaitHolder(
     }
 
     /**
+     * 영상 한 편을 **올리고 접수만** 한다 (#220).
+     *
+     * [analyze] 와 달리 끝나기를 기다리지 않으므로 목록에 얹을 것도 아직 없다 —
+     * 결과는 `GaitAnalysisWorker` 가 알려 준 뒤 [load] 로 받아 온다.
+     *
+     * @return 접수증. 실패하면 null 이고 이유는 [error] 에 남는다
+     */
+    suspend fun submit(video: PreparedVideo, title: String? = null): GaitSubmission? {
+        error = null
+        return analyzer.submit(video, GaitTitleStore.normalize(title))
+            .onFailure { error = it.message ?: "보행 영상을 올리지 못했어요." }
+            .getOrNull()
+    }
+
+    /**
      * 두 기록을 나란히 본다.
      *
      * 판정은 [GaitComparison.of] 가 지표에서 끌어낸다 — 여기서 문장을 고르지 않는다.
