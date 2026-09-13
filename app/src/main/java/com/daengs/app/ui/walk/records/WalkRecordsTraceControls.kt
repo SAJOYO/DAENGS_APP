@@ -39,6 +39,7 @@ internal fun WalkRecordsTraceControls(
     onOverlapOnly: (Boolean) -> Unit,
     onMinimumWalks: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    menuExtras: @Composable () -> Unit = {},
 ) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
@@ -55,6 +56,7 @@ internal fun WalkRecordsTraceControls(
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
             if (!overlapOnly) ShadowLegend(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            menuExtras()
         }
     }
 }

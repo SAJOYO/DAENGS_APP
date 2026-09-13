@@ -35,7 +35,9 @@ import com.daengs.app.ui.walk.toCompletedRouteLayerState
 import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.walk.records.*
 import com.daengs.app.walk.toSessionRoute
-import com.daengs.app.map.features.records.composeWalkRecordsMapScene
+import com.daengs.app.map.features.records.*
+import com.daengs.app.walk.WalkMomentType
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun WalkRecordsOverview(
@@ -74,9 +76,28 @@ internal fun WalkRecordsOverview(
     controls: (@Composable () -> Unit)? = null,
     behaviorCount: String? = null,
     routeSource: WalkRecordsSource? = null,
+    actionPinState: WalkRecordsActionPinState = rememberWalkRecordsActionPinState(),
+    pinBehavior: WalkMomentType? = null,
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
     val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
+    val pinTypes = (pinBehavior ?: actionPinState.type.value)?.let(::setOf) ?: RECORD_ACTION_TYPES
+    val pins = remember(selection, pinTypes, hiddenIds, actionPinState.enabled.value) {
+        walkRecordsActionPins(selection, pinTypes, hiddenIds, actionPinState.enabled.value)
+    }
+    val selectedPin = pins.records.firstOrNull { it.key == actionPinState.selectedKey.value }
+    val pinGroup = pins.groups.firstOrNull { it.point == actionPinState.groupPoint.value }
+    val pinRecords = pinGroup?.records ?: pins.records
+    val markers = remember(pins.groups, actionPinState.selectedKey.value) {
+        pins.groups.map { it.marker(actionPinState.selectedKey.value) }
+    }
+    LaunchedEffect(pins) {
+        if (selectedPin == null || selectedPin.walk.summary.sessionId in hiddenIds) actionPinState.selectedKey.value = null
+        if (pinGroup == null) actionPinState.groupPoint.value = null
+    }
+    var pinCenter by remember(selection) { mutableStateOf<GeoPoint?>(null) }
+    var pinCameraRequest by remember(selection) { mutableIntStateOf(0) }
+    val pinScope = rememberCoroutineScope()
     val displayPolicy = rememberWalkRecordsDisplayPolicy()
     val routePresentation = rememberWalkRecordsRoute(highlighted, routeSource)
     val routeSummary = routePresentation.summary
@@ -89,12 +110,17 @@ internal fun WalkRecordsOverview(
     val route = selectedRoute.copy(selectedPoint = overlapHit?.takeIf { hit ->
         tiles != null && error == null && hit.walkIds.any { it !in hiddenIds }
     }?.point)
-    val renderPlan = remember(displayPolicy, tiles, route) {
-        composeWalkRecordsMapScene(displayPolicy, tiles.orEmpty(), route)
+    val renderPlan = remember(displayPolicy, tiles, route, markers) {
+        composeWalkRecordsMapScene(displayPolicy, tiles.orEmpty(), route, markers)
     }
     val routeBounds = remember(selection) { selection.records.flatMap(::walkRecordFocusBounds) }
-    val hasGeometry = prepared?.bounds?.isNotEmpty() == true || routeBounds.isNotEmpty() || route.paths.any { it.isNotEmpty() }
-    val hiddenCount = prepared?.availableWalkIds?.count { it in hiddenIds } ?: 0
+    val hasGeometry = prepared?.bounds?.isNotEmpty() == true || routeBounds.isNotEmpty() || route.paths.any { it.isNotEmpty() } || markers.isNotEmpty()
+    val displayableWalkIds = remember(selection, prepared, pins.records) {
+        prepared?.availableWalkIds.orEmpty() +
+            selection.records.filter { it.summary.segments.any { path -> path.isNotEmpty() } }.map { it.summary.sessionId } +
+            pins.records.filter { it.point != null }.map { it.walk.summary.sessionId }
+    }
+    val hiddenCount = displayableWalkIds.count { it in hiddenIds }
     val displayIds = if (overlapOnly) prepared?.overlapWalkIds(minimumWalks) else prepared?.availableWalkIds
     val visibleCount = displayIds?.count { it !in hiddenIds }
     val relatedRecords = overlapHit?.let { hit -> selection.records.filter { it.summary.sessionId in hit.walkIds } }
@@ -106,6 +132,27 @@ internal fun WalkRecordsOverview(
     var localExpanded by rememberSaveable { mutableStateOf(false) }
     val sheetExpanded = expanded ?: localExpanded
     val setExpanded: (Boolean) -> Unit = { localExpanded = it; onExpanded(it) }
+    val choosePin: (WalkBehaviorRecord) -> Unit = { record ->
+        actionPinState.selectedKey.value = record.key
+        if (record.walk.summary.sessionId !in hiddenIds) {
+            pinCenter = record.point
+            pinCameraRequest++
+            if (selectedId != record.walk.summary.sessionId) onSelect(record.walk.summary.sessionId)
+        }
+    }
+    val onPin: (String) -> Unit = { id ->
+        pins.groups.firstOrNull { it.id == id }?.let { group ->
+            actionPinState.inspect(group)
+            pinCenter = group.point
+            pinCameraRequest++
+            setExpanded(true)
+            pinScope.launch { actionPinState.listState.scrollToItem(0) }
+            if (group.records.size == 1) choosePin(group.records.single()) else onClearSelection()
+        }
+    }
+    LaunchedEffect(selectedId) {
+        if (!actionPinState.browsing.value && selectedPin?.walk?.summary?.sessionId != selectedId) pinCenter = null
+    }
     LaunchedEffect(overlapHit?.point) { if (overlapHit != null) setExpanded(true) }
     val map: @Composable (Modifier) -> Unit = { mapModifier ->
         val mapInsets = LocalRecordsMapInsets.current
@@ -121,11 +168,14 @@ internal fun WalkRecordsOverview(
                 else -> {
                     // Keep the map mounted even when every trace is hidden or composition is pending.
                     MapHost(scene = renderPlan.scene, searchOrigin = null, followDevice = false,
-                        fitBounds = fitBounds.ifEmpty { routeBounds }, cameraRequestKey = cameraRequest,
+                        fitBounds = fitBounds.ifEmpty { routeBounds.ifEmpty { markers.map { it.point } } },
+                        centerOn = pinCenter, centerMinZoom = 16.0,
+                        cameraRequestKey = cameraRequest + pinCameraRequest,
                         topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
                         initialCamera = camera, onCameraSnapshot = onCamera,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                        onMapTap = onMapTap,
+                        onSelectMoment = onPin,
+                        onMapTap = { point -> actionPinState.browsing.value = false; actionPinState.groupPoint.value = null; onMapTap(point) },
                         modifier = Modifier.fillMaxSize())
                     val message = when {
                         routeError != null -> routeError
@@ -154,9 +204,17 @@ internal fun WalkRecordsOverview(
         }
     }
 
-    WalkRecordsMapFrame(sheetExpanded, setExpanded, "관련 산책 ${relatedRecords.size}회", modifier,
-        controls = { if (controls != null) controls() else
-            WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks) },
+    WalkRecordsMapFrame(sheetExpanded, setExpanded,
+        if (actionPinState.browsing.value) "액션 기록 ${pinRecords.size}건" else "관련 산책 ${relatedRecords.size}회", modifier,
+        controls = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (controls != null) controls() else WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
+                    menuExtras = { WalkRecordsActionPinControls(actionPinState, pinBehavior) })
+                TextButton(onClick = { actionPinState.allRecords(); setExpanded(true); pinScope.launch { actionPinState.listState.scrollToItem(0) } }, Modifier.testTag("records-pins-browse")) {
+                    Text("액션 ${pins.records.size}건")
+                }
+            }
+        },
         map = map,
         summary = {
             if (behaviorCount != null) Text(behaviorCount, Modifier.padding(horizontal = 18.dp)
@@ -176,6 +234,16 @@ internal fun WalkRecordsOverview(
 
         },
         details = {
+            if (actionPinState.browsing.value) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (pinGroup != null) "이 위치의 액션 ${pinRecords.size}건" else
+                        "핀 표시 ${pins.visibleCount}건 · 위치 없음 ${pins.unlocatedCount}건",
+                        Modifier.weight(1f).testTag("records-pins-summary"), style = MaterialTheme.typography.labelSmall)
+                    if (pinGroup != null) TextButton(onClick = actionPinState::allRecords, Modifier.testTag("records-pins-all")) { Text("모든 액션") }
+                    TextButton(onClick = { actionPinState.browsing.value = false; actionPinState.groupPoint.value = null; pinCenter = null },
+                        Modifier.testTag("records-pins-back-walks")) { Text("산책 목록") }
+                }
+            }
             // The expanded list covers the map's center; keep result/error feedback reachable here too.
             if (error != null) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -198,7 +266,7 @@ internal fun WalkRecordsOverview(
                     style = MaterialTheme.typography.labelSmall, color = TextMuted)
             }
             // The map frame stays mounted at a fixed size; only meaningful inspection results appear.
-            if (selected != null || overlapHit != null || overlapMiss) Row(
+            if (!actionPinState.browsing.value && (selected != null || overlapHit != null || overlapMiss)) Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -218,7 +286,13 @@ internal fun WalkRecordsOverview(
 
         },
         records = { listModifier ->
-            WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, prepared?.availableWalkIds,
+            if (actionPinState.browsing.value) {
+                if (pinRecords.isEmpty()) RecordsMessage("표시할 액션 기록이 없어요.", modifier = listModifier)
+                else BehaviorRecordList(pinRecords, pets, actionPinState.selectedKey.value, hiddenIds,
+                    displayableWalkIds,
+                    { key -> pinRecords.firstOrNull { it.key == key }?.let(choosePin) }, onToggleHidden,
+                    onOpen, listModifier, actionPinState.listState)
+            } else WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, displayableWalkIds,
                 { setExpanded(true); onSelect(it) }, onToggleHidden, onOpen, listModifier, listState)
         })
 }

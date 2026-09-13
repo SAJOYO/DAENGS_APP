@@ -1,5 +1,10 @@
 # 기능별 테스트 실행 지도
 
+셀로판 위 액션 핀 (#373)은 `WalkRecordsActionPinsTest`, `WalkRecordsActionPinsUiTest`,
+`WalkRecordsLabNavigationTest`와 기존 `*WalkRecords*Test`, `WalkRouteOverlayStoreTest`,
+`NaverWalkLayerOrderTest`, `DesignLockTest`를 실행한다. 동일 위치 묶음·종류·강아지·출처·숨김,
+셀로판 독립성, 기존 일기 진입/복귀, 갱신·복원 후 선택을 확인한다.
+
 산책 모아보기 표시 정책 (#369)은 `WalkRecordsDisplayPolicyTest`, `WalkRecordsPresenterTest`,
 `WalkRecordsTracesTest`, `WalkRecordsScreenTest`, `WalkRouteOverlayStoreTest`,
 `WalkMapDiagnosticsTest`, `NaverWalkLayerOrderTest`, `DesignLockTest`를 함께 확인한다.
