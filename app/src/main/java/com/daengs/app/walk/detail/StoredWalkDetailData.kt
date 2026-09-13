@@ -44,7 +44,8 @@ internal class StoredWalkDetailData(
 
     override fun observeDiary(detail: WalkSessionDetail) =
         reader.observe(listOf(detail.summary.also { require(it.sessionId == sessionId) }),
-            mapOf(sessionId to detail.observations)).map { if (isCurrentAccount()) it.singleOrNull() else null }
+            mapOf(sessionId to detail.observations),
+            detail.measurement?.let { mapOf(sessionId to it) }.orEmpty()).map { if (isCurrentAccount()) it.singleOrNull() else null }
 
     override suspend fun open() {
         checkActive()

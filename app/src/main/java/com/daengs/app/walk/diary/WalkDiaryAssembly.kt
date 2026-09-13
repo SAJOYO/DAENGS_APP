@@ -33,6 +33,7 @@ internal fun assembleDiary(
     photos: List<WalkPhoto>,
     draftPayload: String?,
     observations: List<RecordedFix>,
+    measurement: com.daengs.app.walk.WalkMeasurementDetail? = null,
 ): DiaryWalk {
     val publication = input.publication
     val live = input.entries.mapNotNull { it.entry() }
@@ -46,6 +47,6 @@ internal fun assembleDiary(
         ), true, "",
     ) else storyboardAnalysisView(input.analysis, input.entries, input.photoSync, input.photoRows)
 
-    return diaryWalk(walk, live, photos, StoryboardDraft.parse(draftPayload), analysis, observations)
+    return diaryWalk(walk, live, photos, StoryboardDraft.parse(draftPayload), analysis, observations, measurement)
         .copy(published = publication != null, sourceEntries = live)
 }

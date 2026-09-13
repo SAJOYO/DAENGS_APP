@@ -188,6 +188,10 @@ internal object WalkMeasurementContract {
         return local.copy(summary = local.summary.copy(distanceMeters = metrics.getDouble("walking_distance_m"),
             activeDurationMillis = replay.closedRecordingDurationNanos / 1_000_000, segments = samples, anchor = route.start?.point),
             route = route, legacyRouteEvidence = null,
-            measurement = WalkMeasurementDetail(id, m.getString("result_digest"), ends, observed))
+            measurement = WalkMeasurementDetail(id, m.getString("result_digest"), ends, observed, account,
+                groups.filterKeys { it.first == "walking_section" }.values.map { section ->
+                    MeasurementWalkingSection(section.first().getString("section_id"),
+                        section.map { fix(it.getJSONObject("ref")).measurementRef(input.session.id) })
+                }, usable.map { fixes.getValue(it).measurementRef(input.session.id) }.toSet()))
     }
 }

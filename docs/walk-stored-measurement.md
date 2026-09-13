@@ -16,7 +16,7 @@ Room 18→19는 `walk_measurement`, `walk_measurement_chunk`를 추가한다. �
 
 기존 상세 지도·서랍·장면 편집·카메라 조작을 사용한다. 측정에서 확인된 기록 시작/종료와 첫/마지막 관측, 산책 경로 끝점을 함께 공급한다. 새 Composable이나 디자인 변경은 없다.
 
-관측 run은 측정 메타데이터로 보관한다. 새 관측 보조선과 방향 표현, 장면 binding에 measurement/event/scene revision을 넣는 작업, 시간 slice 및 재생 주소의 영속 복원은 이후 단계다. 기존 legacy 관측 판정기를 새 motion 입력에 적용하지 않는다. 새 측정의 재생 시간을 wall-clock 차이로 추측하지 않는다.
+관측 run은 측정 메타데이터로 보관한다. 장면 binding의 measurement/event/scene revision과 원본 주소 연결은 이어진 [3단계](walk-measurement-scenes.md)에서 구현했다. 새 관측 보조선과 방향 표현, 시간 slice 및 재생 주소의 영속 복원은 이후 단계다. 기존 legacy 관측 판정기를 새 motion 입력에 적용하지 않는다. 새 측정의 재생 시간을 wall-clock 차이로 추측하지 않는다.
 
 ## 검증
 

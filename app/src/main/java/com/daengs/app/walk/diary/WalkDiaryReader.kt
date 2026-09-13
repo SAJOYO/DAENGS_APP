@@ -31,9 +31,11 @@ class WalkDiaryReader(
         }.flowOn(Dispatchers.IO)
     }
 
-    fun observe(walks: List<WalkSummary>, observations: Map<String, List<com.daengs.app.walk.RecordedFix>> = emptyMap()): Flow<List<DiaryWalk>> {
+    fun observe(walks: List<WalkSummary>, observations: Map<String, List<com.daengs.app.walk.RecordedFix>> = emptyMap(),
+        measurements: Map<String, com.daengs.app.walk.WalkMeasurementDetail> = emptyMap()): Flow<List<DiaryWalk>> {
         if (walks.isEmpty()) return flowOf(emptyList())
         val expectedOwner = owner()
+        require(measurements.values.all { it.ownerId == expectedOwner })
         return combine(walks.map { walk ->
             val photoSource = combine(dao.observePhotoSync(walk.sessionId), dao.observePhotos(walk.sessionId), photos.observe(walk.sessionId)) {
                 state, rows, images -> Triple(state, rows, images)
@@ -50,7 +52,7 @@ class WalkDiaryReader(
                 else assembleDiary(
                     walk,
                     DiaryBoardInput(entries, state.first, images.first, images.second, state.second),
-                    images.third, draft?.payload, observations[walk.sessionId].orEmpty(),
+                    images.third, draft?.payload, observations[walk.sessionId].orEmpty(), measurements[walk.sessionId],
                 )
             }
         }) { records -> records.filterNotNull() }.flowOn(Dispatchers.IO)
