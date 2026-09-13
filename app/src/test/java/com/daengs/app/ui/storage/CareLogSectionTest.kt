@@ -226,6 +226,66 @@ class CareLogSectionTest {
         compose.onAllNodesWithText("삭제").assertCountEquals(1)
     }
 
+    // -- 목록에서 「내 행」을 고르는 규칙 -------------------------------------
+    //
+    // 목록은 논리 그룹당 카드 하나로 접히지만 **내가 가진 행은 언제나 그 카드로 남는다.**
+    // 서버 셋이 사슬로 보장한다 — `list_accessible` 의 `member_condition`(내 행은 첫
+    // 조건에서 들어옴) · `collapse` 가 「내가 대표인 행」을 먼저 고름 · 부분 UNIQUE
+    // `pets_identity_one_per_user` 가 한 그룹에 내 행 둘을 막음. 그 전제가 깨지면 이
+    // 판정이 조용히 틀리므로 여기서 잡는다.
+
+    @Test
+    fun `내가 가진 행이면 목록에서 찾는다`() {
+        val pets = listOf(pet("my-row", owner = true), pet("their-row", owner = false))
+
+        assertEquals(true, ownsPetRow(pets, "my-row"))
+    }
+
+    /** 공동 돌봄으로 참여한 아이도 목록에 있다 — 있다는 것만으로 열면 안 된다. */
+    @Test
+    fun `목록에 있어도 내 행이 아니면 아니다`() {
+        val pets = listOf(pet("their-row", owner = false))
+
+        assertEquals(false, ownsPetRow(pets, "their-row"))
+    }
+
+    /** 연결된 그룹에서 내 카드의 id 는 **내 행**이다 — 앵커 행은 내 목록에 안 온다. */
+    @Test
+    fun `연결된 그룹에서는 내 행만 내 것이다`() {
+        // 내 카드 하나(내 행). 대표가 적은 기록은 anchor-row 에 달려 온다.
+        val pets = listOf(pet("my-row", owner = true))
+
+        assertEquals(true, ownsPetRow(pets, "my-row"))
+        assertEquals(false, ownsPetRow(pets, "anchor-row"))
+    }
+
+    /** 목록을 아직 못 받았으면 못 지우는 쪽으로 기운다. */
+    @Test
+    fun `목록이 비면 아무것도 내 것이 아니다`() {
+        assertEquals(false, ownsPetRow(emptyList(), "my-row"))
+    }
+
+    // -- 둘 다 모를 때 -----------------------------------------------------------
+
+    /**
+     * **로그인 정보와 작성자가 둘 다 없으면 열면 안 된다.** `null == null` 로 기울면
+     * 옛 기록·탈퇴자의 기록이 아무에게나 열린다.
+     */
+    @Test
+    fun `현재 사용자와 작성자가 둘 다 없으면 안 열린다`() {
+        val nameless = event().copy(actor = CareActor(null, null))
+        val noActor = event().copy(id = "e-no-actor", actor = null)
+        val notMine = { _: String -> false }
+
+        assertEquals(false, canDeleteCareEvent(nameless, currentUserId = null, ownsPetRow = notMine))
+        assertEquals(false, canDeleteCareEvent(noActor, currentUserId = null, ownsPetRow = notMine))
+        // 작성자를 알아도 내가 누군지 모르면 안 된다.
+        assertEquals(
+            false,
+            canDeleteCareEvent(event().copy(actor = CareActor("someone", "누구")), null, notMine),
+        )
+    }
+
     private companion object {
         val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
 
@@ -236,6 +296,13 @@ class CareLogSectionTest {
             occurredAtMs = 1_756_701_000_000L, // 2025-09-01T13:30+09:00
             note = null,
             clientEventId = "client-1",
+        )
+
+        fun pet(id: String, owner: Boolean) = com.daengs.app.pet.Pet(
+            id = id, name = "이름", breed = "dog_beagle",
+            sex = null, neutered = null, weightKg = null,
+            birthDate = null, birthDateKind = null,
+            isPrimary = false, isOwner = owner,
         )
 
         fun summary(events: List<CareEvent> = emptyList()) =

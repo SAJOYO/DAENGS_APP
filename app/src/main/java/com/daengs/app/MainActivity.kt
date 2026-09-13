@@ -49,6 +49,7 @@ import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.pet.InviteAcceptScreen
+import com.daengs.app.ui.storage.ownsPetRow
 import com.daengs.app.ui.pet.InviteBundleScreen
 import com.daengs.app.ui.pet.PetMembersScreen
 import com.daengs.app.ui.pet.PetPhotoPicker
@@ -923,9 +924,7 @@ class MainActivity : ComponentActivity() {
                                 currentUserId = session?.appUserId,
                                 // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
                                 // 재면 그룹 조회로 섞여 온 남의 기록에도 삭제가 뜬다.
-                                ownsPetRow = { petId ->
-                                    pets.pets.orEmpty().any { it.id == petId && it.isOwner }
-                                },
+                                ownsPetRow = { petId -> ownsPetRow(pets.pets.orEmpty(), petId) },
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },
