@@ -113,6 +113,7 @@ fun NaverMapSurface(
     val cameraToRestore = remember(mapView) { initialCamera }
     val initialCameraRequest = remember(mapView) { cameraRequestKey }
     var cameraRestored by remember(mapView) { mutableStateOf(false) }
+    var restoredRecordRequest by remember(mapView) { mutableStateOf<Int?>(null) }
     var reportCamera by remember(mapView) { mutableStateOf(false) }
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
@@ -233,6 +234,7 @@ fun NaverMapSurface(
         if (!cameraRestored && cameraToRestore != null && initialCameraRequest == cameraRequestKey &&
             centerOn == null && searchOrigin == null) {
             cameraRestored = true
+            if (recordsOverview) restoredRecordRequest = cameraRequestKey
             reportCamera = true
             map.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(
                 cameraToRestore.target.toLatLng(), cameraToRestore.zoom,
@@ -240,6 +242,8 @@ fun NaverMapSurface(
             )))
             return@LaunchedEffect
         }
+        // Late trace bounds are data arrival, not permission to replace a restored overview camera.
+        if (recordsOverview && restoredRecordRequest == cameraRequestKey) return@LaunchedEffect
         // A selection made while getMapAsync was pending takes precedence over the old snapshot.
         cameraRestored = true
         // Opening a clustered-record drawer must not zoom back out and regroup the inspected area.
