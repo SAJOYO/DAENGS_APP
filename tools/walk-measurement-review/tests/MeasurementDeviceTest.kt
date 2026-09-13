@@ -226,7 +226,7 @@ class MeasurementDeviceTest {
         assertExplorerSpace()
         compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performClick()
         assertTrue(awaitSaved("scene").getJSONObject("selection").has("returnRange"))
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("구간 복귀").assertIsDisplayed().performClick()
         assertRange(0)
         assertEquals(offset, explorerScroll(), 1f)
         assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
@@ -276,6 +276,10 @@ class MeasurementDeviceTest {
         assertEquals(expected.getJSONObject("selection").toString(), awaitSaved("replay").getJSONObject("selection").toString())
         assertReplayTime(6_000, 17_000)
         capture("range-reopened")
+        compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performScrollTo().performClick()
+        compose.onNodeWithText("이 장면 앞뒤 30초 보기").performScrollTo().performClick()
+        assertRange(0, CompletedRouteReview(activity.detail!!).timeline!!.durationMillis!!)
+        capture("scene-neighborhood")
     }
 
     private fun assertExplorerSpace() {
