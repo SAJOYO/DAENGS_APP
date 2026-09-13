@@ -420,7 +420,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-overlap-min-5").performClick()
         waitText("5회 이상 겹친 구간이 없어요.")
-        // A stricter display threshold never renames or rescales the fixed count colors.
+        // A stricter display threshold never renames or rescales the fixed count strength scale.
         compose.onNodeWithTag("records-map-display").performClick()
         assertFixedOverlapLegend()
         compose.onNodeWithTag("records-overlap-min-5").performClick()
@@ -448,12 +448,11 @@ class WalkRecordsScreenTest {
 
     private fun assertFixedOverlapLegend() {
         compose.onNodeWithTag("records-overlap-legend").assertIsDisplayed()
-        compose.onNodeWithTag("records-overlap-legend-2").assertTextEquals("2회")
-            .assertContentDescriptionEquals("2회 청록")
-        compose.onNodeWithTag("records-overlap-legend-3-4").assertTextEquals("3–4회")
-            .assertContentDescriptionEquals("3–4회 노랑")
-        compose.onNodeWithTag("records-overlap-legend-5").assertTextEquals("5회 이상")
-            .assertContentDescriptionEquals("5회 이상 주황")
+        listOf(Triple("1", "1회", 10), Triple("2", "2회", 20), Triple("3-4", "3–4회", 25),
+            Triple("5-7", "5–7회", 30), Triple("8", "8회 이상", 35)).forEach { (tag, label, opacity) ->
+            compose.onNodeWithTag("records-overlap-legend-$tag").assertTextEquals(label)
+                .assertContentDescriptionEquals("$label 그림자 농도 ${opacity}퍼센트")
+        }
     }
 
     @Test fun `overlap inspection lists exact related walks including hidden evidence without changing base counts`() {

@@ -348,6 +348,14 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 
 ## 산책 기록의 공통 상단·통합 조건
 
+그림자 A안은 `WalkRecordsTracesTest`에서 1/2/3–4/5–7/8회 이상 농도, 숨김·복원,
+이웃 번짐의 허위 겹침 방지, 서로 다른 정책의 옅은 표시를 검증한다. `TraceBrushTest`는
+농도 필드의 타일 경계 연속성과 취소를, `WalkRecordsScreenTest`는 고정 농도 범례를 검증한다.
+
+```powershell
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -PsideBySide=true -PslimAbi=arm64-v8a --tests '*WalkRecords*Test' --tests '*TraceBrushTest' --tests '*DesignLockTest' --console=plain
+```
+
 상단·선택창 변경은 `ui.walk.records.WalkRecordsFiltersTest`(5마리 복수 선택, 취소,
 빈 부분집합 금지, 기간과 함께 적용, 편집본/확정값 복원, 검색 취소, 320dp/큰 글자)와
 `WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`로 좁힌다.

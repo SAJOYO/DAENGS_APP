@@ -1,7 +1,7 @@
 package com.daengs.app.walk.records
 
 import com.daengs.app.location.GeoPoint
-import com.daengs.app.map.layers.traces.TraceOverlapPalette
+import com.daengs.app.ui.theme.WalkTraceShadow
 import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.diary.SpatialDiaryHexGrid
@@ -24,10 +24,12 @@ internal class WalkTraceOverlap private constructor(
     val radiusU: Double,
     private val cells: Map<SpatialDiaryCellId, Set<String>>,
 ) {
-    /** Colour evidence is fixed before any threshold or visibility choice. */
-    val cellColors: Map<SpatialDiaryCellId, Int> = Collections.unmodifiableMap(
-        cells.mapValues { (_, walkIds) -> TraceOverlapPalette.colorForWalkCount(walkIds.size) },
-    )
+    /** Hiding reduces ink strength, while threshold and hit evidence remain full-query based. */
+    fun cellOpacities(hiddenIds: Set<String>, checkCancelled: () -> Unit): Map<SpatialDiaryCellId, Float> =
+        cells.mapValues { (_, walkIds) ->
+            checkCancelled()
+            WalkTraceShadow.alphaForWalkCount(walkIds.count { it !in hiddenIds })
+        }
 
     // Prepared on Dispatchers.Default with the index, never rescanned on camera recomposition.
     private val eligibleByMinimum = listOf(2, 3, 5).associateWith { minimum ->
@@ -146,7 +148,7 @@ internal class WalkTraceOverlap private constructor(
             }
             val overlaps = members.filterValues { it.size >= 2 }
             if (overlaps.size > 5_000) return unavailable("겹친 구역이 너무 넓어요. 기간이나 조건을 좁혀 주세요.")
-            return WalkTraceOverlap(null, radius, overlaps.mapValues { it.value.toSet() })
+            return WalkTraceOverlap(null, radius, members.mapValues { it.value.toSet() })
         }
 
         private fun unavailable(reason: String) = WalkTraceOverlap(reason, 8.0, emptyMap())

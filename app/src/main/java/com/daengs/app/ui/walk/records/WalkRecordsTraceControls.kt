@@ -20,13 +20,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.daengs.app.map.layers.traces.TraceOverlapPalette
+import com.daengs.app.ui.theme.WalkTraceShadow
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
@@ -55,6 +54,7 @@ internal fun WalkRecordsTraceControls(
             if (overlapOnly) Box(Modifier.padding(horizontal = 16.dp)) {
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
+            if (!overlapOnly) ShadowLegend(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
     }
 }
@@ -71,7 +71,7 @@ internal fun WalkRecordsOverlapOptions(minimumWalks: Int, onMinimumWalks: (Int) 
                     modifier = Modifier.testTag("records-overlap-min-$minimum"))
             }
         }
-        OverlapColorLegend(Modifier.padding(bottom = 4.dp))
+        ShadowLegend(Modifier.padding(bottom = 4.dp))
     }
 }
 
@@ -81,25 +81,27 @@ private fun WalkRecordsOverlapOptionsPreview() {
     DaengsTheme { WalkRecordsOverlapOptions(2, {}) }
 }
 
-/** Fixed original walk-count buckets, independent of the currently selected minimum. */
+/** Fixed visible-session strength scale; changing the minimum never rescales it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OverlapColorLegend(modifier: Modifier = Modifier) {
+private fun ShadowLegend(modifier: Modifier = Modifier) {
     FlowRow(modifier.fillMaxWidth().testTag("records-overlap-legend"),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("겹친 산책", style = MaterialTheme.typography.labelSmall,
+        Text("산책이 쌓일수록 짙게", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         listOf(
-            Triple("2", "2회", TraceOverlapPalette.TEAL_RGB),
-            Triple("3-4", "3–4회", TraceOverlapPalette.YELLOW_RGB),
-            Triple("5", "5회 이상", TraceOverlapPalette.ORANGE_RGB),
-        ).forEach { (bucket, label, rgb) ->
-            val colorName = when (bucket) { "2" -> "청록"; "3-4" -> "노랑"; else -> "주황" }
+            Triple("1", "1회", 1),
+            Triple("2", "2회", 2),
+            Triple("3-4", "3–4회", 3),
+            Triple("5-7", "5–7회", 5),
+            Triple("8", "8회 이상", 8),
+        ).forEach { (bucket, label, count) ->
+            val opacity = WalkTraceShadow.alphaForWalkCount(count)
             Row(Modifier.testTag("records-overlap-legend-$bucket").semantics(mergeDescendants = true) {
-                contentDescription = "$label $colorName"
+                contentDescription = "$label 그림자 농도 ${(opacity * 100).toInt()}퍼센트"
             }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 val shape = RoundedCornerShape(2.dp)
-                Box(Modifier.size(12.dp).background(Color(0xFF000000.toInt() or rgb), shape)
+                Box(Modifier.size(12.dp).background(WalkTraceShadow.color.copy(alpha = opacity), shape)
                     .border(.5.dp, MaterialTheme.colorScheme.outlineVariant, shape))
                 Text(label, style = MaterialTheme.typography.labelSmall)
             }
@@ -125,8 +127,8 @@ private fun WideWalkRecordsTraceControlsPreview() {
     DaengsTheme { WalkRecordsTraceControls(true, 5, {}, {}, Modifier.padding(horizontal = 18.dp)) }
 }
 
-@Preview(name = "겹친 산책 색 범례", showBackground = true, widthDp = 390)
+@Preview(name = "산책 그림자 농도 범례", showBackground = true, widthDp = 390)
 @Composable
-private fun OverlapColorLegendPreview() {
-    DaengsTheme { OverlapColorLegend(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
+private fun ShadowLegendPreview() {
+    DaengsTheme { ShadowLegend(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
 }

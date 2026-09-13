@@ -92,9 +92,17 @@ object TraceBrush {
     /** Same-colour source-over capped at 40%; individual mask coverage remains untouched. */
     fun compose(
         masks: List<WalkTraceMask>, baseAlpha: Double = DEFAULT_TRACE_BASE_ALPHA, checkCancelled: () -> Unit = {},
+    ): List<TraceRasterTile> = merge(masks, baseAlpha, checkCancelled)
+
+    /** Union of display support only. Neighbouring soft edges never add up into overlap evidence. */
+    fun union(masks: List<WalkTraceMask>, checkCancelled: () -> Unit = {}): List<TraceRasterTile> =
+        merge(masks, null, checkCancelled)
+
+    private fun merge(
+        masks: List<WalkTraceMask>, baseAlpha: Double?, checkCancelled: () -> Unit,
     ): List<TraceRasterTile> {
         checkCancelled()
-        require(baseAlpha.isFinite() && baseAlpha in 0.0..1.0)
+        require(baseAlpha == null || (baseAlpha.isFinite() && baseAlpha in 0.0..1.0))
         require(masks.size <= 400 && masks.map { it.walkId }.distinct().size == masks.size) {
             "같은 산책을 두 장으로 겹칠 수 없어요."
         }
@@ -120,8 +128,10 @@ object TraceBrush {
                     if (i % 4_096 == 0) checkCancelled()
                     val coverage = source.alpha[i]
                     require(coverage.isFinite() && coverage in 0f..1f)
-                    val alpha = coverage * baseAlpha
-                    target[i] = min(MAX_TRACE_COMPOSITE_ALPHA, 1 - (1 - target[i]) * (1 - alpha)).toFloat()
+                    target[i] = if (baseAlpha == null) max(target[i], coverage) else {
+                        val alpha = coverage * baseAlpha
+                        min(MAX_TRACE_COMPOSITE_ALPHA, 1 - (1 - target[i]) * (1 - alpha)).toFloat()
+                    }
                 }
             }
         }
@@ -192,6 +202,57 @@ object TraceBrush {
             }
         }
         return result
+    }
+
+    /** Smooth a strength already assigned from exact cells; blurred support never determines counts. */
+    fun opacity(
+        tile: TraceRasterTile, cells: Map<SpatialDiaryCellId, Float>, radiusU: Double,
+        policy: TraceBrushPolicy = TraceBrushPolicy(pixelU = tile.pixelU, tileSize = tile.size),
+        checkCancelled: () -> Unit = {},
+    ): FloatArray {
+        checkCancelled()
+        require(cells.size <= 25_000) { "농도를 표시할 공간 정보가 너무 많아요." }
+        require(radiusU.isFinite() && radiusU in policy.pixelU..64.0)
+        require(tile.size == policy.tileSize && tile.pixelU == policy.pixelU)
+        val kernel = gaussianKernel(policy)
+        val halo = kernel.size / 2
+        val size = tile.size + 2 * halo
+        val step = tile.pixelU
+        val left = tile.tileX.toDouble() * tile.size * step - halo * step
+        val top = (tile.tileY.toDouble() + 1) * tile.size * step + halo * step
+        require(abs(left) < WORLD_EDGE + size * step && abs(top) < WORLD_EDGE + size * step)
+        val support = FloatArray(size * size)
+        val pigment = FloatArray(size * size)
+        cells.forEach { (cell, strength) ->
+            checkCancelled()
+            require(strength.isFinite() && strength in 0f..1f)
+            val x = radiusU * sqrt(3.0) * (cell.q + cell.r / 2.0)
+            val y = radiusU * 1.5 * cell.r
+            require(abs(x) + radiusU < WORLD_EDGE && abs(y) + radiusU < WORLD_EDGE)
+            if (x + radiusU < left || x - radiusU > left + size * step ||
+                y - radiusU > top || y + radiusU < top - size * step) return@forEach
+            val x0 = floor((x - radiusU - left) / step).toInt().coerceIn(0, size - 1)
+            val x1 = ceil((x + radiusU - left) / step).toInt().coerceIn(0, size - 1)
+            val y0 = floor((top - y - radiusU) / step).toInt().coerceIn(0, size - 1)
+            val y1 = ceil((top - y + radiusU) / step).toInt().coerceIn(0, size - 1)
+            for (row in y0..y1) for (col in x0..x1) {
+                val dx = abs(left + (col + 0.5) * step - x)
+                val dy = abs(top - (row + 0.5) * step - y)
+                if (insideHex(dx, dy, radiusU)) {
+                    val index = row * size + col
+                    // Exact shared-edge pixels have a deterministic owner, independent of input order.
+                    pigment[index] = maxOf(pigment[index], strength)
+                    support[index] = 1f
+                }
+            }
+        }
+        val weights = blur(support, size, kernel, checkCancelled)
+        val smoothed = blur(pigment, size, kernel, checkCancelled)
+        return FloatArray(tile.size * tile.size) { i ->
+            if (i % 4_096 == 0) checkCancelled()
+            val source = (i / tile.size + halo) * size + i % tile.size + halo
+            if (weights[source] > 0f) (smoothed[source] / weights[source]).coerceIn(0f, 1f) else 0f
+        }
     }
 
     private fun rasterTile(
