@@ -17,6 +17,34 @@ class DiaryMapNavigationTest {
                 p.latitude, p.longitude, 1f, false) })
     private fun scene(id: String, point: GeoPoint?) = DiaryScene(id, "overview", 20_000, id, "", point, "")
 
+    @Test fun `current photo remains navigable when its walking visit is ambiguous`() {
+        val detail = measuredSceneDetail(secondVisit = true); val original = measuredScene(detail, 7)
+        val photo = WalkPhoto("photo", detail.summary.sessionId, original.atMillis, original.point!!, java.io.File("synthetic-photo"))
+        val scene = original.copy(source = null, photo = photo)
+        val route = PreparedDiaryRoute(detail); val focus = route.review.recordSceneFocus(scene)
+        assertEquals(SceneRouteRelation.AMBIGUOUS, focus.relation)
+        assertTrue(focus.paths.isEmpty())
+        val read = WalkDiaryReadView(route, DiaryWalk(detail.summary, listOf(scene), ""), mapOf(scene.id to focus))
+        val navigation = DiaryMapNavigation(); navigation.initialize(detail.route.bounds)
+        val initial = navigation.camera
+        assertTrue(navigation.selectScene(read, scene, fromMap = true))
+        assertEquals(initial, navigation.camera)
+        assertTrue(navigation.selectScene(read, scene))
+        assertEquals(photo.point, navigation.camera.center)
+        assertNull(navigation.camera.minZoom)
+        val selected = navigation.camera
+        assertFalse(navigation.selectScene(read.copy(sceneFocus = emptyMap()), scene))
+        assertFalse(navigation.selectScene(read, scene.copy(body = "옛 본문")))
+        assertEquals(selected, navigation.camera)
+        listOf(scene.copy(photo = photo.copy(sessionId = "other")),
+            scene.copy(photo = photo.copy(capturedAtMillis = photo.capturedAtMillis + 1)),
+            scene.copy(photo = photo.copy(point = point(20_000.0)))).forEach { mismatched ->
+            val rejected = route.review.recordSceneFocus(mismatched)
+            assertNull(rejected.point)
+            assertTrue(rejected.paths.isEmpty())
+        }
+    }
+
     @Test fun `measured scene navigation rejects pending and stale bindings and map clicks keep camera`() {
         val detail = measuredSceneDetail(); val scene = measuredScene(detail)
         val route = PreparedDiaryRoute(detail)

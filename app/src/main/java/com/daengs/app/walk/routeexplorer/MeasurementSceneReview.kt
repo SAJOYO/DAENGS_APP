@@ -33,7 +33,8 @@ internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
 
     fun focus(scene: DiaryScene, entry: WalkEntry?): SceneRouteFocus {
         val key = SceneBindingKey.of(measurement, scene, entry)
-        fun result(relation: SceneRouteRelation = SceneRouteRelation.NO_ROUTE, point: GeoPoint? = null,
+        var photoLocation: GeoPoint? = null
+        fun result(relation: SceneRouteRelation = SceneRouteRelation.NO_ROUTE, point: GeoPoint? = photoLocation,
             binding: SceneRouteBinding? = null) = SceneRouteFocus(relation, point = point, binding = binding, key = key)
         if (!valid || scene.sessionId != sessionId || detail.summary.endedAtMillis == null) return result()
         val location = scene.point?.takeIf { it.latitude.isFinite() && it.longitude.isFinite() &&
@@ -45,9 +46,13 @@ internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
             val point = entry.pin?.point ?: entry.point ?: return result(SceneRouteRelation.UNLOCATED)
             if (point.distanceTo(location) > 1.0) return result()
         }
-        scene.photo?.let { if (it.sessionId != sessionId || it.capturedAtMillis != scene.atMillis || it.point.distanceTo(location) > 1.0) return result() }
+        scene.photo?.let { if (it.sessionId != sessionId || it.capturedAtMillis != scene.atMillis || !(it.point.distanceTo(location) <= 1.0)) return result() }
         val content = scene.content
         if (content?.positionState in setOf("provisional", "legacy", "unlocated")) return result(SceneRouteRelation.UNLOCATED)
+
+        // A saved photo position is independent of whether a walking visit can be identified.
+        // Keep it only after the current scene/photo receipt checks; never borrow a stale point.
+        if (scene.photo != null && scene.entryId == null && scene.source?.observation == null) photoLocation = location
 
         val controlName = scene.source?.id?.removePrefix("geo:")?.takeIf {
             it in setOf("start", "end") && scene.entryId == null && scene.photo == null
