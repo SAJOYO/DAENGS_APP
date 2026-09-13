@@ -11,10 +11,12 @@
 | 백엔드 고정 응답의 HTTP 수신 → 검증 → Room 저장 → 일반 상세 | 통과 |
 | 새 프로세스에서 측정 캐시를 오프라인으로 다시 검증·열람 | 통과 |
 | 장면 선택·펼친 서랍·본문 스크롤 복원 | 통과, 저장 JSON뿐 아니라 화면 스크롤 semantics 대조 |
-| 선택한 시간 범위·탐색 탭 복원 | 통과, 원본 기기 시간 주소 및 실제 범위 컨트롤 확인 |
+| 선택한 시간 범위·탐색 탭 복원 | 리뷰 보강 후 통과, 23초 기록 중 5초~17초 선택·DB 주소·슬라이더 양 끝값·표시 시간 대조 |
 | 재생 위치·8배속 복원 | 통과, 표시 시간 대조 및 일시정지 상태 확인 |
 | 기존 개발 앱 DB 사본의 Room 18→19→20 | 통과, 기존 모든 `walk_*` 테이블 행 지문 유지 및 입력 사본 불변 |
 | 공유 개발 서버의 인증된 capabilities 조회 | 유효한 로그인 세션을 얻지 못해 미확인. 비인증 요청은 HTTP 401 |
+| 조회 전용 프로세스 초기화 | 리뷰 보강 후 통과, 기본 Application 및 providers 없는 보조 프로세스, 개발 앱 DB·설정 파일 전후 지문 동일 |
+| 잘못된 HTTP 요청 거부 | 리뷰 보강 후 통과, 메서드·산책/측정 ID·버전·청크 등 오류 8개 거부 후 정상 응답 바이트 일치 |
 
 4단계 UI 검사는 외부 runner가 각 단계 사이 패키지를 force-stop한다. 단계마다 다른 프로세스 UUID인지 테스트 안에서 확인하고, 검증 단계는 데이터를 다시 심거나 HTTP를 호출하지 않는다. 저장 완료 후 Activity를 닫고 프로세스를 바꾸는 검사이며, 기록 중 갑작스러운 전원 종료나 저장 전 미완료 동작의 보존을 증명하지 않는다.
 
@@ -45,14 +47,23 @@ uv run tools/run_measurement_device_review.py --adb $adbPath --serial $deviceSer
 
 ## 로그인 앱의 서버 기능 조회
 
+**자동 검증 앱은 로그인이 필요 없다.** `com.daengs.app.locationreview`는 설정의 앱 정보에 ‘댕스 동선 검증’으로 표시되는 합성 기록 검증 앱이다. 인증 조회의 대상 `com.daengs.app.devtest`는 별도의 개발 설치본이며 이름이 일반 앱과 같은 ‘댕스’로 표시된다. 사용자에게 같은 이름의 아이콘들 중 하나를 찾아 로그인하라고 요청하지 않는다. 실제 인증 확인이 필요한 때 작업자가 패키지를 지정해서 해당 앱을 직접 열고 안내한다. 이번 수정은 새 앱 패키지를 추가하지 않는다.
+
 ```powershell
 # 앱 APK를 덮어쓰지 않고 테스트 APK만 빌드·설치한다.
 .\gradlew.bat -I tools/walk-measurement-live-read.init.gradle :app:assembleDebugAndroidTest -PslimAbi=arm64-v8a --console=plain
 & $adbPath -s $deviceSerial install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-& $adbPath -s $deviceSerial shell am instrument -w -r -e class com.daengs.app.walk.sync.MeasurementCapabilitiesDeviceTest com.daengs.app.devtest.test/androidx.test.runner.AndroidJUnitRunner
+uv run tools/run_measurement_capabilities_review.py --adb $adbPath --serial $deviceSerial --output <비공개-로그-파일>
+# 인증 조회 없이 초기화 격리만 검사하려면 위 명령에 --bootstrap-only 추가
 ```
 
 이 검사는 로그인된 개발 앱에 저장된 유효한 access 세션과 **설치된 앱의** API 주소를 사용한다. capabilities에는 GET만 보내며 직접 토큰을 갱신하지 않는다. 만료됐다면 개발 앱을 열어 통상적인 로그인/갱신을 완료하고 다시 실행한다. 인증은 앱 안에 남고 결과의 지원 여부/버전만 출력한다. 앱과 테스트의 서명이 같아야 한다. 서명이 다르면 앱을 제거하거나 데이터를 지우지 않는다.
+
+기존 runner로 원래 `DaengsApp`을 시작하면 복구·미전송 동기화가 함께 시작될 수 있었다. 이제 `MeasurementReadRunner`가 `com.daengs.app.devtest:measurementread` 보조 프로세스에서 기본 `Application`만 만든다. 해당 프로세스에 provider가 선언돼 있으면 시작을 거부한다. Application만 바꾸고 기본 프로세스에서 실행하는 방식은 사용하지 않는다. Android는 Application의 `onCreate` 전에도 provider를 초기화하기 때문이다. [Android 초기화 순서](https://android.googlesource.com/platform/frameworks/base/+/android16-qpr2-release/core/java/android/app/ActivityThread.java), [instrumentation 대상 프로세스](https://developer.android.com/guide/topics/manifest/instrumentation-element).
+
+실행기는 개발 앱의 프로세스가 있으면 instrumentation 실행 전에 거부한다. instrumentation 자체는 대상 패키지를 재시작할 수 있으므로 산책 중 실행하지 않는다. DB·설정 파일은 메모리에서 지문만 계산하고 테스트 종료 후 동일한지 확인한다. 초기화 격리 실기기 검사와 실행 중 앱 거부·사전 확인 중 앱 시작 거부·JUnit 성공 뒤 DB 변경 탐지의 실행기 검사 3개가 통과했다. 실제 capabilities 응답 성공은 여전히 미확인이다.
+
+리뷰 수정 검증: 실기기 UI 4단계 + HTTP 오류 거부 1개 + 조회 초기화 격리 1개, 총 **6개 통과**. 실행기 검사 **3개 통과**. 기존 DB 사본 업그레이드 및 JVM 41개 결과는 최초 작업 시점의 결과이며 이번 도구 수정으로 제품 코드/마이그레이션은 변경하지 않았다.
 
 ## 아직 확인하지 않은 범위
 

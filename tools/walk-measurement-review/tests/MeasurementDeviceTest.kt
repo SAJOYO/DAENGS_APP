@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -47,6 +48,15 @@ class MeasurementDeviceTest {
     }
     private fun bodyScroll() = compose.onNodeWithTag("diary-scene-body").fetchSemanticsNode()
         .config[SemanticsProperties.VerticalScrollAxisRange].value()
+    private fun rangeThumbs() = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo),
+        useUnmergedTree = true)
+    private fun assertRange() {
+        rangeThumbs().assertCountEquals(2)
+        val values = rangeThumbs().fetchSemanticsNodes().map { it.config[SemanticsProperties.ProgressBarRangeInfo].current }.sorted()
+        assertEquals(5_000f, values[0], 1f)
+        assertEquals(17_000f, values[1], 1f)
+        compose.onNodeWithText(formatWalkDuration(5_000) + "–" + formatWalkDuration(17_000)).assertExists()
+    }
     private fun previous(phase: String): JSONObject {
         check(checkpoint.isFile) { "Run the preceding phase first" }
         val expected = JSONObject(checkpoint.readText())
@@ -88,7 +98,19 @@ class MeasurementDeviceTest {
         assertEquals(expected.getJSONObject("selection").toString(), awaitSaved("scene").getJSONObject("selection").toString())
         compose.onNodeWithText("동선 탐색").performClick()
         compose.onNodeWithText("1분").performScrollTo().performClick()
+        rangeThumbs()[0].performSemanticsAction(SemanticsActions.SetProgress) { it(5_000f) }
+        rangeThumbs()[1].performSemanticsAction(SemanticsActions.SetProgress) { it(17_000f) }
+        assertRange()
         compose.onNodeWithText("범위 시작으로 이동").performScrollTo().assertExists()
+        compose.waitUntil(15_000) {
+            val selection = payload()?.optJSONObject("selection") ?: return@waitUntil false
+            val time = CompletedRouteReview(activity.detail!!).timeline!!
+            fun position(key: String): Long? = selection.optJSONObject(key)?.let {
+                time.position(com.daengs.app.walk.routeexplorer.MeasurementTimeAddress(it.getString("epoch"),
+                    it.getString("clock"), it.getLong("nanos")))
+            }
+            position("from") == 5_000L && position("until") == 17_000L
+        }
         saveExpected("slice", awaitSaved("slice"))
     }
 
@@ -96,6 +118,7 @@ class MeasurementDeviceTest {
         val expected = previous("slice")
         open()
         compose.onNodeWithText("범위 시작으로 이동").performScrollTo().assertExists()
+        assertRange()
         val saved = awaitSaved("slice")
         assertEquals(expected.getJSONObject("selection").toString(), saved.getJSONObject("selection").toString())
         assertTrue(saved.getBoolean("panel"))

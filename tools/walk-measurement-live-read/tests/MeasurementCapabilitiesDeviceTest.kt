@@ -1,10 +1,11 @@
 package com.daengs.app.walk.sync
 
 import android.os.Bundle
+import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.daengs.app.DaengsApp
+import com.daengs.app.auth.TokenStore
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Test
@@ -15,10 +16,19 @@ import java.net.URL
 /** GET only, on an existing login. No token, owner, walk ID or coordinates leave the application. */
 @RunWith(AndroidJUnit4::class)
 class MeasurementCapabilitiesDeviceTest {
+    @Test fun isolatedBootstrap() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        check(app.javaClass == Application::class.java)
+        check(InstrumentationRegistry.getInstrumentation().processName == MeasurementReadRunner.PROCESS)
+    }
     @Test fun readCapabilities() = runBlocking {
-        val app = ApplicationProvider.getApplicationContext<DaengsApp>()
+        isolatedBootstrap()
+        val app = ApplicationProvider.getApplicationContext<Application>()
         check(app.packageName == "com.daengs.app.devtest")
-        val auth = requireNotNull(app.tokenStore.load()) { "Development app login is required" }
+        check(java.io.File(app.applicationInfo.dataDir, "shared_prefs/daengs_session.xml").isFile) {
+            "Development app login is required"
+        }
+        val auth = requireNotNull(TokenStore(app).load()) { "Development app login is required" }
         check(auth.accessAlive(System.currentTimeMillis())) { "Open the development app to renew its login first" }
         // Read the installed client's origin; a newly compiled BuildConfig constant may be empty.
         val base = Class.forName("com.daengs.app.BuildConfig", true, app.classLoader)

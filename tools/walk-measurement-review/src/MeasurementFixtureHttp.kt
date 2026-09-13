@@ -12,6 +12,17 @@ internal class MeasurementFixtureHttp(private val wire: JSONObject) : AutoClosea
     private val socket = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
     val origin = "http://127.0.0.1:${socket.localPort}"
     val requests: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val responses = buildMap {
+        val summary = JSONObject(wire.getString("summary"))
+        val base = "/app/walks/${summary.getString("walk_id")}/measurements"
+        val id = summary.getJSONObject("measurement").getString("measurement_id")
+        val version = "?version=${summary.getString("version")}"
+        put("GET /app/walks/trajectory-capabilities", JSONObject().put("persisted_measurements_supported", true)
+            .put("measurement_versions", JSONArray().put(summary.getString("version"))).toString())
+        put("POST $base$version", wire.getString("summary"))
+        val pages = wire.getJSONArray("pages")
+        for (i in 0 until pages.length()) put("GET $base/$id/chunks/$i$version", pages.getString(i))
+    }
     private val worker = thread(name = "measurement-fixture-http", isDaemon = true) {
         while (!socket.isClosed) {
             val client = try { socket.accept() } catch (_: Exception) { break }
@@ -27,15 +38,12 @@ internal class MeasurementFixtureHttp(private val wire: JSONObject) : AutoClosea
                 }
                 repeat(length) { reader.read() }
                 requests.add(line)
-                val path = line.split(' ')[1]
-                val body = when {
-                    path == "/app/walks/trajectory-capabilities" -> JSONObject().put("persisted_measurements_supported", true)
-                        .put("measurement_versions", JSONArray().put("walk-measurement-v1")).toString()
-                    "/chunks/" in path -> wire.getJSONArray("pages").getString(path.substringAfter("/chunks/").substringBefore('?').toInt())
-                    else -> wire.getString("summary")
-                }.toByteArray(Charsets.UTF_8)
+                val parts = line.split(' ')
+                val response = if (parts.size == 3 && parts[2] == "HTTP/1.1") responses["${parts[0]} ${parts[1]}"] else null
+                val status = if (response != null) "200 OK" else "404 Not Found"
+                val body = (response ?: "{\"error\":\"unexpected fixture request\"}").toByteArray(Charsets.UTF_8)
                 it.getOutputStream().apply {
-                    write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                    write("HTTP/1.1 $status\r\nContent-Type: application/json\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
                     write(body); flush()
                 }
             }
