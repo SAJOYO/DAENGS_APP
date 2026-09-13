@@ -80,8 +80,8 @@ internal fun DiarySceneListButton(scene: DiaryScene, kind: DiarySceneKind, onCli
 ) {
     TextButton(onClick = onClick, modifier = modifier,
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
+        ordinal?.let { Text(it.toString(), Modifier.padding(end = 8.dp), color = TextMuted, fontSize = 12.sp) }
         DiarySceneHeading(scene, kind, Modifier.weight(1f))
-        ordinal?.let { Text(it.toString(), Modifier.padding(start = 8.dp), color = TextMuted, fontSize = 12.sp) }
     }
 }
 
