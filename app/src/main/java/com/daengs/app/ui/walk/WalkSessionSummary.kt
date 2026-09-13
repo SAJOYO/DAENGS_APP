@@ -14,24 +14,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.WalkSummary
+import com.daengs.app.walk.RecordedWeather
+import kotlin.math.roundToInt
 
 @Composable
 internal fun WalkSessionSummary(summary: WalkSummary, dogNames: List<String> = emptyList()) {
     val duration = formatWalkDuration(summary.activeDurationMillis)
     val distance = formatWalkDistance(summary.distanceMeters)
     val speed = formatAverageSpeed(summary)
-    val metadata = dogNames + listOfNotNull(summary.weather?.let(::weatherLabel))
+    val temperature = summary.weather?.temperatureC?.takeIf { it.isFinite() }?.let { "${it.roundToInt()}°C" } ?: "—"
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 10.dp)) {
-        if (metadata.isNotEmpty()) Text(metadata.joinToString(" · "), Modifier.padding(bottom = 6.dp),
+        if (dogNames.isNotEmpty()) Text(dogNames.joinToString(" · "), Modifier.padding(bottom = 6.dp),
             color = TextMuted, fontSize = 12.sp, lineHeight = 16.sp)
         Surface(shape = RoundedCornerShape(14.dp), color = CardWhite,
             border = BorderStroke(1.dp, DaengsColors.BorderNeutral), modifier = Modifier.fillMaxWidth()
             .semantics {
-                contentDescription = (metadata + listOf("걸은 시간 $duration", "이동 거리 $distance", "평균 속도 $speed"))
+                contentDescription = (dogNames + listOf("걸은 시간 $duration", "이동 거리 $distance", "평균 속도 $speed", "온도 $temperature"))
                     .joinToString(", ")
             }) {
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf("걸은 시간" to duration, "이동 거리" to distance, "평균 속도" to speed).forEach { (label, value) ->
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("시간" to duration, "거리" to distance, "속도" to speed, "온도" to temperature).forEach { (label, value) ->
                     Column(Modifier.weight(1f)) {
                         Text(value, fontSize = 15.sp, lineHeight = 20.sp, color = TextDark, fontWeight = FontWeight.SemiBold)
                         Text(label, fontSize = 11.sp, lineHeight = 15.sp, color = TextMuted)
@@ -43,8 +45,9 @@ internal fun WalkSessionSummary(summary: WalkSummary, dogNames: List<String> = e
 }
 
 @Preview(showBackground = true, widthDp = 320)
+@Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
 private fun SessionSummaryPreview() {
     DaengsTheme { WalkSessionSummary(WalkSummary("preview", emptyList(), 0, 1_800_000,
-        null, 1_200.0, 1_800_000, emptyList(), null), listOf("두부")) }
+        RecordedWeather(0, false, 22f), 1_200.0, 1_800_000, emptyList(), null)) }
 }
