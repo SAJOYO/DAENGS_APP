@@ -27,6 +27,11 @@ internal data class SceneRouteBinding(
     val fromSeq: Int?,
     val toSeq: Int?,
     val displayPolicyVersion: String? = null,
+    val sourceStart: MeasurementSourceRef? = null,
+    val sourceEnd: MeasurementSourceRef? = null,
+    val locationSource: MeasurementSourceRef? = null,
+    val eventSource: MeasurementSourceRef? = null,
+    val sectionId: String? = null,
 )
 
 /** A display-time correspondence, not a new walking assessment or a persisted SceneBinding. */
@@ -36,6 +41,7 @@ internal data class SceneRouteFocus(
     val point: GeoPoint? = null,
     val binding: SceneRouteBinding? = null,
     val observedParts: List<ObservedRouteSection> = emptyList(),
+    val key: SceneBindingKey? = null,
 )
 
 /**
@@ -53,15 +59,18 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
     private val legacyEvidence = detail.legacyRouteEvidence?.takeIf { it.matches(detail) }
     val observed = ObservedRouteReview(detail)
     val context = RecordContextReview(detail, observed)
+    private val measurementReview = detail.measurement?.let { MeasurementSceneReview(detail) }
 
     /** Combined record presentation. sceneFocus remains the unchanged walking-only correspondence. */
     fun recordSceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
+        measurementReview?.let { return it.focus(scene, entry) }
         val walking = sceneFocus(scene, entry)
         return if (walking.relation == SceneRouteRelation.CONNECTED) walking
             else observed.sceneFocus(scene, entry) ?: walking
     }
 
     fun sceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
+        measurementReview?.let { return it.focus(scene, entry) }
         fun unavailable(relation: SceneRouteRelation = SceneRouteRelation.NO_ROUTE) = SceneRouteFocus(relation)
         if (scene.sessionId != summary.sessionId || summary.endedAtMillis == null ||
             scene.atMillis !in summary.startedAtMillis..summary.endedAtMillis) return unavailable()

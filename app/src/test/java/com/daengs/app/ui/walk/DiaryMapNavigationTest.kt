@@ -4,7 +4,8 @@ import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.shell.*
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryScene
-import com.daengs.app.walk.routeexplorer.CompletedRouteReview
+import com.daengs.app.walk.routeexplorer.*
+import com.daengs.app.walk.diary.DiaryWalk
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -15,6 +16,35 @@ class DiaryMapNavigationTest {
             RecordedFix(i, if (i < 9) 0 else 1, if (i < 9) 10_000 + i * 2_000L else 200_000 + (i - 9) * 2_000L,
                 p.latitude, p.longitude, 1f, false) })
     private fun scene(id: String, point: GeoPoint?) = DiaryScene(id, "overview", 20_000, id, "", point, "")
+
+    @Test fun `measured scene navigation rejects pending and stale bindings and map clicks keep camera`() {
+        val detail = measuredSceneDetail(); val scene = measuredScene(detail)
+        val route = PreparedDiaryRoute(detail)
+        val read = WalkDiaryReadView(route, DiaryWalk(detail.summary, listOf(scene), ""),
+            mapOf(scene.id to route.review.recordSceneFocus(scene)))
+        val navigation = DiaryMapNavigation()
+        navigation.initialize(detail.route.bounds)
+        val initial = navigation.camera
+        assertFalse(navigation.selectScene(read.copy(sceneFocus = emptyMap()), scene))
+        assertFalse(navigation.selectScene(read, scene.copy(body = "이전 본문")))
+        assertTrue(navigation.selectScene(read, scene, fromMap = true))
+        assertEquals(initial, navigation.camera)
+        assertTrue(navigation.selectScene(read, scene))
+        assertEquals(scene.point, navigation.camera.center)
+        assertEquals(SCENE_ROUTE_MIN_ZOOM, navigation.camera.minZoom)
+        val selected = navigation.camera
+        val next = read.copy(route = PreparedDiaryRoute(measuredSceneDetail("measurement-b")))
+        assertFalse(navigation.selectScene(next, scene))
+        navigation.initialize(next.route.detail.route.bounds)
+        assertEquals(selected, navigation.camera)
+        val ambiguous = measuredSceneDetail(secondVisit = true)
+        val noSource = measuredScene(ambiguous).copy(source = null)
+        val review = PreparedDiaryRoute(ambiguous)
+        val unbound = WalkDiaryReadView(review, DiaryWalk(ambiguous.summary, listOf(noSource), ""),
+            mapOf(noSource.id to review.review.recordSceneFocus(noSource)))
+        assertTrue(navigation.selectScene(unbound, noSource)) // Still readable, without a borrowed position.
+        assertEquals(selected, navigation.camera)
+    }
 
     @Test fun `walking view includes distant valid restart while whole record also includes distant photos`() {
         val detail = record(); val review = CompletedRouteReview(detail)

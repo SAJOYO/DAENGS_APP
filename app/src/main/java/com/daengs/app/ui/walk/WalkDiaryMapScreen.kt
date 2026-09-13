@@ -89,14 +89,15 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val selected = scenes.firstOrNull { it.id == selectedId }
     val selectedOriginal = originalScenes.firstOrNull { it.id == selectedId }
     fun selectScene(scene: DiaryScene, fromMap: Boolean = false) {
+        val current = state.readView ?: return
+        val original = originalScenes.singleOrNull { it.id == scene.id } ?: return
+        if (!navigation.selectScene(current, original, fromMap)) return
         explorer.selectScene(scene.id, fromMap)
-        navigation.locate(scene.point, fromMap, minZoom = SCENE_ROUTE_MIN_ZOOM.takeIf {
-            readView?.sceneFocus?.get(scene.id)?.let { it.paths.isNotEmpty() || it.observedParts.isNotEmpty() } == true })
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val markers = remember(originalScenes, selectedId) { diarySceneMarkers(originalScenes, selectedId) }
     val currentReview = readView?.route?.review
-    val sceneFocus = readView?.sceneFocus?.get(selectedOriginal?.id)
+    val sceneFocus = selectedOriginal?.let { readView?.focusFor(it) }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
         explorer.selectContext(context.id, openExplorer = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP,
             fromMap = fromMap)
