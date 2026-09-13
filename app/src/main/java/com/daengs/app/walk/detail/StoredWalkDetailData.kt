@@ -75,7 +75,7 @@ internal class StoredWalkDetailData(
         require(entry.sessionId == sessionId) { "현재 산책의 기록이 아닙니다." }
         entryStore.save(entry)
         checkActive()
-        enqueue(sessionId)
+        enqueueSavedChange(sessionId)
     }
 
     override suspend fun deleteEntry(id: String) {
@@ -86,7 +86,16 @@ internal class StoredWalkDetailData(
         // Pin-aware tombstone and delivery must continue through the shared deletion boundary.
         entryStore.deleteAndEnqueue(id) { deletedSession ->
             checkActive()
-            enqueue(deletedSession)
+            enqueueSavedChange(deletedSession)
+        }
+    }
+
+    private suspend fun enqueueSavedChange(id: String) {
+        try { enqueue(id) }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            checkActive()
+            throw WalkDetailDeliveryPending(e)
         }
     }
 

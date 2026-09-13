@@ -5,6 +5,8 @@ import android.widget.Toast
 import android.os.SystemClock
 import android.content.pm.ActivityInfo
 import android.content.Intent
+import com.daengs.app.gait.GaitCompletions
+import com.daengs.app.gait.work.GaitAnalysisWorker
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -135,6 +137,41 @@ private enum class Screen {
 }
 
 class MainActivity : ComponentActivity() {
+
+    /**
+     * 보행 완료 알림이 실어 보낸 것. 앱이 켜져 있는 동안만 산다.
+     *
+     * **여기 두는 이유는 `onNewIntent` 때문이다.** 앱이 이미 떠 있으면 알림 탭이
+     * `onCreate` 를 안 거치고 `onNewIntent` 로 온다. `setContent` 안에서는 그 순간을
+     * 볼 수 없어서, 액티비티가 받아 두고 화면이 읽어 간다.
+     */
+    private val gaitCompletions = GaitCompletions()
+
+    /** 알림으로 들어왔나. 챗으로 보내는 신호이고, 한 번 쓰면 화면이 내린다. */
+    private var openChatRequest by mutableStateOf(0)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readGaitNotification(intent)
+    }
+
+    /**
+     * 알림이 넣어 둔 `(petId, recordId)` 를 꺼낸다.
+     *
+     * **인텐트에서 지운다.** 안 그러면 화면이 돌 때마다 같은 것을 다시 읽어서, 회전
+     * 한 번에 챗으로 끌려가고 카드가 또 붙는다.
+     */
+    private fun readGaitNotification(intent: Intent) {
+        val recordId = intent.getStringExtra(GaitAnalysisWorker.EXTRA_OPEN_GAIT_RECORD)
+            ?: return
+        val petId = intent.getStringExtra(GaitAnalysisWorker.EXTRA_OPEN_GAIT_PET)
+        gaitCompletions.remember(petId, recordId)
+        intent.removeExtra(GaitAnalysisWorker.EXTRA_OPEN_GAIT_RECORD)
+        intent.removeExtra(GaitAnalysisWorker.EXTRA_OPEN_GAIT_PET)
+        openChatRequest++
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 시스템 스플래시. **setContent 보다 먼저** 불러야 한다.
         installSplashScreen()
@@ -144,6 +181,8 @@ class MainActivity : ComponentActivity() {
         val walkRuntime = app.walkRuntime
         val cardStore = app.cardStore
         val walkController = walkRuntime.controller
+        // 앱이 꺼져 있다가 알림으로 열린 경우. 떠 있는 동안 온 것은 onNewIntent 가 받는다.
+        readGaitNotification(intent)
         setContent {
             DaengsTheme {
               com.daengs.app.ui.game.bookmarks.TerritoryBookmarkProvider(app.sessionProvider) {
@@ -184,6 +223,13 @@ class MainActivity : ComponentActivity() {
                 val saved = remember { store.load() }
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
+                }
+
+                // 보행 완료 알림을 누르면 챗으로 간다. **화면을 나갔던 사람도** 결과를
+                // 보게 하려는 것이다 — 홈 버튼만 눌렀던 경우는 이미 챗이라 아무것도
+                // 안 바뀐다.
+                LaunchedEffect(openChatRequest) {
+                    if (openChatRequest > 0) screen = Screen.Chat
                 }
                 // Login lifetime, not a token refresh or a pet-name update, owns record navigation.
                 val recordsAccount by app.sessionProvider.accountScope.collectAsState()
@@ -1092,6 +1138,7 @@ class MainActivity : ComponentActivity() {
                         dogId = pets.primary?.id.takeIf { session != null },
                         accessTokenProvider = freshToken,
                         historyCoordinator = chatHistory,
+                        gaitCompletions = gaitCompletions,
                         assistantQuery = facilityAssistantQuery,
                         onOpenFacilities = { screen = Screen.Places },
                         // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.

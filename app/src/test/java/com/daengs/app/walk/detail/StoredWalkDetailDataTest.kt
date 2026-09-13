@@ -7,6 +7,7 @@ import com.daengs.app.auth.AccountScope
 import com.daengs.app.auth.Session
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
+import com.daengs.app.ui.walk.WalkDetailState
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.store.*
@@ -121,10 +122,14 @@ class StoredWalkDetailDataTest {
     @Test fun `scheduling failure leaves saved content and deleted tombstone for recovery`() = runBlocking {
         val failure = IllegalStateException("scheduler unavailable")
         val data = data(enqueue = { throw failure })
-        assertSame(failure, runCatching { data.saveEntry(note) }.exceptionOrNull())
+        val saveFailure = runCatching { data.saveEntry(note) }.exceptionOrNull()
+        assertTrue(saveFailure is WalkDetailDeliveryPending)
+        assertSame(failure, saveFailure?.cause)
         val saved = dao.entry("note")!!
         assertTrue(saved.dirty); assertNotNull(saved.payload)
-        assertSame(failure, runCatching { data.deleteEntry("note") }.exceptionOrNull())
+        val deleteFailure = runCatching { data.deleteEntry("note") }.exceptionOrNull()
+        assertTrue(deleteFailure is WalkDetailDeliveryPending)
+        assertSame(failure, deleteFailure?.cause)
         val deleted = dao.entry("note")!!
         assertTrue(deleted.dirty); assertNull(deleted.payload)
         dao.acknowledgeEntry("note", 1, saved.mutationId)
@@ -141,6 +146,30 @@ class StoredWalkDetailDataTest {
         assertEquals(listOf("enqueue:s"), calls)
     }
 
+    @Test fun `committed new note completes the editor and delivery retry does not write it again`() = runBlocking {
+        var unavailable = true
+        var schedules = 0
+        val data = data(enqueue = { schedules++; if (unavailable) error("scheduler unavailable") })
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val state = WalkDetailState(data, data, scope, {})
+            var completed = 0
+            state.saveEntry(note) { completed++ }
+            withTimeout(5000) { while (state.savingEntry) delay(10) }
+            val saved = requireNotNull(dao.entry(note.id))
+            assertTrue(saved.dirty)
+            assertEquals("원본 메모", saved.entry()!!.note)
+            assertEquals("The committed edit must finish even when scheduling fails", 1, completed)
+            assertNull(state.entryError)
+            assertNotNull(state.error)
+            unavailable = false
+            state.retry()
+            withTimeout(5000) { while (schedules < 2) delay(10) }
+            assertEquals(saved, dao.entry(note.id))
+            assertNull(state.error)
+        } finally { scope.cancel() }
+    }
+
     @Test fun `another walk cannot be edited or deleted through this detail`() = runBlocking {
         dao.insertSession(WalkSessionRow("other", 0, "owner", 1000))
         val other = note.copy(id = "other-note", sessionId = "other")
@@ -150,6 +179,38 @@ class StoredWalkDetailDataTest {
         assertTrue(runCatching { data.deleteEntry(other.id) }.isFailure)
         assertNotNull(dao.entry(other.id)!!.payload)
         assertTrue(calls.isEmpty())
+    }
+
+    @Test fun `committed deletion completes once and retry preserves its tombstone`() = runBlocking {
+        entries.save(note)
+        var unavailable = true
+        var schedules = 0
+        val data = data(enqueue = { schedules++; if (unavailable) error("scheduler unavailable") })
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val state = WalkDetailState(data, data, scope, {})
+            var completed = 0
+            state.deleteEntry(note.id) { completed++ }
+            withTimeout(5000) { while (state.savingEntry) delay(10) }
+            val deleted = requireNotNull(dao.entry(note.id))
+            assertNull(deleted.payload); assertTrue(deleted.dirty)
+            assertEquals(1, completed); assertNull(state.entryError); assertNotNull(state.error)
+            unavailable = false
+            state.retry()
+            withTimeout(5000) { while (schedules < 2) delay(10) }
+            assertEquals(deleted, dao.entry(note.id)); assertEquals(1, completed)
+            assertNull(state.error)
+        } finally { scope.cancel() }
+    }
+
+    @Test fun `delivery cancellation and changed login never report a completed old edit`() = runBlocking {
+        val cancelled = CancellationException("left detail")
+        assertSame(cancelled, runCatching { data(enqueue = { throw cancelled }).saveEntry(note) }.exceptionOrNull())
+        val saved = dao.entry(note.id)!!.entry()!!
+        val old = data(enqueue = { account = account.copy(generation = 2); error("scheduler unavailable") })
+        assertTrue(runCatching { old.saveEntry(saved.copy(note = "새로 저장한 내용")) }.exceptionOrNull() is CancellationException)
+        assertEquals("새로 저장한 내용", dao.entry(note.id)!!.entry()!!.note)
+        assertTrue(dao.entry(note.id)!!.dirty)
     }
 
     @Test fun `scene edit keeps source entries and publication checks in Room`() = runBlocking {

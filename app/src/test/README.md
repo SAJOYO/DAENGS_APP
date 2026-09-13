@@ -71,6 +71,13 @@ HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상�
 
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
+상세 상태 분리(#361)는 `ui.walk.WalkDetailStateTest`에서 조회/준비 실패 재시도,
+기록·장면·생성 중복 차단, 취소·계정 교체, 삭제 후 늦은 작업의 간섭 차단과 읽기 일괄 반영을 확인한다.
+`ui.walk.WalkDetailDataUiTest`는 실제 편집창의 제목/본문이 실패 뒤 유지되고 성공할 때 닫히는지도 확인한다.
+텍스트필드가 든 네이티브 다이얼로그는 Robolectric에서 idle이 되지 않아 기존 container 주입 지점을 사용한다.
+함께 선택할 회귀는 `ui.walk.WalkDiaryReadViewTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `walk.detail.StoredWalkDetailDataTest`, `DesignLockTest`다.
+
 상세 데이터 경계(#358)는 `walk.detail.StoredWalkDetailDataTest`에서 실제 Room을 사용해
 저장/삭제 후 예약, 예약 실패 뒤 영속 상태, 편집 충돌, 인증/동기화 순서, 취소·재로그인,
 장면 공개/편집과 사진 정리를 확인한다. 네트워크·인증·예약은 대역이므로 실제 서버 전송 성공을 뜻하지 않는다.

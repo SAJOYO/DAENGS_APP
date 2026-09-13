@@ -57,6 +57,45 @@ class HttpGaitAnalyzer(
     private val today: () -> LocalDate = LocalDate::now,
 ) : GaitAnalyzer {
 
+    /**
+     * ①②③ 만 하고 **접수증을 돌려준다.** ④(끝날 때까지 조회)는 안 한다 — 그건
+     * `GaitAnalysisWorker` 가 앱 밖에서 맡는다 (#220).
+     *
+     * 여기서 멈추는 시점이 중요하다. ③ `confirm` 이 성공했다는 것은 **서버가 파일이
+     * 실제로 있는 것을 확인하고 분석 큐에 넣었다**는 뜻이다. 그 전에 손을 놓으면
+     * 올라가다 만 영상이 큐에 안 들어간 채 남는다.
+     */
+    override suspend fun submit(
+        video: PreparedVideo,
+        title: String?,
+    ): Result<GaitSubmission> = runCatching {
+        val pet = petId() ?: error(
+            "어느 강아지의 기록인지 몰라 올릴 수 없어요.\n강아지를 먼저 등록해 주세요.",
+        )
+        GaitApi.oversizeMessage(context, video.uri)?.let { error(it) }
+
+        val ticket = GaitApi.startAnalysis(
+            accessToken = token(),
+            petId = pet,
+            sourceFile = GaitApi.displayNameOf(context, video.uri),
+            contentType = GaitApi.contentTypeOf(context, video.uri),
+            capturedAt = today(),
+            note = title,
+        ).getOrThrow()
+
+        GaitApi.upload(context, ticket, video.uri).getOrThrow()
+
+        val confirmed = GaitApi.confirm(token(), ticket.recordId).getOrThrow()
+
+        GaitSubmission(
+            recordId = ticket.recordId,
+            // 저쪽이 confirm 응답에 status 를 준다. 아주 짧은 영상이면 여기서 이미
+            // DONE 인 일이 있어, 부르는 쪽이 Worker 를 안 걸고 바로 넘어갈 수 있다.
+            status = confirmed.status,
+            title = title,
+        )
+    }
+
     override suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
