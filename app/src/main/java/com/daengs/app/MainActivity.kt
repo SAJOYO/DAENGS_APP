@@ -939,8 +939,9 @@ class MainActivity : ComponentActivity() {
                         onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
-                        onEditPet = { pet -> if (pet.isOwner) { editing = pet; screen = Screen.Onboarding } },
-                        onFarewell = { pet -> if (pet.isOwner) farewell = pet },
+                        onEditPet = { pet -> if (pet.isGroupOwner) { editing = pet; screen = Screen.Onboarding } },
+                        // 배웅은 전체 PUT 으로 나간다 — 수정과 같은 기준으로 가린다.
+                        onFarewell = { pet -> if (pet.isGroupOwner) farewell = pet },
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
                         onAcceptInvite = { acceptingInvite = true },

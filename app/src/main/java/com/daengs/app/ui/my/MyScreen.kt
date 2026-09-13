@@ -600,14 +600,19 @@ private fun PetSection(
                     ?.let { go -> { go(pet) } },
                 // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
                 // 묻는 화면은 떠난 아이에게 할 말이 아니다.
-                onEdit = if (!pet.isOwner) null else {
+                //
+                // **`isGroupOwner` 로 가린다.** 공통 정보를 고치는 일이라 연결된 아이에서는
+                // 그룹 주보호자만 된다 — `isOwner` 로 열면 폼을 다 채우고 저장을 눌러야
+                // 실패를 안다 (서버 409 `not_group_owner`).
+                onEdit = if (!pet.isGroupOwner) null else {
                     {
                         if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
                         else onEdit(pet)
                     }
                 },
                 onPickPrimary = { onPickPrimary(pet) },
-                onDelete = if (pet.isOwner) ({ onDelete(pet) }) else null,
+                // 삭제도 공통 정보다. 서버가 409 로 막고 `?confirm=true` 로도 안 뚫린다.
+                onDelete = if (pet.isGroupOwner) ({ onDelete(pet) }) else null,
                 sentOn = farewellOf(pet),
                 onOpenMembers = onOpenMembers?.let { go -> { go(pet) } },
             )
