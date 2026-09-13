@@ -56,7 +56,7 @@ import com.daengs.app.walk.records.WalkTraceState
 import com.daengs.app.walk.records.WalkTraceOverlapHit
 import com.daengs.app.walk.records.selectWalkRecords
 import com.daengs.app.walk.records.PreparedWalkRecordsTraces
-import com.daengs.app.walk.records.prepareWalkRecordsTraces
+import com.daengs.app.map.features.records.TraceView
 import com.daengs.app.walk.records.walkRecordFocusBounds
 import com.daengs.app.walk.records.selectWalkRecordBehaviors
 import kotlinx.coroutines.CancellationException
@@ -191,21 +191,13 @@ fun WalkRecordsScreen(
     }
     val mappedSelection = traceSelection ?: selection
     val shouldPrepareMap = behavior == null && tracesRequested
-    var prepared by remember(mappedSelection) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
-    var mapError by remember(mappedSelection) { mutableStateOf<String?>(null) }
-    var mapRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(mappedSelection, shouldPrepareMap, mapRetry) {
-        val selected = mappedSelection ?: return@LaunchedEffect
-        if (!shouldPrepareMap || selected.records.isEmpty()) return@LaunchedEffect
-        prepared = null
-        mapError = null
-        try {
-            prepared = prepareWalkRecordsTraces(selected)
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            mapError = "선택한 산책의 흔적을 표시하지 못했어요. 기간이나 조건을 좁혀 다시 확인해 주세요."
-        }
-    }
+    val displayPolicy = rememberWalkRecordsDisplayPolicy()
+    val tracePresentation = rememberWalkRecordsTraces(mappedSelection, shouldPrepareMap,
+        if (overlapOnly) TraceView.Overlap(minimumWalks) else TraceView.All, hiddenIds, displayPolicy.trace)
+    val prepared = tracePresentation.prepared
+    val tiles = tracePresentation.tiles
+    val mapError = tracePresentation.preparationError
+    val compositionError = tracePresentation.compositionError
     // The area is an inspection of the full query, independent of hidden display layers.
     val overlapHit = remember(prepared, overlapPoint, overlapOnly, minimumWalks) {
         overlapPoint?.takeIf { overlapOnly }?.let { prepared?.hitTestOverlap(it, minimumWalks, snapRadiusU = 0.0) }
@@ -215,27 +207,6 @@ fun WalkRecordsScreen(
     LaunchedEffect(overlapHit) {
         if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
     }
-    // Any display change clears old ink before the next asynchronous composition can publish.
-    val overlapMinimum = minimumWalks.takeIf { overlapOnly }
-    var tiles by remember(prepared, hiddenIds, overlapMinimum) { mutableStateOf<List<TraceRasterTile>?>(null) }
-    var compositionError by remember(prepared, hiddenIds, overlapMinimum) { mutableStateOf<String?>(null) }
-    var composeRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(prepared, hiddenIds, overlapMinimum, composeRetry) {
-        val ready = prepared ?: return@LaunchedEffect
-        tiles = null
-        compositionError = null
-        try {
-            val composed = ready.compose(hiddenIds, minimumOverlapWalks = overlapMinimum)
-            currentCoroutineContext().ensureActive()
-            tiles = composed
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            compositionError = if (overlapOnly) ready.overlapUnavailableReason
-                ?: "겹친 구간을 표시하지 못했어요. 조건을 좁히거나 전체 흔적으로 돌아가 주세요."
-                else "산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
-        }
-    }
-
     BackHandler(onBack = onBack)
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
@@ -285,7 +256,7 @@ fun WalkRecordsScreen(
                     WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
                         routeSource = source,
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
-                        onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
+                        onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
                         onSelect = { id ->
                             selectedId = id.takeIf { it != selectedId }

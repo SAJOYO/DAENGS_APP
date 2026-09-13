@@ -470,7 +470,7 @@ class WalkRecordsScreenTest {
             }),
             WalkRecordsSelection(selection.query, sample.map { it.copy(trace = null, traceState = WalkTraceState.EMPTY) }))
         val preparedStages = runBlocking { stages.map { prepareWalkRecordsTraces(it) } }
-        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2) } }
+        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2, style = com.daengs.app.map.features.records.TraceDisplayPolicy(com.daengs.app.ui.theme.WalkTraceShadow.RGB)) } }
         val initialPoint = preparedStages.first().hitTestOverlap(SpatialDiaryHexGrid.center(cell, 8.0), 2)!!.point
         val stage = mutableStateOf(0)
         val selectedPoint = mutableStateOf<GeoPoint?>(initialPoint)
@@ -570,6 +570,26 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-overview-map").assert(SemanticsMatcher.expectValue(
             SemanticsProperties.StateDescription, selected))
         assertEquals(listOf("record-1", "record-2"), calls.toList())
+    }
+
+    @Test fun `trace preparation failure still allows selecting and displaying the original route`() {
+        val sample = record(1).let { it.copy(
+            summary = it.summary.copy(segments = listOf(listOf(
+                LocationSample(GeoPoint(37.5, 127.0), 0L), LocationSample(GeoPoint(37.5001, 127.0), 2000L)))),
+            trace = WalkTraceSheet("record-1", 8.0, (0..5000).map { SpatialDiaryCellId(it, 0) }.toSet())) }
+        val reads = AtomicInteger()
+        show(object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selectWalkRecords(listOf(sample), query)
+            override suspend fun loadRoute(record: WalkRecord): WalkSummary { reads.incrementAndGet(); return sample.summary }
+        })
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-view-overview").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithText("선택한 산책의 흔적을 표시하지 못했어요. 기간이나 조건을 좁혀 다시 확인해 주세요.").fetchSemanticsNodes().isNotEmpty() }
+        chooseMapRecord("record-1")
+        compose.waitUntil(10000) { reads.get() == 1 }
+        compose.waitForIdle()
+        compose.onNodeWithTag("records-overview-map").assert(SemanticsMatcher.expectValue(
+            SemanticsProperties.StateDescription, "강조한 산책: 기록-1"))
     }
 
     private fun chooseMapRecord(id: String) {

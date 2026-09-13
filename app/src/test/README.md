@@ -1,5 +1,12 @@
 # 기능별 테스트 실행 지도
 
+산책 모아보기 표시 정책 (#369)은 `WalkRecordsDisplayPolicyTest`, `WalkRecordsPresenterTest`,
+`WalkRecordsTracesTest`, `WalkRecordsScreenTest`, `WalkRouteOverlayStoreTest`,
+`WalkMapDiagnosticsTest`, `NaverWalkLayerOrderTest`, `DesignLockTest`를 함께 확인한다.
+실행 범위 `--tests '*WalkRecords*Test' --tests '*WalkRouteOverlayStoreTest'
+--tests '*WalkMapDiagnosticsTest' --tests '*NaverWalkLayerOrderTest' --tests '*DesignLockTest'`.
+기기 비교 방법은 [표시 구조](../../../docs/walk-records-display-policy.md)를 따른다.
+
 최초 조사 기준은 2026-09-09 `dev`의 `9bf37188bab0841ac7b682dec1714ca58c893b2f`다.
 이 문서는 변경한 기능에 맞는 테스트를 고르는 지도다. 전체 통과 보고서가 아니다.
 조사 시점에는 Kotlin 테스트 파일 221개에 `@Test` 선언 1,528개가 있었고,

@@ -30,6 +30,22 @@ class WalkRouteOverlayStoreTest {
         store.sync(walkRouteSources(trail, completed), style, theme, dim)
     private fun key(index: Int, done: Boolean = false, speed: Boolean = true) = WalkRouteKey(done, index, speed)
 
+    @Test fun `stroke only changes native appearance without preparing geometry again`() {
+        val sources = walkRouteSources(trail(5), CompletedRouteLayerState())
+        store.sync(sources, policy, "pink", false)
+        val handle = handles.getValue(key(0))
+        val parts = handle.state.parts
+        probe.reset()
+        val stroke = WalkRouteStroke(widthPx = 16, outlineWidthPx = 3)
+        store.sync(sources, policy, "pink", false, stroke)
+        assertSame(handle, handles.getValue(key(0)))
+        assertSame(parts, handle.state.parts)
+        assertEquals(stroke, handle.state.stroke)
+        assertEquals(0, probe.prepared)
+        assertEquals(0, probe.created)
+        assertEquals(1, probe.updated)
+    }
+
     @Test fun `ten thousand points append updates only the growing segment`() {
         val initial = trail(2500, 2500, 2500, 2500)
         sync(initial)

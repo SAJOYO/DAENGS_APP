@@ -35,7 +35,7 @@ import com.daengs.app.ui.walk.toCompletedRouteLayerState
 import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.walk.records.*
 import com.daengs.app.walk.toSessionRoute
-import kotlinx.coroutines.ensureActive
+import com.daengs.app.map.features.records.composeWalkRecordsMapScene
 
 @Composable
 internal fun WalkRecordsOverview(
@@ -77,24 +77,10 @@ internal fun WalkRecordsOverview(
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
     val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
-    var routeRetry by remember(highlighted, routeSource) { mutableIntStateOf(0) }
-    var routeSummary by remember(highlighted, routeSource, routeRetry) {
-        mutableStateOf(highlighted?.summary.takeIf { routeSource == null })
-    }
-    var routeError by remember(highlighted, routeSource, routeRetry) { mutableStateOf<String?>(null) }
-    LaunchedEffect(highlighted, routeSource, routeRetry) {
-        val record = highlighted ?: return@LaunchedEffect
-        val source = routeSource ?: return@LaunchedEffect
-        try {
-            val loaded = source.loadRoute(record)
-            kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            check(loaded.sessionId == record.summary.sessionId) { "선택한 산책과 동선이 달라요." }
-            routeSummary = loaded
-        } catch (failure: Exception) {
-            if (failure is kotlinx.coroutines.CancellationException) throw failure
-            routeError = "산책 동선을 불러오지 못했어요."
-        }
-    }
+    val displayPolicy = rememberWalkRecordsDisplayPolicy()
+    val routePresentation = rememberWalkRecordsRoute(highlighted, routeSource)
+    val routeSummary = routePresentation.summary
+    val routeError = routePresentation.error
     val selectedRoute = remember(routeSummary) {
         routeSummary?.toSessionRoute()?.toCompletedRouteLayerState()?.let { layer ->
             layer.copy(start = layer.start?.copy(compact = true), end = layer.end?.copy(compact = true))
@@ -103,6 +89,11 @@ internal fun WalkRecordsOverview(
     val route = selectedRoute.copy(selectedPoint = overlapHit?.takeIf { hit ->
         tiles != null && error == null && hit.walkIds.any { it !in hiddenIds }
     }?.point)
+    val renderPlan = remember(displayPolicy, tiles, route) {
+        composeWalkRecordsMapScene(displayPolicy, tiles.orEmpty(), route)
+    }
+    val routeBounds = remember(selection) { selection.records.flatMap(::walkRecordFocusBounds) }
+    val hasGeometry = prepared?.bounds?.isNotEmpty() == true || routeBounds.isNotEmpty() || route.paths.any { it.isNotEmpty() }
     val hiddenCount = prepared?.availableWalkIds?.count { it in hiddenIds } ?: 0
     val displayIds = if (overlapOnly) prepared?.overlapWalkIds(minimumWalks) else prepared?.availableWalkIds
     val visibleCount = displayIds?.count { it !in hiddenIds }
@@ -124,14 +115,13 @@ internal fun WalkRecordsOverview(
                 ?: "강조한 산책 없음"
         }) {
             when {
-                prepared == null && error != null -> RecordsMessage(error, "다시 시도", onRetry, Modifier.fillMaxSize())
-                prepared == null -> RecordsMessage("산책 흔적을 준비하고 있어요.", modifier = Modifier.fillMaxSize())
-                prepared.bounds.isEmpty() -> RecordsMessage("지도에 표시할 위치가 없어요.", modifier = Modifier.fillMaxSize())
+                !hasGeometry && prepared == null && error != null -> RecordsMessage(error, "다시 시도", onRetry, Modifier.fillMaxSize())
+                !hasGeometry && prepared == null -> RecordsMessage("산책 흔적을 준비하고 있어요.", modifier = Modifier.fillMaxSize())
+                !hasGeometry -> RecordsMessage("지도에 표시할 위치가 없어요.", modifier = Modifier.fillMaxSize())
                 else -> {
                     // Keep the map mounted even when every trace is hidden or composition is pending.
-                    MapHost(scene = MapScene(traceTiles = tiles.orEmpty(), completedRoute = route,
-                        allowRegionalOverview = true), searchOrigin = null, followDevice = false,
-                        fitBounds = fitBounds, cameraRequestKey = cameraRequest,
+                    MapHost(scene = renderPlan.scene, searchOrigin = null, followDevice = false,
+                        fitBounds = fitBounds.ifEmpty { routeBounds }, cameraRequestKey = cameraRequest,
                         topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
                         initialCamera = camera, onCameraSnapshot = onCamera,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
@@ -143,7 +133,7 @@ internal fun WalkRecordsOverview(
                         error != null -> error
                         tiles == null -> "흔적 표시를 바꾸고 있어요."
                         traceLoading && visibleCount == 0 -> "흔적을 불러오는 동안 산책 카드를 살펴보세요."
-                        overlapOnly && !prepared.hasOverlap(minimumWalks) ->
+                        overlapOnly && prepared?.hasOverlap(minimumWalks) == false ->
                             (if (partialTraces) "불러온 흔적에는 " else "") + "${minimumWalks}회 이상 겹친 구간이 없어요."
                         overlapOnly && visibleCount == 0 -> "겹친 구간의 산책 흔적을 모두 숨겼어요."
                         visibleCount == 0 && hiddenCount > 0 -> "산책 흔적을 모두 숨겼어요."
@@ -155,7 +145,7 @@ internal fun WalkRecordsOverview(
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
-                            if (routeError != null) TextButton(onClick = { routeRetry++ }) { Text("다시 시도") }
+                            if (routeError != null) TextButton(onClick = routePresentation.retry) { Text("다시 시도") }
                             else if (error != null) TextButton(onClick = onRetry) { Text("다시 시도") }
                         }
                     }
@@ -191,7 +181,7 @@ internal fun WalkRecordsOverview(
                 verticalAlignment = Alignment.CenterVertically) {
                 Text(error, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
                 TextButton(onClick = onRetry) { Text("다시 시도") }
-            } else if (overlapOnly && prepared != null && !prepared.hasOverlap(minimumWalks)) {
+            } else if (overlapOnly && prepared != null && prepared?.hasOverlap(minimumWalks) == false) {
                 Text((if (partialTraces) "불러온 흔적에는 " else "") + "${minimumWalks}회 이상 겹친 구간이 없어요.",
                     Modifier.padding(horizontal = 18.dp, vertical = 6.dp).testTag("records-overlap-empty"),
                     style = MaterialTheme.typography.labelSmall, color = TextMuted)

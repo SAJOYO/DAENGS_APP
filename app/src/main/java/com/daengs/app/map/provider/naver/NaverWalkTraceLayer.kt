@@ -21,8 +21,9 @@ import kotlin.math.roundToInt
  * GroundOverlay adds no opacity scaling, density weighting, or camera-dependent recalculation.
  */
 @Composable
-internal fun NaverWalkTraceLayer(map: NaverMap?, tiles: List<TraceRasterTile>) {
-    LaunchedEffect(map, tiles) {
+internal fun NaverWalkTraceLayer(map: NaverMap?, tiles: List<TraceRasterTile>, globalZ: Int = NaverWalkLayerOrder.TRACE_SHEETS) {
+    val diagnostics = LocalWalkMapDiagnostics.current
+    LaunchedEffect(map, tiles, globalZ, diagnostics) {
         if (map == null || tiles.isEmpty()) return@LaunchedEffect
         val prepared = withContext(Dispatchers.Default) {
             tiles.map { tile ->
@@ -49,14 +50,16 @@ internal fun NaverWalkTraceLayer(map: NaverMap?, tiles: List<TraceRasterTile>) {
                     this.image = image
                     alpha = 1f
                     // Every sheet stays below the route, including after asynchronous reloads.
-                    globalZIndex = NaverWalkLayerOrder.TRACE_SHEETS
+                    applyNativeWalkOrder(globalZ, { globalZIndex = it }, { globalZIndex })
                 }
                 overlays += overlay
                 overlay.map = map
+                diagnostics?.attached(overlay, NativeWalkLayerReading("셀로판", overlay.globalZIndex,
+                    "SDK 알파 ${overlay.alpha} · 픽셀 최대 ${tile.alpha.maxOrNull() ?: 0f}"))
             }
             awaitCancellation()
         } finally {
-            overlays.forEach { it.map = null }
+            overlays.forEach { it.map = null; diagnostics?.detached(it) }
             // OverlayImage owns its bitmap. Do not recycle it while the SDK may still read it.
         }
     }

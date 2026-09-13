@@ -25,7 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.daengs.app.ui.theme.WalkTraceShadow
+import com.daengs.app.ui.theme.tracePigmentColor
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.PinkFaint
@@ -85,23 +85,20 @@ private fun WalkRecordsOverlapOptionsPreview() {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ShadowLegend(modifier: Modifier = Modifier) {
+    val policy = LocalRecordsTracePolicy.current
     FlowRow(modifier.fillMaxWidth().testTag("records-overlap-legend"),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("산책이 쌓일수록 짙게", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        listOf(
-            Triple("1", "1회", 1),
-            Triple("2", "2회", 2),
-            Triple("3-4", "3–4회", 3),
-            Triple("5-7", "5–7회", 5),
-            Triple("8", "8회 이상", 8),
-        ).forEach { (bucket, label, count) ->
-            val opacity = WalkTraceShadow.alphaForWalkCount(count)
+        policy.density.legend().forEach { item ->
+            val bucket = item.key
+            val label = item.label
+            val opacity = item.opacity
             Row(Modifier.testTag("records-overlap-legend-$bucket").semantics(mergeDescendants = true) {
                 contentDescription = "$label 그림자 농도 ${(opacity * 100).toInt()}퍼센트"
             }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 val shape = RoundedCornerShape(2.dp)
-                Box(Modifier.size(12.dp).background(WalkTraceShadow.color.copy(alpha = opacity), shape)
+                Box(Modifier.size(12.dp).background(tracePigmentColor(policy.rgb).copy(alpha = opacity), shape)
                     .border(.5.dp, MaterialTheme.colorScheme.outlineVariant, shape))
                 Text(label, style = MaterialTheme.typography.labelSmall)
             }

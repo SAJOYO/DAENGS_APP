@@ -129,15 +129,7 @@ object WalkTraceShadow {
     const val RGB = 0x29252B
     val color = Color(0xFF000000.toInt() or RGB)
 
-    fun alphaForWalkCount(count: Int): Float {
-        require(count >= 0)
-        return when {
-            count >= 8 -> .46f
-            count >= 5 -> .34f
-            count >= 3 -> .22f
-            count == 2 -> .12f
-            count == 1 -> .04f
-            else -> 0f
-        }
-    }
 }
+
+/** RGB supplied by the records display policy; colour construction stays in the palette. */
+fun tracePigmentColor(rgb: Int): Color = Color(rgb or (0xFF shl 24))

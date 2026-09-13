@@ -27,6 +27,7 @@ import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.records.*
+import com.daengs.app.map.features.records.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,54 +80,26 @@ internal fun WalkRecordsBehaviorExplorer(
         hiddenWalkIds = hidden
     }
 
-    var retry by remember { mutableIntStateOf(0) }
-    var prepared by remember(result, retry) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
-    var initialBounds by remember(result, retry) { mutableStateOf<List<GeoPoint>?>(null) }
-    var preparationError by remember(result, retry) { mutableStateOf<String?>(null) }
-    LaunchedEffect(result, retry) {
-        var entryAndRouteBounds = emptyList<GeoPoint>()
-        try {
-            entryAndRouteBounds = withContext(Dispatchers.Default) {
-                behaviorBounds(buildList {
-                    result.records.forEach { record ->
-                        currentCoroutineContext().ensureActive()
-                        record.point?.let(::add)
-                    }
-                    result.related.records.forEach { record ->
-                        currentCoroutineContext().ensureActive()
-                        addAll(walkRecordFocusBounds(record))
-                    }
-                })
-            }
-            // Pin inspection becomes available before any brush work completes.
-            initialBounds = entryAndRouteBounds
-            val ready = prepareWalkRecordsTraces(result.related)
-            currentCoroutineContext().ensureActive()
-            prepared = ready
-            initialBounds = behaviorBounds(ready.bounds + entryAndRouteBounds)
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            // Trace preparation does not prevent inspecting valid entry locations or real routes.
-            preparationError = "관련 산책 흔적을 표시하지 못했어요."
-            initialBounds = entryAndRouteBounds
-        }
+    val displayPolicy = rememberWalkRecordsDisplayPolicy()
+    val traceView = when (view) {
+        BehaviorRecordsView.RECORD_LOCATIONS -> TraceView.Locations
+        BehaviorRecordsView.WALK_TRACES -> TraceView.All
+        BehaviorRecordsView.WALK_OVERLAP -> TraceView.Overlap(minimumWalks)
     }
-
-    var tiles by remember(prepared, hidden, overlapOnly, minimumWalks) { mutableStateOf<List<TraceRasterTile>?>(null) }
-    var compositionError by remember(prepared, hidden, overlapOnly, minimumWalks) { mutableStateOf<String?>(null) }
-    var composeRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(prepared, hidden, view, minimumWalks, composeRetry) {
-        val ready = prepared ?: return@LaunchedEffect
-        if (view == BehaviorRecordsView.RECORD_LOCATIONS || tiles != null) return@LaunchedEffect
-        compositionError = null
-        try {
-            val composed = ready.compose(hidden, minimumOverlapWalks = minimumWalks.takeIf { overlapOnly })
-            currentCoroutineContext().ensureActive()
-            tiles = composed
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            compositionError = "관련 산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
-        }
+    val tracePresentation = rememberWalkRecordsTraces(result.related, true, traceView, hidden, displayPolicy.trace)
+    val prepared = tracePresentation.prepared
+    val tiles = tracePresentation.tiles
+    val preparationError = tracePresentation.preparationError
+    val compositionError = tracePresentation.compositionError
+    var initialBounds by remember(result) { mutableStateOf<List<GeoPoint>?>(null) }
+    LaunchedEffect(result, prepared) {
+        val points = withContext(Dispatchers.Default) { behaviorBounds(buildList {
+            result.records.forEach { currentCoroutineContext().ensureActive(); it.point?.let(::add) }
+            result.related.records.forEach { currentCoroutineContext().ensureActive(); addAll(walkRecordFocusBounds(it)) }
+            prepared?.bounds?.let(::addAll)
+        }) }
+        currentCoroutineContext().ensureActive()
+        initialBounds = points
     }
     val visibleLocatedRecords = remember(result, hidden) {
         result.records.filter { it.point != null && it.walk.summary.sessionId !in hidden }
@@ -199,7 +172,7 @@ internal fun WalkRecordsBehaviorExplorer(
     if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
         WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
             routeSource = routeSource,
-            onRetry = { if (prepared == null) retry++ else composeRetry++ },
+            onRetry = tracePresentation.retry,
             selectedId = selectedWalkId, hiddenIds = hidden,
             onSelect = { id ->
                 selectedWalkId = id.takeIf { it != selectedWalkId }
@@ -236,10 +209,9 @@ internal fun WalkRecordsBehaviorExplorer(
                 initialBounds.orEmpty().isEmpty() -> RecordsMessage(
                     preparationError ?: "지도에 표시할 위치가 없어요.",
                     if (preparationError != null) "다시 시도" else null,
-                    { retry++ }, Modifier.fillMaxSize())
+                    tracePresentation.retry, Modifier.fillMaxSize())
                 else -> {
-                    MapHost(scene = MapScene(moments = markers,
-                        allowRegionalOverview = true), searchOrigin = null, followDevice = false,
+                    MapHost(scene = composeWalkRecordsMapScene(displayPolicy, moments = markers).scene, searchOrigin = null, followDevice = false,
                         fitBounds = focusBounds ?: initialBounds, cameraRequestKey = cameraRequest,
                         topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
                         initialCamera = camera, onCameraSnapshot = { camera = it },

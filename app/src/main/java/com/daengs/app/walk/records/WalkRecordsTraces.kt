@@ -1,7 +1,8 @@
 package com.daengs.app.walk.records
 
 import com.daengs.app.location.GeoPoint
-import com.daengs.app.ui.theme.WalkTraceShadow
+import com.daengs.app.map.features.records.TraceDisplayPolicy
+import com.daengs.app.map.features.records.TraceDensityScale
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.map.layers.traces.TraceBrush
 import com.daengs.app.map.layers.traces.TraceBrushPolicy
@@ -20,6 +21,7 @@ class PreparedWalkRecordsTraces internal constructor(
     private val masks: List<WalkTraceMask>,
     bounds: List<GeoPoint>,
     private val overlap: WalkTraceOverlap = WalkTraceOverlap.empty(),
+    private val brush: TraceBrushPolicy = TraceBrushPolicy(),
 ) {
     val availableWalkIds: Set<String> = masks.map { it.walkId }.toSet()
     val bounds: List<GeoPoint> = bounds.toList()
@@ -39,7 +41,9 @@ class PreparedWalkRecordsTraces internal constructor(
     /** Hidden IDs affect display only. Unknown IDs and records without a mask have no effect. */
     suspend fun compose(
         hiddenIds: Set<String> = emptySet(), minimumOverlapWalks: Int? = null,
+        style: TraceDisplayPolicy,
     ): List<TraceRasterTile> {
+        require(style.brush == brush) { "브러시 정책이 달라 흔적을 다시 준비해야 해요." }
         val hidden = hiddenIds.intersect(availableWalkIds)
         return withContext(Dispatchers.Default) {
             val context = currentCoroutineContext()
@@ -55,14 +59,14 @@ class PreparedWalkRecordsTraces internal constructor(
                 context.ensureActive()
             }
             if (coverage.isEmpty()) return@withContext emptyList()
-            val strengths = overlap.cellOpacities(hidden) { context.ensureActive() }
+            val strengths = overlap.visibleCellCounts(hidden) { context.ensureActive() }.mapValues { (_, count) -> style.density.alpha(count) }
             val visible = coverage.map { tile ->
-                val opacity = if (overlapUnavailableReason == null) opacityFor(tile, hidden, strengths) else null
+                val opacity = if (overlapUnavailableReason == null) opacityFor(tile, hidden, strengths, style.density) else null
                 tile.copy(alpha = FloatArray(tile.alpha.size) { i ->
                     if (i % 4_096 == 0) context.ensureActive()
                     // Incomparable grids still show their support, without suggesting measured overlap.
-                    tile.alpha[i] * (opacity?.get(i) ?: WalkTraceShadow.alphaForWalkCount(1)).coerceAtMost(WalkTraceShadow.alphaForWalkCount(Int.MAX_VALUE))
-                }, rgb = IntArray(tile.alpha.size) { WalkTraceShadow.RGB })
+                    tile.alpha[i] * (opacity?.get(i) ?: style.density.alpha(1)).coerceAtMost(style.density.maximum)
+                }, rgb = IntArray(tile.alpha.size) { style.rgb })
             }
             if (minimumOverlapWalks == null) return@withContext visible
             val eligibility = eligibilityMask(minimumOverlapWalks, hidden).tiles.associateBy { it.tileX to it.tileY }
@@ -82,7 +86,7 @@ class PreparedWalkRecordsTraces internal constructor(
         val key = EligibilityKey(minimumWalks, hiddenIds.intersect(overlapWalkIds(minimumWalks)))
         eligibilityCache[key]?.let { return@withLock it }
         val context = currentCoroutineContext()
-        val mask = TraceBrush.mask(overlap.sheet(minimumWalks, key.hiddenIds), TraceBrushPolicy()) { context.ensureActive() }
+        val mask = TraceBrush.mask(overlap.sheet(minimumWalks, key.hiddenIds), brush) { context.ensureActive() }
         // Cache threshold/visibility states without retaining unbounded empty states or tiles.
         while (eligibilityCache.size >= 6 || eligibilityCache.values.sumOf { it.tiles.size } + mask.tiles.size > 256) {
             eligibilityCache.remove(eligibilityCache.keys.first())
@@ -94,12 +98,12 @@ class PreparedWalkRecordsTraces internal constructor(
     private data class EligibilityKey(val minimumWalks: Int, val hiddenIds: Set<String>)
 
     private suspend fun opacityFor(
-        tile: TraceRasterTile, hiddenIds: Set<String>, strengths: Map<SpatialDiaryCellId, Float>,
+        tile: TraceRasterTile, hiddenIds: Set<String>, strengths: Map<SpatialDiaryCellId, Float>, scale: TraceDensityScale,
     ): FloatArray = opacityMutex.withLock {
-        val key = OpacityTileKey(tile.tileX, tile.tileY, tile.size, tile.pixelU, hiddenIds)
+        val key = OpacityTileKey(tile.tileX, tile.tileY, tile.size, tile.pixelU, hiddenIds, scale)
         opacityCache[key]?.let { return@withLock it }
         val context = currentCoroutineContext()
-        val opacity = TraceBrush.opacity(tile, strengths, overlap.radiusU) { context.ensureActive() }
+        val opacity = TraceBrush.opacity(tile, strengths, overlap.radiusU, brush) { context.ensureActive() }
         // Visibility states share a bounded cache: at most 16 MiB with the default 128px tiles.
         // Returned compositions multiply into detached arrays and cannot mutate this field.
         while (opacityCache.size >= 256) opacityCache.remove(opacityCache.keys.first())
@@ -108,7 +112,7 @@ class PreparedWalkRecordsTraces internal constructor(
     }
 
     private data class OpacityTileKey(
-        val x: Int, val y: Int, val size: Int, val pixelU: Double, val hiddenIds: Set<String>,
+        val x: Int, val y: Int, val size: Int, val pixelU: Double, val hiddenIds: Set<String>, val scale: TraceDensityScale,
     )
 }
 
@@ -122,7 +126,7 @@ fun walkRecordFocusBounds(record: WalkRecord): List<GeoPoint> {
 }
 
 /** Creates each walk mask once; never filter the input down to the current list page. */
-suspend fun prepareWalkRecordsTraces(selection: WalkRecordsSelection): PreparedWalkRecordsTraces =
+suspend fun prepareWalkRecordsTraces(selection: WalkRecordsSelection, brush: TraceBrushPolicy = TraceBrushPolicy()): PreparedWalkRecordsTraces =
     withContext(Dispatchers.Default) {
         val context = currentCoroutineContext()
         context.ensureActive()
@@ -131,7 +135,7 @@ suspend fun prepareWalkRecordsTraces(selection: WalkRecordsSelection): PreparedW
         val masks = mutableListOf<WalkTraceMask>()
         val bounds = TraceSelectionBounds()
         var totalTiles = 0
-        val policy = TraceBrushPolicy()
+        val policy = brush
         sheets.forEach { sheet ->
             context.ensureActive()
             val mask = TraceBrush.mask(sheet, policy) { context.ensureActive() }
@@ -155,7 +159,7 @@ suspend fun prepareWalkRecordsTraces(selection: WalkRecordsSelection): PreparedW
             }
         }
         val overlap = WalkTraceOverlap.create(sheets) { context.ensureActive() }
-        PreparedWalkRecordsTraces(masks.toList(), bounds.points(), overlap)
+        PreparedWalkRecordsTraces(masks.toList(), bounds.points(), overlap, brush)
     }
 
 private class TraceSelectionBounds {

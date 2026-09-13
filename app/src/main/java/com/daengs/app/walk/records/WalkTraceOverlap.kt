@@ -1,7 +1,6 @@
 package com.daengs.app.walk.records
 
 import com.daengs.app.location.GeoPoint
-import com.daengs.app.ui.theme.WalkTraceShadow
 import com.daengs.app.map.layers.traces.WalkTraceSheet
 import com.daengs.app.walk.diary.SpatialDiaryCellId
 import com.daengs.app.walk.diary.SpatialDiaryHexGrid
@@ -25,10 +24,10 @@ internal class WalkTraceOverlap private constructor(
     private val cells: Map<SpatialDiaryCellId, Set<String>>,
 ) {
     /** Hiding reduces ink strength, while threshold and hit evidence remain full-query based. */
-    fun cellOpacities(hiddenIds: Set<String>, checkCancelled: () -> Unit): Map<SpatialDiaryCellId, Float> =
+    fun visibleCellCounts(hiddenIds: Set<String>, checkCancelled: () -> Unit): Map<SpatialDiaryCellId, Int> =
         cells.mapValues { (_, walkIds) ->
             checkCancelled()
-            WalkTraceShadow.alphaForWalkCount(walkIds.count { it !in hiddenIds })
+            walkIds.count { it !in hiddenIds }
         }
 
     // Prepared on Dispatchers.Default with the index, never rescanned on camera recomposition.

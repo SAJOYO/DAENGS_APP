@@ -9,4 +9,11 @@ package com.daengs.app.map.provider.naver
 internal object NaverWalkLayerOrder {
     const val TRACE_SHEETS = -300_000
     const val ROUTE = -100_000
+    const val MARKERS = 200_000
+
+    fun resolve(stack: com.daengs.app.map.shell.WalkLayerStack?): NativeWalkStack = when (stack) {
+        null, com.daengs.app.map.shell.WalkLayerStack.RECORDS -> NativeWalkStack(TRACE_SHEETS, ROUTE, MARKERS)
+    }
 }
+
+internal data class NativeWalkStack(val traces: Int, val route: Int, val markers: Int)
