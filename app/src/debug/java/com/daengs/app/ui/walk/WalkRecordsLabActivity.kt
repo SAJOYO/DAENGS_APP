@@ -41,12 +41,22 @@ class WalkRecordsLabActivity : ComponentActivity() {
 }
 
 @Composable
-private fun WalkRecordsLab(onBack: () -> Unit = {}) {
+internal fun WalkRecordsLab(onBack: () -> Unit = {}) {
+    val state = rememberWalkRecordsRouteState(AccountScope("records-lab", 0))
+    val opened = WalkRecordsLabFixture.records.firstOrNull { it.summary.sessionId == state.openedSessionId }
     val diagnostics = remember { WalkMapDiagnostics() }
     var showDiagnostics by remember { mutableStateOf(false) }
+    if (opened != null) {
+        WalkRecordsLabDetail(opened, state::closeDetail)
+        return
+    }
     CompositionLocalProvider(LocalWalkMapDiagnostics provides diagnostics) {
         Box(Modifier.fillMaxSize()) {
-            WalkRecordsLabContent(onBack)
+            RetainedWalkRecords(state) {
+                WalkRecordsScreen(source = WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
+                    onBack = { state.captureRecords(); onBack() }, onOpen = state::open,
+                    sampleLabel = "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
+            }
             Surface(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
                 shape = MaterialTheme.shapes.small) {
                 TextButton(onClick = { showDiagnostics = true }, Modifier.testTag("records-layer-diagnostics")) {
@@ -56,20 +66,6 @@ private fun WalkRecordsLab(onBack: () -> Unit = {}) {
         }
     }
     if (showDiagnostics) WalkLayerDiagnosticsDialog(diagnostics) { showDiagnostics = false }
-}
-
-@Composable
-private fun WalkRecordsLabContent(onBack: () -> Unit) {
-    val state = rememberWalkRecordsRouteState(AccountScope("records-lab", 0))
-    val opened = WalkRecordsLabFixture.records.firstOrNull { it.summary.sessionId == state.openedSessionId }
-    if (opened != null) {
-        // Unmount the actual MapView, matching production navigation while keeping synthetic data.
-        SampleWalkRecordDialog(opened, onDismiss = state::closeDetail)
-    } else RetainedWalkRecords(state) {
-        WalkRecordsScreen(source = WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
-            onBack = { state.captureRecords(); onBack() }, onOpen = state::open,
-            sampleLabel = "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
-    }
 }
 
 @Composable
@@ -107,17 +103,12 @@ private fun WalkLayerDiagnosticsPreview() {
     DaengsTheme { WalkLayerDiagnosticsDialog(remember { WalkMapDiagnostics() }, {}) }
 }
 
+/** Same session/diary screen as MainActivity. Only its data source is synthetic. */
 @Composable
-private fun SampleWalkRecordDialog(record: WalkRecord, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(record.title.orEmpty()) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            WalkRouteThumbnail(record.summary, Modifier.fillMaxWidth().height(160.dp))
-            Text(formatWalkDay(record.summary.startedAtMillis))
-            Text("${formatWalkDuration(record.summary.activeDurationMillis)} · ${formatWalkDistance(record.summary.distanceMeters)}")
-            record.notes.forEach { Text(it) }
-            Text("가상의 산책 기록이에요.")
-        }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text("목록으로") } })
+internal fun WalkRecordsLabDetail(record: WalkRecord, onBack: () -> Unit) {
+    val data = remember(record.summary.sessionId) { WalkRecordsLabDetailData(record) }
+    WalkDiaryMapForAccount(record.summary.sessionId, data, data, onBack, Modifier.fillMaxSize(),
+        WalkRecordsLabFixture.pets, WalkSessionOrigin.RECORDS, AccountScope("records-lab", 0), {}, { null })
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
@@ -127,5 +118,5 @@ private fun WalkRecordsLabPreview() { DaengsTheme { WalkRecordsLab() } }
 @Preview(showBackground = true)
 @Composable
 private fun SampleWalkRecordPreview() {
-    DaengsTheme { SampleWalkRecordDialog(WalkRecordsLabFixture.records.first(), {}) }
+    DaengsTheme { WalkRecordsLabDetail(WalkRecordsLabFixture.records.first(), {}) }
 }
