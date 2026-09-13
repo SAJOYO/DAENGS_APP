@@ -30,7 +30,7 @@ class MeasurementTimeControlsTest {
             }
             DaengsTheme { WalkRouteExplorerPanel(state, {}, sliceScenes = scenes, onScene = { state.selectScene(it.id) }) }
         }
-        compose.onNodeWithText("1분").performScrollTo().performClick()
+        compose.onNodeWithText("1분").performClick()
         compose.runOnIdle {
             assertEquals(RouteExplorerMode.SLICE, state.mode)
             assertEquals(60_000L, state.selectedSlice!!.until)
@@ -42,7 +42,11 @@ class MeasurementTimeControlsTest {
         compose.onNodeWithText("이 범위의 장면 1개").performScrollTo().assertExists()
         compose.onNodeWithText("범위 시작으로 이동").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(RouteExplorerMode.REPLAY, state.mode); assertEquals(0L, state.elapsed) }
-        compose.onNodeWithText("1분").performScrollTo().performClick()
+        compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
+        compose.onNodeWithTag("explorer-replay-slider").assertExists()
+        compose.onNodeWithText("구간 수정").performClick()
+        compose.onNodeWithTag("explorer-range-slider").assertExists()
+        compose.onNodeWithTag("explorer-replay-slider").assertDoesNotExist()
         compose.onNodeWithText("장면", useUnmergedTree = true).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(read.diary!!.scenes.single().id, state.selectedSceneId) }
     }

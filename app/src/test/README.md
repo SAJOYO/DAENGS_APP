@@ -1,5 +1,8 @@
 # 기능별 테스트 실행 지도
 
+시간 탐색 패널 (#383)은 `WalkExplorerPanelUiTest`로 고정 시간 조작·독립 스크롤·구간/재생 모드·장면 왕복과 320dp 큰 글씨를 검사한다.
+복원·기존 열람 회귀 검사와 native 렌더 방법은 [탐색 패널 검증](../../../docs/walk-explorer-panel.md)을 따른다.
+
 시간 구간 복귀·범위 재생 (#381)은 `WalkRangeContextTest`, `WalkRangeContextUiTest`, `MeasurementRangePlaybackTest`로
 구간/장면 왕복·시간 한계·공백·v1/v2·현재 원본·재진입 스크롤을 검사한다. [전체 선택 명령과 검증 경계](../../../docs/walk-range-context.md).
 

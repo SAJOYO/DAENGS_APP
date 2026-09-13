@@ -1,17 +1,10 @@
 package com.daengs.app.ui.walk
 
 import android.os.SystemClock
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -288,135 +281,6 @@ internal fun rememberWalkRouteExplorer(sessionId: String, detail: WalkSessionDet
         onDispose { lifecycle.removeObserver(observer); state.pause() }
     }
     return state
-}
-
-@Composable
-internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: () -> Unit,
-    onSection: (CompletedRouteSection) -> Unit = {},
-    onAuxiliary: (ObservedRouteSection) -> Unit = {},
-    onContext: (RecordContext) -> Unit = {},
-    sliceScenes: List<com.daengs.app.walk.diary.DiaryScene> = emptyList(),
-    onScene: (com.daengs.app.walk.diary.DiaryScene) -> Unit = {},
-    sceneKinds: Map<String, com.daengs.app.walk.diary.DiarySceneKind> = emptyMap(),
-    reading: DiaryReadingMemory? = null,
-) {
-    val scroll = reading?.explorer ?: rememberScrollState()
-    LaunchedEffect(reading, reading?.pendingExplorerOffset) {
-        reading?.pendingExplorerOffset?.let { offset ->
-            scroll.scrollTo(offset)
-            reading.pendingExplorerOffset = null
-        }
-    }
-    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 20.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = { state.overview(); onOverview() }) { Text("전체 동선") }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed)
-                Button(onClick = state::togglePlayback, enabled = state.canPlayback) {
-                    Text(if (state.playing) "일시정지" else "동선 재생")
-                }
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        state.review?.let { review ->
-            Text("기록 " + formatRouteExplorerClock(review.summary.startedAtMillis) + "–" +
-                (review.summary.endedAtMillis?.let(::formatRouteExplorerClock) ?: "진행 중"),
-                style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(8.dp))
-            if (review.context.available && review.context.durationMillis == null && review.timeline?.durationMillis == null)
-                Text("기록 시간의 순서를 확정하지 못해 자동 재생을 제공하지 않아요. 아래 전후 관계에서 범위를 열 수 있어요.",
-                    style = MaterialTheme.typography.bodySmall)
-            if (state.mode == RouteExplorerMode.CONTEXT) {
-                state.selectedContext?.let { RecordContextDetail(it) }
-                TextButton(onClick = { state.overview(); onOverview() }) { Text("기록 흐름 전체") }
-            }
-            if (state.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.SECTION, RouteExplorerMode.AUXILIARY)) {
-                review.sections.forEachIndexed { ordinal, section ->
-                    OutlinedButton(onClick = { state.selectSection(section.index); onSection(section) },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text((if (state.selectedSection?.index == section.index) "● " else "○ ") +
-                            "동선 ${ordinal + 1} · " + formatRouteExplorerClock(section.startedAtMillis) + "–" +
-                            formatRouteExplorerClock(section.endedAtMillis))
-                    }
-                }
-                review.observed.sections.forEachIndexed { ordinal, section ->
-                    OutlinedButton(onClick = { state.selectAuxiliary(section.id); onAuxiliary(section) },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text((if (state.selectedAuxiliary?.id == section.id) "● " else "○ ") +
-                            "관측 경로 ${ordinal + 1} · " + observedRouteLabel(section) + "\n" +
-                            formatRouteExplorerClock(section.startedAtMillis) + "–" + formatRouteExplorerClock(section.endedAtMillis))
-                    }
-                }
-                if (review.context.contexts.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("기록의 전후 관계", style = MaterialTheme.typography.titleSmall)
-                    review.context.contexts.forEach { value ->
-                        OutlinedButton(onClick = { state.selectContext(value.id); onContext(value) }, modifier = Modifier.fillMaxWidth()) {
-                            Text(recordContextTitle(value) + "\n" + recordContextTime(value))
-                        }
-                    }
-                }
-            }
-            if (review.sections.size > 1 && state.mode == RouteExplorerMode.OVERVIEW) Text("구간을 누르면 해당 동선으로 확대해요. 끊긴 사이는 연결하지 않아요.",
-                style = MaterialTheme.typography.bodySmall)
-            if (review.sections.isEmpty()) Text("이어지는 보행선이 없어요. 확인된 위치와 장면은 볼 수 있어요.",
-                style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(8.dp))
-            if (review.timeline?.durationMillis != null && state.duration > 0) {
-                MeasurementTimeControls(state, sliceScenes, onScene, sceneKinds)
-                if (state.selectedSlice != null && !state.canPlayback)
-                    Text("선택 범위에 재생할 이동 근거가 없어요.", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        state.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        state.preparationError?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        if (state.index == null && state.error == null && state.preparationError == null) Text("동선 탐색을 준비하고 있어요.")
-        else if (state.analyzing) Text("선택한 길을 지난 시각을 확인하고 있어요.")
-        else when (state.mode) {
-            RouteExplorerMode.OVERVIEW -> Text("지도에서 겹친 길을 누르면 통과 시각을 골라 볼 수 있어요.",
-                style = MaterialTheme.typography.bodyMedium)
-            RouteExplorerMode.SECTION -> Text("선택한 동선과 진행 방향을 강조했어요. 겹친 길을 누르면 통과 시각을 고를 수 있어요.",
-                style = MaterialTheme.typography.bodyMedium)
-            RouteExplorerMode.AUXILIARY -> state.selectedAuxiliary?.let { section ->
-                Text(observedRouteDescription(section) + if (section.directions.isEmpty())
-                    " 이동 방향을 표시할 근거는 충분하지 않아요." else " 이동 근거가 있는 부분에 진행 방향을 표시해요.")
-            }
-            RouteExplorerMode.SCENE -> Unit // Scenes use the reading panel on the same selection state.
-            RouteExplorerMode.CONTEXT -> Unit
-            RouteExplorerMode.SLICE -> Text("선택한 시간 범위와 겹치는 원본 선분을 강조했어요. 경로가 끊긴 사이는 이어지지 않아요.")
-            RouteExplorerMode.PASSAGE -> {
-                val result = state.passages
-                if (result?.uncertain == true) Text("위치 오차나 기록 간격 때문에 통과를 확실하게 구분하기 어려워요.")
-                else if (result?.passes.isNullOrEmpty()) Text("이 지점에서 길게 이어진 통과 구간을 찾지 못했어요.")
-                else {
-                    Text("선택한 길 · " + result!!.passes.size + "회 통과", style = MaterialTheme.typography.titleSmall)
-                    result.passes.forEachIndexed { index, pass ->
-                        TextButton(onClick = { state.selectPass(pass.id) }, modifier = Modifier.fillMaxWidth()) {
-                            Text((if (pass.id == state.selectedPassId) "● " else "○ ") + (index + 1) + "번째 통과 · " +
-                                formatRouteExplorerClock(pass.startedAtMillis) + "–" + formatRouteExplorerClock(pass.endedAtMillis))
-                        }
-                    }
-                }
-            }
-            RouteExplorerMode.REPLAY -> {
-                Slider(value = state.elapsed.toFloat(), onValueChange = { state.seek(it.toLong()) },
-                    valueRange = (state.selectedSlice?.from ?: 0).toFloat()..(state.selectedSlice?.until ?: state.duration.coerceAtLeast(1)).toFloat())
-                Text(formatWalkDuration(state.elapsed) + " / " + formatWalkDuration(state.selectedSlice?.until ?: state.duration),
-                    style = MaterialTheme.typography.titleSmall)
-                val frame = state.replayFrame
-                Text(if (frame?.inGap != false) "${frame?.recordedAtMillis?.let { formatRouteExplorerClock(it) + " · " }.orEmpty()}이 시각에는 재생할 위치 근거가 충분하지 않아요."
-                    else frame.recordedAtMillis?.let { "기록 시각 " + formatRouteExplorerClock(it) } ?: "기기 시간으로 확인한 위치예요. 표시 시각은 확정하지 않아요.",
-                    style = MaterialTheme.typography.bodyMedium)
-                if (state.review?.context?.available == true && state.review?.context?.durationMillis == null && state.review?.timeline?.durationMillis == null)
-                    Text("기록 시간의 순서를 확정하지 못해 자동 재생을 제공하지 않아요. 전후 관계에서 해당 범위를 열 수 있어요.")
-            }
-        }
-        if (state.mode != RouteExplorerMode.REPLAY) {
-            Spacer(Modifier.height(8.dp))
-            WalkSpeedLegend()
-        }
-        Spacer(Modifier.height(20.dp))
-    }
 }
 
 private val ROUTE_EXPLORER_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.KOREAN)

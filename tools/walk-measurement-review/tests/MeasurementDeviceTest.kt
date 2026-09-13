@@ -55,7 +55,8 @@ class MeasurementDeviceTest {
         val values = rangeThumbs().fetchSemanticsNodes().map { it.config[SemanticsProperties.ProgressBarRangeInfo].current }.sorted()
         assertEquals(from.toFloat(), values[0], 1f)
         assertEquals(until.toFloat(), values[1], 1f)
-        compose.onNodeWithText(formatWalkDuration(from) + "–" + formatWalkDuration(until)).assertExists()
+        compose.onNodeWithText(formatWalkDuration(from)).assertIsDisplayed()
+        compose.onNodeWithText("– " + formatWalkDuration(until)).assertIsDisplayed()
     }
     private fun previous(phase: String): JSONObject {
         check(checkpoint.isFile) { "Run the preceding phase first" }
@@ -97,7 +98,7 @@ class MeasurementDeviceTest {
         assertEquals(expectedScroll, bodyScroll(), 0.001f)
         assertEquals(expected.getJSONObject("selection").toString(), awaitSaved("scene").getJSONObject("selection").toString())
         compose.onNodeWithText("동선 탐색").performClick()
-        compose.onNodeWithText("1분").performScrollTo().performClick()
+        compose.onNodeWithText("1분").assertIsDisplayed().performClick()
         rangeThumbs()[0].performSemanticsAction(SemanticsActions.SetProgress) { it(5_000f) }
         rangeThumbs()[1].performSemanticsAction(SemanticsActions.SetProgress) { it(17_000f) }
         assertRange()
@@ -123,7 +124,7 @@ class MeasurementDeviceTest {
         assertEquals(expected.getJSONObject("selection").toString(), saved.getJSONObject("selection").toString())
         assertTrue(saved.getBoolean("panel"))
         compose.onNodeWithText("범위 시작으로 이동").performClick()
-        compose.onNodeWithText("동선 재생").performScrollTo().performClick()
+        compose.onNodeWithText("동선 재생").assertIsDisplayed().performClick()
         compose.onNodeWithText("일시정지").performClick()
         compose.onNodeWithText("1×").performClick()
         compose.onNodeWithText("8×").performClick()
@@ -150,13 +151,18 @@ class MeasurementDeviceTest {
             timeline.position(com.daengs.app.walk.routeexplorer.MeasurementTimeAddress(
                 it.getString("epoch"), it.getString("clock"), it.getLong("nanos")))
         } ?: requireNotNull(timeline.durationMillis)
-        compose.onNodeWithText(formatWalkDuration(elapsed) + " / " + formatWalkDuration(end))
-            .performScrollTo().assertExists()
+        assertReplayTime(elapsed, end)
     }
 
-    private fun explorerScroll() = compose.onNode(hasScrollAction() and
-        hasAnyDescendant(hasText("시간 범위 · 기록 중 경과 시간"))).fetchSemanticsNode()
+    private fun explorerScroll() = compose.onNodeWithTag("explorer-reading").fetchSemanticsNode()
         .config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+    private fun assertReplayTime(at: Long, end: Long) {
+        compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
+        compose.onNodeWithTag("explorer-replay-slider").assertIsDisplayed()
+        compose.onNodeWithText(formatWalkDuration(at)).assertIsDisplayed()
+        compose.onNodeWithText("/ " + formatWalkDuration(end)).assertIsDisplayed()
+    }
 
     private fun elapsed(selection: JSONObject): Long {
         val at = selection.getJSONObject("at")
@@ -200,10 +206,12 @@ class MeasurementDeviceTest {
     @Test fun prepareRangeScene() {
         open(reset = true)
         compose.onNodeWithText("동선 탐색").performClick()
-        compose.onNodeWithText("1분").performScrollTo().performClick()
+        compose.onNodeWithText("1분").assertIsDisplayed().performClick()
         rangeThumbs()[1].performSemanticsAction(SemanticsActions.SetProgress) { it(17_000f) }
         assertRange(0)
         compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performScrollTo()
+        // The pinned controls no longer contribute to this offset. Move the reading region itself.
+        compose.onNodeWithTag("explorer-reading").performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 8f) }
         val offset = explorerScroll()
         assertTrue(offset > 0)
         val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
@@ -228,7 +236,8 @@ class MeasurementDeviceTest {
         compose.onNodeWithText("동선 탐색").performClick()
         assertRange(0)
         assertEquals(expected.getJSONObject("reading").getInt("explorerOffset").toFloat(), explorerScroll(), 1f)
-        compose.onNodeWithText("1×").performScrollTo().performClick()
+        compose.onNodeWithText("범위 시작으로 이동").performScrollTo().performClick()
+        compose.onNodeWithText("1×").assertIsDisplayed().performClick()
         compose.onNodeWithText("8×").performClick()
         compose.onNodeWithText("동선 재생").performClick()
         compose.waitUntil(15_000) {
@@ -237,15 +246,15 @@ class MeasurementDeviceTest {
                 compose.onAllNodesWithText("일시정지").fetchSemanticsNodes().isEmpty()
         }
         assertTrue(awaitSaved("replay").getJSONObject("selection").has("range"))
-        compose.onNodeWithText("00:17 / 00:17").performScrollTo().assertIsDisplayed()
+        assertReplayTime(17_000, 17_000)
         capture("range-playback-end")
         // Replaying at the end starts again inside the saved range; a seek cannot discard it.
-        compose.onNodeWithText("동선 재생").performScrollTo().performClick()
+        compose.onNodeWithText("동선 재생").assertIsDisplayed().performClick()
         compose.onNodeWithText("일시정지").performClick()
         assertTrue(elapsed(awaitSaved("replay").getJSONObject("selection")) < 17_000)
         rangeThumbs().onLast().performSemanticsAction(SemanticsActions.SetProgress) { it(6_000f) }
         compose.waitUntil(15_000) { payload()?.getJSONObject("selection")?.let(::elapsed) == 6_000L }
-        compose.onNodeWithText("00:06 / 00:17").performScrollTo().assertIsDisplayed()
+        assertReplayTime(6_000, 17_000)
         saveExpected("bounded-replay", awaitSaved("replay"))
     }
 
@@ -253,10 +262,10 @@ class MeasurementDeviceTest {
         val expected = previous("bounded-replay")
         open()
         compose.onNodeWithText("일시정지").assertDoesNotExist()
-        compose.onNodeWithText("동선 재생").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("동선 재생").assertIsDisplayed()
         compose.onNodeWithText("8×").assertExists()
         assertEquals(expected.getJSONObject("selection").toString(), awaitSaved("replay").getJSONObject("selection").toString())
-        compose.onNodeWithText("00:06 / 00:17").performScrollTo().assertIsDisplayed()
+        assertReplayTime(6_000, 17_000)
         capture("range-reopened")
     }
 }

@@ -85,6 +85,8 @@ internal fun WalkDiaryMapContent(
     sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
     walkDogIds: List<String> = emptyList(),
     walkPets: List<Pet> = emptyList(),
+    onReturnToRange: (() -> Unit)? = null,
+    onSceneNeighborhood: (() -> Unit)? = null,
 ) {
     val compactDrawer = explorerPanel != null
     val sheet = readingMemory?.drawer ?: rememberDiaryDrawerState(
@@ -265,6 +267,7 @@ internal fun WalkDiaryMapContent(
                                 Spacer(Modifier.weight(1f))
                                 Text("장면 ${scenes.indexOfFirst { it.id == selected?.id } + 1}",
                                     Modifier.padding(end = 8.dp), fontSize = 13.sp, color = TextMuted)
+                                onReturnToRange?.let { back -> TextButton(onClick = back) { Text("구간 복귀") } }
                                 if (offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
                             }
                         }
@@ -374,6 +377,7 @@ internal fun WalkDiaryMapContent(
                                         selected.photo?.let { photo -> DiaryReadingPhoto(photo) { onPhoto(photo) } }
                                         if (selected.content?.photoId != null && selected.photo == null)
                                             Text("사진 파일은 촬영한 기기에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
+                                        DiarySceneExploreActions(if (compactDrawer) null else onReturnToRange, onSceneNeighborhood)
                                     }
                                 }
                             }

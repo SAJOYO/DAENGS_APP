@@ -74,7 +74,7 @@ class WalkDiaryMapScreenTest {
         assertEquals(detail.route.segments[1].points.map { it.point }, zoomed)
         assertEquals(1, explorer.selectedSection?.index)
         assertNull(explorer.selectedSceneId)
-        compose.onNodeWithText("전체 동선").performScrollTo().performClick()
+        compose.onNodeWithText("전체 동선").assertIsDisplayed().performClick()
         assertEquals(RouteExplorerMode.OVERVIEW, explorer.mode)
         assertEquals(1, mounts)
     }

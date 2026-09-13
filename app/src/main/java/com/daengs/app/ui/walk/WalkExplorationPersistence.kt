@@ -12,6 +12,7 @@ import org.json.JSONObject
 internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyListState) {
     val explorer = androidx.compose.foundation.ScrollState(0)
     var pendingExplorerOffset by mutableStateOf<Int?>(null)
+    var explorerDetails by mutableStateOf(false)
     var groupIds by mutableStateOf<List<String>>(emptyList())
     val groupList = LazyListState()
     fun inspect(ids: List<String>) { groupIds = ids.distinct() }
@@ -22,9 +23,11 @@ internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyLi
     var restoredBody by mutableStateOf<JSONObject?>(null)
     fun activity() = listOf(drawer.currentValue, drawer.targetValue, list.firstVisibleItemIndex,
         list.firstVisibleItemScrollOffset, bodyScene, bodyIndex, bodyOffset, explorer.value, pendingExplorerOffset,
-        groupIds, groupList.firstVisibleItemIndex, groupList.firstVisibleItemScrollOffset)
+        groupIds, groupList.firstVisibleItemIndex, groupList.firstVisibleItemScrollOffset, explorerDetails)
     fun snapshot(): JSONObject = JSONObject().put("drawer", drawer.currentValue.name).apply {
         put("explorerOffset", pendingExplorerOffset ?: explorer.value)
+        put("explorerLayout", 2)
+        put("explorerDetails", explorerDetails)
         put("group", org.json.JSONArray(groupIds))
         put("groupIndex", groupList.firstVisibleItemIndex); put("groupOffset", groupList.firstVisibleItemScrollOffset)
         if (pendingList != null) put("list", pendingList) else list.layoutInfo.visibleItemsInfo.firstOrNull()?.let {
@@ -34,7 +37,9 @@ internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyLi
         else bodyScene?.let { put("body", JSONObject().put("id", it).put("index", bodyIndex).put("offset", bodyOffset)) }
     }
     suspend fun restore(value: JSONObject) {
-        pendingExplorerOffset = value.optInt("explorerOffset", 0).coerceIn(0, 100_000)
+        // Old offsets included the controls and route sections; they no longer address this reading region.
+        pendingExplorerOffset = if (value.optInt("explorerLayout") == 2) value.optInt("explorerOffset", 0).coerceIn(0, 100_000) else 0
+        explorerDetails = value.optBoolean("explorerDetails", false)
         val ids = value.optJSONArray("group")
         groupIds = if (ids == null) emptyList() else (0 until ids.length()).map { ids.getString(it) }.distinct()
         groupList.requestScrollToItem(value.optInt("groupIndex").coerceIn(0,100_000), value.optInt("groupOffset").coerceIn(0,100_000))
