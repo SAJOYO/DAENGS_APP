@@ -86,6 +86,8 @@ fun InviteBundleScreen(
     busy: Boolean = false,
     error: String? = null,
     linkAvailable: Boolean = InviteLink.available(),
+    /** 이 링크가 디버그끼리만 통하는가([InviteLink.devOnly]). 화면이 그 사실을 적는다. */
+    linkDevOnly: Boolean = InviteLink.devOnly(),
     linkOf: (String) -> String? = { InviteLink.of(it) },
     zone: ZoneId = ZoneId.systemDefault(),
     onToggle: (String) -> Unit = {},
@@ -150,8 +152,16 @@ fun InviteBundleScreen(
 
         if (!linkAvailable) {
             Notice(
-                "초대 링크를 사용할 수 없는 개발 환경입니다. 운영 서버에 연결했을 때만 초대를 만들 수 있어요.",
+                "초대 링크를 사용할 수 없는 환경입니다. 서버 주소를 확인해 주세요.",
                 tag = "bundle-env-blocked",
+            )
+        } else if (linkDevOnly) {
+            // **링크 글자만 봐서는 구별이 안 된다.** 호스트가 운영과 같아서, 받는 사람이
+            // 출시 앱이면 그 서버에 없는 토큰이라 404 를 받는다.
+            Notice(
+                "개발 서버로 만드는 초대예요. 같은 개발 빌드끼리만 수락할 수 있어요.",
+                tag = "bundle-dev-link",
+                tint = DaengPinkDeep,
             )
         }
 
