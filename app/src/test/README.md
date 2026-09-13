@@ -1,5 +1,11 @@
 # 기능별 테스트 실행 지도
 
+장면 원본 종류 표시 (#377)는 `DiarySceneKindTest`, `DiaryScenePresentationTest`로 판정과 실제 화면의
+같은 스냅샷 사용을 확인한다. 공통 목록/본문을 변경하면 `DiarySceneRemovalUiTest`,
+`WalkDiaryCompactDrawerTest`, `MeasurementTimeControlsTest`, `WalkDiaryMapScreenTest`,
+`WalkDiaryReadViewTest`, `WalkDiaryPhotoUiTest`, `WalkDiaryGapListTest`, `DesignLockTest`를 함께 선택한다.
+[표시 규칙과 렌더 방법](../../../docs/diary-scene-presentation.md).
+
 셀로판 위 액션 핀 (#373)은 `WalkRecordsActionPinsTest`, `WalkRecordsActionPinsUiTest`,
 `WalkRecordsLabNavigationTest`와 기존 `*WalkRecords*Test`, `WalkRouteOverlayStoreTest`,
 `NaverWalkLayerOrderTest`, `DesignLockTest`를 실행한다. 동일 위치 묶음·종류·강아지·출처·숨김,
