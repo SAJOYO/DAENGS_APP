@@ -29,7 +29,11 @@ class MeasurementDeviceTest {
         scenario.onActivity { activity = it }
         compose.waitUntil(30_000) { activity.failure != null || activity.ready }
         activity.failure?.let { throw AssertionError("Measurement review preparation failed", it) }
-        compose.waitUntil(20_000) { compose.onAllNodesWithText("동선 탐색").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(20_000) {
+            // Stored data can become ready before setContent has produced its first hierarchy.
+            try { compose.onAllNodesWithText("동선 탐색").fetchSemanticsNodes().isNotEmpty() }
+            catch (_: IllegalStateException) { false }
+        }
         val detail = activity.detail!!
         assertNotNull(detail.measurement)
         assertTrue(CompletedRouteReview(detail).observed.sections.isNotEmpty())
@@ -194,6 +198,10 @@ class MeasurementDeviceTest {
         compose.waitUntil(10_000) { map?.isCameraIdlePending == false }
         // SurfaceView rendering happens outside Compose's idling loop.
         android.os.SystemClock.sleep(750)
+        captureWindow(name)
+    }
+
+    private fun captureWindow(name: String) {
         // Only capture this isolated test activity, never another foreground application.
         scenario.onActivity { check(it.hasWindowFocus()) }
         val image = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
@@ -215,6 +223,7 @@ class MeasurementDeviceTest {
         val offset = explorerScroll()
         assertTrue(offset > 0)
         val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        assertExplorerSpace()
         compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performClick()
         assertTrue(awaitSaved("scene").getJSONObject("selection").has("returnRange"))
         compose.onNodeWithText("동선 탐색").performClick()
@@ -267,5 +276,60 @@ class MeasurementDeviceTest {
         assertEquals(expected.getJSONObject("selection").toString(), awaitSaved("replay").getJSONObject("selection").toString())
         assertReplayTime(6_000, 17_000)
         capture("range-reopened")
+    }
+
+    private fun assertExplorerSpace() {
+        val header = compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
+        val reading = compose.onNodeWithTag("explorer-reading").fetchSemanticsNode().boundsInRoot
+        assertTrue("Map notices consumed the reading viewport", reading.height >= 40 * context.resources.displayMetrics.density)
+        assertTrue(header.bottom <= reading.top)
+        compose.onNodeWithText("동선 재생").assertIsDisplayed()
+    }
+
+    @Test fun verifyExplorerActions() {
+        open(reset = true)
+        compose.onNodeWithText("동선 탐색").performClick()
+        assertExplorerSpace()
+        capture("explorer-whole")
+        compose.onNodeWithText("구간 고르기").performClick()
+        rangeThumbs()[1].performSemanticsAction(SemanticsActions.SetProgress) { it(17_000f) }
+        assertRange(0)
+        val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        // Exercise actual dragging, not only accessibility SetProgress.
+        compose.onNodeWithTag("explorer-range-slider").performTouchInput {
+            swipe(androidx.compose.ui.geometry.Offset(width * .72f, centerY),
+                androidx.compose.ui.geometry.Offset(width * .5f, centerY), 500)
+        }
+        assertTrue(rangeThumbs().fetchSemanticsNodes().maxOf { it.config[SemanticsProperties.ProgressBarRangeInfo].current } < 17_000f)
+        rangeThumbs()[1].performSemanticsAction(SemanticsActions.SetProgress) { it(17_000f) }
+        compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performScrollTo().assertIsDisplayed()
+        val offset = explorerScroll()
+        capture("explorer-range")
+        compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performClick()
+        compose.onNodeWithText("구간 복귀").assertIsDisplayed().performClick()
+        assertRange(0)
+        assertEquals(offset, explorerScroll(), 1f)
+        assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).performScrollTo().performClick()
+        compose.onNodeWithText("이 장면 앞뒤 30초 보기").performScrollTo().assertIsDisplayed()
+        capture("explorer-scene-actions")
+        compose.onNodeWithText("이 장면 앞뒤 30초 보기").performClick()
+        assertRange(0, requireNotNull(CompletedRouteReview(activity.detail!!).timeline!!.durationMillis))
+        assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithText("동선 재생").performClick()
+        compose.onNodeWithText("일시정지").performClick()
+        compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
+        compose.onNodeWithTag("explorer-replay-slider").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(width * .4f, centerY))
+        }
+        val cursor = elapsed(awaitSaved("replay").getJSONObject("selection"))
+        assertTrue(cursor in 1..22_999)
+        capture("explorer-cursor")
+        compose.onNodeWithText("구간 수정").performClick()
+        compose.onNodeWithTag("explorer-replay-slider").assertDoesNotExist()
+        compose.onNodeWithText("전체 산책").performClick()
+        compose.onNodeWithText("전체 장면 3개").performScrollTo().assertIsDisplayed()
+        assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        assertEquals("overview", awaitSaved("overview").getJSONObject("selection").getString("kind"))
     }
 }
