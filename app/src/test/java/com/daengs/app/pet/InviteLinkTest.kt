@@ -47,15 +47,21 @@ class InviteLinkTest {
     }
 
     /**
-     * **임의 호스트를 열어 주는 것이 아니다.** 오타나 남의 주소를 넣어 두고 링크를 만들면
-     * 그 초대가 어디에도 없는 채로 남고 상한 자리만 먹는다.
+     * **확인된 개발 호스트 하나만 연다.** 도메인 접미사로 열면 아직 없는 호스트나 다른
+     * 용도의 호스트까지 들어오고, 그런 주소로 만든 초대는 어디에도 없는 채로 남아 상한
+     * 자리만 먹는다.
      */
     @Test
-    fun `디버그여도 우리 도메인 밖은 막는다`() {
+    fun `디버그여도 확인된 개발 호스트가 아니면 막는다`() {
+        // 같은 도메인 아래여도 다른 호스트는 안 된다.
+        assertNull(InviteLink.of(token, apiBaseUrl = "https://staging.weareithero.cloud", debug = true))
+        assertNull(InviteLink.of(token, apiBaseUrl = "https://daengback2.weareithero.cloud", debug = true))
+        assertFalse(InviteLink.available("https://other.weareithero.cloud", debug = true))
+
+        // 도메인 밖은 당연히 안 된다. 마지막은 접미사 검사를 속이는 모양이다.
         assertNull(InviteLink.of(token, apiBaseUrl = "https://example.com", debug = true))
         assertNull(InviteLink.of(token, apiBaseUrl = "https://evil.weareithero.cloud.attacker.io", debug = true))
         assertNull(InviteLink.of(token, apiBaseUrl = "", debug = true))
-        assertFalse(InviteLink.available("https://example.com", debug = true))
     }
 
     /** 링크 글자는 운영과 같아서, 개발용이라는 것을 화면이 따로 말해야 한다. */

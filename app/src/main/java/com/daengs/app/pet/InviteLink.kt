@@ -18,10 +18,13 @@ object InviteLink {
     const val PATH = "/invite"
 
     /**
-     * 우리 서버가 사는 도메인. **개발과 운영이 같은 도메인 아래의 다른 호스트다**
-     * (`daengapi` · `daengback`).
+     * 확인된 개발 서버 호스트 **하나**. 디버그에서만 링크를 만들 수 있는 자리다.
+     *
+     * **도메인 접미사로 열지 않는다.** `.weareithero.cloud` 아래를 통째로 허용하면
+     * 아직 없는 호스트나 다른 용도의 호스트까지 들어오고, 그런 주소로 만든 초대는
+     * 어디에도 없는 채로 남아 상한 자리만 먹는다. 개발 서버가 늘면 여기에 더한다.
      */
-    private const val DOMAIN = ".weareithero.cloud"
+    private const val DEV_HOST = "daengback.weareithero.cloud"
 
     /**
      * 공유할 링크. 만들 수 없는 환경이면 null 이다.
@@ -37,7 +40,7 @@ object InviteLink {
      *
      * 그 위험은 **받는 쪽이 다른 서버를 볼 때**만 생긴다. 두 기기가 같은 개발 서버를
      * 보는 디버그 빌드라면 토큰이 그대로 통한다. 그래서 [available] 은 디버그에서
-     * 우리 도메인 아래의 개발 호스트도 통과시킨다 — 실연동을 보려고 운영 API 로
+     * 확인된 개발 호스트 하나([DEV_HOST])도 통과시킨다 — 실연동을 보려고 운영 API 로
      * 갈아타지 않아도 되게.
      */
     fun of(
@@ -57,9 +60,9 @@ object InviteLink {
      * 아무도 못 쓰는 초대가 서버에 하나 생기고 상한 자리만 먹는다.
      *
      * - **출시 빌드는 운영 호스트일 때만** — 예전과 같다.
-     * - 디버그 빌드는 **우리 도메인([DOMAIN]) 아래**면 통과한다. 임의 호스트는 아니다 —
-     *   오타나 남의 주소를 넣어 두고 링크를 만들면, 그 링크로 만든 초대가 어디에도
-     *   없는 채로 남는다.
+     * - 디버그 빌드는 **확인된 개발 호스트([DEV_HOST]) 하나**만 통과한다. 도메인 접미사로
+     *   열지 않는다 — 오타나 남의 주소를 넣어 두고 링크를 만들면, 그 링크로 만든 초대가
+     *   어디에도 없는 채로 남는다.
      */
     fun available(
         apiBaseUrl: String = BuildConfig.API_BASE_URL,
@@ -67,7 +70,7 @@ object InviteLink {
     ): Boolean {
         val host = hostOf(apiBaseUrl) ?: return false
         if (host == HOST) return true
-        return debug && host.endsWith(DOMAIN)
+        return debug && host == DEV_HOST
     }
 
     /**
