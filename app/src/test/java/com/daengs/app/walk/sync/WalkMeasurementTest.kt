@@ -6,6 +6,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.auth.AccountScope
 import com.daengs.app.walk.*
 import com.daengs.app.walk.store.*
+import com.daengs.app.walk.diary.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import com.daengs.app.walk.trajectory.RecordContextKind
 import com.daengs.app.walk.routeexplorer.CompletedRouteReview
 import java.io.IOException
@@ -117,6 +120,50 @@ class WalkMeasurementTest {
             .put("sha256", WalkMeasurementContract.hash(splitRaw)).put("byte_size", splitRaw.toByteArray().size)
             .put("point_count", original.size + 1)
         rejects(splitSummary.toString(), listOf(splitRaw))
+    }
+
+    @Test fun `clock corrected measurement keeps source location through cached stored diary and binding`() = withDb { db ->
+        val w = JSONObject(javaClass.getResource("/walk/walk-measurement-clock-correction-v1.json")!!.readText())
+        val p = plan(w.getJSONObject("input")); seed(db, p)
+        val id = p.base.input.session.id; val scope = AccountScope(owner, 1)
+        val sync = WalkMeasurementSync(db, { scope }, request = { _, path, _ -> response(w, path) })
+        sync.refresh("t", id)
+        val dao = db.walkDao(); val history = WalkHistory(RoomWalkFixLog(dao, owner = { owner }))
+        val reopened = WalkMeasurementSync(db, { scope }, request = { _, _, _ -> error("offline") })
+        val data = com.daengs.app.walk.detail.StoredWalkDetailData(id, scope, { scope }, history, dao,
+            WalkEntryStore(dao) { owner }, WalkPhotoStore(dao, java.io.File(context.cacheDir, "clock-photos")) { owner },
+            {}, {}, { null }, { _, _ -> }, { _, _, _ -> }, measurements = reopened)
+        val detail = requireNotNull(data.load()); val scene = sceneFor(detail)
+        assertTrue(scene.atMillis > detail.summary.endedAtMillis!!)
+        val anchor = scene.source!!.observation!!
+        val board = JSONObject(LocalDiaryBoard.build(detail.summary, detail.observations, emptyList(), emptyList()))
+        val boundaries = board.getJSONArray("scenes")
+        val item = JSONObject().put("id", "checkpoint").put("at", scene.atMillis).put("kind", "route_checkpoint")
+            .put("title", "고친 제목").put("body", "사용자가 남긴 본문")
+            .put("point", JSONArray(listOf(scene.point!!.latitude, scene.point.longitude)))
+            .put("fix", JSONArray(listOf(anchor.clientSeq, anchor.chainIndex, anchor.atMillis)))
+        board.put("scenes", JSONArray().put(boundaries.getJSONObject(0)).put(item)
+            .put(boundaries.getJSONObject(boundaries.length()-1)))
+        dao.insertDiaryPublication(WalkDiaryPublicationRow(id, 0, 0, board.toString(), board.toString(), 1))
+        val diary = withTimeout(5_000) { data.observeDiary(detail).first { it?.scenes?.any { s -> s.title == "고친 제목" } == true } }!!
+        val loaded = diary.scenes.single { it.title == "고친 제목" }
+        assertEquals(scene.point, loaded.point)
+        assertTrue(loaded.body.contains("사용자가 남긴 본문"))
+        val focus = CompletedRouteReview(detail).recordSceneFocus(loaded)
+        assertEquals(com.daengs.app.walk.routeexplorer.SceneRouteRelation.CONNECTED, focus.relation)
+        assertEquals(anchor.clientSeq, focus.binding!!.locationSource!!.clientSeq)
+        // A legacy read and a different epoch must not inherit the measured exception.
+        assertNull(StoryboardObservationIndex(detail.summary, detail.observations).resolve(anchor))
+        val foreign = detail.measurement!!.copy(usableSources = detail.measurement.usableSources.map {
+            it.copy(sourceEpoch = "other-epoch") }.toSet())
+        assertNull(StoryboardObservationIndex(detail.summary, detail.observations, foreign).resolve(anchor))
+        assertNull(StoryboardObservationIndex(detail.summary, detail.observations,
+            detail.measurement.copy(usableSources = emptySet())).resolve(anchor))
+        val wrongOwner = detail.measurement.copy(ownerId = "other")
+        try {
+            data.observeDiary(detail.copy(measurement = wrongOwner))
+            fail("Foreign measurement must not enter the current owner's diary")
+        } catch (_: IllegalArgumentException) { }
     }
 
     @Test fun `atomic cache reopens offline through the ordinary stored detail source`() = withDb { db ->
