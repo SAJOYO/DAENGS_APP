@@ -1,5 +1,8 @@
 # 기능별 테스트 실행 지도
 
+시간 구간 복귀·범위 재생 (#381)은 `WalkRangeContextTest`, `WalkRangeContextUiTest`, `MeasurementRangePlaybackTest`로
+구간/장면 왕복·시간 한계·공백·v1/v2·현재 원본·재진입 스크롤을 검사한다. [전체 선택 명령과 검증 경계](../../../docs/walk-range-context.md).
+
 단일 산책 읽기 화면 (#379)은 `DiaryReadingStyleTest`로 참여견·목록/본문 조작·긴 제목/장문·사진 파일 교체·복구 상태를 검사한다.
 기존 열람/지도/복원 회귀 범위와 320/390dp native 렌더 방법은 [읽기 화면 검증](../../../docs/diary-reading-ui.md)을 따른다.
 

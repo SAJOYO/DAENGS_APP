@@ -38,9 +38,9 @@ internal sealed interface WalkRouteSelection {
     data class Gap(val id: String) : WalkRouteSelection
     data class Transition(val id: String) : WalkRouteSelection
     data class Event(val id: String) : WalkRouteSelection
-    data class Scene(val id: String) : WalkRouteSelection
+    data class Scene(val id: String, val returnRange: Slice? = null) : WalkRouteSelection
     data class Passage(val result: RoutePassages?, val selectedId: String?) : WalkRouteSelection
-    data class Replay(val elapsedMillis: Long) : WalkRouteSelection
+    data class Replay(val elapsedMillis: Long, val range: Slice? = null) : WalkRouteSelection
     data class Slice(val from: MeasurementTimeAddress, val until: MeasurementTimeAddress) : WalkRouteSelection
 }
 
@@ -66,6 +66,7 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         private set
     private var selectionJob: Job? = null
     private var selectionRevision = 0
+    internal var adoptedRead: WalkDiaryReadView? = null
     var userRevision by mutableIntStateOf(0); private set
     val duration get() = review?.timeline?.durationMillis ?: review?.context?.takeIf { it.available }?.let { it.durationMillis ?: 0 }
         ?: maxOf(activeDuration, index?.durationMillis ?: 0)
@@ -86,12 +87,17 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     val selectedSection get() = (selection as? WalkRouteSelection.Section)?.let { selected ->
         review?.sections?.firstOrNull { it.index == selected.index }
     }
-    val selectedSlice get() = (selection as? WalkRouteSelection.Slice)?.let { selected ->
-        val time = review?.timeline ?: return@let null
-        val from = time.position(selected.from) ?: return@let null
-        val until = time.position(selected.until) ?: return@let null
-        time.slice(from, until)
+    val timeRange get() = when (val value = selection) {
+        is WalkRouteSelection.Slice -> value
+        is WalkRouteSelection.Replay -> value.range
+        else -> null
     }
+    val returnRange get() = (selection as? WalkRouteSelection.Scene)?.returnRange
+    private fun resolveRange(selected: WalkRouteSelection.Slice): MeasurementTimeSlice? {
+        val time = review?.timeline ?: return null
+        return time.slice(time.position(selected.from) ?: return null, time.position(selected.until) ?: return null)
+    }
+    val selectedSlice get() = timeRange?.let(::resolveRange)
     val highlightPaths get() = selectedSlice?.walking ?: listOfNotNull(selectedSection?.path ?: selectedPass?.path)
     val selectedAuxiliary get() = (selection as? WalkRouteSelection.Auxiliary)?.let { selected ->
         review?.observed?.sections?.firstOrNull { it.id == selected.id }
@@ -108,6 +114,9 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
             review?.context?.takeIf { it.available }?.frameAt(elapsed) ?: index?.frameAt(elapsed)
 
     fun choosePanel(open: Boolean) {
+        if (open && !panelOpen && selectedSceneId != null) {
+            if (!returnToRange()) overview()
+        }
         panelOpen = open
         if (!open) overview()
     }
@@ -120,7 +129,17 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     }
     fun overview() { replaceSelection(WalkRouteSelection.Overview) }
     fun selectScene(id: String, fromMap: Boolean = false) {
-        replaceSelection(WalkRouteSelection.Scene(id), fromMap); panelOpen = false
+        replaceSelection(WalkRouteSelection.Scene(id, timeRange ?: returnRange), fromMap); panelOpen = false
+    }
+    fun returnToRange(): Boolean {
+        val range = returnRange ?: (selection as? WalkRouteSelection.Replay)?.range ?: return false
+        if (resolveRange(range) == null) return false
+        replaceSelection(range); panelOpen = true
+        return true
+    }
+    internal fun invalidateSceneReturn() {
+        val scene = selection as? WalkRouteSelection.Scene ?: return
+        if (scene.returnRange != null) replaceSelection(scene.copy(returnRange = null), selectionFromMap, userChange = false)
     }
     fun closeScene() { if (selection is WalkRouteSelection.Scene) overview() }
     fun selectSection(index: Int) {
@@ -144,11 +163,17 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         // Keep a scene identity, but derive its correspondence again against the new route/scene.
         val scene = selectedSceneId
         val sameMeasurement = review?.detail?.measurement?.let { previous ->
-            previous.id == completed.detail.measurement?.id && previous.resultDigest == completed.detail.measurement.resultDigest } == true
-        val retained = selection.takeIf { sameMeasurement && (it is WalkRouteSelection.Replay || it is WalkRouteSelection.Slice) }
+            previous.id == completed.detail.measurement?.id && previous.resultDigest == completed.detail.measurement.resultDigest &&
+                previous.ownerId == completed.detail.measurement.ownerId && review?.summary?.sessionId == completed.summary.sessionId } == true
+        val retained = selection.takeIf { sameMeasurement && (it is WalkRouteSelection.Replay || it is WalkRouteSelection.Slice || it is WalkRouteSelection.Scene) }
         replaceSelection(retained ?: scene?.let { WalkRouteSelection.Scene(it) } ?: WalkRouteSelection.Overview,
             fromMap = scene != null && selectionFromMap, userChange = false)
         index = source; review = completed; activeDuration = duration
+        val range = timeRange ?: returnRange
+        if (range != null && resolveRange(range) == null) {
+            replaceSelection(scene?.let { WalkRouteSelection.Scene(it) } ?: WalkRouteSelection.Overview,
+                fromMap = scene != null && selectionFromMap, userChange = false)
+        }
         preparationError = null
     }
     fun selectPass(id: String) {
@@ -176,7 +201,9 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         }
     }
     fun seek(value: Long) {
-        replaceSelection(WalkRouteSelection.Replay(value.coerceIn(0, duration)))
+        val slice = selectedSlice
+        if (timeRange != null && slice == null) return
+        replaceSelection(WalkRouteSelection.Replay(value.coerceIn(slice?.from ?: 0, slice?.until ?: duration), timeRange))
     }
     fun selectTimeRange(from: Long, until: Long) {
         val timeline = review?.timeline ?: return
@@ -188,17 +215,29 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
         replaceSelection(value, userChange = false)
         panelOpen = panel; playbackSpeed = speed
     }
+    val canPlayback get() = index != null && duration > 0 && (timeRange == null || selectedSlice != null) && (selectedSlice?.let { slice ->
+        review?.timeline?.nextPlayablePosition(slice.from, slice.until) != null
+    } ?: true)
     fun togglePlayback() {
-        if (index == null || duration <= 0) return
+        if (!canPlayback) return
         if (playing) pause() else {
-            seek(if (elapsed >= duration) 0 else elapsed)
+            val slice = selectedSlice
+            val from = slice?.from ?: 0L; val until = slice?.until ?: duration
+            val start = if (mode != RouteExplorerMode.REPLAY || elapsed >= until) from else elapsed.coerceAtLeast(from)
+            val at = if (slice != null) review?.timeline?.nextPlayablePosition(start, until) ?: return else start
+            seek(at)
             playing = true
         }
     }
     fun tick(delta: Long) {
         if (!playing) return
-        selection = WalkRouteSelection.Replay(advanceRoutePlayback(elapsed, delta, duration, playbackSpeed))
-        if (elapsed >= duration) playing = false
+        val range = timeRange
+        if (range != null && selectedSlice == null) { pause(); return }
+        val until = selectedSlice?.until ?: duration
+        val next = advanceRoutePlayback(elapsed, delta, until, playbackSpeed)
+        val at = if (range != null && next < until) review?.timeline?.nextPlayablePosition(next, until) ?: until else next
+        selection = WalkRouteSelection.Replay(at, range)
+        if (elapsed >= until) playing = false
     }
 }
 
@@ -259,13 +298,21 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     sliceScenes: List<com.daengs.app.walk.diary.DiaryScene> = emptyList(),
     onScene: (com.daengs.app.walk.diary.DiaryScene) -> Unit = {},
     sceneKinds: Map<String, com.daengs.app.walk.diary.DiarySceneKind> = emptyMap(),
+    reading: DiaryReadingMemory? = null,
 ) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+    val scroll = reading?.explorer ?: rememberScrollState()
+    LaunchedEffect(reading, reading?.pendingExplorerOffset) {
+        reading?.pendingExplorerOffset?.let { offset ->
+            scroll.scrollTo(offset)
+            reading.pendingExplorerOffset = null
+        }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { state.overview(); onOverview() }) { Text("전체 동선") }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed)
-                Button(onClick = state::togglePlayback, enabled = state.index != null && state.duration > 0) {
+                Button(onClick = state::togglePlayback, enabled = state.canPlayback) {
                     Text(if (state.playing) "일시정지" else "동선 재생")
                 }
             }
@@ -317,6 +364,8 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
             Spacer(Modifier.height(8.dp))
             if (review.timeline?.durationMillis != null && state.duration > 0) {
                 MeasurementTimeControls(state, sliceScenes, onScene, sceneKinds)
+                if (state.selectedSlice != null && !state.canPlayback)
+                    Text("선택 범위에 재생할 이동 근거가 없어요.", style = MaterialTheme.typography.bodySmall)
             }
         }
         state.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -351,8 +400,8 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
             }
             RouteExplorerMode.REPLAY -> {
                 Slider(value = state.elapsed.toFloat(), onValueChange = { state.seek(it.toLong()) },
-                    valueRange = 0f..state.duration.coerceAtLeast(1).toFloat())
-                Text(formatWalkDuration(state.elapsed) + " / " + formatWalkDuration(state.duration),
+                    valueRange = (state.selectedSlice?.from ?: 0).toFloat()..(state.selectedSlice?.until ?: state.duration.coerceAtLeast(1)).toFloat())
+                Text(formatWalkDuration(state.elapsed) + " / " + formatWalkDuration(state.selectedSlice?.until ?: state.duration),
                     style = MaterialTheme.typography.titleSmall)
                 val frame = state.replayFrame
                 Text(if (frame?.inGap != false) "${frame?.recordedAtMillis?.let { formatRouteExplorerClock(it) + " · " }.orEmpty()}이 시각에는 재생할 위치 근거가 충분하지 않아요."
