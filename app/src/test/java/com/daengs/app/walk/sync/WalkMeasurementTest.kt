@@ -87,6 +87,22 @@ class WalkMeasurementTest {
         val raw = altered.toString(); val s = JSONObject(text); val c = s.getJSONArray("required_route_chunks").getJSONObject(0)
         c.put("sha256", WalkMeasurementContract.hash(raw)).put("byte_size", raw.toByteArray().size)
         rejects(s.toString(), listOf(raw) + page.drop(1))
+
+        // Rehashing an invented section break must not change the local engine's route topology.
+        val split = JSONObject(page.first())
+        val original = WalkMotionStore.objects(split.getJSONArray("points"))
+        val walking = original.filter { it.getString("kind") == "walking_section" }
+        val added = JSONObject(walking[1].toString()).put("section_index", 1).put("point_index", 0)
+            .put("section_id", "invented").put("walking_distance_m", 0.0)
+        val tail = walking.drop(2).mapIndexed { i, point -> JSONObject(point.toString())
+            .put("section_index", 1).put("point_index", i + 1).put("section_id", "invented") }
+        split.put("points", JSONArray(walking.take(2) + added + tail + original.filter { it.getString("kind") == "observed_run" }))
+        val splitRaw = split.toString(); val splitSummary = JSONObject(text)
+        splitSummary.put("walking_section_count", 2).put("route_point_count", original.size + 1)
+        splitSummary.getJSONArray("required_route_chunks").getJSONObject(0)
+            .put("sha256", WalkMeasurementContract.hash(splitRaw)).put("byte_size", splitRaw.toByteArray().size)
+            .put("point_count", original.size + 1)
+        rejects(splitSummary.toString(), listOf(splitRaw))
     }
 
     @Test fun `atomic cache reopens offline through the ordinary stored detail source`() = withDb { db ->

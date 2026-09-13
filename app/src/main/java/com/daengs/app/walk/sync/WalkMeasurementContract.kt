@@ -147,7 +147,16 @@ internal object WalkMeasurementContract {
                 samples += route.map { LocationSample(it.point, it.capturedAtMillis, accuracyMeters = it.accuracyMeters, elapsedRealtimeNanos = it.elapsedRealtimeNanos) }
             } else observed += raw
         }
-        require(seen.keys == expectedEdges.keys)
+        require(seen.keys.toList() == expectedEdges.keys.toList())
+        val expectedSections = mutableListOf<MutableList<Int>>()
+        expectedEdges.keys.forEach { (from, to) ->
+            if (expectedSections.lastOrNull()?.last() != from) expectedSections += mutableListOf(from)
+            expectedSections.last() += to
+        }
+        val actualSections = groups.filterKeys { it.first == "walking_section" }.values.map { section ->
+            section.map { fix(it.getJSONObject("ref")).clientSeq }
+        }
+        require(actualSections == expectedSections)
         near(cumulative, replay.eligibleDistanceM)
         require(routes.size.toLong() == integer(s, "walking_section_count") && observed.size.toLong() == integer(s, "observed_run_count"))
         val wallTimes = objects(s, "boundary_wall_times")
