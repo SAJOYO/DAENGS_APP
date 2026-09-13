@@ -2,6 +2,7 @@
 
 | 파일 | 내용 |
 | --- | --- |
+| [walk-measurement-observed.md](walk-measurement-observed.md) | 4단계: 저장 관측 보조선·제외/미확정 분류·방향·공백과 장면 선택 |
 | [walk-measurement-scenes.md](walk-measurement-scenes.md) | 3단계: 측정 원본 주소·장면 revision·일괄 갱신과 지도 선택 |
 | [walk-stored-measurement.md](walk-stored-measurement.md) | 일반 상세의 측정 검증·원자적 캐시·재열람과 1~2단계 적용 범위 |
 | [walk-space-materials.md](walk-space-materials.md) | DEV 정규화 공간 재료 표시와 서버 일기 수신·Room 저장·재진입 검증 |

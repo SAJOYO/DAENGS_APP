@@ -71,6 +71,14 @@ HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상�
 
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
+저장 관측 보조선은 `walk.routeexplorer.MeasurementObservedReviewTest`,
+`ui.walk.MeasurementObservedPresentationTest`, `walk.sync.WalkMeasurementTest`로 검증한다.
+원본 구간·방향·공백 자료 공급과 DEV 최종 구간 분류의 32개 공통 사례를 대조한다.
+공용 합성 helper `walk.routeexplorer.MeasurementObservedFixtures.kt`는 두 observed 검사와
+`ui.walk.DiaryMapNavigationTest`가 사용한다. 지도 선택/서랍 변경은 기존 `DiaryMapNavigationTest`,
+`WalkReadingBaselineUiTest`, `WalkRecordOverviewUiTest`, `DesignLockTest`도 함께 검사한다.
+[선택 명령·실기기 검증 한계](../../../docs/walk-measurement-observed.md).
+
 저장 측정의 장면 연결은 `walk.routeexplorer.MeasurementSceneReviewTest`,
 `MeasurementScenePinTest`, `ui.walk.WalkMeasurementReadViewTest`, `DiaryMapNavigationTest`를 선택한다.
 `walk.sync.WalkMeasurementTest`의 공통 32사례·Room 재열람과 `ui.walk.WalkDetailDataUiTest`의

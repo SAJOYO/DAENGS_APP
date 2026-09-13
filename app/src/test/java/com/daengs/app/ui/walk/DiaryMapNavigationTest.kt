@@ -10,6 +10,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiaryMapNavigationTest {
+    @Test fun `measured observed scenes respect map camera and ambiguous photos keep their independent location`() {
+        for (repeated in listOf(false, true)) {
+            val detail = measuredObservedDetail(repeatedWallTimes = repeated)
+            val original = measuredScene(detail, 9)
+            val scene = if (repeated) original.copy(source = null, photo = WalkPhoto("observed-photo",
+                detail.summary.sessionId, original.atMillis, original.point!!, java.io.File("synthetic-photo"))) else original
+            val route = PreparedDiaryRoute(detail); val focus = route.review.recordSceneFocus(scene)
+            assertEquals(if (repeated) SceneRouteRelation.AMBIGUOUS else SceneRouteRelation.OBSERVED_EXCLUDED, focus.relation)
+            assertTrue(focus.paths.isEmpty())
+            assertEquals(repeated, focus.observedParts.isEmpty())
+            val read = WalkDiaryReadView(route, DiaryWalk(detail.summary, listOf(scene), ""), mapOf(scene.id to focus))
+            val navigation = DiaryMapNavigation(); navigation.initialize(detail.route.bounds)
+            val initial = navigation.camera
+            assertTrue(navigation.selectScene(read, scene, fromMap = true))
+            assertEquals(initial, navigation.camera)
+            assertTrue(navigation.selectScene(read, scene))
+            assertEquals(scene.point, navigation.camera.center)
+            val selected = navigation.camera
+            assertFalse(navigation.selectScene(read, scene.copy(body = "stale")))
+            assertEquals(selected, navigation.camera)
+        }
+    }
+
     private fun point(x: Double) = GeoPoint(37.5, 127.0 + x / 88_000)
     private fun record() = readCompletedRoute(RecordedSession("overview", startedAtMillis = 0, endedAtMillis = 300_000),
         (0..17).map { i -> val p = point(if (i < 9) i * 4.0 else 1_000 + (i - 9) * 4.0)

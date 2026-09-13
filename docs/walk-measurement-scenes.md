@@ -22,7 +22,7 @@ binding은 `sourceStart/sourceEnd`, `locationSource`, `eventSource`, `sectionId`
 
 ## 저장과 남은 단계
 
-이번 단계는 DB/서버 스키마를 추가하지 않는다. 기존 Room 측정 캐시와 원본 장면/행동을 읽어 binding을 재구성한다. 재열람 후 같은 입력이면 같은 key와 연결을 얻는다. 탐색 커서·시간 slice의 영속 주소 복원, 관측 보조선·방향 표현은 이후 단계다. 운영/main 반영은 별도 합의한다.
+이번 단계는 DB/서버 스키마를 추가하지 않는다. 기존 Room 측정 캐시와 원본 장면/행동을 읽어 binding을 재구성한다. 재열람 후 같은 입력이면 같은 key와 연결을 얻는다. 관측 보조선·방향·공백 표현은 [4단계](walk-measurement-observed.md)에서 연결한다. 탐색 커서·시간 slice의 영속 주소 복원은 5단계다. 운영/main 반영은 별도 합의한다.
 
 ## 검사
 
