@@ -1,6 +1,6 @@
 # 독립 카드 작성 결과 연결
 
-DEV의 기존 산책 일기 응답 `walk-diary-board-v1`에 선택 필드 `scenes[].writing`을 추가했다. [DEV 구조와 Mermaid](https://github.com/SAJOYO/DAENGS_dev/blob/feat/diary-card-orchestration/docs/walk/card-orchestration.md)를 기준으로 한다.
+DEV의 기존 산책 일기 응답 `walk-diary-board-v1`에 선택 필드 `scenes[].writing`을 추가했다. [DEV 구조와 Mermaid](https://github.com/SAJOYO/DAENGS_dev/blob/fix/diary-shared-orchestration/docs/walk/card-orchestration.md)를 기준으로 한다.
 
 ```mermaid
 flowchart LR
