@@ -161,13 +161,18 @@ internal fun WalkRouteExplorerState.adopt(view: WalkDiaryReadView) {
 /** Explicit scene-neighborhood action, resolved from this exact adopted source snapshot. */
 internal fun WalkRouteExplorerState.selectSceneNeighborhood(view: WalkDiaryReadView, scene: DiaryScene,
     beforeMillis: Long = 30_000, afterMillis: Long = 30_000): Boolean {
-    if (adoptedRead !== view || view.scenesLoading || !view.acceptsScene(scene) || beforeMillis < 0 || afterMillis < 0) return false
-    val timeline = view.route.review.timeline ?: return false
-    val at = view.focusFor(scene)?.let(timeline::scenePosition) ?: return false
-    val duration = timeline.durationMillis ?: return false
+    val range = sceneNeighborhood(view, scene, beforeMillis, afterMillis) ?: return false
+    selectTimeRange(range.first, range.last)
+    return true
+}
+
+internal fun WalkRouteExplorerState.sceneNeighborhood(view: WalkDiaryReadView, scene: DiaryScene,
+    beforeMillis: Long = 30_000, afterMillis: Long = 30_000): LongRange? {
+    if (adoptedRead !== view || view.scenesLoading || !view.acceptsScene(scene) || beforeMillis < 0 || afterMillis < 0) return null
+    val timeline = view.route.review.timeline ?: return null
+    val at = view.focusFor(scene)?.let(timeline::scenePosition) ?: return null
+    val duration = timeline.durationMillis ?: return null
     val from = at - minOf(beforeMillis, at)
     val until = at + minOf(afterMillis, duration - at)
-    if (until <= from) return false
-    selectTimeRange(from, until)
-    return true
+    return (from..until).takeIf { until > from }
 }

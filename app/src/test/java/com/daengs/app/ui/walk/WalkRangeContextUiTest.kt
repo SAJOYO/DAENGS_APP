@@ -103,7 +103,7 @@ class WalkRangeContextUiTest {
         }
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(57_000L, state.elapsed); assertEquals(65_000L, state.selectedSlice!!.until); assertFalse(state.playing) }
-        compose.onNodeWithText("동선 재생").performScrollTo().performClick()
+        compose.onNodeWithText("동선 재생").assertIsDisplayed().performClick()
         compose.runOnIdle { state.tick(500); assertEquals(62_000L, state.elapsed); mounted = false }
         compose.waitForIdle()
         compose.runOnIdle { mounted = true }
@@ -113,7 +113,7 @@ class WalkRangeContextUiTest {
             assertFalse(state.playing); assertEquals(RoutePlaybackSpeed.EIGHT, state.playbackSpeed)
             state.selectTimeRange(30_000, 40_000)
         }
-        compose.onNodeWithText("동선 재생").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("동선 재생").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("선택 범위에 재생할 이동 근거가 없어요.").performScrollTo().assertIsDisplayed()
     }
 }

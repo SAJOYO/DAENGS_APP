@@ -102,7 +102,8 @@ class DiaryScenePresentationTest {
         compose.setContent {
             val scope = rememberCoroutineScope()
             state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 60_000) } }
-            DaengsTheme { MeasurementTimeControls(state, listOf(scene), { clicked = it }, mapOf(scene.id to DiarySceneKind.NOTE)) }
+            DaengsTheme { WalkRouteExplorerPanel(state, {}, sliceScenes = listOf(scene),
+                onScene = { clicked = it }, sceneKinds = mapOf(scene.id to DiarySceneKind.NOTE)) }
         }
         compose.onNodeWithContentDescription("직접 남긴 메모").assertExists()
         compose.onNodeWithText(scene.title).performClick()

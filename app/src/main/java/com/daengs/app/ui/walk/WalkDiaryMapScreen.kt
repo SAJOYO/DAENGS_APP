@@ -111,6 +111,9 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         diarySceneMarkers(originalScenes, selectedId, readingMemory.groupIds)
     }
     val currentReview = readView?.route?.review
+    val sceneTimes = remember(readView) { originalScenes.associate { scene ->
+        scene.id to readView?.focusFor(scene)?.let { currentReview?.timeline?.scenePosition(it) }
+    } }
     val sceneFocus = selectedOriginal?.let { readView?.focusFor(it) }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
         readingMemory.inspect(emptyList())
@@ -141,6 +144,15 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
                 readingMemory = readingMemory,
+                onReturnToRange = if (explorer.returnRange != null) ({
+                    if (explorer.returnToRange()) readingMemory.inspect(emptyList())
+                }) else null,
+                onSceneNeighborhood = if (selectedOriginal != null && readView != null &&
+                    explorer.sceneNeighborhood(readView, selectedOriginal) != null) ({
+                    val current = state.readView
+                    if (explorer.selectedSceneId == selectedOriginal.id && current === readView &&
+                        explorer.selectSceneNeighborhood(readView, selectedOriginal)) readingMemory.inspect(emptyList())
+                }) else null,
                 sceneGroup = readingMemory.groupIds.takeIf { it.isNotEmpty() }?.let { ids -> scenes.filter { it.id in ids } },
                 onClearGroup = { explorer.closeScene(); readingMemory.inspect(emptyList()) },
                 sceneKinds = sceneKinds,
@@ -196,12 +208,14 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
                     reading = readingMemory,
+                    allScenes = originalScenes, scenesLoading = readView?.scenesLoading == true,
+                    unknownTimeScenes = sceneTimes.values.count { it == null },
                     onSection = { section -> navigation.fit(section.path) },
                     onAuxiliary = { section -> navigation.fit(section.path) },
                     onContext = { selectContext(it) },
                     sliceScenes = originalScenes.filter { scene ->
                         val slice = explorer.selectedSlice
-                        val position = readView?.sceneFocus?.get(scene.id)?.let { currentReview?.timeline?.scenePosition(it) }
+                        val position = sceneTimes[scene.id]
                         slice != null && position != null && position in slice.from..slice.until
                     }, onScene = { selectScene(it) }, sceneKinds = sceneKinds) },
                 directionNotice = directionCount == 0 &&
