@@ -344,18 +344,18 @@ class WalkDiaryMapScreenTest {
         val b = a.copy(id="s/b",point=GeoPoint(37.5,127.0))
         val c = b.copy(id="s/c")
         val markers = diarySceneMarkers(listOf(a,b,c), c.id)
-        assertEquals("2 · 3",markers.single().label)
-        assertEquals(c.id,markers.single().id)
-        assertTrue(markers.single().selected)
-        assertTrue(markers.single().aboveRouteEndpoints)
-        assertEquals("2 · 3", markers.single().sequenceLabel)
+        assertEquals(listOf(2,3), markers.map { it.diaryPin!!.ordinal })
+        assertEquals(c.id,markers.single { it.selected }.id)
+        assertTrue(markers.all { it.aboveRouteEndpoints })
+        assertEquals(listOf(b.id,c.id), markers.map { it.id })
     }
 
     @Test fun `large same-position group keeps complete order and includes the selected ordinal in its badge`() {
         val scenes = (1..20).map { DiaryScene("s/$it", "s", it.toLong(), "장면", "", GeoPoint(37.5, 127.0), "") }
-        val marker = diarySceneMarkers(scenes, "s/17").single()
-        assertEquals((1..20).joinToString(" · "), marker.label)
-        assertEquals("1 · 2 · 17 …", marker.sequenceLabel)
+        val markers = diarySceneMarkers(scenes, "s/17")
+        val marker = markers.single { it.selected }
+        assertEquals((1..20).toList(), markers.map { it.diaryPin!!.ordinal })
+        assertEquals(17, marker.diaryPin!!.ordinal)
         assertEquals(scenes.first().point, marker.point)
     }
 
@@ -396,7 +396,7 @@ class WalkDiaryMapScreenTest {
                     } }
                 })
         }
-        compose.onNodeWithText("1 · 7").performClick()
+        compose.onAllNodesWithText("1").onFirst().performClick()
         compose.onNodeWithText("장면 1").assertExists()
         compose.onNodeWithText("다음").performClick()
         compose.onNodeWithText("장면 2").assertExists()

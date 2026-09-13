@@ -103,8 +103,11 @@ fun NaverMapSurface(
     val drawTraces = diagnostics?.showTraces != false
     val drawRoute = diagnostics?.showRoute != false
     val drawMarkers = diagnostics?.showMarkers != false
-    val visibleMoments = if (drawMarkers) scene.moments.filter { it.recordPin == null } else emptyList()
+    val visibleMoments = if (drawMarkers) scene.moments.filter { it.recordPin == null && it.diaryPin == null } else emptyList()
     val recordMoments = if (drawMarkers) scene.moments.filter { it.recordPin != null } else emptyList()
+    val diaryMoments = if (drawMarkers) scene.moments.filter { it.diaryPin != null } else emptyList()
+    var recordMarkerBounds by remember { mutableStateOf<List<com.daengs.app.map.layout.MarkerRect>>(emptyList()) }
+    var diaryMarkerBounds by remember { mutableStateOf<List<com.daengs.app.map.layout.MarkerRect>>(emptyList()) }
     val visibleGaps = if (drawRoute) scene.completedRoute.gapEndpoints else emptyList()
     val visibleSelectedPoint = scene.completedRoute.selectedPoint.takeIf { drawMarkers }
     val context = LocalContext.current
@@ -190,7 +193,8 @@ fun NaverMapSurface(
         onDispose { if (original != null) map?.mapType = original }
     }
 
-    NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
+    if (scene.moments.none { it.diaryPin != null })
+        NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
 
     LaunchedEffect(naverMap, searchOrigin) {
         val map = naverMap ?: return@LaunchedEffect
@@ -339,7 +343,17 @@ fun NaverMapSurface(
 
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
-    NaverRecordActionPinLayer(naverMap, recordMoments, viewportSize, density, layerOrder, onSelectMomentGroup)
+    val fixedMarkerFootprints = scene.routeEndpointStamps().map { endpoint ->
+        val art = requireNotNull(context.getDrawable(endpoint.kind.iconRes))
+        val dimensions = if (endpoint.compact) diaryPinSize(endpoint.label,density,endpoint=true) else art.intrinsicWidth to art.intrinsicHeight
+        endpoint.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),
+            .5,if(endpoint.compact) 0.0 else .5)
+    }
+    NaverGroupedMomentLayer(naverMap, recordMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
+        topInset = topPaddingPx, bottomInset = bottomPaddingPx, onBounds = { recordMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
+    NaverGroupedMomentLayer(naverMap, diaryMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
+        query = visibilityQuery.takeIf { scene.moments.any { it.diaryPin != null } },
+        onVisibility = onVisibility, onBounds = { diaryMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
 
     val photoFiles = visibleMoments.mapNotNull { it.photoFile }.distinct()
     val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
@@ -409,9 +423,9 @@ fun NaverMapSurface(
     NaverRouteEndpointLayer(naverMap, if (drawMarkers) scene.routeEndpointStamps() else emptyList(), onSelectRouteEndpoint, layerOrder.markers)
     NaverRecordContextLayer(naverMap, scene.sessionExplorer?.recordContext, density, onSelectRecordContext)
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
-        scene.moments.map { it.point } + scene.routeEndpointStamps().map { it.point } +
+        scene.moments.filter { it.diaryPin == null && it.recordPin == null }.map { it.point } + scene.routeEndpointStamps().map { it.point } +
             scene.sessionExplorer?.recordContext?.markers.orEmpty().map { it.point },
-        viewportSize, bottomPaddingPx, density, onRouteDirectionCount)
+        viewportSize, bottomPaddingPx, density, onRouteDirectionCount, recordMarkerBounds + diaryMarkerBounds)
 
     DisposableEffect(naverMap, visibleGaps) {
         val map = naverMap
