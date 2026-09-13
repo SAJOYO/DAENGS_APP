@@ -116,4 +116,42 @@ internal class MeasurementTimeline(private val detail: WalkSessionDetail, privat
         }
         return RouteReplayFrame(null, null, true)
     }
+
+    // Only continuous, proven movement supports automatic playback. Isolated usable
+    // observations remain seekable with frameAt, but do not manufacture a replay edge.
+    private val playableIntervals by lazy {
+        val intervals = replayEdges.values.flatten().mapNotNull { (a, b) ->
+            if (a.sourceEpoch != b.sourceEpoch || a.clockEpochId != b.clockEpochId) return@mapNotNull null
+            val epoch = byEpoch[a.sourceEpoch] ?: return@mapNotNull null
+            val nanos = epoch.offset + ((a.elapsedRealtimeNanos ?: return@mapNotNull null) - epoch.value.startedElapsedNanos)
+            val from = nanos / 1_000_000 + if (nanos % 1_000_000 != 0L) 1 else 0
+            val until = at(b) ?: return@mapNotNull null
+            if (until <= from) null else from..until
+        }.sortedBy { it.first }
+        buildList<LongRange> {
+            intervals.forEach { interval ->
+                val last = lastOrNull()
+                if (last != null && interval.first <= last.last) {
+                    removeAt(lastIndex); add(last.first..maxOf(last.last, interval.last))
+                } else add(interval)
+            }
+        }
+    }
+
+    /** First millisecond with proven movement ahead inside the range; never joins its missing part. */
+    fun nextPlayablePosition(from: Long, until: Long): Long? {
+        if (from < 0 || until < from || until > (durationMillis ?: return null)) return null
+        val found = playableIntervals.binarySearch { it.last.compareTo(from) }
+        val start = if (found >= 0) found else -found - 1
+        for (i in start until playableIntervals.size) {
+            val interval = playableIntervals[i]
+            val candidate = maxOf(from, interval.first)
+            val end = minOf(until, interval.last)
+            if (candidate > until) break
+            if (candidate < end && !frameAt(candidate).inGap) return candidate
+            // A sub-millisecond source or epoch boundary may round just outside an edge.
+            if (candidate + 1 < end && !frameAt(candidate + 1).inGap) return candidate + 1
+        }
+        return null
+    }
 }

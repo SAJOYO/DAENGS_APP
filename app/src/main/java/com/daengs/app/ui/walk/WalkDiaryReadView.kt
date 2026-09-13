@@ -146,4 +146,28 @@ private fun sameDiaryRouteInput(a: WalkSessionDetail, b: WalkSessionDetail) =
 internal fun WalkRouteExplorerState.adopt(view: WalkDiaryReadView) {
     if (review !== view.route.review) replaceRoute(view.route.index, view.route.review, view.route.detail.summary.activeDurationMillis)
     if (!view.scenesLoading && selectedSceneId != null && view.diary?.scenes.orEmpty().none { it.id == selectedSceneId }) overview()
+    if (!view.scenesLoading) {
+        if (returnRange != null) {
+            fun event(read: WalkDiaryReadView?): String? {
+                val scene = read?.diary?.scenes?.singleOrNull { it.id == selectedSceneId } ?: return null
+                return SceneBindingKey.revisions(scene, read.diary.sourceEntries.singleOrNull { it.id == scene.entryId }).first
+            }
+            if (adoptedRead != null && event(adoptedRead) != event(view)) invalidateSceneReturn()
+        }
+        adoptedRead = view
+    }
+}
+
+/** Explicit scene-neighborhood action, resolved from this exact adopted source snapshot. */
+internal fun WalkRouteExplorerState.selectSceneNeighborhood(view: WalkDiaryReadView, scene: DiaryScene,
+    beforeMillis: Long = 30_000, afterMillis: Long = 30_000): Boolean {
+    if (adoptedRead !== view || view.scenesLoading || !view.acceptsScene(scene) || beforeMillis < 0 || afterMillis < 0) return false
+    val timeline = view.route.review.timeline ?: return false
+    val at = view.focusFor(scene)?.let(timeline::scenePosition) ?: return false
+    val duration = timeline.durationMillis ?: return false
+    val from = at - minOf(beforeMillis, at)
+    val until = at + minOf(afterMillis, duration - at)
+    if (until <= from) return false
+    selectTimeRange(from, until)
+    return true
 }

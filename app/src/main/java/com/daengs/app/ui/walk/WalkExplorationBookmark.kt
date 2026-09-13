@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /** No path arrays or display vertex indices. The current read supplies all geometry again. */
 internal object WalkExplorationBookmark {
-    private const val VERSION = 1
+    private const val VERSION = 2
     private fun integer(o: JSONObject, name: String): Long {
         val value = o.get(name)
         require(value is Int || value is Long)
@@ -13,6 +13,13 @@ internal object WalkExplorationBookmark {
     }
     private fun time(a: MeasurementTimeAddress) = JSONObject().put("epoch", a.sourceEpoch).put("clock", a.clockEpoch).put("nanos", a.elapsedNanos)
     private fun time(o: JSONObject) = MeasurementTimeAddress(o.getString("epoch"), o.getString("clock"), integer(o, "nanos"))
+    private fun range(value: WalkRouteSelection.Slice) = JSONObject().put("from", time(value.from)).put("until", time(value.until))
+    private fun range(value: JSONObject, review: CompletedRouteReview): WalkRouteSelection.Slice {
+        val a = time(value.getJSONObject("from")); val b = time(value.getJSONObject("until"))
+        val timeline = requireNotNull(review.timeline)
+        requireNotNull(timeline.slice(requireNotNull(timeline.position(a)), requireNotNull(timeline.position(b))))
+        return WalkRouteSelection.Slice(a, b)
+    }
     private fun revisions(view: WalkDiaryReadView, scene: com.daengs.app.walk.diary.DiaryScene) =
         SceneBindingKey.revisions(scene, view.diary?.sourceEntries?.singleOrNull { it.id == scene.entryId })
     fun encode(owner: String, view: WalkDiaryReadView, state: WalkRouteExplorerState, reading: JSONObject = JSONObject()): String? {
@@ -27,11 +34,13 @@ internal object WalkExplorationBookmark {
                 if (measurement != null && focus == null) return null
                 val (event, revision) = revisions(view, scene)
                 selection.put("kind", "scene").put("id", s.id).put("event", event).put("scene", revision)
+                s.returnRange?.let { selection.put("returnRange", range(it)) }
             }
             is WalkRouteSelection.Replay -> {
                 selection.put("kind", "replay")
                 if (measurement != null) selection.put("at", time(view.route.review.timeline?.address(s.elapsedMillis) ?: return null))
                 else selection.put("elapsed", s.elapsedMillis)
+                s.range?.let { selection.put("range", range(it)) }
             }
             is WalkRouteSelection.Slice -> selection.put("kind", "slice").put("from", time(s.from)).put("until", time(s.until))
             is WalkRouteSelection.Section -> {
@@ -67,9 +76,11 @@ internal object WalkExplorationBookmark {
     fun decode(payload: String, owner: String, view: WalkDiaryReadView): Restored? = runCatching {
         require(payload.toByteArray().size <= 16_384 && !view.scenesLoading)
         val o = JSONObject(payload)
-        require(integer(o, "version") == VERSION.toLong() && o.getString("owner") == owner && owner.isNotBlank() &&
+        val version = integer(o, "version")
+        require(version in 1..VERSION.toLong() && o.getString("owner") == owner && owner.isNotBlank() &&
             o.getString("session") == view.route.detail.summary.sessionId && o.getString("identity") == view.route.explorationIdentity)
         val s = o.getJSONObject("selection"); val review = view.route.review
+        require(version >= 2 || !s.has("range") && !s.has("returnRange"))
         val reading = o.optJSONObject("reading") ?: JSONObject()
         val selection = when (s.getString("kind")) {
             "overview" -> WalkRouteSelection.Overview
@@ -78,19 +89,22 @@ internal object WalkExplorationBookmark {
                 val (event, revision) = revisions(view, scene)
                 require(event == s.getString("event"))
                 if (revision != s.getString("scene")) reading.remove("body")
-                WalkRouteSelection.Scene(scene.id)
+                val back = if (version >= 2 && s.has("returnRange")) range(s.getJSONObject("returnRange"), review) else null
+                WalkRouteSelection.Scene(scene.id, back)
             }
             "replay" -> {
                 val at = if (view.route.detail.measurement != null) review.timeline?.position(time(s.getJSONObject("at")))
                     else integer(s, "elapsed").takeIf { it in 0..(if (review.context.available)
                         requireNotNull(review.context.durationMillis) else view.route.index.durationMillis) }
-                WalkRouteSelection.Replay(requireNotNull(at))
+                val limit = if (version >= 2 && s.has("range")) range(s.getJSONObject("range"), review) else null
+                if (limit != null) {
+                    val timeline = requireNotNull(review.timeline)
+                    require(requireNotNull(at) in requireNotNull(timeline.position(limit.from))..requireNotNull(timeline.position(limit.until)))
+                }
+                WalkRouteSelection.Replay(requireNotNull(at), limit)
             }
             "slice" -> {
-                val a = time(s.getJSONObject("from")); val b = time(s.getJSONObject("until"))
-                val t = requireNotNull(review.timeline)
-                requireNotNull(t.slice(requireNotNull(t.position(a)), requireNotNull(t.position(b))))
-                WalkRouteSelection.Slice(a, b)
+                range(s, review)
             }
             "section" -> {
                 val measurement = view.route.detail.measurement

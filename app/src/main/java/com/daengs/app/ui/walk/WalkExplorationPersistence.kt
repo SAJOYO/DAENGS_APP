@@ -10,14 +10,17 @@ import kotlinx.coroutines.flow.*
 import org.json.JSONObject
 
 internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyListState) {
+    val explorer = androidx.compose.foundation.ScrollState(0)
+    var pendingExplorerOffset by mutableStateOf<Int?>(null)
     var bodyScene by mutableStateOf<String?>(null)
     var bodyIndex by mutableIntStateOf(0)
     var bodyOffset by mutableIntStateOf(0)
     var pendingList by mutableStateOf<JSONObject?>(null)
     var restoredBody by mutableStateOf<JSONObject?>(null)
     fun activity() = listOf(drawer.currentValue, drawer.targetValue, list.firstVisibleItemIndex,
-        list.firstVisibleItemScrollOffset, bodyScene, bodyIndex, bodyOffset)
+        list.firstVisibleItemScrollOffset, bodyScene, bodyIndex, bodyOffset, explorer.value, pendingExplorerOffset)
     fun snapshot(): JSONObject = JSONObject().put("drawer", drawer.currentValue.name).apply {
+        put("explorerOffset", pendingExplorerOffset ?: explorer.value)
         if (pendingList != null) put("list", pendingList) else list.layoutInfo.visibleItemsInfo.firstOrNull()?.let {
             put("list", JSONObject().put("key", it.key.toString()).put("offset", list.firstVisibleItemScrollOffset))
         }
@@ -25,6 +28,7 @@ internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyLi
         else bodyScene?.let { put("body", JSONObject().put("id", it).put("index", bodyIndex).put("offset", bodyOffset)) }
     }
     suspend fun restore(value: JSONObject) {
+        pendingExplorerOffset = value.optInt("explorerOffset", 0).coerceIn(0, 100_000)
         pendingList = value.optJSONObject("list")
         restoredBody = value.optJSONObject("body")
         val drawerValue = DiaryDrawerValue.entries.firstOrNull { it.name == value.optString("drawer") }

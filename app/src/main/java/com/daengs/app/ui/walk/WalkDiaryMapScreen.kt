@@ -109,7 +109,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     }
     val presentation = recordPresentationLayer(explorer, detail, sceneFocus)
     val highlightPaths = presentation.emphasisPaths
-    val overviewDirections = explorer.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.REPLAY)
+    val overviewDirections = explorer.mode == RouteExplorerMode.OVERVIEW || explorer.mode == RouteExplorerMode.REPLAY && explorer.timeRange == null
     val mapScene = remember(completed, markers, detail?.stayStamps, presentation) {
         diaryDisplayScene(composeMapScene(MapPurpose.WALK, MapSceneSources(completedRoute = completed, moments = markers,
             stayStamps = detail?.stayStamps.orEmpty()))).copy(
@@ -176,9 +176,10 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 },
                 explorerSelected = explorer.panelOpen,
                 onChooseExplorer = { open ->
-                    editors.cancelAdding(); explorer.overview(); explorer.choosePanel(open)
+                    editors.cancelAdding(); explorer.choosePanel(open)
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
+                    reading = readingMemory,
                     onSection = { section -> navigation.fit(section.path) },
                     onAuxiliary = { section -> navigation.fit(section.path) },
                     onContext = { selectContext(it) },

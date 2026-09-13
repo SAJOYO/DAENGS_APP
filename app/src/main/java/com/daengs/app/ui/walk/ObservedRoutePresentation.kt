@@ -29,10 +29,10 @@ internal fun recordPresentationLayer(state: WalkRouteExplorerState, detail: Walk
     focus: SceneRouteFocus?): SessionRouteExplorerLayerState {
     val review = state.review?.takeIf { it.detail === detail }
         ?: return SessionRouteExplorerLayerState(useOverviewDirections = false)
-    val overview = state.mode in setOf(RouteExplorerMode.OVERVIEW, RouteExplorerMode.REPLAY)
+    val overview = state.mode == RouteExplorerMode.OVERVIEW || state.mode == RouteExplorerMode.REPLAY && state.timeRange == null
     val parts = if (review.observed.matches(review.detail)) review.observed.sections.flatMap { section ->
         val selected = if (state.mode == RouteExplorerMode.SCENE) focus?.observedParts?.filter { it.id == section.id }.orEmpty()
-            else if (state.mode == RouteExplorerMode.SLICE) state.selectedSlice?.observed?.filter { it.id == section.id }.orEmpty()
+            else if (state.timeRange != null) state.selectedSlice?.observed?.filter { it.id == section.id }.orEmpty()
             else listOfNotNull(state.selectedAuxiliary?.takeIf { it.id == section.id })
         listOf(section.toRenderPart(false)) + selected.map { it.toRenderPart(true) }
     } else emptyList()
