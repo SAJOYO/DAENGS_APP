@@ -105,7 +105,13 @@ class MeasurementReviewActivity : ComponentActivity() {
             check(http.requests.count { "/chunks/" in it } == wire.getJSONArray("pages").length())
         }
         val local = readCompletedRoute(base.input.session, base.input.fixes, base.input.epochs)
-        val board = JSONObject(LocalDiaryBoard.build(local.summary, local.observations, emptyList(), emptyList()))
+        // A boundary card may have no source time binding. Use an actual recorded fix for range navigation.
+        val fix = base.input.fixes.sortedBy { it.clientSeq }[1]
+        val entry = WalkEntry("$id-range-note", id, WalkMomentType.NOTE, fix.atMillis,
+            com.daengs.app.location.GeoPoint(fix.lat, fix.lng), fix.atMillis, fix.accuracyM, note = "구간 안에서 남긴 검증 메모예요.")
+        dao.insertEntry(WalkEntryRow(entry.id, id, entry.toJson().toString(), 1, "range-review", false))
+        val board = JSONObject(LocalDiaryBoard.build(local.summary, local.observations, listOf(entry), emptyList()))
+        WalkMotionStore.objects(board.getJSONArray("scenes")).single { it.optString("entry") == entry.id }.put("title", RANGE_TITLE)
         board.getJSONArray("scenes").getJSONObject(0).put("title", TITLE)
             .put("body", (1..100).joinToString("\n\n") { "검증 문단 $it. 함께 걷다가 쉬었던 순간을 다시 읽어요." })
         dao.insertDiaryPublication(WalkDiaryPublicationRow(id, 0, 0, board.toString(), board.toString(), 1))
@@ -124,5 +130,6 @@ class MeasurementReviewActivity : ComponentActivity() {
         const val REMOTE = "33333333-3333-3333-3333-333333333333"
         const val DB = "measurement-device.db"
         const val TITLE = "측정 동선 실기기 검증"
+        const val RANGE_TITLE = "구간에서 읽을 메모"
     }
 }

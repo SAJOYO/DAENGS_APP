@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Run the opt-in synthetic measurement APK in four separate Android processes."""
+"""Run the opt-in synthetic measurement APK in separate Android processes."""
 import argparse
 from pathlib import Path
 import re
@@ -14,11 +14,14 @@ def main():
     parser.add_argument("--adb", required=True)
     parser.add_argument("--serial", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--range-context", action="store_true", help="Verify range/scene return and bounded playback across three app processes")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     adb = [args.adb, "-s", args.serial]
     package = "com.daengs.app.locationreview"
-    for phase in ["prepareScene", "verifySceneAndPrepareRange", "verifyRangeAndPrepareReplay", "verifyPausedReplay"]:
+    phases = (["prepareRangeScene", "verifyRangeSceneAndPlaybackEnd", "verifyBoundedReplayReopened"]
+              if args.range_context else ["prepareScene", "verifySceneAndPrepareRange", "verifyRangeAndPrepareReplay", "verifyPausedReplay"])
+    for phase in phases:
         subprocess.run(adb + ["shell", "am", "force-stop", package], check=True, timeout=20)
         result = subprocess.run(adb + ["shell", "am", "instrument", "-w", "-r", "-e", "class",
             "com.daengs.app.ui.walk.MeasurementDeviceTest#" + phase,
