@@ -14,6 +14,7 @@ import com.daengs.app.map.layout.*
 import com.daengs.app.map.shell.*
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.moments.MomentMarkerState
+import com.daengs.app.map.layers.moments.momentGroupPriority
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.WalkTraceShadow
 import com.naver.maps.geometry.LatLng
@@ -33,7 +34,7 @@ internal fun NaverGroupedMomentLayer(map: NaverMap?, moments: List<MomentMarkerS
     val report by rememberUpdatedState(onVisibility)
     val reportBounds by rememberUpdatedState(onBounds)
     val diagnostics = LocalWalkMapDiagnostics.current
-    var settled by remember(map) { mutableStateOf(false) }
+    var settled by remember(map) { mutableStateOf(map?.isCameraIdlePending == false) }
     DisposableEffect(map, moments, size, density, order, diagnostics, topInset, bottomInset, query, fixedMarkers) {
         val overlays = mutableListOf<Overlay>()
         // Bounded cache survives camera gestures, but never retains previous query result sets.
@@ -61,11 +62,14 @@ internal fun NaverGroupedMomentLayer(map: NaverMap?, moments: List<MomentMarkerS
             val projected = moments.map(::project).filter { it.x in -100.0..(size.width / density + 100.0) && it.y in -100.0..(size.height / density + 100.0) }
             val results = clusterMapMarkers(projected.filter { source.getValue(it.id).recordPin?.background == false || source.getValue(it.id).diaryPin != null })
             val background = clusterMapMarkers(projected.filter { source.getValue(it.id).recordPin?.background == true }, 30.0)
-            data class Art(val icon: OverlayImage, val width: Int, val height: Int, val selected: Boolean, val alpha: Float)
+            data class Art(val icon: OverlayImage, val width: Int, val height: Int, val priority: Int, val alpha: Float) {
+                val selected get() = priority > 0
+            }
             val art = results.map { group ->
                 val members = group.points.map { source.getValue(it.id) }
                 val chosen = members.firstOrNull { it.selected } ?: members.minBy { it.diaryPin?.ordinal ?: Int.MAX_VALUE }
-                val selected = members.any { it.selected || it.diaryPin?.inspected == true }
+                val priority = momentGroupPriority(members)
+                val selected = priority > 0
                 val count = if (diary) members.size else members.sumOf { it.recordPin!!.count }
                 val behaviors = members.flatMap { it.behaviors }.toSet()
                 val key = "${chosen.diaryPin?.ordinal}:${behaviors.sortedBy { it.ordinal }}:$count:$selected"
@@ -73,12 +77,12 @@ internal fun NaverGroupedMomentLayer(map: NaverMap?, moments: List<MomentMarkerS
                     else actionMarkerBitmap(context, behaviors, selected, count.takeIf { it > 1 }?.toString(), density, recordFocusRing = true)
                 val cached = icons[key]
                 val icon = icons.getOrPut(key) { OverlayImage.fromBitmap(bitmap) }
-                Art(icon, bitmap.width, bitmap.height, selected, if (diary && members.all { it.diaryPin!!.dimmed }) .42f else 1f)
+                Art(icon, bitmap.width, bitmap.height, priority, if (diary && members.all { it.diaryPin!!.dimmed }) .42f else 1f)
                     .also { if (cached != null) bitmap.recycle() }
             }
             val placements = placeMapMarkers(results.mapIndexed { i, group ->
                 MarkerGlyph(group, MarkerFootprint(art[i].width/density.toDouble(), art[i].height/density.toDouble(), .5, if (diary) 1.0 else .5),
-                    if (art[i].selected) 1 else 0)
+                    art[i].priority)
             }, viewport, exclusions)
             val visiblePlacements = placements.filter { it.bounds.intersects(viewport) && covers.none { cover -> cover.contains(it.bounds) } }
             reportBounds(visiblePlacements.map { it.bounds })
@@ -128,7 +132,7 @@ internal fun NaverGroupedMomentLayer(map: NaverMap?, moments: List<MomentMarkerS
                 }
                 overlays += Marker(coordinate(placement), art[index].icon).apply {
                     width = art[index].width; height = art[index].height; alpha = art[index].alpha
-                    anchor = PointF(.5f,if (diary) 1f else .5f); globalZIndex = order.markers; zIndex = if (selected) 140 else 120
+                    anchor = PointF(.5f,if (diary) 1f else .5f); globalZIndex = order.markers; zIndex = 120 + art[index].priority * 10
                     isHideCollidedMarkers = false
                     setOnClickListener { select(members.map { it.id }); true }
                     this.map = map
@@ -140,8 +144,9 @@ internal fun NaverGroupedMomentLayer(map: NaverMap?, moments: List<MomentMarkerS
         val idle = NaverMap.OnCameraIdleListener { settled = true; redraw() }
         val moving = NaverMap.OnCameraChangeListener { _, _ -> settled = false; query?.let { report(MapVisibilityResult(it, null)) } }
         // Native markers move with the map; regroup only at rest, avoiding flicker during gestures.
-        if (moments.isNotEmpty()) map?.addOnCameraIdleListener(idle)
-        if (query != null) map?.addOnCameraChangeListener(moving)
+        // Scene data and visibility queries can arrive after the first camera idle event.
+        map?.addOnCameraIdleListener(idle)
+        map?.addOnCameraChangeListener(moving)
         redraw()
         onDispose { map?.removeOnCameraIdleListener(idle); map?.removeOnCameraChangeListener(moving); clear(); icons.clear() }
     }

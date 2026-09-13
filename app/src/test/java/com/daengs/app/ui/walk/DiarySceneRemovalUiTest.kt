@@ -12,6 +12,7 @@ import com.daengs.app.walk.diary.DiaryScene
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.json.JSONObject
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -24,6 +25,29 @@ class DiarySceneRemovalUiTest {
     @get:Rule val compose = createComposeRule()
     private val first = DiaryScene("s/first", "s", 0, "함께 쉬어 간 길", "잠깐 쉬었어요.", null, "")
     private val second = first.copy(id = "s/second", title = "집으로 가는 길")
+
+    @Test fun `returning from a restored group restores the independent full list position`() {
+        val scenes = (0..19).map { first.copy(id = "s/$it", title = "장면 제목 $it") }
+        lateinit var memory: DiaryReadingMemory
+        compose.setContent { DaengsTheme {
+            memory = rememberDiaryReadingMemory()
+            remember(memory) {
+                memory.inspect(listOf("s/1", "s/2"))
+                memory.pendingList = JSONObject().put("key", "scene:s/10").put("offset", 12)
+            }
+            WalkDiaryMapContent(scenes, null, false, null, {}, {}, {}, {}, {}, {},
+                readingMemory = memory,
+                sceneGroup = memory.groupIds.takeIf { it.isNotEmpty() }?.let { ids -> scenes.filter { it.id in ids } },
+                onClearGroup = { memory.inspect(emptyList()) }, explorerPanel = {}, map = {})
+        } }
+        compose.runOnIdle { assertNotNull(memory.pendingList); assertEquals(0, memory.list.firstVisibleItemIndex) }
+        compose.onNodeWithText("전체 장면").performClick()
+        compose.runOnIdle {
+            assertNull(memory.pendingList)
+            assertEquals(10, memory.list.firstVisibleItemIndex)
+            assertEquals(12, memory.list.firstVisibleItemScrollOffset)
+        }
+    }
 
     @Test fun `list removal targets its row without selecting it or moving the drawer`() {
         var requested: DiaryScene? = null

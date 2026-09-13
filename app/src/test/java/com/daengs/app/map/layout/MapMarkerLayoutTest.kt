@@ -2,8 +2,24 @@ package com.daengs.app.map.layout
 
 import org.junit.Assert.*
 import org.junit.Test
+import com.daengs.app.location.GeoPoint
+import com.daengs.app.map.layers.moments.*
 
 class MapMarkerLayoutTest {
+    @Test fun `focused scene wins placement over inspected siblings after a group splits`() {
+        val sibling = MomentMarkerState("sibling", GeoPoint(37.5,127.0), "1",
+            diaryPin = DiaryPinAppearance(1, inspected = true))
+        val focused = sibling.copy(id = "focused", selected = true, diaryPin = DiaryPinAppearance(2, inspected = true))
+        val siblingPriority = momentGroupPriority(listOf(sibling))
+        val focusedPriority = momentGroupPriority(listOf(focused))
+        assertTrue(focusedPriority > siblingPriority)
+        assertTrue(siblingPriority > momentGroupPriority(listOf(sibling.copy(diaryPin = DiaryPinAppearance(1)))))
+        val input = listOf(glyph("sibling",100.0,100.0,72.0,46.0,siblingPriority),
+            glyph("focused",145.0,100.0,72.0,46.0,focusedPriority))
+        val result = placeMapMarkers(input)
+        assertEquals(input[1].group.anchor, result[1].point)
+        assertFalse(result[0].bounds.intersects(result[1].bounds, 4.0))
+    }
     private fun glyph(id: String, x: Double, y: Double, width: Double, height: Double, priority: Int = 0): MarkerGlyph {
         val p = MarkerPoint(id,x,y)
         return MarkerGlyph(MarkerGroup(listOf(p),p),MarkerFootprint(width,height),priority)

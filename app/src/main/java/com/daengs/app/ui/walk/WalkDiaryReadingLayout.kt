@@ -91,7 +91,7 @@ internal fun WalkDiaryMapContent(
     val displayedScenes = sceneGroup ?: scenes
     val ordinals = remember(scenes) { scenes.withIndex().associate { it.value.id to it.index+1 } }
     val gapSlots = remember(scenes, gapContexts, sceneGroup) { if (sceneGroup != null) emptyMap() else diaryGapSlots(scenes, gapContexts) }
-    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected) {
+    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected, sceneGroup == null) {
         val saved = readingMemory?.pendingList
         if (!loading && selected == null && !explorerSelected && saved != null && sceneGroup == null) {
             val keys = buildList { scenes.forEachIndexed { index, scene ->
