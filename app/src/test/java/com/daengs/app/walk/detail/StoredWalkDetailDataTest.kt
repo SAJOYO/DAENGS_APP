@@ -247,6 +247,76 @@ class StoredWalkDetailDataTest {
         assertTrue(calls.isEmpty())
     }
 
+    @Test fun `scene removal persists across readers without changing latest text route entry or photo`() = runBlocking {
+        entries.save(note)
+        val capture = WalkPhotoCapture("s", "owner", 500,
+            LocationSample(GeoPoint(37.5, 127.0), 400, 1_000_000_000, 5f))
+        val photo = photos.save(capture, temporary.newFile().apply { writeBytes(byteArrayOf(1, 2, 3)) })
+        val data = data()
+        val detail = requireNotNull(data.load())
+        val before = data.observeDiary(detail).first()!!
+        val scene = before.scenes.first { it.entryId == note.id }.source!!
+        val other = before.scenes.first { it.id.endsWith("/start") }.source!!
+        data.saveScene(scene, "최신 제목", "편집한 본문")
+        data.saveScene(other, "수정한 시작", "다른 장면")
+        val edits = StoryboardDraft.parse(dao.storyboard("s")!!.payload).edits.associateBy { it.id }
+        val entryBefore = dao.entry(note.id)
+        data.deleteScene(scene) // Stale text from the previously opened scene must not overwrite the draft.
+        data.deleteScene(scene) // Repeated removal is idempotent.
+        val after = StoryboardDraft.parse(dao.storyboard("s")!!.payload).edits.associateBy { it.id }
+        assertEquals(edits[scene.id]!!.copy(hidden = true), after[scene.id])
+        assertEquals(edits[other.id], after[other.id])
+        val reentered = data()
+        val reread = reentered.observeDiary(reentered.load()!!).first()!!
+        assertEquals(before.scenes.size - 1, reread.scenes.size)
+        assertFalse(reread.scenes.any { it.entryId == note.id })
+        assertEquals(entryBefore, dao.entry(note.id))
+        val afterDetail = reentered.load()!!
+        assertEquals(detail.summary, afterDetail.summary)
+        assertEquals(detail.route, afterDetail.route)
+        assertEquals(detail.observations, afterDetail.observations)
+        assertNotNull(dao.photo(photo.id)); assertTrue(photo.file.exists())
+        val photoScene = reread.scenes.first { it.photo?.id == photo.id }.source!!
+        reentered.deleteScene(photoScene)
+        assertFalse(reentered.observeDiary(detail).first()!!.scenes.any { it.photo?.id == photo.id })
+        assertNotNull(dao.photo(photo.id)); assertTrue(photo.file.exists())
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test fun `scene removal rejects stale login another owner unfinished or missing session`() = runBlocking {
+        val scene = StoryboardScene("start", 0, "시작", "", "", "0")
+        val stale = data()
+        account = account.copy(generation = 2)
+        assertTrue(runCatching { stale.deleteScene(scene) }.exceptionOrNull() is CancellationException)
+        assertTrue(runCatching { dao.deleteDiaryScene("s", "other", scene) }.isFailure)
+        assertTrue(runCatching { dao.deleteDiaryScene("s", "", scene) }.isFailure)
+        assertNull(dao.storyboard("s"))
+        dao.deleteSession("s")
+        assertTrue(runCatching { data().deleteScene(scene) }.isFailure)
+        dao.insertSession(WalkSessionRow("s", 0, "owner", null))
+        assertTrue(runCatching { data().deleteScene(scene) }.isFailure)
+        assertNull(dao.storyboard("s"))
+    }
+
+    @Test fun `scene removal waits for publication and persists when a published diary refreshes`() = runBlocking {
+        dao.deleteSession("s")
+        dao.insertSession(WalkSessionRow("s", 0, "owner", null))
+        dao.closeAndPrepareDiary("s", 1000)
+        entries.save(note)
+        val publication = requireNotNull(dao.prepareLocalDiary("s", "owner"))
+        val scene = GeoStoryboardBundle.parse(publication.baseBundle!!).scenes.first()
+        assertTrue(runCatching { data().deleteScene(scene) }.isFailure)
+        assertNull(dao.storyboard("s"))
+        dao.publishDiaryBase("s", publication.deadlineAtMillis)
+        val data = data()
+        val detail = data.load()!!
+        val before = data.observeDiary(detail).first()!!
+        val visible = before.scenes.first().source!!
+        data.deleteScene(visible)
+        assertEquals(before.scenes.size - 1, data.observeDiary(detail).first()!!.scenes.size)
+        assertTrue(StoryboardDraft.parse(dao.storyboard("s")!!.payload).edits.single().hidden)
+    }
+
     @Test fun `reads share the saved session and disappear after deletion or a new login`() = runBlocking {
         entries.save(note)
         val data = data()

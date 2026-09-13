@@ -138,14 +138,26 @@ internal class WalkDetailState(
         }
     }
 
-    fun saveScene(scene: DiaryScene, title: String, body: String, onSaved: () -> Unit) {
+    fun saveScene(scene: DiaryScene, title: String, body: String, onSaved: () -> Unit) =
+        changeScene(scene, onSaved) { actions.saveScene(it, title, body) }
+
+    fun deleteScene(scene: DiaryScene, onDeleted: () -> Unit) {
+        if (!current() || savingScene) return
+        if (scene.sessionId != readView?.route?.detail?.summary?.sessionId) {
+            sceneError = "장면을 다시 열어 주세요."; return
+        }
+        changeScene(scene, onDeleted) { actions.deleteScene(it) }
+    }
+
+    private fun changeScene(scene: DiaryScene, onSaved: () -> Unit,
+        change: suspend (com.daengs.app.walk.diary.StoryboardScene) -> Unit) {
         if (savingScene || !current()) return
         val original = scene.source
         if (original == null) { sceneError = "장면을 다시 열어 주세요."; return }
         savingScene = true; sceneError = null
         val epoch = operationEpoch
         sceneJob = scope.launch {
-            try { actions.saveScene(original, title, body); checkOperation(epoch); onSaved() }
+            try { change(original); checkOperation(epoch); onSaved() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (current() && epoch == operationEpoch) sceneError = e.message ?: "저장하지 못했어요."

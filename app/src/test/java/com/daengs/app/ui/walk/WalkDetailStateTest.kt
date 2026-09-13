@@ -38,6 +38,7 @@ class WalkDetailStateTest {
         var openAction: suspend () -> Unit = {}
         var entryAction: suspend () -> Unit = {}
         var sceneAction: suspend () -> Unit = {}
+        var removedScenes = 0
         var generateAction: suspend () -> Unit = {}
         override suspend fun open() { opens++; openAction() }
         override fun prepareDiary() { prepares++ }
@@ -46,6 +47,7 @@ class WalkDetailStateTest {
         override suspend fun saveScene(scene: StoryboardScene, title: String, body: String) { scenes++; sceneAction() }
         override suspend fun generateDiary() { generations++; generateAction() }
         override suspend fun deletePhoto(id: String) = Unit
+        override suspend fun deleteScene(scene: StoryboardScene) { removedScenes++; sceneAction() }
     }
     private fun TestScope.state(source: Source = Source(), actions: Actions = Actions(),
         scope: CoroutineScope = backgroundScope, adopt: (WalkDiaryReadView?) -> Unit = {}): WalkDetailState {
@@ -120,6 +122,43 @@ class WalkDetailStateTest {
         actions.sceneAction = {}
         state.saveScene(scene, "제목", "내용") { dismissed = true }; runCurrent()
         assertTrue(dismissed); assertNull(state.sceneError)
+    }
+
+    @Test fun `scene removal shares edit gate retains failure and rejects wrong session or missing source`() = runTest {
+        val actions = Actions(); val result = CompletableDeferred<Unit>()
+        actions.sceneAction = { result.await() }
+        val state = state(actions = actions)
+        var removed = 0
+        state.deleteScene(scene.copy(sessionId = "other")) { removed++ }
+        state.deleteScene(scene.copy(source = null)) { removed++ }
+        assertEquals(0, actions.removedScenes); assertNotNull(state.sceneError)
+        state.deleteScene(scene) { removed++ }
+        state.deleteScene(scene) { removed++ }
+        state.saveScene(scene, "제목", "내용") { removed++ }
+        runCurrent()
+        assertEquals(1, actions.removedScenes); assertEquals(0, actions.scenes); assertTrue(state.savingScene)
+        result.completeExceptionally(IllegalStateException("삭제 실패")); runCurrent()
+        assertEquals("삭제 실패", state.sceneError); assertFalse(state.savingScene); assertEquals(0, removed)
+        actions.sceneAction = {}
+        state.deleteScene(scene) { removed++ }; runCurrent()
+        assertEquals(1, removed); assertNull(state.sceneError)
+    }
+
+    @Test fun `scene removal never completes in a replaced account or deleted walk`() = runTest {
+        val source = Source(); val actions = Actions(); val gate = CompletableDeferred<Unit>()
+        actions.sceneAction = { gate.await() }
+        val state = state(source, actions)
+        state.deleteScene(scene) { fail("old account") }; runCurrent()
+        source.current = false; gate.complete(Unit); runCurrent()
+        state.deleteScene(scene) { fail("old account") }; runCurrent()
+        assertEquals(1, actions.removedScenes); assertNull(state.sceneError)
+        source.current = true
+        actions.sceneAction = { awaitCancellation() }
+        state.deleteScene(scene) { fail("deleted walk") }; runCurrent()
+        source.loadDetail = { null }; source.revision.value++; runCurrent()
+        assertFalse(state.savingScene); assertNull(state.sceneError)
+        state.deleteScene(scene) { fail("missing walk") }; runCurrent()
+        assertEquals(2, actions.removedScenes)
     }
 
     @Test fun `generation blocks repeated calls resets failure on retry and published diary only refreshes`() = runTest {

@@ -32,6 +32,12 @@ data class SceneEdit(val id: String, val title: String, val body: String, val hi
 }
 
 data class StoryboardDraft(val edits: List<SceneEdit> = emptyList(), val reviewed: String? = null) {
+    /** Remove only the diary scene, preserving the latest text and its review provenance. */
+    fun hide(scene: StoryboardScene): StoryboardDraft {
+        val existing = edits.firstOrNull { it.id == scene.id } ?: return edit(scene, hidden = true)
+        return copy(edits = edits.map { if (it.id == scene.id) existing.copy(hidden = true) else it })
+    }
+
     fun edit(scene: StoryboardScene, title: String = scene.title, body: String = scene.body,
              hidden: Boolean = scene.hidden, acknowledge: Boolean = false,
              bodyScope: SceneBodyScope = scene.bodyScope) = copy(

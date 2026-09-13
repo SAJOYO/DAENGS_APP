@@ -480,6 +480,18 @@ interface WalkDao {
                 bodyScope = com.daengs.app.walk.diary.SceneBodyScope.SCENE).toJson()))
     }
 
+    /** Hiding a scene does not delete its source entry, photo or recorded route. */
+    @androidx.room.Transaction
+    suspend fun deleteDiaryScene(sessionId: String, ownerId: String,
+        scene: com.daengs.app.walk.diary.StoryboardScene) {
+        check(ownerId.isNotBlank() && session(sessionId)?.let {
+            it.ownerId == ownerId && it.endedAtMillis != null
+        } == true) { "현재 계정의 완료된 산책이 아닙니다." }
+        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
+        saveStoryboard(WalkStoryboardRow(sessionId, draft.hide(scene).toJson()))
+    }
+
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")
     fun observeEntries(sessionId: String): kotlinx.coroutines.flow.Flow<List<WalkEntryRow>>
 

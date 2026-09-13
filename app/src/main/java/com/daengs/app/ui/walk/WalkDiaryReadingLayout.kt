@@ -76,6 +76,7 @@ internal fun WalkDiaryMapContent(
     onWalkingOverview: () -> Unit = {},
     offscreenScenes: List<DiaryScene> = emptyList(),
     readingMemory: DiaryReadingMemory? = null,
+    onDelete: ((DiaryScene) -> Unit)? = null,
 ) {
     val compactDrawer = explorerPanel != null
     val sheet = readingMemory?.drawer ?: rememberDiaryDrawerState(
@@ -307,6 +308,12 @@ internal fun WalkDiaryMapContent(
                                             Icon(painterResource(R.drawable.ic_diary_edit), "장면 ${index + 1} 수정",
                                                 Modifier.size(20.dp), tint = TextMuted)
                                         }
+                                        onDelete?.let { remove ->
+                                            IconButton(onClick = { remove(scene) }) {
+                                                Icon(painterResource(R.drawable.ic_diary_delete), "장면 ${index + 1} 삭제",
+                                                    Modifier.size(20.dp), tint = TextMuted)
+                                            }
+                                        }
                                     }
                                     }
                                 }
@@ -338,6 +345,12 @@ internal fun WalkDiaryMapContent(
                                             }
                                             IconButton(onClick = { onEdit(selected) }) {
                                                 Icon(painterResource(R.drawable.ic_diary_edit), "장면 수정", Modifier.size(22.dp))
+                                            }
+                                            onDelete?.let { remove ->
+                                                IconButton(onClick = { remove(selected) }) {
+                                                    Icon(painterResource(R.drawable.ic_diary_delete), "장면 삭제",
+                                                        Modifier.size(22.dp), tint = TextMuted)
+                                                }
                                             }
                                         }
                                         Spacer(Modifier.height(16.dp))
@@ -384,6 +397,7 @@ private fun DiaryReadingPreview() {
     val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다. 두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", null, "",
         content = DiarySceneContent("두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", "note", locationLabel = "기록한 위치"))
     DaengsTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
+        onDelete = {},
         selectedRouteNotice = "이 장면에는 확인된 위치가 없어요.",
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",
         summaryContent = { WalkSessionSummary(com.daengs.app.walk.WalkSummary("s", emptyList(), 0, 1_800_000,
@@ -406,6 +420,7 @@ private fun DiaryPreparingMapPreview() {
 private fun DiaryCompactDrawerPreview() {
     val scene = DiaryScene("s/n", "s", 0, "잠깐 쉬었던 벤치", "함께 쉬었다가 다시 걸었다.", null, "")
     DaengsTheme { WalkDiaryMapContent(listOf(scene), null, false, null, {}, {}, {}, {}, {}, {},
+        onDelete = {},
         explorerPanel = { Text("동선을 골라 살펴보세요.") },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
 }
