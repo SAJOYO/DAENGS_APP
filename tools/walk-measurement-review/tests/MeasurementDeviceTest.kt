@@ -310,6 +310,14 @@ class MeasurementDeviceTest {
         }
         assertTrue(rangeThumbs().fetchSemanticsNodes().maxOf { it.config[SemanticsProperties.ProgressBarRangeInfo].current } < 17_000f)
         rangeThumbs()[1].performSemanticsAction(SemanticsActions.SetProgress) { it(17_000f) }
+        compose.onNodeWithTag("explorer-range-slider").performTouchInput {
+            swipe(androidx.compose.ui.geometry.Offset(width * .02f, centerY),
+                androidx.compose.ui.geometry.Offset(width * .15f, centerY), 500)
+        }
+        val movedStart = rangeThumbs().fetchSemanticsNodes().minOf { it.config[SemanticsProperties.ProgressBarRangeInfo].current }
+        assertTrue("The start handle must also respond to dragging", movedStart in 1f..16_999f)
+        rangeThumbs()[0].performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        assertRange(0)
         compose.onNodeWithText(MeasurementReviewActivity.RANGE_TITLE).assertDoesNotExist()
         compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
         val offset = explorerScroll()
@@ -333,8 +341,12 @@ class MeasurementDeviceTest {
         compose.onNodeWithTag("explorer-replay-slider").performTouchInput {
             click(androidx.compose.ui.geometry.Offset(width * .4f, centerY))
         }
-        val cursor = elapsed(awaitSaved("replay").getJSONObject("selection"))
-        assertTrue(cursor in 1..22_999)
+        // Confirm the touch reached the requested position, not an earlier paused checkpoint.
+        compose.waitUntil(10_000) {
+            rangeThumbs().fetchSemanticsNodes().single().config[SemanticsProperties.ProgressBarRangeInfo].current in 8_000f..10_000f
+        }
+        val cursor = rangeThumbs().fetchSemanticsNodes().single().config[SemanticsProperties.ProgressBarRangeInfo].current.toLong()
+        compose.waitUntil(10_000) { payload()?.optJSONObject("selection")?.let(::elapsed) == cursor }
         capture("explorer-cursor")
         compose.onNodeWithText("구간 수정").performClick()
         compose.onNodeWithTag("explorer-replay-slider").assertDoesNotExist()

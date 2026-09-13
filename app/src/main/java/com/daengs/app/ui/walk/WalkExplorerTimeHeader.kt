@@ -1,71 +1,90 @@
 package com.daengs.app.ui.walk
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.theme.*
 
+/** A quiet mode switch, one primary action, then elapsed time above the full-width timeline. */
 @Composable
 internal fun WalkExplorerTimeHeader(state: WalkRouteExplorerState, onOverview: () -> Unit) {
     val measured = state.review?.timeline?.durationMillis != null && state.duration > 0
     val replay = state.mode == RouteExplorerMode.REPLAY
     val slice = state.selectedSlice
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag("explorer-time-header")) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = DiaryReadingChrome.Gutter).testTag("explorer-time-header")) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (replay) {
                 TextButton(onClick = { if (!state.returnToRange()) state.overview() }, modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text(if (slice != null) "구간 수정" else "재생 닫기", fontSize = 13.sp)
+                    contentPadding = PaddingValues(horizontal = 0.dp)) {
+                    Box(Modifier.fillMaxWidth()) {
+                        Text(if (slice != null) "구간 수정" else "재생 닫기", fontSize = 12.sp, color = TextMuted)
+                    }
                 }
-                RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed)
+                RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed, compact = true)
             } else if (measured) {
-                TextButton(onClick = { state.overview(); onOverview() },
-                    modifier = Modifier.weight(1f).semantics { selected = state.mode == RouteExplorerMode.OVERVIEW },
-                    colors = if (state.mode == RouteExplorerMode.OVERVIEW) ButtonDefaults.textButtonColors(containerColor = PinkFaint) else ButtonDefaults.textButtonColors(),
-                    contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text("전체 산책", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (slice == null) TextDark else TextMuted)
-                }
-                TextButton(onClick = { if (slice == null) state.selectTimeRange(0, minOf(60_000, state.duration)) },
-                    modifier = Modifier.weight(1f).semantics { selected = slice != null },
-                    colors = if (slice != null) ButtonDefaults.textButtonColors(containerColor = PinkFaint) else ButtonDefaults.textButtonColors(),
-                    contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text("구간 고르기", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (slice != null) TextDark else TextMuted)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().height(36.dp).background(PinkFaint, RoundedCornerShape(10.dp)))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp).selectableGroup()) {
+                        ExplorerMode("전체 산책", state.mode == RouteExplorerMode.OVERVIEW, Modifier.weight(1f)) {
+                            state.overview(); onOverview()
+                        }
+                        ExplorerMode("구간 고르기", slice != null, Modifier.weight(1f)) {
+                            if (slice == null) state.selectTimeRange(0, minOf(60_000, state.duration))
+                        }
+                    }
                 }
             } else {
                 TextButton(onClick = { state.overview(); onOverview() }, modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp)) { Text("전체 동선", fontSize = 13.sp) }
-                RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed)
+                    contentPadding = PaddingValues(horizontal = 0.dp)) { Text("전체 동선", fontSize = 12.sp, color = TextDark) }
+                RoutePlaybackSpeedMenu(state.playbackSpeed, state::choosePlaybackSpeed, compact = true)
             }
             Button(onClick = state::togglePlayback, enabled = state.canPlayback,
-                modifier = if (measured && !replay) Modifier.weight(1f) else Modifier,
-                contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text(if (state.playing) "일시정지" else "동선 재생", fontSize = 13.sp, maxLines = 1)
+                shape = RoundedCornerShape(10.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(if (state.playing) "일시정지" else "동선 재생", fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1)
             }
         }
         if (replay) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.widthIn(min = 72.dp).padding(end = 8.dp)) {
-                    Text(formatWalkDuration(state.elapsed), fontSize = 13.sp, color = TextDark)
-                    Text("/ " + formatWalkDuration(slice?.until ?: state.duration), fontSize = 11.sp, color = TextMuted)
-                }
-                Slider(value = state.elapsed.toFloat(), onValueChange = { state.seek(it.toLong()) },
-                    valueRange = (slice?.from ?: 0).toFloat()..(slice?.until ?: state.duration.coerceAtLeast(1)).toFloat(),
-                    modifier = Modifier.weight(1f).testTag("explorer-replay-slider").semantics { contentDescription = "재생 위치" })
-            }
+            ExplorerTimeLabel(state.elapsed, slice?.until ?: state.duration, replay = true)
+            ExplorerReplaySlider(state)
         } else if (measured && slice != null) MeasurementTimeControls(state)
-        else if (measured) Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("기록 중 " + formatWalkDuration(state.duration), Modifier.weight(1f), fontSize = 12.sp, color = TextMuted)
-            for (minutes in listOf(1, 3, 5)) TextButton(onClick = { state.selectTimeRange(0, minOf(minutes * 60_000L, state.duration)) },
-                contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.width(48.dp)) { Text("${minutes}분", fontSize = 12.sp) }
+        else if (measured) {
+            ExplorerTimeLabel(0, state.duration)
+            Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().height(4.dp).background(DaengPink, RoundedCornerShape(2.dp)))
+            }
         }
     }
+}
+
+@Composable
+private fun ExplorerMode(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(modifier.heightIn(min = 48.dp).selectable(selected, role = Role.RadioButton, onClick = onClick),
+        contentAlignment = Alignment.Center) {
+        if (selected) Box(Modifier.fillMaxWidth().height(30.dp).background(CardWhite, RoundedCornerShape(7.dp)))
+        Text(label, Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1,
+            color = if (selected) TextDark else TextMuted, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+    }
+}
+
+@Preview(showBackground = true, widthDp = 390)
+@Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
+@Composable
+private fun ExplorerTimeHeaderPreview() {
+    val scope = rememberCoroutineScope()
+    val read = remember { explorerPanelPreviewRead() }
+    val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 30_000) } }
+    DaengsTheme { WalkExplorerTimeHeader(state, {}) }
 }
