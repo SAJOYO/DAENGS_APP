@@ -277,12 +277,13 @@ fun WalkRecordsScreen(
                 } else if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
-                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen,
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
                         view = behaviorView, onView = { behaviorView = it }, state = behaviorState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
                 } else {
                     WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
+                        routeSource = source,
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
                         selectedId = selectedId, hiddenIds = hiddenIds,

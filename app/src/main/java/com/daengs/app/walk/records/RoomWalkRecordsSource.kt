@@ -57,6 +57,23 @@ class RoomWalkRecordsSource(
         }
     }
 
+    override suspend fun loadRoute(record: WalkRecord): com.daengs.app.walk.WalkSummary = withContext(Dispatchers.Default) {
+        checkOwner()
+        val summary = database.withTransaction {
+            checkOwner()
+            val dao = database.walkDao()
+            val session = checkNotNull(dao.session(record.summary.sessionId)) { "산책 기록이 없어졌어요." }
+            check(session.ownerId == expectedOwner && session.endedAtMillis != null) { "이 산책을 읽을 수 없어요." }
+            val dogs = dao.sessionDogs(listOf(session.id)).map { it.dogId }
+            summarize(session.toModel(dogs), dao.fixes(session.id).map(WalkFixRow::toModel),
+                maxRouteSamples = Int.MAX_VALUE, epochs = dao.recordingEpochs(session.id).map { it.toModel() })
+        }
+        currentCoroutineContext().ensureActive()
+        checkOwner()
+        check(summary.forHistoryThumbnail() == record.summary) { "산책 기록이 변경됐어요. 다시 선택해 주세요." }
+        summary
+    }
+
     private suspend fun readSnapshot(query: WalkRecordsQuery): List<RecordSnapshot> = database.withTransaction {
         checkOwner()
         val dao = database.walkDao()

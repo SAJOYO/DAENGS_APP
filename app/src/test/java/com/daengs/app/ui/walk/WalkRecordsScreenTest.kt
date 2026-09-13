@@ -448,8 +448,8 @@ class WalkRecordsScreenTest {
 
     private fun assertFixedOverlapLegend() {
         compose.onNodeWithTag("records-overlap-legend").assertIsDisplayed()
-        listOf(Triple("1", "1회", 10), Triple("2", "2회", 20), Triple("3-4", "3–4회", 25),
-            Triple("5-7", "5–7회", 30), Triple("8", "8회 이상", 35)).forEach { (tag, label, opacity) ->
+        listOf(Triple("1", "1회", 4), Triple("2", "2회", 12), Triple("3-4", "3–4회", 22),
+            Triple("5-7", "5–7회", 34), Triple("8", "8회 이상", 46)).forEach { (tag, label, opacity) ->
             compose.onNodeWithTag("records-overlap-legend-$tag").assertTextEquals(label)
                 .assertContentDescriptionEquals("$label 그림자 농도 ${opacity}퍼센트")
         }
@@ -534,6 +534,42 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-3"))
         compose.onNodeWithTag("records-map-record-record-3").assertExists()
         compose.onNodeWithTag("records-map-count").assertTextEquals("선택 산책 3회 · 겹침 표시 1회")
+    }
+
+    @Test fun `selected route loads separately and a cancelled old route cannot replace the new selection`() {
+        val samples = (1..3).map { n -> record(n).let { record ->
+            record.copy(summary = record.summary.copy(segments = listOf(listOf(
+                LocationSample(GeoPoint(37.5, 127.0), 0L),
+                LocationSample(GeoPoint(37.5001, 127.0), 2_000L)))))
+        } }
+        val pending = CompletableDeferred<WalkSummary>()
+        val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val source = object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selectWalkRecords(samples, query)
+            override suspend fun loadRoute(record: WalkRecord): WalkSummary {
+                calls += record.summary.sessionId
+                return if (record.summary.sessionId == "record-1")
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { pending.await() }
+                else record.summary
+            }
+        }
+        show(source)
+        waitText("1 페이지")
+        assertTrue(calls.isEmpty())
+        compose.onNodeWithTag("records-view-overview").performClick()
+        chooseMapRecord("record-1")
+        compose.waitUntil(10_000) { calls.contains("record-1") }
+        chooseMapRecord("record-2")
+        compose.waitUntil(10_000) { calls.contains("record-2") }
+        compose.waitForIdle()
+        val selected = compose.onNodeWithTag("records-overview-map").fetchSemanticsNode()
+            .config[SemanticsProperties.StateDescription]
+        assertEquals("강조한 산책: 기록-2", selected)
+        pending.complete(samples.first { it.summary.sessionId == "record-1" }.summary)
+        compose.waitForIdle()
+        compose.onNodeWithTag("records-overview-map").assert(SemanticsMatcher.expectValue(
+            SemanticsProperties.StateDescription, selected))
+        assertEquals(listOf("record-1", "record-2"), calls.toList())
     }
 
     private fun chooseMapRecord(id: String) {

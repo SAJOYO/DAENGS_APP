@@ -61,7 +61,7 @@ class PreparedWalkRecordsTraces internal constructor(
                 tile.copy(alpha = FloatArray(tile.alpha.size) { i ->
                     if (i % 4_096 == 0) context.ensureActive()
                     // Incomparable grids still show their support, without suggesting measured overlap.
-                    tile.alpha[i] * (opacity?.get(i) ?: WalkTraceShadow.alphaForWalkCount(1)).coerceAtMost(.35f)
+                    tile.alpha[i] * (opacity?.get(i) ?: WalkTraceShadow.alphaForWalkCount(1)).coerceAtMost(WalkTraceShadow.alphaForWalkCount(Int.MAX_VALUE))
                 }, rgb = IntArray(tile.alpha.size) { WalkTraceShadow.RGB })
             }
             if (minimumOverlapWalks == null) return@withContext visible

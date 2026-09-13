@@ -23,6 +23,7 @@ fun accountWalkRecordsSource(
         // A mismatch already present when this collector starts must also invalidate the source.
         override val changes = merge(stored.changes, sessions.accountScope.filter { it != scope }.map { Unit })
         override suspend fun select(query: WalkRecordsQuery) = stored.select(query)
+        override suspend fun loadRoute(record: WalkRecord) = stored.loadRoute(record)
     }
     return TraceLoadingWalkRecordsSource(local, ownerId,
         isCurrentAccount = { sessions.accountScope.value == scope },

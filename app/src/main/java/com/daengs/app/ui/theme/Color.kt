@@ -132,11 +132,11 @@ object WalkTraceShadow {
     fun alphaForWalkCount(count: Int): Float {
         require(count >= 0)
         return when {
-            count >= 8 -> .35f
-            count >= 5 -> .30f
-            count >= 3 -> .25f
-            count == 2 -> .20f
-            count == 1 -> .10f
+            count >= 8 -> .46f
+            count >= 5 -> .34f
+            count >= 3 -> .22f
+            count == 2 -> .12f
+            count == 1 -> .04f
             else -> 0f
         }
     }

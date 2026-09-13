@@ -351,6 +351,9 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 그림자 A안은 `WalkRecordsTracesTest`에서 1/2/3–4/5–7/8회 이상 농도, 숨김·복원,
 이웃 번짐의 허위 겹침 방지, 서로 다른 정책의 옅은 표시를 검증한다. `TraceBrushTest`는
 농도 필드의 타일 경계 연속성과 취소를, `WalkRecordsScreenTest`는 고정 농도 범례를 검증한다.
+선택 동선은 `RoomWalkRecordsSourceTest`에서 원래 시각과 썸네일 축약을 구분하고,
+`WalkRecordsScreenTest`는 이전 선택의 늦은 응답, `TraceLoadingWalkRecordsSourceTest`는
+계정 변경 뒤 원본 조회 결과 차단을 검증한다. 기존 동선 색 유지 검증은 `WalkRouteOverlayStoreTest`다.
 
 ```powershell
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -PsideBySide=true -PslimAbi=arm64-v8a --tests '*WalkRecords*Test' --tests '*TraceBrushTest' --tests '*DesignLockTest' --console=plain

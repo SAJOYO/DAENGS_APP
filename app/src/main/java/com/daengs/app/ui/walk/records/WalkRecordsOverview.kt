@@ -35,6 +35,7 @@ import com.daengs.app.ui.walk.toCompletedRouteLayerState
 import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.walk.records.*
 import com.daengs.app.walk.toSessionRoute
+import kotlinx.coroutines.ensureActive
 
 @Composable
 internal fun WalkRecordsOverview(
@@ -72,11 +73,30 @@ internal fun WalkRecordsOverview(
     onExpanded: (Boolean) -> Unit = {},
     controls: (@Composable () -> Unit)? = null,
     behaviorCount: String? = null,
+    routeSource: WalkRecordsSource? = null,
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
     val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
-    val selectedRoute = remember(highlighted) {
-        highlighted?.summary?.toSessionRoute()?.toCompletedRouteLayerState()?.let { layer ->
+    var routeRetry by remember(highlighted, routeSource) { mutableIntStateOf(0) }
+    var routeSummary by remember(highlighted, routeSource, routeRetry) {
+        mutableStateOf(highlighted?.summary.takeIf { routeSource == null })
+    }
+    var routeError by remember(highlighted, routeSource, routeRetry) { mutableStateOf<String?>(null) }
+    LaunchedEffect(highlighted, routeSource, routeRetry) {
+        val record = highlighted ?: return@LaunchedEffect
+        val source = routeSource ?: return@LaunchedEffect
+        try {
+            val loaded = source.loadRoute(record)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            check(loaded.sessionId == record.summary.sessionId) { "선택한 산책과 동선이 달라요." }
+            routeSummary = loaded
+        } catch (failure: Exception) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            routeError = "산책 동선을 불러오지 못했어요."
+        }
+    }
+    val selectedRoute = remember(routeSummary) {
+        routeSummary?.toSessionRoute()?.toCompletedRouteLayerState()?.let { layer ->
             layer.copy(start = layer.start?.copy(compact = true), end = layer.end?.copy(compact = true))
         } ?: CompletedRouteLayerState()
     }
@@ -118,6 +138,8 @@ internal fun WalkRecordsOverview(
                         onMapTap = onMapTap,
                         modifier = Modifier.fillMaxSize())
                     val message = when {
+                        routeError != null -> routeError
+                        highlighted != null && routeSummary == null -> "산책 동선을 불러오고 있어요."
                         error != null -> error
                         tiles == null -> "흔적 표시를 바꾸고 있어요."
                         traceLoading && visibleCount == 0 -> "흔적을 불러오는 동안 산책 카드를 살펴보세요."
@@ -133,7 +155,8 @@ internal fun WalkRecordsOverview(
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
-                            if (error != null) TextButton(onClick = onRetry) { Text("다시 시도") }
+                            if (routeError != null) TextButton(onClick = { routeRetry++ }) { Text("다시 시도") }
+                            else if (error != null) TextButton(onClick = onRetry) { Text("다시 시도") }
                         }
                     }
                 }

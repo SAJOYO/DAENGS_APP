@@ -47,6 +47,7 @@ internal fun WalkRecordsBehaviorExplorer(
     onView: (BehaviorRecordsView) -> Unit,
     modifier: Modifier = Modifier,
     state: WalkRecordsBehaviorState = rememberWalkRecordsBehaviorState(),
+    routeSource: WalkRecordsSource? = null,
     traceLoading: Boolean = false,
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
@@ -197,6 +198,7 @@ internal fun WalkRecordsBehaviorExplorer(
     }
     if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
         WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
+            routeSource = routeSource,
             onRetry = { if (prepared == null) retry++ else composeRetry++ },
             selectedId = selectedWalkId, hiddenIds = hidden,
             onSelect = { id ->
