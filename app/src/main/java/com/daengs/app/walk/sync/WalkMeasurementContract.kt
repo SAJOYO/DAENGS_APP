@@ -41,6 +41,7 @@ internal object WalkMeasurementContract {
         val policy = base.manifest.getJSONObject("policy")
         require(key.getString("motion_policy_version") == policy.getString("version") && key.getString("config_hash") == policy.getString("config_hash"))
         require(key.getString("clock_mapping_version") == "motion-sample-support-v1" && key.getString("engine_version") == "motion-v1-trajectory-adapter-v1")
+        require(key.getString("connectivity_policy_version") == MeasurementObservedContract.POLICY)
         val chunks = objects(s, "required_route_chunks")
         require(chunks.size <= 2000)
         var points = 0L
@@ -73,8 +74,10 @@ internal object WalkMeasurementContract {
         fun seq(ref: MotionRef) = requireNotNull(byRef[Triple(ref.sourceEpoch, ref.clockEpochId, ref.ingressSeq)]).clientSeq
         val expectedEdges = linkedMapOf<Pair<Int, Int>, Double>()
         val usable = linkedSetOf<Int>()
+        val decisionReasons = mutableMapOf<Int, Set<MotionReason>>()
         val policy = (MotionPolicies.resolveJson(input.session.id, input.session.motionPolicyJson) as MotionPolicySelection.Supported).policy
         val replay = replayRecordedMotion(policy, input.epochs, input.fixes.asSequence()) { step ->
+            step.estimate?.ref?.let { decisionReasons[seq(it)] = step.decision?.reasons.orEmpty() }
             step.estimate?.let { e -> if (e.positionQuality == PositionQuality.USABLE && e.observedElapsedNanos != null && e.reasons.none { it in badTimes })
                 usable += seq(requireNotNull(e.ref)) }
             step.decision?.let { d -> if (d.connection == Connection.CONTINUE) {
@@ -159,6 +162,14 @@ internal object WalkMeasurementContract {
         require(actualSections == expectedSections)
         near(cumulative, replay.eligibleDistanceM)
         require(routes.size.toLong() == integer(s, "walking_section_count") && observed.size.toLong() == integer(s, "observed_run_count"))
+        val observationProjection = MeasurementObservedContract.project(id, input.fixes, usable, expectedEdges, decisionReasons)
+        require(observed.map { run -> run.map { it.clientSeq } } == observationProjection.runs)
+        groups.filterKeys { it.first == "observed_run" }.values.forEach { run ->
+            run.zipWithNext().forEach { (a, b) ->
+                near(b.getDouble("walking_distance_m"), expectedEdges[fix(a.getJSONObject("ref")).clientSeq to
+                    fix(b.getJSONObject("ref")).clientSeq] ?: 0.0)
+            }
+        }
         val wallTimes = objects(s, "boundary_wall_times")
         val boundaries = s.getJSONObject("boundaries")
         val names = listOf("record_start", "record_end", "first_observed", "last_observed", "first_walking", "last_walking")
@@ -192,6 +203,6 @@ internal object WalkMeasurementContract {
                 groups.filterKeys { it.first == "walking_section" }.values.map { section ->
                     MeasurementWalkingSection(section.first().getString("section_id"),
                         section.map { fix(it.getJSONObject("ref")).measurementRef(input.session.id) })
-                }, usable.map { fixes.getValue(it).measurementRef(input.session.id) }.toSet()))
+                }, usable.map { fixes.getValue(it).measurementRef(input.session.id) }.toSet(), observationProjection.auxiliary))
     }
 }

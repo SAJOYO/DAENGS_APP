@@ -13,7 +13,7 @@ internal data class SceneBindingKey(val ownerId: String, val sessionId: String, 
     val measurementId: String, val resultDigest: String, val eventRevision: String,
     val sceneRevision: String, val policyVersion: String = POLICY) {
     companion object {
-        const val POLICY = "measurement-scene-binding-v1"
+        const val POLICY = "measurement-scene-binding-v2"
         fun of(measurement: WalkMeasurementDetail, scene: DiaryScene, entry: WalkEntry?): SceneBindingKey {
             val source = scene.source; val anchor = source?.observation; val content = scene.content
             val pin = entry?.pin; val photo = scene.photo

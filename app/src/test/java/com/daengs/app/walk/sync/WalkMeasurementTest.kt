@@ -74,10 +74,29 @@ class WalkMeasurementTest {
             assertEquals(local.summary.activeDurationMillis, adopted.summary.activeDurationMillis)
             assertEquals(local.observations, adopted.observations)
             val contexts = CompletedRouteReview(adopted).context.contexts
-            assertEquals(listOf(RecordContextKind.START, RecordContextKind.END), contexts.map { it.kind })
+            assertEquals(listOf(RecordContextKind.START, RecordContextKind.END),
+                contexts.filter { it.kind != RecordContextKind.GAP }.map { it.kind })
             assertEquals(adopted.route.start, contexts.first().walkingEndpoint)
             // Each transported vertex resolves through its retained source address, including repeated clocks.
             val review = CompletedRouteReview(adopted)
+            val golden = cases("walk-measurement-observed-v1").single { it.getString("name") == w.getString("name") }
+            assertEquals(golden.getString("measurement_id"), adopted.measurement!!.id)
+            val expectedAuxiliary = golden.getJSONArray("edges").let { edges -> (0 until edges.length()).map { i ->
+                val edge = edges.getJSONArray(i); Triple(edge.getInt(0), edge.getInt(1), edge.getString(2)) } }
+            assertEquals(w.getString("name"), expectedAuxiliary, adopted.measurement.auxiliarySections.flatMap { section ->
+                section.fixes.zipWithNext().map { (a, b) -> Triple(a.clientSeq, b.clientSeq, section.use.name.lowercase()) } })
+            val walkingRefs = adopted.measurement!!.walkingSections.flatMap { it.points }.toSet()
+            review.observed.sections.flatMap { it.fixes }.distinctBy { it.clientSeq }.filter {
+                it.measurementRef(adopted.summary.sessionId) !in walkingRefs }.forEach { fix ->
+                val point = com.daengs.app.location.GeoPoint(fix.lat, fix.lng)
+                val scene = DiaryScene("aux-${fix.clientSeq}", adopted.summary.sessionId, fix.atMillis, "관측", "", point, "",
+                    source = StoryboardScene("aux", fix.atMillis, "관측", "", "", "aux", observation =
+                        StoryboardObservation(fix.clientSeq, fix.chainIndex, fix.atMillis, point)))
+                val focus = review.recordSceneFocus(scene)
+                assertTrue(w.getString("name"), focus.observedParts.isNotEmpty())
+                assertTrue(focus.paths.isEmpty())
+                assertEquals(fix.clientSeq, focus.binding!!.locationSource!!.clientSeq)
+            }
             adopted.measurement!!.walkingSections.forEach { section -> section.points.forEach { ref ->
                 val fix = adopted.observations.single { it.clientSeq == ref.clientSeq }
                 val point = com.daengs.app.location.GeoPoint(fix.lat, fix.lng)
@@ -120,6 +139,30 @@ class WalkMeasurementTest {
             .put("sha256", WalkMeasurementContract.hash(splitRaw)).put("byte_size", splitRaw.toByteArray().size)
             .put("point_count", original.size + 1)
         rejects(splitSummary.toString(), listOf(splitRaw))
+    }
+
+    @Test fun `rehashing shortened observation topology or contributions cannot bypass local verification`() {
+        val p = plan(source()); val w = wire()
+        fun rejects(edit: (JSONObject, JSONObject) -> Unit) {
+            val s = JSONObject(w.getString("summary")); val page = JSONObject(pages(w).single())
+            edit(s, page)
+            val raw = page.toString(); val count = page.getJSONArray("points").length()
+            s.put("route_point_count", count)
+            s.getJSONArray("required_route_chunks").getJSONObject(0).put("point_count", count)
+                .put("byte_size", raw.toByteArray().size).put("sha256", WalkMeasurementContract.hash(raw))
+            assertTrue(runCatching { WalkMeasurementContract.adopt(s.toString(), listOf(raw), p, owner, local(p)) }.isFailure)
+        }
+        rejects { s, _ -> s.getJSONObject("measurement").getJSONObject("key").put("connectivity_policy_version", "future-policy") }
+        rejects { _, page ->
+            val points = WalkMotionStore.objects(page.getJSONArray("points"))
+            val observed = points.filter { it.getString("kind") == "observed_run" }
+            assertTrue(observed.size > 2)
+            page.put("points", JSONArray(points.filter { it.getString("kind") == "walking_section" } +
+                observed.drop(1).mapIndexed { i, point -> point.put("point_index", i).also {
+                    if (i == 0) it.put("walking_distance_m", 0.0) } }))
+        }
+        rejects { _, page -> WalkMotionStore.objects(page.getJSONArray("points"))
+            .first { it.getString("kind") == "observed_run" && it.getInt("point_index") == 1 }.put("walking_distance_m", 99.0) }
     }
 
     @Test fun `clock corrected measurement keeps source location through cached stored diary and binding`() = withDb { db ->
@@ -167,7 +210,7 @@ class WalkMeasurementTest {
     }
 
     @Test fun `atomic cache reopens offline through the ordinary stored detail source`() = withDb { db ->
-        val p = plan(source()); seed(db, p); val id = p.base.input.session.id; val w = wire()
+        val p = plan(source("high-speed-reentry")); seed(db, p); val id = p.base.input.session.id; val w = wire("high-speed-reentry")
         val sync = WalkMeasurementSync(db, { AccountScope(owner, 1) }, request = { _, path, _ -> response(w, path) })
         sync.refresh("t", id)
         val reopened = WalkMeasurementSync(db, { AccountScope(owner, 2) }, request = { _, _, _ -> throw IOException("offline") })
@@ -181,6 +224,9 @@ class WalkMeasurementTest {
         assertEquals(JSONObject(w.getString("summary")).getJSONObject("measurement").getString("measurement_id"), detail.measurement?.id)
         assertEquals(CompletedRouteReview(sync.cached(local(p))).recordSceneFocus(sceneFor(detail)),
             CompletedRouteReview(detail).recordSceneFocus(sceneFor(detail)))
+        assertTrue(CompletedRouteReview(detail).observed.sections.isNotEmpty())
+        assertEquals(CompletedRouteReview(sync.cached(local(p))).observed.sections, CompletedRouteReview(detail).observed.sections)
+        assertEquals(CompletedRouteReview(sync.cached(local(p))).context.contexts, CompletedRouteReview(detail).context.contexts)
         reopened.refresh("t", id) // A verified cached generation needs no network.
         val foreign = WalkMeasurementSync(db, { AccountScope("other", 3) })
         assertNull(foreign.cached(local(p)).measurement)

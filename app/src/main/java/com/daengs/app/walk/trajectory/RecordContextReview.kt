@@ -56,9 +56,10 @@ internal class RecordContextReview(private val detail: WalkSessionDetail, observ
         val recordEnd = requireNotNull(measurement.boundaries["record_end"]).atMillis
         listOf(
             RecordContext(id("${measurement.id}:start"), RecordContextKind.START, null, first?.seq,
-                recordStart, recordStart, 0, null, first, null, null, walkingEndpoint = detail.route.start),
+                recordStart, recordStart, null, null, first, null, null, walkingEndpoint = detail.route.start)) +
+            measurementGapContexts(detail) + listOf(
             RecordContext(id("${measurement.id}:end"), RecordContextKind.END, last?.seq, null,
-                recordEnd, recordEnd, 0, last, null, null, null, walkingEndpoint = detail.route.end))
+                recordEnd, recordEnd, null, last, null, null, null, walkingEndpoint = detail.route.end))
     } ?: if (!available) emptyList() else buildList {
         add(RecordContext(id("start"), RecordContextKind.START, null, usable.firstOrNull()?.seq, start, start, if (chronological) 0 else null,
             null, usable.firstOrNull(), null, null, walkingEndpoint = detail.route.start))
@@ -104,11 +105,11 @@ internal class RecordContextReview(private val detail: WalkSessionDetail, observ
         }
         return contexts.firstOrNull { it.kind == kind && it.fromMillis == scene.atMillis }
     }
-    fun gapAt(atMillis: Long): RecordContext? = if (!chronological) null else contexts.singleOrNull {
+    fun gapAt(atMillis: Long): RecordContext? = if (detail.measurement != null || !chronological) null else contexts.singleOrNull {
         it.kind == RecordContextKind.GAP && it.durationMillis != null && it.fromMillis < atMillis && atMillis < it.toMillis
     }
     fun temporalNeighbors(scene: DiaryScene): Pair<ConfirmedRecordLocation?, ConfirmedRecordLocation?>? {
-        if (!available || !chronological || scene.sessionId != detail.summary.sessionId || scene.atMillis !in start..end) return null
+        if (detail.measurement != null || !available || !chronological || scene.sessionId != detail.summary.sessionId || scene.atMillis !in start..end) return null
         return usable.lastOrNull { it.atMillis < scene.atMillis } to usable.firstOrNull { it.atMillis > scene.atMillis }
     }
 

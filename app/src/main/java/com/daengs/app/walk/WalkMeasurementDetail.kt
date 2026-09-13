@@ -11,7 +11,8 @@ data class WalkMeasurementDetail(val id: String, val resultDigest: String,
     val observedRuns: List<List<RecordedFix>>,
     val ownerId: String = "",
     val walkingSections: List<MeasurementWalkingSection> = emptyList(),
-    val usableSources: Set<MeasurementSourceRef> = emptySet())
+    val usableSources: Set<MeasurementSourceRef> = emptySet(),
+    val auxiliarySections: List<MeasurementObservedSection> = emptyList())
 
 /** Stable source identities; display segment/vertex indices are never a saved binding address. */
 data class MeasurementSourceRef(val sessionId: String, val sourceEpoch: String, val clockEpochId: String,
@@ -21,3 +22,7 @@ data class MeasurementWalkingSection(val id: String, val points: List<Measuremen
 
 internal fun RecordedFix.measurementRef(sessionId: String) = MeasurementSourceRef(sessionId,
     requireNotNull(sourceEpoch), requireNotNull(clockEpochId), clientSeq)
+
+/** Classification comes from the final, locally checked observation intervals. */
+enum class MeasurementObservedUse { EXCLUDED, UNRESOLVED }
+data class MeasurementObservedSection(val id: String, val use: MeasurementObservedUse, val fixes: List<RecordedFix>)

@@ -5,22 +5,28 @@ import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.diary.StoryboardObservation
 import kotlin.math.abs
+import com.daengs.app.walk.trajectory.*
 
 /** Source-owned binding for a verified measurement; never falls back to legacy/nearest geometry. */
 internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
     private val measurement = requireNotNull(detail.measurement)
     private val sessionId = detail.summary.sessionId
     private val raw = detail.observations.groupBy { it.clientSeq }
-    private data class Section(val source: MeasurementWalkingSection, val route: WalkRouteSegment)
-    private val sections = measurement.walkingSections.zip(detail.route.segments).map { Section(it.first, it.second) }
+    private data class Section(val source: MeasurementWalkingSection, val route: WalkRouteSegment, val auxiliary: ObservedRouteSection? = null)
+    private val walkingSections = measurement.walkingSections.zip(detail.route.segments).map { Section(it.first, it.second) }
+    private val sections = walkingSections + measurementObservedSections(detail).map { part ->
+        Section(MeasurementWalkingSection(part.id, part.fixes.map { it.measurementRef(sessionId) }),
+            WalkRouteSegment(-1, part.fixes.mapIndexed { i, f -> WalkRoutePoint(GeoPoint(f.lat, f.lng), f.atMillis,
+                f.accuracyM, requireNotNull(f.elapsedRealtimeNanos) / 1_000_000, 0.0, null, -1, i, f.elapsedRealtimeNanos) }), part)
+    }
     private fun fix(ref: MeasurementSourceRef): RecordedFix? = raw[ref.clientSeq]?.singleOrNull()?.takeIf {
         ref.sessionId == sessionId && ref.controlKind == null && ref.sourceEpoch == it.sourceEpoch &&
             ref.clockEpochId == it.clockEpochId && !it.isMock && it.recordingEligible == true &&
             it.elapsedRealtimeNanos != null && ref in measurement.usableSources
     }
     private val valid = measurement.ownerId.isNotBlank() && measurement.walkingSections.size == detail.route.segments.size &&
-        measurement.walkingSections.map { it.id }.distinct().size == sections.size &&
-        sections.all { section -> section.source.points.size == section.route.points.size && section.source.points.size >= 2 &&
+        measurement.walkingSections.map { it.id }.distinct().size == walkingSections.size &&
+        walkingSections.all { section -> section.source.points.size == section.route.points.size && section.source.points.size >= 2 &&
             section.source.points.zip(section.route.points).all { (ref, point) -> fix(ref)?.let { f ->
                 point.point == GeoPoint(f.lat, f.lng) && point.capturedAtMillis == f.atMillis &&
                     point.elapsedRealtimeNanos == f.elapsedRealtimeNanos
@@ -161,7 +167,11 @@ internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
     private fun sourceFocus(scene: DiaryScene, ref: MeasurementSourceRef, point: GeoPoint,
         key: SceneBindingKey, eventSource: MeasurementSourceRef?): SceneRouteFocus {
         val f = requireNotNull(fix(ref))
-        val locations = sections.mapNotNull { section -> section.source.points.indexOf(ref).takeIf { it >= 0 }?.let { section to it } }
+        val incident = sections.mapNotNull { section -> section.source.points.indexOf(ref).takeIf { it >= 0 }?.let { section to it } }
+        // A vertex belongs to its incoming interval. Walking ownership wins at a shared endpoint.
+        val locations = incident.filter { it.first.auxiliary == null }.ifEmpty {
+            incident.filter { it.second > 0 }.ifEmpty { incident }
+        }
         if (locations.size > 1) return SceneRouteFocus(SceneRouteRelation.AMBIGUOUS, key = key)
         locations.singleOrNull()?.let { (section, i) -> return connected(scene, section, i, i, point, f.atMillis, ref, key, eventSource) }
         // An omitted, usable observation belongs to its final source interval, even without a display vertex.
@@ -197,6 +207,15 @@ internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
             last++
         }
         val path = points.subList(first, last+1).map { it.point }
+        section.auxiliary?.let { part ->
+            val fixes = part.fixes.subList(first, last+1)
+            val selected = part.copy(fixes = fixes, directions = part.directions.filter {
+                it.evidenceFromSeq >= fixes.first().clientSeq && it.evidenceToSeq <= fixes.last().clientSeq })
+            return SceneRouteFocus(if (part.walkingUse == LegacyWalkingUse.EXCLUDED) SceneRouteRelation.OBSERVED_EXCLUDED
+                else SceneRouteRelation.OBSERVED_UNRESOLVED, point = point, observedParts = listOf(selected), key = key,
+                binding = binding(scene, locationAt, section.source.points[a], section.source.points[b], locationSource,
+                    section.source.id, eventSource).copy(displayPolicyVersion = "motion-observed-display-v1"))
+        }
         return SceneRouteFocus(if (path.size > 1) SceneRouteRelation.CONNECTED else SceneRouteRelation.NO_ROUTE,
             paths = if (path.size > 1) listOf(path) else emptyList(), point = point,
             binding = binding(scene, locationAt, section.source.points[a], section.source.points[b], locationSource, section.source.id, eventSource), key = key)
