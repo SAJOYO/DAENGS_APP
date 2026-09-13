@@ -49,4 +49,22 @@ class PublishedCardWritingTest {
             assertTrue(runCatching { GeoStoryboardBundle.parse(value.toString()) }.isFailure)
         }
     }
+
+    @Test fun oneFallbackTitleKeepsOtherTitlesAndAllAdoptedBodiesOnReopen() {
+        val value = response()
+        val cards = value.getJSONObject("bundle").getJSONArray("scenes")
+        val first = cards.getJSONObject(0)
+        val body = first.getString("body")
+        first.put("title", "산책 기록")
+        first.getJSONObject("writing").put("title_origin", "fallback")
+        val board = GeoStoryboardBundle.parse(value.toString())
+        val reopened = GeoStoryboardBundle.parse(board.rawJson)
+        assertEquals("산책 기록", reopened.scenes.first().title)
+        assertEquals(body, reopened.scenes.first().body)
+        assertEquals("fallback", reopened.scenes.first().diary!!.publishedWriting!!.titleOrigin)
+        assertTrue(reopened.scenes.drop(1).all {
+            it.diary!!.publishedWriting!!.titleOrigin == "generated"
+        })
+        assertEquals(board.scenes.map { it.body }, reopened.scenes.map { it.body })
+    }
 }

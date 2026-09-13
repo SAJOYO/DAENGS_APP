@@ -1,6 +1,6 @@
 # 독립 카드 작성 결과 연결
 
-DEV의 기존 산책 일기 응답 `walk-diary-board-v1`에 선택 필드 `scenes[].writing`을 추가했다. [DEV 구조와 Mermaid](https://github.com/SAJOYO/DAENGS_dev/blob/feat/diary-card-orchestration/docs/walk/card-orchestration.md)를 기준으로 한다.
+DEV의 기존 산책 일기 응답 `walk-diary-board-v1`에 선택 필드 `scenes[].writing`을 추가했다. [DEV 구조와 Mermaid](https://github.com/SAJOYO/DAENGS_dev/blob/fix/diary-shared-orchestration/docs/walk/card-orchestration.md)를 기준으로 한다.
 
 ```mermaid
 flowchart LR
@@ -14,6 +14,8 @@ flowchart LR
 ```
 
 공간·조건부 행동 작성 후 DEV가 채택 본문을 고정하고 제목만 별도 작업으로 생성한다. APP는 서버의 카드 `title`을 목록과 상세에서 사용한다. `킁킁` 같은 행동 종류가 카드 제목을 대신하지 않는다. 전체 산책 제목은 이 변경의 대상이 아니다.
+
+DEV의 실행은 기존 `orchestration` 안의 일기 LangGraph로 연결되어 있고, 어시스턴트와 같은 `JobExecutor`를 사용한다. APP의 요청·읽기·Room 저장 경로는 그대로다. 본문·위치는 제목 전에 고정되며, 제목 묶음 일부가 실패해도 성공한 카드 제목과 본문을 유지한다. 제목의 내용 버전에는 별도 보존 원문이 들어가지 않지만, 원문 변경은 서버의 기존 발행 버전 검사와 APP의 사용자 편집 보존 대상이다.
 
 SGIS 정규화의 `sido / sigungu / dong` 중 기존 표시 계약대로 **`dong`만** 시간 옆 위치값에 사용한다. 제목의 표현과 위치 표시가 서로 의존하지 않는다.
 
