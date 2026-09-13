@@ -30,6 +30,7 @@ internal fun actionMarkerBitmap(
     selected: Boolean,
     countLabel: String?,
     density: Float,
+    recordFocusRing: Boolean = false,
 ): Bitmap {
     require(behaviors.isNotEmpty())
     val ordered = WalkMomentType.entries.filter(behaviors::contains)
@@ -38,6 +39,10 @@ internal fun actionMarkerBitmap(
     val height = ((iconDp + 8) * density).roundToInt().coerceAtLeast(1)
     val bitmap = createBitmap(width, height)
     val canvas = Canvas(bitmap)
+    if (selected && recordFocusRing) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        canvas.drawRoundRect(density, density, width - density, height - density, 20*density, 20*density, paint)
+    }
     ordered.forEachIndexed { index, type ->
         val drawable = requireNotNull(context.getDrawable(when (type) {
             WalkMomentType.SNIFFING -> R.drawable.ic_walk_sniffing

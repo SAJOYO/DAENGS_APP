@@ -595,3 +595,5 @@ nullable `File.parentFile` 경고가 있었다. 전체 테스트·APK·실기기
 ### 전봇대 효과 대상 갱신 (2단계)
 
 store의 현재/이전 대상·새 범위 원 초기화·프레임 목록 재사용을 바꾸면 `TerritoryOverlayStoreTest`와 유한 애니메이션 소비자인 `ui.walk.TerritoryFeedbackUiTest`만 선택한다. 이미지와 회원 소유 매핑 변경이 없으면 1단계의 이미지·보드 테스트를 반복할 필요가 없다. Debug 비교의 handleFrames는 FPS가 아닌 처리 대상 호출 수다.
+
+`WalkRecordsPinClusteringTest`는 44dp 근접 묶음의 연쇄 방지·확대 분리·동일 좌표 유지·배지 충돌을 검사한다. `WalkRecordsActionPinsUiTest`는 공간 묶음의 구성원 키를 상세 복귀/상태 복원 후에도 유지하는지 포함한다.

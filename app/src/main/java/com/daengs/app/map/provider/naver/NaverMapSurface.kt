@@ -77,6 +77,7 @@ fun NaverMapSurface(
     onSelectPlace: (String) -> Unit,
     onSelectTerritorySite: (String) -> Unit = {},
     onSelectMoment: (String) -> Unit = {},
+    onSelectMomentGroup: (List<String>) -> Unit = { ids -> ids.firstOrNull()?.let(onSelectMoment) },
     onSelectRouteEndpoint: (String) -> Unit = {},
     onSelectRecordContext: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
@@ -102,7 +103,8 @@ fun NaverMapSurface(
     val drawTraces = diagnostics?.showTraces != false
     val drawRoute = diagnostics?.showRoute != false
     val drawMarkers = diagnostics?.showMarkers != false
-    val visibleMoments = if (drawMarkers) scene.moments else emptyList()
+    val visibleMoments = if (drawMarkers) scene.moments.filter { it.recordPin == null } else emptyList()
+    val recordMoments = if (drawMarkers) scene.moments.filter { it.recordPin != null } else emptyList()
     val visibleGaps = if (drawRoute) scene.completedRoute.gapEndpoints else emptyList()
     val visibleSelectedPoint = scene.completedRoute.selectedPoint.takeIf { drawMarkers }
     val context = LocalContext.current
@@ -177,8 +179,7 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = if (keepSelectionVisible || scene.sessionExplorer != null || visibilityQuery != null)
-            modifier.onSizeChanged { viewportSize = it } else modifier,
+        modifier = modifier.onSizeChanged { viewportSize = it },
     )
 
     DisposableEffect(naverMap, diagnostics?.showBase) {
@@ -224,9 +225,10 @@ fun NaverMapSurface(
 
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
     // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
+    val recordsOverview = scene.walkPresentation?.stack == com.daengs.app.map.shell.WalkLayerStack.RECORDS
     LaunchedEffect(naverMap, fitBounds, cameraRequestKey, if (keepSelectionVisible) centerOn else null,
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
-        bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
+        if (recordsOverview) emptyList<Int>() else listOf(bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx)) {
         val map = naverMap ?: return@LaunchedEffect
         if (!cameraRestored && cameraToRestore != null && initialCameraRequest == cameraRequestKey &&
             centerOn == null && searchOrigin == null) {
@@ -240,7 +242,8 @@ fun NaverMapSurface(
         }
         // A selection made while getMapAsync was pending takes precedence over the old snapshot.
         cameraRestored = true
-        if (keepSelectionVisible && centerOn != null) return@LaunchedEffect
+        // Opening a clustered-record drawer must not zoom back out and regroup the inspected area.
+        if ((keepSelectionVisible || recordsOverview) && centerOn != null) return@LaunchedEffect
         if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
         reportCamera = true
@@ -332,6 +335,8 @@ fun NaverMapSurface(
 
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
+    NaverRecordActionPinLayer(naverMap, recordMoments, viewportSize, density, layerOrder, onSelectMomentGroup)
+
     val photoFiles = visibleMoments.mapNotNull { it.photoFile }.distinct()
     val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
         val loaded = mutableMapOf<java.io.File, OverlayImage>()

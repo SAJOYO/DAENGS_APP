@@ -1,10 +1,15 @@
 package com.daengs.app.ui.walk.records
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import com.daengs.app.R
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.map.features.records.RECORD_ACTION_TYPES
@@ -18,14 +23,23 @@ internal fun WalkRecordsActionPinControls(state: WalkRecordsActionPinState, beha
     DropdownMenuItem(text = { Text("액션 핀 표시") },
         trailingIcon = { Switch(state.enabled.value, null) },
         onClick = { state.enabled.value = !state.enabled.value }, modifier = Modifier.testTag("records-pins-enabled"))
-    if (state.enabled.value) {
-        Text("핀 종류 · 산책 조건은 유지", Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall)
+}
+
+/** The only action-kind control. Its display search never changes the selected walk population. */
+@Composable
+internal fun WalkRecordsActionSearch(state: WalkRecordsActionPinState, behavior: WalkMomentType? = null) {
+    if (!state.enabled.value) return
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val types = if (behavior != null) listOf(behavior) else listOf(null) + RECORD_ACTION_TYPES
         types.forEach { type ->
-            DropdownMenuItem(text = { Text(type?.label ?: "모든 액션") },
-                leadingIcon = { RadioButton((behavior ?: state.type.value) == type, null) },
-                onClick = { state.type.value = type; state.groupPoint.value = null; state.selectedKey.value = null },
+            FilterChip(label = { Text(type?.label ?: "액션 전체") }, selected = (behavior ?: state.type.value) == type,
+                leadingIcon = type?.let { { Image(painterResource(when (type) {
+                    WalkMomentType.SNIFFING -> R.drawable.ic_walk_sniffing
+                    WalkMomentType.EXCRETION -> R.drawable.ic_walk_excretion
+                    WalkMomentType.BARKING -> R.drawable.ic_walk_barking
+                    else -> R.drawable.ic_walk_note
+                }), null, Modifier.size(20.dp)) } },
+                onClick = { state.type.value = type; state.clearInspection() },
                 modifier = Modifier.testTag("records-pins-type-${type?.behaviorCode ?: "all"}"))
         }
     }
@@ -34,5 +48,5 @@ internal fun WalkRecordsActionPinControls(state: WalkRecordsActionPinState, beha
 @Preview(showBackground = true, widthDp = 320)
 @Composable
 private fun WalkRecordsActionPinControlsPreview() {
-    DaengsTheme { Column { WalkRecordsActionPinControls(rememberWalkRecordsActionPinState()) } }
+    DaengsTheme { Column { val state = rememberWalkRecordsActionPinState(); WalkRecordsActionSearch(state); WalkRecordsActionPinControls(state) } }
 }

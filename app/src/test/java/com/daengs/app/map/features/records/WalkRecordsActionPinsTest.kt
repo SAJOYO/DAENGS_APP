@@ -48,6 +48,18 @@ class WalkRecordsActionPinsTest {
         assertEquals(3, walkRecordsActionPins(WalkRecordsSelection(WalkRecordsQuery(), listOf(walk))).records.size)
     }
 
+    @Test fun `other kinds become background but excluded dogs hidden walks and unlocated records do not`() {
+        val walk = record("walk", entry("sniff"), entry("bark", type = WalkMomentType.BARKING),
+            entry("other-dog", type = WalkMomentType.EXCRETION, dog = "b"),
+            entry("unlocated", type = WalkMomentType.EXCRETION).copy(point = null))
+        val selection = WalkRecordsSelection(WalkRecordsQuery(dogIds = setOf("a")), listOf(walk))
+        val pins = walkRecordsActionPins(selection, setOf(WalkMomentType.SNIFFING))
+        assertEquals(listOf("sniff"), pins.records.map { it.entry.id })
+        assertEquals(listOf("bark"), pins.backgroundGroups.flatMap { it.records }.map { it.entry.id })
+        assertTrue(walkRecordsActionPins(selection, setOf(WalkMomentType.SNIFFING), setOf("walk")).backgroundGroups.isEmpty())
+        assertTrue(walkRecordsActionPins(selection, setOf(WalkMomentType.SNIFFING), enabled = false).backgroundGroups.isEmpty())
+    }
+
     @Test fun `explicit estimated and unlocated pins own display over the legacy GPS point`() {
         val estimate = entry("estimate").copy(pin = ActionPin("""{"state":"resolved","method":"estimated","point":{"lat":37.6,"lng":127.1}}"""))
         val unlocated = entry("unlocated").copy(pin = ActionPin("""{"state":"unlocated","method":"none","point":null}"""))

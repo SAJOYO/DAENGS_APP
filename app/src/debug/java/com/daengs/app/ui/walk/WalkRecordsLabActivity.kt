@@ -36,14 +36,15 @@ import com.daengs.app.walk.records.WalkRecord
 class WalkRecordsLabActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { DaengsTheme { WalkRecordsLab(onBack = { finish() }) } }
+        setContent { DaengsTheme { WalkRecordsLab(onBack = { finish() }, densePins = intent.getBooleanExtra("densePins", false)) } }
     }
 }
 
 @Composable
-internal fun WalkRecordsLab(onBack: () -> Unit = {}) {
+internal fun WalkRecordsLab(onBack: () -> Unit = {}, densePins: Boolean = false) {
     val state = rememberWalkRecordsRouteState(AccountScope("records-lab", 0))
-    val opened = WalkRecordsLabFixture.records.firstOrNull { it.summary.sessionId == state.openedSessionId }
+    val records = if (densePins) WalkRecordsDenseLabFixture.records else WalkRecordsLabFixture.records
+    val opened = records.firstOrNull { it.summary.sessionId == state.openedSessionId }
     val diagnostics = remember { WalkMapDiagnostics() }
     var showDiagnostics by remember { mutableStateOf(false) }
     if (opened != null) {
@@ -53,9 +54,9 @@ internal fun WalkRecordsLab(onBack: () -> Unit = {}) {
     CompositionLocalProvider(LocalWalkMapDiagnostics provides diagnostics) {
         Box(Modifier.fillMaxSize()) {
             RetainedWalkRecords(state) {
-                WalkRecordsScreen(source = WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
+                WalkRecordsScreen(source = if (densePins) WalkRecordsDenseLabFixture else WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
                     onBack = { state.captureRecords(); onBack() }, onOpen = state::open,
-                    sampleLabel = "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
+                    sampleLabel = if (densePins) "가상 산책 12회 · 밀집 액션 144건" else "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
             }
             Surface(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
                 shape = MaterialTheme.shapes.small) {

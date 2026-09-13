@@ -56,7 +56,6 @@ class WalkRecordsActionPinsUiTest {
         compose.onNodeWithTag("records-behavior-entry-$key").performClick()
         compose.onNodeWithTag("records-behavior-open-$key").performScrollTo().performClick()
         assertEquals(listOf("second"), opened)
-        compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
         compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 2회")
         compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 1건")
@@ -84,6 +83,35 @@ class WalkRecordsActionPinsUiTest {
         compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 위치의 액션 2건")
         compose.onNodeWithTag("records-behavior-entry-$key").assertIsSelected()
         compose.onNodeWithTag("records-behavior-open-$key").assertExists()
+    }
+
+    @Test fun `nearby group keeps its record membership through restoration and offers explicit expansion`() {
+        val near = record("near", listOf(WalkMomentType.SNIFFING)).let { walk ->
+            walk.copy(entries = walk.entries.map { it.copy(point = GeoPoint(37.5001,127.0)) })
+        }
+        val selection = WalkRecordsSelection(WalkRecordsQuery(), listOf(records.first(), near))
+        val restore = StateRestorationTester(compose)
+        var pinState: WalkRecordsActionPinState? = null
+        restore.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            val state = rememberWalkRecordsActionPinState()
+            SideEffect { pinState = state }
+            WalkRecordsOverview(selection, emptyList(), null, emptyList(), null, {}, null, emptySet(), {}, {}, {}, {}, {},
+                androidx.compose.foundation.lazy.rememberLazyListState(), null, {}, emptyList(), 0,
+                expanded = true, actionPinState = state)
+        } } }
+        compose.runOnIdle {
+            pinState!!.type.value = WalkMomentType.SNIFFING
+            val entries = walkRecordsActionPins(selection, setOf(WalkMomentType.SNIFFING)).records
+            pinState!!.inspect(WalkActionPinGroup(point, entries))
+        }
+        compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 구간의 액션 2건")
+        compose.onNodeWithTag("records-pins-expand").assertExists()
+        restore.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 구간의 액션 2건")
+        compose.runOnIdle { assertEquals(2, pinState!!.groupKeys.value.size) }
+        compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(pinState!!.groupKeys.value.isEmpty()) }
+        compose.onNodeWithTag("records-pins-expand").assertDoesNotExist()
     }
 
     @Test fun `hide and refreshed removal clear markers and stale selected action without losing other records`() {

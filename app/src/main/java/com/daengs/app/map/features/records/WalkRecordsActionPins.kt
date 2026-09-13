@@ -15,7 +15,8 @@ data class WalkActionPinGroup(val point: GeoPoint, val records: List<WalkBehavio
         sequenceLabel = records.size.takeIf { it > 1 }?.toString(), behaviors = records.map { it.entry.type }.toSet())
 }
 
-data class WalkRecordsActionPins(val records: List<WalkBehaviorRecord>, val groups: List<WalkActionPinGroup>) {
+data class WalkRecordsActionPins(val records: List<WalkBehaviorRecord>, val groups: List<WalkActionPinGroup>,
+    val backgroundGroups: List<WalkActionPinGroup> = emptyList()) {
     val unlocatedCount get() = records.count { it.point == null }
     val visibleCount get() = groups.sumOf { it.records.size }
 }
@@ -31,5 +32,10 @@ fun walkRecordsActionPins(selection: WalkRecordsSelection, types: Set<WalkMoment
     val groups = if (!enabled) emptyList() else records.filter {
         it.point != null && it.walk.summary.sessionId !in hiddenIds
     }.groupBy { requireNotNull(it.point) }.map { (point, entries) -> WalkActionPinGroup(point, entries) }
-    return WalkRecordsActionPins(records, groups)
+    val background = if (!enabled || types == RECORD_ACTION_TYPES) emptyList() else selection.records.flatMap { walk ->
+        walk.entries.filter { it.type in RECORD_ACTION_TYPES && it.type !in types && selection.query.includesEntryDog(it.petId) }
+            .map { WalkBehaviorRecord(it, walk) }
+    }.filter { it.point != null && it.walk.summary.sessionId !in hiddenIds }
+        .groupBy { requireNotNull(it.point) }.map { (point, entries) -> WalkActionPinGroup(point, entries) }
+    return WalkRecordsActionPins(records, groups, background)
 }

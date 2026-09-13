@@ -36,6 +36,7 @@ import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.walk.records.*
 import com.daengs.app.walk.toSessionRoute
 import com.daengs.app.map.features.records.*
+import com.daengs.app.map.layers.moments.RecordPinAppearance
 import com.daengs.app.walk.WalkMomentType
 import kotlinx.coroutines.launch
 
@@ -86,17 +87,29 @@ internal fun WalkRecordsOverview(
         walkRecordsActionPins(selection, pinTypes, hiddenIds, actionPinState.enabled.value)
     }
     val selectedPin = pins.records.firstOrNull { it.key == actionPinState.selectedKey.value }
-    val pinGroup = pins.groups.firstOrNull { it.point == actionPinState.groupPoint.value }
+    // Membership is saved independently of native clusters, which change with zoom and bearing.
+    val inspectedRecords = pins.records.filter { it.key in actionPinState.groupKeys.value && it.point != null && it.walk.summary.sessionId !in hiddenIds }
+    val pinGroup = inspectedRecords.takeIf { it.isNotEmpty() }?.let { WalkActionPinGroup(requireNotNull(it.first().point), it) }
     val pinRecords = pinGroup?.records ?: pins.records
-    val markers = remember(pins.groups, actionPinState.selectedKey.value) {
-        pins.groups.map { it.marker(actionPinState.selectedKey.value) }
+    val searching = pinBehavior != null || actionPinState.type.value != null
+    val markers = remember(pins, actionPinState.selectedKey.value, actionPinState.groupKeys.value, searching) {
+        pins.groups.map { group ->
+            val chosen = group.records.firstOrNull { it.key == actionPinState.selectedKey.value }
+            val marker = group.marker(actionPinState.selectedKey.value)
+            marker.copy(selected = marker.selected || (actionPinState.selectedKey.value == null && group.records.any { it.key in actionPinState.groupKeys.value }),
+                behaviors = if (!searching && chosen != null) setOf(chosen.entry.type) else marker.behaviors,
+                recordPin = RecordPinAppearance(if (!searching && chosen != null) 1 else group.records.size,
+                    background = !searching && chosen == null, alpha = .25f))
+        } + pins.backgroundGroups.map { group -> group.marker(null).copy(id = "background:${group.id}",
+            recordPin = RecordPinAppearance(group.records.size, background = true)) }
     }
     LaunchedEffect(pins) {
         if (selectedPin == null || selectedPin.walk.summary.sessionId in hiddenIds) actionPinState.selectedKey.value = null
-        if (pinGroup == null) actionPinState.groupPoint.value = null
+        if (pinGroup == null) { actionPinState.groupPoint.value = null; actionPinState.groupKeys.value = emptyList() }
     }
     var pinCenter by remember(selection) { mutableStateOf<GeoPoint?>(null) }
     var pinCameraRequest by remember(selection) { mutableIntStateOf(0) }
+    var pinZoom by remember(selection) { mutableStateOf<Double?>(null) }
     val pinScope = rememberCoroutineScope()
     val displayPolicy = rememberWalkRecordsDisplayPolicy()
     val routePresentation = rememberWalkRecordsRoute(highlighted, routeSource)
@@ -136,18 +149,18 @@ internal fun WalkRecordsOverview(
         actionPinState.selectedKey.value = record.key
         if (record.walk.summary.sessionId !in hiddenIds) {
             pinCenter = record.point
+            pinZoom = null
             pinCameraRequest++
             if (selectedId != record.walk.summary.sessionId) onSelect(record.walk.summary.sessionId)
         }
     }
-    val onPin: (String) -> Unit = { id ->
-        pins.groups.firstOrNull { it.id == id }?.let { group ->
-            actionPinState.inspect(group)
-            pinCenter = group.point
-            pinCameraRequest++
+    val onPinGroup: (List<String>) -> Unit = { ids ->
+        val records = pins.groups.filter { it.id in ids }.flatMap { it.records }.distinctBy { it.key }
+        if (records.isNotEmpty()) {
+            actionPinState.inspect(WalkActionPinGroup(requireNotNull(records.first().point), records))
             setExpanded(true)
             pinScope.launch { actionPinState.listState.scrollToItem(0) }
-            if (group.records.size == 1) choosePin(group.records.single()) else onClearSelection()
+            if (records.size == 1) onSelect(records.single().walk.summary.sessionId) else onClearSelection()
         }
     }
     LaunchedEffect(selectedId) {
@@ -169,13 +182,13 @@ internal fun WalkRecordsOverview(
                     // Keep the map mounted even when every trace is hidden or composition is pending.
                     MapHost(scene = renderPlan.scene, searchOrigin = null, followDevice = false,
                         fitBounds = fitBounds.ifEmpty { routeBounds.ifEmpty { markers.map { it.point } } },
-                        centerOn = pinCenter, centerMinZoom = 16.0,
+                        centerOn = pinCenter, centerMinZoom = 16.0, centerZoom = pinZoom,
                         cameraRequestKey = cameraRequest + pinCameraRequest,
                         topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
                         initialCamera = camera, onCameraSnapshot = onCamera,
                         onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                        onSelectMoment = onPin,
-                        onMapTap = { point -> actionPinState.browsing.value = false; actionPinState.groupPoint.value = null; onMapTap(point) },
+                        onSelectMomentGroup = onPinGroup,
+                        onMapTap = { point -> actionPinState.browsing.value = false; actionPinState.clearInspection(); onMapTap(point) },
                         modifier = Modifier.fillMaxSize())
                     val message = when {
                         routeError != null -> routeError
@@ -207,12 +220,15 @@ internal fun WalkRecordsOverview(
     WalkRecordsMapFrame(sheetExpanded, setExpanded,
         if (actionPinState.browsing.value) "액션 기록 ${pinRecords.size}건" else "관련 산책 ${relatedRecords.size}회", modifier,
         controls = {
+            Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (controls != null) controls() else WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
                     menuExtras = { WalkRecordsActionPinControls(actionPinState, pinBehavior) })
                 TextButton(onClick = { actionPinState.allRecords(); setExpanded(true); pinScope.launch { actionPinState.listState.scrollToItem(0) } }, Modifier.testTag("records-pins-browse")) {
                     Text("액션 ${pins.records.size}건")
                 }
+            }
+            WalkRecordsActionSearch(actionPinState, pinBehavior)
             }
         },
         map = map,
@@ -235,13 +251,24 @@ internal fun WalkRecordsOverview(
         },
         details = {
             if (actionPinState.browsing.value) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (pinGroup != null) "이 위치의 액션 ${pinRecords.size}건" else
+                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+                    Text(if (pinGroup != null) (if (pinRecords.mapNotNull { it.point }.distinct().size > 1) "이 구간의 액션 ${pinRecords.size}건" else "이 위치의 액션 ${pinRecords.size}건") else
                         "핀 표시 ${pins.visibleCount}건 · 위치 없음 ${pins.unlocatedCount}건",
-                        Modifier.weight(1f).testTag("records-pins-summary"), style = MaterialTheme.typography.labelSmall)
+                        Modifier.fillMaxWidth().testTag("records-pins-summary"), style = MaterialTheme.typography.labelSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (pinGroup != null && pinRecords.mapNotNull { it.point }.distinct().size > 1 && (camera?.zoom ?: 16.0) < 21.0) {
+                        TextButton(onClick = {
+                            val points = pinRecords.mapNotNull { it.point }
+                            pinCenter = GeoPoint(points.map { it.latitude }.average(), points.map { it.longitude }.average())
+                            pinZoom = ((camera?.zoom ?: 16.0) + 1).coerceAtMost(21.0)
+                            pinCameraRequest++
+                            setExpanded(false)
+                        }, Modifier.testTag("records-pins-expand")) { Text("구간 확대") }
+                    }
                     if (pinGroup != null) TextButton(onClick = actionPinState::allRecords, Modifier.testTag("records-pins-all")) { Text("모든 액션") }
-                    TextButton(onClick = { actionPinState.browsing.value = false; actionPinState.groupPoint.value = null; pinCenter = null },
+                    TextButton(onClick = { actionPinState.browsing.value = false; actionPinState.clearInspection(); pinCenter = null },
                         Modifier.testTag("records-pins-back-walks")) { Text("산책 목록") }
+                    }
                 }
             }
             // The expanded list covers the map's center; keep result/error feedback reachable here too.
