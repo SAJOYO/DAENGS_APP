@@ -80,6 +80,8 @@ internal fun WalkDiaryMapContent(
     offscreenScenes: List<DiaryScene> = emptyList(),
     readingMemory: DiaryReadingMemory? = null,
     onDelete: ((DiaryScene) -> Unit)? = null,
+    sceneGroup: List<DiaryScene>? = null,
+    onClearGroup: () -> Unit = {},
     sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
     walkDogIds: List<String> = emptyList(),
     walkPets: List<Pet> = emptyList(),
@@ -89,11 +91,15 @@ internal fun WalkDiaryMapContent(
         initialValue = if (compactDrawer || selected == null || selectionFromMap) DiaryDrawerValue.Browsing else DiaryDrawerValue.Expanded,
         compactEnabled = compactDrawer)
     val scope = rememberCoroutineScope()
-    val list = readingMemory?.list ?: rememberLazyListState()
-    val gapSlots = remember(scenes, gapContexts) { diaryGapSlots(scenes, gapContexts) }
-    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected) {
+    val fullList = readingMemory?.list ?: rememberLazyListState()
+    val groupList = readingMemory?.groupList ?: rememberLazyListState()
+    val list = if (sceneGroup != null) groupList else fullList
+    val displayedScenes = sceneGroup ?: scenes
+    val ordinals = remember(scenes) { scenes.withIndex().associate { it.value.id to it.index+1 } }
+    val gapSlots = remember(scenes, gapContexts, sceneGroup) { if (sceneGroup != null) emptyMap() else diaryGapSlots(scenes, gapContexts) }
+    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected, sceneGroup == null) {
         val saved = readingMemory?.pendingList
-        if (!loading && selected == null && !explorerSelected && saved != null) {
+        if (!loading && selected == null && !explorerSelected && saved != null && sceneGroup == null) {
             val keys = buildList { scenes.forEachIndexed { index, scene ->
                 gapSlots[index].orEmpty().forEach { add("gap:${it.id}") }; add("scene:${scene.id}")
             }; gapSlots[scenes.size].orEmpty().forEach { add("gap:${it.id}") } }
@@ -253,7 +259,9 @@ internal fun WalkDiaryMapContent(
                         if (showSceneActions) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { onClose(); onContextDismiss() }) { Text("‹ 장면 목록") }
+                                TextButton(onClick = { onClose(); onContextDismiss() }) {
+                                    Text(if (sceneGroup != null) "‹ 이 근처 장면 ${sceneGroup.size}개" else "‹ 장면 목록")
+                                }
                                 Spacer(Modifier.weight(1f))
                                 Text("장면 ${scenes.indexOfFirst { it.id == selected?.id } + 1}",
                                     Modifier.padding(end = 8.dp), fontSize = 13.sp, color = TextMuted)
@@ -261,6 +269,14 @@ internal fun WalkDiaryMapContent(
                             }
                         }
                         if (!showSceneActions && offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
+                        if (sceneGroup != null && selected == null && !explorerSelected) {
+                            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                val same = sceneGroup.mapNotNull { it.point }.distinct().size == 1
+                                Text("${if (same) "같은 위치" else "이 근처"} 장면 ${sceneGroup.size}개",
+                                    Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                TextButton(onClick = onClearGroup) { Text("전체 장면") }
+                            }
+                        }
                         if (adding) Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("동선에서 위치를 골라 주세요.", Modifier.weight(1f), fontSize = 14.sp)
                             TextButton(onClick = onAdd) { Text("취소") }
@@ -292,7 +308,7 @@ internal fun WalkDiaryMapContent(
                             }
                             LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth().testTag("diary-scene-list"),
                                 contentPadding = PaddingValues(bottom = 20.dp)) {
-                                scenes.forEachIndexed { index, scene ->
+                                displayedScenes.forEachIndexed { index, scene ->
                                     gapSlots[index].orEmpty().forEach { gap ->
                                         item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
                                     }
@@ -302,14 +318,14 @@ internal fun WalkDiaryMapContent(
                                             border = BorderStroke(1.dp, DaengsColors.BorderNeutral)) {
                                             Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 DiarySceneListButton(scene, sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
-                                                    onClick = { onSelect(scene) }, modifier = Modifier.weight(1f), ordinal = index + 1)
+                                                    onClick = { onSelect(scene) }, modifier = Modifier.weight(1f), ordinal = ordinals[scene.id])
                                                 IconButton(onClick = { onEdit(scene) }) {
-                                                    Icon(painterResource(R.drawable.ic_diary_edit), "장면 ${index + 1} 수정",
+                                                    Icon(painterResource(R.drawable.ic_diary_edit), "장면 ${ordinals[scene.id]} 수정",
                                                         Modifier.size(20.dp), tint = TextMuted)
                                                 }
                                                 onDelete?.let { remove ->
                                                     IconButton(onClick = { remove(scene) }) {
-                                                        Icon(painterResource(R.drawable.ic_diary_delete), "장면 ${index + 1} 삭제",
+                                                        Icon(painterResource(R.drawable.ic_diary_delete), "장면 ${ordinals[scene.id]} 삭제",
                                                             Modifier.size(20.dp), tint = TextMuted)
                                                     }
                                                 }
@@ -363,13 +379,13 @@ internal fun WalkDiaryMapContent(
                             }
                             if (!compactDrawer || expanded) {
                                 HorizontalDivider(color = PinkFaint)
-                                val index = scenes.indexOfFirst { it.id == selected.id }
+                                val index = displayedScenes.indexOfFirst { it.id == selected.id }
                                 Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(enabled = index > 0, onClick = { scenes.getOrNull(index - 1)?.let(onSelect) }) { Text("이전") }
-                                    Text("${index + 1} / ${scenes.size}", color = TextMuted, fontSize = 14.sp)
-                                    TextButton(enabled = index in 0 until scenes.lastIndex,
-                                        onClick = { scenes.getOrNull(index + 1)?.let(onSelect) }) { Text("다음") }
+                                    TextButton(enabled = index > 0, onClick = { displayedScenes.getOrNull(index - 1)?.let(onSelect) }) { Text("이전") }
+                                    Text("${index + 1} / ${displayedScenes.size}", color = TextMuted, fontSize = 14.sp)
+                                    TextButton(enabled = index in 0 until displayedScenes.lastIndex,
+                                        onClick = { displayedScenes.getOrNull(index + 1)?.let(onSelect) }) { Text("다음") }
                                 }
                             }
                         }
@@ -420,3 +436,11 @@ private fun DiaryCompactDrawerPreview() {
         explorerPanel = { Text("동선을 골라 살펴보세요.") },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
 }
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun DiaryGroupReadingPreview() { DaengsTheme {
+    val scenes = (1..8).map { DiaryScene("s/$it","s",it*60_000L,"나무 아래의 순간 $it","함께 잠깐 쉬었어요.",null,"") }
+    WalkDiaryMapContent(scenes,null,false,null,{},{},{},{},{},{},sceneGroup=scenes.drop(1),onDelete={},
+        explorerPanel={ Text("동선 탐색") },map={ Box(Modifier.fillMaxSize().background(PinkFaint)) })
+} }

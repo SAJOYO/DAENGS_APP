@@ -20,13 +20,14 @@ internal fun NaverSessionRouteExplorer(
     paths: List<List<GeoPoint>>, obstacles: List<GeoPoint>,
     size: IntSize, bottomPadding: Int, density: Float,
     onDirectionCount: (Int) -> Unit,
+    markerBounds: List<com.daengs.app.map.layout.MarkerRect> = emptyList(),
 ) {
     val arrowIcon = remember { OverlayImage.fromResource(R.drawable.ic_walk_external_direction) }
     val cursorIcon = remember { OverlayImage.fromResource(R.drawable.ic_walk_replay_cursor) }
     val latestCount by rememberUpdatedState(onDirectionCount)
     val highlight = state?.highlightPaths.orEmpty()
     val parts = state?.observedParts.orEmpty()
-    DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight, state?.useOverviewDirections, parts) {
+    DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight, state?.useOverviewDirections, parts, markerBounds) {
         val arrows = mutableListOf<Marker>()
         var sides = emptyMap<String, Int>()
         fun clear() { arrows.forEach { it.map = null }; arrows.clear() }
@@ -53,7 +54,8 @@ internal fun NaverSessionRouteExplorer(
             val exclusions = obstacles.map(::project).filter { it.valid }.map {
                 RouteScreenRect(it.x - 28 * density, it.y - 46 * density,
                     it.x + 28 * density, it.y + 14 * density)
-            } + RouteScreenRect(size.width - 68.0 * density, 0.0, size.width.toDouble(), 68.0 * density)
+            } + markerBounds.map { RouteScreenRect(it.left*density, it.top*density, it.right*density, it.bottom*density) } +
+                RouteScreenRect(size.width - 68.0 * density, 0.0, size.width.toDouble(), 68.0 * density)
             val placements = placeRouteDirections(edges, visible, exclusions, density.toDouble(), sides,
                 distinguishPasses = highlight.isNotEmpty() || parts.any { it.selected },
                 collisionEdges = projectEdges(paths + parts.filterNot { it.selected }.map { it.path }))

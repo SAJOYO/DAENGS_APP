@@ -17,6 +17,16 @@ data class MomentMarkerState(
     val behaviors: Set<WalkMomentType> = emptySet(),
     /** Opt-in policy for the records overview; legacy diary markers retain their own presentation. */
     val recordPin: RecordPinAppearance? = null,
+    /** Diary ordinals and inspection membership never share action counts or behavior styling. */
+    val diaryPin: DiaryPinAppearance? = null,
 )
 
 data class RecordPinAppearance(val count: Int, val background: Boolean = false, val alpha: Float = .18f)
+data class DiaryPinAppearance(val ordinal: Int, val inspected: Boolean = false, val dimmed: Boolean = false)
+
+/** Reading focus wins over siblings retained in the inspected group after zooming. */
+internal fun momentGroupPriority(members: List<MomentMarkerState>): Int = when {
+    members.any { it.selected } -> 2
+    members.any { it.diaryPin?.inspected == true } -> 1
+    else -> 0
+}

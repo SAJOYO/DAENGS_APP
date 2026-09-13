@@ -19,6 +19,9 @@
 
 ## 밀집 묶음
 
+계산은 이제 [지도 표식 공통 정책](map-marker-layout.md)의 `clusterMapMarkers`/`placeMapMarkers`를 사용한다.
+배치에는 실제 아이콘·배지 크기, 선택 우선, 패널/화면 경계와 출발·도착 표식을 반영하며 이동은 최대 48dp다.
+
 `clusterRecordPins`는 NAVER projection을 dp로 변환한 좌표를 사용한다. 결과 묶음의 모든 점 쌍이
 44dp 이내여야 한다. 인접 핀을 계속 이어 길 전체를 합치는 방식이 아니다. 배경은 30dp 범위다.
 지도가 멈추면 현재 확대·회전·기울기의 projection으로 다시 계산한다. 제스처 중에는 기존 SDK

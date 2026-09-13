@@ -73,7 +73,7 @@ internal fun NaverRouteEndpointLayer(
     }
 }
 
-private val RouteEndpointKind.iconRes: Int get() = when (this) {
+internal val RouteEndpointKind.iconRes: Int get() = when (this) {
     RouteEndpointKind.START -> R.drawable.ic_walk_start
     RouteEndpointKind.END -> R.drawable.ic_walk_finish
     RouteEndpointKind.START_END -> R.drawable.ic_walk_start_finish

@@ -68,9 +68,16 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         editors.adding -> editors.cancelAdding()
         explorer.panelOpen -> explorer.choosePanel(false)
         selectedId != null -> explorer.closeScene()
+        readingMemory.groupIds.isNotEmpty() -> readingMemory.inspect(emptyList())
         else -> onBack()
     } }
     val originalScenes = diary?.scenes.orEmpty()
+    LaunchedEffect(originalScenes, readView?.scenesLoading, readingMemory.groupIds) {
+        if (loaded && readView?.scenesLoading == false && diary != null) {
+            val valid = originalScenes.mapTo(hashSetOf()) { it.id }
+            readingMemory.inspect(readingMemory.groupIds.filter { it in valid })
+        }
+    }
     val sceneKinds = remember(diary) { diary?.sceneKinds().orEmpty() }
     val comparisonSnapshot = remember(originalScenes, backupAccount, diary?.preparing) {
         if (BuildConfig.DEBUG && diary?.preparing != true && originalScenes.size in 1..12 && !backupAccount.ownerId.isNullOrBlank())
@@ -94,14 +101,19 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     fun selectScene(scene: DiaryScene, fromMap: Boolean = false) {
         val current = state.readView ?: return
         val original = originalScenes.singleOrNull { it.id == scene.id } ?: return
-        if (!navigation.selectScene(current, original, fromMap)) return
-        explorer.selectScene(scene.id, fromMap)
+        val insideGroup = scene.id in readingMemory.groupIds
+        if (!navigation.selectScene(current, original, fromMap || insideGroup)) return
+        if (!insideGroup) readingMemory.inspect(emptyList())
+        explorer.selectScene(scene.id, fromMap || insideGroup)
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
-    val markers = remember(originalScenes, selectedId) { diarySceneMarkers(originalScenes, selectedId) }
+    val markers = remember(originalScenes, selectedId, readingMemory.groupIds) {
+        diarySceneMarkers(originalScenes, selectedId, readingMemory.groupIds)
+    }
     val currentReview = readView?.route?.review
     val sceneFocus = selectedOriginal?.let { readView?.focusFor(it) }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
+        readingMemory.inspect(emptyList())
         explorer.selectContext(context.id, openExplorer = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP,
             fromMap = fromMap)
         if (!fromMap) navigation.fit(context.locations,
@@ -121,7 +133,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val offscreen = diaryOffscreenScenes(originalScenes, visibility?.takeIf {
         it.query.revisionKey == readView?.revisionKey && it.query.targets == visibilityTargets })
     LaunchedEffect(walkingBounds) { navigation.initialize(walkingBounds) }
-    fun wholeRecord() { explorer.overview(); navigation.fit(wholeBounds, DiaryMapView.WHOLE) }
+    fun wholeRecord() { readingMemory.inspect(emptyList()); explorer.overview(); navigation.fit(wholeBounds, DiaryMapView.WHOLE) }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null && error == null) {
             TextButton(onClick = onBack) { Text("‹ ${origin.backLabel}") }
@@ -129,13 +141,15 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
                 readingMemory = readingMemory,
+                sceneGroup = readingMemory.groupIds.takeIf { it.isNotEmpty() }?.let { ids -> scenes.filter { it.id in ids } },
+                onClearGroup = { explorer.closeScene(); readingMemory.inspect(emptyList()) },
                 sceneKinds = sceneKinds,
                 walkDogIds = detail?.summary?.dogIds.orEmpty(), walkPets = pets,
                 onSelect = { selectScene(it) }, onClose = explorer::closeScene,
                 selectionFromMap = explorer.selectionFromMap,
                 selectionPending = selectedId != null && readView?.scenesLoading == true,
                 mapView = navigation.view, offscreenScenes = offscreen,
-                onWalkingOverview = { explorer.overview(); navigation.fit(walkingBounds, DiaryMapView.WALKING) },
+                onWalkingOverview = { readingMemory.inspect(emptyList()); explorer.overview(); navigation.fit(walkingBounds, DiaryMapView.WALKING) },
                 selectedRouteNotice = sceneFocus?.let(::sceneRouteNotice),
                 explorerFocusId = explorer.selectedContext?.id,
                 onContextDismiss = { if (explorer.selectedContext != null) explorer.overview() },
@@ -155,6 +169,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 },
                 onRetry = state::retry,
                 onAdd = {
+                    readingMemory.inspect(emptyList())
                     explorer.choosePanel(false)
                     val hasRoute = !route?.points.isNullOrEmpty()
                     editors.beginAdding(requireNotNull(detail).summary, hasRoute)
@@ -176,6 +191,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 },
                 explorerSelected = explorer.panelOpen,
                 onChooseExplorer = { open ->
+                    readingMemory.inspect(emptyList())
                     editors.cancelAdding(); explorer.overview(); explorer.choosePanel(open)
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
@@ -220,6 +236,15 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         onCameraIdle = {}, onCameraGesture = navigation::gesture, onSelectPlace = {},
                         visibilityQuery = query, onVisibility = { if (it.query == latestQuery) visibility = it },
                         onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let { selectScene(it, fromMap = true) } },
+                        onSelectMomentGroup = { ids ->
+                            val members = originalScenes.filter { it.id in ids }
+                            if (members.size == 1) selectScene(members.single(), fromMap = true)
+                            else if (members.isNotEmpty()) {
+                                editors.cancelAdding(); explorer.choosePanel(false)
+                                readingMemory.inspect(members.map { it.id })
+                                readingMemory.groupList.requestScrollToItem(0)
+                            }
+                        },
                         onSelectRecordContext = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                         onSelectRouteEndpoint = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
                         onMapTap = { point ->
@@ -271,6 +296,15 @@ internal fun diaryOverviewBounds(route: List<GeoPoint>, anchor: GeoPoint?, scene
 
 internal const val SCENE_ROUTE_MIN_ZOOM = 18.0
 
+/** Preserve one input per scene; the provider groups projected positions using the shared map policy. */
+internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?, inspected: List<String> = emptyList()): List<MomentMarkerState> =
+    scenes.mapIndexedNotNull { index, scene -> scene.point?.takeIf { it.isDiaryLocation() }?.let { point ->
+        MomentMarkerState(scene.id, point, "${index+1}", selected = scene.id == selectedId,
+            aboveRouteEndpoints = true,
+            diaryPin = com.daengs.app.map.layers.moments.DiaryPinAppearance(index+1,
+                inspected = scene.id in inspected, dimmed = inspected.isNotEmpty() && scene.id !in inspected))
+    } }
+
 internal fun sceneRouteNotice(relation: SceneRouteRelation): String = when (relation) {
     SceneRouteRelation.CONNECTED -> "이 장면 시각에 대응하는 동선을 강조했어요."
     SceneRouteRelation.NO_ROUTE -> "장면 위치는 있지만 이 시각과 연결되는 동선은 확인되지 않아요."
@@ -286,20 +320,6 @@ internal fun sceneRouteNotice(relation: SceneRouteRelation): String = when (rela
 private fun WalkDiaryObservedSummaryPreview() { DaengsTheme {
     ObservedRouteLegend(com.daengs.app.map.layers.completedroute.RecordRouteRole.entries)
 } }
-
-/** Same-location labels list sequence numbers, never a count of nearby observations. */
-internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?): List<MomentMarkerState> {
-    val order = scenes.withIndex().associate { it.value.id to it.index + 1 }
-    return diaryLocationGroups(scenes).map { group ->
-        val chosen = group.firstOrNull { it.id == selectedId } ?: group.first()
-        MomentMarkerState(chosen.id, requireNotNull(group.first().point), group.joinToString(" · ") { order[it.id].toString() },
-            selected = group.any { it.id == selectedId }, aboveRouteEndpoints = true,
-            sequenceLabel = if (group.size <= 3) group.joinToString(" · ") { order[it.id].toString() }
-                else (group.take(2) + listOfNotNull(group.firstOrNull { it.id == selectedId }))
-                    .distinctBy { it.id }.sortedBy { order[it.id] }.joinToString(" · ") { order[it.id].toString() } + " …")
-    }
-}
-
 
 /** Display-only suppression at the same observed position; route and stay data stay intact. */
 internal fun diaryDisplayScene(scene: MapScene): MapScene = scene.copy(
