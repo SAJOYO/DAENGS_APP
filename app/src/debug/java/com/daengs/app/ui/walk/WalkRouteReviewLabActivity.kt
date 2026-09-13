@@ -105,8 +105,7 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
             onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {}, title = "동선과 장면 함께 보기",
             onBack = onBack,
             subtitle = formatWalkDay(currentDetail.summary.startedAtMillis), summaryContent = {
-                WalkSessionSummary(currentDetail.summary)
-                ObservedRouteLegend(presentation.observedParts.map { it.role })
+                WalkSessionSummary(currentDetail.summary, compact = true)
             },
             explorerSelected = explorer.panelOpen,
             onChooseExplorer = { explorer.overview(); explorer.choosePanel(it) },
@@ -119,9 +118,10 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
             gapContexts = explorer.review?.context?.contexts.orEmpty(),
             selectedGap = explorer.selectedContext?.takeIf { it.kind == com.daengs.app.walk.trajectory.RecordContextKind.GAP },
             onSelectGap = { selectContext(it) },
+            mapLegend = { ObservedRouteLegend(presentation.observedParts.map { it.role }) },
             map = { viewport ->
                 val query = MapVisibilityQuery(ready.revisionKey, targets, viewport.bottomOcclusionPx,
-                    viewport.controlsWidthPx, viewport.controlsHeightPx, viewport.settingsCoverPx)
+                    viewport.controlsWidthPx, viewport.controlsHeightPx, viewport.settingsCoverPx, viewport.settingsTopPx)
                 val latestQuery by rememberUpdatedState(query)
                 val input = DiaryReviewMap(scene, camera, viewport, query,
                     onScene = { id -> currentScenes.firstOrNull { it.id == id }?.let { selectScene(it, fromMap = true) } },
@@ -133,6 +133,7 @@ internal fun WalkRouteReviewContent(detail: WalkSessionDetail, scenes: List<Diar
                     onRouteDirectionCount = { directionCount = it },
                     centerZoom = camera.zoom, centerMinZoom = camera.minZoom,
                     cameraRequestKey = camera.revision, keepSelectionVisible = true,
+                    topPaddingPx = viewport.controlsHeightPx,
                     bottomPaddingPx = if (camera.expandedContext)
                         viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
                     centerYFraction = viewport.selectionYFraction,

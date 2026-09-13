@@ -2,16 +2,21 @@ package com.daengs.app.ui.walk
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.map.layers.completedroute.*
-import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.routeexplorer.SceneRouteFocus
 import com.daengs.app.walk.trajectory.*
@@ -60,18 +65,42 @@ internal fun sceneRouteNotice(focus: SceneRouteFocus): String {
 @Composable
 internal fun ObservedRouteLegend(roles: List<RecordRouteRole>) {
     if (roles.isEmpty()) return
-    Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        roles.distinct().forEach { role ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Canvas(Modifier.size(32.dp, 18.dp)) {
-                    val style = RecordPresentationPolicy.stroke(role, false)
-                    val a = Offset(0f, size.height / 2); val b = Offset(size.width, size.height / 2)
-                    drawLine(Color(style.color), a, b, (style.widthDp + 2 * style.railWidthDp).dp.toPx())
-                    drawLine(Color(style.centerColor), a, b, style.widthDp.dp.toPx())
-                }
-                Text(RecordPresentationPolicy.label(role), style = MaterialTheme.typography.labelMedium)
+    val distinct = roles.distinct()
+    var open by remember(distinct) { mutableStateOf(false) }
+    val title = if (distinct.size == 1) RecordPresentationPolicy.label(distinct.single()) else "관측 경로 ${distinct.size}종"
+    Box {
+        Surface(onClick = { open = true }, shape = RoundedCornerShape(10.dp), color = CardWhite,
+            shadowElevation = 2.dp, modifier = Modifier.testTag("diary-map-legend")
+                .semantics { contentDescription = "$title 설명" }) {
+            Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ObservedRouteSwatch(distinct.first())
+                Text(title, fontSize = 11.sp, color = TextDark)
             }
         }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false },
+            modifier = Modifier.widthIn(max = 280.dp).testTag("diary-map-legend-help")) {
+            distinct.forEach { role -> Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ObservedRouteSwatch(role)
+                    Text(RecordPresentationPolicy.label(role), style = MaterialTheme.typography.labelLarge)
+                }
+                Text(if (role == RecordRouteRole.OBSERVED_EXCLUDED)
+                    "위치 기록은 남아 있지만 보행거리 합계에는 포함되지 않는 이동이에요."
+                    else "위치는 기록됐지만 보행 여부가 확정되지 않았어요. 보행거리에 추가하지 않아요.",
+                    Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = TextDark)
+            } }
+        }
+    }
+}
+
+@Composable
+private fun ObservedRouteSwatch(role: RecordRouteRole) {
+    Canvas(Modifier.size(18.dp, 16.dp)) {
+        val style = RecordPresentationPolicy.stroke(role, false)
+        val a = Offset(0f, size.height / 2); val b = Offset(size.width, size.height / 2)
+        drawLine(Color(style.color), a, b, (style.widthDp + 2 * style.railWidthDp).dp.toPx())
+        drawLine(Color(style.centerColor), a, b, style.widthDp.dp.toPx())
     }
 }
 

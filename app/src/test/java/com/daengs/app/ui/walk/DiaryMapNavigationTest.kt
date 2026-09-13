@@ -147,6 +147,15 @@ class DiaryMapNavigationTest {
             badgeSize = { MapScreenSize(80f, 37f) }, project = ::project))
     }
 
+    @Test fun `settings below the toolbar only hide badges fully covered at that offset`() {
+        val targets = listOf("above" to 20.0, "covered" to 90.0, "below" to 150.0, "partial" to 115.0)
+            .map { (id, y) -> MapLocationTarget(id, listOf(GeoPoint(90.0, y))) }
+        val query = MapVisibilityQuery("r", targets, bottomOcclusionPx = 0,
+            topRightCoverPx = 40, topRightCoverTopPx = 70)
+        assertEquals(setOf("above", "below", "partial"), visibleMapLocationIds(query, 100, 200, 1f,
+            badgeSize = { MapScreenSize(10f, 10f) }, project = { MapScreenPoint(it.latitude.toFloat(), it.longitude.toFloat()) }))
+    }
+
     @Test fun `shared pins count each scene once and unlocated scenes are never offscreen`() {
         val scenes = listOf(scene("one", point(0.0)), scene("two", point(0.0)),
             scene("two", point(2_000.0)), scene("unlocated", null))

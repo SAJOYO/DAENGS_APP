@@ -72,7 +72,7 @@ internal fun WalkExplorerPanelPreview(@PreviewParameter(ExplorerPanelExamples::c
     DaengsTheme { WalkDiaryMapContent(scenes, scene, false, if (notices) "장면 갱신을 마치지 못했어요." else null,
         onSelect = { state.selectScene(it.id) }, onClose = state::closeScene, onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {},
         title = "함께 걸었던 길", subtitle = "미리보기 산책", readingMemory = memory,
-        summaryContent = { WalkSessionSummary(read.route.detail.summary) },
+        summaryContent = { WalkSessionSummary(read.route.detail.summary, compact = true) },
         mapView = DiaryMapView.WALKING.takeIf { notices },
         offscreenScenes = if (notices) scenes.take(1) else emptyList(), directionNotice = notices,
         generationNotice = "저장한 장면을 보여드려요.".takeIf { notices },

@@ -25,7 +25,7 @@ internal fun diaryParticipants(dogIds: List<String>, pets: List<Pet>): List<Pair
 @Composable
 internal fun DiaryReadingHeader(title: String, dogIds: List<String>, pets: List<Pet>) {
     val participants = diaryParticipants(dogIds, pets)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp),
+    Row(Modifier.fillMaxWidth().padding(horizontal = DiaryReadingChrome.Gutter).padding(bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         if (participants.isNotEmpty()) {
             val pet = participants.singleOrNull()?.second
@@ -33,11 +33,11 @@ internal fun DiaryReadingHeader(title: String, dogIds: List<String>, pets: List<
             Image(painterResource(portrait ?: R.drawable.ic_location_paw),
                 contentDescription = if (participants.size > 1) "함께 산책한 강아지 ${participants.size}마리"
                     else if (portrait != null) "${pet.name} 견종 그림" else "산책한 강아지",
-                modifier = Modifier.size(40.dp).clip(CircleShape))
-            Spacer(Modifier.width(12.dp))
+                modifier = Modifier.size(36.dp).clip(CircleShape))
+            Spacer(Modifier.width(11.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(title, color = TextDark, fontSize = 22.sp, lineHeight = 28.sp,
+            Text(title, color = TextDark, fontSize = DiaryReadingChrome.Title, lineHeight = 26.sp,
                 fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (participants.isNotEmpty()) {
                 val names = participants.mapNotNull { it.second?.name }

@@ -85,8 +85,8 @@ internal fun DiaryDrawerLayout(
                 ?: anchors.positionOf(state.targetValue)).roundToInt()) }
             .then(if (state.compactEnabled) Modifier else Modifier.nestedScroll(nestedScroll))
             .anchoredDraggable(state.drag, Orientation.Vertical, flingBehavior = fling),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = CardWhite, contentColor = TextDark, shadowElevation = 8.dp,
+            shape = RoundedCornerShape(topStart = DiaryReadingChrome.Corner, topEnd = DiaryReadingChrome.Corner),
+            color = CardWhite, contentColor = TextDark, shadowElevation = 4.dp,
         ) { sheetContent(contentHeight) }
     }
 }
