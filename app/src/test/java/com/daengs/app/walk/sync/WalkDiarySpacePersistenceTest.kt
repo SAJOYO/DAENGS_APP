@@ -8,6 +8,7 @@ import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.diary.GeoStoryboardBundle
 import com.daengs.app.walk.diary.WalkDiaryReader
+import com.daengs.app.walk.diary.canonicalJson
 import com.daengs.app.walk.store.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -25,8 +26,12 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class WalkDiarySpacePersistenceTest {
-    @Test fun normalizedDiarySurvivesReopen() = runBlocking {
-        val response = JSONObject(javaClass.getResource("/storyboard/diary-space-board-v1.json")!!.readText())
+    @Test fun normalizedDiarySurvivesReopen() = assertPublicationSurvives("diary-space-board-v1.json")
+
+    @Test fun independentCardWritingSurvivesReopen() = assertPublicationSurvives("diary-card-orchestration-v1.json")
+
+    private fun assertPublicationSurvives(resource: String) = runBlocking {
+        val response = JSONObject(javaClass.getResource("/storyboard/$resource")!!.readText())
         val board = GeoStoryboardBundle.parse(response.toString())
         val context = ApplicationProvider.getApplicationContext<Application>()
         val name = "space-${UUID.randomUUID().toString().take(8)}.db"
@@ -42,8 +47,9 @@ class WalkDiarySpacePersistenceTest {
             val revisions = response.getJSONObject("entry_revisions")
             board.scenes.filter { it.entryReference != null }.forEach { scene ->
                 val id = scene.entryReference!!.entryId
-                val entry = WalkEntry(id, board.sessionId, WalkMomentType.NOTE, scene.atMillis,
-                    note = scene.diary!!.recordText)
+                val note = scene.diary!!.recordKind == "note"
+                val entry = WalkEntry(id, board.sessionId, if (note) WalkMomentType.NOTE else WalkMomentType.SNIFFING, scene.atMillis,
+                    note = scene.diary.recordText.takeIf { note }, petId = scene.entryReference.petId)
                 dao.insertEntry(WalkEntryRow(id, board.sessionId, entry.toJson().toString(),
                     revisions.getInt(id), id, false))
             }
@@ -53,7 +59,7 @@ class WalkDiarySpacePersistenceTest {
                     path.endsWith("capabilities") -> JSONObject("""{"diary_formats":["walk-diary-board-v1"]}""")
                     method == "POST" -> {
                         posts++
-                        assertEquals(revisions.toString(), request!!.getJSONObject("expected_entries").toString())
+                        assertEquals(canonicalJson(revisions), canonicalJson(request!!.getJSONObject("expected_entries")))
                         JSONObject(response.toString())
                     }
                     else -> JSONObject(response.toString()).put("status", "pending").put("bundle", JSONObject.NULL)
@@ -69,6 +75,9 @@ class WalkDiarySpacePersistenceTest {
             val reader = WalkDiaryReader(dao, WalkPhotoStore(dao, File(context.cacheDir, "space-photos")) { owner }) { owner }
             val reopened = withTimeout(10000) { reader.observe(listOf(summary)).first().single() }
             assertEquals(board.scenes.map { it.body }, reopened.scenes.map { it.body })
+            assertEquals(board.scenes.map { it.title }, reopened.scenes.map { it.title })
+            assertEquals(board.scenes.map { it.diary?.address }, reopened.scenes.map { it.content?.address })
+            assertEquals(board.scenes.map { it.diary?.publishedWriting }, reopened.scenes.map { it.content?.publishedWriting })
             assertTrue(board.scenes.any { it.entryReference == null })
             assertEquals(board.scenes.size, reopened.scenes.size)
         } finally {

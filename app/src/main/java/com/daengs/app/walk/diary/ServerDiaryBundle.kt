@@ -16,6 +16,7 @@ data class DiarySceneContent(
     val locationMethod: String? = null,
     val locationAtMillis: Long? = null,
     val positionState: String? = null,
+    val publishedWriting: PublishedCardWriting? = null,
 )
 
 data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int, val showFailureNotice: Boolean = true) {
