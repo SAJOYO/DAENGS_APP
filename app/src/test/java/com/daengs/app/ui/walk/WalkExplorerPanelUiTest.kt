@@ -4,6 +4,13 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.view.View
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
+import com.daengs.app.ui.theme.DaengsTheme
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
@@ -52,6 +59,12 @@ class WalkExplorerPanelUiTest {
         val header = compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
         val sheet = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         assertNoScenes()
+        val timeline = compose.onNodeWithTag("explorer-range-slider").fetchSemanticsNode().boundsInRoot
+        val label = compose.onNodeWithTag("explorer-time-label").fetchSemanticsNode().boundsInRoot
+        assertTrue("Both handles need the header width", timeline.width >= header.width - 1f)
+        assertTrue("Elapsed times belong above the timeline", label.bottom <= timeline.top)
+        compose.onNodeWithTag("explorer-range-slider").assertHeightIsAtLeast(48.dp)
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(2)
         capture("range-390")
         compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().assertIsDisplayed()
@@ -67,6 +80,7 @@ class WalkExplorerPanelUiTest {
         assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
         compose.onNodeWithText("전체 산책").performClick()
         assertNoScenes()
+        capture("overview-390")
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp")
@@ -182,7 +196,7 @@ class WalkExplorerPanelUiTest {
         lateinit var memory: DiaryReadingMemory
         compose.setContent { memory = rememberDiaryReadingMemory() }
         val saved = JSONObject().put("drawer", "Browsing").put("explorerOffset", 321)
-            .put("explorerDetails", true).put("explorerLayout", 3)
+            .put("explorerDetails", true).put("explorerLayout", 4)
             .put("group", org.json.JSONArray(listOf("scene-a")))
             .put("body", JSONObject().put("id", "scene-a").put("index", 3).put("offset", 12))
         compose.runOnIdle { runBlocking { memory.restore(saved) }
@@ -191,15 +205,68 @@ class WalkExplorerPanelUiTest {
             assertEquals(listOf("scene-a"), memory.groupIds)
             assertEquals(3, memory.restoredBody!!.getInt("index"))
             val roundTrip = memory.snapshot()
-            assertEquals(3, roundTrip.getInt("explorerLayout"))
+            assertEquals(4, roundTrip.getInt("explorerLayout"))
             assertEquals(321, roundTrip.getInt("explorerOffset"))
-            saved.put("explorerLayout", 2); saved.remove("explorerDetails")
+            saved.put("explorerLayout", 3); saved.remove("explorerDetails")
             runBlocking { memory.restore(saved) }
             assertEquals(0, memory.pendingExplorerOffset)
             assertFalse(memory.explorerDetails)
             assertEquals(listOf("scene-a"), memory.groupIds)
             assertEquals(12, memory.restoredBody!!.getInt("offset"))
         }
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp")
+    fun `hour-long time labels retain all digits with enlarged text`() {
+        compose.setContent {
+            val view = LocalView.current
+            SideEffect { rendered = view.rootView }
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                DaengsTheme { Box(Modifier.width(320.dp).padding(horizontal = 20.dp)) {
+                    ExplorerTimeLabel(3_600_000, 9_599_000, selection = true)
+                } }
+            }
+        }
+        capture("hours-320-large-font")
+        val parent = compose.onNodeWithTag("explorer-time-label").fetchSemanticsNode().boundsInRoot
+        for (text in listOf("1:00:00", "– 2:39:59", "1:39:59 선택")) {
+            val node = compose.onNodeWithText(text).assertIsDisplayed()
+            val bounds = node.fetchSemanticsNode().boundsInRoot
+            assertTrue(bounds.left >= parent.left && bounds.right <= parent.right)
+            val layouts = mutableListOf<TextLayoutResult>()
+            node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertTrue(layouts.isNotEmpty())
+            layouts.forEach { layout ->
+                assertFalse(layout.didOverflowHeight)
+                val lastLine = layout.lineCount - 1
+                assertFalse(layout.isLineEllipsized(lastLine))
+                assertEquals(text.length, layout.getLineEnd(lastLine, visibleEnd = true))
+                // Text layout uses fractional glyph widths but the node size is an integer pixel.
+                assertTrue("Time digits must fit: $text", layout.getLineRight(lastLine) <= layout.size.width + 1f)
+            }
+        }
+    }
+
+    @Test fun `range length menu preserves its start and clips to the original recording end`() {
+        val read = explorerPanelPreviewRead()
+        lateinit var state: WalkRouteExplorerState
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(120_000, 150_000) } }
+            DaengsTheme { WalkRouteExplorerPanel(state, {}) }
+        }
+        compose.onNodeWithText("길이 ▾").performScrollTo().performClick()
+        compose.onNodeWithText("3분").performClick()
+        compose.runOnIdle {
+            assertEquals(120_000L, state.selectedSlice!!.from)
+            assertEquals(180_000L, state.selectedSlice!!.until)
+            assertEquals(80.0, read.route.detail.summary.distanceMeters, 0.0)
+        }
+        compose.onNodeWithText("01:00 선택").assertIsDisplayed()
+        compose.onNodeWithText("전체 산책").performClick()
+        compose.onNodeWithText("1분").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(0L, state.selectedSlice!!.from); assertEquals(60_000L, state.selectedSlice!!.until) }
     }
 
     private fun capture(name: String) {

@@ -12,16 +12,16 @@ import com.daengs.app.ui.theme.*
 /** Explorer hosts these in its reading region so map notices cannot consume the controls' viewport. */
 @Composable
 internal fun DiaryReadingNotices(generation: String?, direction: Boolean, error: String?,
-    onZoom: () -> Unit, onRetry: () -> Unit) {
+    onZoom: () -> Unit, onRetry: () -> Unit, compact: Boolean = false) {
     generation?.takeIf { it.isNotBlank() }?.let {
-        Text(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
+        Text(it, Modifier.padding(horizontal = if (compact) 0.dp else 20.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
     }
-    if (direction) Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+    if (direction) Row(Modifier.padding(horizontal = if (compact) 0.dp else 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("현재 화면에서는 방향을 표시하기 어려워요.", Modifier.weight(1f),
             style = MaterialTheme.typography.bodySmall, color = TextMuted)
         TextButton(onClick = onZoom) { Text("동선 확대") }
     }
-    if (error != null) Row(Modifier.padding(horizontal = 20.dp)) {
+    if (error != null) Row(Modifier.padding(horizontal = if (compact) 0.dp else 20.dp)) {
         Text(error, Modifier.weight(1f))
         TextButton(onClick = onRetry) { Text("다시 시도") }
     }

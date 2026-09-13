@@ -287,7 +287,7 @@ internal fun WalkDiaryMapContent(
                             readingExtras()
                         if (explorerSelected && explorerPanel != null) {
                             Box(Modifier.weight(1f).fillMaxWidth()) { explorerPanel {
-                                DiaryReadingNotices(null, directionNotice, null, onZoomRoute, onRetry)
+                                DiaryReadingNotices(null, directionNotice, null, onZoomRoute, onRetry, compact = true)
                             } }
                         } else if (loading) {
                             WalkDiaryPreparing(onRefresh = onRetry, error = error)
