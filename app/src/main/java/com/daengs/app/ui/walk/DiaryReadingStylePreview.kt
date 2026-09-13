@@ -45,7 +45,9 @@ internal fun DiaryReadingStylePreview(@PreviewParameter(DiaryReadingExamples::cl
             onDelete = {}, title = if (example == DiaryReadingExample.LONG_TITLE) "보리와 함께 오래도록 기억하고 싶은 저녁 산책의 기록" else "보리와 노을 한 바퀴",
             subtitle = formatWalkDay(at), walkDogIds = ids, walkPets = pets,
             sceneKinds = mapOf(first.id to DiarySceneKind.SNIFFING, second.id to if (second.content != null) DiarySceneKind.PHOTO else DiarySceneKind.NOTE),
-            summaryContent = { WalkSessionSummary(summary) }, explorerPanel = { Text("동선 탐색") },
+            mapView = DiaryMapView.WALKING,
+            mapLegend = { ObservedRouteLegend(listOf(com.daengs.app.map.layers.completedroute.RecordRouteRole.OBSERVED_EXCLUDED)) },
+            summaryContent = { WalkSessionSummary(summary, compact = true) }, explorerPanel = { Text("동선 탐색") },
             selectedRouteNotice = if (selected != null) "이 장면에는 확인된 위치가 없어요." else null,
             map = { Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.TopCenter) {
                 Text("지도 영역 · 미리보기", color = TextMuted)

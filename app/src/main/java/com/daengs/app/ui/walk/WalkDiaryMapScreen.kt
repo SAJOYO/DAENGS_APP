@@ -230,14 +230,14 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     }
                 },
                 summaryContent = { detail?.summary?.let { summary ->
-                    WalkSessionSummary(summary)
-                    ObservedRouteLegend(presentation.observedParts.map { it.role })
+                    WalkSessionSummary(summary, compact = true)
                 } },
+                mapLegend = { ObservedRouteLegend(presentation.observedParts.map { it.role }) },
                 backupAction = backupAction,
                 onOverview = ::wholeRecord,
                 modifier = Modifier.weight(1f), map = { viewport ->
                     val query = MapVisibilityQuery(readView?.revisionKey.orEmpty(), visibilityTargets, viewport.bottomOcclusionPx,
-                        viewport.controlsWidthPx, viewport.controlsHeightPx, viewport.settingsCoverPx)
+                        viewport.controlsWidthPx, viewport.controlsHeightPx, viewport.settingsCoverPx, viewport.settingsTopPx)
                     val latestQuery by rememberUpdatedState(query)
                     if (wholeBounds.isEmpty() || LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(PinkFaint), contentAlignment = Alignment.Center) {
                         Text(if (!loaded) "경로를 불러오고 있어요." else "표시할 위치 기록이 없어요.", color = TextMuted)
@@ -246,6 +246,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         centerZoom = camera.zoom, onRouteDirectionCount = { directionCount = it },
                         centerMinZoom = camera.minZoom,
                         cameraRequestKey = camera.revision, centerYFraction = viewport.selectionYFraction,
+                        topPaddingPx = viewport.controlsHeightPx,
                         bottomPaddingPx = if (camera.expandedContext)
                             viewport.contextBottomPaddingPx else viewport.bottomPaddingPx,
                         keepSelectionVisible = true,

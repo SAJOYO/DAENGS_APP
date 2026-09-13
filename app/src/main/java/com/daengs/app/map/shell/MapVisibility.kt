@@ -5,7 +5,7 @@ import com.daengs.app.location.GeoPoint
 data class MapLocationTarget(val id: String, val points: List<GeoPoint>)
 data class MapVisibilityQuery(val revisionKey: String, val targets: List<MapLocationTarget>,
     val bottomOcclusionPx: Int, val topLeftCoverWidthPx: Int = 0, val topLeftCoverHeightPx: Int = 0,
-    val topRightCoverPx: Int = 0)
+    val topRightCoverPx: Int = 0, val topRightCoverTopPx: Int = 0)
 /** null visibleIds means the map is moving or its size/projection is not ready. */
 data class MapVisibilityResult(val query: MapVisibilityQuery, val visibleIds: Set<String>?)
 
@@ -27,7 +27,8 @@ fun visibleMapLocationIds(query: MapVisibilityQuery, width: Int, height: Int, de
         val top = maxOf(0f, p.y - badge.height); val end = minOf(bottom.toFloat(), p.y)
         if (left >= right || top >= end) return false
         if (right <= query.topLeftCoverWidthPx && end <= query.topLeftCoverHeightPx) return false
-        if (left >= width - query.topRightCoverPx && end <= query.topRightCoverPx) return false
+        if (left >= width - query.topRightCoverPx && top >= query.topRightCoverTopPx &&
+            end <= query.topRightCoverTopPx + query.topRightCoverPx) return false
         return true
     }
     return query.targets.filter { target -> target.points.any(::visible) }.mapTo(linkedSetOf()) { it.id }

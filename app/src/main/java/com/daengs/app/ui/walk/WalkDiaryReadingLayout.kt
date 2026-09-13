@@ -41,10 +41,11 @@ import kotlinx.coroutines.launch
 /** Camera padding stays stable. Occlusion alone follows the actual sheet position. */
 internal data class DiaryMapViewport(val bottomPaddingPx: Int, val selectionYFraction: Float,
     val contextBottomPaddingPx: Int = bottomPaddingPx, val bottomOcclusionPx: Int = bottomPaddingPx,
-    val controlsWidthPx: Int = 0, val controlsHeightPx: Int = 0, val settingsCoverPx: Int = 0)
+    val controlsWidthPx: Int = 0, val controlsHeightPx: Int = 0, val settingsCoverPx: Int = 0,
+    val settingsTopPx: Int = 0)
 
 /** The sheet overlays one fixed map. Swiping it never issues a camera request. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun WalkDiaryMapContent(
     scenes: List<DiaryScene>, selected: DiaryScene?, loading: Boolean, error: String?,
@@ -58,6 +59,7 @@ internal fun WalkDiaryMapContent(
     generationActionLabel: String = "일기 생성·갱신",
     backLabel: String = "산책 목록으로",
     summaryContent: @Composable () -> Unit = {},
+    mapLegend: @Composable () -> Unit = {},
     backupAction: @Composable () -> Unit = {},
     directionNotice: Boolean = false,
     onZoomRoute: () -> Unit = {},
@@ -141,9 +143,9 @@ internal fun WalkDiaryMapContent(
             IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = backLabel }) {
                 Text("‹", fontSize = 30.sp, color = TextDark)
             }
-            Text(subtitle.ifBlank { "산책 일기" },
-                Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                color = TextMuted)
+            Text(if (subtitle.isNotBlank() && title == "$subtitle 산책") "산책 일기" else subtitle.ifBlank { "산책 일기" },
+                Modifier.weight(1f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = TextMuted)
             backupAction()
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.semantics { contentDescription = "일기 메뉴" }) {
@@ -172,14 +174,10 @@ internal fun WalkDiaryMapContent(
         DiaryReadingHeader(title, walkDogIds, walkPets)
         summaryContent()
         comparisonContent()
-        mapView?.let { view -> Box(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
-            DiaryRecordMapButtons(view,
-                onWalking = { onClose(); onContextDismiss(); onWalkingOverview(); scope.launch { sheet.partialExpand() } },
-                onWhole = { onClose(); onContextDismiss(); onOverview(); scope.launch { sheet.partialExpand() } })
-        } }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
             val density = LocalDensity.current
             var tabHeightPx by remember(density) { mutableIntStateOf(0) }
+            var toolsSize by remember(density) { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
             val mapPeek = (maxHeight * .25f).coerceIn(96.dp, 180.dp).coerceAtMost(maxHeight * .4f)
             val panelHeight = maxHeight - mapPeek
             val peek = if (!compactDrawer)
@@ -197,8 +195,8 @@ internal fun WalkDiaryMapContent(
             val viewport = DiaryMapViewport(peekPx,
                 (mapPeek.value / (2f * (maxHeight - peek).value)).coerceIn(0f, 1f),
                 with(density) { panelHeight.roundToPx() }, occlusion,
-                0, 0,
-                with(density) { 68.dp.roundToPx() })
+                toolsSize.width, toolsSize.height,
+                with(density) { 60.dp.roundToPx() }, toolsSize.height)
             DiaryDrawerLayout(
                 state = sheet, height = maxHeight, expandedHeight = panelHeight,
                 browsingHeight = peek, compactHeight = compactHeight,
@@ -240,23 +238,18 @@ internal fun WalkDiaryMapContent(
                                 }
                             }
                         }
-                        if (explorerPanel != null) TabRow(selectedTabIndex = if (explorerSelected) 1 else 0,
-                            containerColor = CardWhite, contentColor = TextDark,
-                            divider = { HorizontalDivider(color = PinkFaint) },
-                            modifier = Modifier.onSizeChanged { tabHeightPx = it.height }.testTag("diary-tabs")) {
-                            Tab(selected = !explorerSelected, onClick = {
+                        if (explorerPanel != null) DiaryReadingTabs(scenes.size, explorerSelected,
+                            onScenes = {
                                 if (explorerSelected) onChooseExplorer(false)
                                 scope.launch { sheet.showDetails() }
-                            },
-                                selectedContentColor = TextDark, unselectedContentColor = TextMuted,
-                                text = { Text("장면 " + scenes.size, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) })
-                            Tab(selected = explorerSelected, onClick = {
+                            }, onExplorer = {
                                 if (!explorerSelected) onChooseExplorer(true)
                                 scope.launch { sheet.showDetails() }
-                            },
-                                selectedContentColor = TextDark, unselectedContentColor = TextMuted,
-                                text = { Text("동선 탐색", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) })
-                        }
+                            }, canLower = sheet.targetValue != DiaryDrawerValue.Compact,
+                            canRaise = sheet.targetValue != DiaryDrawerValue.Expanded,
+                            onLower = { scope.launch { sheet.lower() } },
+                            onRaise = { scope.launch { sheet.raise() } },
+                            modifier = Modifier.onSizeChanged { tabHeightPx = it.height }.testTag("diary-tabs"))
                         val showSceneActions = compactDrawer && !explorerSelected && selected != null
                         if (showSceneActions) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -389,7 +382,18 @@ internal fun WalkDiaryMapContent(
             ) {
                 Box(Modifier.fillMaxSize()) {
                     map(viewport)
-                    Surface(Modifier.align(Alignment.TopEnd).padding(12.dp), shape = CircleShape,
+                    FlowRow(Modifier.align(Alignment.TopStart).fillMaxWidth()
+                        .onSizeChanged { toolsSize = it }.testTag("diary-map-tools")
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        mapView?.let { view -> DiaryRecordMapButtons(view,
+                            onWalking = { onClose(); onContextDismiss(); onWalkingOverview(); scope.launch { sheet.partialExpand() } },
+                            onWhole = { onClose(); onContextDismiss(); onOverview(); scope.launch { sheet.partialExpand() } }) }
+                        mapLegend()
+                    }
+                    Surface(Modifier.align(Alignment.TopEnd).padding(end = 12.dp)
+                        .padding(top = with(density) { toolsSize.height.toDp() }), shape = CircleShape,
                         color = CardWhite, shadowElevation = 2.dp) { mapSettings() }
                 }
             }
