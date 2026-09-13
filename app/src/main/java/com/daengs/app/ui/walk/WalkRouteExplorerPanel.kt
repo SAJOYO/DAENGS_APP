@@ -24,6 +24,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     onScene: (DiaryScene) -> Unit = {}, sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
     reading: DiaryReadingMemory? = null, allScenes: List<DiaryScene> = sliceScenes,
     scenesLoading: Boolean = false, unknownTimeScenes: Int = 0,
+    mapNotices: @Composable () -> Unit = {},
 ) {
     val scroll = reading?.explorer ?: rememberScrollState()
     var localDetails by remember { mutableStateOf(false) }
@@ -88,6 +89,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 if (!auxiliary) WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
             }
             if (!replay) WalkSpeedLegend()
+            mapNotices()
         }
     }
 }

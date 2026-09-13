@@ -52,9 +52,35 @@ UI 개선 4단계다. #381의 원본 시간 주소·구간 복귀·범위 재생
 `DAENGS_EXPLORER_PREVIEW_DIR`에 출력 경로를 지정하고 UI 검사를 실행하면 실제 Compose native 렌더 PNG를 저장한다.
 기본 검증 결과물은 `app/build/outputs/explorer-panel/`에 두고 저장소에는 넣지 않는다.
 
-이번 패널은 관련 27개 클래스의 138개 JVM/Compose/Room 테스트와 debug 빌드를 통과했다. 앱을 설치하지 않았다.
+#383 구현 시 관련 27개 클래스의 138개 JVM/Compose/Room 테스트와 debug 빌드를 통과했다. 당시에는 앱을 설치하지 않았다.
 기존 `MeasurementDeviceTest`의 고정 버튼·분리된 재생 시각·읽기 스크롤 조회도 새 패널에 맞췄다.
 별도 지도/측정 검증 APK와 instrumentation APK는 빌드만 확인하며, #384의 실기기 통과 수를 새 UI의 실행 결과로 사용하지 않는다.
 지도 부분은 미리보기 대체 화면이며 새 패널의 실제 Naver 지도 통합·실기기 조작은 후속이다.
 #384에서 기록한 3단계 실기기 결과는 [시간 구간 검증](walk-range-context.md)에 별도로 남아 있다.
 서버 로그인/업로드 및 운영 main 반영은 이번 검증 결과에 포함하지 않는다.
+
+### 병합 후 지도 안내와 실기기 확인 (#386)
+
+`b09d494` 병합본에서 화면 밖 장면 메뉴와 방향 안내가 탐색 탭 위에 고정되어 읽기 영역의 높이를 차지했다.
+Galaxy S25의 중간 서랍에서는 구간 장면 선택 단계가 저장 상태 전환을 기다리다 실패했다.
+탐색 탭에서는 두 안내를 아래 읽기 영역으로 옮긴다. 원래 메뉴의 장면 선택과 명시적 동선 확대는 유지한다.
+장면 읽기 화면의 안내와 카메라/서랍 높이, #383의 고정 시간 조작·체크포인트 이전은 변경하지 않는다.
+
+`WalkExplorerMapNoticeUiTest`는 320dp/글자 1.3배에서 늦게 도착한 지도 안내가 시간 조작과 읽기 영역의 위치/높이를
+바꾸지 않는지, 스크롤 후 화면 밖 장면 선택과 확대가 계속 연결되는지 검사한다.
+관련 JVM/Compose 검사 **61개 통과**(실패·오류·skip 0)와 일반 debug 빌드를 확인했다.
+
+2026-09-13 Galaxy S25 / Android 16에서 보완 후 기본 4단계와 구간 3단계, **총 7개 instrumentation 검사 통과**.
+구간 장면 선택, 새 **구간 복귀** 버튼, 프로세스 교체 후 범위·스크롤·8배속·일시정지 커서 복원,
+범위 끝 정지/재개와 **이 장면 앞뒤 30초 보기**의 산책 경계 제한을 확인했다.
+실제 Naver SDK 캡처에서 고정 시간 조작과 아래 장면 목록, 복원된 6초 커서가 보이는 것을 확인했다.
+설치한 검증 APK를 기기에서 다시 받아 빌드 파일과 SHA-256 일치를 확인했다:
+`b17c0a6ce8788798ed3f3ca93afb3d60e5aa57b1a0d48f550699ef099411bf5e`.
+
+```powershell
+./gradlew.bat :app:testDebugUnitTest --tests '*WalkExplorer*UiTest' --tests '*WalkRangeContext*Test' --tests '*WalkDiaryMapScreenTest' --tests '*WalkReadingBaselineUiTest' --tests '*WalkDiaryCompactDrawerTest' --tests '*WalkRecordOverviewUiTest' --tests '*WalkDetailDataUiTest' --tests '*DesignLockTest' :app:assembleDebug
+```
+
+실기기는 [측정 검증 도구](walk-measurement-device-review.md)의 기본 명령과 `--range-context`를 각각 실행한다.
+구간 명령의 마지막 단계에 `scene-neighborhood.png` 캡처를 추가했다. 합성 원본과 loopback 응답을 사용하는
+별도 검증 앱이며, 실제 회원 데이터·서버 로그인/업로드·기기 재부팅을 검증한 결과는 아니다.

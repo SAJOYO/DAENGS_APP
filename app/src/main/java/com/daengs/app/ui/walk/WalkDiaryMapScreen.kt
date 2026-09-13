@@ -137,6 +137,14 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         it.query.revisionKey == readView?.revisionKey && it.query.targets == visibilityTargets })
     LaunchedEffect(walkingBounds) { navigation.initialize(walkingBounds) }
     fun wholeRecord() { readingMemory.inspect(emptyList()); explorer.overview(); navigation.fit(wholeBounds, DiaryMapView.WHOLE) }
+    val needsDirectionZoom = directionCount == 0 &&
+        (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
+            overviewDirections && route?.segments?.any { it.points.size >= 2 } == true)
+    fun zoomRoute() {
+        (highlightPaths.flatten().takeIf { it.isNotEmpty() } ?: route?.bounds)?.let { points ->
+            points.getOrNull(points.size / 2)
+        }?.let { navigation.locate(it, zoom = 18.0) }
+    }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null && error == null) {
             TextButton(onClick = onBack) { Text("‹ ${origin.backLabel}") }
@@ -207,6 +215,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     editors.cancelAdding(); explorer.choosePanel(open)
                 },
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
+                    mapNotices = { WalkExplorerMapNotices(scenes, offscreen, needsDirectionZoom, { selectScene(it) }, ::zoomRoute) },
                     reading = readingMemory,
                     allScenes = originalScenes, scenesLoading = readView?.scenesLoading == true,
                     unknownTimeScenes = sceneTimes.values.count { it == null },
@@ -218,16 +227,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         val position = sceneTimes[scene.id]
                         slice != null && position != null && position in slice.from..slice.until
                     }, onScene = { selectScene(it) }, sceneKinds = sceneKinds) },
-                directionNotice = directionCount == 0 &&
-                    (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
-                        overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),
-                onZoomRoute = {
-                    (highlightPaths.flatten().takeIf { it.isNotEmpty() } ?: route?.bounds)?.let { points ->
-                        points.getOrNull(points.size / 2)
-                    }?.let {
-                        navigation.locate(it, zoom = 18.0)
-                    }
-                },
+                directionNotice = needsDirectionZoom,
+                onZoomRoute = ::zoomRoute,
                 summaryContent = { detail?.summary?.let { summary ->
                     WalkSessionSummary(summary)
                     ObservedRouteLegend(presentation.observedParts.map { it.role })

@@ -271,7 +271,7 @@ internal fun WalkDiaryMapContent(
                                 if (offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
                             }
                         }
-                        if (!showSceneActions && offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
+                        if (!explorerSelected && !showSceneActions && offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
                         if (sceneGroup != null && selected == null && !explorerSelected) {
                             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 val same = sceneGroup.mapNotNull { it.point }.distinct().size == 1
@@ -288,7 +288,7 @@ internal fun WalkDiaryMapContent(
                             Text(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.bodyMedium)
                         }
-                        if (directionNotice) Row(Modifier.padding(horizontal = 20.dp),
+                        if (directionNotice && !explorerSelected) Row(Modifier.padding(horizontal = 20.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Text("현재 화면에서는 방향을 표시하기 어려워요.", Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodySmall, color = TextMuted)
