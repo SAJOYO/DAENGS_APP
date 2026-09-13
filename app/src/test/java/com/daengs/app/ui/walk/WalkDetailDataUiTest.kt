@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -13,6 +14,8 @@ import com.daengs.app.walk.*
 import com.daengs.app.walk.detail.WalkDetailActions
 import com.daengs.app.walk.detail.WalkDetailSource
 import com.daengs.app.walk.diary.*
+import com.daengs.app.walk.routeexplorer.measuredSceneDetail
+import com.daengs.app.walk.routeexplorer.measuredScene
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.*
@@ -75,6 +78,43 @@ class WalkDetailDataUiTest {
         }
     }
     private fun menu() = compose.onNodeWithContentDescription("일기 메뉴").performClick()
+
+    @Test fun `measured detail retains selected edited scene and compact drawer through replacement and reentry`() {
+        var detail = measuredSceneDetail()
+        val changes = MutableStateFlow(0)
+        var gate: CompletableDeferred<Unit>? = null
+        val source = object : WalkDetailSource {
+            override val changes = changes.map { Unit }
+            override val entries = flowOf(emptyList<WalkEntry>())
+            override fun isCurrentAccount() = true
+            override suspend fun load() = detail
+            override fun observeDiary(detail: WalkSessionDetail) = flow {
+                gate?.await()
+                emit(DiaryWalk(detail.summary, listOf(measuredScene(detail, title = "직접 고친 장면")
+                    .copy(body = "사용자가 남긴 본문")), ""))
+            }
+        }
+        val restore = StateRestorationTester(compose)
+        restore.setContent { CompositionLocalProvider(LocalInspectionMode provides true) { DaengsTheme {
+            WalkDiaryMapForAccount("measured", source, Actions(), {}, Modifier, emptyList(),
+                WalkSessionOrigin.RECORDS, AccountScope("owner", 1), {}, { null })
+        } } }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("직접 고친 장면").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("직접 고친 장면").performClick()
+        compose.onNodeWithText("사용자가 남긴 본문").assertIsDisplayed()
+        compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeDown(startY = 10f, endY = 600f) }
+        val compact = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        compose.runOnIdle { gate = CompletableDeferred(); detail = measuredSceneDetail("measurement-b"); changes.value++ }
+        compose.onNodeWithTag("diary-scene-body").assertExists()
+        assertEquals(compact, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.runOnIdle { gate!!.complete(Unit) }
+        compose.waitForIdle()
+        restore.emulateSavedInstanceStateRestore()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("diary-scene-body").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(compact, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNode(hasText("장면 1") and hasClickAction()).performClick()
+        compose.onNodeWithText("사용자가 남긴 본문").assertIsDisplayed()
+    }
 
     @Test fun `saved scene and compact drawer survive delayed reload in the actual detail screen`() {
         val source = Source(); val actions = Actions()

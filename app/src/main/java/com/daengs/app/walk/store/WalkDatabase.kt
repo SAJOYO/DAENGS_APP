@@ -10,14 +10,25 @@ import androidx.sqlite.execSQL
 
 /** 산책 원본 위치·사용자 행동과 서버 계산까지의 동기화 단계를 소유하는 로컬 DB. */
 @Database(
-    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class, WalkMotionBackupRow::class, WalkMotionPrecisionRow::class],
-    version = 18,
+    entities = [WalkSessionRow::class, WalkSessionDogRow::class, WalkFixRow::class, WalkActionRow::class, WalkEntryRow::class, WalkStoryboardRow::class, WalkPhotoRow::class, WalkSceneAnalysisRow::class, WalkPhotoSyncRow::class, WalkDiaryPublicationRow::class, RecordingEpochRow::class, WalkMotionBackupRow::class, WalkMotionPrecisionRow::class, WalkMeasurementRow::class, WalkMeasurementChunkRow::class],
+    version = 19,
     exportSchema = true,
 )
 abstract class WalkDatabase : RoomDatabase() {
     abstract fun walkDao(): WalkDao
 
     companion object {
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_measurement (sessionId TEXT NOT NULL, " +
+                    "measurementId TEXT NOT NULL, summaryJson TEXT NOT NULL, summaryHash TEXT NOT NULL, " +
+                    "PRIMARY KEY(sessionId), FOREIGN KEY(sessionId) REFERENCES walk_session(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                connection.execSQL("CREATE TABLE IF NOT EXISTS walk_measurement_chunk (sessionId TEXT NOT NULL, " +
+                    "chunkIndex INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(sessionId, chunkIndex), " +
+                    "FOREIGN KEY(sessionId) REFERENCES walk_measurement(sessionId) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+
         const val NAME = "daengs_walk.db"
 
         /**
@@ -307,6 +318,7 @@ abstract class WalkDatabase : RoomDatabase() {
                     MIGRATION_15_16,
                     MIGRATION_16_17,
                     MIGRATION_17_18,
+                    MIGRATION_18_19,
                 )
                 .build()
     }

@@ -78,6 +78,20 @@ HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상�
 
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
+저장 관측 보조선은 `walk.routeexplorer.MeasurementObservedReviewTest`,
+`ui.walk.MeasurementObservedPresentationTest`, `walk.sync.WalkMeasurementTest`로 검증한다.
+원본 구간·방향·공백 자료 공급과 DEV 최종 구간 분류의 32개 공통 사례를 대조한다.
+공용 합성 helper `walk.routeexplorer.MeasurementObservedFixtures.kt`는 두 observed 검사와
+`ui.walk.DiaryMapNavigationTest`가 사용한다. 지도 선택/서랍 변경은 기존 `DiaryMapNavigationTest`,
+`WalkReadingBaselineUiTest`, `WalkRecordOverviewUiTest`, `DesignLockTest`도 함께 검사한다.
+[선택 명령·실기기 검증 한계](../../../docs/walk-measurement-observed.md).
+
+저장 측정의 장면 연결은 `walk.routeexplorer.MeasurementSceneReviewTest`,
+`MeasurementScenePinTest`, `ui.walk.WalkMeasurementReadViewTest`, `DiaryMapNavigationTest`를 선택한다.
+`walk.sync.WalkMeasurementTest`의 공통 32사례·Room 재열람과 `ui.walk.WalkDetailDataUiTest`의
+실제 상세/서랍 복원, 기존 `WalkDiary*`, `CompletedRouteReviewTest`, `DesignLockTest`도 함께 본다.
+[원본 주소와 revision 계약](../../../docs/walk-measurement-scenes.md).
+
 상세 상태 분리(#361)는 `ui.walk.WalkDetailStateTest`에서 조회/준비 실패 재시도,
 기록·장면·생성 중복 차단, 취소·계정 교체, 삭제 후 늦은 작업의 간섭 차단과 읽기 일괄 반영을 확인한다.
 `ui.walk.WalkDetailDataUiTest`는 실제 편집창의 제목/본문이 실패 뒤 유지되고 성공할 때 닫히는지도 확인한다.

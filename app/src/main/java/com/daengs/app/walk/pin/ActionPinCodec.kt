@@ -15,6 +15,17 @@ data class ActionPin(val payload: String) {
     val point: GeoPoint? get() = json.optJSONObject("point")?.let { GeoPoint(it.getDouble("lat"), it.getDouble("lng")) }
     val resolveByMillis: Long get() = json.time("resolve_by")
     val isLocalPolicy: Boolean get() = json.getString("policy_version") == PinPolicyV1.VERSION
+    /** Null means an older projection without references; an empty list still carries a receipt. */
+    internal fun sceneReferences(targetAtMillis: Long): List<ActionPinSourceRef>? {
+        val j = json
+        if (!j.has("source_refs")) return null
+        require(j.time("target_at") == targetAtMillis)
+        val refs = j.getJSONArray("source_refs")
+        require(refs.length() <= 100)
+        return (0 until refs.length()).map { refs.getJSONObject(it).let { r ->
+            ActionPinSourceRef(r.getInt("client_seq"), r.getInt("chain_index"), r.time("at"))
+        } }.also { require(it.distinct().size == it.size) }
+    }
     val label: String get() = when {
         state == "provisional" -> "위치 추정 중"
         state == "unlocated" -> "위치 없이 남긴 행동"

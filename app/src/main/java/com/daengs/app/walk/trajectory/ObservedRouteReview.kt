@@ -29,15 +29,17 @@ internal class ObservedRouteReview(private val detail: WalkSessionDetail) {
     val assessment = evaluateLegacyObservationConnections(detail, ObservedRouteDisplayPolicy.connection)
     private val observationIndex = StoryboardObservationIndex(detail.summary, detail.observations)
     private val raw = detail.observations.associateBy { it.clientSeq }
-    val sections = assessment.auxiliaryRuns.map { run ->
+    val sections = if (detail.measurement != null) measurementObservedSections(detail) else assessment.auxiliaryRuns.map { run ->
         val fixes = run.sourceSeqs.map(raw::getValue)
         ObservedRouteSection("${ObservedRouteDisplayPolicy.VERSION}-${detail.summary.sessionId}-${run.fromSeq}-${run.toSeq}",
             run.walkingUse, fixes, observedDirectionEdges(fixes))
     }
 
-    fun matches(current: WalkSessionDetail) = assessment.matches(current)
+    fun matches(current: WalkSessionDetail) = if (detail.measurement != null) current === detail else assessment.matches(current)
 
     fun sceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus? {
+        if (detail.measurement != null) return MeasurementSceneReview(detail).focus(scene, entry)
+            .takeIf { it.observedParts.isNotEmpty() }
         val end = detail.summary.endedAtMillis ?: return null
         if (!matches(detail) || scene.sessionId != detail.summary.sessionId ||
             scene.atMillis !in detail.summary.startedAtMillis..end) return null
@@ -129,8 +131,11 @@ internal class ObservedRouteReview(private val detail: WalkSessionDetail) {
 }
 
 /** Input is one confirmed run. The guide follows original edges; context never adds a chord to the map. */
-internal fun observedDirectionEdges(fixes: List<RecordedFix>): List<ObservedDirectionEdge> =
+internal fun observedDirectionEdges(fixes: List<RecordedFix>, monotonic: Boolean = false): List<ObservedDirectionEdge> =
     fixes.zipWithNext().mapIndexedNotNull { i, (a, b) ->
+        if (monotonic && (a.sourceEpoch != b.sourceEpoch || a.clockEpochId != b.clockEpochId ||
+            a.elapsedRealtimeNanos == null || b.elapsedRealtimeNanos == null ||
+            b.elapsedRealtimeNanos - a.elapsedRealtimeNanos !in 1..20_000_000_000L)) return@mapIndexedNotNull null
         val from = GeoPoint(a.lat, a.lng); val to = GeoPoint(b.lat, b.lng)
         val margin = ObservedRouteDisplayPolicy.DIRECTION_DISPLACEMENT_MARGIN_METERS
         if (from.distanceTo(to) <= margin) return@mapIndexedNotNull null
@@ -138,7 +143,9 @@ internal fun observedDirectionEdges(fixes: List<RecordedFix>): List<ObservedDire
         if (from.distanceTo(to) <= (a.accuracyM ?: return@mapIndexedNotNull null) +
             (b.accuracyM ?: return@mapIndexedNotNull null) + margin) {
             first = (i - 2).coerceAtLeast(0); last = (i + 3).coerceAtMost(fixes.lastIndex)
-            if (fixes[last].atMillis - fixes[first].atMillis > ObservedRouteDisplayPolicy.DIRECTION_CONTEXT_MILLIS)
+            val span = if (monotonic) (requireNotNull(fixes[last].elapsedRealtimeNanos) -
+                requireNotNull(fixes[first].elapsedRealtimeNanos)) / 1_000_000 else fixes[last].atMillis - fixes[first].atMillis
+            if (span !in 0..ObservedRouteDisplayPolicy.DIRECTION_CONTEXT_MILLIS)
                 return@mapIndexedNotNull null
             val start = GeoPoint(fixes[first].lat, fixes[first].lng); val end = GeoPoint(fixes[last].lat, fixes[last].lng)
             val allowance = (fixes[first].accuracyM ?: return@mapIndexedNotNull null) +
@@ -154,3 +161,11 @@ private fun bearing(a: GeoPoint, b: GeoPoint): Double {
     val delta = Math.toRadians(((b.longitude - a.longitude + 540) % 360) - 180)
     return atan2(sin(delta) * cos(latB), cos(latA) * sin(latB) - sin(latA) * cos(latB) * cos(delta))
 }
+
+/** Inputs were verified against final observed/walking ownership when adopting the cache. */
+internal fun measurementObservedSections(detail: WalkSessionDetail): List<ObservedRouteSection> =
+    detail.measurement?.auxiliarySections.orEmpty().map { section ->
+        ObservedRouteSection(section.id, if (section.use == MeasurementObservedUse.EXCLUDED)
+            LegacyWalkingUse.EXCLUDED else LegacyWalkingUse.UNRESOLVED, section.fixes,
+            observedDirectionEdges(section.fixes, monotonic = true))
+    }

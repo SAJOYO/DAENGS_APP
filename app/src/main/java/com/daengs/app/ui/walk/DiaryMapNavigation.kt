@@ -42,6 +42,15 @@ internal class DiaryMapNavigation {
     }
     fun gesture() { view = DiaryMapView.CUSTOM }
 
+    fun selectScene(read: WalkDiaryReadView, scene: DiaryScene, fromMap: Boolean = false): Boolean {
+        if (!read.acceptsScene(scene)) return false
+        val focus = read.focusFor(scene)
+        locate(if (read.route.detail.measurement != null) focus?.point else scene.point, fromMap,
+            minZoom = SCENE_ROUTE_MIN_ZOOM.takeIf {
+                focus?.let { it.paths.isNotEmpty() || it.observedParts.isNotEmpty() } == true })
+        return true
+    }
+
     companion object {
         // Only two bounding corners, never a whole walk in the saved-state bundle.
         val Saver = listSaver<DiaryMapNavigation, Any>(save = { state ->

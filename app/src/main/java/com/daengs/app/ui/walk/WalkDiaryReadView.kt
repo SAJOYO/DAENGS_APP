@@ -2,6 +2,7 @@ package com.daengs.app.ui.walk
 
 import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.diary.DiaryWalk
+import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.routeexplorer.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -15,6 +16,34 @@ internal class PreparedDiaryRoute(val detail: WalkSessionDetail,
 internal data class WalkDiaryReadView(val route: PreparedDiaryRoute, val diary: DiaryWalk?,
     val sceneFocus: Map<String, SceneRouteFocus> = emptyMap(), val scenesLoading: Boolean = false,
     val revisionKey: String = UUID.randomUUID().toString())
+
+/** Resolve against the current read at click time; a callback from an older scene cannot move the map. */
+internal fun WalkDiaryReadView.focusFor(scene: DiaryScene): SceneRouteFocus? {
+    val current = diary?.scenes?.singleOrNull { it.id == scene.id } ?: return null
+    if (current != scene) return null
+    val focus = sceneFocus[scene.id] ?: return null
+    val measurement = route.detail.measurement ?: return focus
+    val entry = diary.sourceEntries.singleOrNull { it.id == scene.entryId }
+    return focus.takeIf { it.key == SceneBindingKey.of(measurement, scene, entry) }
+}
+
+internal fun WalkDiaryReadView.acceptsScene(scene: DiaryScene): Boolean =
+    diary?.scenes?.singleOrNull { it.id == scene.id } == scene &&
+        (route.detail.measurement == null || focusFor(scene) != null)
+
+private fun validatedBindings(route: PreparedDiaryRoute, diary: DiaryWalk,
+    bindings: Map<String, SceneRouteFocus>): Map<String, SceneRouteFocus> {
+    require(diary.scenes.map { it.id }.distinct().size == diary.scenes.size)
+    require(diary.sourceEntries.map { it.id }.distinct().size == diary.sourceEntries.size)
+    require(bindings.keys == diary.scenes.map { it.id }.toSet())
+    route.detail.measurement?.let { measurement ->
+        val entries = diary.sourceEntries.associateBy { it.id }
+        diary.scenes.forEach { scene ->
+            require(bindings.getValue(scene.id).key == SceneBindingKey.of(measurement, scene, entries[scene.entryId]))
+        }
+    }
+    return bindings.toMap()
+}
 
 internal sealed interface DiaryReadUpdate {
     data class Ready(val view: WalkDiaryReadView) : DiaryReadUpdate
@@ -54,8 +83,12 @@ internal fun <T> walkDiaryReadUpdates(changes: Flow<T>, load: suspend () -> Walk
             if (!isCurrentAccount()) return@transformLatest
             var latest = previousView?.takeIf { it.route === route }
             if (latest == null) {
-                latest = WalkDiaryReadView(route, null, scenesLoading = true)
-                emit(DiaryReadUpdate.Ready(latest))
+                latest = previousView?.takeIf { it.diary != null &&
+                    (it.route.detail.measurement != null || route.detail.measurement != null) }
+                if (latest == null) {
+                    latest = WalkDiaryReadView(route, null, scenesLoading = true)
+                    emit(DiaryReadUpdate.Ready(latest))
+                }
             }
             previousRoute = route; previousView = latest
             var sceneRevision = 0L
@@ -67,7 +100,8 @@ internal fun <T> walkDiaryReadUpdates(changes: Flow<T>, load: suspend () -> Walk
                 }.mapLatest { (revision, diary) ->
                     revision to if (diary == null) null else {
                         require(diary.summary == route.detail.summary && diary.scenes.all { it.sessionId == route.detail.summary.sessionId })
-                        withContext(dispatcher) { WalkDiaryReadView(route, diary, bind(route, diary), diary.preparing) }
+                        withContext(dispatcher) { WalkDiaryReadView(route, diary,
+                            validatedBindings(route, diary, bind(route, diary)), diary.preparing) }
                     }
                 }.collect { (revision, view) ->
                     if (revision == sceneRevision && isCurrentAccount()) {
@@ -100,7 +134,7 @@ internal fun <T> walkDiaryReadUpdates(changes: Flow<T>, load: suspend () -> Walk
 /** Reuse the entire old read, never attach its provenance to a different summary instance. */
 private fun sameDiaryRouteInput(a: WalkSessionDetail, b: WalkSessionDetail) =
     a.summary == b.summary && a.route == b.route && a.observations == b.observations &&
-        a.moments == b.moments && a.stayStamps == b.stayStamps &&
+        a.moments == b.moments && a.stayStamps == b.stayStamps && a.measurement == b.measurement &&
         a.legacyRouteEvidence?.readerVersion == b.legacyRouteEvidence?.readerVersion &&
         a.legacyRouteEvidence?.matches(a) == b.legacyRouteEvidence?.matches(b)
 

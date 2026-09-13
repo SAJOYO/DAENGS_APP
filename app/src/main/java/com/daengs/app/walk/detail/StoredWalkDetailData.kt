@@ -29,25 +29,34 @@ internal class StoredWalkDetailData(
     private val freshSession: suspend () -> Session?,
     private val syncSession: suspend (token: String, sessionId: String) -> Unit,
     private val refreshStoryboard: suspend (token: String, sessionId: String, remoteId: String) -> Unit,
+    private val measurements: com.daengs.app.walk.sync.WalkMeasurementSync? = null,
 ) : WalkDetailSource, WalkDetailActions {
     private val reader = WalkDiaryReader(dao, photos) { currentAccount().ownerId.orEmpty() }
-    override val changes get() = history.changes
+    override val changes get() = measurements?.let { kotlinx.coroutines.flow.merge(history.changes, it.changes(sessionId)) } ?: history.changes
     override val entries = entryStore.observe(sessionId).map { if (isCurrentAccount()) it else emptyList() }
     override fun isCurrentAccount() = currentAccount() == account
 
     override suspend fun load(): WalkSessionDetail? {
         checkActive()
-        return history.sessionDetail(sessionId).also { checkActive() }
+        val local = history.sessionDetail(sessionId).also { checkActive() } ?: return null
+        return (measurements?.cached(local) ?: local).also { checkActive() }
     }
 
     override fun observeDiary(detail: WalkSessionDetail) =
         reader.observe(listOf(detail.summary.also { require(it.sessionId == sessionId) }),
-            mapOf(sessionId to detail.observations)).map { if (isCurrentAccount()) it.singleOrNull() else null }
+            mapOf(sessionId to detail.observations),
+            detail.measurement?.let { mapOf(sessionId to it) }.orEmpty()).map { if (isCurrentAccount()) it.singleOrNull() else null }
 
     override suspend fun open() {
         checkActive()
         prepareDiary()
         enqueue(sessionId)
+        if (measurements != null) {
+            val auth = freshSession()
+            checkActive()
+            if (auth != null && auth.appUserId == account.ownerId) measurements.refresh(auth.accessToken, sessionId)
+            checkActive()
+        }
     }
 
     override fun prepareDiary() {

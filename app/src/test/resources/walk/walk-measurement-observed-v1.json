@@ -1,0 +1,274 @@
+{
+  "provenance": "DEV ccc0d14 replay_shadow() final connected non-included ledger intervals over gps-motion-precision-v1; synthetic inputs, no database or device claim",
+  "cases": [
+    {
+      "name": "empty",
+      "measurement_id": "shadow-9f14a6cceecce7741eac9e80a9e2cf54086bec17b386514b8d0b16bd249ddf55",
+      "edges": []
+    },
+    {
+      "name": "slow-accumulation",
+      "measurement_id": "shadow-8d83f69ceee3c2ef339575f46e28b171db6dad8147b0e85cc36be51a94bd4e8e",
+      "edges": [
+        [
+          12,
+          13,
+          "unresolved"
+        ],
+        [
+          13,
+          14,
+          "unresolved"
+        ],
+        [
+          14,
+          15,
+          "unresolved"
+        ]
+      ]
+    },
+    {
+      "name": "walking",
+      "measurement_id": "shadow-2b25c0301ecaa92c8a7af651a67ddfef9d1db4eb94aacb22f01213a8f28d43cd",
+      "edges": []
+    },
+    {
+      "name": "coordinate-only",
+      "measurement_id": "shadow-7d97ff0f127cdffcb5eaee392a5dcf0e4c1d4af172d22f0844daa1ee1f978992",
+      "edges": []
+    },
+    {
+      "name": "uncertain-device",
+      "measurement_id": "shadow-20694b71bbbcd61101237ca470ee2f466b19299cc491ff0e303f469e51d0502e",
+      "edges": []
+    },
+    {
+      "name": "device-conflict",
+      "measurement_id": "shadow-f75391d748f407e2810c3ef6a1e4118fef0f47dbc8ceca037a1e4714705a7208",
+      "edges": []
+    },
+    {
+      "name": "invalid-speed",
+      "measurement_id": "shadow-b1814f4884db31166d401dad4d31c3d0265fa9e45b7dcad6cd2f6c4c6ec29ef7",
+      "edges": []
+    },
+    {
+      "name": "uncertain-speed-accuracy",
+      "measurement_id": "shadow-5191ec496eee7166f94a0de2739e2aa63f29014dc44443d996e8d7d7ba2008e6",
+      "edges": []
+    },
+    {
+      "name": "poor-position",
+      "measurement_id": "shadow-686034c38521dfda26689a21af9e7ce5034227adb1a19c4a9a70806c23e1308f",
+      "edges": []
+    },
+    {
+      "name": "mock-breaks-estimate",
+      "measurement_id": "shadow-1f583862a016caa6674d8d83d0017f6d8556ac5e0681fed3828634b7a8d18e95",
+      "edges": []
+    },
+    {
+      "name": "high-speed-reentry",
+      "measurement_id": "shadow-f7523c59b3e6254b52002cc616f2a91279f2d410f4ed743a5694a2026de2e27e",
+      "edges": [
+        [
+          1,
+          2,
+          "excluded"
+        ],
+        [
+          2,
+          3,
+          "excluded"
+        ],
+        [
+          3,
+          4,
+          "excluded"
+        ]
+      ]
+    },
+    {
+      "name": "segment-high-speed",
+      "measurement_id": "shadow-b225a5f606c5a60adaf7e215301ce4b5530042879baa1fb4c8ed0efab68be490",
+      "edges": [
+        [
+          1,
+          2,
+          "excluded"
+        ],
+        [
+          2,
+          3,
+          "excluded"
+        ],
+        [
+          3,
+          4,
+          "excluded"
+        ]
+      ]
+    },
+    {
+      "name": "reentry-unverified",
+      "measurement_id": "shadow-3b4396811e63d2cc8461d46ca38ccc06faf091376e2f2928d719a16afac58cd3",
+      "edges": []
+    },
+    {
+      "name": "jump",
+      "measurement_id": "shadow-d2280d384f64bba97fa69d8e9b1561407c094d6b842c2d92a1099f5018c48df2",
+      "edges": [
+        [
+          1,
+          2,
+          "unresolved"
+        ],
+        [
+          2,
+          3,
+          "unresolved"
+        ]
+      ]
+    },
+    {
+      "name": "observation-gap",
+      "measurement_id": "shadow-88f51acf288da026397b240fcbdc9cf5b48d3c628e5aee3b58780cf7fce3e813",
+      "edges": []
+    },
+    {
+      "name": "last-usable-gap",
+      "measurement_id": "shadow-0c9d25b516bd510c680225a46674e93dbe51696b2364a416eb0d6dfeec24211e",
+      "edges": []
+    },
+    {
+      "name": "invalid-time",
+      "measurement_id": "shadow-3471474f99d08c0319aab368d12f2f50ca3ea6728ab8046ad52f0d39f191a397",
+      "edges": []
+    },
+    {
+      "name": "missing-reception",
+      "measurement_id": "shadow-7c13b56b491c17d2339772def504225f93c8853aa8b1ab759112ca85edf71e65",
+      "edges": []
+    },
+    {
+      "name": "reception-before-fix",
+      "measurement_id": "shadow-e6c3cde34c21371252a1d4919a2b8e54ee38e50c1bbf3299bb7c9ba15d54b148",
+      "edges": []
+    },
+    {
+      "name": "cache-outside",
+      "measurement_id": "shadow-9df262d530be4839d0c88bf83fbac50df4d200a414f8f6c17d32ac56daf194cf",
+      "edges": []
+    },
+    {
+      "name": "out-of-order",
+      "measurement_id": "shadow-0e7768c21f63114ed39cb2ed572b81ac66eaf320a98d96031420ee3c706f6165",
+      "edges": []
+    },
+    {
+      "name": "same-time-identity",
+      "measurement_id": "shadow-f138bba2d395b550751589f873ffbe0b61423c209beff28f8e469ebf0273e173",
+      "edges": []
+    },
+    {
+      "name": "same-time-nan",
+      "measurement_id": "shadow-1e298a8e251c97c893ff27f02df835cb8fc8aae26898a24ed7fc64c0a3787657",
+      "edges": []
+    },
+    {
+      "name": "pause",
+      "measurement_id": "shadow-88b0bf07554921fdb172ff7613c9949e07c333a33e55815334cb16365cf029d7",
+      "edges": []
+    },
+    {
+      "name": "pause-empty-stop",
+      "measurement_id": "shadow-9116040137a880f9fa9b7fa355de1e456e3149c734103280db7e9d3e9993676b",
+      "edges": []
+    },
+    {
+      "name": "large-nanos",
+      "measurement_id": "shadow-094444536fd73b685703cfb5311da747b4b21a41334a6214bddeeebdf5e86c26",
+      "edges": []
+    },
+    {
+      "name": "long-custom-window",
+      "measurement_id": "shadow-984e73dd2d98e32a5aebdb828e9e911fae2426b46103ac70ecae6a6346d98808",
+      "edges": [
+        [
+          66,
+          67,
+          "unresolved"
+        ],
+        [
+          67,
+          68,
+          "unresolved"
+        ],
+        [
+          68,
+          69,
+          "unresolved"
+        ]
+      ]
+    },
+    {
+      "name": "speed-threshold",
+      "measurement_id": "shadow-02c28b446059b4c9581149b5726504e436fc919fcad3e6006866c06c1bd54fc2",
+      "edges": [
+        [
+          0,
+          1,
+          "excluded"
+        ],
+        [
+          1,
+          2,
+          "excluded"
+        ],
+        [
+          2,
+          3,
+          "excluded"
+        ]
+      ]
+    },
+    {
+      "name": "date-line",
+      "measurement_id": "shadow-debcd12bf19ad88c67929cb8e2a92a1c7552dea4e2e6ed09922ac65e1eb57890",
+      "edges": [
+        [
+          2,
+          3,
+          "unresolved"
+        ]
+      ]
+    },
+    {
+      "name": "seoul",
+      "measurement_id": "shadow-07b8f7fddf63eb1fd45ed415dd46a1f7e9a843a5d52d5f1aba0c98ed33d0d98c",
+      "edges": [
+        [
+          6,
+          7,
+          "unresolved"
+        ]
+      ]
+    },
+    {
+      "name": "noise-and-polar",
+      "measurement_id": "shadow-a469868468f56024812b1559c06dba57de8cac7e9619ecffd4e70ae522320755",
+      "edges": [
+        [
+          6,
+          7,
+          "unresolved"
+        ]
+      ]
+    },
+    {
+      "name": "stop-tie",
+      "measurement_id": "shadow-d24d8ba2d0e231fac5ddb9afa14731242cf127b9e78fdb79e018c96d79ac2cd4",
+      "edges": []
+    }
+  ]
+}

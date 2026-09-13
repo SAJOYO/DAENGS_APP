@@ -141,6 +141,7 @@ open class WalkHttpApi internal constructor(private val baseUrl: String) {
         method: String,
         body: JSONObject? = null,
         v2: Boolean = false,
+        maxResponseBytes: Int? = null,
         parse: (String) -> T,
     ): Result<T> = withContext(Dispatchers.IO) {
         runCatching {
@@ -161,7 +162,20 @@ open class WalkHttpApi internal constructor(private val baseUrl: String) {
                     it.outputStream.use { out -> out.write(body.toString().toByteArray()) }
                 }
                 if (it.responseCode !in 200..299) it.fail()
-                parse(if (it.responseCode == 204) "" else it.inputStream.bufferedReader().use { r -> r.readText() })
+                parse(if (it.responseCode == 204) "" else if (maxResponseBytes == null)
+                    it.inputStream.bufferedReader(Charsets.UTF_8).use { r -> r.readText() }
+                else it.inputStream.use { stream ->
+                    require(maxResponseBytes in 1..1_000_000)
+                    val bytes = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        require(bytes.size() + count <= maxResponseBytes) { "산책 응답이 허용 크기를 넘었어요." }
+                        bytes.write(buffer, 0, count)
+                    }
+                    Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString()
+                })
             }
         }.recoverCatching { cause ->
             if (cause is IllegalStateException) throw cause
