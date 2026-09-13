@@ -85,6 +85,8 @@ fun interface WalkRecordsSource {
     /** Emit once on subscription and again when the saved inputs or account scope change. */
     val changes: Flow<Unit> get() = flowOf(Unit)
     suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection
+    /** Original route timestamps for one highlighted session; thumbnail samples must not drive speed colour. */
+    suspend fun loadRoute(record: WalkRecord): WalkSummary = record.summary
     /** Enrich the fixed local selection only when its map is requested. */
     suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection = selection
 }

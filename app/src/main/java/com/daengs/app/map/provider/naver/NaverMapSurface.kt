@@ -93,7 +93,18 @@ fun NaverMapSurface(
         }
         return
     }
-    val walkStyle by rememberWalkStyle()
+    val walkAppearance = scene.walkPresentation?.route ?: run {
+        val selected by rememberWalkStyle()
+        com.daengs.app.map.style.WalkRouteAppearance(selected.policy, selected.themeId)
+    }
+    val diagnostics = LocalWalkMapDiagnostics.current
+    val layerOrder = NaverWalkLayerOrder.resolve(scene.walkPresentation?.stack)
+    val drawTraces = diagnostics?.showTraces != false
+    val drawRoute = diagnostics?.showRoute != false
+    val drawMarkers = diagnostics?.showMarkers != false
+    val visibleMoments = if (drawMarkers) scene.moments else emptyList()
+    val visibleGaps = if (drawRoute) scene.completedRoute.gapEndpoints else emptyList()
+    val visibleSelectedPoint = scene.completedRoute.selectedPoint.takeIf { drawMarkers }
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
@@ -169,6 +180,13 @@ fun NaverMapSurface(
         modifier = if (keepSelectionVisible || scene.sessionExplorer != null || visibilityQuery != null)
             modifier.onSizeChanged { viewportSize = it } else modifier,
     )
+
+    DisposableEffect(naverMap, diagnostics?.showBase) {
+        val map = naverMap
+        val original = map?.mapType
+        if (diagnostics?.showBase == false) map?.mapType = NaverMap.MapType.None
+        onDispose { if (original != null) map?.mapType = original }
+    }
 
     NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
 
@@ -292,10 +310,10 @@ fun NaverMapSurface(
                 this.map = map
             }
         }
-        onDispose { markers.forEach { it.map = null } }
+        onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
     }
 
-    NaverWalkTraceLayer(naverMap, scene.traceTiles)
+    NaverWalkTraceLayer(naverMap, if (drawTraces) scene.traceTiles else emptyList(), layerOrder.traces)
     NaverTravelHeadingLayer(naverMap, scene.currentPosition, scene.travelHeading)
     NaverSpatialDiaryLayer(naverMap, scene.spatialCells)
 
@@ -314,7 +332,7 @@ fun NaverMapSurface(
 
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
-    val photoFiles = scene.moments.mapNotNull { it.photoFile }.distinct()
+    val photoFiles = visibleMoments.mapNotNull { it.photoFile }.distinct()
     val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
         val loaded = mutableMapOf<java.io.File, OverlayImage>()
         for (file in photoFiles) {
@@ -341,9 +359,9 @@ fun NaverMapSurface(
         value = loaded
     }
     val badgeDensity = LocalDensity.current.density
-    DisposableEffect(naverMap, scene.moments, photoIcons, badgeDensity) {
+    DisposableEffect(naverMap, visibleMoments, photoIcons, badgeDensity, diagnostics, layerOrder.markers) {
         val map = naverMap
-        val markers = if (map == null) emptyList() else scene.moments.map { moment ->
+        val markers = if (map == null) emptyList() else visibleMoments.map { moment ->
             Marker().apply {
                 position = moment.point.toLatLng()
                 val behaviorArt = moment.takeIf { it.behaviors.isNotEmpty() }?.let {
@@ -367,28 +385,31 @@ fun NaverMapSurface(
                     latestMomentCallback(moment.id)
                     true
                 }
+                applyNativeWalkOrder(layerOrder.markers, { globalZIndex = it }, { globalZIndex })
                 this.map = map
+                diagnostics?.attached(this, NativeWalkLayerReading("마커", globalZIndex, "행동"))
             }
         }
-        onDispose { markers.forEach { it.map = null } }
+        onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
     }
 
-    NaverWalkRouteLayer(naverMap, scene.trail, scene.completedRoute, walkStyle.policy, walkStyle.themeId,
-        dimCompleted = scene.sessionExplorer?.emphasisPaths?.isNotEmpty() == true)
+    NaverWalkRouteLayer(naverMap, if (drawRoute) scene.trail else com.daengs.app.map.layers.trail.TrailLayerState(),
+        if (drawRoute) scene.completedRoute else com.daengs.app.map.layers.completedroute.CompletedRouteLayerState(), walkAppearance.speedPolicy, walkAppearance.themeId,
+        dimCompleted = scene.sessionExplorer?.emphasisPaths?.isNotEmpty() == true, stroke = walkAppearance.stroke, globalZ = layerOrder.route)
 
-    NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
+    NaverRouteEndpointLayer(naverMap, if (drawMarkers) scene.routeEndpointStamps() else emptyList(), onSelectRouteEndpoint, layerOrder.markers)
     NaverRecordContextLayer(naverMap, scene.sessionExplorer?.recordContext, density, onSelectRecordContext)
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
         scene.moments.map { it.point } + scene.routeEndpointStamps().map { it.point } +
             scene.sessionExplorer?.recordContext?.markers.orEmpty().map { it.point },
         viewportSize, bottomPaddingPx, density, onRouteDirectionCount)
 
-    DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {
+    DisposableEffect(naverMap, visibleGaps) {
         val map = naverMap
         val gapDots = if (map == null) {
             emptyList()
         } else {
-            scene.completedRoute.gapEndpoints.map { point ->
+            visibleGaps.map { point ->
                 CircleOverlay().apply {
                     center = point.toLatLng()
                     radius = ROUTE_GAP_RADIUS_METERS
@@ -403,12 +424,12 @@ fun NaverMapSurface(
         onDispose { gapDots.forEach { it.map = null } }
     }
 
-    DisposableEffect(naverMap, scene.completedRoute.selectedPoint) {
+    DisposableEffect(naverMap, visibleSelectedPoint) {
         val map = naverMap
         val selectedDot = if (map == null) {
             null
         } else {
-            scene.completedRoute.selectedPoint?.let { point ->
+            visibleSelectedPoint?.let { point ->
                 CircleOverlay().apply {
                     center = point.toLatLng()
                     radius = ROUTE_SELECTED_RADIUS_METERS

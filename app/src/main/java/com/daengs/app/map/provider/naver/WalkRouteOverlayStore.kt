@@ -9,7 +9,8 @@ import com.daengs.app.map.style.*
 internal data class WalkRouteKey(val completed: Boolean, val index: Int, val speed: Boolean)
 internal data class WalkRouteSource(val key: WalkRouteKey,
     val speedPoints: List<WalkSpeedPoint> = emptyList(), val points: List<GeoPoint> = emptyList())
-internal data class WalkRouteRenderState(val key: WalkRouteKey, val parts: List<WalkSpeedPart>, val dimmed: Boolean)
+internal data class WalkRouteRenderState(val key: WalkRouteKey, val parts: List<WalkSpeedPart>, val dimmed: Boolean,
+    val stroke: WalkRouteStroke = WalkRouteStroke(), val themeId: String = "", val unknownColor: Int = 0)
 
 internal fun walkRouteSources(trail: TrailLayerState, completed: CompletedRouteLayerState): List<WalkRouteSource> = buildList {
     fun group(done: Boolean, speed: List<List<WalkSpeedPoint>>, plain: List<List<GeoPoint>>) {
@@ -44,9 +45,10 @@ internal class WalkRouteOverlayStore(
     private var lastPolicy: WalkStylePolicy? = null
     private var lastTheme: String? = null
     private var lastDim = false
+    private var lastStroke = WalkRouteStroke()
 
-    fun sync(sources: List<WalkRouteSource>, policy: WalkStylePolicy, theme: String, dimCompleted: Boolean) {
-        if (sources === lastSources && policy == lastPolicy && theme == lastTheme && dimCompleted == lastDim) return
+    fun sync(sources: List<WalkRouteSource>, policy: WalkStylePolicy, theme: String, dimCompleted: Boolean, stroke: WalkRouteStroke = WalkRouteStroke()) {
+        if (sources === lastSources && policy == lastPolicy && theme == lastTheme && dimCompleted == lastDim && stroke == lastStroke) return
         val desired = sources.mapTo(mutableSetOf()) { it.key }
         val iterator = entries.iterator()
         while (iterator.hasNext()) {
@@ -61,7 +63,7 @@ internal class WalkRouteOverlayStore(
             val changed = entry == null || entry.source != source || entry.policy != policy || entry.theme != theme
             val parts = if (changed) prepare(source, policy, theme, cache) else entry!!.state.parts
             // Coordinate-only legacy paths retain the existing unknown-speed appearance.
-            val next = WalkRouteRenderState(source.key, parts, source.key.speed && source.key.completed && dimCompleted)
+            val next = WalkRouteRenderState(source.key, parts, source.key.speed && source.key.completed && dimCompleted, stroke, theme, policy.unknownColor)
             if (entry == null) {
                 entries[source.key] = Entry(source, policy, theme, next,
                     if (parts.isEmpty()) null else sdk { create(next).also { probe?.created = (probe?.created ?: 0) + 1 } }, cache)
@@ -77,7 +79,7 @@ internal class WalkRouteOverlayStore(
                 entry.source = source; entry.policy = policy; entry.theme = theme; entry.state = next
             }
         }
-        lastSources = sources; lastPolicy = policy; lastTheme = theme; lastDim = dimCompleted
+        lastSources = sources; lastPolicy = policy; lastTheme = theme; lastDim = dimCompleted; lastStroke = stroke
     }
 
     private fun prepare(source: WalkRouteSource, policy: WalkStylePolicy, theme: String,

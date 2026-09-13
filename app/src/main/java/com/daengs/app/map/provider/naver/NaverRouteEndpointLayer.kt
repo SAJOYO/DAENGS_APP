@@ -31,6 +31,7 @@ internal fun NaverRouteEndpointLayer(
     map: NaverMap?,
     endpoints: List<RouteEndpointMarkerState>,
     onSelect: (String) -> Unit,
+    globalZ: Int = NaverWalkLayerOrder.MARKERS,
 ) {
     if (LocalInspectionMode.current) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -38,10 +39,11 @@ internal fun NaverRouteEndpointLayer(
         }
         return
     }
+    val diagnostics = LocalWalkMapDiagnostics.current
     val context = LocalContext.current
     val density = LocalDensity.current.density
     val latestSelect by rememberUpdatedState(onSelect)
-    DisposableEffect(map, endpoints, context.resources.configuration.densityDpi, density) {
+    DisposableEffect(map, endpoints, context.resources.configuration.densityDpi, density, diagnostics, globalZ) {
         val markers = if (map == null) emptyList() else endpoints.map { endpoint ->
             val resource = endpoint.kind.iconRes
             // Vector intrinsic dimensions are dp-aware and are also used by Preview.
@@ -62,10 +64,12 @@ internal fun NaverRouteEndpointLayer(
                     if (endpoint.id != LIVE_ROUTE_START_ID) latestSelect(endpoint.id)
                     true
                 }
+                applyNativeWalkOrder(globalZ, { globalZIndex = it }, { globalZIndex })
                 this.map = map
+                diagnostics?.attached(this, NativeWalkLayerReading("마커", globalZIndex, "출발·도착"))
             }
         }
-        onDispose { markers.forEach { it.map = null } }
+        onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
     }
 }
 

@@ -27,6 +27,7 @@ import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.records.*
+import com.daengs.app.map.features.records.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,6 +48,7 @@ internal fun WalkRecordsBehaviorExplorer(
     onView: (BehaviorRecordsView) -> Unit,
     modifier: Modifier = Modifier,
     state: WalkRecordsBehaviorState = rememberWalkRecordsBehaviorState(),
+    routeSource: WalkRecordsSource? = null,
     traceLoading: Boolean = false,
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
@@ -78,54 +80,26 @@ internal fun WalkRecordsBehaviorExplorer(
         hiddenWalkIds = hidden
     }
 
-    var retry by remember { mutableIntStateOf(0) }
-    var prepared by remember(result, retry) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
-    var initialBounds by remember(result, retry) { mutableStateOf<List<GeoPoint>?>(null) }
-    var preparationError by remember(result, retry) { mutableStateOf<String?>(null) }
-    LaunchedEffect(result, retry) {
-        var entryAndRouteBounds = emptyList<GeoPoint>()
-        try {
-            entryAndRouteBounds = withContext(Dispatchers.Default) {
-                behaviorBounds(buildList {
-                    result.records.forEach { record ->
-                        currentCoroutineContext().ensureActive()
-                        record.point?.let(::add)
-                    }
-                    result.related.records.forEach { record ->
-                        currentCoroutineContext().ensureActive()
-                        addAll(walkRecordFocusBounds(record))
-                    }
-                })
-            }
-            // Pin inspection becomes available before any brush work completes.
-            initialBounds = entryAndRouteBounds
-            val ready = prepareWalkRecordsTraces(result.related)
-            currentCoroutineContext().ensureActive()
-            prepared = ready
-            initialBounds = behaviorBounds(ready.bounds + entryAndRouteBounds)
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            // Trace preparation does not prevent inspecting valid entry locations or real routes.
-            preparationError = "관련 산책 흔적을 표시하지 못했어요."
-            initialBounds = entryAndRouteBounds
-        }
+    val displayPolicy = rememberWalkRecordsDisplayPolicy()
+    val traceView = when (view) {
+        BehaviorRecordsView.RECORD_LOCATIONS -> TraceView.Locations
+        BehaviorRecordsView.WALK_TRACES -> TraceView.All
+        BehaviorRecordsView.WALK_OVERLAP -> TraceView.Overlap(minimumWalks)
     }
-
-    var tiles by remember(prepared, hidden, overlapOnly, minimumWalks) { mutableStateOf<List<TraceRasterTile>?>(null) }
-    var compositionError by remember(prepared, hidden, overlapOnly, minimumWalks) { mutableStateOf<String?>(null) }
-    var composeRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(prepared, hidden, view, minimumWalks, composeRetry) {
-        val ready = prepared ?: return@LaunchedEffect
-        if (view == BehaviorRecordsView.RECORD_LOCATIONS || tiles != null) return@LaunchedEffect
-        compositionError = null
-        try {
-            val composed = ready.compose(hidden, minimumOverlapWalks = minimumWalks.takeIf { overlapOnly })
-            currentCoroutineContext().ensureActive()
-            tiles = composed
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            compositionError = "관련 산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
-        }
+    val tracePresentation = rememberWalkRecordsTraces(result.related, true, traceView, hidden, displayPolicy.trace)
+    val prepared = tracePresentation.prepared
+    val tiles = tracePresentation.tiles
+    val preparationError = tracePresentation.preparationError
+    val compositionError = tracePresentation.compositionError
+    var initialBounds by remember(result) { mutableStateOf<List<GeoPoint>?>(null) }
+    LaunchedEffect(result, prepared) {
+        val points = withContext(Dispatchers.Default) { behaviorBounds(buildList {
+            result.records.forEach { currentCoroutineContext().ensureActive(); it.point?.let(::add) }
+            result.related.records.forEach { currentCoroutineContext().ensureActive(); addAll(walkRecordFocusBounds(it)) }
+            prepared?.bounds?.let(::addAll)
+        }) }
+        currentCoroutineContext().ensureActive()
+        initialBounds = points
     }
     val visibleLocatedRecords = remember(result, hidden) {
         result.records.filter { it.point != null && it.walk.summary.sessionId !in hidden }
@@ -197,7 +171,8 @@ internal fun WalkRecordsBehaviorExplorer(
     }
     if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
         WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
-            onRetry = { if (prepared == null) retry++ else composeRetry++ },
+            routeSource = routeSource,
+            onRetry = tracePresentation.retry,
             selectedId = selectedWalkId, hiddenIds = hidden,
             onSelect = { id ->
                 selectedWalkId = id.takeIf { it != selectedWalkId }
@@ -234,10 +209,9 @@ internal fun WalkRecordsBehaviorExplorer(
                 initialBounds.orEmpty().isEmpty() -> RecordsMessage(
                     preparationError ?: "지도에 표시할 위치가 없어요.",
                     if (preparationError != null) "다시 시도" else null,
-                    { retry++ }, Modifier.fillMaxSize())
+                    tracePresentation.retry, Modifier.fillMaxSize())
                 else -> {
-                    MapHost(scene = MapScene(moments = markers,
-                        allowRegionalOverview = true), searchOrigin = null, followDevice = false,
+                    MapHost(scene = composeWalkRecordsMapScene(displayPolicy, moments = markers).scene, searchOrigin = null, followDevice = false,
                         fitBounds = focusBounds ?: initialBounds, cameraRequestKey = cameraRequest,
                         topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
                         initialCamera = camera, onCameraSnapshot = { camera = it },
@@ -318,16 +292,27 @@ private fun BehaviorViewControls(
     view: BehaviorRecordsView, onView: (BehaviorRecordsView) -> Unit, modifier: Modifier = Modifier,
     minimumWalks: Int = 2, onMinimumWalks: (Int) -> Unit = {},
 ) {
-    Column(modifier) {
-        FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        TextButton(onClick = { open = true }, modifier = Modifier.testTag("records-map-display")) {
+            Text(when (view) {
+                BehaviorRecordsView.RECORD_LOCATIONS -> "행동 위치 ▾"
+                BehaviorRecordsView.WALK_TRACES -> "전체 흔적 ▾"
+                BehaviorRecordsView.WALK_OVERLAP -> "겹친 구간 · ${minimumWalks}회 이상 ▾"
+            })
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
             listOf(Triple(BehaviorRecordsView.WALK_TRACES, "전체 흔적", "traces"),
                 Triple(BehaviorRecordsView.WALK_OVERLAP, "겹친 구간", "overlap"),
-                Triple(BehaviorRecordsView.RECORD_LOCATIONS, "기록 위치", "locations")).forEach { (mode, label, tag) ->
-                FilterChip(colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PinkFaint, selectedLabelColor = DaengPinkDeep), selected = view == mode, onClick = { onView(mode) }, label = { Text(label) },
+                Triple(BehaviorRecordsView.RECORD_LOCATIONS, "행동 위치", "locations")).forEach { (mode, label, tag) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { onView(mode); if (mode != BehaviorRecordsView.WALK_OVERLAP) open = false },
                     modifier = Modifier.testTag("records-behavior-view-$tag"))
             }
+            if (view == BehaviorRecordsView.WALK_OVERLAP) Box(Modifier.padding(horizontal = 16.dp)) {
+                WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
+            }
         }
-        if (view == BehaviorRecordsView.WALK_OVERLAP) WalkRecordsOverlapOptions(minimumWalks, onMinimumWalks)
     }
 }
 

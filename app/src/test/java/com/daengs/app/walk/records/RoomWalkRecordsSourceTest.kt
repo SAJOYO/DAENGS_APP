@@ -55,6 +55,27 @@ class RoomWalkRecordsSourceTest {
 
     @After fun close() = db.close()
 
+    @Test fun `highlighted route keeps original speed timestamps while cards remain simplified`() = runBlocking {
+        log.openSession(RecordedSession("speed", dogIds = listOf("dog"), startedAtMillis = 0, endedAtMillis = 600_000))
+        (0..300).forEach { i -> log.append("speed", RecordedFix(i, 0, i * 2_000L,
+            37.5 + i * 2.0 / 111195, 127.0, 5f, false)) }
+        val record = source.select(WalkRecordsQuery()).records.single()
+        val full = source.loadRoute(record)
+        assertTrue(record.summary.segments.flatten().size < full.segments.flatten().size)
+        val style = com.daengs.app.map.style.WalkStylePolicy.parse(java.io.File("src/main/assets/walk-style-v1.json").readText())
+        fun colors(summary: com.daengs.app.walk.WalkSummary) = summary.segments.flatMap { path ->
+            com.daengs.app.map.style.paintWalkSpeedPath(path.map {
+                com.daengs.app.map.style.WalkSpeedPoint(it.point, it.capturedAtMillis)
+            }, style, "pink").map { it.color }
+        }
+        assertTrue(colors(record.summary).all { it == style.unknownColor })
+        assertTrue(colors(full).any { it != style.unknownColor })
+        assertEquals(record.summary, source.select(WalkRecordsQuery()).records.single().summary)
+        assertTrue(runCatching { source.loadRoute(record.copy(summary = record.summary.copy(distanceMeters = -1.0))) }.isFailure)
+        val denied = RoomWalkRecordsSource(db, "other", { "other" }, ZoneOffset.UTC)
+        assertTrue(runCatching { denied.loadRoute(record) }.isFailure)
+    }
+
     @Test fun `multiple selected dogs include shared walks once and exclude other dogs`() = runBlocking {
         listOf("shared" to listOf("a", "b"), "a-only" to listOf("a"),
             "b-only" to listOf("b"), "other" to listOf("c"), "unknown" to emptyList()).forEach { (id, dogs) ->

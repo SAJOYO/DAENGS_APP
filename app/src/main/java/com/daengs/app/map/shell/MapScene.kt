@@ -24,6 +24,7 @@ data class MapScene(
     val spatialCells: List<com.daengs.app.map.layers.spatial.SpatialDiaryPaintCell> = emptyList(),
     val allowRegionalOverview: Boolean = false,
     val sessionExplorer: com.daengs.app.map.layers.completedroute.SessionRouteExplorerLayerState? = null,
+    val walkPresentation: WalkLayerPresentation? = null,
 )
 
 /** Multiple historical walks may span cities; active and single-walk maps keep their local zoom. */

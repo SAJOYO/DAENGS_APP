@@ -28,7 +28,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 internal enum class RecordsFilter(val title: String) {
-    DOGS("강아지 선택"), PERIOD("기간 선택"), BEHAVIOR("행동으로 찾기"), CONDITIONS("산책 조건"),
+    ALL("산책 조건"), DOGS("강아지 선택"), PERIOD("기간 선택"), BEHAVIOR("행동으로 찾기"), CONDITIONS("산책 조건"),
 }
 
 // Empty saved list means all dogs. An explicit empty subset is never committed.
@@ -36,7 +36,7 @@ internal val RecordsDogIdsSaver = listSaver<Set<String>?, String>(
     save = { it?.sorted().orEmpty() }, restore = { it.toSet().takeIf { ids -> ids.isNotEmpty() } },
 )
 
-/** Apply only this sheet's fields against the latest query, not old copies of other filters. */
+/** Changes remain a draft until Apply; both views receive the same conditions. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun WalkRecordsConditionsSheet(
@@ -50,21 +50,37 @@ internal fun WalkRecordsConditionsSheet(
     var draftFilter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(query.filter) }
     var periodOpen by rememberSaveable { mutableStateOf(false) }
     var draftBehavior by rememberSaveable { mutableStateOf(behavior) }
+    var extraOpen by rememberSaveable { mutableStateOf(query.filter.seasons.isNotEmpty() || query.filter.weather.isNotEmpty()) }
     val validDogs = draftDogs.filter { id -> pets.any { it.id == id } }.toSet()
-    val canApply = kind != RecordsFilter.DOGS || allDogs || (petsLoaded && validDogs.isNotEmpty())
+    val canApply = (kind != RecordsFilter.DOGS && kind != RecordsFilter.ALL) || allDogs || (petsLoaded && validDogs.isNotEmpty())
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("records-filter-sheet")) {
             Text(kind.title, style = MaterialTheme.typography.headlineSmall)
             Text(when (kind) {
+                RecordsFilter.ALL -> "산책별과 모아보기에 함께 적용돼요."
                 RecordsFilter.DOGS -> "함께 보고 싶은 강아지를 골라 주세요."
                 RecordsFilter.PERIOD -> "산책을 시작한 날짜를 기준으로 찾아요."
-                RecordsFilter.BEHAVIOR -> "선택한 강아지의 행동 기록을 모아보기에서 찾아요."
+                RecordsFilter.BEHAVIOR -> "선택한 강아지의 행동이 기록된 산책을 찾아요."
                 RecordsFilter.CONDITIONS -> "계절과 출발 날씨로 산책을 찾아요."
             }, Modifier.padding(top = 8.dp, bottom = 12.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                when (kind) {
+                val sections = if (kind == RecordsFilter.ALL) listOf(RecordsFilter.DOGS, RecordsFilter.PERIOD, RecordsFilter.BEHAVIOR, RecordsFilter.CONDITIONS) else listOf(kind)
+                sections.forEach { section ->
+                if (kind == RecordsFilter.ALL && section == RecordsFilter.CONDITIONS) {
+                    OutlinedTextField(draftFilter.keyword, { draftFilter = draftFilter.copy(keyword = it.take(200)) },
+                        label = { Text("제목·메모 검색") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("records-search"))
+                    TextButton(onClick = { extraOpen = !extraOpen }, modifier = Modifier.testTag("records-extra-conditions")) {
+                        Text(if (extraOpen) "계절·날씨 접기" else "계절·날씨 더 보기")
+                    }
+                }
+                if (kind == RecordsFilter.ALL && section != RecordsFilter.CONDITIONS) {
+                    Text(section.title, Modifier.padding(top = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.titleSmall)
+                }
+                if (section != RecordsFilter.CONDITIONS || kind != RecordsFilter.ALL || extraOpen) when (section) {
+                    RecordsFilter.ALL -> Unit
                     RecordsFilter.DOGS -> {
                         RecordsDogRow("모든 강아지", allDogs, { allDogs = !allDogs; draftDogs = emptyList() },
                             Modifier.testTag("records-dog-all"))
@@ -131,11 +147,13 @@ internal fun WalkRecordsConditionsSheet(
                         }
                     }
                 }
+                }
                 Spacer(Modifier.height(12.dp))
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = {
                     when (kind) {
+                        RecordsFilter.ALL -> { allDogs = true; draftDogs = emptyList(); draftFilter = WalkHistoryFilter(); draftBehavior = null }
                         RecordsFilter.DOGS -> { allDogs = true; draftDogs = emptyList() }
                         RecordsFilter.PERIOD -> draftFilter = draftFilter.copy(from = null, through = null)
                         RecordsFilter.BEHAVIOR -> draftBehavior = null
@@ -146,6 +164,7 @@ internal fun WalkRecordsConditionsSheet(
                 TextButton(onClick = onDismiss, modifier = Modifier.testTag("records-conditions-cancel")) { Text("취소") }
                 Button(enabled = canApply, onClick = {
                     when (kind) {
+                        RecordsFilter.ALL -> { onApply(WalkRecordsQuery(if (allDogs) null else validDogs, draftFilter)); onBehaviorApply(draftBehavior) }
                         RecordsFilter.DOGS -> onApply(query.copy(dogIds = if (allDogs) null else validDogs))
                         RecordsFilter.PERIOD -> onApply(query.copy(filter = query.filter.copy(from = draftFilter.from, through = draftFilter.through)))
                         RecordsFilter.CONDITIONS -> onApply(query.copy(filter = query.filter.copy(seasons = draftFilter.seasons, weather = draftFilter.weather)))
@@ -214,7 +233,7 @@ private fun <T> Set<T>.toggled(value: T) = if (value in this) this - value else 
 }
 @Preview(showBackground = true, widthDp = 390, heightDp = 700)
 @Composable private fun RecordsConditionsPreview() {
-    DaengsTheme { WalkRecordsConditionsSheet(RecordsFilter.CONDITIONS, WalkRecordsQuery(),
+    DaengsTheme { WalkRecordsConditionsSheet(RecordsFilter.ALL, WalkRecordsQuery(),
         emptyList(), LocalDate.of(2026, 9, 11), {}, {}) }
 }
 @Preview(showBackground = true, widthDp = 390, heightDp = 700)

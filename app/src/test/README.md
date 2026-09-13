@@ -1,5 +1,14 @@
 # 기능별 테스트 실행 지도
 
+산책 모아보기 표시 정책 (#369)은 `WalkRecordsDisplayPolicyTest`, `WalkRecordsPresenterTest`,
+`WalkRecordsTracesTest`, `WalkRecordsScreenTest`, `WalkRouteOverlayStoreTest`,
+`WalkMapDiagnosticsTest`, `NaverWalkLayerOrderTest`, `DesignLockTest`를 함께 확인한다.
+실행 범위 `--tests '*WalkRecords*Test' --tests '*WalkRouteOverlayStoreTest'
+--tests '*WalkMapDiagnosticsTest' --tests '*NaverWalkLayerOrderTest' --tests '*DesignLockTest'`.
+기기 비교 방법은 [표시 구조](../../../docs/walk-records-display-policy.md)를 따른다.
+`WalkRecordsLabNavigationTest`는 미리보기 카드가 요약 팝업 대신 기존 세션·일기 화면을 열고
+장면을 선택한 뒤 같은 산책별 목록으로 돌아오는지 확인한다.
+
 최초 조사 기준은 2026-09-09 `dev`의 `9bf37188bab0841ac7b682dec1714ca58c893b2f`다.
 이 문서는 변경한 기능에 맞는 테스트를 고르는 지도다. 전체 통과 보고서가 아니다.
 조사 시점에는 Kotlin 테스트 파일 221개에 `@Test` 선언 1,528개가 있었고,
@@ -360,11 +369,26 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
 경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
 
-## 산책 기록의 공통 상단·독립 필터
+## 산책 기록의 공통 상단·통합 조건
+
+그림자 A안은 `WalkRecordsTracesTest`에서 1/2/3–4/5–7/8회 이상 농도, 숨김·복원,
+이웃 번짐의 허위 겹침 방지, 서로 다른 정책의 옅은 표시를 검증한다. `TraceBrushTest`는
+농도 필드의 타일 경계 연속성과 취소를, `WalkRecordsScreenTest`는 고정 농도 범례를 검증한다.
+선택 동선은 `RoomWalkRecordsSourceTest`에서 원래 시각과 썸네일 축약을 구분하고,
+`WalkRecordsScreenTest`는 이전 선택의 늦은 응답, `TraceLoadingWalkRecordsSourceTest`는
+계정 변경 뒤 원본 조회 결과 차단을 검증한다. 기존 동선 색 유지 검증은 `WalkRouteOverlayStoreTest`다.
+그리기 순서는 `NaverWalkLayerOrderTest`에서 셀로판이 명시한 경로 층과 SDK 기본 경로 층보다
+아래이고 경로가 지도 지명·표식보다 아래인지 확인한다. 이전 `-100` 셀로판 역전 회귀를 잡는다.
+
+```powershell
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -PsideBySide=true -PslimAbi=arm64-v8a --tests '*WalkRecords*Test' --tests '*TraceBrushTest' --tests '*DesignLockTest' --console=plain
+```
 
 상단·선택창 변경은 `ui.walk.records.WalkRecordsFiltersTest`(5마리 복수 선택, 취소,
-빈 부분집합 금지, 기간과 독립 적용, 복원, 검색 접기, 320dp/큰 글자)와
+빈 부분집합 금지, 기간과 함께 적용, 편집본/확정값 복원, 검색 취소, 320dp/큰 글자)와
 `WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`로 좁힌다.
+`WalkRecordsScreenTest`는 행동 조건의 목록/지도 동일 집합과 탭 전환의 상단 좌표를,
+`WalkRecordsMapFrameTest`는 메뉴·겹침 기준·목록 펼치기 중 지도 크기를 확인한다.
 강아지 집합 조회를 변경하면 `WalkRecordsSelectionTest`, `RoomWalkRecordsSourceTest`,
 `TraceLoadingWalkRecordsSourceTest`를 더해 중복 없는 OR 선택·행동 귀속·조회 경계를 확인한다.
 
