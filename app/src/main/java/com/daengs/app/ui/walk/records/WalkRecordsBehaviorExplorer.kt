@@ -318,16 +318,27 @@ private fun BehaviorViewControls(
     view: BehaviorRecordsView, onView: (BehaviorRecordsView) -> Unit, modifier: Modifier = Modifier,
     minimumWalks: Int = 2, onMinimumWalks: (Int) -> Unit = {},
 ) {
-    Column(modifier) {
-        FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        TextButton(onClick = { open = true }, modifier = Modifier.testTag("records-map-display")) {
+            Text(when (view) {
+                BehaviorRecordsView.RECORD_LOCATIONS -> "행동 위치 ▾"
+                BehaviorRecordsView.WALK_TRACES -> "전체 흔적 ▾"
+                BehaviorRecordsView.WALK_OVERLAP -> "겹친 구간 · ${minimumWalks}회 이상 ▾"
+            })
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
             listOf(Triple(BehaviorRecordsView.WALK_TRACES, "전체 흔적", "traces"),
                 Triple(BehaviorRecordsView.WALK_OVERLAP, "겹친 구간", "overlap"),
-                Triple(BehaviorRecordsView.RECORD_LOCATIONS, "기록 위치", "locations")).forEach { (mode, label, tag) ->
-                FilterChip(colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PinkFaint, selectedLabelColor = DaengPinkDeep), selected = view == mode, onClick = { onView(mode) }, label = { Text(label) },
+                Triple(BehaviorRecordsView.RECORD_LOCATIONS, "행동 위치", "locations")).forEach { (mode, label, tag) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { onView(mode); if (mode != BehaviorRecordsView.WALK_OVERLAP) open = false },
                     modifier = Modifier.testTag("records-behavior-view-$tag"))
             }
+            if (view == BehaviorRecordsView.WALK_OVERLAP) Box(Modifier.padding(horizontal = 16.dp)) {
+                WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
+            }
         }
-        if (view == BehaviorRecordsView.WALK_OVERLAP) WalkRecordsOverlapOptions(minimumWalks, onMinimumWalks)
     }
 }
 

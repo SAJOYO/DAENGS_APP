@@ -80,7 +80,7 @@ class WalkRecordsRouteTest {
         compose.onNodeWithTag("records-sync-notice").assertExists()
         replaceSearch("기록")
         waitText("선택 산책 8회")
-        compose.onNodeWithTag("records-dog-filter").performClick()
+        compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-dog-dog-1").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
         waitText("선택 산책 8회")
@@ -94,7 +94,7 @@ class WalkRecordsRouteTest {
         waitText("실제 상세 자리: record-3")
         backFromDetail()
         waitText("2 페이지")
-        compose.onNodeWithTag("records-search").assertTextContains("기록")
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true).assertTextContains("기록", substring = true)
         compose.runOnIdle { assertEquals(setOf("dog-1"), queryRead.get().dogIds); currentPets.value = pets }
         compose.onNodeWithTag("records-sync-notice").assertDoesNotExist()
 
@@ -111,10 +111,11 @@ class WalkRecordsRouteTest {
         compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
         compose.onNodeWithTag("records-map-hide-record-8").assertTextEquals("지도에 다시 표시")
 
-        compose.onNodeWithTag("records-behavior-filter").performClick()
+        compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-behavior-sniffing").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
         waitTag("records-behavior-count")
+        compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-behavior-view-traces").performClick()
         waitText("선택 산책 8회 · 표시 흔적 8개")
         selectMapRecord("record-8")
@@ -127,7 +128,7 @@ class WalkRecordsRouteTest {
         backFromDetail()
         waitTag("records-behavior-count")
         waitText("선택 산책 8회 · 표시 흔적 7개")
-        compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
+        compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
         compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
         compose.onNodeWithTag("records-map-hide-record-8").assertTextContains("다시 표시", substring = true)
         // Ordinary navigation Back also captures the records registry before it unmounts.
@@ -136,7 +137,7 @@ class WalkRecordsRouteTest {
         compose.onNodeWithTag("records-search").assertDoesNotExist()
         compose.onNodeWithText("기록 다시 열기").performClick()
         waitTag("records-behavior-count")
-        compose.onNodeWithTag("records-behavior-view-traces").assertIsSelected()
+        compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
         compose.onNodeWithTag("records-map-record-record-8").assertIsSelected()
         assertEquals(5, syncs.get())
     }
@@ -214,9 +215,10 @@ class WalkRecordsRouteTest {
 
     private fun assertSearchEmpty() {
         compose.onNodeWithTag("records-search").assertDoesNotExist()
-        compose.onNodeWithTag("records-search-toggle").performClick()
+        compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-search").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithTag("records-conditions-cancel").performClick()
     }
 
     private fun selectMapRecord(id: String) {
@@ -232,8 +234,9 @@ class WalkRecordsRouteTest {
 
     private fun replaceSearch(text: String) {
         if (compose.onAllNodesWithTag("records-search").fetchSemanticsNodes().isEmpty())
-            compose.onNodeWithTag("records-search-toggle").performClick()
-        compose.onNodeWithTag("records-search").performTextReplacement(text)
+            compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-search").performScrollTo().performTextReplacement(text)
+        compose.onNodeWithTag("records-conditions-apply").performClick()
     }
 
     private fun waitText(text: String) = compose.waitUntil(10_000) {

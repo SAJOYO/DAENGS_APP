@@ -41,7 +41,7 @@ internal fun WalkRecordsMapFrame(
         val wide = maxWidth >= 600.dp
         val panelWidth = if (wide) 340.dp.coerceAtMost(maxWidth * .45f) else maxWidth
         val panelHeight = if (wide) maxHeight else if (expanded) maxHeight * .61f
-            else 172.dp.coerceAtMost(maxHeight * .42f)
+            else 112.dp.coerceAtMost(maxHeight * .42f)
         val density = LocalDensity.current
         var controlsHeight by remember { mutableIntStateOf(0) }
         val insets = with(density) { RecordsMapInsets(
@@ -85,7 +85,7 @@ internal fun WalkRecordsMapFrame(
                 summary()
                 if (expanded || wide) Column(Modifier.heightIn(max = panelHeight * .30f)
                     .verticalScroll(rememberScrollState())) { details() }
-                records(Modifier.weight(1f).fillMaxWidth())
+                if (expanded || wide) records(Modifier.weight(1f).fillMaxWidth())
             }
         }
     }

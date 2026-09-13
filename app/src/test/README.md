@@ -346,11 +346,13 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
 경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
 
-## 산책 기록의 공통 상단·독립 필터
+## 산책 기록의 공통 상단·통합 조건
 
 상단·선택창 변경은 `ui.walk.records.WalkRecordsFiltersTest`(5마리 복수 선택, 취소,
-빈 부분집합 금지, 기간과 독립 적용, 복원, 검색 접기, 320dp/큰 글자)와
+빈 부분집합 금지, 기간과 함께 적용, 편집본/확정값 복원, 검색 취소, 320dp/큰 글자)와
 `WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`로 좁힌다.
+`WalkRecordsScreenTest`는 행동 조건의 목록/지도 동일 집합과 탭 전환의 상단 좌표를,
+`WalkRecordsMapFrameTest`는 메뉴·겹침 기준·목록 펼치기 중 지도 크기를 확인한다.
 강아지 집합 조회를 변경하면 `WalkRecordsSelectionTest`, `RoomWalkRecordsSourceTest`,
 `TraceLoadingWalkRecordsSourceTest`를 더해 중복 없는 OR 선택·행동 귀속·조회 경계를 확인한다.
 

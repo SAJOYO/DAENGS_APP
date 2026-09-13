@@ -13,11 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.*
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,22 +41,21 @@ internal fun WalkRecordsTraceControls(
     onMinimumWalks: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = FilterChipDefaults.filterChipColors(
-        selectedContainerColor = PinkFaint,
-        selectedLabelColor = DaengPinkDeep,
-    )
-    Column(modifier.fillMaxWidth()) {
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = !overlapOnly, onClick = { onOverlapOnly(false) },
-                    label = { Text("전체 흔적") }, colors = colors,
-                    modifier = Modifier.testTag("records-traces-all"))
-                FilterChip(selected = overlapOnly, onClick = { onOverlapOnly(true) },
-                    label = { Text("겹친 구간") }, colors = colors,
-                    modifier = Modifier.testTag("records-traces-overlap"))
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        TextButton(onClick = { open = true }, modifier = Modifier.testTag("records-map-display")) {
+            Text(if (overlapOnly) "겹친 구간 · ${minimumWalks}회 이상 ▾" else "전체 흔적 ▾")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+            DropdownMenuItem(text = { Text("전체 흔적") }, onClick = { onOverlapOnly(false); open = false },
+                modifier = Modifier.testTag("records-traces-all"))
+            DropdownMenuItem(text = { Text("겹친 구간") }, onClick = { onOverlapOnly(true) },
+                modifier = Modifier.testTag("records-traces-overlap"))
+            if (overlapOnly) Box(Modifier.padding(horizontal = 16.dp)) {
+                WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
         }
-        if (overlapOnly) WalkRecordsOverlapOptions(minimumWalks, onMinimumWalks)
     }
 }
 

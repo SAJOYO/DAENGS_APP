@@ -43,6 +43,8 @@ import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.HistoryFilterSaver
+import com.daengs.app.ui.walk.formatWalkDistance
+import com.daengs.app.ui.walk.formatWalkDuration
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkMomentType
@@ -90,7 +92,7 @@ fun WalkRecordsScreen(
     // The native map must not be wrapped in SaveableStateHolder's ReusableContent subtree.
     val behaviorState = rememberWalkRecordsBehaviorState(query, behavior)
     var activeFilter by rememberSaveable { mutableStateOf<RecordsFilter?>(null) }
-    var pageIndex by rememberSaveable(query) { mutableIntStateOf(0) }
+    var pageIndex by rememberSaveable(query, behavior) { mutableIntStateOf(0) }
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     var selectedId by rememberSaveable(query) { mutableStateOf<String?>(null) }
     var hiddenIds by rememberSaveable(query, stateSaver = HiddenWalkIdsSaver) { mutableStateOf(emptySet<String>()) }
@@ -108,7 +110,7 @@ fun WalkRecordsScreen(
     // Reset synchronously with the query so an earlier query's records never flash underneath it.
     var selection by remember(source, query, retry) { mutableStateOf<WalkRecordsSelection?>(null) }
     var error by remember(source, query, retry) { mutableStateOf<String?>(null) }
-    val savedLists = key(query) { rememberSaveableStateHolder() }
+    val savedLists = key(query, behavior) { rememberSaveableStateHolder() }
     LaunchedEffect(source, query, retry) {
         try {
             if (query.filter.keyword.isNotBlank()) delay(250)
@@ -239,28 +241,29 @@ fun WalkRecordsScreen(
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
             onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
-            onKeyword = { filter = filter.copy(keyword = it) },
-            onFilter = { focusManager.clearFocus(); activeFilter = it },
-            onReset = { focusManager.clearFocus(); dogIds = null; filter = WalkHistoryFilter(); behavior = null },
-            onClearBehavior = { behavior = null }, today = today)
+            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today)
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        val current = selection
-        if (current != null && view == RecordsView.WALKS) {
+        val current = remember(selection, behavior) {
+            selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
+        }
+        run {
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("지난 산책", style = MaterialTheme.typography.titleSmall)
-                Text("선택 산책 ${current.records.size}회", Modifier.testTag("records-count"),
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(current?.let { "선택 산책 ${it.records.size}회" } ?: if (error != null) "산책 기록" else "불러오는 중", Modifier.testTag("records-count"),
+                    style = MaterialTheme.typography.titleSmall)
+                Text(current?.let { rows ->
+                    "${formatWalkDistance(rows.records.sumOf { it.summary.distanceMeters })} · ${formatWalkDuration(rows.records.sumOf { it.summary.activeDurationMillis })}"
+                } ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))
             current.records.isEmpty() -> RecordsMessage(
-                if (query.dogIds != null || query.filter.active) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
-                if (query.dogIds != null || query.filter.active) "전체 기록 보기" else null,
-                { dogIds = null; filter = WalkHistoryFilter() }, Modifier.weight(1f),
+                if (query.dogIds != null || query.filter.active || behavior != null) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
+                if (query.dogIds != null || query.filter.active || behavior != null) "전체 기록 보기" else null,
+                { dogIds = null; filter = WalkHistoryFilter(); behavior = null }, Modifier.weight(1f),
             )
             else -> {
                 if (view == RecordsView.WALKS) {
@@ -334,7 +337,6 @@ fun WalkRecordsScreen(
                 if (next != behavior) {
                     if (behavior == null) behaviorView = BehaviorRecordsView.RECORD_LOCATIONS
                     behavior = next
-                    if (next != null) view = RecordsView.OVERVIEW
                 }
             })
     }
