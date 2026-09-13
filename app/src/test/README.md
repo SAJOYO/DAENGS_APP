@@ -6,6 +6,8 @@
 실행 범위 `--tests '*WalkRecords*Test' --tests '*WalkRouteOverlayStoreTest'
 --tests '*WalkMapDiagnosticsTest' --tests '*NaverWalkLayerOrderTest' --tests '*DesignLockTest'`.
 기기 비교 방법은 [표시 구조](../../../docs/walk-records-display-policy.md)를 따른다.
+`WalkRecordsLabNavigationTest`는 미리보기 카드가 요약 팝업 대신 기존 세션·일기 화면을 열고
+장면을 선택한 뒤 같은 산책별 목록으로 돌아오는지 확인한다.
 
 최초 조사 기준은 2026-09-09 `dev`의 `9bf37188bab0841ac7b682dec1714ca58c893b2f`다.
 이 문서는 변경한 기능에 맞는 테스트를 고르는 지도다. 전체 통과 보고서가 아니다.
