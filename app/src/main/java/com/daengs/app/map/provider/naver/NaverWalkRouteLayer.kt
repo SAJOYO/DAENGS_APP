@@ -46,6 +46,7 @@ private class NaverWalkRouteHandle(map: NaverMap, initial: WalkRouteRenderState)
         colors(initial)
         multipart?.apply { width = TRAIL_WIDTH; outlineWidth = TRAIL_OUTLINE_WIDTH }
         plain?.apply { width = TRAIL_WIDTH; outlineWidth = TRAIL_OUTLINE_WIDTH; outlineColor = Color.WHITE }
+        overlay.globalZIndex = NaverWalkLayerOrder.ROUTE
         overlay.map = map
     }
 

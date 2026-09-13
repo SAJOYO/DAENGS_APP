@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
- * Each world-aligned tile already contains final alpha and, for overlap views, display RGB.
+ * Each world-aligned tile already contains the composed sheets' final alpha and display RGB.
  * GroundOverlay adds no opacity scaling, density weighting, or camera-dependent recalculation.
  */
 @Composable
@@ -48,8 +48,8 @@ internal fun NaverWalkTraceLayer(map: NaverMap?, tiles: List<TraceRasterTile>) {
                     )
                     this.image = image
                     alpha = 1f
-                    // Keep map labels, pins, and route endpoints legible over the paint.
-                    globalZIndex = -100
+                    // Every sheet stays below the route, including after asynchronous reloads.
+                    globalZIndex = NaverWalkLayerOrder.TRACE_SHEETS
                 }
                 overlays += overlay
                 overlay.map = map

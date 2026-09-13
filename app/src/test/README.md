@@ -354,6 +354,8 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 선택 동선은 `RoomWalkRecordsSourceTest`에서 원래 시각과 썸네일 축약을 구분하고,
 `WalkRecordsScreenTest`는 이전 선택의 늦은 응답, `TraceLoadingWalkRecordsSourceTest`는
 계정 변경 뒤 원본 조회 결과 차단을 검증한다. 기존 동선 색 유지 검증은 `WalkRouteOverlayStoreTest`다.
+그리기 순서는 `NaverWalkLayerOrderTest`에서 셀로판이 명시한 경로 층과 SDK 기본 경로 층보다
+아래이고 경로가 지도 지명·표식보다 아래인지 확인한다. 이전 `-100` 셀로판 역전 회귀를 잡는다.
 
 ```powershell
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -PsideBySide=true -PslimAbi=arm64-v8a --tests '*WalkRecords*Test' --tests '*TraceBrushTest' --tests '*DesignLockTest' --console=plain
