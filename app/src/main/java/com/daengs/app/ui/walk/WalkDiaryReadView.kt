@@ -100,7 +100,7 @@ internal fun <T> walkDiaryReadUpdates(changes: Flow<T>, load: suspend () -> Walk
 /** Reuse the entire old read, never attach its provenance to a different summary instance. */
 private fun sameDiaryRouteInput(a: WalkSessionDetail, b: WalkSessionDetail) =
     a.summary == b.summary && a.route == b.route && a.observations == b.observations &&
-        a.moments == b.moments && a.stayStamps == b.stayStamps &&
+        a.moments == b.moments && a.stayStamps == b.stayStamps && a.measurement == b.measurement &&
         a.legacyRouteEvidence?.readerVersion == b.legacyRouteEvidence?.readerVersion &&
         a.legacyRouteEvidence?.matches(a) == b.legacyRouteEvidence?.matches(b)
 

@@ -12,6 +12,7 @@ class WalkMotionSync(
     database: WalkDatabase,
     private val owner: () -> String,
     private val precision: WalkMotionPrecisionSync? = null,
+    private val measurements: WalkMeasurementSync? = null,
     private val now: () -> Long = System::currentTimeMillis,
     private val restorationGuard: suspend (String, suspend () -> Unit) -> Unit = { _, work -> work() },
     private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
@@ -37,6 +38,7 @@ class WalkMotionSync(
         val account = owner()
         syncBackup(token, sessionId, walkId, account)
         precision?.sync(token, sessionId, walkId, account)
+        measurements?.refresh(token, sessionId)
     }
 
     suspend fun needsPrecisionRestore(token: String, id: String, walkId: String, account: String): Boolean =

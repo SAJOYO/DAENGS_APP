@@ -87,6 +87,9 @@ class DaengsApp : Application() {
     lateinit var ownedTerritoryRepository: com.daengs.app.territory.owned.OwnedTerritoryRepository
         private set
 
+    lateinit var walkMeasurements: com.daengs.app.walk.sync.WalkMeasurementSync
+        private set
+
     lateinit var walkRuntime: WalkRuntime
         private set
 
@@ -180,6 +183,7 @@ class DaengsApp : Application() {
 
         val store = WalkTrackingStore()
         walkDatabase = WalkDatabase.open(this)
+        walkMeasurements = com.daengs.app.walk.sync.WalkMeasurementSync(walkDatabase, { sessionProvider.accountScope.value })
         val dao = walkDatabase.walkDao()
         walkPhotos = com.daengs.app.walk.store.WalkPhotoStore(dao, java.io.File(filesDir, "walk-photos"),
             onChanged = { sessionId -> applicationScope.launch {
@@ -217,6 +221,7 @@ class DaengsApp : Application() {
                 recording = com.daengs.app.walk.sync.WalkRecordingSync(),
                 motion = com.daengs.app.walk.sync.WalkMotionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() },
                     precision = com.daengs.app.walk.sync.WalkMotionPrecisionSync(walkDatabase, { tokenStore.load()?.appUserId.orEmpty() }),
+                    measurements = walkMeasurements,
                     restorationGuard = log::restoringForOwner),
                 requireRecordingSupport = !com.daengs.app.walk.pin.ActionPinRollout.legacyCreation,
                 photoSync = photoSync::sync,
