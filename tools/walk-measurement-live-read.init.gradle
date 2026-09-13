@@ -1,0 +1,11 @@
+// Build ONLY assembleDebugAndroidTest. Reuse the installed signed-in development app unchanged.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.androidComponents.finalizeDsl { android ->
+            android.buildTypes.debug.applicationIdSuffix = '.devtest'
+            android.defaultConfig.testInstrumentationRunner = 'com.daengs.app.walk.sync.MeasurementReadRunner'
+            android.sourceSets.androidTest.kotlin.srcDir(project.rootProject.file('tools/walk-measurement-live-read/tests'))
+            android.sourceSets.androidTest.manifest.srcFile(project.rootProject.file('tools/walk-measurement-live-read/AndroidManifest.xml'))
+        }
+    }
+}

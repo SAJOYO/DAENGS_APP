@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application android:name="com.daengs.app.map.review.MapReviewApplication"
+        android:label="댕스 동선 검증" android:allowBackup="false" android:usesCleartextTraffic="true"
+        tools:replace="android:name,android:label,android:allowBackup">
+        <activity android:name="com.daengs.app.MainActivity" android:enabled="false" />
+        <activity android:name="com.daengs.app.ui.walk.MeasurementReviewActivity" android:exported="true" />
+    </application>
+</manifest>
