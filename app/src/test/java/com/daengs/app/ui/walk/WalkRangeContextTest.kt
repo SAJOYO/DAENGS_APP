@@ -14,19 +14,24 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class WalkRangeContextTest {
     @Test fun `scene and another scene retain their originating range while the explorer tab returns paused`() = runTest {
-        val read = explorationRead(); val state = WalkRouteExplorerState(this, 0).apply { adopt(read) }
+        val original = explorationRead()
+        val first = original.diary!!.scenes.single()
+        val second = first.copy(id = "measured/other", title = "다음 장면")
+        val read = original.copy(diary = original.diary.copy(scenes = listOf(first, second)),
+            sceneFocus = original.sceneFocus + (second.id to original.route.review.recordSceneFocus(second)))
+        val state = WalkRouteExplorerState(this, 0).apply { adopt(read) }
         state.selectTimeRange(12_000, 65_000)
         val range = state.timeRange
         state.choosePlaybackSpeed(RoutePlaybackSpeed.FOUR)
-        state.selectScene(read.diary!!.scenes.single().id, fromMap = true)
+        state.selectScene(first.id, fromMap = true)
         assertEquals(range, state.returnRange); assertNull(state.selectedSlice)
         assertTrue(state.selectionFromMap); assertFalse(state.panelOpen)
-        state.selectScene(read.diary.scenes.single().id)
+        state.selectScene(second.id)
         assertEquals(range, state.returnRange); assertFalse(state.selectionFromMap)
         state.choosePanel(true)
         assertEquals(range, state.selection); assertTrue(state.panelOpen); assertFalse(state.playing)
         assertEquals(RoutePlaybackSpeed.FOUR, state.playbackSpeed)
-        state.selectScene(read.diary.scenes.single().id); state.closeScene()
+        state.selectScene(first.id); state.closeScene()
         assertEquals(WalkRouteSelection.Overview, state.selection) // Explicit scene-list return still means list.
     }
 

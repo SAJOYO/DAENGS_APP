@@ -119,7 +119,7 @@ internal class MeasurementTimeline(private val detail: WalkSessionDetail, privat
 
     // Only continuous, proven movement supports automatic playback. Isolated usable
     // observations remain seekable with frameAt, but do not manufacture a replay edge.
-    private val playableIntervals by lazy {
+    private val playableIntervals = run {
         val intervals = replayEdges.values.flatten().mapNotNull { (a, b) ->
             if (a.sourceEpoch != b.sourceEpoch || a.clockEpochId != b.clockEpochId) return@mapNotNull null
             val epoch = byEpoch[a.sourceEpoch] ?: return@mapNotNull null
