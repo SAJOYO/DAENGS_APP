@@ -10,14 +10,20 @@ import kotlinx.coroutines.flow.*
 import org.json.JSONObject
 
 internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyListState) {
+    var groupIds by mutableStateOf<List<String>>(emptyList())
+    val groupList = LazyListState()
+    fun inspect(ids: List<String>) { groupIds = ids.distinct() }
     var bodyScene by mutableStateOf<String?>(null)
     var bodyIndex by mutableIntStateOf(0)
     var bodyOffset by mutableIntStateOf(0)
     var pendingList by mutableStateOf<JSONObject?>(null)
     var restoredBody by mutableStateOf<JSONObject?>(null)
     fun activity() = listOf(drawer.currentValue, drawer.targetValue, list.firstVisibleItemIndex,
-        list.firstVisibleItemScrollOffset, bodyScene, bodyIndex, bodyOffset)
+        list.firstVisibleItemScrollOffset, bodyScene, bodyIndex, bodyOffset, groupIds,
+        groupList.firstVisibleItemIndex, groupList.firstVisibleItemScrollOffset)
     fun snapshot(): JSONObject = JSONObject().put("drawer", drawer.currentValue.name).apply {
+        put("group", org.json.JSONArray(groupIds))
+        put("groupIndex", groupList.firstVisibleItemIndex); put("groupOffset", groupList.firstVisibleItemScrollOffset)
         if (pendingList != null) put("list", pendingList) else list.layoutInfo.visibleItemsInfo.firstOrNull()?.let {
             put("list", JSONObject().put("key", it.key.toString()).put("offset", list.firstVisibleItemScrollOffset))
         }
@@ -25,6 +31,9 @@ internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyLi
         else bodyScene?.let { put("body", JSONObject().put("id", it).put("index", bodyIndex).put("offset", bodyOffset)) }
     }
     suspend fun restore(value: JSONObject) {
+        val ids = value.optJSONArray("group")
+        groupIds = if (ids == null) emptyList() else (0 until ids.length()).map { ids.getString(it) }.distinct()
+        groupList.requestScrollToItem(value.optInt("groupIndex").coerceIn(0,100_000), value.optInt("groupOffset").coerceIn(0,100_000))
         pendingList = value.optJSONObject("list")
         restoredBody = value.optJSONObject("body")
         val drawerValue = DiaryDrawerValue.entries.firstOrNull { it.name == value.optString("drawer") }

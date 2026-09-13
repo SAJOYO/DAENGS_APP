@@ -59,4 +59,29 @@ class DiarySceneRemovalUiTest {
         compose.onNodeWithText(first.body).assertExists()
         compose.onNodeWithContentDescription("장면 수정").assertExists()
     }
+
+    @Test fun `group list keeps full ordinals totals and reading height through open back and deletion`() {
+        val third = first.copy(id="s/third", title="나무 아래")
+        var scenes by mutableStateOf(listOf(first,second,third))
+        var selected by mutableStateOf<DiaryScene?>(null)
+        var grouped by mutableStateOf(true)
+        compose.setContent { DaengsTheme {
+            WalkDiaryMapContent(scenes,selected,false,null,{ selected=it },{ selected=null },{},{},{},{},
+                sceneGroup=if(grouped) scenes.filter { it.id!=first.id } else null,
+                onClearGroup={ grouped=false; selected=null },onDelete={ target -> scenes=scenes.filter { it.id!=target.id }; selected=null },
+                explorerPanel={},map={ Box(Modifier.fillMaxSize()) })
+        } }
+        val top=compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithText("장면 3").assertExists()
+        compose.onNodeWithContentDescription("장면 2 삭제").assertExists()
+        compose.onNodeWithText(first.title).assertDoesNotExist()
+        compose.onNodeWithText(second.title).performClick()
+        compose.onNodeWithText("‹ 이 근처 장면 2개").performClick()
+        assertEquals(top,compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top,1f)
+        compose.onNodeWithContentDescription("장면 2 삭제").performClick()
+        compose.onNodeWithText("장면 2").assertExists()
+        compose.onNodeWithContentDescription("장면 2 삭제").assertExists()
+        compose.onNodeWithText("전체 장면").performClick()
+        compose.onNodeWithText(first.title).assertExists()
+    }
 }
