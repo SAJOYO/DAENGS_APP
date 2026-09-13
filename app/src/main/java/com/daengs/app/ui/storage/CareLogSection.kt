@@ -183,14 +183,27 @@ private fun eventLabel(event: CareEvent, zone: ZoneId): String =
     "${event.kind.label} · ${Instant.ofEpochMilli(event.occurredAtMs).atZone(zone).format(TIME)}"
 
 /**
- * 이 줄에 삭제를 띄울까. 대표는 전부, 돌보미는 **자기가 쓴 것만** 지운다.
+ * 이 줄에 삭제를 띄울까. 서버 규칙을 그대로 옮긴 것이다 —
+ * **「내가 쓴 것」 이거나 「그 기록이 달린 행이 내 것」.**
+ *
+ * ⚠️ **「내 대표 강아지가 내 것인가」로 재면 안 된다.** 공동 돌봄이 붙으면서 하루 요약이
+ * **그룹 전체의 기록**을 합쳐 준다 — 남의 행에 달린 남의 기록이 같은 목록에 섞여 온다.
+ * 그런데 옛 판정은 계정의 대표 강아지 하나만 보고 "대표면 전부" 로 열었다. 그러면
+ * 그룹 주보호자에게 남의 기록의 삭제가 뜨고, 눌러야 404 를 안다.
+ *
+ * **[ownsPetRow] 는 `event.petId` 로 묻는다.** 화면에 보이는 표시용 id 가 아니라
+ * **기록이 실제로 달린 행**이다 — 연결된 그룹에서 둘은 다른 값이고, 서버도 그 행의
+ * 소유자를 본다.
  *
  * **작성자를 모르는 기록은 내 것이 아니다.** 옛 기록·탈퇴자의 `actor` 는 id 가 비어
- * 오는데(`CareActor` 머리말), 그때 "모르니까 나겠지" 로 기울면 돌보미가 남의 기록을
- * 지우려다 서버에서 막힌다.
+ * 오는데(`CareActor` 머리말), 그때 "모르니까 나겠지" 로 기울면 지우려다 막힌다.
  */
-internal fun canDeleteCareEvent(event: CareEvent, currentUserId: String?, petIsOwner: Boolean): Boolean {
-    if (petIsOwner) return true
+internal fun canDeleteCareEvent(
+    event: CareEvent,
+    currentUserId: String?,
+    ownsPetRow: (String) -> Boolean,
+): Boolean {
+    if (ownsPetRow(event.petId)) return true
     val authorId = event.actor?.appUserId ?: return false
     return currentUserId != null && authorId == currentUserId
 }

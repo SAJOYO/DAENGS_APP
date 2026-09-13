@@ -66,7 +66,13 @@ fun ChatSummaryRoute(
     onOpenCitation: (ChatCitation) -> Unit,
     modifier: Modifier = Modifier,
     currentUserId: String? = null,
-    selectedPetIsOwner: Boolean = true,
+    /**
+     * 그 **pet 행**이 내 것인가. 케어 기록의 삭제 노출이 이것을 본다.
+     *
+     * 계정의 대표 강아지 하나가 아니라 **기록마다 다른 행**을 묻는다 — 하루 요약은
+     * 그룹 전체를 합쳐 주므로 남의 행에 달린 기록이 같은 목록에 섞여 온다.
+     */
+    ownsPetRow: (String) -> Boolean = { true },
 ) {
     val state by coordinator.state.collectAsState()
     val careState by careCoordinator.state.collectAsState()
@@ -135,7 +141,7 @@ fun ChatSummaryRoute(
                     onRetryLoad = { withToken { careCoordinator.load(it) } },
                     onConfirmDelete = { event -> withToken { careCoordinator.delete(it, event.id) } },
                     onDismissError = { careCoordinator.clearErrors() },
-                    canDelete = { event -> canDeleteCareEvent(event, currentUserId, selectedPetIsOwner) },
+                    canDelete = { event -> canDeleteCareEvent(event, currentUserId, ownsPetRow) },
                 )
             }
         }

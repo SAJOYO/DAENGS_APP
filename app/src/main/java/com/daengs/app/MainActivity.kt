@@ -921,7 +921,11 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = storageModifier,
                                 currentUserId = session?.appUserId,
-                                selectedPetIsOwner = pets.primary?.isOwner == true,
+                                // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
+                                // 재면 그룹 조회로 섞여 온 남의 기록에도 삭제가 뜬다.
+                                ownsPetRow = { petId ->
+                                    pets.pets.orEmpty().any { it.id == petId && it.isOwner }
+                                },
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },
