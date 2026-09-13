@@ -69,7 +69,7 @@ internal fun WalkExplorerPanelPreview(@PreviewParameter(ExplorerPanelExamples::c
     val scenes = read.diary!!.scenes
     val scene = scenes.firstOrNull { it.id == state.selectedSceneId }
     val notices = example == ExplorerPanelExample.NOTICES
-    DaengsTheme { WalkDiaryMapContent(scenes, scene, false, if (notices) "장면 갱신을 마치지 못했어요." else null,
+    DaengsTheme { WalkDiaryMapContent(scenes, scene, example == ExplorerPanelExample.LOADING, if (notices) "장면 갱신을 마치지 못했어요." else null,
         onSelect = { state.selectScene(it.id) }, onClose = state::closeScene, onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {},
         title = "함께 걸었던 길", subtitle = "미리보기 산책", readingMemory = memory,
         summaryContent = { WalkSessionSummary(read.route.detail.summary, compact = true) },
@@ -79,9 +79,6 @@ internal fun WalkExplorerPanelPreview(@PreviewParameter(ExplorerPanelExamples::c
         onReturnToRange = if (state.returnRange != null) ({ state.returnToRange() }) else null,
         onSceneNeighborhood = if (scene != null && state.sceneNeighborhood(read, scene) != null) ({ state.selectSceneNeighborhood(read, scene) }) else null,
         explorerSelected = state.panelOpen, onChooseExplorer = state::choosePanel,
-        explorerPanel = { notices -> WalkRouteExplorerPanel(state, {}, reading = memory, allScenes = scenes, readingNotices = notices,
-            scenesLoading = example == ExplorerPanelExample.LOADING,
-            sliceScenes = scenes.filter { s -> val at = read.focusFor(s)?.let { read.route.review.timeline?.scenePosition(it) }
-                state.selectedSlice?.let { at != null && at in it.from..it.until } == true }, onScene = { state.selectScene(it.id) }) },
+        explorerPanel = { notices -> WalkRouteExplorerPanel(state, {}, reading = memory, readingNotices = notices) },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) { Text("지도 영역 · 미리보기", color = TextMuted) } }) }
 }

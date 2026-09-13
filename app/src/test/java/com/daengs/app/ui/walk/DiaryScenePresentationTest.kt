@@ -96,15 +96,11 @@ class DiaryScenePresentationTest {
         capture("scene-detail")
     }
 
-    @Test fun `range scenes use the same badge and remain selectable`() {
-        val read = explorationRead(); lateinit var state: WalkRouteExplorerState
+    @Test fun `shared scene row retains its source badge and selection in scene reading`() {
         var clicked: DiaryScene? = null
-        compose.setContent {
-            val scope = rememberCoroutineScope()
-            state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 60_000) } }
-            DaengsTheme { WalkRouteExplorerPanel(state, {}, sliceScenes = listOf(scene),
-                onScene = { clicked = it }, sceneKinds = mapOf(scene.id to DiarySceneKind.NOTE)) }
-        }
+        compose.setContent { DaengsTheme {
+            DiarySceneListButton(scene, DiarySceneKind.NOTE, onClick = { clicked = scene }, ordinal = 1)
+        } }
         compose.onNodeWithContentDescription("직접 남긴 메모").assertExists()
         compose.onNodeWithText(scene.title).performClick()
         compose.runOnIdle { assertEquals(scene, clicked) }

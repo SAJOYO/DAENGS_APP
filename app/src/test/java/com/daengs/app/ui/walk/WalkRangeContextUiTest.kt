@@ -55,15 +55,19 @@ class WalkRangeContextUiTest {
                 DaengsTheme { WalkDiaryMapContent(scenes, scenes.firstOrNull { it.id == state.selectedSceneId }, false, null,
                     onSelect = { state.selectScene(it.id) }, onClose = state::closeScene, onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {},
                     explorerSelected = state.panelOpen, onChooseExplorer = state::choosePanel, readingMemory = reading,
-                    explorerPanel = { WalkRouteExplorerPanel(state, {}, sliceScenes = scenes, onScene = { state.selectScene(it.id) }, reading = reading) },
+                    explorerPanel = { WalkRouteExplorerPanel(state, {}, reading = reading) },
                     map = {}) }
             }
         }
         compose.waitForIdle()
         val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
-        compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).performScrollTo()
+        compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
+        compose.onNodeWithText("동선 1", substring = true).performScrollTo()
         var offset = 0
         compose.runOnIdle { offset = reading.explorer.value; assertTrue(offset > 0) }
+        compose.onNodeWithText("장면 16").performClick()
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("관련 장면 12"))
         compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).performClick()
         compose.runOnIdle { assertEquals(scenes[11].id, state.selectedSceneId); assertNotNull(state.returnRange) }
         compose.onNodeWithText("동선 탐색").performClick()
@@ -72,6 +76,8 @@ class WalkRangeContextUiTest {
             assertEquals(offset, reading.explorer.value); assertFalse(state.playing)
         }
         assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithText("장면 16").performClick()
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("관련 장면 12"))
         compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).performClick()
         compose.runOnIdle { mounted = false }
         compose.waitForIdle()
@@ -80,7 +86,8 @@ class WalkRangeContextUiTest {
         compose.runOnIdle { assertEquals(scenes[11].id, state.selectedSceneId); assertNotNull(state.returnRange) }
         compose.onNodeWithText("동선 탐색").performClick()
         compose.runOnIdle { assertEquals(offset, reading.explorer.value); assertEquals(65_000L, state.selectedSlice!!.until) }
-        compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("동선 1", substring = true).assertIsDisplayed()
     }
 
     @Test fun `bounded playback restores paused across a new composition and gap-only control explains why it is disabled`() {

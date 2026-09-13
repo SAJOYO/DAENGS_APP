@@ -18,17 +18,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MeasurementTimeControlsTest {
     @get:Rule val compose = createComposeRule()
-    @Test fun `real explorer panel selects a time window exposes its scenes and seeks without changing metrics`() {
+    @Test fun `real explorer panel selects a time window without scene duplication and seeks without changing metrics`() {
         val read = explorationRead(); lateinit var state: WalkRouteExplorerState
         compose.setContent {
             val scope = rememberCoroutineScope()
             state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read) } }
-            val scenes = read.diary!!.scenes.filter { scene ->
-                val position = read.route.review.timeline!!.scenePosition(read.sceneFocus.getValue(scene.id))
-                val slice = state.selectedSlice
-                position != null && slice != null && position in slice.from..slice.until
-            }
-            DaengsTheme { WalkRouteExplorerPanel(state, {}, sliceScenes = scenes, onScene = { state.selectScene(it.id) }) }
+            DaengsTheme { WalkRouteExplorerPanel(state, {}) }
         }
         compose.onNodeWithText("1분").performClick()
         compose.runOnIdle {
@@ -39,7 +34,7 @@ class MeasurementTimeControlsTest {
             assertTrue(layer.observedParts.any { it.selected })
             assertEquals(1, layer.highlightPaths.size)
         }
-        compose.onNodeWithText("이 범위의 장면 1개").performScrollTo().assertExists()
+        compose.onNodeWithText("이 범위의 장면 1개").assertDoesNotExist()
         compose.onNodeWithText("범위 시작으로 이동").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(RouteExplorerMode.REPLAY, state.mode); assertEquals(0L, state.elapsed) }
         compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
@@ -47,7 +42,7 @@ class MeasurementTimeControlsTest {
         compose.onNodeWithText("구간 수정").performClick()
         compose.onNodeWithTag("explorer-range-slider").assertExists()
         compose.onNodeWithTag("explorer-replay-slider").assertDoesNotExist()
-        compose.onNodeWithText("장면", useUnmergedTree = true).performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(read.diary!!.scenes.single().id, state.selectedSceneId) }
+        compose.onNodeWithText("장면", useUnmergedTree = true).assertDoesNotExist()
+        compose.runOnIdle { assertNull(state.selectedSceneId) }
     }
 }
