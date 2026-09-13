@@ -42,6 +42,7 @@ class WalkRecordOverviewUiTest {
             val query = input!!.query
             input!!.onVisibility(MapVisibilityResult(query, query.targets.map { it.id }.toSet() - "far"))
         }
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("화면 밖 장면 1개"))
         compose.onNodeWithText("화면 밖 장면 1개").performClick()
         compose.onNodeWithText("${scenes.size} · 먼 공원에서").performClick()
         compose.runOnIdle { assertEquals(far.point, input!!.camera.center) }

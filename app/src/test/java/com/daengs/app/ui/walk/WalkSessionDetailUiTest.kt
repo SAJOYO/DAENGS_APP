@@ -156,7 +156,7 @@ class WalkSessionDetailUiTest {
             }
         }
         compose.onNodeWithText("저장한 내용").assertIsDisplayed()
-        compose.onNodeWithContentDescription("장면 수정").performClick()
+        compose.onNodeWithContentDescription("장면 수정").performScrollTo().performClick()
         assertTrue(edited)
         compose.runOnIdle { origin = WalkSessionOrigin.RECORDS }
         compose.onNodeWithContentDescription("산책 목록으로").assertExists()

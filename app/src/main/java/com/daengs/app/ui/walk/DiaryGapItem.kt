@@ -37,11 +37,10 @@ internal fun diaryGapTitle(gap: RecordContext): String {
 internal fun DiaryGapItem(gap: RecordContext, onClick: () -> Unit) {
     TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
-        Surface(shape = CircleShape, color = PinkFaint, modifier = Modifier.size(32.dp)) {
-            Box(contentAlignment = Alignment.Center) { Text("–", color = TextMuted) }
-        }
-        Text(diaryGapTitle(gap), Modifier.weight(1f).padding(start = 12.dp),
-            color = TextMuted, fontSize = 18.sp, lineHeight = 24.sp)
+        Text("–", Modifier.width(18.dp), color = TextMuted, fontSize = 12.sp)
+        Text(diaryGapTitle(gap), Modifier.weight(1f).padding(start = 8.dp),
+            color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
+        HorizontalDivider(Modifier.width(24.dp).padding(start = 8.dp), color = PinkFaint)
     }
 }
 

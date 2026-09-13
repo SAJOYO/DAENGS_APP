@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.sp
 /** Receives exactly the same complete prose as the scene editor. */
 @Composable
 internal fun DiarySceneText(body: String) {
-    if (body.isNotBlank()) Text(body, fontSize = 18.sp, lineHeight = 28.sp)
+    if (body.isNotBlank()) Text(body, fontSize = 16.sp, lineHeight = 27.sp)
 }
 
 @Preview(showBackground = true)
