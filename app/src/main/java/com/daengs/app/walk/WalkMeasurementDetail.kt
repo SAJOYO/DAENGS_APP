@@ -12,7 +12,8 @@ data class WalkMeasurementDetail(val id: String, val resultDigest: String,
     val ownerId: String = "",
     val walkingSections: List<MeasurementWalkingSection> = emptyList(),
     val usableSources: Set<MeasurementSourceRef> = emptySet(),
-    val auxiliarySections: List<MeasurementObservedSection> = emptyList())
+    val auxiliarySections: List<MeasurementObservedSection> = emptyList(),
+    val recordingEpochs: List<RecordingEpoch> = emptyList())
 
 /** Stable source identities; display segment/vertex indices are never a saved binding address. */
 data class MeasurementSourceRef(val sessionId: String, val sourceEpoch: String, val clockEpochId: String,

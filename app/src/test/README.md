@@ -71,6 +71,14 @@ HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상�
 
 ### 산책 종료·기록 공통 상세와 동선 탐색
 
+시간 탐색/영속 복원은 `walk.routeexplorer.MeasurementTimelineTest`, `ui.walk.MeasurementTimeControlsTest`,
+`ui.walk.WalkExplorationBookmarkTest`, `ui.walk.WalkExplorationPersistenceTest`,
+`walk.store.WalkExplorationStoreTest`를 선택한다. source/clock 시간 주소·실제 패널 조작·본문/서랍 복원·
+지연 읽기와 선행 조작·새 DB 연결의 재열람을 대조한다. `walk.store.WalkMigrationTest`는 19→20과
+이전 원본 보존을, `walk.detail.StoredWalkDetailDataTest`는 로그인 generation 경계를 검사한다.
+시간축 공용 helper `measuredTimedDetail`은 `MeasurementTimelineTest.kt`에 있고 bookmark/UI 검사가 소비한다.
+[전체 선택 범위와 실기기 검증 한계](../../../docs/walk-exploration-restore.md).
+
 저장 관측 보조선은 `walk.routeexplorer.MeasurementObservedReviewTest`,
 `ui.walk.MeasurementObservedPresentationTest`, `walk.sync.WalkMeasurementTest`로 검증한다.
 원본 구간·방향·공백 자료 공급과 DEV 최종 구간 분류의 32개 공통 사례를 대조한다.

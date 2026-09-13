@@ -203,6 +203,6 @@ internal object WalkMeasurementContract {
                 groups.filterKeys { it.first == "walking_section" }.values.map { section ->
                     MeasurementWalkingSection(section.first().getString("section_id"),
                         section.map { fix(it.getJSONObject("ref")).measurementRef(input.session.id) })
-                }, usable.map { fixes.getValue(it).measurementRef(input.session.id) }.toSet(), observationProjection.auxiliary))
+                }, usable.map { fixes.getValue(it).measurementRef(input.session.id) }.toSet(), observationProjection.auxiliary, input.epochs))
     }
 }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,6 +77,9 @@ class WalkMigrationTest {
     @Test
     fun `18의 원본과 정밀 백업을 보존하고 측정 캐시는 빈 상태로 추가한다`() = verifyPhotoUpgrade(18)
 
+    @Test
+    fun `19의 원본과 측정 캐시를 보존하고 탐색 주소는 빈 상태로 추가한다`() = verifyPhotoUpgrade(19)
+
     private fun verifyPhotoUpgrade(version: Int) = runBlocking {
         val schema = org.json.JSONObject(java.io.File("schemas/com.daengs.app.walk.store.WalkDatabase/$version.json").readText())
             .getJSONObject("database").getJSONArray("entities")
@@ -117,6 +121,10 @@ class WalkMigrationTest {
             if (version >= 16) old.execSQL("UPDATE walk_session SET motionPolicyJson='frozen-policy' WHERE id='s1'")
             if (version >= 17) old.execSQL("INSERT INTO walk_motion_backup VALUES ('s1','frozen-manifest','manifest-hash','evidence-hash',3000,NULL)")
             if (version == 18) old.execSQL("INSERT INTO walk_motion_precision (sessionId,manifestJson,manifestFingerprint,evidenceFingerprint,completedAtMillis,verifiedAtMillis,verificationJson) VALUES ('s1','precision-manifest','precision-manifest-hash','precision-hash',3000,4000,'verified-receipt')")
+            if (version == 19) {
+                old.execSQL("INSERT INTO walk_measurement VALUES ('s1','measurement-id','saved-summary','hash')")
+                old.execSQL("INSERT INTO walk_measurement_chunk VALUES ('s1',0,'saved-page')")
+            }
             old.version = version
         }
         val db = openLatest()
@@ -133,8 +141,14 @@ class WalkMigrationTest {
                 assertEquals(4000L, dao.motionPrecision("s1")!!.verifiedAtMillis)
                 assertEquals("verified-receipt", dao.motionPrecision("s1")!!.verificationJson)
             } else assertEquals(null, dao.motionPrecision("s1"))
-            assertEquals(null, dao.measurement("s1"))
-            assertTrue(dao.measurementChunks("s1").isEmpty())
+            if (version == 19) {
+                assertEquals("saved-summary", dao.measurement("s1")!!.summaryJson)
+                assertEquals("saved-page", dao.measurementChunks("s1").single().payload)
+            } else {
+                assertEquals(null, dao.measurement("s1"))
+                assertTrue(dao.measurementChunks("s1").isEmpty())
+            }
+            assertNull(dao.exploration("s1", "owner"))
             assertEquals(null, dao.session("s1")!!.coordinateOrigin)
             assertEquals(null, dao.fixes("s1").single().latBits)
             assertEquals(null, dao.fixes("s1").single().lngBits)
@@ -399,6 +413,7 @@ class WalkMigrationTest {
                 WalkDatabase.MIGRATION_16_17,
                 WalkDatabase.MIGRATION_17_18,
                 WalkDatabase.MIGRATION_18_19,
+                WalkDatabase.MIGRATION_19_20,
             )
             .build()
 

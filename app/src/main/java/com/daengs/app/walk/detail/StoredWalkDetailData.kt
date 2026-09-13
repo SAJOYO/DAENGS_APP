@@ -35,6 +35,16 @@ internal class StoredWalkDetailData(
     override val changes get() = measurements?.let { kotlinx.coroutines.flow.merge(history.changes, it.changes(sessionId)) } ?: history.changes
     override val entries = entryStore.observe(sessionId).map { if (isCurrentAccount()) it else emptyList() }
     override fun isCurrentAccount() = currentAccount() == account
+    override suspend fun loadExploration(): String? {
+        checkActive()
+        return dao.exploration(sessionId, account.ownerId.orEmpty())?.payload.also { checkActive() }
+    }
+    override suspend fun saveExploration(payload: String) {
+        require(payload.toByteArray(Charsets.UTF_8).size <= 16_384)
+        checkActive()
+        dao.saveExplorationCurrent(sessionId, account.ownerId.orEmpty(), payload, ::isCurrentAccount)
+        checkActive()
+    }
 
     override suspend fun load(): WalkSessionDetail? {
         checkActive()

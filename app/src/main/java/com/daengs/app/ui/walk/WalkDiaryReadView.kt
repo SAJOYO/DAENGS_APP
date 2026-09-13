@@ -11,7 +11,11 @@ import java.util.UUID
 /** All route consumers share this prepared read, including its original observation identities. */
 internal class PreparedDiaryRoute(val detail: WalkSessionDetail,
     val review: CompletedRouteReview = CompletedRouteReview(detail),
-    val index: RouteExplorerIndex = RouteExplorerIndex(detail.route))
+    val index: RouteExplorerIndex = RouteExplorerIndex(detail.route)) {
+    val explorationIdentity = detail.measurement?.let { "${it.id}:${it.resultDigest}" } ?:
+        com.daengs.app.walk.motion.MotionPolicies.hash(detail.summary.toString() + detail.observations.toString() +
+            detail.route.toString() + detail.legacyRouteEvidence?.readerVersion)
+}
 
 internal data class WalkDiaryReadView(val route: PreparedDiaryRoute, val diary: DiaryWalk?,
     val sceneFocus: Map<String, SceneRouteFocus> = emptyMap(), val scenesLoading: Boolean = false,

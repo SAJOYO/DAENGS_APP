@@ -75,14 +75,26 @@ internal fun WalkDiaryMapContent(
     mapView: DiaryMapView? = null,
     onWalkingOverview: () -> Unit = {},
     offscreenScenes: List<DiaryScene> = emptyList(),
+    readingMemory: DiaryReadingMemory? = null,
 ) {
     val compactDrawer = explorerPanel != null
-    val sheet = rememberDiaryDrawerState(
+    val sheet = readingMemory?.drawer ?: rememberDiaryDrawerState(
         initialValue = if (compactDrawer || selected == null || selectionFromMap) DiaryDrawerValue.Browsing else DiaryDrawerValue.Expanded,
         compactEnabled = compactDrawer)
     val scope = rememberCoroutineScope()
-    val list = rememberLazyListState()
+    val list = readingMemory?.list ?: rememberLazyListState()
     val gapSlots = remember(scenes, gapContexts) { diaryGapSlots(scenes, gapContexts) }
+    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected) {
+        val saved = readingMemory?.pendingList
+        if (!loading && selected == null && !explorerSelected && saved != null) {
+            val keys = buildList { scenes.forEachIndexed { index, scene ->
+                gapSlots[index].orEmpty().forEach { add("gap:${it.id}") }; add("scene:${scene.id}")
+            }; gapSlots[scenes.size].orEmpty().forEach { add("gap:${it.id}") } }
+            val index = keys.indexOf(saved.optString("key"))
+            if (index >= 0) list.scrollToItem(index, saved.optInt("offset").coerceIn(0, 100_000))
+            readingMemory.pendingList = null
+        }
+    }
     val latestClose by rememberUpdatedState(onClose)
     var menu by remember { mutableStateOf(false) }
     val expanded = sheet.targetValue == DiaryDrawerValue.Expanded
@@ -304,7 +316,17 @@ internal fun WalkDiaryMapContent(
                             }
                         } else {
                             key(selected.id) {
+                                val savedBody = readingMemory?.restoredBody?.takeIf { it.optString("id") == selected.id }
+                                val bodyList = rememberLazyListState(savedBody?.optInt("index")?.coerceIn(0, 10_000) ?: 0,
+                                    savedBody?.optInt("offset")?.coerceIn(0, 100_000) ?: 0)
+                                LaunchedEffect(bodyList, selected.id) {
+                                    readingMemory?.restoredBody = null
+                                    snapshotFlow { bodyList.firstVisibleItemIndex to bodyList.firstVisibleItemScrollOffset }.collect { (index, offset) ->
+                                        readingMemory?.let { it.bodyScene = selected.id; it.bodyIndex = index; it.bodyOffset = offset }
+                                    }
+                                }
                                 LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("diary-scene-body"),
+                                    state = bodyList,
                                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
                                     item {
                                         Row(verticalAlignment = Alignment.CenterVertically) {

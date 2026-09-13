@@ -7,6 +7,19 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT e.* FROM walk_exploration e JOIN walk_session s ON s.id = e.sessionId " +
+        "WHERE e.sessionId = :id AND e.ownerId = :owner AND s.ownerId = :owner")
+    suspend fun exploration(id: String, owner: String): WalkExplorationRow?
+
+    @Query("INSERT OR REPLACE INTO walk_exploration(sessionId, ownerId, payload) " +
+        "SELECT id, ownerId, :payload FROM walk_session WHERE id = :id AND ownerId = :owner")
+    suspend fun saveExploration(id: String, owner: String, payload: String)
+
+    @androidx.room.Transaction
+    suspend fun saveExplorationCurrent(id: String, owner: String, payload: String, current: () -> Boolean) {
+        if (current()) saveExploration(id, owner, payload)
+    }
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMeasurement(row: WalkMeasurementRow)
 
