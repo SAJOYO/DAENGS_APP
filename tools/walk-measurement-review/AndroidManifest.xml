@@ -5,5 +5,6 @@
         tools:replace="android:name,android:label,android:allowBackup">
         <activity android:name="com.daengs.app.MainActivity" android:enabled="false" />
         <activity android:name="com.daengs.app.ui.walk.MeasurementReviewActivity" android:exported="true" />
+        <activity android:name="com.daengs.app.ui.walk.review.DiaryEditorReviewActivity" android:exported="true" />
     </application>
 </manifest>

@@ -14,6 +14,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.daengs.app.ui.walk.formatWalkClock
 import com.daengs.app.walk.diary.StoryboardDraft
 import com.naver.maps.geometry.LatLng
+import com.naver.maps.map.CameraPosition
+import com.naver.maps.map.overlay.Marker
+import android.graphics.Bitmap
+import java.io.File
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.runBlocking
 import org.junit.*
 import org.junit.Assert.*
@@ -175,5 +180,102 @@ class DiaryEditorDeviceTest {
         scenario.onActivity { it.removeSession() }
         awaitText("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.")
         compose.onNodeWithText("장면 수정").assertDoesNotExist()
+    }
+
+    @Test fun readerMapThreeHeightsAndNativePinKeepCameraAndSelection() {
+        open()
+        scenario.onActivity {
+            val bars = WindowCompat.getInsetsController(it.window, it.window.decorView)
+            assertTrue("Light reader needs dark status icons", bars.isAppearanceLightStatusBars)
+            assertTrue("Light reader needs dark navigation icons", bars.isAppearanceLightNavigationBars)
+        }
+        compose.waitUntil(20_000) {
+            var ready = false
+            scenario.onActivity { ready = it.map() != null && it.mapDiagnostics.overlays.keys.any { key -> key is Marker } }
+            ready
+        }
+        // Wait for the initial native fit animation and marker regrouping to settle.
+        Thread.sleep(1200)
+        val middle = sheetTop()
+        captureReader("list")
+        compose.onNodeWithContentDescription("서랍 펼치기").performClick()
+        compose.waitUntil { sheetTop() < middle - 20f }
+        captureReader("expanded")
+        compose.onNodeWithContentDescription("서랍 접기").performClick()
+        compose.waitUntil { kotlin.math.abs(sheetTop() - middle) < 1f }
+        compose.onNodeWithContentDescription("서랍 접기").performClick()
+        compose.waitUntil { sheetTop() > middle + 20f }
+        captureReader("compact")
+        compose.onNodeWithContentDescription("서랍 펼치기").performClick()
+        compose.waitUntil { kotlin.math.abs(sheetTop() - middle) < 1f }
+        Thread.sleep(500)
+
+        var before: CameraPosition? = null
+        var point: Pair<Float, Float>? = null
+        scenario.onActivity {
+            val map = requireNotNull(it.map())
+            before = map.cameraPosition
+            val reference = requireNotNull(it.screenPoint())
+            val projectedReference = map.projection.toScreenLocation(LatLng(37.56661, 126.978388 + 8 * .0002))
+            val marker = it.mapDiagnostics.overlays.entries.first { (key, reading) -> key is Marker && reading.role == "장면 묶음" }.key as Marker
+            val pixel = map.projection.toScreenLocation(marker.position)
+            // Resolve the real SDK overlay's position/anchor, not a fixture coordinate guess.
+            point = reference.first - projectedReference.x + pixel.x to
+                reference.second - projectedReference.y + pixel.y - marker.height / 2f
+        }
+        val (x, y) = requireNotNull(point)
+        assertTrue("Pin must be above the drawer", y < compose.onNodeWithTag("diary-sheet-handle").fetchSemanticsNode().boundsInWindow.top)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val at = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, y, 0)
+        val up = MotionEvent.obtain(at, at + 80, MotionEvent.ACTION_UP, x, y, 0)
+        down.source = InputDevice.SOURCE_TOUCHSCREEN; up.source = InputDevice.SOURCE_TOUCHSCREEN
+        try {
+            assertTrue(instrumentation.uiAutomation.injectInputEvent(down, true))
+            assertTrue(instrumentation.uiAutomation.injectInputEvent(up, true))
+        } finally { down.recycle(); up.recycle() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("‹ 장면 목록").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithText("전체 장면").fetchSemanticsNodes().isNotEmpty()
+        }
+        Thread.sleep(500)
+        scenario.onActivity { assertEquals(before, it.map()!!.cameraPosition) }
+        assertEquals(middle, sheetTop(), 1f)
+        captureReader("pin-selection")
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
+        compose.onNodeWithText("전체 동선 보기").performClick()
+        awaitText("산책의 시작")
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("산책 사진"))
+        compose.onNodeWithText("산책 사진").performClick()
+        compose.onNodeWithText("사진 보기").performScrollTo().assertIsDisplayed()
+        captureReader("photo-detail")
+        compose.onNodeWithText("사진 보기").performClick()
+        compose.onNodeWithText("사진 삭제").assertIsDisplayed()
+        captureReader("photo-viewer")
+    }
+
+    private fun sheetTop() = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+
+    private fun captureReader(name: String) {
+        compose.waitForIdle()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        compose.waitUntil(5_000) {
+            var focused = false
+            scenario.onActivity { focused = it.hasWindowFocus() }
+            // The photo dialog owns a separate window, so Activity.hasWindowFocus is false.
+            if (!focused) {
+                val dump = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                    automation.executeShellCommand("dumpsys window")).bufferedReader().use { it.readText() }
+                focused = dump.lineSequence().any { it.contains("mCurrentFocus=") && it.contains(activity.packageName + "/") }
+            }
+            focused
+        }
+        // Native window animations continue after Compose becomes idle.
+        SystemClock.sleep(350)
+        val bitmap = requireNotNull(automation.takeScreenshot())
+        File(activity.getExternalFilesDir(null), "reading-final-$name.png").outputStream().use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+        bitmap.recycle()
     }
 }

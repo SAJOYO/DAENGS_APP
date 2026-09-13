@@ -3,6 +3,8 @@ package com.daengs.app.ui.walk
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
@@ -35,6 +37,7 @@ class MeasurementReviewActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         check(BuildConfig.APPLICATION_ID == "com.daengs.app.locationreview")
         val reset = savedInstanceState == null && intent.getBooleanExtra("reset", false)
         if (reset) deleteDatabase(DB)
@@ -56,7 +59,7 @@ class MeasurementReviewActivity : ComponentActivity() {
             } catch (e: Exception) { failure = e }
         }
         setContent { DaengsTheme {
-            if (ready) WalkDiaryMapForAccount(session, data, data, {}, Modifier, emptyList(),
+            if (ready) WalkDiaryMapForAccount(session, data, data, {}, Modifier.safeDrawingPadding(), emptyList(),
                 WalkSessionOrigin.RECORDS, account, {}, { null })
         } }
     }

@@ -43,4 +43,4 @@ internal fun DiarySceneFooter(index: Int, count: Int, onEdit: () -> Unit, onDele
 @Preview(showBackground = true, widthDp = 390)
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun SceneFooterPreview() { DaengsTheme { DiarySceneFooter(1, 5, {}, {}, {}, {}) } }
+private fun SceneFooterPreview() { DiaryReviewTheme { DiarySceneFooter(1, 5, {}, {}, {}, {}) } }

@@ -61,7 +61,7 @@ private fun DiaryReadingTab(label: String, selected: Boolean, onClick: () -> Uni
 @Preview(showBackground = true, widthDp = 390)
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun ReadingTabsPreview() { DaengsTheme {
+private fun ReadingTabsPreview() { DiaryReviewTheme {
     DiaryReadingTabs(5, false, {}, {}, true, true, {}, {})
 } }
 

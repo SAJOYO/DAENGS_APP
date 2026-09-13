@@ -161,5 +161,5 @@ private fun ExplorerRouteDetailsPreview() {
     val scope = rememberCoroutineScope()
     val read = remember { explorerPanelPreviewRead() }
     val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectSection(0) } }
-    DaengsTheme { Column(Modifier.padding(DiaryReadingChrome.Gutter)) { WalkExplorerRouteDetails(state, {}, {}, {}) } }
+    DiaryReviewTheme { Column(Modifier.padding(DiaryReadingChrome.Gutter)) { WalkExplorerRouteDetails(state, {}, {}, {}) } }
 }
