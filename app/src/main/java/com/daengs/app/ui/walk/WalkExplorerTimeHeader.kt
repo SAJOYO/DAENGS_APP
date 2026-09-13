@@ -86,5 +86,5 @@ private fun ExplorerTimeHeaderPreview() {
     val scope = rememberCoroutineScope()
     val read = remember { explorerPanelPreviewRead() }
     val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 30_000) } }
-    DaengsTheme { WalkExplorerTimeHeader(state, {}) }
+    DiaryReviewTheme { WalkExplorerTimeHeader(state, {}) }
 }

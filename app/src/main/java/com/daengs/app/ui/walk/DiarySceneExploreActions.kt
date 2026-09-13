@@ -28,4 +28,4 @@ internal fun DiarySceneExploreActions(onReturn: (() -> Unit)?, onNeighborhood: (
 
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun SceneExploreActionsPreview() { DaengsTheme { DiarySceneExploreActions({}, {}) } }
+private fun SceneExploreActionsPreview() { DiaryReviewTheme { DiarySceneExploreActions({}, {}) } }

@@ -29,6 +29,6 @@ internal fun DiaryReadingNotices(generation: String?, direction: Boolean, error:
 
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun DiaryReadingNoticesPreview() { DaengsTheme { Column {
+private fun DiaryReadingNoticesPreview() { DiaryReviewTheme { Column {
     DiaryReadingNotices("저장한 장면을 보여드려요.", true, "장면을 불러오지 못했어요.", {}, {})
 } } }

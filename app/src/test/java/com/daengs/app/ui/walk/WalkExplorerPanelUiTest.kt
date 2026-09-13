@@ -223,7 +223,7 @@ class WalkExplorerPanelUiTest {
             SideEffect { rendered = view.rootView }
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
-                DaengsTheme { Box(Modifier.width(320.dp).padding(horizontal = 20.dp)) {
+                DiaryReviewTheme { Box(Modifier.width(320.dp).padding(horizontal = 20.dp)) {
                     ExplorerTimeLabel(3_600_000, 9_599_000, selection = true)
                 } }
             }

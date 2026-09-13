@@ -89,6 +89,7 @@ internal fun WalkDiaryMapContent(
     onReturnToRange: (() -> Unit)? = null,
     onSceneNeighborhood: (() -> Unit)? = null,
 ) {
+    DiaryReadingSystemBars()
     val compactDrawer = explorerPanel != null
     val sheet = readingMemory?.drawer ?: rememberDiaryDrawerState(
         initialValue = if (compactDrawer || selected == null || selectionFromMap) DiaryDrawerValue.Browsing else DiaryDrawerValue.Expanded,
@@ -386,7 +387,7 @@ internal fun WalkDiaryMapContent(
 private fun DiaryReadingPreview() {
     val a = DiaryScene("s/n", "s", 0, "두부와 잠깐 쉬어 간 길", "공원으로 이어지는 길 옆이었다. 두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", null, "",
         content = DiarySceneContent("두부랑 사진 한 장!\n잠깐 쉬었다가 다시 걸었다.", "note", locationLabel = "기록한 위치"))
-    DaengsTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
+    DiaryReviewTheme { WalkDiaryMapContent(listOf(a), a, false, null, {}, {}, {}, {}, {}, {},
         onDelete = {},
         selectedRouteNotice = "이 장면에는 확인된 위치가 없어요.",
         title = "두부와 함께한 저녁 산책", subtitle = "9월 9일 · 저녁",
@@ -398,7 +399,7 @@ private fun DiaryReadingPreview() {
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun DiaryPreparingMapPreview() {
-    DaengsTheme { WalkDiaryMapContent(emptyList(), null, true, null, {}, {}, {}, {}, {}, {},
+    DiaryReviewTheme { WalkDiaryMapContent(emptyList(), null, true, null, {}, {}, {}, {}, {}, {},
         title = "9월 11일 산책", subtitle = "9월 11일 · 오후",
         explorerPanel = { Text("동선 탐색") },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
@@ -409,7 +410,7 @@ private fun DiaryPreparingMapPreview() {
 @Composable
 private fun DiaryCompactDrawerPreview() {
     val scene = DiaryScene("s/n", "s", 0, "잠깐 쉬었던 벤치", "함께 쉬었다가 다시 걸었다.", null, "")
-    DaengsTheme { WalkDiaryMapContent(listOf(scene), null, false, null, {}, {}, {}, {}, {}, {},
+    DiaryReviewTheme { WalkDiaryMapContent(listOf(scene), null, false, null, {}, {}, {}, {}, {}, {},
         onDelete = {},
         explorerPanel = { Text("동선을 골라 살펴보세요.") },
         map = { Box(Modifier.fillMaxSize().background(PinkFaint)) }) }
@@ -417,7 +418,7 @@ private fun DiaryCompactDrawerPreview() {
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
-private fun DiaryGroupReadingPreview() { DaengsTheme {
+private fun DiaryGroupReadingPreview() { DiaryReviewTheme {
     val scenes = (1..8).map { DiaryScene("s/$it","s",it*60_000L,"나무 아래의 순간 $it","함께 잠깐 쉬었어요.",null,"") }
     WalkDiaryMapContent(scenes,null,false,null,{},{},{},{},{},{},sceneGroup=scenes.drop(1),onDelete={},
         explorerPanel={ Text("동선 탐색") },map={ Box(Modifier.fillMaxSize().background(PinkFaint)) })

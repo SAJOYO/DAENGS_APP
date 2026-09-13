@@ -110,7 +110,7 @@ internal fun DiarySceneListButton(scene: DiaryScene, kind: DiarySceneKind, onCli
 @Preview(showBackground = true, widthDp = 390)
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-internal fun DiarySceneKindsPreview() { DaengsTheme {
+internal fun DiarySceneKindsPreview() { DiaryReviewTheme {
     Column(Modifier.fillMaxWidth()) {
         DiarySceneKind.entries.forEachIndexed { index, kind ->
             DiarySceneListButton(DiaryScene("s/$index", "s", 0, kind.label, "", null, ""), kind, {},
@@ -121,7 +121,7 @@ internal fun DiarySceneKindsPreview() { DaengsTheme {
 
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun DiarySceneHeadingPreview() { DaengsTheme {
+private fun DiarySceneHeadingPreview() { DiaryReviewTheme {
     DiarySceneHeading(DiaryScene("s/n", "s", 0, "물 한 모금, 잠깐의 쉼", "", null, ""),
         DiarySceneKind.NOTE, Modifier.fillMaxWidth().padding(20.dp), detail = true)
 } }

@@ -74,7 +74,7 @@ private fun DiaryInlineSummary(metrics: List<Pair<String, String>>) {
 @Preview(showBackground = true, widthDp = 390)
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun InlineSummaryPreview() { DaengsTheme {
+private fun InlineSummaryPreview() { DiaryReviewTheme {
     WalkSessionSummary(WalkSummary("preview", emptyList(), 0, 1_800_000,
         RecordedWeather(0, false, 22f), 1_200.0, 1_800_000, emptyList(), null), compact = true)
 } }
@@ -83,6 +83,6 @@ private fun InlineSummaryPreview() { DaengsTheme {
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
 private fun SessionSummaryPreview() {
-    DaengsTheme { WalkSessionSummary(WalkSummary("preview", emptyList(), 0, 1_800_000,
+    DiaryReviewTheme { WalkSessionSummary(WalkSummary("preview", emptyList(), 0, 1_800_000,
         RecordedWeather(0, false, 22f), 1_200.0, 1_800_000, emptyList(), null)) }
 }

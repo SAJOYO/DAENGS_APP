@@ -52,6 +52,6 @@ internal fun DiaryReadingHeader(title: String, dogIds: List<String>, pets: List<
 
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.3f)
 @Composable
-private fun DiaryReadingHeaderPreview() { DaengsTheme {
+private fun DiaryReadingHeaderPreview() { DiaryReviewTheme {
     DiaryReadingHeader("함께 걸었던 긴 저녁 산책의 기록", listOf("a", "b"), emptyList())
 } }

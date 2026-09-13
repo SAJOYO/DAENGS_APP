@@ -101,5 +101,5 @@ private fun MeasurementTimeControlsPreview() {
     val scope = rememberCoroutineScope()
     val read = remember { explorerPanelPreviewRead() }
     val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 30_000) } }
-    DaengsTheme { Column { MeasurementTimeControls(state); ExplorerRangePresets(state) } }
+    DiaryReviewTheme { Column { MeasurementTimeControls(state); ExplorerRangePresets(state) } }
 }

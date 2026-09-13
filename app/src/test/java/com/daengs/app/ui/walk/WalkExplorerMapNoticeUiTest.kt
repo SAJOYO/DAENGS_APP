@@ -6,7 +6,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
-import com.daengs.app.ui.theme.DaengsTheme
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -32,9 +31,9 @@ class WalkExplorerMapNoticeUiTest {
             val scope = rememberCoroutineScope()
             val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 30_000) } }
             val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) { DaengsTheme {
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) { DiaryReviewTheme {
                 WalkDiaryMapContent(scenes, null, false, null, { opened = it.id }, {}, {}, {}, {}, {}, map = {},
-                    summaryContent = { WalkSessionSummary(read.route.detail.summary) },
+                    summaryContent = { WalkSessionSummary(read.route.detail.summary, compact = true) },
                     directionNotice = hints, onZoomRoute = { zooms++ },
                     offscreenScenes = if (hints) scenes else emptyList(),
                     explorerSelected = explorerSelected, onChooseExplorer = { explorerSelected = it }, explorerPanel = { notices ->

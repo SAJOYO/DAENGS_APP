@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -16,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
 import com.daengs.app.BuildConfig
+import com.daengs.app.map.provider.naver.LocalWalkMapDiagnostics
+import com.daengs.app.map.provider.naver.WalkMapDiagnostics
 import com.daengs.app.auth.AccountScope
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.walk.WalkDiaryMapForAccount
@@ -33,6 +36,7 @@ import java.util.UUID
 
 /** Opt-in fixture app only: real Room/readers/editors/SDK, with no auth or server delivery. */
 class DiaryEditorReviewActivity : ComponentActivity() {
+    internal val mapDiagnostics = WalkMapDiagnostics()
     private lateinit var db: WalkDatabase
     internal lateinit var dao: WalkDao
     private lateinit var history: WalkHistory
@@ -51,6 +55,7 @@ class DiaryEditorReviewActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         check(BuildConfig.APPLICATION_ID.endsWith(".locationreview"))
         account = AccountScope(intent.getStringExtra("owner") ?: "editor-review", 1)
         val reset = persistent && savedInstanceState == null && intent.getBooleanExtra("reset", false)
@@ -67,8 +72,8 @@ class DiaryEditorReviewActivity : ComponentActivity() {
             if (!persistent || reset) withContext(Dispatchers.IO) { seed(log, intent.getBooleanExtra("route", true)) }
             ready = true
         }
-        setContent { DaengsTheme {
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        setContent { CompositionLocalProvider(LocalWalkMapDiagnostics provides mapDiagnostics) { DaengsTheme {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 ReviewLabel()
                 if (ready && opened) key(account) {
                     val expected = account
@@ -93,7 +98,7 @@ class DiaryEditorReviewActivity : ComponentActivity() {
                 } else if (ready) TextButton(onClick = { opened = true }) { Text("검증 기록 다시 열기") }
                 else Text("검증 기록 준비 중")
             }
-        } }
+        } } }
     }
 
     fun replaceLogin() { account = account.copy(generation = account.generation + 1) }
