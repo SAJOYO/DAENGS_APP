@@ -25,6 +25,7 @@ internal interface WalkDetailActions {
     suspend fun saveEntry(entry: WalkEntry)
     suspend fun deleteEntry(id: String)
     suspend fun saveScene(scene: StoryboardScene, title: String, body: String)
+    suspend fun deleteScene(scene: StoryboardScene)
     suspend fun deletePhoto(id: String)
 }
 

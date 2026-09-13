@@ -145,6 +145,11 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     state.clearSceneError()
                 },
                 onPhoto = { explorer.pause(); editors.showPhoto(it) },
+                onDelete = { scene ->
+                    explorer.pause()
+                    editors.removeScene(originalScenes.firstOrNull { it.id == scene.id })
+                    state.clearSceneError()
+                },
                 onRetry = state::retry,
                 onAdd = {
                     explorer.choosePanel(false)

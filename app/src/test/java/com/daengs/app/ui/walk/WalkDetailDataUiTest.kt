@@ -63,6 +63,8 @@ class WalkDetailDataUiTest {
         override suspend fun deleteEntry(id: String) = Unit
         override suspend fun saveScene(scene: StoryboardScene, title: String, body: String) = saveScene(title, body)
         override suspend fun deletePhoto(id: String) = Unit
+        var remove: suspend (StoryboardScene) -> Unit = {}
+        override suspend fun deleteScene(scene: StoryboardScene) = remove(scene)
     }
 
     @Composable private fun Screen(source: Source, actions: Actions) {

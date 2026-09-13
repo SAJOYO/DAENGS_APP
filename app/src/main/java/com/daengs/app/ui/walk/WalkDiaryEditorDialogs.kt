@@ -35,8 +35,35 @@ internal fun WalkDiaryEditorDialogs(
             state.saveScene(scene, title, body, editors::dismissScene)
         }, onDismiss = editors::dismissScene)
     }
+    editors.removingScene?.let { scene ->
+        DiarySceneRemovalDialog(scene.title, state.savingScene, state.sceneError,
+            onDelete = { state.deleteScene(scene, editors::dismissRemoval) },
+            onDismiss = editors::dismissRemoval)
+    }
     editors.photo?.let { WalkPhotoDialog(it, deletePhoto, editors::dismissPhoto) }
 }
+
+@Composable
+internal fun DiarySceneRemovalDialog(title: String, busy: Boolean, error: String?,
+    onDelete: () -> Unit, onDismiss: () -> Unit,
+) {
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("장면을 삭제할까요?") },
+        text = { Column {
+            Text("‘$title’ 장면을 일기와 지도에서 빼요. 산책 경로와 원본 행동 기록, 사진은 그대로 남아요.")
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        } },
+        confirmButton = { TextButton(onClick = onDelete, enabled = !busy) {
+            Text(if (busy) "삭제 중…" else "삭제", color = MaterialTheme.colorScheme.error)
+        } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } })
+}
+
+@Preview(showBackground = true, widthDp = 390)
+@Composable
+private fun DiarySceneRemovalPreview() { DaengsTheme {
+    DiarySceneRemovalDialog("함께 쉬어 간 순간", false, null, {}, {})
+} }
 
 @Composable
 private fun DiaryPointChoiceDialog(point: WalkRoutePoint, points: List<WalkRoutePoint>,

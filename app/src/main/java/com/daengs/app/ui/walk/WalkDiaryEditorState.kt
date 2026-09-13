@@ -14,6 +14,7 @@ internal class WalkDiaryEditorState(private val sessionId: String, adding: Boole
     var editorOpen by mutableStateOf(false); private set
     var photo by mutableStateOf<WalkPhoto?>(null); private set
     var editingScene by mutableStateOf<DiaryScene?>(null); private set
+    var removingScene by mutableStateOf<DiaryScene?>(null); private set
 
     fun beginAdding(summary: WalkSummary, hasRoute: Boolean) {
         chosenPoint = null
@@ -35,11 +36,13 @@ internal class WalkDiaryEditorState(private val sessionId: String, adding: Boole
     fun entrySaved() { dismissEntry(); adding = false }
     fun editScene(scene: DiaryScene?) { editingScene = scene }
     fun dismissScene() { editingScene = null }
+    fun removeScene(scene: DiaryScene?) { removingScene = scene }
+    fun dismissRemoval() { removingScene = null }
     fun showPhoto(value: WalkPhoto) { photo = value }
     fun dismissPhoto() { photo = null }
 
     fun clear() {
-        cancelAdding(); entry = null; editorOpen = false; editingScene = null; photo = null
+        cancelAdding(); entry = null; editorOpen = false; editingScene = null; removingScene = null; photo = null
     }
 
     companion object {

@@ -35,5 +35,6 @@ internal class WalkRecordsLabDetailData(private val record: WalkRecord) : WalkDe
     override suspend fun saveScene(scene: StoryboardScene, title: String, body: String) {
         draft.value = draft.value.edit(scene, title, body, acknowledge = true, bodyScope = SceneBodyScope.SCENE)
     }
+    override suspend fun deleteScene(scene: StoryboardScene) { draft.value = draft.value.hide(scene) }
     override suspend fun deletePhoto(id: String) { error("가상 산책에는 저장된 사진이 없어요.") }
 }

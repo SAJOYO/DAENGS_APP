@@ -30,6 +30,7 @@ private fun WalkDiaryMapPreview() {
         override suspend fun deleteEntry(id: String) = Unit
         override suspend fun saveScene(scene: StoryboardScene, title: String, body: String) = Unit
         override suspend fun deletePhoto(id: String) = Unit
+        override suspend fun deleteScene(scene: StoryboardScene) = Unit
     } }
     DaengsTheme { WalkDiaryMapForAccount("preview", data, data, {}, Modifier, emptyList(),
         WalkSessionOrigin.RECORDS, AccountScope(null, 0), {}, { null }) }

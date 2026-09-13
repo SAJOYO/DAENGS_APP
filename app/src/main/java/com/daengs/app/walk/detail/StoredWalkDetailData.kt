@@ -124,6 +124,12 @@ internal class StoredWalkDetailData(
         checkActive()
     }
 
+    override suspend fun deleteScene(scene: StoryboardScene) {
+        checkActive()
+        dao.deleteDiaryScene(sessionId, account.ownerId.orEmpty(), scene)
+        checkActive()
+    }
+
     override suspend fun deletePhoto(id: String) {
         checkActive()
         val row = dao.photo(id) ?: return
