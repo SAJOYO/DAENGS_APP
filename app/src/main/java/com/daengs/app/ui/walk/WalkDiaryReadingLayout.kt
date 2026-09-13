@@ -2,6 +2,7 @@ package com.daengs.app.ui.walk
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.R
+import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.WalkPhoto
 import com.daengs.app.walk.diary.DiaryScene
@@ -79,6 +81,8 @@ internal fun WalkDiaryMapContent(
     readingMemory: DiaryReadingMemory? = null,
     onDelete: ((DiaryScene) -> Unit)? = null,
     sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
+    walkDogIds: List<String> = emptyList(),
+    walkPets: List<Pet> = emptyList(),
 ) {
     val compactDrawer = explorerPanel != null
     val sheet = readingMemory?.drawer ?: rememberDiaryDrawerState(
@@ -157,10 +161,7 @@ internal fun WalkDiaryMapContent(
                 }
             }
         }
-        Text(title,
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 6.dp),
-            fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
-            color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        DiaryReadingHeader(title, walkDogIds, walkPets)
         summaryContent()
         comparisonContent()
         mapView?.let { view -> Box(Modifier.padding(start = 20.dp, bottom = 8.dp)) {
@@ -232,17 +233,21 @@ internal fun WalkDiaryMapContent(
                             }
                         }
                         if (explorerPanel != null) TabRow(selectedTabIndex = if (explorerSelected) 1 else 0,
+                            containerColor = CardWhite, contentColor = TextDark,
+                            divider = { HorizontalDivider(color = PinkFaint) },
                             modifier = Modifier.onSizeChanged { tabHeightPx = it.height }.testTag("diary-tabs")) {
                             Tab(selected = !explorerSelected, onClick = {
                                 if (explorerSelected) onChooseExplorer(false)
                                 scope.launch { sheet.showDetails() }
                             },
-                                text = { Text("장면 " + scenes.size) })
+                                selectedContentColor = TextDark, unselectedContentColor = TextMuted,
+                                text = { Text("장면 " + scenes.size, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) })
                             Tab(selected = explorerSelected, onClick = {
                                 if (!explorerSelected) onChooseExplorer(true)
                                 scope.launch { sheet.showDetails() }
                             },
-                                text = { Text("동선 탐색") })
+                                selectedContentColor = TextDark, unselectedContentColor = TextMuted,
+                                text = { Text("동선 탐색", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) })
                         }
                         val showSceneActions = compactDrawer && !explorerSelected && selected != null
                         if (showSceneActions) {
@@ -292,20 +297,24 @@ internal fun WalkDiaryMapContent(
                                         item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
                                     }
                                     item(key = "scene:${scene.id}") {
-                                    Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        DiarySceneListButton(scene, sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
-                                            onClick = { onSelect(scene) }, modifier = Modifier.weight(1f), ordinal = index + 1)
-                                        IconButton(onClick = { onEdit(scene) }) {
-                                            Icon(painterResource(R.drawable.ic_diary_edit), "장면 ${index + 1} 수정",
-                                                Modifier.size(20.dp), tint = TextMuted)
-                                        }
-                                        onDelete?.let { remove ->
-                                            IconButton(onClick = { remove(scene) }) {
-                                                Icon(painterResource(R.drawable.ic_diary_delete), "장면 ${index + 1} 삭제",
-                                                    Modifier.size(20.dp), tint = TextMuted)
+                                        Surface(Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp), color = CardWhite,
+                                            border = BorderStroke(1.dp, DaengsColors.BorderNeutral)) {
+                                            Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                DiarySceneListButton(scene, sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
+                                                    onClick = { onSelect(scene) }, modifier = Modifier.weight(1f), ordinal = index + 1)
+                                                IconButton(onClick = { onEdit(scene) }) {
+                                                    Icon(painterResource(R.drawable.ic_diary_edit), "장면 ${index + 1} 수정",
+                                                        Modifier.size(20.dp), tint = TextMuted)
+                                                }
+                                                onDelete?.let { remove ->
+                                                    IconButton(onClick = { remove(scene) }) {
+                                                        Icon(painterResource(R.drawable.ic_diary_delete), "장면 ${index + 1} 삭제",
+                                                            Modifier.size(20.dp), tint = TextMuted)
+                                                    }
+                                                }
                                             }
                                         }
-                                    }
                                     }
                                 }
                                 gapSlots[scenes.size].orEmpty().forEach { gap ->
@@ -340,13 +349,13 @@ internal fun WalkDiaryMapContent(
                                                 }
                                             }
                                         }
-                                        Spacer(Modifier.height(16.dp))
+                                        Spacer(Modifier.height(12.dp))
                                         DiarySceneText(selected.body)
                                         selectedRouteNotice?.let { Text(it, Modifier.padding(top = 12.dp),
                                             style = MaterialTheme.typography.bodySmall, color = TextMuted) }
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
                                             Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
-                                        selected.photo?.let { photo -> TextButton(onClick = { onPhoto(photo) }) { Text("사진 보기") } }
+                                        selected.photo?.let { photo -> DiaryReadingPhoto(photo) { onPhoto(photo) } }
                                         if (selected.content?.photoId != null && selected.photo == null)
                                             Text("사진 파일은 촬영한 기기에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
                                     }

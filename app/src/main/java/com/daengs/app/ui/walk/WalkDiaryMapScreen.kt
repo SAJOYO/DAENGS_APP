@@ -130,6 +130,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
             WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
                 readingMemory = readingMemory,
                 sceneKinds = sceneKinds,
+                walkDogIds = detail?.summary?.dogIds.orEmpty(), walkPets = pets,
                 onSelect = { selectScene(it) }, onClose = explorer::closeScene,
                 selectionFromMap = explorer.selectionFromMap,
                 selectionPending = selectedId != null && readView?.scenesLoading == true,
@@ -197,7 +198,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     }
                 },
                 summaryContent = { detail?.summary?.let { summary ->
-                    WalkSessionSummary(summary, pets.filter { it.id in summary.dogIds }.map { it.name })
+                    WalkSessionSummary(summary)
                     ObservedRouteLegend(presentation.observedParts.map { it.role })
                 } },
                 backupAction = backupAction,

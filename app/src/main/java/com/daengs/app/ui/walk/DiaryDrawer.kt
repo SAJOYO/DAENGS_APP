@@ -72,10 +72,12 @@ internal fun DiaryDrawerLayout(
     val nestedScroll = remember(state, fling) { DiaryDrawerNestedScroll(state.drag, fling) }
     // Scroll against the visible height. Keep the browsing contents composed below
     // the tabs when compact so folding alone does not discard the reading position.
-    val contentHeight = if (state.compactEnabled) with(density) {
+    // The tabless reader also needs a visible viewport; measuring it expanded makes
+    // lower cards appear reachable to the list while they are clipped off screen.
+    val contentHeight = with(density) {
         (height.toPx() - (state.drag.offset.takeIf { it.isFinite() } ?: anchors.positionOf(state.targetValue)))
             .toDp().coerceIn(browsingHeight, expandedHeight)
-    } else expandedHeight
+    }
     Box(Modifier.fillMaxSize()) {
         content()
         Surface(Modifier.fillMaxWidth().height(contentHeight)

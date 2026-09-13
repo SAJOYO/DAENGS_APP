@@ -58,8 +58,8 @@ internal fun DiarySceneHeading(scene: DiaryScene, kind: DiarySceneKind, modifier
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         DiarySceneBadge(kind)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(scene.title, color = TextDark, fontSize = if (detail) 22.sp else 18.sp,
-                lineHeight = if (detail) 30.sp else 24.sp, fontWeight = FontWeight.SemiBold,
+            Text(scene.title, color = TextDark, fontSize = if (detail) 20.sp else 16.sp,
+                lineHeight = if (detail) 28.sp else 23.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = if (detail) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(formatWalkClock(scene.atMillis), fontSize = 13.sp, color = TextMuted)
