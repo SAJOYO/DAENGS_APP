@@ -39,6 +39,23 @@ uv run tools/run_measurement_device_review.py --adb $adbPath --serial $deviceSer
 
 합성 데이터는 opt-in 빌드에만 포함된다. 일반 앱 APK가 필요하면 init 없이 다시 빌드한다.
 
+### 구간 맥락 검사 (#384)
+
+같은 APK와 테스트 APK를 설치한 뒤 아래 명령으로 별도의 3단계를 실행한다.
+
+```powershell
+uv run tools/run_measurement_device_review.py --adb $adbPath --serial $deviceSerial --output <비공개-구간-로그-폴더> --range-context
+```
+
+첫 단계만 검증 DB를 초기화하고 원본 시각과 연결된 메모를 추가한다. 이후 두 단계는 저장본으로 시작한다.
+범위→장면→범위의 슬라이더·스크롤·서랍 높이, 장면에서 프로세스 교체 후 복귀,
+범위 끝 정지와 재생 재개, 커서 이동 후 프로세스 교체 시 범위·배속·일시정지 복원을 검사한다.
+각 단계의 `PASS` 3줄을 확인한다. 기본 명령의 4단계와는 각각 처음부터 실행하는 독립 시나리오다.
+2026-09-13 두 명령의 총 7개가 Galaxy S25에서 통과했다. [상세 결과](walk-range-context.md#병합-후-실기기-확인-384).
+
+범위 검사 화면은 검증 앱의 external files에 `range-scene.png`, `range-playback-end.png`, `range-reopened.png`로 남는다.
+캡처 전 검증 Activity의 포커스를 검사한다. 합성 좌표가 국내 지도 범위 밖이어서 검증용 카메라만 원본에 맞춘다.
+
 일반 `assembleDebug`와 `WalkExploration*`, `WalkMeasurementTest`, `WalkMigrationTest`, `DesignLockTest` **41개**도 통과했다(실패/오류/skip 0). 일반 APK의 assets와 DEX에 검증 입력 및 `MeasurementReviewActivity`가 없는 것을 확인했다.
 
 ## 기존 기록 업그레이드 검사
