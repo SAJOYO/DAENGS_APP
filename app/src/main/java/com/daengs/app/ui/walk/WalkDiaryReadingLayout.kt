@@ -31,6 +31,7 @@ import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.WalkPhoto
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.diary.DiarySceneContent
+import com.daengs.app.walk.diary.DiarySceneKind
 import com.daengs.app.walk.trajectory.RecordContext
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -77,6 +78,7 @@ internal fun WalkDiaryMapContent(
     offscreenScenes: List<DiaryScene> = emptyList(),
     readingMemory: DiaryReadingMemory? = null,
     onDelete: ((DiaryScene) -> Unit)? = null,
+    sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
 ) {
     val compactDrawer = explorerPanel != null
     val sheet = readingMemory?.drawer ?: rememberDiaryDrawerState(
@@ -291,19 +293,8 @@ internal fun WalkDiaryMapContent(
                                     }
                                     item(key = "scene:${scene.id}") {
                                     Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        TextButton(onClick = { onSelect(scene) }, modifier = Modifier.weight(1f),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
-                                            Surface(shape = CircleShape, color = PinkFaint, modifier = Modifier.size(32.dp)) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Text("${index + 1}", fontWeight = FontWeight.Bold, color = DaengPinkDeep)
-                                                }
-                                            }
-                                            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                                Text(scene.title, color = TextDark, fontSize = 18.sp, lineHeight = 24.sp,
-                                                    maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                                Text(formatWalkClock(scene.atMillis), fontSize = 13.sp, color = TextMuted)
-                                            }
-                                        }
+                                        DiarySceneListButton(scene, sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
+                                            onClick = { onSelect(scene) }, modifier = Modifier.weight(1f), ordinal = index + 1)
                                         IconButton(onClick = { onEdit(scene) }) {
                                             Icon(painterResource(R.drawable.ic_diary_edit), "장면 ${index + 1} 수정",
                                                 Modifier.size(20.dp), tint = TextMuted)
@@ -337,12 +328,8 @@ internal fun WalkDiaryMapContent(
                                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
                                     item {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f)) {
-                                                Text(selected.title, fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold)
-                                                Text(listOfNotNull(formatWalkClock(selected.atMillis),
-                                                    selected.content?.address?.takeIf(String::isNotBlank)).joinToString(" · "),
-                                                    fontSize = 13.sp, color = TextMuted)
-                                            }
+                                            DiarySceneHeading(selected, sceneKinds[selected.id] ?: DiarySceneKind.GENERAL,
+                                                Modifier.weight(1f), detail = true)
                                             IconButton(onClick = { onEdit(selected) }) {
                                                 Icon(painterResource(R.drawable.ic_diary_edit), "장면 수정", Modifier.size(22.dp))
                                             }

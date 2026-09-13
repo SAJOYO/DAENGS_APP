@@ -71,6 +71,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         else -> onBack()
     } }
     val originalScenes = diary?.scenes.orEmpty()
+    val sceneKinds = remember(diary) { diary?.sceneKinds().orEmpty() }
     val comparisonSnapshot = remember(originalScenes, backupAccount, diary?.preparing) {
         if (BuildConfig.DEBUG && diary?.preparing != true && originalScenes.size in 1..12 && !backupAccount.ownerId.isNullOrBlank())
             DiaryComparisonSnapshot.create(requireNotNull(backupAccount.ownerId), sessionId, originalScenes)
@@ -128,6 +129,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
                 readingMemory = readingMemory,
+                sceneKinds = sceneKinds,
                 onSelect = { selectScene(it) }, onClose = explorer::closeScene,
                 selectionFromMap = explorer.selectionFromMap,
                 selectionPending = selectedId != null && readView?.scenesLoading == true,
@@ -183,7 +185,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         val slice = explorer.selectedSlice
                         val position = readView?.sceneFocus?.get(scene.id)?.let { currentReview?.timeline?.scenePosition(it) }
                         slice != null && position != null && position in slice.from..slice.until
-                    }, onScene = { selectScene(it) }) },
+                    }, onScene = { selectScene(it) }, sceneKinds = sceneKinds) },
                 directionNotice = directionCount == 0 &&
                     (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
                         overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),

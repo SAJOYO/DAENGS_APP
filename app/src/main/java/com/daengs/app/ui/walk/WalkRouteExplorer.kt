@@ -258,6 +258,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     onContext: (RecordContext) -> Unit = {},
     sliceScenes: List<com.daengs.app.walk.diary.DiaryScene> = emptyList(),
     onScene: (com.daengs.app.walk.diary.DiaryScene) -> Unit = {},
+    sceneKinds: Map<String, com.daengs.app.walk.diary.DiarySceneKind> = emptyMap(),
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -315,7 +316,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
             if (review.timeline?.durationMillis != null && state.duration > 0) {
-                MeasurementTimeControls(state, sliceScenes, onScene)
+                MeasurementTimeControls(state, sliceScenes, onScene, sceneKinds)
             }
         }
         state.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
