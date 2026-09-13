@@ -37,16 +37,15 @@ class DiaryReadingStyleTest {
         compose.onNodeWithText("보리와 노을 한 바퀴").assertIsDisplayed()
         compose.onNodeWithText("보리").assertIsDisplayed()
         compose.onNodeWithContentDescription("걸은 시간", substring = true).assertIsDisplayed()
-        compose.onNodeWithContentDescription("장면 1 수정").assertIsDisplayed()
-        compose.onNodeWithContentDescription("장면 1 삭제").assertIsDisplayed()
+        compose.onNodeWithContentDescription("장면 1 메뉴").assertIsDisplayed()
         capture("reading-list-390")
         val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         compose.onNodeWithText("풀 냄새에 잠깐 멈춤").performClick()
         compose.onNodeWithText("풀잎 앞에서 남긴 킁킁 기록.").assertIsDisplayed()
-        compose.onNodeWithContentDescription("장면 수정").assertIsDisplayed()
-        compose.onNodeWithContentDescription("장면 삭제").assertIsDisplayed()
-        assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
         capture("reading-body-390")
+        compose.onNodeWithContentDescription("장면 수정").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("장면 삭제").performScrollTo().assertIsDisplayed()
+        assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp")

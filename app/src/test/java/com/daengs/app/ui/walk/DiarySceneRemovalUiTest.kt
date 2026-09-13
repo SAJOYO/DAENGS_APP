@@ -27,6 +27,24 @@ class DiarySceneRemovalUiTest {
     private val first = DiaryScene("s/first", "s", 0, "함께 쉬어 간 길", "잠깐 쉬었어요.", null, "")
     private val second = first.copy(id = "s/second", title = "집으로 가는 길")
 
+    @Test fun `reading the scrollable notices restores their own key without shifting scene keys`() {
+        val scenes = (0..19).map { first.copy(id = "s/$it", title = "장면 제목 $it") }
+        lateinit var memory: DiaryReadingMemory
+        compose.setContent { DaengsTheme {
+            memory = rememberDiaryReadingMemory()
+            remember(memory) { memory.pendingList = JSONObject().put("key", "reading-notices").put("offset", 8) }
+            WalkDiaryMapContent(scenes, null, false, null, {}, {}, {}, {}, {}, {},
+                readingMemory = memory, generationNotice = "저장한 장면을 보여드려요.\n".repeat(30),
+                explorerPanel = {}, map = {})
+        } }
+        compose.runOnIdle {
+            assertNull(memory.pendingList)
+            assertEquals(scenes.size, memory.list.firstVisibleItemIndex)
+            assertEquals(8, memory.list.firstVisibleItemScrollOffset)
+            assertEquals("reading-notices", memory.snapshot().getJSONObject("list").getString("key"))
+        }
+    }
+
     @Test fun `returning from a restored group restores the independent full list position`() {
         val scenes = (0..19).map { first.copy(id = "s/$it", title = "장면 제목 $it") }
         lateinit var memory: DiaryReadingMemory
@@ -60,6 +78,7 @@ class DiarySceneRemovalUiTest {
                 map = { Box(Modifier.fillMaxSize()) })
         } }
         val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithContentDescription("장면 1 메뉴").performClick()
         compose.onNodeWithContentDescription("장면 1 삭제").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(first, requested) }
         // Requesting confirmation leaves both scenes intact. Only an adopted successful write removes it.
@@ -67,8 +86,8 @@ class DiarySceneRemovalUiTest {
         compose.runOnIdle { scenes.value = listOf(second) }
         compose.onNodeWithText(first.title).assertDoesNotExist()
         compose.onNodeWithText(second.title).assertExists()
-        compose.onNodeWithContentDescription("장면 1 삭제").assertExists()
-        compose.onNodeWithContentDescription("장면 2 삭제").assertDoesNotExist()
+        compose.onNodeWithContentDescription("장면 1 메뉴").assertExists()
+        compose.onNodeWithContentDescription("장면 2 메뉴").assertDoesNotExist()
         assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
     }
 
@@ -79,7 +98,7 @@ class DiarySceneRemovalUiTest {
                 onDelete = { requested = it }, explorerPanel = {},
                 map = { Box(Modifier.fillMaxSize()) })
         } }
-        compose.onNodeWithContentDescription("장면 삭제").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("장면 삭제").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(first, requested) }
         compose.onNodeWithText(first.body).assertExists()
         compose.onNodeWithContentDescription("장면 수정").assertExists()
@@ -99,16 +118,17 @@ class DiarySceneRemovalUiTest {
         } }
         val top=compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         compose.onNodeWithText("장면 3").assertExists()
-        compose.onNodeWithContentDescription("장면 2 삭제").assertExists()
+        compose.onNodeWithContentDescription("장면 2 메뉴").assertExists()
         compose.onNodeWithText(first.title).assertDoesNotExist()
         compose.onNodeWithContentDescription(DiarySceneKind.NOTE.label).assertExists()
         compose.onNodeWithText(second.title).performClick()
         compose.onNodeWithContentDescription(DiarySceneKind.NOTE.label).assertExists()
         compose.onNodeWithText("‹ 이 근처 장면 2개").performClick()
         assertEquals(top,compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top,1f)
+        compose.onNodeWithContentDescription("장면 2 메뉴").performClick()
         compose.onNodeWithContentDescription("장면 2 삭제").performClick()
         compose.onNodeWithText("장면 2").assertExists()
-        compose.onNodeWithContentDescription("장면 2 삭제").assertExists()
+        compose.onNodeWithContentDescription("장면 2 메뉴").assertExists()
         compose.onNodeWithText("전체 장면").performClick()
         compose.onNodeWithText(first.title).assertExists()
     }

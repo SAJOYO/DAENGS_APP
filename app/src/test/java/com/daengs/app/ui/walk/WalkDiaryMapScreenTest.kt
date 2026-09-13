@@ -269,7 +269,7 @@ class WalkDiaryMapScreenTest {
                 { selected = null }, {}, {}, {}, {}, map = { Box(Modifier.fillMaxSize()) })
         }
         compose.onNodeWithTag("diary-scene-body").performTouchInput { swipeUp() }
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("다음 장면").assertIsDisplayed()
         compose.onNodeWithText("짧은 메모").assertIsDisplayed()
     }
@@ -286,10 +286,10 @@ class WalkDiaryMapScreenTest {
         compose.onNodeWithText("첫 메모").performClick()
         compose.onNodeWithText("이전").assertIsNotEnabled()
         compose.onNodeWithText("장면 1").assertExists()
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("장면 2").assertExists()
         compose.onNodeWithText("스토리보드 검토").assertDoesNotExist()
-        compose.onNodeWithContentDescription("장면 수정").performClick()
+        compose.onNodeWithContentDescription("장면 수정").performScrollTo().performClick()
         assertEquals("b", edited)
         compose.onNodeWithText("‹ 장면 목록").performClick()
         compose.onNodeWithText("2개 장면 · 시간순").assertExists()
@@ -328,7 +328,7 @@ class WalkDiaryMapScreenTest {
                 map = { Box(Modifier.fillMaxSize().background(Color(0xFFE1EBDE)).testTag("diary-map")) })
         }
         compose.onNodeWithTag("diary-map").assertIsDisplayed()
-        compose.onNodeWithText("다음").assertIsDisplayed()
+        compose.onNodeWithText("다음").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("‹ 장면 목록").assertIsDisplayed()
         assertTrue(compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot.height >= 120)
         val file = java.io.File("build/outputs/walk-diary-map-card.png"); file.parentFile.mkdirs()
@@ -398,10 +398,10 @@ class WalkDiaryMapScreenTest {
         }
         compose.onAllNodesWithText("1").onFirst().performClick()
         compose.onNodeWithText("장면 1").assertExists()
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("장면 2").assertExists()
         compose.runOnIdle { assertTrue(diarySceneMarkers(scenes, selected?.id).any { it.selected && it.label == "2" }) }
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("장면 3").assertExists()
         compose.runOnIdle {
             assertNull(selected?.point)

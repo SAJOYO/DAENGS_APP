@@ -87,7 +87,7 @@ class DiaryScenePresentationTest {
         compose.onNodeWithText(scene.body).assertExists()
         compose.onNodeWithContentDescription("직접 남긴 메모").assertExists()
         assertEquals(top, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
-        compose.onNodeWithContentDescription("장면 삭제").performClick()
+        compose.onNodeWithContentDescription("장면 삭제").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(scene, removal); walk = walk.copy(sourceEntries = emptyList()) }
         compose.onNodeWithText("산책 장면").assertExists()
         compose.onNodeWithText("직접 남긴 메모").assertDoesNotExist()

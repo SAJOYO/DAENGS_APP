@@ -33,9 +33,9 @@ internal fun DiaryReadingPhoto(photo: WalkPhoto, onOpen: () -> Unit) = key(photo
         }
         loaded = true
     }
-    Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
         bitmap?.let { image ->
-            Surface(onClick = onOpen, shape = RoundedCornerShape(14.dp), color = PinkFaint) {
+            Surface(onClick = onOpen, shape = RoundedCornerShape(12.dp), color = PinkFaint) {
                 Image(image.asImageBitmap(), "산책 중 촬영한 사진",
                     Modifier.fillMaxWidth().heightIn(max = 180.dp), contentScale = ContentScale.Fit)
             }

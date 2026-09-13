@@ -133,13 +133,15 @@ class DiaryEditorDeviceTest {
 
     @Test fun sceneEditPersistsAndPhotoDeleteRequiresConfirmation() {
         open()
-        compose.onNodeWithContentDescription("장면 1 수정").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 메뉴").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 수정").performClick()
         compose.onNodeWithText("장면 제목").performTextReplacement("실기기에서 고친 시작")
         compose.onNodeWithText("장면 내용").performTextReplacement("취소와 저장을 확인한 장면")
         compose.onNodeWithText("저장").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("장면 수정").fetchSemanticsNodes().isEmpty() }
         awaitText("실기기에서 고친 시작")
-        compose.onNodeWithContentDescription("장면 1 수정").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 메뉴").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 수정").performClick()
         compose.onNodeWithText("취소와 저장을 확인한 장면").assertExists()
         cancelDialog()
         val draft = runBlocking { activity.dao.storyboard(DiaryEditorReviewActivity.SESSION) }
@@ -154,20 +156,22 @@ class DiaryEditorDeviceTest {
         assertNotNull(runBlocking { activity.dao.photo(DiaryEditorReviewActivity.PHOTO) })
         assertTrue(activity.photoFile.exists())
         compose.onNodeWithText("사진 삭제").performClick()
-        compose.onNodeWithText("삭제").performClick()
+        compose.onNode(hasText("삭제") and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10_000) { !activity.photoFile.exists() }
         assertNull(runBlocking { activity.dao.photo(DiaryEditorReviewActivity.PHOTO) })
     }
 
     @Test fun loginReplacementAndSessionDeletionDismissOpenEditors() {
         open()
-        compose.onNodeWithContentDescription("장면 1 수정").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 메뉴").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 수정").performClick()
         compose.onNodeWithText("장면 내용").performTextReplacement("이전 로그인 초안")
         scenario.onActivity { it.replaceLogin() }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("장면 수정").fetchSemanticsNodes().isEmpty() }
         awaitText("산책의 시작")
         compose.onNodeWithText("이전 로그인 초안").assertDoesNotExist()
-        compose.onNodeWithContentDescription("장면 1 수정").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 메뉴").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("장면 1 수정").performClick()
         scenario.onActivity { it.removeSession() }
         awaitText("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.")
         compose.onNodeWithText("장면 수정").assertDoesNotExist()

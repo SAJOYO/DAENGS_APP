@@ -99,7 +99,7 @@ class WalkDiaryGapListTest {
         compose.onNodeWithText("이 사이의 이동 경로는 확인할 수 없어요.").assertIsDisplayed()
         compose.onNodeWithText("‹ 장면 목록").performClick()
         compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("장면 제목 2"))
-        compose.onNodeWithContentDescription("장면 2 수정").assertExists()
+        compose.onNodeWithContentDescription("장면 2 메뉴").assertExists()
         compose.onNodeWithText("장면 제목 2").performClick()
         compose.onNodeWithText("함께 쉬었던 기억").assertIsDisplayed()
         compose.onAllNodesWithText(formatWalkClock(scenes[1].atMillis)).assertCountEquals(1)
