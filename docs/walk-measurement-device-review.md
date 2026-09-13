@@ -24,6 +24,8 @@
 
 ## 합성 검사 실행
 
+#383 새 탐색 패널에서의 8개 실기기 검사와 안내 영역 수정은 [#385 결과](walk-explorer-usability.md)를 따른다.
+
 [`tools/walk-measurement-review.init.gradle`](../tools/walk-measurement-review.init.gradle)를 기존 지도 검증 init과 함께 사용한다. 네이버 키 설정은 [지도 검증 도구](../tools/naver-map-review/README.md)를 따른다. 별도 로그인이 필요 없다.
 
 ```powershell

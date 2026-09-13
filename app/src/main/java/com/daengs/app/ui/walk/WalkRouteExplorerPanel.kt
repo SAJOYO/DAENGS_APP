@@ -24,7 +24,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     onScene: (DiaryScene) -> Unit = {}, sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
     reading: DiaryReadingMemory? = null, allScenes: List<DiaryScene> = sliceScenes,
     scenesLoading: Boolean = false, unknownTimeScenes: Int = 0,
-    mapNotices: @Composable () -> Unit = {},
+    readingNotices: @Composable () -> Unit = {},
 ) {
     val scroll = reading?.explorer ?: rememberScrollState()
     var localDetails by remember { mutableStateOf(false) }
@@ -70,6 +70,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
             }
             if (slice != null && unknownTimeScenes > 0) Text("시각을 확인하지 못한 장면 ${unknownTimeScenes}개는 전체 장면에서 볼 수 있어요.",
                 style = MaterialTheme.typography.bodySmall, color = TextMuted)
+            readingNotices()
             if (measured) {
                 if (slice != null && !replay) TextButton(onClick = { state.seek(slice.from) }) { Text("범위 시작으로 이동") }
                 Text("기록 중 경과 시간이에요. 일시정지 시간은 제외하고, 시계 경계와 경로 공백은 이어 그리지 않아요.",
@@ -89,7 +90,6 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                 if (!auxiliary) WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
             }
             if (!replay) WalkSpeedLegend()
-            mapNotices()
         }
     }
 }

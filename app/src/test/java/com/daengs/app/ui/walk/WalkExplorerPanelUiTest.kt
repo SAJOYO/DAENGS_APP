@@ -101,6 +101,25 @@ class WalkExplorerPanelUiTest {
         compose.onNodeWithText("이 장면 앞뒤 30초 보기").assertDoesNotExist()
     }
 
+    @Test @Config(qualifiers = "w320dp-h640dp")
+    fun `map notices cannot consume the middle drawer reading region even with enlarged text`() {
+        show(ExplorerPanelExample.NOTICES, 1.3f)
+        val header = compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
+        val sheet = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        val reading = compose.onNodeWithTag("explorer-reading").fetchSemanticsNode().boundsInRoot
+        assertTrue("A real map's notices must leave a scrollable viewport", reading.height >= 40f)
+        compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        capture("notices-320-large-font")
+        compose.onNodeWithText("동선 확대").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("다시 시도").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("화면 밖 장면 1개").performScrollTo().assertIsDisplayed()
+        assertEquals(header, compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithText("구간 복귀").performClick()
+        compose.onNodeWithText("– 00:30").assertIsDisplayed()
+        assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+    }
+
     @Test fun `route details stay reachable and loading has its own explanation`() {
         show(ExplorerPanelExample.LOADING)
         compose.onNodeWithText("장면을 불러오고 있어요.").performScrollTo().assertIsDisplayed()

@@ -36,12 +36,9 @@ class WalkExplorerMapNoticeUiTest {
                     summaryContent = { WalkSessionSummary(read.route.detail.summary) },
                     directionNotice = hints, onZoomRoute = { zooms++ },
                     offscreenScenes = if (hints) scenes else emptyList(),
-                    explorerSelected = true, explorerPanel = {
+                    explorerSelected = true, explorerPanel = { notices ->
                         WalkRouteExplorerPanel(state, {}, allScenes = scenes, sliceScenes = scenes.take(3),
-                            onScene = { opened = it.id }, mapNotices = {
-                                WalkExplorerMapNotices(scenes, if (hints) scenes else emptyList(), hints,
-                                    { opened = it.id }, { zooms++ })
-                            })
+                            onScene = { opened = it.id }, readingNotices = notices)
                     })
             } }
         }

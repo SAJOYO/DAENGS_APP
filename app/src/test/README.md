@@ -1,5 +1,8 @@
 # 기능별 테스트 실행 지도
 
+실제 지도 탐색 읽기 공간 (#385)은 `WalkExplorerPanelUiTest`의 NOTICES 시나리오와 별도 `MeasurementDeviceTest#verifyExplorerActions`로
+지도 안내가 읽기 영역을 없애지 않는지 확인한다. [실기기 8개 검사와 재현](../../../docs/walk-explorer-usability.md).
+
 시간 탐색 패널 (#383)은 `WalkExplorerPanelUiTest`로 고정 시간 조작·독립 스크롤·구간/재생 모드·장면 왕복과 320dp 큰 글씨를 검사한다.
 복원·기존 열람 회귀 검사와 native 렌더 방법은 [탐색 패널 검증](../../../docs/walk-explorer-panel.md)을 따른다.
 

@@ -14,7 +14,7 @@ import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.*
 
-internal enum class ExplorerPanelExample { OVERVIEW, RANGE, REPLAY, GAP, LEGACY, LOADING }
+internal enum class ExplorerPanelExample { OVERVIEW, RANGE, REPLAY, GAP, LEGACY, LOADING, NOTICES }
 internal class ExplorerPanelExamples : PreviewParameterProvider<ExplorerPanelExample> {
     override val values = ExplorerPanelExample.entries.asSequence()
 }
@@ -59,7 +59,7 @@ internal fun WalkExplorerPanelPreview(@PreviewParameter(ExplorerPanelExamples::c
     val state = remember(example) { WalkRouteExplorerState(scope, 0).apply {
         adopt(read); choosePanel(true)
         when (example) {
-            ExplorerPanelExample.RANGE -> selectTimeRange(0, 30_000)
+            ExplorerPanelExample.RANGE, ExplorerPanelExample.NOTICES -> selectTimeRange(0, 30_000)
             ExplorerPanelExample.REPLAY -> { selectTimeRange(0, 30_000); seek(15_000) }
             ExplorerPanelExample.GAP -> selectTimeRange(60_000, 90_000)
             else -> Unit
@@ -68,14 +68,18 @@ internal fun WalkExplorerPanelPreview(@PreviewParameter(ExplorerPanelExamples::c
     val memory = rememberDiaryReadingMemory()
     val scenes = read.diary!!.scenes
     val scene = scenes.firstOrNull { it.id == state.selectedSceneId }
-    DaengsTheme { WalkDiaryMapContent(scenes, scene, false, null,
+    val notices = example == ExplorerPanelExample.NOTICES
+    DaengsTheme { WalkDiaryMapContent(scenes, scene, false, if (notices) "장면 갱신을 마치지 못했어요." else null,
         onSelect = { state.selectScene(it.id) }, onClose = state::closeScene, onEdit = {}, onPhoto = {}, onRetry = {}, onAdd = {},
         title = "함께 걸었던 길", subtitle = "미리보기 산책", readingMemory = memory,
         summaryContent = { WalkSessionSummary(read.route.detail.summary) },
+        mapView = DiaryMapView.WALKING.takeIf { notices },
+        offscreenScenes = if (notices) scenes.take(1) else emptyList(), directionNotice = notices,
+        generationNotice = "저장한 장면을 보여드려요.".takeIf { notices },
         onReturnToRange = if (state.returnRange != null) ({ state.returnToRange() }) else null,
         onSceneNeighborhood = if (scene != null && state.sceneNeighborhood(read, scene) != null) ({ state.selectSceneNeighborhood(read, scene) }) else null,
         explorerSelected = state.panelOpen, onChooseExplorer = state::choosePanel,
-        explorerPanel = { WalkRouteExplorerPanel(state, {}, reading = memory, allScenes = scenes,
+        explorerPanel = { notices -> WalkRouteExplorerPanel(state, {}, reading = memory, allScenes = scenes, readingNotices = notices,
             scenesLoading = example == ExplorerPanelExample.LOADING,
             sliceScenes = scenes.filter { s -> val at = read.focusFor(s)?.let { read.route.review.timeline?.scenePosition(it) }
                 state.selectedSlice?.let { at != null && at in it.from..it.until } == true }, onScene = { state.selectScene(it.id) }) },
