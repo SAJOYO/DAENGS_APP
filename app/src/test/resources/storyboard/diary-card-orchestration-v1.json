@@ -1,11 +1,11 @@
 {
   "format": "walk-diary-board-response-v1",
-  "session_id": "e28c708c-eaba-4520-bd5a-22f7787a0864",
+  "session_id": "fc0292c1-081b-4ede-8b8c-46562b2507ba",
   "generation": 1,
-  "input_revision": "82b7aa0822f6822a0b4025e7ebc426d7ec1c18120d677172599a210135779805",
+  "input_revision": "8405e63ae5cb07dce1ad73ad38d8097178f5fbf7c89e70e050c3d28364608394",
   "status": "ready",
   "entry_revisions": {
-    "c175343c-7d81-4985-bfde-54e3bc7a7244": 2,
+    "1a35cbbf-dd8d-4097-8adc-dcc2c4dfd064": 2,
     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa": 2
   },
   "photos_status": "not_available",
@@ -28,18 +28,18 @@
   "background_update_available": false,
   "bundle": {
     "format": "walk-diary-board-v1",
-    "client_session_id": "e28c708c-eaba-4520-bd5a-22f7787a0864",
-    "input_revision": "13f0d20527849cb3ec3d9100b2b4b4436ab4e6a0f2cf11a599238d1d1136c5c4",
-    "plan_revision": "e906b4d5a8cfa4fdf131a91e04188f411fe1a18862d96944fd98d37e34c87d8e",
+    "client_session_id": "fc0292c1-081b-4ede-8b8c-46562b2507ba",
+    "input_revision": "84b98a286b55ae8befff1a9fe4eac0625cbdecd38250649c3d13af09bd747531",
+    "plan_revision": "341a4caa8c488fe797641bdab543383f84ff123f5ed47bd1596b0f3a7851a980",
     "title": "2026.09.09 산책",
     "model_status": "accepted",
     "failure_code": null,
     "scenes": [
       {
-        "id": "stamp:881563c9260585b33f3bb878b3dc6f914a98dddc48f0cfdbbd3354540d78ebfb",
+        "id": "stamp:ae4ff46fdcaa41f8da7e9515805f4e5bf81ec00c5dfe725571c887c11a40ac2e",
         "order": 1,
         "core": {
-          "identity": "boundary:f892eadfad7c85706b15140cc9fd5b37dc7e3dfe6d745bdbc9e66edeae93066a",
+          "identity": "boundary:dea8194292adf1a5c957f20357c2ba1458d6aa1b02c7c45c48d3c2f4fe40c07f",
           "version": "ee3cea9cd756f14cce71582ecbe0fae1da8041c125ad8aed636042be8f69e0ff"
         },
         "kind": "session_boundary",
@@ -70,8 +70,8 @@
         "boundary": "start",
         "place_reference": [
           {
-            "id": "slot:a7adf53137db82d2df9206f48dae91d778137257f5a006d275744d32c564e589",
-            "background_id": "normalized:e99a0171217f202cdda363342482e5737a03f1cb66b0be2c9eaac202391bb7be",
+            "id": "slot:bbdcdb2f6ab5d7dcb6af89cbc00ef1819642d47cd230e8ff7cfcfad0d805ed1f",
+            "background_id": "normalized:3bfa3134dad837486f880001671292481e8cbcdb33eda56d97458c0670b06dec",
             "kind": "place_reference",
             "schema_version": "sgis-dong-v1",
             "facts": {
@@ -87,13 +87,13 @@
               "position_method": "observed",
               "location_basis": "original_location",
               "temporal_basis": "lookup_snapshot",
-              "retrieved_at": "2026-09-13T13:48:26.414526+00:00"
+              "retrieved_at": "2026-09-13T14:31:23.473497+00:00"
             }
           }
         ],
         "writing": {
           "format": "diary-card-narrative-v1",
-          "content_revision": "610f55345f63209e6d3a1d5bc1fb789bc3d50d262839cf87d7d2de9b9e851230",
+          "content_revision": "c8eecec36f52a541b6d33aa10921e924c37f52948b40e2f9164747f7c3cb33e5",
           "space": {
             "text": "이 부근에 길이 있다.",
             "origin": "generated",
@@ -103,12 +103,80 @@
           "actions": [],
           "original_text": null,
           "title_origin": "generated",
-          "title_based_on_content_revision": "610f55345f63209e6d3a1d5bc1fb789bc3d50d262839cf87d7d2de9b9e851230"
+          "title_based_on_content_revision": "c8eecec36f52a541b6d33aa10921e924c37f52948b40e2f9164747f7c3cb33e5"
+        }
+      },
+      {
+        "id": "stamp:a5499ce4d1ff914f10fdb45e76e6b44c644ae3e4efaae66c217d8558f2ce989a",
+        "order": 2,
+        "core": {
+          "identity": "walk_entry:1a35cbbf-dd8d-4097-8adc-dcc2c4dfd064",
+          "version": "c1c385e6b9107089b35ccda816521dc42aa8019d2acef4c51e34e2011d84e52f"
+        },
+        "kind": "user_record",
+        "anchor": {
+          "event_at": "2026-09-09T00:00:00Z",
+          "time_basis": "recorded_at",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:00:00Z",
+          "accuracy_m": 5.0,
+          "position_state": "legacy",
+          "method": "last_known",
+          "source_fixes": []
+        },
+        "title": "산책길에서 남긴 기록",
+        "body": "이 부근에 길이 있다.\n  있는 그대로\n  ",
+        "user_record": {
+          "kind": "note",
+          "text": "  있는 그대로\n  "
+        },
+        "observation": null,
+        "checkpoint": null,
+        "boundary": null,
+        "place_reference": [
+          {
+            "id": "slot:553a50dacfdb2d19b891a9d2f2e197c65352421205f29f57745890d7a2be2095",
+            "background_id": "normalized:e18123a0c376d99b84485f284626203a243a50427c929079baaa50a53eb27ada",
+            "kind": "place_reference",
+            "schema_version": "sgis-dong-v1",
+            "facts": {
+              "dong": "도곡1동",
+              "sido": "서울특별시",
+              "sigungu": "강남구",
+              "address_type": "administrative_dong",
+              "source_ref": {
+                "source": "sgis",
+                "ref": "11:680:655"
+              },
+              "reference": "coordinate_reverse_geocoded_dong",
+              "position_method": "last_known",
+              "location_basis": "original_location",
+              "temporal_basis": "lookup_snapshot",
+              "retrieved_at": "2026-09-13T14:31:23.473497+00:00"
+            }
+          }
+        ],
+        "writing": {
+          "format": "diary-card-narrative-v1",
+          "content_revision": "c3b456aae74bf5a00349e2b273f6b0edbc8e628d7394ca1923af87804564d05a",
+          "space": {
+            "text": "이 부근에 길이 있다.",
+            "origin": "generated",
+            "action_id": null,
+            "actor_id": null
+          },
+          "actions": [],
+          "original_text": "  있는 그대로\n  ",
+          "title_origin": "generated",
+          "title_based_on_content_revision": "c3b456aae74bf5a00349e2b273f6b0edbc8e628d7394ca1923af87804564d05a"
         }
       },
       {
         "id": "stamp:9e10234e34fd86bbc3829155a4d581476eedc6ad6f1f00a3c35b839ec7f7cb1b",
-        "order": 2,
+        "order": 3,
         "core": {
           "identity": "walk_entry:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
           "version": "b3ee94779f58c9cd7954d73f929bb7adf9d0157d750932b9b50bc929ed3404e5"
@@ -139,7 +207,7 @@
         "boundary": null,
         "place_reference": [
           {
-            "id": "slot:0f0eeed172cce3f2604c628b375c7121af4ff5f3b24eee36bb2d929029e8ca17",
+            "id": "slot:5314868499f5ac4ff727bf13229bb53d1973a6254e8e7c81a3cefb4568847cd5",
             "background_id": "normalized:a9500ba66b6ca4e16f249d1a7aeb802f1d82d9e1129cc427743fed1c78251b7e",
             "kind": "place_reference",
             "schema_version": "sgis-dong-v1",
@@ -156,13 +224,13 @@
               "position_method": "last_known",
               "location_basis": "original_location",
               "temporal_basis": "lookup_snapshot",
-              "retrieved_at": "2026-09-13T13:48:26.414526+00:00"
+              "retrieved_at": "2026-09-13T14:31:23.473497+00:00"
             }
           }
         ],
         "writing": {
           "format": "diary-card-narrative-v1",
-          "content_revision": "37e411c818f0ce0a921d724c6bf34c42a86df75d26f2b13777f377d37278e34d",
+          "content_revision": "52eb3f458c4b66c90887d7b9c726c7dde0372c0ec33b7cc60576242b41a8ef6e",
           "space": {
             "text": "이 부근에 길이 있다.",
             "origin": "generated",
@@ -179,75 +247,7 @@
           ],
           "original_text": null,
           "title_origin": "generated",
-          "title_based_on_content_revision": "37e411c818f0ce0a921d724c6bf34c42a86df75d26f2b13777f377d37278e34d"
-        }
-      },
-      {
-        "id": "stamp:2ad8b083fd49fad4b1438755e9a55a99038e6974a45b77c3f7a5db3fba7a8703",
-        "order": 3,
-        "core": {
-          "identity": "walk_entry:c175343c-7d81-4985-bfde-54e3bc7a7244",
-          "version": "6ae533586e95033beab2b49f257cc675ac586ba2a6a2d877329ed0896f9ef343"
-        },
-        "kind": "user_record",
-        "anchor": {
-          "event_at": "2026-09-09T00:00:00Z",
-          "time_basis": "recorded_at",
-          "point": {
-            "lat": 37.5,
-            "lng": 127.0
-          },
-          "location_at": "2026-09-09T00:00:00Z",
-          "accuracy_m": 5.0,
-          "position_state": "legacy",
-          "method": "last_known",
-          "source_fixes": []
-        },
-        "title": "산책길에서 남긴 기록",
-        "body": "이 부근에 길이 있다.\n  있는 그대로\n  ",
-        "user_record": {
-          "kind": "note",
-          "text": "  있는 그대로\n  "
-        },
-        "observation": null,
-        "checkpoint": null,
-        "boundary": null,
-        "place_reference": [
-          {
-            "id": "slot:9c392df38790f69540c278411c380cb9009d821d50919d321e32aa04e408fb3b",
-            "background_id": "normalized:9dabb24560dc867fdc9a08ab39068b8be88f25b6ff22b1ed5f19d4e8940f0189",
-            "kind": "place_reference",
-            "schema_version": "sgis-dong-v1",
-            "facts": {
-              "dong": "도곡1동",
-              "sido": "서울특별시",
-              "sigungu": "강남구",
-              "address_type": "administrative_dong",
-              "source_ref": {
-                "source": "sgis",
-                "ref": "11:680:655"
-              },
-              "reference": "coordinate_reverse_geocoded_dong",
-              "position_method": "last_known",
-              "location_basis": "original_location",
-              "temporal_basis": "lookup_snapshot",
-              "retrieved_at": "2026-09-13T13:48:26.414526+00:00"
-            }
-          }
-        ],
-        "writing": {
-          "format": "diary-card-narrative-v1",
-          "content_revision": "7854db79292e5a24dba6e187a5062124e8ed64689980be153d06ed6f69222a3f",
-          "space": {
-            "text": "이 부근에 길이 있다.",
-            "origin": "generated",
-            "action_id": null,
-            "actor_id": null
-          },
-          "actions": [],
-          "original_text": "  있는 그대로\n  ",
-          "title_origin": "generated",
-          "title_based_on_content_revision": "7854db79292e5a24dba6e187a5062124e8ed64689980be153d06ed6f69222a3f"
+          "title_based_on_content_revision": "52eb3f458c4b66c90887d7b9c726c7dde0372c0ec33b7cc60576242b41a8ef6e"
         }
       },
       {
@@ -255,7 +255,7 @@
         "order": 4,
         "core": {
           "identity": "observation:motion:8d42d5551a056a931664ad369ebc4be9cea41e7138c4ca310b60d3722c008c4d",
-          "version": "6837a7eaa6879f2ac3c7efc3c22b6012ec9d8609f94db1c684a437a5e048e1b4"
+          "version": "c063da956d3c58f43ad5263e2c6a1720391c53ba29a4b23f95c34f25d69d706e"
         },
         "kind": "movement_observation",
         "anchor": {
@@ -282,7 +282,7 @@
         "user_record": null,
         "observation": {
           "id": "motion:8d42d5551a056a931664ad369ebc4be9cea41e7138c4ca310b60d3722c008c4d",
-          "version": "bc7543b94d800f48ca2b69a5857d997173f7ffa71112b0863eda52db2f9a9cb6",
+          "version": "b439270435809a1865ca715b9dc6697578e9e8d396caa3d8c5182c817651c979",
           "analysis_id": "00000000-0000-0000-0000-000000000063",
           "kind": "observed_dwell",
           "subject": "recording_device",
@@ -313,8 +313,8 @@
         "boundary": null,
         "place_reference": [
           {
-            "id": "slot:d5eae95224758c4ea5344ec246ad7a3d49895add2a76a3b25607cdb0f34c2aa0",
-            "background_id": "normalized:8784676745a6e7b9ad29be94f26255b089af2c889e98d1390acf3c1cafd7f356",
+            "id": "slot:390fc7064de12ac802e84c1a6045b506c0743285533aa5a21a9857119dc704cd",
+            "background_id": "normalized:9dbb51b42272e1dcf1f98c1ae06d75d75d2dc058e4c9683b02f215baf8d7c440",
             "kind": "place_reference",
             "schema_version": "sgis-dong-v1",
             "facts": {
@@ -330,13 +330,13 @@
               "position_method": "observed",
               "location_basis": "original_location",
               "temporal_basis": "lookup_snapshot",
-              "retrieved_at": "2026-09-13T13:48:26.416526+00:00"
+              "retrieved_at": "2026-09-13T14:31:23.475511+00:00"
             }
           }
         ],
         "writing": {
           "format": "diary-card-narrative-v1",
-          "content_revision": "43894fe2bc47eb0e3624d078c98c2ff3d2d75423ec62284d05f07cb87157773e",
+          "content_revision": "aeaa41be2d7f1febce6bf238e2c80867da80fc1c5bd7ee26f0558784cc00ed01",
           "space": {
             "text": "이 부근에 길이 있다.",
             "origin": "generated",
@@ -346,14 +346,14 @@
           "actions": [],
           "original_text": null,
           "title_origin": "generated",
-          "title_based_on_content_revision": "43894fe2bc47eb0e3624d078c98c2ff3d2d75423ec62284d05f07cb87157773e"
+          "title_based_on_content_revision": "aeaa41be2d7f1febce6bf238e2c80867da80fc1c5bd7ee26f0558784cc00ed01"
         }
       },
       {
-        "id": "stamp:313c3408ea673837a2d07d5bbd03def8315ef3b9d3f061b0cb4c97489d5f1b44",
+        "id": "stamp:6b0c6c8bc2e52b65757f70a774042f2d94c2eafce507bde337bf446b58cbb645",
         "order": 5,
         "core": {
-          "identity": "boundary:2e5e190ddb0d9176ce1c795987916d2f4c3abaaa400051ba0e4ead80776d464a",
+          "identity": "boundary:1e3e5583a5e783e551f114961c84e8099ba36de264272d14cd6522d15c1c9194",
           "version": "6ab073fb1755202c374877a6004947e5658ce082ce507aaef93705895ea96589"
         },
         "kind": "session_boundary",
@@ -384,8 +384,8 @@
         "boundary": "end",
         "place_reference": [
           {
-            "id": "slot:9158b4dcfc8dee24f8e160f22672653255cda05064b59478de30ac22b3d1ab26",
-            "background_id": "normalized:b28744312a275b5fa9e22cfc784505ccd17474d1dd12828b800fb3a6b9546fb9",
+            "id": "slot:1f822d012f008f1460644e43768b1acbdfed1b9e9af07bf8bbe1c9e845d6c2b9",
+            "background_id": "normalized:7a0d67c627905090b9a10333a53b3f2ca78bf864bce50dd9b41cd2f4dded3fa2",
             "kind": "place_reference",
             "schema_version": "sgis-dong-v1",
             "facts": {
@@ -401,13 +401,13 @@
               "position_method": "observed",
               "location_basis": "original_location",
               "temporal_basis": "lookup_snapshot",
-              "retrieved_at": "2026-09-13T13:48:26.417538+00:00"
+              "retrieved_at": "2026-09-13T14:31:23.476500+00:00"
             }
           }
         ],
         "writing": {
           "format": "diary-card-narrative-v1",
-          "content_revision": "9606b73375678bb2086dd17c7b1bfb0c8e34fc61348c10fbe09d5589e09791c6",
+          "content_revision": "980f46d5bfe05ddc1232e4e8a310d1ffc1984c20e559a7dfa60474a29331807b",
           "space": {
             "text": "이 부근에 길이 있다.",
             "origin": "generated",
@@ -417,7 +417,7 @@
           "actions": [],
           "original_text": null,
           "title_origin": "generated",
-          "title_based_on_content_revision": "9606b73375678bb2086dd17c7b1bfb0c8e34fc61348c10fbe09d5589e09791c6"
+          "title_based_on_content_revision": "980f46d5bfe05ddc1232e4e8a310d1ffc1984c20e559a7dfa60474a29331807b"
         }
       }
     ]
