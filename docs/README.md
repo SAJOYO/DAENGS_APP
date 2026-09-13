@@ -12,6 +12,7 @@
 | [gps-motion-policy-architecture.md](gps-motion-policy-architecture.md) | GPS 정책층 1차 설계 — 단계별 수집·저장·판정·표시·복구 계약 |
 | [gps-recording-delivery.md](gps-recording-delivery.md) | GPS 2차 — 원본 저널과 종료 drain, Room·실기기 검증 |
 | [gps-motion-engine.md](gps-motion-engine.md) | GPS 3차 — 동결 정책·이동 추정·구간 장벽·동일 저널 재생 (운영 미연결) |
+| [walk-measurement-device-review.md](walk-measurement-device-review.md) | 측정 동선 6단계 — HTTP·Room·일반 상세·프로세스 재시작 실기기 검사, 기존 기록 사본 업그레이드 |
 | [collaboration.md](collaboration.md) | 협업 규칙 — 우선순위 · Iteration · PR 기준 · 데일리 · 회고 |
 | [facility-orchestration-release.md](facility-orchestration-release.md) | 시설 v2 출시 활성화·공통 채팅의 공유 검색·찜 완료·복구와 검증 |
 | [co-care-contract.md](co-care-contract.md) | 공동 돌봄 앱 계약·미니룸 정책 제안·서버 계약 검토·화면 연결안 (#261 / DEV #388) |

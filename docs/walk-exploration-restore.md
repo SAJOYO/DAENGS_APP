@@ -1,5 +1,7 @@
 # 시간 탐색과 읽던 위치 복원 — 5단계
 
+후속 [6단계 실기기 검증](walk-measurement-device-review.md)에서 실제 프로세스 재시작 후 장면·범위·일시정지 재생 복원을 확인했다. 아래 검증 결과는 5단계 작업 당시의 범위다.
+
 [APP #372](https://github.com/SAJOYO/DAENGS_APP/pull/372)은 [저장 관측 표시](walk-measurement-observed.md)에 이어 일반 상세의 시간 탐색·재생과 작은 열람 주소 저장을 연결한다. 기준 브랜치는 #371이 병합된 dev `01066a0`이다.
 
 ## 시간축과 범위
