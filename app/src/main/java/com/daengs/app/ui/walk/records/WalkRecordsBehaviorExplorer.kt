@@ -49,6 +49,7 @@ internal fun WalkRecordsBehaviorExplorer(
     modifier: Modifier = Modifier,
     state: WalkRecordsBehaviorState = rememberWalkRecordsBehaviorState(),
     routeSource: WalkRecordsSource? = null,
+    actionPinState: WalkRecordsActionPinState = rememberWalkRecordsActionPinState(),
     traceLoading: Boolean = false,
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
@@ -167,11 +168,11 @@ internal fun WalkRecordsBehaviorExplorer(
     val controls: @Composable () -> Unit = {
         BehaviorViewControls(view, changeView, minimumWalks = minimumWalks, onMinimumWalks = {
             minimumWalks = it; overlapPoint = null; overlapMiss = false; selectedWalkId = null
-        })
+        }, menuExtras = { if (view != BehaviorRecordsView.RECORD_LOCATIONS) WalkRecordsActionPinControls(actionPinState, result.behavior) })
     }
     if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
         WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
-            routeSource = routeSource,
+            routeSource = routeSource, actionPinState = actionPinState, pinBehavior = result.behavior,
             onRetry = tracePresentation.retry,
             selectedId = selectedWalkId, hiddenIds = hidden,
             onSelect = { id ->
@@ -181,7 +182,7 @@ internal fun WalkRecordsBehaviorExplorer(
                     if (bounds.isNotEmpty()) { focusBounds = bounds; cameraRequest++ }
                 }
             },
-            onToggleHidden = { id -> if (id in prepared?.availableWalkIds.orEmpty()) {
+            onToggleHidden = { id -> if (id in hideableIds) {
                 hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
             } }, onRestoreAll = { hiddenWalkIds = emptySet() }, onClearSelection = { selectedWalkId = null },
             onOpen = onOpen, listState = state.walkListState, camera = camera, onCamera = { camera = it },
@@ -291,6 +292,7 @@ internal fun WalkRecordsBehaviorExplorer(
 private fun BehaviorViewControls(
     view: BehaviorRecordsView, onView: (BehaviorRecordsView) -> Unit, modifier: Modifier = Modifier,
     minimumWalks: Int = 2, onMinimumWalks: (Int) -> Unit = {},
+    menuExtras: @Composable () -> Unit = {},
 ) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
@@ -312,6 +314,7 @@ private fun BehaviorViewControls(
             if (view == BehaviorRecordsView.WALK_OVERLAP) Box(Modifier.padding(horizontal = 16.dp)) {
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
+            menuExtras()
         }
     }
 }

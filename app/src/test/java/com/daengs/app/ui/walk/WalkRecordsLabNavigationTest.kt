@@ -19,6 +19,25 @@ import org.robolectric.annotation.GraphicsMode
 class WalkRecordsLabNavigationTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `action list opens the existing diary and returns to the same action inspection`() {
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsLab()
+        } } }
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("records-walk-sample-record-1").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-view-overview").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("records-pins-browse").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-pins-browse").performClick()
+        val record = WalkRecordsLabFixture.records.first()
+        val key = com.daengs.app.walk.records.WalkBehaviorRecord(record.entries.last(), record).key
+        compose.onNodeWithTag("records-behavior-entry-$key").performClick()
+        compose.onNodeWithTag("records-behavior-open-$key").performScrollTo().performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("일기 메뉴").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("산책 목록으로").performClick()
+        compose.onNodeWithTag("records-view-overview").assertIsSelected()
+        compose.onNodeWithTag("records-behavior-entry-$key").assertIsSelected()
+        compose.onNodeWithTag("records-pins-summary").assertExists()
+    }
+
     @Test fun `walk card opens the production session diary and returns to the same list`() {
         compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
             WalkRecordsLab()

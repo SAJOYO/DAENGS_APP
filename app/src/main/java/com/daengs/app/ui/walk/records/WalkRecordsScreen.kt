@@ -91,6 +91,7 @@ fun WalkRecordsScreen(
     // Keep inspection state above the loading/tab branches, with a stable restoration location.
     // The native map must not be wrapped in SaveableStateHolder's ReusableContent subtree.
     val behaviorState = rememberWalkRecordsBehaviorState(query, behavior)
+    val actionPinState = rememberWalkRecordsActionPinState(query, behavior)
     var activeFilter by rememberSaveable { mutableStateOf<RecordsFilter?>(null) }
     var pageIndex by rememberSaveable(query, behavior) { mutableIntStateOf(0) }
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
@@ -249,12 +250,12 @@ fun WalkRecordsScreen(
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
                     WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
-                        view = behaviorView, onView = { behaviorView = it }, state = behaviorState,
+                        view = behaviorView, onView = { behaviorView = it }, state = behaviorState, actionPinState = actionPinState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
                 } else {
                     WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
-                        routeSource = source,
+                        routeSource = source, actionPinState = actionPinState,
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
@@ -270,7 +271,7 @@ fun WalkRecordsScreen(
                                 }
                             }
                         },
-                        onToggleHidden = { id -> if (id in prepared?.availableWalkIds.orEmpty()) {
+                        onToggleHidden = { id -> if (id in current.sessionIds) {
                             hiddenIds = if (id in hiddenIds) hiddenIds - id else hiddenIds + id
                         } },
                         onRestoreAll = { hiddenIds = emptySet() },
@@ -360,7 +361,7 @@ private val HiddenWalkIdsSaver = listSaver<Set<String>, String>(
     save = { it.sorted() }, restore = { it.toSet() },
 )
 
-private val OverlapPointSaver = Saver<GeoPoint?, List<Double>>(
+internal val OverlapPointSaver = Saver<GeoPoint?, List<Double>>(
     save = { point -> point?.let { listOf(it.latitude, it.longitude) } ?: emptyList() },
     restore = { values -> values.takeIf { it.size == 2 }?.let { GeoPoint(it[0], it[1]) } },
 )

@@ -15,4 +15,8 @@ data class MomentMarkerState(
     val sequenceLabel: String? = null,
     /** Explicit behavior identity; translated captions are never parsed to choose an icon. */
     val behaviors: Set<WalkMomentType> = emptySet(),
+    /** Opt-in policy for the records overview; legacy diary markers retain their own presentation. */
+    val recordPin: RecordPinAppearance? = null,
 )
+
+data class RecordPinAppearance(val count: Int, val background: Boolean = false, val alpha: Float = .18f)
