@@ -63,7 +63,7 @@ internal fun WalkDiaryMapContent(
     onZoomRoute: () -> Unit = {},
     explorerSelected: Boolean = false,
     onChooseExplorer: (Boolean) -> Unit = {},
-    explorerPanel: (@Composable () -> Unit)? = null,
+    explorerPanel: (@Composable (@Composable () -> Unit) -> Unit)? = null,
     onSlotPreview: (() -> Unit)? = null,
     onPlaceComparison: (() -> Unit)? = null,
     comparisonContent: @Composable () -> Unit = {},
@@ -271,7 +271,7 @@ internal fun WalkDiaryMapContent(
                                 if (offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
                             }
                         }
-                        if (!showSceneActions && offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
+                        if ((!explorerSelected || explorerPanel == null) && !showSceneActions && offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
                         if (sceneGroup != null && selected == null && !explorerSelected) {
                             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 val same = sceneGroup.mapNotNull { it.point }.distinct().size == 1
@@ -284,22 +284,13 @@ internal fun WalkDiaryMapContent(
                             Text("동선에서 위치를 골라 주세요.", Modifier.weight(1f), fontSize = 14.sp)
                             TextButton(onClick = onAdd) { Text("취소") }
                         }
-                        generationNotice?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.bodyMedium)
-                        }
-                        if (directionNotice) Row(Modifier.padding(horizontal = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text("현재 화면에서는 방향을 표시하기 어려워요.", Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                            TextButton(onClick = onZoomRoute) { Text("동선 확대") }
-                        }
-                        if (error != null && !loading) Row(Modifier.padding(horizontal = 20.dp)) {
-                            Text(error, Modifier.weight(1f))
-                            TextButton(onClick = onRetry) { Text("다시 시도") }
-                        }
+                        if (!explorerSelected || explorerPanel == null) DiaryReadingNotices(generationNotice,
+                            directionNotice, error.takeUnless { loading }, onZoomRoute, onRetry)
                         if (explorerSelected && explorerPanel != null) {
-                            Box(Modifier.weight(1f).fillMaxWidth()) { explorerPanel() }
+                            Box(Modifier.weight(1f).fillMaxWidth()) { explorerPanel {
+                                if (offscreenScenes.isNotEmpty()) DiaryOffscreenMenu(scenes, offscreenScenes, onSelect)
+                                DiaryReadingNotices(generationNotice, directionNotice, error.takeUnless { loading }, onZoomRoute, onRetry)
+                            } }
                         } else if (loading) {
                             WalkDiaryPreparing(onRefresh = onRetry, error = error)
                         } else if (selectedGap != null) {

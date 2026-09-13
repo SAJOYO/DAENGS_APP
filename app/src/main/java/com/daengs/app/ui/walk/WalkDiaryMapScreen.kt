@@ -206,7 +206,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     readingMemory.inspect(emptyList())
                     editors.cancelAdding(); explorer.choosePanel(open)
                 },
-                explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
+                explorerPanel = { notices -> WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
+                    readingNotices = notices,
                     reading = readingMemory,
                     allScenes = originalScenes, scenesLoading = readView?.scenesLoading == true,
                     unknownTimeScenes = sceneTimes.values.count { it == null },
