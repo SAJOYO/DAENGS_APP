@@ -59,6 +59,7 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
     private val legacyEvidence = detail.legacyRouteEvidence?.takeIf { it.matches(detail) }
     val observed = ObservedRouteReview(detail)
     val context = RecordContextReview(detail, observed)
+    val timeline = detail.measurement?.let { MeasurementTimeline(detail, observed) }
     private val measurementReview = detail.measurement?.let { MeasurementSceneReview(detail) }
 
     /** Combined record presentation. sceneFocus remains the unchanged walking-only correspondence. */

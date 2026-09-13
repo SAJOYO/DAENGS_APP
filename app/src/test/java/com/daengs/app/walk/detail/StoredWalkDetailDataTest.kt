@@ -64,6 +64,20 @@ class StoredWalkDetailDataTest {
         assertEquals(listOf("prepare:s", "enqueue:s", "prepare:s"), calls)
     }
 
+    @Test fun `exploration is scoped to the current login and disappears with its session`() = runBlocking {
+        val original = data()
+        original.saveExploration("checkpoint")
+        assertEquals("checkpoint", data().loadExploration())
+        assertNull(dao.exploration("s", "other"))
+        account = AccountScope("owner", 2)
+        assertTrue(runCatching { original.saveExploration("stale") }.exceptionOrNull() is CancellationException)
+        assertEquals("checkpoint", data().loadExploration())
+        dao.deleteSession("s")
+        assertNull(data().loadExploration())
+        data().saveExploration("late")
+        assertNull(dao.exploration("s", "owner"))
+    }
+
     @Test fun `generation waits for sync and uses the newly stored remote id`() = runBlocking {
         assertNull(dao.session("s")!!.serverWalkId)
         data().generateDiary()

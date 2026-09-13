@@ -15,6 +15,11 @@ internal data class SceneBindingKey(val ownerId: String, val sessionId: String, 
     companion object {
         const val POLICY = "measurement-scene-binding-v2"
         fun of(measurement: WalkMeasurementDetail, scene: DiaryScene, entry: WalkEntry?): SceneBindingKey {
+            val (event, sceneRevision) = revisions(scene, entry)
+            return SceneBindingKey(measurement.ownerId, scene.sessionId, scene.id, measurement.id,
+                measurement.resultDigest, event, sceneRevision)
+        }
+        fun revisions(scene: DiaryScene, entry: WalkEntry?): Pair<String, String> {
             val source = scene.source; val anchor = source?.observation; val content = scene.content
             val pin = entry?.pin; val photo = scene.photo
             val event = revision(scene.sessionId, scene.id, scene.atMillis, scene.point, scene.entryId,
@@ -26,8 +31,7 @@ internal data class SceneBindingKey(val ownerId: String, val sessionId: String, 
             val sceneRevision = revision(scene.title, scene.body, scene.evidence, scene.needsReview,
                 source?.fingerprint, source?.available, source?.hidden, content?.recordText, content?.recordKind,
                 content?.locationLabel, content?.address, content?.order, entry?.note, entry?.petId)
-            return SceneBindingKey(measurement.ownerId, scene.sessionId, scene.id, measurement.id,
-                measurement.resultDigest, event, sceneRevision)
+            return event to sceneRevision
         }
     }
 }

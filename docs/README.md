@@ -2,6 +2,7 @@
 
 | 파일 | 내용 |
 | --- | --- |
+| [walk-exploration-restore.md](walk-exploration-restore.md) | 5단계: 측정 시간 범위·재생, Room 20 탐색 주소 저장과 검증 복원 |
 | [walk-measurement-observed.md](walk-measurement-observed.md) | 4단계: 저장 관측 보조선·제외/미확정 분류·방향·공백과 장면 선택 |
 | [walk-measurement-scenes.md](walk-measurement-scenes.md) | 3단계: 측정 원본 주소·장면 revision·일괄 갱신과 지도 선택 |
 | [walk-stored-measurement.md](walk-stored-measurement.md) | 일반 상세의 측정 검증·원자적 캐시·재열람과 1~2단계 적용 범위 |

@@ -34,4 +34,4 @@
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests '*MeasurementObserved*' --tests '*MeasurementScene*' --tests '*WalkMeasurement*' --tests '*WalkDiary*' --tests '*WalkDetail*' --tests '*CompletedRouteReviewTest' --tests '*RecordContext*' --tests '*WalkReadingBaselineUiTest' --tests '*WalkRecordOverviewUiTest' --tests '*DesignLockTest' --tests '*StoredWalkDetailDataTest' --tests '*DiaryMapNavigationTest' --tests '*ActionPin*' --tests '*StoryboardObservation*' --tests '*LocalDiary*' --tests '*ServerDiary*' --tests '*ObservedRoute*' --tests '*RouteDirection*' --tests '*SessionRouteExplorerLayerStateTest' --tests '*WalkRouteExplorerStateTest'
 ```
 
-다음 5단계는 시간 slice와 탐색 주소의 영속 복원이다. 현재 단계는 그 주소나 measured 재생 시간축을 새로 만들지 않는다. 운영/main 반영과 실기록의 기기 원본 독립 대조는 별도다.
+시간 slice·measured 재생 시간축과 탐색 주소의 영속 복원은 후속 [5단계](walk-exploration-restore.md)에서 연결한다. 운영/main 반영과 실기록의 기기 원본 독립 대조는 별도다.

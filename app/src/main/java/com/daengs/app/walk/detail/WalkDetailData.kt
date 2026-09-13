@@ -13,6 +13,8 @@ internal interface WalkDetailSource {
     fun isCurrentAccount(): Boolean
     suspend fun load(): WalkSessionDetail?
     fun observeDiary(detail: WalkSessionDetail): Flow<DiaryWalk?>
+    suspend fun loadExploration(): String? = null
+    suspend fun saveExploration(payload: String) {}
 }
 
 /** Caller owns the coroutine and error presentation; existing stores own durable writes. */

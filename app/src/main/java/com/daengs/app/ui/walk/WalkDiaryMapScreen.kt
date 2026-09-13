@@ -38,6 +38,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val explorer = rememberWalkRouteExplorer(sessionId, null)
     val state = rememberWalkDetailState(source, actions, explorer)
     val readView = state.readView
+    val readingMemory = rememberDiaryReadingMemory()
+    RememberWalkExplorationPersistence(source, backupAccount.ownerId.orEmpty(), readView, explorer, readingMemory)
     val detail = readView?.route?.detail
     val route = detail?.route
     val diary = readView?.diary
@@ -125,6 +127,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
+                readingMemory = readingMemory,
                 onSelect = { selectScene(it) }, onClose = explorer::closeScene,
                 selectionFromMap = explorer.selectionFromMap,
                 selectionPending = selectedId != null && readView?.scenesLoading == true,
@@ -170,7 +173,12 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 explorerPanel = { WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
                     onSection = { section -> navigation.fit(section.path) },
                     onAuxiliary = { section -> navigation.fit(section.path) },
-                    onContext = { selectContext(it) }) },
+                    onContext = { selectContext(it) },
+                    sliceScenes = originalScenes.filter { scene ->
+                        val slice = explorer.selectedSlice
+                        val position = readView?.sceneFocus?.get(scene.id)?.let { currentReview?.timeline?.scenePosition(it) }
+                        slice != null && position != null && position in slice.from..slice.until
+                    }, onScene = { selectScene(it) }) },
                 directionNotice = directionCount == 0 &&
                     (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
                         overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),

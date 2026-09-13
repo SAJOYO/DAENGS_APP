@@ -79,6 +79,9 @@ class WalkMeasurementTest {
             assertEquals(adopted.route.start, contexts.first().walkingEndpoint)
             // Each transported vertex resolves through its retained source address, including repeated clocks.
             val review = CompletedRouteReview(adopted)
+            assertEquals(adopted.summary.activeDurationMillis, review.timeline!!.durationMillis)
+            val halfway = adopted.summary.activeDurationMillis / 2
+            assertEquals(halfway, review.timeline.position(review.timeline.address(halfway)!!))
             val golden = cases("walk-measurement-observed-v1").single { it.getString("name") == w.getString("name") }
             assertEquals(golden.getString("measurement_id"), adopted.measurement!!.id)
             val expectedAuxiliary = golden.getJSONArray("edges").let { edges -> (0 until edges.length()).map { i ->
