@@ -111,9 +111,6 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         diarySceneMarkers(originalScenes, selectedId, readingMemory.groupIds)
     }
     val currentReview = readView?.route?.review
-    val sceneTimes = remember(readView) { originalScenes.associate { scene ->
-        scene.id to readView?.focusFor(scene)?.let { currentReview?.timeline?.scenePosition(it) }
-    } }
     val sceneFocus = selectedOriginal?.let { readView?.focusFor(it) }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
         readingMemory.inspect(emptyList())
@@ -209,16 +206,9 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                 explorerPanel = { notices -> WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
                     readingNotices = notices,
                     reading = readingMemory,
-                    allScenes = originalScenes, scenesLoading = readView?.scenesLoading == true,
-                    unknownTimeScenes = sceneTimes.values.count { it == null },
                     onSection = { section -> navigation.fit(section.path) },
                     onAuxiliary = { section -> navigation.fit(section.path) },
-                    onContext = { selectContext(it) },
-                    sliceScenes = originalScenes.filter { scene ->
-                        val slice = explorer.selectedSlice
-                        val position = sceneTimes[scene.id]
-                        slice != null && position != null && position in slice.from..slice.until
-                    }, onScene = { selectScene(it) }, sceneKinds = sceneKinds) },
+                    onContext = { selectContext(it) }) },
                 directionNotice = directionCount == 0 &&
                     (presentation.highlightPaths.any { it.size >= 2 } || presentation.observedDirectionEdges.isNotEmpty() ||
                         overviewDirections && route?.segments?.any { it.points.size >= 2 } == true),

@@ -10,8 +10,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.daengs.app.ui.theme.*
-import com.daengs.app.walk.diary.DiaryScene
-import com.daengs.app.walk.diary.DiarySceneKind
 import com.daengs.app.walk.routeexplorer.CompletedRouteSection
 import com.daengs.app.walk.trajectory.ObservedRouteSection
 import com.daengs.app.walk.trajectory.RecordContext
@@ -20,10 +18,7 @@ import com.daengs.app.walk.trajectory.RecordContext
 @Composable
 internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: () -> Unit,
     onSection: (CompletedRouteSection) -> Unit = {}, onAuxiliary: (ObservedRouteSection) -> Unit = {},
-    onContext: (RecordContext) -> Unit = {}, sliceScenes: List<DiaryScene> = emptyList(),
-    onScene: (DiaryScene) -> Unit = {}, sceneKinds: Map<String, DiarySceneKind> = emptyMap(),
-    reading: DiaryReadingMemory? = null, allScenes: List<DiaryScene> = sliceScenes,
-    scenesLoading: Boolean = false, unknownTimeScenes: Int = 0,
+    onContext: (RecordContext) -> Unit = {}, reading: DiaryReadingMemory? = null,
     readingNotices: @Composable () -> Unit = {},
 ) {
     val scroll = reading?.explorer ?: rememberScrollState()
@@ -32,8 +27,6 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     val measured = state.review?.timeline?.durationMillis != null && state.duration > 0
     val replay = state.mode == RouteExplorerMode.REPLAY
     val slice = state.selectedSlice
-    val scenes = if (slice != null) sliceScenes else allScenes
-    val ordinals = remember(allScenes) { allScenes.mapIndexed { i, scene -> scene.id to i + 1 }.toMap() }
     val auxiliary = state.mode in setOf(RouteExplorerMode.SECTION, RouteExplorerMode.AUXILIARY, RouteExplorerMode.CONTEXT, RouteExplorerMode.PASSAGE)
     LaunchedEffect(reading, reading?.pendingExplorerOffset) {
         reading?.pendingExplorerOffset?.let { offset ->
@@ -58,18 +51,6 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                     style = MaterialTheme.typography.bodySmall, color = TextMuted)
             }
             if (auxiliary) WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
-            Text(if (slice == null) "전체 장면 ${scenes.size}개" else "이 범위의 장면 ${scenes.size}개",
-                Modifier.padding(vertical = 6.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            if (scenesLoading) Text("장면을 불러오고 있어요.", style = MaterialTheme.typography.bodySmall)
-            else if (scenes.isEmpty()) Text(if (slice == null) "아직 남긴 장면이 없어요." else "이 시간 범위에 확인된 장면이 없어요.",
-                style = MaterialTheme.typography.bodySmall, color = TextMuted)
-            scenes.forEach { scene ->
-                DiarySceneListButton(scene, sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
-                    onClick = { onScene(scene) }, modifier = Modifier.fillMaxWidth(),
-                    ordinal = ordinals[scene.id])
-            }
-            if (slice != null && unknownTimeScenes > 0) Text("시각을 확인하지 못한 장면 ${unknownTimeScenes}개는 전체 장면에서 볼 수 있어요.",
-                style = MaterialTheme.typography.bodySmall, color = TextMuted)
             readingNotices()
             if (measured) {
                 if (slice != null && !replay) TextButton(onClick = { state.seek(slice.from) }) { Text("범위 시작으로 이동") }
@@ -137,6 +118,6 @@ private fun WalkExplorerRouteDetails(state: WalkRouteExplorerState, onSection: (
             }
         }
     }
-    if (review.sections.isEmpty()) Text("이어지는 보행선이 없어요. 확인된 위치와 장면은 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
+    if (review.sections.isEmpty()) Text("이어지는 보행선이 없어요. 확인된 위치는 지도에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
     Text("지도에서 겹친 길을 누르면 통과 시각을 골라 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
 }

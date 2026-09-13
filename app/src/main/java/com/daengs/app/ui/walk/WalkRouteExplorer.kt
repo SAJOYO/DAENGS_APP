@@ -111,7 +111,10 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
             if (!returnToRange()) overview()
         }
         panelOpen = open
-        if (!open) overview()
+        if (!open) {
+            // The scene list owns reading; a chosen time range survives that tab visit.
+            if (timeRange != null) replaceSelection(requireNotNull(timeRange)) else overview()
+        }
     }
     fun pause() { playing = false }
     fun choosePlaybackSpeed(speed: RoutePlaybackSpeed) { userRevision++; playbackSpeed = speed }

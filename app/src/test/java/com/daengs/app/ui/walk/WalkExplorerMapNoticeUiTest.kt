@@ -27,6 +27,7 @@ class WalkExplorerMapNoticeUiTest {
         var hints by mutableStateOf(false)
         var zooms = 0
         var opened: String? = null
+        var explorerSelected by mutableStateOf(true)
         compose.setContent {
             val scope = rememberCoroutineScope()
             val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 30_000) } }
@@ -36,9 +37,8 @@ class WalkExplorerMapNoticeUiTest {
                     summaryContent = { WalkSessionSummary(read.route.detail.summary) },
                     directionNotice = hints, onZoomRoute = { zooms++ },
                     offscreenScenes = if (hints) scenes else emptyList(),
-                    explorerSelected = true, explorerPanel = { notices ->
-                        WalkRouteExplorerPanel(state, {}, allScenes = scenes, sliceScenes = scenes.take(3),
-                            onScene = { opened = it.id }, readingNotices = notices)
+                    explorerSelected = explorerSelected, onChooseExplorer = { explorerSelected = it }, explorerPanel = { notices ->
+                        WalkRouteExplorerPanel(state, {}, readingNotices = notices)
                     })
             } }
         }
@@ -52,6 +52,9 @@ class WalkExplorerMapNoticeUiTest {
         compose.onNodeWithText("동선 재생").assertIsDisplayed()
         compose.onNodeWithText("동선 확대").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, zooms) }
+        compose.onNodeWithText("화면 밖 장면 6개").assertDoesNotExist()
+        compose.onNodeWithText("장면 6").performClick()
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("화면 밖 장면 6개"))
         compose.onNodeWithText("화면 밖 장면 6개").performScrollTo().performClick()
         compose.onNodeWithText("6 · ${scenes.last().title}").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(scenes.last().id, opened) }

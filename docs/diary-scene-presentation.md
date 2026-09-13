@@ -1,7 +1,8 @@
 # 원본에 따른 장면 표시 (#377)
 
 산책 상세 UI 개선의 1단계다. `DiarySceneKind`가 원본 종류를 판정하고, `DiarySceneBadge`와
-`DiarySceneHeading`/`DiarySceneListButton`이 목록·본문·시간 범위의 장면 목록에 같은 표시를 제공한다.
+`DiarySceneHeading`/`DiarySceneListButton`이 장면 목록·본문에 같은 표시를 제공한다.
+동선 탐색의 장면 목록은 [탭 역할 분리 #390](walk-tab-responsibilities.md)에서 제거했다.
 
 ## 판정 계약
 

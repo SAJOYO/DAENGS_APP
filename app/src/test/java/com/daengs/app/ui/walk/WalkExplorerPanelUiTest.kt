@@ -38,30 +38,39 @@ class WalkExplorerPanelUiTest {
         }
     }
 
-    @Test fun `range controls stay visible while related scenes scroll and replay has only a cursor`() {
+    private fun assertNoScenes() {
+        explorerPanelPreviewRead().diary!!.scenes.forEach {
+            compose.onNodeWithText(it.title, useUnmergedTree = true).assertDoesNotExist()
+        }
+        compose.onNodeWithText("전체 장면", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("이 범위의 장면", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("화면 밖 장면", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun `overview range and replay contain route controls without a duplicate scene list`() {
         show(ExplorerPanelExample.RANGE)
         val header = compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
         val sheet = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
-        compose.onNodeWithText("이 범위의 장면 3개").assertIsDisplayed()
-        compose.onNodeWithText("다시 걸어간 길", useUnmergedTree = true).assertDoesNotExist()
+        assertNoScenes()
         capture("range-390")
-        compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
+        compose.onNodeWithText("동선 2", substring = true).performScrollTo().assertIsDisplayed()
         assertEquals(header, compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("동선 재생").assertIsDisplayed().performClick()
         compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
         compose.onNodeWithTag("explorer-replay-slider").assertIsDisplayed()
+        assertNoScenes()
         capture("replay-390")
         compose.onNodeWithText("구간 수정").performClick()
         compose.onNodeWithTag("explorer-range-slider").assertIsDisplayed()
         compose.onNodeWithTag("explorer-replay-slider").assertDoesNotExist()
         assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
         compose.onNodeWithText("전체 산책").performClick()
-        compose.onNodeWithText("전체 장면 6개").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("집 앞에서 마무리", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        assertNoScenes()
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp")
-    fun `small screen enlarged text retains fixed controls scrollable scenes and explicit scene round trip`() {
+    fun `scene tab owns reading while the selected range survives tab and scene round trips`() {
         show(ExplorerPanelExample.RANGE, 1.3f)
         val sheet = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         val header = compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
@@ -69,12 +78,16 @@ class WalkExplorerPanelUiTest {
         assertTrue("Reading region must remain usable below the controls", reading.height >= 40f)
         assertTrue(header.bottom <= reading.top)
         compose.onNodeWithTag("explorer-range-slider").assertIsDisplayed()
-        compose.onNodeWithText("동선 재생").assertIsDisplayed()
         capture("range-320-large-font")
+        assertNoScenes()
+        compose.onNodeWithText("장면 6").performClick()
+        compose.onNodeWithTag("explorer-time-header").assertDoesNotExist()
         compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().performClick()
         compose.onNodeWithText("구간 복귀").assertIsDisplayed().performClick()
         compose.onNodeWithText("– 00:30").assertIsDisplayed()
+        assertNoScenes()
         assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
+        compose.onNodeWithText("장면 6").performClick()
         compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().performClick()
         compose.onNodeWithText("이 장면 앞뒤 30초 보기").performScrollTo().performClick()
         compose.onNodeWithText("– 01:00").assertIsDisplayed()
@@ -83,68 +96,62 @@ class WalkExplorerPanelUiTest {
         compose.onNodeWithText("동선 재생").performClick()
         compose.onNodeWithTag("explorer-replay-slider").assertIsDisplayed()
         capture("replay-320-large-font")
+        compose.onNodeWithText("장면 6").performClick()
+        compose.onNodeWithText("일시정지").assertDoesNotExist()
+        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("– 01:00").assertIsDisplayed()
+        compose.onNodeWithText("일시정지").assertDoesNotExist()
     }
 
-    @Test fun `gap-only range explains disabled playback and legacy keeps sections without a false time control`() {
+    @Test fun `gap and legacy explain route availability without scene prompts`() {
         var example by mutableStateOf(ExplorerPanelExample.GAP)
         compose.setContent { WalkExplorerPanelPreview(example) }
         compose.onNodeWithText("동선 재생").assertIsNotEnabled()
         compose.onNodeWithText("선택 범위에 재생할 이동 근거가 없어요.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("이 시간 범위에 확인된 장면이 없어요.").performScrollTo().assertIsDisplayed()
+        assertNoScenes()
         compose.runOnIdle { example = ExplorerPanelExample.LEGACY }
         compose.onNodeWithText("구간 고르기").assertDoesNotExist()
         compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
         compose.onNodeWithText("이 산책은 시간 구간을 고를 수 있는 측정 정보가 없어요.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
         compose.onNodeWithText("전체 동선").assertIsDisplayed().performClick()
+        assertNoScenes()
+        compose.onNodeWithText("장면 6").performClick()
         compose.onNodeWithText("산책을 시작했어요", useUnmergedTree = true).performScrollTo().performClick()
         compose.onNodeWithText("이 장면 앞뒤 30초 보기").assertDoesNotExist()
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp")
-    fun `map notices cannot consume the middle drawer reading region even with enlarged text`() {
+    fun `route notices stay in explorer and scene notices appear only in the scene tab`() {
         show(ExplorerPanelExample.NOTICES, 1.3f)
         val header = compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
         val sheet = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         val reading = compose.onNodeWithTag("explorer-reading").fetchSemanticsNode().boundsInRoot
         assertTrue("A real map's notices must leave a scrollable viewport", reading.height >= 40f)
-        compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
-        capture("notices-320-large-font")
         compose.onNodeWithText("동선 확대").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("다시 시도").assertDoesNotExist()
+        compose.onNodeWithText("저장한 장면을 보여드려요.").assertDoesNotExist()
+        assertNoScenes()
+        capture("notices-320-large-font")
+        assertEquals(header, compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithText("장면 6").performClick()
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("다시 시도"))
         compose.onNodeWithText("다시 시도").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("화면 밖 장면 1개").performScrollTo().assertIsDisplayed()
-        assertEquals(header, compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot)
-        compose.onNodeWithText("함께 남긴 메모", useUnmergedTree = true).performScrollTo().performClick()
-        compose.onNodeWithText("구간 복귀").performClick()
+        compose.onNodeWithText("동선 탐색").performClick()
         compose.onNodeWithText("– 00:30").assertIsDisplayed()
+        assertNoScenes()
         assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
     }
 
-    @Test fun `route details stay reachable and loading has its own explanation`() {
+    @Test fun `route details remain reachable independently of scene loading`() {
         show(ExplorerPanelExample.LOADING)
-        compose.onNodeWithText("장면을 불러오고 있어요.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("장면을 불러오고 있어요.").assertDoesNotExist()
         compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
         compose.onNodeWithText("전체 산책").assertIsDisplayed().performClick()
         compose.onNodeWithText("경로 정보 접기").performScrollTo().assertIsDisplayed()
-    }
-
-    @Test fun `unaddressable scenes remain in whole reading and are explained when a range filters them out`() {
-        val read = explorerPanelPreviewRead()
-        val scenes = read.diary!!.scenes
-        lateinit var state: WalkRouteExplorerState
-        compose.setContent {
-            val scope = rememberCoroutineScope()
-            state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectTimeRange(0, 30_000) } }
-            com.daengs.app.ui.theme.DaengsTheme {
-                WalkRouteExplorerPanel(state, {}, allScenes = scenes, sliceScenes = scenes.take(3), unknownTimeScenes = 1)
-            }
-        }
-        compose.onNodeWithText("시각을 확인하지 못한 장면 1개는 전체 장면에서 볼 수 있어요.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("전체 산책").performClick()
-        compose.onNodeWithText("전체 장면 6개").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("집 앞에서 마무리", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("시각을 확인하지 못한 장면 1개는 전체 장면에서 볼 수 있어요.").assertDoesNotExist()
+        assertNoScenes()
     }
 
     @Test fun `secondary route information still selects observed evidence and its original temporal context`() {
@@ -175,7 +182,7 @@ class WalkExplorerPanelUiTest {
         lateinit var memory: DiaryReadingMemory
         compose.setContent { memory = rememberDiaryReadingMemory() }
         val saved = JSONObject().put("drawer", "Browsing").put("explorerOffset", 321)
-            .put("explorerDetails", true).put("explorerLayout", 2)
+            .put("explorerDetails", true).put("explorerLayout", 3)
             .put("group", org.json.JSONArray(listOf("scene-a")))
             .put("body", JSONObject().put("id", "scene-a").put("index", 3).put("offset", 12))
         compose.runOnIdle { runBlocking { memory.restore(saved) }
@@ -184,9 +191,9 @@ class WalkExplorerPanelUiTest {
             assertEquals(listOf("scene-a"), memory.groupIds)
             assertEquals(3, memory.restoredBody!!.getInt("index"))
             val roundTrip = memory.snapshot()
-            assertEquals(2, roundTrip.getInt("explorerLayout"))
+            assertEquals(3, roundTrip.getInt("explorerLayout"))
             assertEquals(321, roundTrip.getInt("explorerOffset"))
-            saved.remove("explorerLayout"); saved.remove("explorerDetails")
+            saved.put("explorerLayout", 2); saved.remove("explorerDetails")
             runBlocking { memory.restore(saved) }
             assertEquals(0, memory.pendingExplorerOffset)
             assertFalse(memory.explorerDetails)

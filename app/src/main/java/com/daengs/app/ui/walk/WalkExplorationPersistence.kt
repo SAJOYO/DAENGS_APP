@@ -26,7 +26,7 @@ internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyLi
         groupIds, groupList.firstVisibleItemIndex, groupList.firstVisibleItemScrollOffset, explorerDetails)
     fun snapshot(): JSONObject = JSONObject().put("drawer", drawer.currentValue.name).apply {
         put("explorerOffset", pendingExplorerOffset ?: explorer.value)
-        put("explorerLayout", 2)
+        put("explorerLayout", 3)
         put("explorerDetails", explorerDetails)
         put("group", org.json.JSONArray(groupIds))
         put("groupIndex", groupList.firstVisibleItemIndex); put("groupOffset", groupList.firstVisibleItemScrollOffset)
@@ -37,8 +37,8 @@ internal class DiaryReadingMemory(val drawer: DiaryDrawerState, val list: LazyLi
         else bodyScene?.let { put("body", JSONObject().put("id", it).put("index", bodyIndex).put("offset", bodyOffset)) }
     }
     suspend fun restore(value: JSONObject) {
-        // Old offsets included the controls and route sections; they no longer address this reading region.
-        pendingExplorerOffset = if (value.optInt("explorerLayout") == 2) value.optInt("explorerOffset", 0).coerceIn(0, 100_000) else 0
+        // Earlier layouts included scene lists; their offsets no longer address route information.
+        pendingExplorerOffset = if (value.optInt("explorerLayout") == 3) value.optInt("explorerOffset", 0).coerceIn(0, 100_000) else 0
         explorerDetails = value.optBoolean("explorerDetails", false)
         val ids = value.optJSONArray("group")
         groupIds = if (ids == null) emptyList() else (0 until ids.length()).map { ids.getString(it) }.distinct()
