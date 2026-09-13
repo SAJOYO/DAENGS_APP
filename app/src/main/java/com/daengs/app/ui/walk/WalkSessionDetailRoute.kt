@@ -38,7 +38,7 @@ internal fun WalkDiaryMapScreen(
                 },
                 refreshStoryboard = { token, id, remoteId ->
                     app.walkStoryboardSync.sync(token, id, remoteId, refresh = true)
-                })
+                }, measurements = app.walkMeasurements)
         }
         val backupSource = remember(app, account) { app.routeBackupSource(account) }
         WalkDiaryMapForAccount(sessionId, data, data, onBack, modifier, pets, origin, account,

@@ -8,6 +8,24 @@ import androidx.room.Query
 @Dao
 interface WalkDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMeasurement(row: WalkMeasurementRow)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMeasurementChunks(rows: List<WalkMeasurementChunkRow>)
+
+    @Query("SELECT * FROM walk_measurement WHERE sessionId = :id")
+    suspend fun measurement(id: String): WalkMeasurementRow?
+
+    @Query("SELECT * FROM walk_measurement_chunk WHERE sessionId = :id ORDER BY chunkIndex")
+    suspend fun measurementChunks(id: String): List<WalkMeasurementChunkRow>
+
+    @Query("DELETE FROM walk_measurement WHERE sessionId = :id")
+    suspend fun deleteMeasurement(id: String)
+
+    @Query("SELECT measurementId FROM walk_measurement WHERE sessionId = :id")
+    fun observeMeasurement(id: String): kotlinx.coroutines.flow.Flow<String?>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMotionPrecision(row: WalkMotionPrecisionRow)
 
     @androidx.room.Update
