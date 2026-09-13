@@ -1,5 +1,14 @@
 # 기능별 테스트 실행 지도
 
+단일 산책 읽기 화면 (#379)은 `DiaryReadingStyleTest`로 참여견·목록/본문 조작·긴 제목/장문·사진 파일 교체·복구 상태를 검사한다.
+기존 열람/지도/복원 회귀 범위와 320/390dp native 렌더 방법은 [읽기 화면 검증](../../../docs/diary-reading-ui.md)을 따른다.
+
+장면 원본 종류 표시 (#377)는 `DiarySceneKindTest`, `DiaryScenePresentationTest`로 판정과 실제 화면의
+같은 스냅샷 사용을 확인한다. 공통 목록/본문을 변경하면 `DiarySceneRemovalUiTest`,
+`WalkDiaryCompactDrawerTest`, `MeasurementTimeControlsTest`, `WalkDiaryMapScreenTest`,
+`WalkDiaryReadViewTest`, `WalkDiaryPhotoUiTest`, `WalkDiaryGapListTest`, `DesignLockTest`를 함께 선택한다.
+[표시 규칙과 렌더 방법](../../../docs/diary-scene-presentation.md).
+
 셀로판 위 액션 핀 (#373)은 `WalkRecordsActionPinsTest`, `WalkRecordsActionPinsUiTest`,
 `WalkRecordsLabNavigationTest`와 기존 `*WalkRecords*Test`, `WalkRouteOverlayStoreTest`,
 `NaverWalkLayerOrderTest`, `DesignLockTest`를 실행한다. 동일 위치 묶음·종류·강아지·출처·숨김,

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.diary.DiaryScene
+import com.daengs.app.walk.diary.DiarySceneKind
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -92,6 +93,7 @@ class DiarySceneRemovalUiTest {
         compose.setContent { DaengsTheme {
             WalkDiaryMapContent(scenes,selected,false,null,{ selected=it },{ selected=null },{},{},{},{},
                 sceneGroup=if(grouped) scenes.filter { it.id!=first.id } else null,
+                sceneKinds=mapOf(second.id to DiarySceneKind.NOTE, third.id to DiarySceneKind.PHOTO),
                 onClearGroup={ grouped=false; selected=null },onDelete={ target -> scenes=scenes.filter { it.id!=target.id }; selected=null },
                 explorerPanel={},map={ Box(Modifier.fillMaxSize()) })
         } }
@@ -99,7 +101,9 @@ class DiarySceneRemovalUiTest {
         compose.onNodeWithText("장면 3").assertExists()
         compose.onNodeWithContentDescription("장면 2 삭제").assertExists()
         compose.onNodeWithText(first.title).assertDoesNotExist()
+        compose.onNodeWithContentDescription(DiarySceneKind.NOTE.label).assertExists()
         compose.onNodeWithText(second.title).performClick()
+        compose.onNodeWithContentDescription(DiarySceneKind.NOTE.label).assertExists()
         compose.onNodeWithText("‹ 이 근처 장면 2개").performClick()
         assertEquals(top,compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top,1f)
         compose.onNodeWithContentDescription("장면 2 삭제").performClick()
