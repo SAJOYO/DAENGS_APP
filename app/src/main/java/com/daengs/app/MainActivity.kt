@@ -1,7 +1,6 @@
 package com.daengs.app
 
 import android.os.Bundle
-import android.widget.Toast
 import android.os.SystemClock
 import android.content.pm.ActivityInfo
 import android.content.Intent
@@ -820,13 +819,6 @@ class MainActivity : ComponentActivity() {
                             },
                             onDismissCreated = { inviteBundles.clearCreated() },
                             onShare = { message -> InviteShare.share(context, message) },
-                            onCopy = { link ->
-                                val copied = InviteShare.copy(context, link)
-                                // 13 부터는 시스템이 "복사됨" 을 띄운다 — 여기서 또 띄우면 두 번 뜬다.
-                                if (copied && InviteShare.needsCopiedNotice()) {
-                                    Toast.makeText(context, "초대 링크를 복사했어요", Toast.LENGTH_SHORT).show()
-                                }
-                            },
                             onBack = {
                                 // 화면을 닫으면 만든 링크의 평문 토큰을 같이 버린다.
                                 inviteBundles.forget()
