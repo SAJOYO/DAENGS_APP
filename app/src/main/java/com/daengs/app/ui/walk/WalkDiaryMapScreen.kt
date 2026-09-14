@@ -12,12 +12,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
 import com.daengs.app.BuildConfig
 import com.daengs.app.auth.AccountScope
-import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
-import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.shell.*
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.*
@@ -25,7 +22,6 @@ import com.daengs.app.walk.*
 import com.daengs.app.walk.detail.WalkDetailActions
 import com.daengs.app.walk.detail.WalkDetailSource
 import com.daengs.app.walk.diary.*
-import com.daengs.app.walk.routeexplorer.SceneRouteRelation
 import kotlinx.coroutines.CancellationException
 
 /** The route keys this composition by session and login generation. */
@@ -296,45 +292,3 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     }
     WalkDiaryEditorDialogs(editors, state, route, detail?.summary?.dogIds.orEmpty(), pets, actions::deletePhoto)
 }
-
-/** A completed board must not reframe a route the user is already browsing. */
-internal fun diaryOverviewBounds(route: List<GeoPoint>, anchor: GeoPoint?, scenes: List<DiaryScene>): List<GeoPoint> =
-    route.ifEmpty { listOfNotNull(anchor) }.ifEmpty { scenes.mapNotNull { it.point } }
-
-internal const val SCENE_ROUTE_MIN_ZOOM = 18.0
-
-/** Preserve one input per scene; the provider groups projected positions using the shared map policy. */
-internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?, inspected: List<String> = emptyList()): List<MomentMarkerState> =
-    scenes.mapIndexedNotNull { index, scene -> scene.point?.takeIf { it.isDiaryLocation() }?.let { point ->
-        MomentMarkerState(scene.id, point, "${index+1}", selected = scene.id == selectedId,
-            aboveRouteEndpoints = true,
-            diaryPin = com.daengs.app.map.layers.moments.DiaryPinAppearance(index+1,
-                inspected = scene.id in inspected, dimmed = inspected.isNotEmpty() && scene.id !in inspected))
-    } }
-
-internal fun sceneRouteNotice(relation: SceneRouteRelation): String = when (relation) {
-    SceneRouteRelation.CONNECTED -> "이 장면 시각에 대응하는 동선을 강조했어요."
-    SceneRouteRelation.NO_ROUTE -> "장면 위치는 있지만 이 시각과 연결되는 동선은 확인되지 않아요."
-    SceneRouteRelation.UNLOCATED -> "이 장면에는 확인된 위치가 없어요."
-    SceneRouteRelation.EARLIER_LOCATION -> "이전에 확인한 위치예요. 이 장면 시각의 동선은 확인되지 않아요."
-    SceneRouteRelation.AMBIGUOUS -> "같은 시각의 위치 기록이 겹쳐 해당 동선을 구분하기 어려워요."
-    SceneRouteRelation.OBSERVED_EXCLUDED -> "보행거리에서 제외된 관측 경로예요."
-    SceneRouteRelation.OBSERVED_UNRESOLVED -> "보행 여부가 확정되지 않은 관측 경로예요."
-}
-
-@Preview(showBackground = true, widthDp = 390)
-@Composable
-private fun WalkDiaryObservedSummaryPreview() { DaengsTheme {
-    ObservedRouteLegend(com.daengs.app.map.layers.completedroute.RecordRouteRole.entries)
-} }
-
-/** Display-only suppression at the same observed position; route and stay data stay intact. */
-internal fun diaryDisplayScene(scene: MapScene): MapScene = scene.copy(
-    allowRegionalOverview = true,
-    completedRoute = scene.completedRoute.copy(
-        start = scene.completedRoute.start?.copy(compact = true),
-        end = scene.completedRoute.end?.copy(compact = true)),
-    stayStamps = scene.stayStamps.filterNot { stay ->
-        scene.moments.any { it.point.distanceTo(stay.point) <= 1.0 }
-    },
-)

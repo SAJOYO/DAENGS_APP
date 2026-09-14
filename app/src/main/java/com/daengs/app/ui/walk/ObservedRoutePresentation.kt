@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.daengs.app.map.layers.completedroute.*
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.WalkSessionDetail
+import com.daengs.app.walk.routeexplorer.SceneRouteRelation
 import com.daengs.app.walk.routeexplorer.SceneRouteFocus
 import com.daengs.app.walk.trajectory.*
 
@@ -49,6 +50,16 @@ internal fun recordPresentationLayer(state: WalkRouteExplorerState, detail: Walk
 
 private fun ObservedRouteSection.toRenderPart(selected: Boolean) = RouteRenderPart(id, role(), path, selected,
     directions.map { RecordDirectionEdge("$id:${it.fromSeq}-${it.toSeq}", it.from, it.to) })
+
+internal fun sceneRouteNotice(relation: SceneRouteRelation): String = when (relation) {
+    SceneRouteRelation.CONNECTED -> "이 장면 시각에 대응하는 동선을 강조했어요."
+    SceneRouteRelation.NO_ROUTE -> "장면 위치는 있지만 이 시각과 연결되는 동선은 확인되지 않아요."
+    SceneRouteRelation.UNLOCATED -> "이 장면에는 확인된 위치가 없어요."
+    SceneRouteRelation.EARLIER_LOCATION -> "이전에 확인한 위치예요. 이 장면 시각의 동선은 확인되지 않아요."
+    SceneRouteRelation.AMBIGUOUS -> "같은 시각의 위치 기록이 겹쳐 해당 동선을 구분하기 어려워요."
+    SceneRouteRelation.OBSERVED_EXCLUDED -> "보행거리에서 제외된 관측 경로예요."
+    SceneRouteRelation.OBSERVED_UNRESOLVED -> "보행 여부가 확정되지 않은 관측 경로예요."
+}
 
 internal fun sceneRouteNotice(focus: SceneRouteFocus): String {
     val part = focus.observedParts.firstOrNull() ?: return sceneRouteNotice(focus.relation)
@@ -109,4 +120,10 @@ private fun ObservedRouteSwatch(role: RecordRouteRole) {
 @Composable
 private fun ObservedRouteLegendPreview() { DaengsTheme {
     ObservedRouteLegend(RecordRouteRole.entries)
+} }
+
+@Preview(showBackground = true, widthDp = 390)
+@Composable
+private fun WalkDiaryObservedSummaryPreview() { DaengsTheme {
+    ObservedRouteLegend(com.daengs.app.map.layers.completedroute.RecordRouteRole.entries)
 } }
