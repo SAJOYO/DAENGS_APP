@@ -19,13 +19,13 @@ import com.daengs.app.ui.theme.*
 @Composable
 internal fun TerritoryRulesSummary() {
     Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
             SummaryStep("1", "가까이 가기", "지도에 표시된 점령 위치로 이동해요.")
             SummaryStep("2", "영역표시", "빈 곳의 20m 안에서 영역표시를 눌러요.")
             SummaryStep("3", "강아지 사진 인증", "10m 안에서 강아지를 새로 찍어요.")
         }
         Surface(shape = RoundedCornerShape(18.dp), color = CardWhite) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("점수 한눈에", color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 SummaryScore("영역표시", "20점까지")
                 SummaryScore("사진 인증", "누적 100점까지")

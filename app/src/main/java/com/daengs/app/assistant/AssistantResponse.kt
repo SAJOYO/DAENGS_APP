@@ -33,6 +33,9 @@ data class AssistantResponse(
     val places: PlaceSuggestions? = null,
     /** 이번 응답에 담긴 능력 수. 하나뿐일 때만 [message] 를 카드로 갈음할 수 있다. */
     val resultCount: Int = 0,
+    val facility: FacilityAssistantReference? = null,
+    val facilityError: String? = null,
+    val facilityErrorMessage: String? = null,
 ) {
     /**
      * `AssistantStatus`. 모르는 값이 와도 앱이 죽지 않게 [UNKNOWN] 으로 떨어진다 —
@@ -60,6 +63,15 @@ data class AssistantResponse(
                 walk = WalkVerdict.from(results),
                 places = PlaceSuggestions.from(results),
                 resultCount = results?.length() ?: 0,
+                facility = FacilityAssistantReference.from(results),
+                facilityError = (0 until (results?.length() ?: 0)).firstNotNullOfOrNull { index ->
+                    results!!.getJSONObject(index).takeIf { it.optString("capability") == "place" }
+                        ?.optJSONObject("error")?.optString("kind")?.takeIf { it.startsWith("facility_") }
+                },
+                facilityErrorMessage = (0 until (results?.length() ?: 0)).firstNotNullOfOrNull { index ->
+                    results!!.getJSONObject(index).takeIf { it.optString("capability") == "place" }
+                        ?.optJSONObject("error")?.optString("detail")
+                },
             )
         }
 

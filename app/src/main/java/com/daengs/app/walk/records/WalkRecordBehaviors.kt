@@ -16,9 +16,11 @@ data class WalkBehaviorRecord(val entry: WalkEntry, val walk: WalkRecord) {
 
     // An explicit pin owns display, including unlocated null; only legacy entries lack a pin.
     // Display never rewrites the original GPS content or invents a location for an unlocated pin.
-    val point: GeoPoint? = if (entry.pin != null) entry.pin.point else entry.point
+    val point: GeoPoint? = (if (entry.pin != null) entry.pin.point else entry.point)?.takeIf {
+        it.latitude.isFinite() && it.latitude in -90.0..90.0 && it.longitude.isFinite() && it.longitude in -180.0..180.0
+    }
     val locationLabel: String = entry.pin?.label
-        ?: if (entry.point != null) "위치와 함께 남긴 기록" else "위치 없이 남긴 행동"
+        ?: if (point != null) "위치와 함께 남긴 기록" else "위치 없이 남긴 행동"
 }
 
 /** An action query inside the unchanged baseline, separate from the comparison-report API. */
@@ -47,10 +49,9 @@ fun selectWalkRecordBehaviors(
     behavior: WalkMomentType,
 ): WalkRecordBehaviors {
     require(behavior in BEHAVIOR_TYPES)
-    val dogId = selection.query.dogId
     val records = selection.records.asSequence().flatMap { walk ->
         walk.entries.asSequence()
-            .filter { it.type == behavior && (dogId == null || it.petId == dogId) }
+            .filter { it.type == behavior && selection.query.includesEntryDog(it.petId) }
             .map { WalkBehaviorRecord(it, walk) }
     }.sortedWith(compareByDescending<WalkBehaviorRecord> { it.entry.recordedAtMillis }
         .thenBy { it.key }).toList()

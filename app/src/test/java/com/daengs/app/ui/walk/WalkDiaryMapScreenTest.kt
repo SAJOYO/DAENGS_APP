@@ -26,6 +26,158 @@ import org.robolectric.annotation.GraphicsMode
 class WalkDiaryMapScreenTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun `pending scene binding retains reading height until the replacement scene is ready`() {
+        val scene = DiaryScene("s/one", "s", 0, "읽던 장면", "함께 걸었다", null, "")
+        var pending by mutableStateOf(false)
+        compose.setContent {
+            WalkDiaryMapContent(if (pending) emptyList() else listOf(scene), if (pending) null else scene,
+                pending, null, {}, {}, {}, {}, {}, {}, selectionPending = pending,
+                map = { Box(Modifier.fillMaxSize()) })
+        }
+        val expanded = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
+        compose.runOnIdle { pending = true }
+        assertEquals(expanded, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top)
+        compose.runOnIdle { pending = false }
+        compose.onNodeWithText("읽던 장면").assertIsDisplayed()
+        assertEquals(expanded, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top)
+    }
+
+    @Test fun `unlocated scene remains readable and section selection returns a bounded path`() {
+        val detail = com.daengs.app.walk.routeexplorer.reviewDetail(
+            listOf(0.0 to 10_000L, 10.0 to 20_000L), listOf(2_000.0 to 40_000L, 2_010.0 to 50_000L))
+        val scene = DiaryScene("s/gap", "s", 30_000, "공백 메모", "위치를 몰라도 메모는 남아 있어요.", null, "")
+        var zoomed: List<GeoPoint>? = null
+        var mounts = 0
+        lateinit var explorer: WalkRouteExplorerState
+        compose.setContent {
+            val scope = rememberCoroutineScope()
+            explorer = remember { WalkRouteExplorerState(scope, 70_000).apply {
+                replaceRoute(com.daengs.app.walk.routeexplorer.RouteExplorerIndex(detail.route),
+                    com.daengs.app.walk.routeexplorer.CompletedRouteReview(detail), 70_000)
+            } }
+            val selected = scene.takeIf { explorer.selectedSceneId == it.id }
+            WalkDiaryMapContent(listOf(scene), selected, false, null,
+                { explorer.selectScene(it.id) }, explorer::closeScene, {}, {}, {}, {},
+                selectedRouteNotice = selected?.let { sceneRouteNotice(explorer.review!!.sceneFocus(it).relation) },
+                explorerSelected = explorer.panelOpen,
+                onChooseExplorer = { explorer.overview(); explorer.choosePanel(it) },
+                explorerPanel = { WalkRouteExplorerPanel(explorer, {}, { zoomed = it.path }) },
+                map = { DisposableEffect(Unit) { mounts++; onDispose {} }; Box(Modifier.fillMaxSize()) })
+        }
+        compose.onNodeWithText("장면 1").performClick()
+        compose.onNodeWithText("공백 메모").performClick()
+        compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeUp(startY = 10f, endY = -450f) }
+        compose.onNodeWithText("위치를 몰라도 메모는 남아 있어요.").assertIsDisplayed()
+        compose.onNodeWithText("이 장면에는 확인된 위치가 없어요.").assertIsDisplayed()
+        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
+        assertEquals(detail.route.segments[1].points.map { it.point }, zoomed)
+        assertEquals(1, explorer.selectedSection?.index)
+        assertNull(explorer.selectedSceneId)
+        compose.onNodeWithText("전체 동선").assertIsDisplayed().performClick()
+        assertEquals(RouteExplorerMode.OVERVIEW, explorer.mode)
+        assertEquals(1, mounts)
+    }
+
+    @Test fun `preparation loads only scenes while map stays interactive and mounted after publication`() {
+        val scene = DiaryScene("s/n", "s", 0, "완성된 장면", "함께 걸었다.", null, "")
+        var loading by mutableStateOf(true)
+        var mounts = 0
+        var gestures = 0
+        var refreshes = 0
+        var overviews = 0
+        var viewport: DiaryMapViewport? = null
+        compose.setContent {
+            WalkDiaryMapContent(if (loading) emptyList() else listOf(scene), null, loading, null,
+                {}, {}, {}, {}, { refreshes++ }, {}, generationActionLabel = "새로고침",
+                onOverview = { overviews++ }, map = { geometry ->
+                    DisposableEffect(Unit) { mounts++; onDispose {} }
+                    SideEffect { viewport = geometry }
+                    Box(Modifier.fillMaxSize().testTag("diary-map")) {
+                        androidx.compose.material3.TextButton(onClick = { gestures++ }) {
+                            androidx.compose.material3.Text("지도 조작")
+                        }
+                    }
+                })
+        }
+        compose.onNodeWithTag("diary-map").assertIsDisplayed()
+        compose.onNodeWithTag("diary-scenes-preparing").assertIsDisplayed()
+        compose.onNodeWithText("산책 장면").assertIsDisplayed()
+        compose.onNodeWithText("0개 장면 · 시간순").assertDoesNotExist()
+        compose.onNodeWithContentDescription("장면 수정").assertDoesNotExist()
+        compose.onNodeWithText("지도 조작").performClick()
+        compose.onNodeWithText("새로고침").performClick()
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
+        compose.onNodeWithText("전체 동선 보기").assertIsEnabled().performClick()
+        assertEquals(1, gestures)
+        assertEquals(1, refreshes)
+        assertEquals(1, overviews)
+        val initialViewport = viewport
+        val initialBounds = compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { loading = false }
+        compose.onNodeWithTag("diary-scenes-preparing").assertDoesNotExist()
+        compose.onNodeWithText("완성된 장면").assertIsDisplayed()
+        assertEquals(1, mounts)
+        assertEquals(initialViewport, viewport)
+        assertEquals(initialBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
+    }
+
+    @Test fun `preparation preserves route exploration navigation and direction controls`() {
+        val scene = DiaryScene("s/n", "s", 0, "완성된 장면", "함께 걸었다.", null, "")
+        var loading by mutableStateOf(true)
+        var exploring by mutableStateOf(false)
+        var mounts = 0
+        var backs = 0
+        var zooms = 0
+        var viewport: DiaryMapViewport? = null
+        compose.setContent {
+            WalkDiaryMapContent(if (loading) emptyList() else listOf(scene), null, loading, null,
+                {}, {}, {}, {}, {}, {}, backLabel = "홈으로", onBack = { backs++ },
+                directionNotice = true, onZoomRoute = { zooms++ },
+                explorerSelected = exploring, onChooseExplorer = { exploring = it },
+                explorerPanel = { androidx.compose.material3.Text("저장된 동선 탐색") },
+                map = { geometry ->
+                    DisposableEffect(Unit) { mounts++; onDispose {} }
+                    SideEffect { viewport = geometry }
+                    Box(Modifier.fillMaxSize().testTag("diary-map"))
+                })
+        }
+        compose.onNodeWithTag("diary-scenes-preparing").assertIsDisplayed()
+        compose.onNodeWithContentDescription("홈으로").performClick()
+        compose.onNodeWithText("동선 확대").performClick()
+        assertEquals(1, backs)
+        assertEquals(1, zooms)
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
+        compose.onNodeWithText("기록 남기기").assertIsNotEnabled()
+        // Dismiss the menu before choosing a panel on the same map.
+        compose.onNodeWithText("전체 동선 보기").performClick()
+        val initialViewport = viewport
+        val initialBounds = compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("저장된 동선 탐색").assertIsDisplayed()
+        compose.onNodeWithTag("diary-scenes-preparing").assertDoesNotExist()
+        compose.onNodeWithText("장면 0").performClick()
+        compose.onNodeWithTag("diary-scenes-preparing").assertIsDisplayed()
+        compose.onNodeWithText("동선 탐색").performClick()
+        compose.runOnIdle { loading = false }
+        compose.onNodeWithText("저장된 동선 탐색").assertIsDisplayed()
+        compose.onNodeWithText("장면 1").performClick()
+        compose.onNodeWithText("완성된 장면").assertIsDisplayed()
+        assertEquals(1, mounts)
+        assertEquals(initialViewport, viewport)
+        assertEquals(initialBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithContentDescription("일기 메뉴").performClick()
+        compose.onNodeWithText("기록 남기기").assertIsEnabled()
+    }
+
+    @Test fun `arriving scene pins cannot change the saved route overview`() {
+        val route = listOf(GeoPoint(37.5, 127.0), GeoPoint(37.501, 127.001))
+        val scene = DiaryScene("s/n", "s", 0, "장면", "", GeoPoint(37.502, 127.002), "")
+        assertEquals(diaryOverviewBounds(route, null, emptyList()), diaryOverviewBounds(route, null, listOf(scene)))
+        assertEquals(listOf(route.first()), diaryOverviewBounds(emptyList(), route.first(), listOf(scene)))
+        assertEquals(listOf(scene.point), diaryOverviewBounds(emptyList(), null, listOf(scene)))
+    }
+
     @Test fun `one inline editor replaces the complete scene while its source record stays internal`() {
         val scene = DiaryScene("s/n", "s", 0, "자동 제목", "자동 배경. 직접 쓴 원본", null, "",
             content = com.daengs.app.walk.diary.DiarySceneContent("직접 쓴 원본", "note", locationLabel = ""))
@@ -81,7 +233,8 @@ class WalkDiaryMapScreenTest {
         val mapBounds = compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot
         // Opening the list itself must not move/resize the map or request an overview.
         compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeUp(startY = 40f, endY = -450f) }
-        assertEquals(browsingViewport, viewport)
+        assertEquals(browsingViewport?.bottomPaddingPx, viewport?.bottomPaddingPx)
+        assertTrue(viewport!!.bottomOcclusionPx > browsingViewport!!.bottomOcclusionPx)
         assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("첫 장면").performClick()
         compose.onNodeWithText("공원 옆이었다. 직접 남긴 메모").assertIsDisplayed()
@@ -92,7 +245,8 @@ class WalkDiaryMapScreenTest {
         val readingTop = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         assertTrue(readingTop < peekTop - 100)
         assertTrue(readingTop > 100)
-        assertEquals(browsingViewport, viewport)
+        assertEquals(browsingViewport?.bottomPaddingPx, viewport?.bottomPaddingPx)
+        assertEquals(browsingViewport?.selectionYFraction, viewport?.selectionYFraction)
         assertEquals(mapBounds, compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot)
         assertEquals(1, mounts)
         compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeDown(startY = 10f, endY = 500f) }
@@ -115,7 +269,7 @@ class WalkDiaryMapScreenTest {
                 { selected = null }, {}, {}, {}, {}, map = { Box(Modifier.fillMaxSize()) })
         }
         compose.onNodeWithTag("diary-scene-body").performTouchInput { swipeUp() }
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("다음 장면").assertIsDisplayed()
         compose.onNodeWithText("짧은 메모").assertIsDisplayed()
     }
@@ -132,10 +286,10 @@ class WalkDiaryMapScreenTest {
         compose.onNodeWithText("첫 메모").performClick()
         compose.onNodeWithText("이전").assertIsNotEnabled()
         compose.onNodeWithText("장면 1").assertExists()
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("장면 2").assertExists()
         compose.onNodeWithText("스토리보드 검토").assertDoesNotExist()
-        compose.onNodeWithContentDescription("장면 수정").performClick()
+        compose.onNodeWithContentDescription("장면 수정").performScrollTo().performClick()
         assertEquals("b", edited)
         compose.onNodeWithText("‹ 장면 목록").performClick()
         compose.onNodeWithText("2개 장면 · 시간순").assertExists()
@@ -174,7 +328,7 @@ class WalkDiaryMapScreenTest {
                 map = { Box(Modifier.fillMaxSize().background(Color(0xFFE1EBDE)).testTag("diary-map")) })
         }
         compose.onNodeWithTag("diary-map").assertIsDisplayed()
-        compose.onNodeWithText("다음").assertIsDisplayed()
+        compose.onNodeWithText("다음").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("‹ 장면 목록").assertIsDisplayed()
         assertTrue(compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot.height >= 120)
         val file = java.io.File("build/outputs/walk-diary-map-card.png"); file.parentFile.mkdirs()
@@ -190,18 +344,18 @@ class WalkDiaryMapScreenTest {
         val b = a.copy(id="s/b",point=GeoPoint(37.5,127.0))
         val c = b.copy(id="s/c")
         val markers = diarySceneMarkers(listOf(a,b,c), c.id)
-        assertEquals("2 · 3",markers.single().label)
-        assertEquals(c.id,markers.single().id)
-        assertTrue(markers.single().selected)
-        assertTrue(markers.single().aboveRouteEndpoints)
-        assertEquals("2 · 3", markers.single().sequenceLabel)
+        assertEquals(listOf(2,3), markers.map { it.diaryPin!!.ordinal })
+        assertEquals(c.id,markers.single { it.selected }.id)
+        assertTrue(markers.all { it.aboveRouteEndpoints })
+        assertEquals(listOf(b.id,c.id), markers.map { it.id })
     }
 
     @Test fun `large same-position group keeps complete order and includes the selected ordinal in its badge`() {
         val scenes = (1..20).map { DiaryScene("s/$it", "s", it.toLong(), "장면", "", GeoPoint(37.5, 127.0), "") }
-        val marker = diarySceneMarkers(scenes, "s/17").single()
-        assertEquals((1..20).joinToString(" · "), marker.label)
-        assertEquals("1 · 2 · 17 …", marker.sequenceLabel)
+        val markers = diarySceneMarkers(scenes, "s/17")
+        val marker = markers.single { it.selected }
+        assertEquals((1..20).toList(), markers.map { it.diaryPin!!.ordinal })
+        assertEquals(17, marker.diaryPin!!.ordinal)
         assertEquals(scenes.first().point, marker.point)
     }
 
@@ -242,12 +396,12 @@ class WalkDiaryMapScreenTest {
                     } }
                 })
         }
-        compose.onNodeWithText("1 · 7").performClick()
+        compose.onAllNodesWithText("1").onFirst().performClick()
         compose.onNodeWithText("장면 1").assertExists()
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("장면 2").assertExists()
         compose.runOnIdle { assertTrue(diarySceneMarkers(scenes, selected?.id).any { it.selected && it.label == "2" }) }
-        compose.onNodeWithText("다음").performClick()
+        compose.onNodeWithText("다음").performScrollTo().performClick()
         compose.onNodeWithText("장면 3").assertExists()
         compose.runOnIdle {
             assertNull(selected?.point)

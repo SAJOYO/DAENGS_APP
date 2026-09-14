@@ -52,7 +52,9 @@ data class DiaryScene(
 )
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
-    val title: String? = null, val preparing: Boolean = false, val published: Boolean = false)
+    val title: String? = null, val preparing: Boolean = false, val published: Boolean = false,
+    /** The same reader emission as scenes; bindings must not borrow a newer/older entry stream. */
+    val sourceEntries: List<WalkEntry> = emptyList())
 
 /** Read-only projection: never mutates saved text, hiding choices, or the reviewed snapshot. */
 fun diaryWalk(
@@ -62,9 +64,10 @@ fun diaryWalk(
     draft: StoryboardDraft,
     analysis: StoryboardAnalysisView,
     observations: List<com.daengs.app.walk.RecordedFix> = emptyList(),
+    measurement: com.daengs.app.walk.WalkMeasurementDetail? = null,
 ): DiaryWalk {
     val localEntries = entries.filter { it.sessionId == walk.sessionId }
-    val index = StoryboardObservationIndex(walk, observations)
+    val index = StoryboardObservationIndex(walk, observations, measurement)
     val sources = analysis.bundle?.takeIf { it.sessionId == walk.sessionId }?.scenes?.map { scene ->
         val id = scene.id.removePrefix("geo:")
         if (id == "start" || id == "end" || id.startsWith("entry:")) scene.copy(id = id) else scene

@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,7 +43,8 @@ import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.HistoryFilterSaver
-import com.daengs.app.ui.walk.WalkHistoryPageContent
+import com.daengs.app.ui.walk.formatWalkDistance
+import com.daengs.app.ui.walk.formatWalkDuration
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkMomentType
@@ -58,7 +56,7 @@ import com.daengs.app.walk.records.WalkTraceState
 import com.daengs.app.walk.records.WalkTraceOverlapHit
 import com.daengs.app.walk.records.selectWalkRecords
 import com.daengs.app.walk.records.PreparedWalkRecordsTraces
-import com.daengs.app.walk.records.prepareWalkRecordsTraces
+import com.daengs.app.map.features.records.TraceView
 import com.daengs.app.walk.records.walkRecordFocusBounds
 import com.daengs.app.walk.records.selectWalkRecordBehaviors
 import kotlinx.coroutines.CancellationException
@@ -82,21 +80,24 @@ fun WalkRecordsScreen(
     sampleLabel: String? = null,
     today: LocalDate = LocalDate.now(),
     petsLoaded: Boolean = true,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
 ) {
-    var dogId by rememberSaveable { mutableStateOf<String?>(null) }
+    var dogIds by rememberSaveable(stateSaver = RecordsDogIdsSaver) { mutableStateOf<Set<String>?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
-    val query = remember(dogId, filter) { WalkRecordsQuery(dogId, filter) }
+    val query = remember(dogIds, filter) { WalkRecordsQuery(dogIds, filter) }
     var view by rememberSaveable { mutableStateOf(RecordsView.WALKS) }
     var behavior by rememberSaveable { mutableStateOf<WalkMomentType?>(null) }
     var behaviorView by rememberSaveable(query) { mutableStateOf(BehaviorRecordsView.RECORD_LOCATIONS) }
     // Keep inspection state above the loading/tab branches, with a stable restoration location.
     // The native map must not be wrapped in SaveableStateHolder's ReusableContent subtree.
     val behaviorState = rememberWalkRecordsBehaviorState(query, behavior)
-    var conditionsOpen by rememberSaveable { mutableStateOf(false) }
-    var pageIndex by rememberSaveable(query) { mutableIntStateOf(0) }
+    val actionPinState = rememberWalkRecordsActionPinState(query, behavior)
+    var activeFilter by rememberSaveable { mutableStateOf<RecordsFilter?>(null) }
+    var pageIndex by rememberSaveable(query, behavior) { mutableIntStateOf(0) }
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     var selectedId by rememberSaveable(query) { mutableStateOf<String?>(null) }
     var hiddenIds by rememberSaveable(query, stateSaver = HiddenWalkIdsSaver) { mutableStateOf(emptySet<String>()) }
+    var overviewExpanded by rememberSaveable(query) { mutableStateOf(false) }
     var overlapOnly by rememberSaveable(query) { mutableStateOf(false) }
     var minimumWalks by rememberSaveable(query) { mutableIntStateOf(2) }
     var overlapPoint by rememberSaveable(query, stateSaver = OverlapPointSaver) { mutableStateOf<GeoPoint?>(null) }
@@ -110,7 +111,7 @@ fun WalkRecordsScreen(
     // Reset synchronously with the query so an earlier query's records never flash underneath it.
     var selection by remember(source, query, retry) { mutableStateOf<WalkRecordsSelection?>(null) }
     var error by remember(source, query, retry) { mutableStateOf<String?>(null) }
-    val savedLists = key(query) { rememberSaveableStateHolder() }
+    val savedLists = key(query, behavior) { rememberSaveableStateHolder() }
     LaunchedEffect(source, query, retry) {
         try {
             if (query.filter.keyword.isNotBlank()) delay(250)
@@ -145,7 +146,7 @@ fun WalkRecordsScreen(
         }
     }
     LaunchedEffect(pets, petsLoaded) {
-        if (petsLoaded && dogId != null && pets.none { it.id == dogId }) dogId = null
+        if (petsLoaded) dogIds = dogIds?.intersect(pets.map { it.id }.toSet())?.takeIf { it.isNotEmpty() }
     }
     LaunchedEffect(selection) {
         selection?.let { current ->
@@ -191,21 +192,13 @@ fun WalkRecordsScreen(
     }
     val mappedSelection = traceSelection ?: selection
     val shouldPrepareMap = behavior == null && tracesRequested
-    var prepared by remember(mappedSelection) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
-    var mapError by remember(mappedSelection) { mutableStateOf<String?>(null) }
-    var mapRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(mappedSelection, shouldPrepareMap, mapRetry) {
-        val selected = mappedSelection ?: return@LaunchedEffect
-        if (!shouldPrepareMap || selected.records.isEmpty()) return@LaunchedEffect
-        prepared = null
-        mapError = null
-        try {
-            prepared = prepareWalkRecordsTraces(selected)
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            mapError = "선택한 산책의 흔적을 표시하지 못했어요. 기간이나 조건을 좁혀 다시 확인해 주세요."
-        }
-    }
+    val displayPolicy = rememberWalkRecordsDisplayPolicy()
+    val tracePresentation = rememberWalkRecordsTraces(mappedSelection, shouldPrepareMap,
+        if (overlapOnly) TraceView.Overlap(minimumWalks) else TraceView.All, hiddenIds, displayPolicy.trace)
+    val prepared = tracePresentation.prepared
+    val tiles = tracePresentation.tiles
+    val mapError = tracePresentation.preparationError
+    val compositionError = tracePresentation.compositionError
     // The area is an inspection of the full query, independent of hidden display layers.
     val overlapHit = remember(prepared, overlapPoint, overlapOnly, minimumWalks) {
         overlapPoint?.takeIf { overlapOnly }?.let { prepared?.hitTestOverlap(it, minimumWalks, snapRadiusU = 0.0) }
@@ -215,83 +208,56 @@ fun WalkRecordsScreen(
     LaunchedEffect(overlapHit) {
         if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
     }
-    // Any display change clears old ink before the next asynchronous composition can publish.
-    val overlapMinimum = minimumWalks.takeIf { overlapOnly }
-    var tiles by remember(prepared, hiddenIds, overlapMinimum) { mutableStateOf<List<TraceRasterTile>?>(null) }
-    var compositionError by remember(prepared, hiddenIds, overlapMinimum) { mutableStateOf<String?>(null) }
-    var composeRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(prepared, hiddenIds, overlapMinimum, composeRetry) {
-        val ready = prepared ?: return@LaunchedEffect
-        tiles = null
-        compositionError = null
-        try {
-            val composed = ready.compose(hiddenIds, minimumOverlapWalks = overlapMinimum)
-            currentCoroutineContext().ensureActive()
-            tiles = composed
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            compositionError = if (overlapOnly) ready.overlapUnavailableReason
-                ?: "겹친 구간을 표시하지 못했어요. 조건을 좁히거나 전체 흔적으로 돌아가 주세요."
-                else "산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
-        }
-    }
-
     BackHandler(onBack = onBack)
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ 뒤로") }
-            Text("산책 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
+            onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
+            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today)
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        WalkRecordsConditions(query, pets,
-            onKeyword = { filter = filter.copy(keyword = it) },
-            onOpenConditions = { focusManager.clearFocus(); conditionsOpen = true },
-            onReset = { focusManager.clearFocus(); dogId = null; filter = WalkHistoryFilter(); behavior = null },
-            showBehavior = view == RecordsView.OVERVIEW, behavior = behavior,
-            onClearBehavior = { behavior = null })
-        TabRow(selectedTabIndex = view.ordinal) {
-            Tab(selected = view == RecordsView.WALKS, onClick = { focusManager.clearFocus(); view = RecordsView.WALKS },
-                text = { Text("산책별") }, modifier = Modifier.testTag("records-view-walks"))
-            Tab(selected = view == RecordsView.OVERVIEW, onClick = { focusManager.clearFocus(); view = RecordsView.OVERVIEW },
-                text = { Text("모아보기") }, modifier = Modifier.testTag("records-view-overview"))
+        val current = remember(selection, behavior) {
+            selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
         }
-        val current = selection
-        if (current != null && view == RecordsView.WALKS) {
-            Text("선택 산책 ${current.records.size}회", Modifier.fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp).testTag("records-count"),
-                style = MaterialTheme.typography.labelLarge)
+        run {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(current?.let { "선택 산책 ${it.records.size}회" } ?: if (error != null) "산책 기록" else "불러오는 중", Modifier.testTag("records-count"),
+                    style = MaterialTheme.typography.titleSmall)
+                Text(current?.let { rows ->
+                    "${formatWalkDistance(rows.records.sumOf { it.summary.distanceMeters })} · ${formatWalkDuration(rows.records.sumOf { it.summary.activeDurationMillis })}"
+                } ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))
             current.records.isEmpty() -> RecordsMessage(
-                if (query.dogId != null || query.filter.active) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
-                if (query.dogId != null || query.filter.active) "전체 기록 보기" else null,
-                { dogId = null; filter = WalkHistoryFilter() }, Modifier.weight(1f),
+                if (query.dogIds != null || query.filter.active || behavior != null) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
+                if (query.dogIds != null || query.filter.active || behavior != null) "전체 기록 보기" else null,
+                { dogIds = null; filter = WalkHistoryFilter(); behavior = null }, Modifier.weight(1f),
             )
             else -> {
                 if (view == RecordsView.WALKS) {
                     val currentPage = pageIndex.coerceAtMost((current.records.size - 1) / PAGE_SIZE)
                     val rows = current.page(currentPage, PAGE_SIZE)
                     savedLists.SaveableStateProvider(currentPage) {
-                        WalkHistoryPageContent(rows.map { it.summary }, currentPage + 1,
-                            currentPage > 0, (currentPage + 1) * PAGE_SIZE < current.records.size,
+                        WalkRecordsList(rows, currentPage + 1, (current.records.size + PAGE_SIZE - 1) / PAGE_SIZE,
                             { pageIndex = currentPage - 1 }, { pageIndex = currentPage + 1 },
-                            onOpen, pets, Modifier.weight(1f),
-                            rows.mapNotNull { record -> record.title?.let { record.summary.sessionId to it } }.toMap())
+                            onOpen, pets, Modifier.weight(1f))
                     }
                 } else if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
-                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen,
-                        view = behaviorView, onView = { behaviorView = it }, state = behaviorState,
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
+                        view = behaviorView, onView = { behaviorView = it }, state = behaviorState, actionPinState = actionPinState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
                 } else {
                     WalkRecordsOverview(mappedSelection ?: current, pets, prepared, tiles, mapError ?: compositionError,
-                        onRetry = { if (prepared == null) mapRetry++ else composeRetry++ },
+                        routeSource = source, actionPinState = actionPinState,
+                        expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
+                        onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
                         onSelect = { id ->
                             selectedId = id.takeIf { it != selectedId }
@@ -305,7 +271,7 @@ fun WalkRecordsScreen(
                                 }
                             }
                         },
-                        onToggleHidden = { id -> if (id in prepared?.availableWalkIds.orEmpty()) {
+                        onToggleHidden = { id -> if (id in current.sessionIds) {
                             hiddenIds = if (id in hiddenIds) hiddenIds - id else hiddenIds + id
                         } },
                         onRestoreAll = { hiddenIds = emptySet() },
@@ -336,15 +302,14 @@ fun WalkRecordsScreen(
             }
         }
     }
-    if (conditionsOpen) {
-        WalkRecordsConditionsSheet(query, pets, today,
-            onApply = { next -> dogId = next.dogId; filter = next.filter; conditionsOpen = false },
-            onDismiss = { conditionsOpen = false }, behavior = behavior,
+    activeFilter?.let { kind ->
+        WalkRecordsConditionsSheet(kind, query, pets, today,
+            onApply = { next -> dogIds = next.dogIds; filter = next.filter },
+            onDismiss = { activeFilter = null }, behavior = behavior, petsLoaded = petsLoaded, photoOf = photoOf,
             onBehaviorApply = { next ->
                 if (next != behavior) {
                     if (behavior == null) behaviorView = BehaviorRecordsView.RECORD_LOCATIONS
                     behavior = next
-                    if (next != null) view = RecordsView.OVERVIEW
                 }
             })
     }
@@ -396,7 +361,7 @@ private val HiddenWalkIdsSaver = listSaver<Set<String>, String>(
     save = { it.sorted() }, restore = { it.toSet() },
 )
 
-private val OverlapPointSaver = Saver<GeoPoint?, List<Double>>(
+internal val OverlapPointSaver = Saver<GeoPoint?, List<Double>>(
     save = { point -> point?.let { listOf(it.latitude, it.longitude) } ?: emptyList() },
     restore = { values -> values.takeIf { it.size == 2 }?.let { GeoPoint(it[0], it[1]) } },
 )

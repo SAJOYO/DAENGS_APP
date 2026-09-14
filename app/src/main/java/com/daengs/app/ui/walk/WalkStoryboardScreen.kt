@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiarySceneText
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +18,7 @@ import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.diary.*
+import com.daengs.app.walk.store.storedStoryboardAnalysisView
 import com.daengs.app.walk.store.WalkStoryboardRow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -104,7 +107,7 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         }
         return
     }
-    val analysisView = storyboardAnalysisView(analysis, rawEntries, photoState, photoRows)
+    val analysisView = storedStoryboardAnalysisView(analysis, rawEntries, photoState, photoRows)
     val bundle = analysisView.bundle
     val sources = bundle?.scenes?.map { scene ->
         val id = scene.id.removePrefix("geo:")

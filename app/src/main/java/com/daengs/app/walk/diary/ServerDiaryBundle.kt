@@ -13,6 +13,10 @@ data class DiarySceneContent(
     val locationLabel: String,
     val address: String? = null,
     val order: Int = 0,
+    val locationMethod: String? = null,
+    val locationAtMillis: Long? = null,
+    val positionState: String? = null,
+    val publishedWriting: PublishedCardWriting? = null,
 )
 
 data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int, val showFailureNotice: Boolean = true) {
@@ -156,7 +160,8 @@ object ServerDiaryBundle {
         }
         return StoryboardScene(id, at, title, body, "$label\n$original", storyboardHash(canonicalJson(obj)),
             sourcePayload = obj.toString(), entryReference = entry, observation = observation,
-            diary = DiarySceneContent(original, kind, photoId, point.takeUnless { state == "provisional" }, label, address, order))
+            diary = DiarySceneContent(original, kind, photoId, point.takeUnless { state == "provisional" }, label, address, order,
+                locationMethod = method, locationAtMillis = locationAt, positionState = state))
     }
 }
 

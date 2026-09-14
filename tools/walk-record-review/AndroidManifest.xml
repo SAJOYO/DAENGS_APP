@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:name="com.daengs.app.ui.walk.review.WalkRecordReviewApplication"
+        android:label="댕스 산책 대조" android:allowBackup="false"
+        tools:replace="android:name,android:label,android:allowBackup">
+        <activity android:name="com.daengs.app.MainActivity" android:enabled="false" />
+        <activity android:name="com.daengs.app.ui.walk.review.MotionRecordReviewActivity"
+            android:exported="true" android:permission="android.permission.DUMP" />
+        <activity android:name="com.daengs.app.ui.walk.review.WalkRecordReviewActivity"
+            android:exported="true" android:label="댕스 산책 대조">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

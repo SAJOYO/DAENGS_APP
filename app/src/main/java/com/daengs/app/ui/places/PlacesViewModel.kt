@@ -53,9 +53,10 @@ data class PlacesUiState(
 
 /** 선택 범위를 HTTP의 업종 목록으로 전달한다. 기존 단일 업종 화면은 보조 생성자를 쓴다. */
 sealed interface PlacesAction {
+    data class ApplySearchPlan(val transfer: com.daengs.app.place.SearchPlanTransfer) : PlacesAction
     data class ApplyFilters(val edit: com.daengs.app.place.ConversationFilterEdit) : PlacesAction
     data class SetAiMode(val enabled: Boolean) : PlacesAction
-    data class Discover(val query: String) : PlacesAction
+    data class Discover(val query: String, val bookmarks: com.daengs.app.place.bookmarks.BookmarkTurn? = null) : PlacesAction
     data class ChooseAi(val choice: FacilityChoice) : PlacesAction
     data object RetryAi : PlacesAction
     data object CancelAi : PlacesAction
@@ -149,7 +150,9 @@ class PlacesViewModel(
     fun activate(permissionGranted: Boolean) {
         location.activate(permissionGranted)
         if (permissionGranted) {
-            startDefaultSearchIfNeeded()
+            val shared = conversationRepository?.state?.value
+            if (shared?.result != null) session.acceptConversation(shared.result.copy(selected = shared.selected))
+            else startDefaultSearchIfNeeded()
         } else {
             location.cancelLocate()
             session.clear()
@@ -157,7 +160,7 @@ class PlacesViewModel(
     }
 
     fun deactivate() {
-        conversationRepository?.invalidate()
+        conversationRepository?.cancelPending()
         facility.enable(false)
         location.deactivate()
         session.deactivate()
@@ -183,7 +186,8 @@ class PlacesViewModel(
     }
 
     private fun applyProfiles(value: PlaceProfiles) {
-        if (value.ownerId != profiles.value.ownerId || value.snapshots() != profiles.value.snapshots()) {
+        val sameSharedOwner = profiles.value.ownerId == null && conversationRepository?.belongsTo(value.ownerId) == true
+        if ((!sameSharedOwner && value.ownerId != profiles.value.ownerId) || value.snapshots() != profiles.value.snapshots()) {
             conversationRepository?.invalidate()
             facility.invalidate(if (facility.state.value.enabled) "반려견 정보가 바뀌었어요. 조건을 확인하고 다시 검색해 주세요." else null)
         }
@@ -201,6 +205,29 @@ class PlacesViewModel(
             facility.invalidate(if (facility.state.value.enabled) "검색 위치나 조건이 바뀌었어요. 문장으로 다시 검색해 주세요." else null)
         }
         when (action) {
+            is PlacesAction.ApplySearchPlan -> {
+                val transfer = action.transfer
+                val repository = conversationRepository
+                if (repository == null) {
+                    transfer.completion.completeExceptionally(IllegalStateException("일반 검색을 사용할 수 없어요."))
+                    return
+                }
+                runtimeScope.launch {
+                    try {
+                        val result = repository.applySearchPlan(transfer)
+                        val dogs = result.search?.dogs.orEmpty()
+                        profiles.value = profiles.value.copy(selectedIds = dogs.map { it.ref }.toSet())
+                        appliedDogs = dogs
+                        session.updateDogs(dogs)
+                        facility.invalidate()
+                        session.acceptConversation(result)
+                        transfer.completion.complete(Unit)
+                    } catch (error: Exception) {
+                        transfer.completion.completeExceptionally(error)
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                    }
+                }
+            }
             is PlacesAction.ApplyFilters -> {
                 val repository = conversationRepository ?: return
                 facility.invalidate()
@@ -214,7 +241,7 @@ class PlacesViewModel(
                 }
             }
             is PlacesAction.SetAiMode -> { conversationRepository?.cancelPending(); facility.enable(action.enabled) }
-            PlacesAction.CancelAi -> { conversationRepository?.cancelPending(); facility.cancelPending() }
+            PlacesAction.CancelAi -> { conversationRepository?.cancelPending(cancelBookmarks = true); facility.cancelPending() }
             PlacesAction.UndoAi -> {
                 val repository = conversationRepository ?: return
                 runtimeScope.launch {
@@ -224,7 +251,7 @@ class PlacesViewModel(
                     } catch (_: Exception) { /* 현재 결과를 유지하고 말풍선에서 재시도한다. */ }
                 }
             }
-            is PlacesAction.Discover -> discover(action.query)
+            is PlacesAction.Discover -> discover(action.query, action.bookmarks)
             is PlacesAction.ChooseAi -> facility.choose(action.choice)
             PlacesAction.RetryAi -> {
                 if (conversationRepository != null) runtimeScope.launch { conversationRepository.completeAnswer() }
@@ -278,7 +305,7 @@ class PlacesViewModel(
         session.searchAt(point, kinds, preferParking, nameQuery)
     }
 
-    private fun discover(text: String) {
+    private fun discover(text: String, bookmarks: com.daengs.app.place.bookmarks.BookmarkTurn? = null) {
         val query = text.trim()
         if (profiles.value.ownerId == null) {
             facility.reject("AI 조건 검색은 로그인 후 사용할 수 있어요."); return
@@ -304,8 +331,8 @@ class PlacesViewModel(
             facility.invalidate()
             runtimeScope.launch {
                 try {
-                    conversationRepository.chat(query, visible)
-                    conversationRepository.state.value.result?.let(session::acceptConversation)
+                    conversationRepository.chat(query, visible, bookmarks, current.conversation.selected)
+                    conversationRepository.state.value.result?.takeUnless { it.preservesDisplay }?.let(session::acceptConversation)
                     conversationRepository.completeAnswer()
                 } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
                 } catch (_: Exception) { /* The shared conversation state retains the error and prior results. */ }
@@ -362,10 +389,7 @@ class PlacesViewModel(
                     require(modelClass.isAssignableFrom(PlacesViewModel::class.java))
                     val app = context.applicationContext as com.daengs.app.DaengsApp
                     val regular = PlaceRepository(PlaceApi(baseUrl = { BuildConfig.API_BASE_URL }))
-                    val conversation = if (BuildConfig.FACILITY_CONVERSATION) com.daengs.app.place.FacilityConversationRepository(
-                        com.daengs.app.place.ConversationApi { BuildConfig.API_BASE_URL }, regular,
-                        app.sessionProvider::freshSession, app.tokenStore::load,
-                    ) else null
+                    val conversation = if (BuildConfig.FACILITY_CONVERSATION) app.facilityConversation else null
                     return PlacesViewModel(
                         placeRepository = conversation ?: regular,
                         conversationRepository = conversation,

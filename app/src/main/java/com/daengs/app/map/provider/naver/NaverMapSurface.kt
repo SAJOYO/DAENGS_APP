@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -30,6 +31,8 @@ import com.daengs.app.map.shell.BaseMapStyle
 import com.daengs.app.map.layers.completedroute.routeEndpointStamps
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.map.shell.MapCameraSnapshot
+import com.daengs.app.map.shell.MapVisibilityQuery
+import com.daengs.app.map.shell.MapVisibilityResult
 import com.daengs.app.map.shell.minimumZoom
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
@@ -41,13 +44,9 @@ import com.naver.maps.map.CameraUpdate
 import com.naver.maps.map.CameraPosition
 import com.naver.maps.map.MapView
 import com.naver.maps.map.NaverMap
-import com.naver.maps.map.overlay.LocationOverlay
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.overlay.OverlayImage
-import com.naver.maps.map.overlay.PathOverlay
-import com.naver.maps.map.overlay.MultipartPathOverlay
 import com.daengs.app.map.style.rememberWalkStyle
-import com.daengs.app.map.style.paintWalkSpeedPath
 import com.naver.maps.map.overlay.CircleOverlay
 
 @Composable
@@ -67,6 +66,7 @@ fun NaverMapSurface(
     centerOn: GeoPoint? = null,
     /** [centerOn] 으로 갈 때 쓸 배율. null 이면 지금 배율을 지키되 너무 멀면 당긴다. */
     centerZoom: Double? = null,
+    centerMinZoom: Double? = null,
     cameraRequestKey: Int = 0,
     centerYFraction: Float = .5f,
     keepSelectionVisible: Boolean = false,
@@ -77,11 +77,16 @@ fun NaverMapSurface(
     onSelectPlace: (String) -> Unit,
     onSelectTerritorySite: (String) -> Unit = {},
     onSelectMoment: (String) -> Unit = {},
+    onSelectMomentGroup: (List<String>) -> Unit = { ids -> ids.firstOrNull()?.let(onSelectMoment) },
     onSelectRouteEndpoint: (String) -> Unit = {},
+    onSelectRecordContext: (String) -> Unit = {},
     onMapTap: (GeoPoint) -> Unit = {},
     modifier: Modifier = Modifier,
     initialCamera: MapCameraSnapshot? = null,
     onCameraSnapshot: ((MapCameraSnapshot) -> Unit)? = null,
+    onRouteDirectionCount: (Int) -> Unit = {},
+    visibilityQuery: MapVisibilityQuery? = null,
+    onVisibility: (MapVisibilityResult) -> Unit = {},
 ) {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         androidx.compose.foundation.layout.Box(modifier) {
@@ -89,13 +94,29 @@ fun NaverMapSurface(
         }
         return
     }
-    val walkStyle by rememberWalkStyle()
+    val walkAppearance = scene.walkPresentation?.route ?: run {
+        val selected by rememberWalkStyle()
+        com.daengs.app.map.style.WalkRouteAppearance(selected.policy, selected.themeId)
+    }
+    val diagnostics = LocalWalkMapDiagnostics.current
+    val layerOrder = NaverWalkLayerOrder.resolve(scene.walkPresentation?.stack)
+    val drawTraces = diagnostics?.showTraces != false
+    val drawRoute = diagnostics?.showRoute != false
+    val drawMarkers = diagnostics?.showMarkers != false
+    val visibleMoments = if (drawMarkers) scene.moments.filter { it.recordPin == null && it.diaryPin == null } else emptyList()
+    val recordMoments = if (drawMarkers) scene.moments.filter { it.recordPin != null } else emptyList()
+    val diaryMoments = if (drawMarkers) scene.moments.filter { it.diaryPin != null } else emptyList()
+    var recordMarkerBounds by remember { mutableStateOf<List<com.daengs.app.map.layout.MarkerRect>>(emptyList()) }
+    var diaryMarkerBounds by remember { mutableStateOf<List<com.daengs.app.map.layout.MarkerRect>>(emptyList()) }
+    val visibleGaps = if (drawRoute) scene.completedRoute.gapEndpoints else emptyList()
+    val visibleSelectedPoint = scene.completedRoute.selectedPoint.takeIf { drawMarkers }
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember { MapView(context) }
     val cameraToRestore = remember(mapView) { initialCamera }
     val initialCameraRequest = remember(mapView) { cameraRequestKey }
     var cameraRestored by remember(mapView) { mutableStateOf(false) }
+    var restoredRecordRequest by remember(mapView) { mutableStateOf<Int?>(null) }
     var reportCamera by remember(mapView) { mutableStateOf(false) }
     var naverMap by remember { mutableStateOf<NaverMap?>(null) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
@@ -103,7 +124,6 @@ fun NaverMapSurface(
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
-    val latestMomentCallback by rememberUpdatedState(onSelectMoment)
     val latestSnapshotCallback by rememberUpdatedState(onCameraSnapshot)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
@@ -131,6 +151,9 @@ fun NaverMapSurface(
     AndroidView(
         factory = {
             mapView.apply {
+                // Compose가 draw 중 새 AndroidView를 배치하면 SurfaceView의 pre-draw는
+                // 이미 지나갔을 수 있다. 첫 배치 뒤 한 프레임을 더 요청해 Surface를 만든다.
+                doOnLayout { view -> view.rootView.postInvalidateOnAnimation() }
                 getMapAsync { map ->
                     naverMap = map
                     map.uiSettings.isLocationButtonEnabled = false
@@ -159,8 +182,18 @@ fun NaverMapSurface(
                 }
             }
         },
-        modifier = if (keepSelectionVisible) modifier.onSizeChanged { viewportSize = it } else modifier,
+        modifier = modifier.onSizeChanged { viewportSize = it },
     )
+
+    DisposableEffect(naverMap, diagnostics?.showBase) {
+        val map = naverMap
+        val original = map?.mapType
+        if (diagnostics?.showBase == false) map?.mapType = NaverMap.MapType.None
+        onDispose { if (original != null) map?.mapType = original }
+    }
+
+    if (scene.moments.none { it.diaryPin != null })
+        NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
 
     LaunchedEffect(naverMap, searchOrigin) {
         val map = naverMap ?: return@LaunchedEffect
@@ -184,32 +217,7 @@ fun NaverMapSurface(
         if (followDevice) map.moveCamera(CameraUpdate.scrollTo(point.toLatLng()))
     }
 
-    DisposableEffect(naverMap) {
-        val map = naverMap
-        val overlay: LocationOverlay? = map?.locationOverlay
-        // LocationOverlay rotates its main icon with the map. Counteract that rotation
-        // so the portrait stays upright; travel course belongs to the separate arrow.
-        val listener = NaverMap.OnCameraChangeListener { _, _ ->
-            overlay?.bearing = map?.cameraPosition?.bearing?.toFloat() ?: 0f
-        }
-        overlay?.bearing = map?.cameraPosition?.bearing?.toFloat() ?: 0f
-        map?.addOnCameraChangeListener(listener)
-        onDispose {
-            map?.removeOnCameraChangeListener(listener)
-            overlay?.isVisible = false
-        }
-    }
-
-    LaunchedEffect(naverMap, scene.currentPosition) {
-        val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
-        val point = scene.currentPosition
-        if (point == null) {
-            overlay.isVisible = false
-        } else {
-            overlay.position = point.toLatLng()
-            overlay.isVisible = true
-        }
-    }
+    NaverLocationLayer(naverMap, scene.currentPosition, avatarRes, avatarPhoto)
 
     // 화면 아래를 패널이 덮고 있다. 그걸 알려주지 않으면 지도가 **패널 뒤를 가운데로**
     // 삼아서, 고른 장소로 움직여도 그 장소가 패널에 가려 안 보인다.
@@ -219,29 +227,17 @@ fun NaverMapSurface(
         naverMap?.setContentPadding(leftPaddingPx, topPaddingPx, rightPaddingPx, bottomPaddingPx, keepSelectionVisible)
     }
 
-    // 내 위치를 **대표 강아지 얼굴**로. 그림이 없으면 기본 파란 점 그대로 둔다.
-    LaunchedEffect(naverMap, avatarRes, avatarPhoto) {
-        val overlay = naverMap?.locationOverlay ?: return@LaunchedEffect
-        overlay.circleColor = LOCATION_CIRCLE
-        // **올린 사진이 앞선다.** 앱의 다른 얼굴이 다 그 규칙이라(`avatarSource`),
-        // 지도만 견종 그림이면 같은 아이가 화면마다 다르게 보인다.
-        val bitmap = avatarPhoto?.let { circularAvatarBitmap(it, AVATAR_PX, AVATAR_RING_PX) }
-            ?: avatarRes?.let { circularAvatarBitmap(context, it, AVATAR_PX, AVATAR_RING_PX) }
-            ?: return@LaunchedEffect
-        overlay.icon = OverlayImage.fromBitmap(bitmap)
-        overlay.iconWidth = AVATAR_PX
-        overlay.iconHeight = AVATAR_PX
-    }
-
     // 지나온 길 전체가 한눈에 들어오게 맞춘다. 첫 좌표로 가는 것과 다르다 —
     // 한 시간 걸은 산책은 시작점만 보면 어디를 돌았는지 알 수 없다.
+    val recordsOverview = scene.walkPresentation?.stack == com.daengs.app.map.shell.WalkLayerStack.RECORDS
     LaunchedEffect(naverMap, fitBounds, cameraRequestKey, if (keepSelectionVisible) centerOn else null,
         if (keepSelectionVisible) viewportSize else IntSize.Zero,
-        bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx) {
+        if (recordsOverview) emptyList<Int>() else listOf(bottomPaddingPx, leftPaddingPx, topPaddingPx, rightPaddingPx)) {
         val map = naverMap ?: return@LaunchedEffect
         if (!cameraRestored && cameraToRestore != null && initialCameraRequest == cameraRequestKey &&
             centerOn == null && searchOrigin == null) {
             cameraRestored = true
+            if (recordsOverview) restoredRecordRequest = cameraRequestKey
             reportCamera = true
             map.moveCamera(CameraUpdate.toCameraPosition(CameraPosition(
                 cameraToRestore.target.toLatLng(), cameraToRestore.zoom,
@@ -249,9 +245,12 @@ fun NaverMapSurface(
             )))
             return@LaunchedEffect
         }
+        // Late trace bounds are data arrival, not permission to replace a restored overview camera.
+        if (recordsOverview && restoredRecordRequest == cameraRequestKey) return@LaunchedEffect
         // A selection made while getMapAsync was pending takes precedence over the old snapshot.
         cameraRestored = true
-        if (keepSelectionVisible && centerOn != null) return@LaunchedEffect
+        // Opening a clustered-record drawer must not zoom back out and regroup the inspected area.
+        if ((keepSelectionVisible || recordsOverview) && centerOn != null) return@LaunchedEffect
         if (keepSelectionVisible && viewportSize == IntSize.Zero) return@LaunchedEffect
         val points = fitBounds?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
         reportCamera = true
@@ -286,7 +285,7 @@ fun NaverMapSurface(
         val point = centerOn ?: return@LaunchedEffect
         // 너무 멀리서 보고 있었으면 당겨 준다. 이미 가까우면 배율은 안 건드린다 —
         // 사용자가 맞춰 놓은 화면을 마음대로 바꾸지 않는다.
-        val zoom = centerZoom ?: maxOf(map.cameraPosition.zoom, SELECTED_PLACE_MIN_ZOOM)
+        val zoom = centerZoom ?: maxOf(map.cameraPosition.zoom, centerMinZoom ?: SELECTED_PLACE_MIN_ZOOM)
         map.moveCamera(
             CameraUpdate.scrollAndZoomTo(point.toLatLng(), zoom)
                 .apply { if (centerYFraction != .5f) pivot(PointF(.5f, centerYFraction.coerceIn(0f, 1f))) }
@@ -321,10 +320,10 @@ fun NaverMapSurface(
                 this.map = map
             }
         }
-        onDispose { markers.forEach { it.map = null } }
+        onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
     }
 
-    NaverWalkTraceLayer(naverMap, scene.traceTiles)
+    NaverWalkTraceLayer(naverMap, if (drawTraces) scene.traceTiles else emptyList(), layerOrder.traces)
     NaverTravelHeadingLayer(naverMap, scene.currentPosition, scene.travelHeading)
     NaverSpatialDiaryLayer(naverMap, scene.spatialCells)
 
@@ -343,103 +342,37 @@ fun NaverMapSurface(
 
     // 행동 책갈피는 시설 검색 결과와 다른 레이어다. 같은 장소 핀 목록에 섞으면 검색을
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
-    val photoFiles = scene.moments.mapNotNull { it.photoFile }.distinct()
-    val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
-        val loaded = mutableMapOf<java.io.File, OverlayImage>()
-        for (file in photoFiles) {
-            try {
-                val photo = com.daengs.app.screening.Photo.decodeUpright(context, android.net.Uri.fromFile(file), 96)
-                val pin = android.graphics.Bitmap.createBitmap(104, 112, android.graphics.Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(pin)
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                paint.color = Color.WHITE
-                canvas.drawRoundRect(0f, 0f, 104f, 104f, 14f, 14f, paint)
-                val tail = android.graphics.Path().apply { moveTo(42f, 102f); lineTo(52f, 112f); lineTo(62f, 102f); close() }
-                canvas.drawPath(tail, paint)
-                val edge = minOf(photo.width, photo.height)
-                val x = (photo.width - edge) / 2; val y = (photo.height - edge) / 2
-                canvas.drawBitmap(photo, android.graphics.Rect(x, y, x + edge, y + edge),
-                    android.graphics.RectF(6f, 6f, 98f, 98f), paint)
-                photo.recycle()
-                loaded[file] = OverlayImage.fromBitmap(pin)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                // 원본 파일을 잃었어도 Pin을 눌러 확인·삭제할 수 있다.
-            }
-        }
-        value = loaded
+    val fixedMarkerFootprints = scene.routeEndpointStamps().map { endpoint ->
+        val art = requireNotNull(context.getDrawable(endpoint.kind.iconRes))
+        val dimensions = if (endpoint.compact) diaryPinSize(endpoint.label,density,endpoint=true) else art.intrinsicWidth to art.intrinsicHeight
+        endpoint.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),
+            .5,if(endpoint.compact) 0.0 else .5)
     }
-    val badgeDensity = LocalDensity.current.density
-    DisposableEffect(naverMap, scene.moments, photoIcons, badgeDensity) {
-        val map = naverMap
-        val markers = if (map == null) emptyList() else scene.moments.map { moment ->
-            Marker().apply {
-                position = moment.point.toLatLng()
-                val badge = moment.sequenceLabel?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
-                captionText = if (badge == null) moment.label else ""
-                captionMinZoom = 12.0
-                width = badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                height = badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                anchor = if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
-                icon = badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
-                    ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
-                zIndex = if (moment.aboveRouteEndpoints) {
-                    if (moment.selected) 140 else 120
-                } else if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
-                isHideCollidedMarkers = false
-                setOnClickListener {
-                    latestMomentCallback(moment.id)
-                    true
-                }
-                this.map = map
-            }
-        }
-        onDispose { markers.forEach { it.map = null } }
-    }
+    NaverGroupedMomentLayer(naverMap, recordMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
+        topInset = topPaddingPx, bottomInset = bottomPaddingPx, onBounds = { recordMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
+    NaverGroupedMomentLayer(naverMap, diaryMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
+        query = visibilityQuery.takeIf { scene.moments.any { it.diaryPin != null } },
+        onVisibility = onVisibility, onBounds = { diaryMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
 
-    val speedPaths = remember(scene.trail, scene.completedRoute.paths, scene.completedRoute.speedPaths, walkStyle) {
-        (scene.trail.speedPaths + scene.completedRoute.speedPaths).map { path ->
-            paintWalkSpeedPath(path, walkStyle.policy, walkStyle.themeId)
-        }.filter { it.isNotEmpty() }
-    }
-    DisposableEffect(naverMap, speedPaths, scene.trail.paths, scene.completedRoute.paths) {
-        val map = naverMap
-        val lines = mutableListOf<com.naver.maps.map.overlay.Overlay>()
-        if (map != null) {
-            // One multipart overlay per recording segment keeps pauses and GPS gaps separate.
-            speedPaths.forEach { parts ->
-                lines += MultipartPathOverlay().apply {
-                    coordParts = parts.map { part -> part.points.map(GeoPoint::toLatLng) }
-                    colorParts = parts.map { part -> MultipartPathOverlay.ColorPart(part.color, part.color, part.color, part.color) }
-                    width = TRAIL_WIDTH
-                    outlineWidth = 0
-                    this.map = map
-                }
-            }
-            // Legacy coordinate-only callers have unknown speed, never pretend it is zero.
-            val fallback = (if (scene.trail.speedPaths.isEmpty()) scene.trail.paths else emptyList()) +
-                (if (scene.completedRoute.speedPaths.isEmpty()) scene.completedRoute.paths else emptyList())
-            fallback.filter { it.size >= 2 }.forEach { path ->
-                lines += PathOverlay().apply {
-                    coords = path.map(GeoPoint::toLatLng)
-                    width = TRAIL_WIDTH
-                    color = walkStyle.policy.unknownColor
-                    outlineWidth = 0
-                    this.map = map
-                }
-            }
-        }
-        onDispose { lines.forEach { it.map = null } }
-    }
+    NaverMomentLayer(naverMap, visibleMoments, onSelectMoment, diagnostics, layerOrder.markers)
 
-    NaverRouteEndpointLayer(naverMap, scene.routeEndpointStamps(), onSelectRouteEndpoint)
+    NaverWalkRouteLayer(naverMap, if (drawRoute) scene.trail else com.daengs.app.map.layers.trail.TrailLayerState(),
+        if (drawRoute) scene.completedRoute else com.daengs.app.map.layers.completedroute.CompletedRouteLayerState(), walkAppearance.speedPolicy, walkAppearance.themeId,
+        dimCompleted = scene.sessionExplorer?.emphasisPaths?.isNotEmpty() == true, stroke = walkAppearance.stroke, globalZ = layerOrder.route)
 
-    DisposableEffect(naverMap, scene.completedRoute.gapEndpoints) {
+    NaverRouteEndpointLayer(naverMap, if (drawMarkers) scene.routeEndpointStamps() else emptyList(), onSelectRouteEndpoint, layerOrder.markers)
+    NaverRecordContextLayer(naverMap, scene.sessionExplorer?.recordContext, density, onSelectRecordContext)
+    NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
+        scene.moments.filter { it.diaryPin == null && it.recordPin == null }.map { it.point } + scene.routeEndpointStamps().map { it.point } +
+            scene.sessionExplorer?.recordContext?.markers.orEmpty().map { it.point },
+        viewportSize, bottomPaddingPx, density, onRouteDirectionCount, recordMarkerBounds + diaryMarkerBounds)
+
+    DisposableEffect(naverMap, visibleGaps) {
         val map = naverMap
         val gapDots = if (map == null) {
             emptyList()
         } else {
-            scene.completedRoute.gapEndpoints.map { point ->
+            visibleGaps.map { point ->
                 CircleOverlay().apply {
                     center = point.toLatLng()
                     radius = ROUTE_GAP_RADIUS_METERS
@@ -454,12 +387,12 @@ fun NaverMapSurface(
         onDispose { gapDots.forEach { it.map = null } }
     }
 
-    DisposableEffect(naverMap, scene.completedRoute.selectedPoint) {
+    DisposableEffect(naverMap, visibleSelectedPoint) {
         val map = naverMap
         val selectedDot = if (map == null) {
             null
         } else {
-            scene.completedRoute.selectedPoint?.let { point ->
+            visibleSelectedPoint?.let { point ->
                 CircleOverlay().apply {
                     center = point.toLatLng()
                     radius = ROUTE_SELECTED_RADIUS_METERS
@@ -484,7 +417,6 @@ private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 /** 고른 핀은 이웃 위에 그린다. 마커가 겹칠 때 고른 것이 가려지면 안 된다. */
 private const val SELECTED_MARKER_Z = 100
 
-private const val TRAIL_WIDTH = 14
 
 /**
  * 산책 경로.
@@ -502,7 +434,6 @@ private val TRAIL_COLOR = DaengPinkDeep.toArgb()
  * 마커 핀에 흰 테두리를 두른 것과 같은 이유다. 지하철 노선처럼 색이 있는 선과 겹칠
  * 때도 테두리가 둘을 갈라 준다.
  */
-private const val TRAIL_OUTLINE_WIDTH = 4
 
 private val TRAIL_OUTLINE_COLOR = Color.WHITE
 
@@ -576,8 +507,6 @@ private const val MARKER_PX = 72
 
 private const val MARKER_PX_SELECTED = 92
 
-private const val MOMENT_MARKER_PX = 64
-
 private const val ROUTE_GAP_Z = 40
 
 private const val ROUTE_GAP_RADIUS_METERS = 4.0
@@ -592,11 +521,6 @@ private val ROUTE_SELECTED_COLOR = DaengPink.toArgb()
 
 private const val ROUTE_SELECTED_OUTLINE_WIDTH = 4
 
-private const val MOMENT_MARKER_PX_SELECTED = 82
-
-/** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
-private const val MOMENT_MARKER_Z = 50
-
 @androidx.compose.ui.tooling.preview.Preview(showBackground = true)
 @Composable
 private fun NaverSceneMapPreview() {
@@ -607,14 +531,6 @@ private fun NaverSceneMapPreview() {
 
 /** 핀 끝의 세로 위치. 그림에서 뾰족한 끝이 22.4/24 = 0.933 지점에 있다. */
 private val MARKER_ANCHOR = PointF(0.5f, 0.933f)
-
-/** 내 위치 얼굴의 한 변(px)과 흰 테두리 두께. */
-private const val AVATAR_PX = 96
-
-private const val AVATAR_RING_PX = 5f
-
-/** 위치 정확도 원. 기본 파랑 대신 앱 분홍을 옅게 깐다. */
-private val LOCATION_CIRCLE = DaengPink.copy(alpha = 0.18f).toArgb()
 
 /** 경로를 다 담을 때 가장자리에 남기는 여백(px). 선이 화면 끝에 붙으면 잘려 보인다. */
 private const val FIT_PADDING_PX = 80

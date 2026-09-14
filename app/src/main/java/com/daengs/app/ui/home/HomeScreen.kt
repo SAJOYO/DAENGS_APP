@@ -286,6 +286,13 @@ fun HomeScreen(
     onFarewell: ((Pet) -> Unit)? = null,
     /** 그 아이를 함께 돌보는 사람을 보러 간다. 대표·돌보미 모두 들어간다. */
     onOpenMembers: ((Pet) -> Unit)? = null,
+    /** 받은 초대 링크를 붙여넣어 공동 보호자가 되러 간다. */
+    onAcceptInvite: (() -> Unit)? = null,
+    /** 연결된 아이의 내 이름만 바꾼다. 마이가 그 버튼을 연다 (공통 정보 수정과 다른 길) */
+    onRenamePet: ((Pet, String) -> Unit)? = null,
+    renamePetBusy: Boolean = false,
+    renamePetError: String? = null,
+    onDismissRenamePet: (() -> Unit)? = null,
     /** 이미 배웅한 아이의 날짜 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deletePetBusy: Boolean = false,
@@ -490,6 +497,11 @@ fun HomeScreen(
                 onDeletePet = { onDeletePet?.invoke(it) },
                 onFarewell = onFarewell,
                 onOpenMembers = onOpenMembers,
+                onAcceptInvite = onAcceptInvite,
+                onRenamePet = onRenamePet,
+                renamePetBusy = renamePetBusy,
+                renamePetError = renamePetError,
+                onDismissRenamePet = { onDismissRenamePet?.invoke() },
                 farewellOf = farewellOf,
                 deleteBusy = deletePetBusy,
                 deleteError = deletePetError,

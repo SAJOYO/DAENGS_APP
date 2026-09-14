@@ -6,22 +6,6 @@ import com.daengs.app.walk.diary.SpatialDiaryCellId
 const val DEFAULT_TRACE_BASE_ALPHA = 0.14
 const val MAX_TRACE_COMPOSITE_ALPHA = 0.40
 
-/** Fixed full-selection walk counts, never inferred from a rendered colour or blurred coverage. */
-object TraceOverlapPalette {
-    const val TEAL_RGB = 0x008F9C
-    const val YELLOW_RGB = 0xE4B000
-    const val ORANGE_RGB = 0xEB6A20
-
-    fun colorForWalkCount(count: Int): Int {
-        require(count >= 2)
-        return when {
-            count >= 5 -> ORANGE_RGB
-            count >= 3 -> YELLOW_RGB
-            else -> TEAL_RGB
-        }
-    }
-}
-
 /** One walk's positive support. Time, peak and repeat-pass weights are deliberately absent. */
 data class WalkTraceSheet(
     val walkId: String,

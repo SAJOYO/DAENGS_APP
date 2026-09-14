@@ -5,7 +5,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.store.*
-import com.daengs.app.walk.diary.storyboardAnalysisView
+import com.daengs.app.walk.store.storedStoryboardAnalysisView
 import com.daengs.app.walk.support.sceneAnchorFixture
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -34,7 +34,7 @@ class WalkStoryboardSyncTest {
                 assertEquals("walk-storyboard-candidates-v4", body.getString("bundle_format"))
                 response().put("bundle", bundle)
             }.sync(token, "s", "remote")
-            val stored = storyboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!
+            val stored = storedStoryboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!
             assertEquals(fixture.scenes.map { it.observation }, stored.scenes.map { it.observation })
         } finally { db.close() }
     }
@@ -45,7 +45,7 @@ class WalkStoryboardSyncTest {
             dao.insertSession(WalkSessionRow("s", 0, endedAtMillis = 10000, ownerId = owner))
             WalkStoryboardSync(dao, { owner }) { _, _, _ -> response().put("bundle",
                 titledDiaryFixture()) }.sync(token, "s", "remote")
-            assertEquals("함께 남긴 산책 기록", storyboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!.title)
+            assertEquals("함께 남긴 산책 기록", storedStoryboardAnalysisView(dao.sceneAnalysis("s"), emptyList()).bundle!!.title)
             val formats = mutableListOf<String>()
             WalkStoryboardSync(dao, { owner }) { _, _, body ->
                 formats += body.getString("bundle_format")
@@ -75,23 +75,23 @@ class WalkStoryboardSyncTest {
     @Test fun `pending preparation keeps previous scenes readable without marking them current`() {
         val stamp = storyboardEntryStamp(emptyList())
         val pending = WalkSceneAnalysisRow("s", 0, stamp, "revision", "pending", null, null)
-        val first = storyboardAnalysisView(pending, emptyList())
+        val first = storedStoryboardAnalysisView(pending, emptyList())
         assertNull(first.bundle)
         assertFalse(first.canReview)
         assertTrue(first.notice.contains("준비하고 있어요"))
 
         val saved = pending.copy(generation = 1, status = "ready",
             bundle = response().getJSONObject("bundle").toString(), bundleEntryStamp = stamp)
-        val ready = storyboardAnalysisView(saved, emptyList())
+        val ready = storedStoryboardAnalysisView(saved, emptyList())
         assertTrue(ready.canReview)
-        val previous = storyboardAnalysisView(saved.copy(status = "pending"), emptyList())
+        val previous = storedStoryboardAnalysisView(saved.copy(status = "pending"), emptyList())
         assertEquals(ready.bundle!!.scenes, previous.bundle!!.scenes)
         assertFalse(previous.canReview)
-        assertEquals(storyboardAnalysisView(saved.copy(status = "running"), emptyList()).notice, previous.notice)
+        assertEquals(storedStoryboardAnalysisView(saved.copy(status = "running"), emptyList()).notice, previous.notice)
         assertTrue(previous.notice.contains("이전에 저장한 장면"))
 
         val dirty = listOf(WalkEntryRow("new", "s", "{}", 0, "mutation", true))
-        val changed = storyboardAnalysisView(saved.copy(status = "pending"), dirty)
+        val changed = storedStoryboardAnalysisView(saved.copy(status = "pending"), dirty)
         assertNull(changed.bundle)
         assertFalse(changed.canReview)
         assertTrue(changed.notice.contains("기록 동기화 후"))
@@ -106,7 +106,7 @@ class WalkStoryboardSyncTest {
             var fail = false
             val sync = WalkStoryboardSync(dao, { owner }) { _, _, _ ->
                 if (fail) {
-                    val during = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+                    val during = storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
                     assertNotNull(during.bundle)
                     assertFalse(during.canReview)
                     throw java.io.IOException("connection lost")
@@ -118,14 +118,14 @@ class WalkStoryboardSyncTest {
             fail = true
             assertTrue(runCatching { sync.sync(token, "s", "remote") }.isFailure)
             assertEquals(original, dao.sceneAnalysis("s")!!.bundle)
-            val cached = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+            val cached = storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
             assertNotNull(cached.bundle)
             assertFalse(cached.canReview)
             assertTrue(cached.notice.contains("이전에 저장한 장면"))
             assertEquals("user edits and reviewed snapshot", dao.storyboard("s")!!.payload)
             fail = false
             sync.sync(token, "s", "remote")
-            assertTrue(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+            assertTrue(storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
         } finally { db.close() }
     }
 
@@ -140,9 +140,9 @@ class WalkStoryboardSyncTest {
             val failure = runCatching { interrupted.sync(token, "s", "remote", refresh = true) }.exceptionOrNull()
             assertTrue(failure is kotlinx.coroutines.CancellationException)
             assertEquals(original, dao.sceneAnalysis("s")!!.bundle)
-            assertFalse(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+            assertFalse(storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
             WalkStoryboardSync(dao, { owner }) { _, _, _ -> response(2) }.sync(token, "s", "remote")
-            assertTrue(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+            assertTrue(storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
         } finally { db.close() }
     }
 
@@ -162,12 +162,12 @@ class WalkStoryboardSyncTest {
                 remote = bad
                 assertTrue(runCatching { sync.sync(token, "s", "remote") }.isFailure)
                 assertEquals(saved, dao.sceneAnalysis("s")!!.bundle)
-                assertFalse(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+                assertFalse(storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
             }
             remote = response(8)
             sync.sync(token, "s", "remote")
             assertEquals(8L, dao.sceneAnalysis("s")!!.generation)
-            assertTrue(storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
+            assertTrue(storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s")).canReview)
         } finally { db.close() }
     }
 
@@ -184,7 +184,7 @@ class WalkStoryboardSyncTest {
             assertTrue(dao.acceptSceneAnalysis(original.copy(entryStamp = changedStamp, status = "running", bundle = null), owner))
             assertEquals(original.bundleEntryStamp, dao.sceneAnalysis("s")!!.bundleEntryStamp)
             assertEquals(original.bundle, dao.sceneAnalysis("s")!!.bundle)
-            val stale = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+            val stale = storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
             assertNull(stale.bundle)
             assertFalse(stale.canReview)
             assertFalse(dao.acceptSceneAnalysis(original.copy(generation = 20), owner))

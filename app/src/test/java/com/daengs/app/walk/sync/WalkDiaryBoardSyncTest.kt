@@ -34,7 +34,7 @@ class WalkDiaryBoardSyncTest {
             if (preparing) {
                 dao.closeAndPrepareDiary(id, 10000)
                 val state = requireNotNull(dao.prepareLocalDiary(id, "owner"))
-                assertEquals(20000, state.deadlineAtMillis)
+                assertEquals(30000, state.deadlineAtMillis)
                 assertNotNull(state.baseBundle)
                 assertNull(state.publishedBundle)
             } else assertNull(dao.diaryPublication(id)) // Completed legacy walk, outside publication.
@@ -68,7 +68,7 @@ class WalkDiaryBoardSyncTest {
         assertEquals("직접 붙인 제목", edits.single { it.id == note.id }.title)
         assertEquals("", edits.single { it.id == checkpoint.id }.sceneBody())
         assertTrue(edits.last().hidden)
-        assertTrue(storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
+        assertTrue(storedStoryboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
     }
 
     @Test fun `preparing publication sends only the budget left since end and stops all reads after publication`() = checkDb(preparing = true) { dao ->
@@ -78,11 +78,11 @@ class WalkDiaryBoardSyncTest {
             requests++
             when {
                 path.endsWith("capabilities") -> capability.put("diary_publication",
-                    JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 10000))
+                    JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 20000))
                 method == "GET" -> diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
                 else -> {
                     posts++
-                    assertEquals(6000, body!!.getLong("preparation_budget_ms"))
+                    assertEquals(16000, body!!.getLong("preparation_budget_ms"))
                     assertFalse(body.getBoolean("refresh"))
                     diaryBoardFixture()
                 }
@@ -97,6 +97,61 @@ class WalkDiaryBoardSyncTest {
         assertEquals(1, posts)
         assertEquals(requestsBeforeRefresh, requests)
         assertEquals(published, dao.diaryPublication(id)!!.publishedBundle)
+    }
+
+    @Test fun `pending context retries with the decreasing original budget then publishes early`() = checkDb(preparing = true) { dao ->
+        var now = 14000L
+        val budgets = mutableListOf<Long>()
+        fun pending() = diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
+        WalkDiarySync(dao, { "owner" }, nowMillis = { now }, pause = { now += 2000 },
+            request = { _, path, method, body ->
+                when {
+                    path.endsWith("capabilities") -> capability.put("diary_publication",
+                        JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 20000))
+                    method == "GET" -> pending()
+                    else -> {
+                        budgets += body!!.getLong("preparation_budget_ms")
+                        assertFalse(body.getBoolean("refresh"))
+                        if (budgets.size == 1) pending() else diaryBoardFixture()
+                    }
+                }
+            }).sync("token", id, "remote", refresh = true)
+        assertEquals(listOf(16000L, 14000L), budgets)
+        assertEquals(30000L, dao.diaryPublication(id)!!.deadlineAtMillis)
+        assertEquals(16000L, dao.diaryPublication(id)!!.publishedAtMillis)
+    }
+
+    @Test fun `pending context stops polling at deadline without extending it`() = checkDb(preparing = true) { dao ->
+        var now = 26000L
+        val budgets = mutableListOf<Long>()
+        WalkDiarySync(dao, { "owner" }, nowMillis = { now }, pause = { now += 2000 },
+            request = { _, path, method, body ->
+                assertTrue("No request may start after expiry", now < 30000)
+                if (path.endsWith("capabilities")) capability.put("diary_publication",
+                    JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 20000))
+                else {
+                    if (method == "POST") budgets += body!!.getLong("preparation_budget_ms")
+                    diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
+                }
+            }).sync("token", id, "remote")
+        assertEquals(listOf(4000L, 2000L), budgets)
+        assertEquals(30000L, dao.diaryPublication(id)!!.deadlineAtMillis)
+        assertNull(dao.diaryPublication(id)!!.publishedBundle)
+    }
+
+    @Test fun `new preparation respects the older server ten second maximum`() = checkDb(preparing = true) { dao ->
+        WalkDiarySync(dao, { "owner" }, nowMillis = { 11000 }, request = { _, path, method, body ->
+            when {
+                path.endsWith("capabilities") -> capability.put("diary_publication",
+                    JSONObject().put("format", ServerDiaryBoard.FORMAT).put("budget_ms", 10000))
+                method == "GET" -> diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
+                else -> {
+                    assertEquals(10000L, body!!.getLong("preparation_budget_ms"))
+                    diaryBoardFixture()
+                }
+            }
+        }).sync("token", id, "remote")
+        assertNotNull(dao.diaryPublication(id)!!.publishedBundle)
     }
 
     @Test fun `preparing publication without publication capability never starts generation`() = checkDb(preparing = true) { dao ->
@@ -123,7 +178,7 @@ class WalkDiaryBoardSyncTest {
     }
 
     @Test fun `a pending read crossing the deadline cannot start a generation`() = checkDb(preparing = true) { dao ->
-        var now = 19999L
+        var now = 29999L
         var reads = 0
         WalkDiarySync(dao, { "owner" }, nowMillis = { now }, request = { _, path, method, _ ->
             assertEquals("GET", method)
@@ -131,7 +186,7 @@ class WalkDiaryBoardSyncTest {
             if (path.endsWith("capabilities")) capability.put("diary_publication",
                 JSONObject().put("format", ServerDiaryBoard.FORMAT))
             else {
-                now = 20000
+                now = 30000
                 diaryBoardFixture().put("status", "pending").put("bundle", JSONObject.NULL)
             }
         }).sync("token", id, "remote")

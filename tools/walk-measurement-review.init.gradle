@@ -1,0 +1,22 @@
+// Use together with -I tools/naver-map-review.init.gradle. No normal APK contains these fixtures.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        def assets = project.layout.buildDirectory.dir('generated/measurement-review-assets')
+        def copy = project.tasks.register('copyMeasurementReviewAssets', Copy) {
+            from(project.rootProject.file('app/src/test/resources')) {
+                include 'walk/gps-motion-precision-v1.json', 'walk/walk-measurement-v1.json'
+            }
+            into assets
+        }
+        project.androidComponents.finalizeDsl { android ->
+            def root = project.rootProject.file('tools/walk-measurement-review')
+            android.sourceSets.debug.manifest.srcFile(new File(root, 'AndroidManifest.xml'))
+            android.sourceSets.debug.kotlin.srcDir(new File(root, 'src'))
+            android.sourceSets.debug.assets.srcDir(assets.get().asFile)
+            android.sourceSets.androidTest.kotlin.srcDir(new File(root, 'tests'))
+        }
+        project.tasks.configureEach { task ->
+            if (task.name == 'mergeDebugAssets') task.dependsOn(copy)
+        }
+    }
+}

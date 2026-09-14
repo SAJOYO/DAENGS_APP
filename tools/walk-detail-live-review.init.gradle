@@ -1,0 +1,20 @@
+// Opt-in: reuse the signed-in development package, with its existing public client configuration.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.androidComponents.finalizeDsl { android ->
+            def api = System.getenv('DAENGS_REVIEW_API_BASE_URL') ?: ''
+            def kakao = System.getenv('DAENGS_REVIEW_KAKAO_KEY') ?: ''
+            if (!api || !kakao) throw new GradleException('Supply the installed development app client configuration')
+            android.buildTypes.debug.applicationIdSuffix = '.devtest'
+            android.buildTypes.debug.versionNameSuffix = '-detail-review'
+            android.buildTypes.debug.buildConfigField('String', 'API_BASE_URL', groovy.json.JsonOutput.toJson(api))
+            def gait = System.getenv('DAENGS_REVIEW_GAIT_URL') ?: ''
+            android.buildTypes.debug.buildConfigField('String', 'GAIT_BASE_URL', groovy.json.JsonOutput.toJson(gait))
+            android.buildTypes.debug.buildConfigField('Boolean', 'GAIT_ENABLED', (!gait.isEmpty()).toString())
+            android.defaultConfig.buildConfigField('String', 'KAKAO_NATIVE_APP_KEY', groovy.json.JsonOutput.toJson(kakao))
+            android.defaultConfig.buildConfigField('String', 'NAVER_MAP_STYLE_ID', groovy.json.JsonOutput.toJson(System.getenv('DAENGS_REVIEW_MAP_STYLE') ?: ''))
+            android.defaultConfig.manifestPlaceholders['kakaoScheme'] = 'kakao' + kakao
+            android.sourceSets.androidTest.kotlin.srcDir(project.rootProject.file('tools/walk-detail-live-review/tests'))
+        }
+    }
+}

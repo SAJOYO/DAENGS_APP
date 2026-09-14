@@ -6,7 +6,8 @@
 
 ## 켜지는 범위
 
-현재 기본값은 [APP #221](https://github.com/SAJOYO/DAENGS_APP/pull/221)에서 바뀌었다.
+조회 기본값은 [APP #221](https://github.com/SAJOYO/DAENGS_APP/pull/221), Release 액션 활성화는
+[APP #402](https://github.com/SAJOYO/DAENGS_APP/pull/402)에서 바뀌었다.
 공유 점유 조회는 산책 액션과 독립적으로 일반 앱에서도 제공한다.
 
 | 빌드 | 공급자 | 동작 |
@@ -14,7 +15,7 @@
 | 일반 debug | 서버 점유 조회 | 산책 전/중 점유 읽기만 제공 |
 | debug + `-PterritoryServerRead=false` | 메모리 점유·페이크 사진 | 명시적으로 선택하는 로컬 연습 |
 | debug + `-PterritoryServerActions=true` | 서버 점유 조회·액션 | 기존 온라인 영역표시·촬영 테스트 |
-| release | 서버 점유 조회 | 둘러보기 제공, 점령·촬영 액션 비활성 |
+| release | 서버 점유 조회·액션 | 둘러보기 및 산책 중 조건을 충족한 점령·인증 촬영 |
 
 기존 `API_BASE_URL`과 `SessionProvider.freshSession()`을 사용한다. 로그인해야 공유 점유를
 읽을 수 있으며 비로그인 상태에서는 HTTP를 보내지 않고 로그인 안내를 표시한다. 일반 산책·일기

@@ -190,7 +190,8 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 - 화면을 나가거나 꺼도 위치 Foreground Service가 기록을 이어 간다.
 - 지도에는 흔들림과 정확도 낮은 점을 걸러낸 경로가 보인다.
 - 기기가 보고한 원본 위치는 `daengs_walk.db`에 먼저 저장한다.
-- 현재는 **로컬 기록만 한다.** 백엔드 업로드·점수·영토·기록 목록은 연결하지 않았다.
+- 종료한 산책은 원본 업로드·GPS 기록 구분 확인·분석 봉인 순서로 동기화한다.
+  청크 응답과 재전송 규칙은 [산책 업로드 수신 확인](docs/walk-upload-receipts.md)에 있다.
 - 강제 종료로 닫히지 않은 세션은 DB에 남지만, 이어 기록/폐기 화면은 아직 없다.
 
 ### 빌드 · 테스트 · 설치
@@ -199,7 +200,9 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 `GET /app/territory/occupancies`가 배포된 API가 필요하다. 먼 지역의 전봇대를 선택해도
 산책 시작 없이 강아지·인증·점령 시각을 볼 수 있다. 조회 실패는 미점유로 표시하지 않는다.
 로컬 연습은 debug에 `-PterritoryServerRead=false`, 온라인 액션 테스트는
-`-PterritoryServerActions=true`를 명시한다. [설정과 검증](docs/territory-server-browsing.md).
+`-PterritoryServerActions=true`를 명시한다. Release는 점령·인증 액션이 기본 활성화되며,
+접속 서버의 게임 활성화·시즌·세션·위치 조건을 충족해야 전송할 수 있다.
+[설정과 검증](docs/territory-server-browsing.md).
 
 점령 게임의 `점령 지도 보기`는 [내 점령지 전용 지도·목록](docs/owned-territory-browser.md)을
 연다. 이 화면은 산책이나 위치 권한 없이 DEV #418의 회원 전체·강아지별 현재 점령지를 읽는다.
@@ -211,6 +214,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Windows 에서는 `gradlew.bat` 을 쓴다.
 기능 변경의 테스트만 확인할 때는 [실행 지도](app/src/test/README.md)에 따라 `--tests`로 범위를 선택한다.
+
+Debug 빌드의 산책 상세 `⋯ → 개발용 일기 미리보기`에서 파트 슬롯의 생성 문장·선정 자료를 확인한다.
+Release에는 이 진입점이 없으며 기존 일기에는 저장하지 않는다. [사용 방법과 서버 활성화 조건](docs/diary-slot-preview.md).
 
 ### 스토어에 올릴 빌드
 
@@ -299,6 +305,7 @@ uv run tools/<이름>.py
 | 파일 | 하는 일 |
 |---|---|
 | `import_room_assets.py` | 에셋 드롭 폴더 → `drawable-nodpi` 반입. 배경 뚫기·조각 털기·WebP 변환·리소스 이름 짓기를 한 번에 |
+| `export_territory_poles.py` | 별도 debug 폰 앱에서 5종 전봇대 합성 결과를 추출하고 무손실 반입. [재생성/검증](docs/territory-pole-assets.md) |
 | `room_cutout.py` | 방 PNG 의 바깥 배경을 투명하게. 강아지 시트에서 몸과 떨어진 조각도 털어낸다 (위 스크립트가 부른다) |
 | `trace_door.py` | 방 그림에서 문 윤곽을 떠서 `DoorSpec` 값을 뽑는다. 확인용 이미지도 같이 낸다 |
 | `make_outside.py` | 창밖·문밖 풍경 12장(낮·밤 x 해·비·눈). 방 그림에서 유리를 오려 다시 칠한다. **씨앗이 고정이라 돌릴 때마다 같은 그림이 나온다** |

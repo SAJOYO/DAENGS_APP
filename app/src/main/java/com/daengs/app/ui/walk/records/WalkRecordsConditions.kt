@@ -1,226 +1,200 @@
 package com.daengs.app.ui.walk.records
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDateRangePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.pet.Pet
+import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.theme.DaengsTheme
-import com.daengs.app.ui.walk.DogChip
 import com.daengs.app.ui.walk.HistoryFilterSaver
-import com.daengs.app.walk.WalkDepartureWeather
-import com.daengs.app.walk.WalkHistoryFilter
-import com.daengs.app.walk.WalkSeason
-import com.daengs.app.walk.WalkMomentType
+import com.daengs.app.walk.*
 import com.daengs.app.walk.records.WalkRecordsQuery
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-/** Both views use this one committed query. The condition sheet edits a separate draft. */
-@Composable
-internal fun WalkRecordsConditions(
-    query: WalkRecordsQuery,
-    pets: List<Pet>,
-    onKeyword: (String) -> Unit,
-    onOpenConditions: () -> Unit,
-    onReset: () -> Unit,
-    showBehavior: Boolean = false,
-    behavior: WalkMomentType? = null,
-    onClearBehavior: () -> Unit = {},
-) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = query.filter.keyword,
-                onValueChange = { onKeyword(it.take(200)) },
-                label = { Text("제목·메모 검색") },
-                singleLine = true,
-                trailingIcon = if (query.filter.keyword.isNotEmpty()) ({
-                    TextButton(onClick = { onKeyword("") }) { Text("지우기") }
-                }) else null,
-                modifier = Modifier.weight(1f).testTag("records-search"),
-            )
-            Spacer(Modifier.width(8.dp))
-            OutlinedButton(onClick = onOpenConditions, modifier = Modifier.testTag("records-conditions")) {
-                Text("조건")
-            }
-        }
-        val labels = conditionLabels(query, pets)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (labels.isEmpty()) {
-                    Text("전체 산책", Modifier.padding(vertical = 10.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else labels.forEach { label ->
-                    FilterChip(selected = true, onClick = onOpenConditions, label = { Text(label) })
-                }
-                if (showBehavior) {
-                    FilterChip(selected = behavior != null, onClick = onOpenConditions,
-                        label = { Text(behavior?.let { "${it.label} 기록" } ?: "행동으로 찾기") },
-                        modifier = Modifier.testTag("records-behavior-filter"))
-                    if (behavior != null) TextButton(onClick = onClearBehavior,
-                        modifier = Modifier.testTag("records-behavior-clear")) { Text("행동 해제") }
-                }
-            }
-            if (query.dogId != null || query.filter.active) {
-                TextButton(onClick = onReset, modifier = Modifier.testTag("records-reset")) { Text("초기화") }
-            }
-        }
-    }
+internal enum class RecordsFilter(val title: String) {
+    ALL("산책 조건"), DOGS("강아지 선택"), PERIOD("기간 선택"), BEHAVIOR("행동으로 찾기"), CONDITIONS("산책 조건"),
 }
 
+// Empty saved list means all dogs. An explicit empty subset is never committed.
+internal val RecordsDogIdsSaver = listSaver<Set<String>?, String>(
+    save = { it?.sorted().orEmpty() }, restore = { it.toSet().takeIf { ids -> ids.isNotEmpty() } },
+)
+
+/** Changes remain a draft until Apply; both views receive the same conditions. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun WalkRecordsConditionsSheet(
-    query: WalkRecordsQuery,
-    pets: List<Pet>,
-    today: LocalDate,
-    onApply: (WalkRecordsQuery) -> Unit,
-    onDismiss: () -> Unit,
-    behavior: WalkMomentType? = null,
-    onBehaviorApply: (WalkMomentType?) -> Unit = {},
+    kind: RecordsFilter, query: WalkRecordsQuery, pets: List<Pet>, today: LocalDate,
+    onApply: (WalkRecordsQuery) -> Unit, onDismiss: () -> Unit,
+    behavior: WalkMomentType? = null, onBehaviorApply: (WalkMomentType?) -> Unit = {},
+    petsLoaded: Boolean = true, photoOf: (String) -> ImageBitmap? = { null },
 ) {
-    var draftDogId by rememberSaveable { mutableStateOf(query.dogId) }
+    var allDogs by rememberSaveable { mutableStateOf(query.dogIds == null) }
+    var draftDogs by rememberSaveable { mutableStateOf(query.dogIds.orEmpty().toList()) }
     var draftFilter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(query.filter) }
     var periodOpen by rememberSaveable { mutableStateOf(false) }
     var draftBehavior by rememberSaveable { mutableStateOf(behavior) }
-    ModalBottomSheet(onDismissRequest = onDismiss,
+    var extraOpen by rememberSaveable { mutableStateOf(query.filter.seasons.isNotEmpty() || query.filter.weather.isNotEmpty()) }
+    val validDogs = draftDogs.filter { id -> pets.any { it.id == id } }.toSet()
+    val canApply = (kind != RecordsFilter.DOGS && kind != RecordsFilter.ALL) || allDogs || (petsLoaded && validDogs.isNotEmpty())
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("산책 고르기", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                TextButton(onClick = onDismiss, modifier = Modifier.testTag("records-conditions-cancel")) { Text("취소") }
-            }
-            Text("산책 조건은 두 보기에, 행동은 모아보기에 적용해요.", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("records-filter-sheet")) {
+            Text(kind.title, style = MaterialTheme.typography.headlineSmall)
+            Text(when (kind) {
+                RecordsFilter.ALL -> "산책별과 모아보기에 함께 적용돼요."
+                RecordsFilter.DOGS -> "함께 보고 싶은 강아지를 골라 주세요."
+                RecordsFilter.PERIOD -> "산책을 시작한 날짜를 기준으로 찾아요."
+                RecordsFilter.BEHAVIOR -> "선택한 강아지의 행동이 기록된 산책을 찾아요."
+                RecordsFilter.CONDITIONS -> "계절과 출발 날씨로 산책을 찾아요."
+            }, Modifier.padding(top = 8.dp, bottom = 12.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                Spacer(Modifier.height(20.dp))
-                Text("산책 범위", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(10.dp))
-                Text("강아지", style = MaterialTheme.typography.labelLarge)
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = draftDogId == null, onClick = { draftDogId = null },
-                        label = { Text("전체") }, modifier = Modifier.testTag("records-dog-all"))
-                    pets.forEach { pet ->
-                        DogChip(pet.name, pet, draftDogId == pet.id,
-                            onClick = { draftDogId = pet.id.takeIf { draftDogId != it } },
-                            modifier = Modifier.testTag("records-dog-${pet.id}"))
+                val sections = if (kind == RecordsFilter.ALL) listOf(RecordsFilter.DOGS, RecordsFilter.PERIOD, RecordsFilter.BEHAVIOR, RecordsFilter.CONDITIONS) else listOf(kind)
+                sections.forEach { section ->
+                if (kind == RecordsFilter.ALL && section == RecordsFilter.CONDITIONS) {
+                    OutlinedTextField(draftFilter.keyword, { draftFilter = draftFilter.copy(keyword = it.take(200)) },
+                        label = { Text("제목·메모 검색") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("records-search"))
+                    TextButton(onClick = { extraOpen = !extraOpen }, modifier = Modifier.testTag("records-extra-conditions")) {
+                        Text(if (extraOpen) "계절·날씨 접기" else "계절·날씨 더 보기")
                     }
+                }
+                if (kind == RecordsFilter.ALL && section != RecordsFilter.CONDITIONS) {
+                    Text(section.title, Modifier.padding(top = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.titleSmall)
+                }
+                if (section != RecordsFilter.CONDITIONS || kind != RecordsFilter.ALL || extraOpen) when (section) {
+                    RecordsFilter.ALL -> Unit
+                    RecordsFilter.DOGS -> {
+                        RecordsDogRow("모든 강아지", allDogs, { allDogs = !allDogs; draftDogs = emptyList() },
+                            Modifier.testTag("records-dog-all"))
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        if (!petsLoaded) Text("강아지 목록을 불러오고 있어요.", Modifier.padding(vertical = 12.dp))
+                        else if (pets.isEmpty()) Text("등록된 강아지가 없어요. 전체 기록은 볼 수 있어요.",
+                            Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
+                        pets.forEach { pet ->
+                            RecordsDogRow(pet.name, !allDogs && pet.id in draftDogs, {
+                                draftDogs = if (allDogs) listOf(pet.id)
+                                    else if (pet.id in draftDogs) draftDogs - pet.id else draftDogs + pet.id
+                                allDogs = false
+                            }, Modifier.testTag("records-dog-${pet.id}"), pet, photoOf(pet.id))
+                        }
+                        if (!allDogs && validDogs.isEmpty()) Text("한 마리 이상 선택하거나 모든 강아지를 선택해 주세요.",
+                            Modifier.padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                    RecordsFilter.PERIOD -> {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = draftFilter.from == null && draftFilter.through == null,
+                                onClick = { draftFilter = draftFilter.copy(from = null, through = null) },
+                                label = { Text("전체 기간") }, modifier = Modifier.testTag("records-period-all"))
+                            listOf(7, 30).forEach { days ->
+                                FilterChip(selected = draftFilter.from == today.minusDays(days - 1L) && draftFilter.through == today,
+                                    onClick = { draftFilter = draftFilter.copy(from = today.minusDays(days - 1L), through = today) },
+                                    label = { Text("최근 ${days}일") }, modifier = Modifier.testTag("records-period-$days"))
+                            }
+                            FilterChip(selected = (draftFilter.from != null || draftFilter.through != null) &&
+                                listOf(7, 30).none { draftFilter.from == today.minusDays(it - 1L) && draftFilter.through == today },
+                                onClick = { periodOpen = true }, label = { Text("날짜 지정") },
+                                modifier = Modifier.testTag("records-period-custom"))
+                        }
+                        if (draftFilter.from != null || draftFilter.through != null) Text(
+                            "${draftFilter.from ?: "처음"} ~ ${draftFilter.through ?: "마지막"}",
+                            Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                    RecordsFilter.BEHAVIOR -> {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = draftBehavior == null, onClick = { draftBehavior = null },
+                                label = { Text("모든 행동") }, modifier = Modifier.testTag("records-behavior-all"))
+                            listOf(WalkMomentType.SNIFFING, WalkMomentType.EXCRETION, WalkMomentType.BARKING).forEach { type ->
+                                FilterChip(selected = draftBehavior == type, onClick = { draftBehavior = type },
+                                    label = { Text(type.label) }, modifier = Modifier.testTag("records-behavior-${type.behaviorCode}"))
+                            }
+                        }
+                    }
+                    RecordsFilter.CONDITIONS -> {
+                        Text("계절", style = MaterialTheme.typography.titleSmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            WalkSeason.entries.forEach { season ->
+                                FilterChip(selected = season in draftFilter.seasons,
+                                    onClick = { draftFilter = draftFilter.copy(seasons = draftFilter.seasons.toggled(season)) },
+                                    label = { Text(season.label) }, modifier = Modifier.testTag("records-season-${season.name}"))
+                            }
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 16.dp))
+                        Text("출발 날씨", style = MaterialTheme.typography.titleSmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            WalkDepartureWeather.entries.forEach { weather ->
+                                FilterChip(selected = weather in draftFilter.weather,
+                                    onClick = { draftFilter = draftFilter.copy(weather = draftFilter.weather.toggled(weather)) },
+                                    label = { Text(weather.label) }, modifier = Modifier.testTag("records-weather-${weather.name}"))
+                            }
+                        }
+                    }
+                }
                 }
                 Spacer(Modifier.height(12.dp))
-                Text("기간", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = draftFilter.from == null && draftFilter.through == null,
-                        onClick = { draftFilter = draftFilter.copy(from = null, through = null) },
-                        label = { Text("전체 기간") }, modifier = Modifier.testTag("records-period-all"))
-                    listOf(7, 30).forEach { days ->
-                        FilterChip(selected = draftFilter.from == today.minusDays(days - 1L) && draftFilter.through == today,
-                            onClick = { draftFilter = draftFilter.copy(from = today.minusDays(days - 1L), through = today) },
-                            label = { Text("최근 ${days}일") }, modifier = Modifier.testTag("records-period-$days"))
-                    }
-                    FilterChip(selected = (draftFilter.from != null || draftFilter.through != null) &&
-                        listOf(7, 30).none { days ->
-                            draftFilter.from == today.minusDays(days - 1L) && draftFilter.through == today
-                        },
-                        onClick = { periodOpen = true }, label = { Text("날짜 지정") },
-                        modifier = Modifier.testTag("records-period-custom"))
-                }
-                if (draftFilter.from != null || draftFilter.through != null) {
-                    Text(periodLabel(draftFilter), style = MaterialTheme.typography.bodySmall)
-                }
-                HorizontalDivider(Modifier.padding(vertical = 18.dp))
-                Text("산책 조건", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(10.dp))
-                Text("계절", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    WalkSeason.entries.forEach { season ->
-                        FilterChip(selected = season in draftFilter.seasons,
-                            onClick = { draftFilter = draftFilter.copy(seasons = draftFilter.seasons.toggled(season)) },
-                            label = { Text(season.label) }, modifier = Modifier.testTag("records-season-${season.name}"))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("출발 날씨", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    WalkDepartureWeather.entries.forEach { weather ->
-                        FilterChip(selected = weather in draftFilter.weather,
-                            onClick = { draftFilter = draftFilter.copy(weather = draftFilter.weather.toggled(weather)) },
-                            label = { Text(weather.label) }, modifier = Modifier.testTag("records-weather-${weather.name}"))
-                    }
-                }
-                Text("날씨는 산책을 출발할 때의 기록이에요.", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                HorizontalDivider(Modifier.padding(vertical = 18.dp))
-                Text("행동 기록", style = MaterialTheme.typography.titleMedium)
-                Text("해당 행동의 기록과 관련 산책을 모아봐요.", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = draftBehavior == null, onClick = { draftBehavior = null },
-                        label = { Text("선택 안 함") }, modifier = Modifier.testTag("records-behavior-all"))
-                    listOf(WalkMomentType.SNIFFING, WalkMomentType.EXCRETION, WalkMomentType.BARKING).forEach { type ->
-                        FilterChip(selected = draftBehavior == type, onClick = { draftBehavior = type },
-                            label = { Text(type.label) }, modifier = Modifier.testTag("records-behavior-${type.behaviorCode}"))
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = {
-                    draftDogId = null
-                    draftFilter = WalkHistoryFilter(keyword = query.filter.keyword)
-                    draftBehavior = null
-                }, modifier = Modifier.testTag("records-conditions-reset")) { Text("조건 초기화") }
+                    when (kind) {
+                        RecordsFilter.ALL -> { allDogs = true; draftDogs = emptyList(); draftFilter = WalkHistoryFilter(); draftBehavior = null }
+                        RecordsFilter.DOGS -> { allDogs = true; draftDogs = emptyList() }
+                        RecordsFilter.PERIOD -> draftFilter = draftFilter.copy(from = null, through = null)
+                        RecordsFilter.BEHAVIOR -> draftBehavior = null
+                        RecordsFilter.CONDITIONS -> draftFilter = draftFilter.copy(seasons = emptySet(), weather = emptySet())
+                    }
+                }, modifier = Modifier.testTag("records-conditions-reset")) { Text("초기화") }
                 Spacer(Modifier.weight(1f))
-                Button(onClick = {
-                    onApply(WalkRecordsQuery(draftDogId, draftFilter))
-                    onBehaviorApply(draftBehavior)
-                },
-                    modifier = Modifier.testTag("records-conditions-apply")) { Text("적용") }
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag("records-conditions-cancel")) { Text("취소") }
+                Button(enabled = canApply, onClick = {
+                    when (kind) {
+                        RecordsFilter.ALL -> { onApply(WalkRecordsQuery(if (allDogs) null else validDogs, draftFilter)); onBehaviorApply(draftBehavior) }
+                        RecordsFilter.DOGS -> onApply(query.copy(dogIds = if (allDogs) null else validDogs))
+                        RecordsFilter.PERIOD -> onApply(query.copy(filter = query.filter.copy(from = draftFilter.from, through = draftFilter.through)))
+                        RecordsFilter.CONDITIONS -> onApply(query.copy(filter = query.filter.copy(seasons = draftFilter.seasons, weather = draftFilter.weather)))
+                        RecordsFilter.BEHAVIOR -> onBehaviorApply(draftBehavior)
+                    }
+                    onDismiss()
+                }, modifier = Modifier.testTag("records-conditions-apply")) { Text("적용") }
             }
         }
     }
-    if (periodOpen) {
-        WalkRecordsPeriodDialog(draftFilter.from, draftFilter.through,
-            onApply = { from, through -> draftFilter = draftFilter.copy(from = from, through = through); periodOpen = false },
-            onDismiss = { periodOpen = false })
+    if (periodOpen) WalkRecordsPeriodDialog(draftFilter.from, draftFilter.through,
+        onApply = { from, through -> draftFilter = draftFilter.copy(from = from, through = through); periodOpen = false },
+        onDismiss = { periodOpen = false })
+}
+
+@Composable
+private fun RecordsDogRow(
+    name: String, selected: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier,
+    pet: Pet? = null, photo: ImageBitmap? = null,
+) {
+    Row(modifier.fillMaxWidth().heightIn(min = 60.dp)
+        .toggleable(selected, role = Role.Checkbox, onValueChange = { onToggle() })
+        .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (pet != null) {
+            PetAvatar(photo, pet.breedArt, 36.dp, Modifier.clearAndSetSemantics {})
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Checkbox(selected, onCheckedChange = null)
     }
 }
 
@@ -235,43 +209,41 @@ private fun WalkRecordsPeriodDialog(
         initialSelectedEndDateMillis = through?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(),
     )
     DatePickerDialog(onDismissRequest = onDismiss,
-        confirmButton = { TextButton(
-            enabled = state.selectedStartDateMillis != null && state.selectedEndDateMillis != null,
+        confirmButton = { TextButton(enabled = state.selectedStartDateMillis != null && state.selectedEndDateMillis != null,
             onClick = { onApply(state.selectedStartDateMillis?.pickerDate(), state.selectedEndDateMillis?.pickerDate()) },
-            modifier = Modifier.testTag("records-date-apply"),
-        ) { Text("날짜 선택") } },
+            modifier = Modifier.testTag("records-date-apply")) { Text("날짜 선택") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } }) {
         DateRangePicker(state, modifier = Modifier.heightIn(max = 460.dp),
             title = { Text("산책 날짜 범위", Modifier.padding(20.dp)) })
     }
 }
 
-private fun conditionLabels(query: WalkRecordsQuery, pets: List<Pet>): List<String> = buildList {
-    query.dogId?.let { id -> add(pets.firstOrNull { it.id == id }?.name ?: "선택한 강아지") }
-    if (query.filter.from != null || query.filter.through != null) add(periodLabel(query.filter))
-    addAll(query.filter.seasons.sortedBy { it.ordinal }.map { it.label })
-    addAll(query.filter.weather.sortedBy { it.ordinal }.map { "출발 ${it.label}" })
-}
-
-private fun periodLabel(filter: WalkHistoryFilter) = "${filter.from ?: "처음"} ~ ${filter.through ?: "마지막"}"
 private fun Long.pickerDate() = Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 private fun <T> Set<T>.toggled(value: T) = if (value in this) this - value else this + value
 
-@Preview(showBackground = true, widthDp = 390)
-@Composable
-private fun WalkRecordsConditionsPreview() {
-    DaengsTheme { WalkRecordsConditions(WalkRecordsQuery(filter = WalkHistoryFilter(seasons = setOf(WalkSeason.AUTUMN))),
-        emptyList(), {}, {}, {}) }
+@Preview(showBackground = true, widthDp = 320, heightDp = 680)
+@Composable private fun RecordsDogsPreview() {
+    DaengsTheme { WalkRecordsConditionsSheet(RecordsFilter.DOGS, WalkRecordsQuery(),
+        recordsPreviewPets(), LocalDate.of(2026, 9, 11), {}, {}) }
 }
-
-@Preview(showBackground = true, widthDp = 390, heightDp = 844)
-@Composable
-private fun WalkRecordsConditionsSheetPreview() {
-    DaengsTheme { WalkRecordsConditionsSheet(WalkRecordsQuery(), emptyList(), LocalDate.of(2026, 9, 10), {}, {}) }
+@Preview(showBackground = true, widthDp = 390, heightDp = 700)
+@Composable private fun RecordsBehaviorPreview() {
+    DaengsTheme { WalkRecordsConditionsSheet(RecordsFilter.BEHAVIOR, WalkRecordsQuery(),
+        emptyList(), LocalDate.of(2026, 9, 11), {}, {}) }
 }
+@Preview(showBackground = true, widthDp = 390, heightDp = 700)
+@Composable private fun RecordsConditionsPreview() {
+    DaengsTheme { WalkRecordsConditionsSheet(RecordsFilter.ALL, WalkRecordsQuery(),
+        emptyList(), LocalDate.of(2026, 9, 11), {}, {}) }
+}
+@Preview(showBackground = true, widthDp = 390, heightDp = 700)
+@Composable private fun RecordsPeriodPreview() {
+    DaengsTheme { WalkRecordsConditionsSheet(RecordsFilter.PERIOD, WalkRecordsQuery(),
+        emptyList(), LocalDate.of(2026, 9, 11), {}, {}) }
+}
+@Preview(showBackground = true, widthDp = 390, heightDp = 700)
+@Composable private fun RecordsDatePreview() { DaengsTheme { WalkRecordsPeriodDialog(null, null, { _, _ -> }, {}) } }
 
-@Preview(showBackground = true, widthDp = 390, heightDp = 844)
-@Composable
-private fun WalkRecordsPeriodDialogPreview() {
-    DaengsTheme { WalkRecordsPeriodDialog(null, null, { _, _ -> }, {}) }
+internal fun recordsPreviewPets(): List<Pet> = listOf("두부", "콩이", "보리", "호두", "이름이 아주 긴 우리집 설기").mapIndexed { i, name ->
+    Pet("dog-$i", name, "", null, null, null, null, null, null, false)
 }

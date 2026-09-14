@@ -1,4 +1,4 @@
-package com.daengs.app.ui.walk
+package com.daengs.app.ui.walk.reading
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.sp
 /** Receives exactly the same complete prose as the scene editor. */
 @Composable
 internal fun DiarySceneText(body: String) {
-    if (body.isNotBlank()) Text(body, fontSize = 20.sp, lineHeight = 30.sp)
+    if (body.isNotBlank()) Text(body, fontSize = 16.sp, lineHeight = 27.sp)
 }
 
 @Preview(showBackground = true)

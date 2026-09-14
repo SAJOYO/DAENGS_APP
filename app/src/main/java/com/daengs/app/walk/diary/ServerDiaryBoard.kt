@@ -126,7 +126,8 @@ object ServerDiaryBoard {
         return StoryboardScene(id, at, obj.requiredText("title", 80), obj.requiredText("body", 2400),
             "", storyboardHash(canonicalJson(obj)), sourcePayload = obj.toString(),
             entryReference = entry, observation = observation,
-            diary = DiarySceneContent(original, recordKind, photoId, point.takeUnless { state == "provisional" }, "", address, order),
+            diary = DiarySceneContent(original, recordKind, photoId, point.takeUnless { state == "provisional" }, "", address, order,
+                publishedWriting = publishedCardWriting(obj)),
             bodyScope = SceneBodyScope.SCENE)
     }
 

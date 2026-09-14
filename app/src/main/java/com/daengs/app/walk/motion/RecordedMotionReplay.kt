@@ -26,6 +26,13 @@ fun replayRecordedMotion(policy: SessionMotionPolicy, epochs: List<RecordingEpoc
             val fix = iterator.next()
             require(fix.ingressSeq == epoch.firstIngressSeq + count && fix.sourceEpoch == epoch.id &&
                 fix.clockEpochId == epoch.clockEpochId && fix.chainIndex == epoch.chainIndex) { "Recording reference mismatch" }
+            if (policy.stored.measurementVersion == MotionPolicies.MEASUREMENT_VERSION && fix.recordingEligible == true) {
+                // Missing/invalid measurement time is excluded by the engine, just as during live recording.
+                // Reception beyond a sealed gate is instead an inconsistent durable receipt.
+                require(fix.receivedElapsedNanos?.let { it <= end } != false) {
+                    "Eligible observation falls outside its ingress gate"
+                }
+            }
             send(MotionEvent.Observation(policy.sessionId, fix))
             count++
         }

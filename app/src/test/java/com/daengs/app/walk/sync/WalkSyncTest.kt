@@ -240,6 +240,76 @@ class WalkSyncTest {
         assertEquals(0, api.finalizeCalls)
     }
 
+    @Test fun `청크 응답을 잃으면 같은 세션과 범위로 재전송한 뒤 봉인한다`() = runBlocking {
+        log.sessions += session("long", ended = true)
+        log.fixes["long"] = (0 until 4_500).map { fix(it) }
+        api.appendFails = true
+
+        assertTrue(runCatching { sync.syncPendingSession("token", "long") }.isFailure)
+        assertEquals(WalkSyncState.LOCAL_ONLY, log.sessions.single().syncState)
+        assertNull(log.sessions.single().serverWalkId)
+        assertEquals(0, api.finalizeCalls)
+
+        api.appendFails = false
+        sync.syncPendingSession("token", "long")
+
+        assertEquals(listOf("long", "long"), api.uploaded.map { it.id })
+        assertEquals(listOf(2_000, 2_000, 4_000), api.appended.map { it.first().clientSeq })
+        assertEquals(listOf("server-long" to "long", "server-long" to "long", "server-long" to "long"), api.appendedIds)
+        assertEquals(WalkFinalizeManifest(4_500, 4_499), api.finalized.single().second)
+        assertEquals(WalkSyncState.DERIVED, log.sessions.single().syncState)
+    }
+
+    @Test fun `첫 업로드나 청크 응답 중 계정이 바뀌면 다음 전송과 완료 표시를 멈춘다`() = runBlocking {
+        for (duringCreate in listOf(true, false)) {
+            val log = FakeLog().apply {
+                owner = "first"
+                sessions += session("long", ended = true)
+                sessions += session("next", ended = true)
+                fixes["long"] = (0 until 4_500).map { fix(it) }
+            }
+            val api = FakeApi()
+            if (duringCreate) api.afterUpload = { log.owner = "second" }
+            else api.afterAppend = { log.owner = "second" }
+
+            WalkSync(log, api, warn = { _, _ -> }).syncOnce("old-token")
+
+            assertEquals(1, api.uploadCalls)
+            assertEquals(if (duringCreate) 0 else 1, api.appended.size)
+            assertEquals(0, api.finalizeCalls)
+            assertEquals(0, api.listCalls)
+            assertTrue(log.sessions.all { it.syncState == WalkSyncState.LOCAL_ONLY && it.serverWalkId == null })
+        }
+    }
+
+    @Test fun `봉인 응답 중 계정이 바뀌면 로컬 완료나 후속 업로드를 기록하지 않는다`() = runBlocking {
+        log.owner = "first"
+        log.sessions += session("done", ended = true)
+        api.afterFinalize = { log.owner = "second" }
+        var consumers = 0
+        val sync = WalkSync(log, api, photoSync = { _, _, _ -> consumers++ }, warn = { _, _ -> })
+
+        assertTrue(runCatching { sync.syncPendingSession("old-token", "done") }.isFailure)
+
+        assertEquals(WalkSyncState.RAW_UPLOADED, log.sessions.single().syncState)
+        assertEquals(0, consumers)
+    }
+
+    @Test fun `청크 취소는 조용한 동기화에서도 다음 산책으로 넘어가지 않는다`() = runBlocking {
+        log.sessions += session("long", ended = true)
+        log.sessions += session("next", ended = true)
+        log.fixes["long"] = (0 until 2_500).map { fix(it) }
+        api.afterAppend = { throw kotlinx.coroutines.CancellationException("cancelled upload") }
+
+        val failure = runCatching { sync.syncOnce("token") }.exceptionOrNull()
+
+        assertTrue(failure is kotlinx.coroutines.CancellationException)
+        assertEquals(1, api.uploadCalls)
+        assertEquals(0, api.finalizeCalls)
+        assertEquals(0, api.listCalls)
+        assertTrue(log.sessions.all { it.syncState == WalkSyncState.LOCAL_ONLY })
+    }
+
     /** finalize만 실패하면 원본은 다시 보내지 않고 다음 실행에서 finalize부터 잇는다. */
     @Test
     fun `계산 응답을 못 받으면 raw uploaded에서 finalize만 다시 시도한다`() = runBlocking {
@@ -481,6 +551,10 @@ class WalkSyncTest {
         val uploaded = mutableListOf<RecordedSession>()
         val uploadedPoints = mutableListOf<RecordedFix>()
         val appended = mutableListOf<List<RecordedFix>>()
+        val appendedIds = mutableListOf<Pair<String, String>>()
+        var afterUpload: () -> Unit = {}
+        var afterAppend: () -> Unit = {}
+        var afterFinalize: () -> Unit = {}
         val remote = mutableListOf<RemoteWalkDetail>()
         var uploadFails = false
         var appendFails = false
@@ -490,6 +564,7 @@ class WalkSyncTest {
         var finalizeCalls = 0
         val finalized = mutableListOf<Pair<String, WalkFinalizeManifest>>()
         var detailCalls = 0
+        var listCalls = 0
 
         override suspend fun upload(
             token: String,
@@ -502,15 +577,19 @@ class WalkSyncTest {
             }
             uploaded += session
             uploadedPoints += fixes
+            afterUpload()
             return Result.success("server-" + session.id)
         }
 
         override suspend fun appendPoints(
             token: String,
             walkId: String,
+            clientSessionId: String,
             fixes: List<RecordedFix>,
         ): Result<Unit> {
             appended += fixes
+            appendedIds += walkId to clientSessionId
+            afterAppend()
             if (appendFails) {
                 return Result.failure(IllegalStateException("이어붙이지 못했습니다."))
             }
@@ -527,11 +606,14 @@ class WalkSyncTest {
                 return Result.failure(IllegalStateException("응답을 잃었습니다."))
             }
             finalized += walkId to manifest
+            afterFinalize()
             return Result.success(Unit)
         }
 
-        override suspend fun list(token: String): Result<List<RemoteWalk>> =
-            Result.success(remote.map { it.walk })
+        override suspend fun list(token: String): Result<List<RemoteWalk>> {
+            listCalls++
+            return Result.success(remote.map { it.walk })
+        }
 
         override suspend fun detail(token: String, walkId: String): Result<RemoteWalkDetail> {
             detailCalls++

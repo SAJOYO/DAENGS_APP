@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.care.CareDaySummary
 import com.daengs.app.care.CareEvent
+import com.daengs.app.pet.Pet
 import com.daengs.app.care.CareKind
 import com.daengs.app.care.CareLogState
 import com.daengs.app.chat.ChatApiError
@@ -183,14 +184,53 @@ private fun eventLabel(event: CareEvent, zone: ZoneId): String =
     "${event.kind.label} · ${Instant.ofEpochMilli(event.occurredAtMs).atZone(zone).format(TIME)}"
 
 /**
- * 이 줄에 삭제를 띄울까. 대표는 전부, 돌보미는 **자기가 쓴 것만** 지운다.
+ * 그 **pet 행**이 내 것인가. 케어 기록의 삭제 노출이 이것을 묻는다.
+ *
+ * **목록에 있는 것만으로는 부족하다** — 공동 돌봄으로 참여한 아이도 목록에 있다.
+ * `isOwner` 까지 봐야 서버의 `pets.app_user_id = 나` 와 같은 판정이 된다.
+ *
+ * ## 내가 가진 행이 목록에서 빠질 수는 없나
+ *
+ * 목록은 논리 그룹당 카드 하나로 접히지만, **내가 가진 행은 언제나 그 카드로 남는다.**
+ * 서버 쪽 세 가지가 사슬로 보장한다:
+ *
+ * 1. `repositories/pet.list_accessible` 이 `member_condition`(= `app_user_id = 나` **또는**
+ *    구성원)으로 읽는다 — 내가 가진 행은 첫 조건에서 반드시 들어온다.
+ * 2. `services/pet_identity.collapse` 가 그룹에서 **「내가 대표인 행」을 먼저** 카드로
+ *    고른다. 없을 때만 그룹의 앵커 행을 쓴다.
+ * 3. 부분 UNIQUE `pets_identity_one_per_user (identity_id, app_user_id)` 가 한 사람이 한
+ *    그룹에 행을 둘 가지는 것을 DB 에서 막는다 — 그래서 "내가 대표인 행" 은 많아야 하나다.
+ *
+ * 따라서 내가 가진 행은 **정확히 한 번** 카드로 나오고 그 카드의 `isOwner` 가 참이다.
+ * 셋 중 하나라도 바뀌면 이 판정이 조용히 틀리므로, 여기 적어 둔다.
+ *
+ * 목록을 아직 못 받았으면 전부 false 다 — 못 지우는 쪽으로 기운다.
+ */
+internal fun ownsPetRow(pets: List<Pet>, petId: String): Boolean =
+    pets.any { it.id == petId && it.isOwner }
+
+/**
+ * 이 줄에 삭제를 띄울까. 서버 규칙을 그대로 옮긴 것이다 —
+ * **「내가 쓴 것」 이거나 「그 기록이 달린 행이 내 것」.**
+ *
+ * ⚠️ **「내 대표 강아지가 내 것인가」로 재면 안 된다.** 공동 돌봄이 붙으면서 하루 요약이
+ * **그룹 전체의 기록**을 합쳐 준다 — 남의 행에 달린 남의 기록이 같은 목록에 섞여 온다.
+ * 그런데 옛 판정은 계정의 대표 강아지 하나만 보고 "대표면 전부" 로 열었다. 그러면
+ * 그룹 주보호자에게 남의 기록의 삭제가 뜨고, 눌러야 404 를 안다.
+ *
+ * **[ownsPetRow] 는 `event.petId` 로 묻는다.** 화면에 보이는 표시용 id 가 아니라
+ * **기록이 실제로 달린 행**이다 — 연결된 그룹에서 둘은 다른 값이고, 서버도 그 행의
+ * 소유자를 본다.
  *
  * **작성자를 모르는 기록은 내 것이 아니다.** 옛 기록·탈퇴자의 `actor` 는 id 가 비어
- * 오는데(`CareActor` 머리말), 그때 "모르니까 나겠지" 로 기울면 돌보미가 남의 기록을
- * 지우려다 서버에서 막힌다.
+ * 오는데(`CareActor` 머리말), 그때 "모르니까 나겠지" 로 기울면 지우려다 막힌다.
  */
-internal fun canDeleteCareEvent(event: CareEvent, currentUserId: String?, petIsOwner: Boolean): Boolean {
-    if (petIsOwner) return true
+internal fun canDeleteCareEvent(
+    event: CareEvent,
+    currentUserId: String?,
+    ownsPetRow: (String) -> Boolean,
+): Boolean {
+    if (ownsPetRow(event.petId)) return true
     val authorId = event.actor?.appUserId ?: return false
     return currentUserId != null && authorId == currentUserId
 }

@@ -19,6 +19,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TraceLoadingWalkRecordsSourceTest {
+    @Test fun `route loading delegates locally and rejects an account change during the read`() = runBlocking {
+        val record = record("local", null)
+        var current = true
+        var changeDuringRead = false
+        var reads = 0
+        val full = record.summary.copy(distanceMeters = 123.0)
+        val local = object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selection(record)
+            override suspend fun loadRoute(record: WalkRecord): com.daengs.app.walk.WalkSummary {
+                reads++
+                if (changeDuringRead) current = false
+                return full
+            }
+        }
+        val source = TraceLoadingWalkRecordsSource(local, "owner", { current },
+            { error("route reads must not refresh a token") }, { _, _ -> error("route reads must stay local") })
+        assertSame(full, source.loadRoute(record))
+        changeDuringRead = true
+        assertTrue(runCatching { source.loadRoute(record) }.isFailure)
+        assertTrue(runCatching { source.loadRoute(record) }.isFailure)
+        assertEquals(2, reads)
+    }
+
     @Test fun `local list never calls network and an unuploaded walk needs no session`() = runBlocking {
         val stored = selection(record("local", null))
         val source = source({ stored }, fresh = { error("unexpected login request") }) { _, _ -> error("unexpected HTTP") }

@@ -43,6 +43,22 @@ data class Pet(
     val isPrimary: Boolean,
     /** 이 아이의 대표 보호자인가. false 면 공동 돌봄으로 참여한 아이이며 프로필 변경은 못 한다. */
     val isOwner: Boolean = true,
+    /**
+     * 이 아이가 속한 **논리 그룹**의 주보호자인가.
+     *
+     * **[isOwner] 와 다른 값이다.** 내가 등록한 아이라도 남의 아이와 연결되면 그룹의
+     * 주보호자는 초대한 쪽이고, 나는 내 행의 대표이면서 그룹에서는 공동 보호자다.
+     * 연결이 없는 아이에서는 둘이 **언제나 같다**.
+     *
+     * 그룹 관리 UI(공통 정보 수정·삭제·초대·내보내기·승계)는 **이 값**으로 가른다.
+     * [isOwner] 로 가르면 연결된 공동 보호자에게 버튼이 뜨고, 누르면 서버가 409
+     * (`not_group_owner`) 를 낸다.
+     *
+     * **기본값이 [isOwner] 인 것이 중요하다.** 그냥 `true` 로 두면 돌보미 아이를 코드로
+     * 만들 때 `isOwner=false, isGroupOwner=true` 라는 있을 수 없는 객체가 나온다 —
+     * 연결이 없으면 두 값은 언제나 같다.
+     */
+    val isGroupOwner: Boolean = isOwner,
     /** 이 아이의 정보가 마지막으로 바뀐 시각. **아래 [photoUpdatedAt] 과 다른 값이다.** */
     val updatedAt: String? = null,
     /**
@@ -148,6 +164,9 @@ data class Pet(
             isPrimary = json.optBoolean("is_primary"),
             // #388 전 서버에는 필드가 없다. 배포 순서 동안 기존 소유 아이를 돌보미로 오인하지 않는다.
             isOwner = json.optBoolean("is_owner", true),
+            // 다중 초대 전 서버에는 없다. **기본값을 `is_owner` 로 둔다** — 연결이 없으면
+            // 둘이 같은 값이라, 구 서버에서도 그룹 판정이 지금까지와 똑같이 나온다.
+            isGroupOwner = json.optBoolean("is_group_owner", json.optBoolean("is_owner", true)),
             updatedAt = json.optStringOrNull("updated_at"),
             hasPhoto = json.optBoolean("has_photo"),
             photoUpdatedAt = json.optStringOrNull("photo_updated_at"),

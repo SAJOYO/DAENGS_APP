@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiarySceneText
+
 import com.daengs.app.walk.support.diaryFixture
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -43,7 +45,7 @@ class WalkStoryboardScreenTest {
         val payload = javaClass.getResource("/storyboard/pinless.json")!!.readText()
         val stamp = com.daengs.app.walk.sync.storyboardEntryStamp(emptyList())
         val source = com.daengs.app.walk.store.WalkSceneAnalysisRow("s", 2, stamp, "input", "failed", payload, "error", stamp)
-        val view = com.daengs.app.walk.diary.storyboardAnalysisView(source, emptyList())
+        val view = com.daengs.app.walk.store.storedStoryboardAnalysisView(source, emptyList())
         compose.setContent {
             StoryboardContent(view.bundle!!.scenes.take(1), false, null, false, false, view.canReview,
                 {}, {}, {}, {}, {}, {}, connectionNotice = view.notice)

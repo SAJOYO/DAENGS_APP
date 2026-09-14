@@ -96,4 +96,16 @@ class WalkDiaryReaderTest {
         assertTrue(reader.observe(listOf(summary.copy(sessionId = "open"))).first().isEmpty())
         assertTrue(reader.observe(emptyList()).first().isEmpty())
     }
+
+    @Test fun `계정과 종료 검사를 통과하지 못한 일기는 조립하지 않는다`() = runBlocking {
+        dao.insertEntry(WalkEntryRow("broken", "s", "not an entry", 1, "mutation", false))
+        val records = reader.observe(listOf(summary))
+        assertTrue(runCatching { records.first() }.isFailure)
+        owner = "b"
+        assertTrue(records.first().isEmpty())
+        owner = "a"
+        dao.insertSession(WalkSessionRow("open", 0, "a", null))
+        dao.insertEntry(WalkEntryRow("broken-open", "open", "not an entry", 1, "mutation", false))
+        assertTrue(reader.observe(listOf(summary.copy(sessionId = "open"))).first().isEmpty())
+    }
 }

@@ -1,5 +1,50 @@
 # 기능별 테스트 실행 지도
 
+탐색 상태·Compose 연결 분리 (#401)는 `ui.walk.WalkRouteExplorerLifecycleTest`로 PAUSE/STOP,
+생명주기 소유자 교체·이탈·재진입과 observer 해제를 검사한다. `WalkRouteExplorerStateTest`의
+선택·배속·구형 Saver 복원, `WalkRangeContextTest`의 장면 왕복, `WalkExplorationPersistenceTest`의
+저장 복원과 소비 화면 검사를 함께 선택한다. [분리 경계와 유지할 수명](../../../docs/route-explorer-lifecycle.md).
+
+읽기 준비 패키지 분리 (#400)는 `ui.walk.detail.DiaryReadBoundaryTest`로 상위 화면·저장 구현의
+직접 역참조를 검사한다. 기존 `WalkDiaryReadViewTest`, `WalkMeasurementReadViewTest`,
+`WalkDetailStateTest`, `WalkRangeContextTest`, `WalkRangeContextUiTest`,
+`WalkExplorationBookmarkTest`, `WalkExplorationPersistenceTest`로 준비·계정·선택·복원을 확인하고,
+`WalkDetailDataUiTest`, `WalkReadingBaselineUiTest`, `WalkRouteExplorerStateTest`로 소비 화면과
+탐색 상태를 함께 확인한다. 클래스의 기본 패키지는 `com.daengs.app.ui.walk`다.
+[분리 경계와 보존 조건](../../../docs/diary-read-boundary.md).
+
+실제 지도 탐색 읽기 공간 (#385)은 `WalkExplorerPanelUiTest`의 NOTICES 시나리오와 별도 `MeasurementDeviceTest#verifyExplorerActions`로
+지도 안내가 읽기 영역을 없애지 않는지 확인한다. [실기기 8개 검사와 재현](../../../docs/walk-explorer-usability.md).
+
+시간 탐색 패널 (#383)은 `WalkExplorerPanelUiTest`로 고정 시간 조작·독립 스크롤·구간/재생 모드·장면 왕복과 320dp 큰 글씨를 검사한다.
+복원·기존 열람 회귀 검사와 native 렌더 방법은 [탐색 패널 검증](../../../docs/walk-explorer-panel.md)을 따른다.
+
+시간 구간 복귀·범위 재생 (#381)은 `WalkRangeContextTest`, `WalkRangeContextUiTest`, `MeasurementRangePlaybackTest`로
+구간/장면 왕복·시간 한계·공백·v1/v2·현재 원본·재진입 스크롤을 검사한다. [전체 선택 명령과 검증 경계](../../../docs/walk-range-context.md).
+
+단일 산책 읽기 화면 (#379)은 `DiaryReadingStyleTest`로 참여견·목록/본문 조작·긴 제목/장문·사진 파일 교체·복구 상태를 검사한다.
+기존 열람/지도/복원 회귀 범위와 320/390dp native 렌더 방법은 [읽기 화면 검증](../../../docs/diary-reading-ui.md)을 따른다.
+
+장면 원본 종류 표시 (#377)는 `DiarySceneKindTest`, `DiaryScenePresentationTest`로 판정과 실제 화면의
+같은 스냅샷 사용을 확인한다. 공통 목록/본문을 변경하면 `DiarySceneRemovalUiTest`,
+`WalkDiaryCompactDrawerTest`, `MeasurementTimeControlsTest`, `WalkDiaryMapScreenTest`,
+`WalkDiaryReadViewTest`, `WalkDiaryPhotoUiTest`, `WalkDiaryGapListTest`, `DesignLockTest`를 함께 선택한다.
+[표시 규칙과 렌더 방법](../../../docs/diary-scene-presentation.md).
+
+셀로판 위 액션 핀 (#373)은 `WalkRecordsActionPinsTest`, `WalkRecordsActionPinsUiTest`,
+`WalkRecordsLabNavigationTest`와 기존 `*WalkRecords*Test`, `WalkRouteOverlayStoreTest`,
+`NaverWalkLayerOrderTest`, `DesignLockTest`를 실행한다. 동일 위치 묶음·종류·강아지·출처·숨김,
+셀로판 독립성, 기존 일기 진입/복귀, 갱신·복원 후 선택을 확인한다.
+
+산책 모아보기 표시 정책 (#369)은 `WalkRecordsDisplayPolicyTest`, `WalkRecordsPresenterTest`,
+`WalkRecordsTracesTest`, `WalkRecordsScreenTest`, `WalkRouteOverlayStoreTest`,
+`WalkMapDiagnosticsTest`, `NaverWalkLayerOrderTest`, `DesignLockTest`를 함께 확인한다.
+실행 범위 `--tests '*WalkRecords*Test' --tests '*WalkRouteOverlayStoreTest'
+--tests '*WalkMapDiagnosticsTest' --tests '*NaverWalkLayerOrderTest' --tests '*DesignLockTest'`.
+기기 비교 방법은 [표시 구조](../../../docs/walk-records-display-policy.md)를 따른다.
+`WalkRecordsLabNavigationTest`는 미리보기 카드가 요약 팝업 대신 기존 세션·일기 화면을 열고
+장면을 선택한 뒤 같은 산책별 목록으로 돌아오는지 확인한다.
+
 최초 조사 기준은 2026-09-09 `dev`의 `9bf37188bab0841ac7b682dec1714ca58c893b2f`다.
 이 문서는 변경한 기능에 맞는 테스트를 고르는 지도다. 전체 통과 보고서가 아니다.
 조사 시점에는 Kotlin 테스트 파일 221개에 `@Test` 선언 1,528개가 있었고,
@@ -32,6 +77,104 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## 기능별 선택 범위
 
+### 네이버 지도 현재 위치·얼굴 표시
+
+지도 재생성 시 실제 Surface 준비는 [네이버 지도 실기기 회귀 검사](../../../tools/naver-map-review/README.md)의
+`MapFirstFrameTest`로 확인한다. shadow 검사로 native Surface 생성 여부를 대신 판정하지 않는다.
+
+`map.provider.naver.NaverLocationLayerTest`는 실제 Compose Effect와 SDK shadow로 늦은 지도 준비,
+좌표 누락/갱신, 얼굴 교체, 지도 교체·화면 이탈 때 리스너와 오버레이 수명을 확인한다.
+`LocationAvatarTest`는 사진 우선·발바닥 복구·견종 리소스·기본 아이콘 반환을 검사한다.
+SDK 기본 아이콘과 크기는 지도마다 기억하며, 좌표 갱신으로 얼굴을 다시 만들지 않아야 한다.
+이 레이어는 위치가 없어도 호출을 유지한다. 기기 추적 카메라와 지도 생명주기는 Surface 소유다.
+카메라/상세 연결을 바꾸면 `ui.places.PlaceMapCameraTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`map.shell.MapScenePolicyTest`를 함께 선택한다. 각 클래스 앞에 `com.daengs.app.`을 붙인다.
+SDK shadow는 Windows JVM에서 네이티브 지도 대신 호출을 기록한다. 실제 지도 렌더링과
+앱의 백그라운드 복귀는 실기기 검증 대상이며 이 테스트의 통과 범위에 포함하지 않는다.
+
+### 산책 파트 슬롯 미리보기
+
+`walk.diary.DiarySlotPreviewTest`는 DEV 미리보기 응답·인증·산책/계정 대응·동기화·취소를,
+`ui.walk.DiarySlotPreviewScreenTest`는 명시적 생성·중복 탭·실패 재시도·세 파트·희소 자료 표시를 확인한다.
+`ui.walk.DiarySlotEvidenceTextTest`는 기온 누락/null·0도·0초·원본 시간대 표시를 확인한다.
+공통 상세 메뉴를 변경하면 `ui.walk.WalkDiaryMapScreenTest`와 `ui.walk.WalkSessionDetailUiTest`를 함께 선택한다.
+설명 비교는 `walk.diary.DiaryPlaceComparisonTest`와 `ui.walk.DiaryPlaceComparisonUiTest`로 확인한다.
+UI 검사는 설명 전환 전후의 선택 장면·경로 안내·지도 배치 유지와 추가 생성 호출이 없는지도 확인한다.
+공용 `walk.support.DiarySlotResources`가 읽는 `diary-slots-preview-v1.json`은 DEV 합성 산책의
+실제 Gemini 출력이다. `diary-slots-preview-v3.json`은 최신 DEV 선정/조립 코드를 실행한
+합성 기온·고정 writer fixture이며, 실제 기상청/Gemini 호출 결과와 구별한다.
+fixture를 바꾸면 미리보기 API와 화면 테스트 두 클래스를 함께 실행한다.
+[정확한 명령·서버 조건·검증 한계](../../../docs/diary-slot-preview.md).
+
+### 산책 업로드 수신 확인
+
+`walk.sync.WalkUploadReceiptTest`는 새/구형 응답 검증, `WalkUploadHttpTest`는 실제 loopback
+HTTP 요청·응답·오류, `WalkUploadSyncTest`는 수신 확인과 Room 상태 전이의 연결을 검사한다.
+동기화 순서와 계정 변경은 `WalkSyncTest`, GPS 확인/보완은 `WalkRecordingSyncTest`, 측정 자료
+소비자는 `WalkMotionSyncTest`, 실제 원본 상태 저장은 `walk.store.WalkDaoTest`를 함께 선택한다.
+각 클래스 앞에 `com.daengs.app.`을 붙인다. [계약과 실행 명령](../../../docs/walk-upload-receipts.md).
+
+### 산책 종료·기록 공통 상세와 동선 탐색
+
+시간 탐색/영속 복원은 `walk.routeexplorer.MeasurementTimelineTest`, `ui.walk.MeasurementTimeControlsTest`,
+`ui.walk.WalkExplorationBookmarkTest`, `ui.walk.WalkExplorationPersistenceTest`,
+`walk.store.WalkExplorationStoreTest`를 선택한다. source/clock 시간 주소·실제 패널 조작·본문/서랍 복원·
+지연 읽기와 선행 조작·새 DB 연결의 재열람을 대조한다. `walk.store.WalkMigrationTest`는 19→20과
+이전 원본 보존을, `walk.detail.StoredWalkDetailDataTest`는 로그인 generation 경계를 검사한다.
+시간축 공용 helper `measuredTimedDetail`은 `MeasurementTimelineTest.kt`에 있고 bookmark/UI 검사가 소비한다.
+[전체 선택 범위와 실기기 검증 한계](../../../docs/walk-exploration-restore.md).
+
+저장 관측 보조선은 `walk.routeexplorer.MeasurementObservedReviewTest`,
+`ui.walk.MeasurementObservedPresentationTest`, `walk.sync.WalkMeasurementTest`로 검증한다.
+원본 구간·방향·공백 자료 공급과 DEV 최종 구간 분류의 32개 공통 사례를 대조한다.
+공용 합성 helper `walk.routeexplorer.MeasurementObservedFixtures.kt`는 두 observed 검사와
+`ui.walk.DiaryMapNavigationTest`가 사용한다. 지도 선택/서랍 변경은 기존 `DiaryMapNavigationTest`,
+`WalkReadingBaselineUiTest`, `WalkRecordOverviewUiTest`, `DesignLockTest`도 함께 검사한다.
+[선택 명령·실기기 검증 한계](../../../docs/walk-measurement-observed.md).
+
+저장 측정의 장면 연결은 `walk.routeexplorer.MeasurementSceneReviewTest`,
+`MeasurementScenePinTest`, `ui.walk.WalkMeasurementReadViewTest`, `DiaryMapNavigationTest`를 선택한다.
+`walk.sync.WalkMeasurementTest`의 공통 32사례·Room 재열람과 `ui.walk.WalkDetailDataUiTest`의
+실제 상세/서랍 복원, 기존 `WalkDiary*`, `CompletedRouteReviewTest`, `DesignLockTest`도 함께 본다.
+[원본 주소와 revision 계약](../../../docs/walk-measurement-scenes.md).
+
+상세 상태 분리(#361)는 `ui.walk.WalkDetailStateTest`에서 조회/준비 실패 재시도,
+기록·장면·생성 중복 차단, 취소·계정 교체, 삭제 후 늦은 작업의 간섭 차단과 읽기 일괄 반영을 확인한다.
+`ui.walk.WalkDetailDataUiTest`는 실제 편집창의 제목/본문이 실패 뒤 유지되고 성공할 때 닫히는지도 확인한다.
+텍스트필드가 든 네이티브 다이얼로그는 Robolectric에서 idle이 되지 않아 기존 container 주입 지점을 사용한다.
+함께 선택할 회귀는 `ui.walk.WalkDiaryReadViewTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `walk.detail.StoredWalkDetailDataTest`, `DesignLockTest`다.
+
+상세 데이터 경계(#358)는 `walk.detail.StoredWalkDetailDataTest`에서 실제 Room을 사용해
+저장/삭제 후 예약, 예약 실패 뒤 영속 상태, 편집 충돌, 인증/동기화 순서, 취소·재로그인,
+장면 공개/편집과 사진 정리를 확인한다. 네트워크·인증·예약은 대역이므로 실제 서버 전송 성공을 뜻하지 않는다.
+`ui.walk.WalkDetailDataUiTest`는 앱 전역 객체 없이 실제 상세 화면에 계약을 주입해
+중복 생성 차단·실패 재시도·공개 일기 새로고침·상세 교체 시 취소를 확인한다.
+`ui.walk.WalkDiaryReadViewTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `walk.store.WalkEntryStoreTest`,
+`walk.diary.WalkDiaryPublicationTest`, `DesignLockTest`를 함께 선택한다.
+각 클래스 앞에는 `com.daengs.app.`을 붙인다. 이 묶음은 네이티브 지도 실기기 검증을 포함하지 않는다.
+
+#333의 구간·장면 선택은 `walk.routeexplorer.CompletedRouteReviewTest`,
+`ui.walk.WalkRouteExplorerStateTest`, `ui.walk.WalkDiaryMapScreenTest`,
+`ui.walk.WalkCompletedRoutePresentationTest`, `map.layers.completedroute.SessionRouteExplorerLayerStateTest`로
+확인한다. 각 클래스 앞에는 `com.daengs.app.`을 붙인다. 장면 위치 시각은
+`walk.diary.ServerDiaryBundleTest`, 원본 시각 보존은 `walk.WalkSessionRouteTest`와 함께 본다.
+[구간과 장면 대응 계약](../../../docs/walk-route-section-selection.md).
+
+새 상세 경계는 WalkSessionDestinationTest, WalkSessionDetailUiTest,
+WalkRouteExplorerStateTest로 확인한다. 지도 배치는
+map.layers.completedroute.RouteDirectionLayoutTest, 단일 세션 통과·재생 계산은
+walk.routeexplorer.RouteExplorerIndexTest가 담당한다.
+기록 진입/편집을 바꾸면 기존 WalkRecordsRouteStateTest, ui.walk.records.WalkRecordsRouteTest,
+WalkRecordsScreenTest, WalkDiaryMapScreenTest, WalkDiaryReaderTest, WalkDiaryPublicationTest를
+해당 변경 경계에 맞게 추가한다. 실제 지도 SDK의 가시성은 JVM 테스트 통과와 구별한다.
+[상세 계약과 기기 확인 범위](../../../docs/walk-session-detail.md)를 참고한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.routeexplorer.RouteExplorerIndexTest' --tests 'com.daengs.app.ui.walk.WalkRouteExplorerStateTest' --tests 'com.daengs.app.map.layers.completedroute.RouteDirectionLayoutTest'
+```
+
 표의 각 선택자를 `--tests '선택자'`로 붙인다. 테스트 파일은 이 문서 아래
 `java/com/daengs/app/`에 있고, 앱 코드의 같은 패키지와 연결된다.
 
@@ -53,13 +196,45 @@ JDK·SDK 준비는 [루트 README](../../../README.md)의 설치 안내를 따�
 
 ## GPS 이동 정책 엔진 (#294)
 
+#330의 경로 백업 안내는 `walk.sync.WalkRouteBackupSourceTest`,
+`ui.walk.WalkRouteBackupStatusTest`(앞에 `com.daengs.app.`)를 선택한다.
+상세 배치와 재전송 연결 소비자는 `ui.walk.WalkSessionDetailUiTest`, `walk.sync.WalkDeliveryTest`다.
+[표시 및 재전송 범위](../../../docs/gps-route-backup-status.md).
+
+#327의 정밀 백업/계산 대조는 `com.daengs.app.walk.sync.WalkPrecisionSyncTest`가 담당한다.
+32개 공동 입력은 Python 예상값과 실제 Kotlin 엔진을 비교한다. Room 17→18 이관은
+`WalkMigrationTest`, 기존 전송/복원은 `WalkMotionSyncTest`, `WalkSyncTest`,
+수신·조회 소비자는 `RecordingJournalTest`, `WalkDaoTest`, `WalkSpeedServiceTest`를 선택한다.
+[원본 출처·완료 상태·복원 계약](../../../docs/gps-motion-precision.md).
+
+#325의 서버 백업/복원은 `com.daengs.app.walk.sync.WalkMotionSyncTest`가 담당한다.
+Room 이관/수신 저장 변경은 `WalkMigrationTest`, `RecordingJournalTest`를,
+기존 전송 연결 변경은 `WalkSyncTest`, `WalkRecordingSyncTest`, `WalkDeliveryTest`,
+`WalkSpeedServiceTest`를 해당 경계에 따라 추가한다. 별도 DB나 서버 계정 없이 실행하며
+공통 지문 fixture와 실제 SQLite를 쓴다. [계약·실증 범위](../../../docs/gps-motion-sync.md).
+
 `com.daengs.app.walk.motion.*`는 Android 없는 순수 엔진의 동결 정책, 위치·속도 품질,
 고속 뒤 재진입·구간 장벽, 작은 보폭 누적, 시각 역행·중복·누락, 개별/배치 재생 일치와
 제한된 관측 창을 검증한다. `RecordedMotionReplayTest`는 #283 완료 epoch와 원본 번호를
 대조한다. 원본/epoch 계약을 바꾸면 `RecordingJournalTest`, `RecordingCompletionTest`도
 선택한다. legacy reader를 바꾸면 `TrailRecorderTest`, `WalkSummaryTest`를 추가한다.
 #307의 `WalkSpeedRuntimeTest`와 `WalkSpeedServiceTest`는 운영 속도 표시 연결을 검사한다.
-거리·요약은 기존 계산이며, 이 테스트가 실기기 주행 검증은 아니다.
+#319부터 새 산책의 거리·요약까지 연결한다. 이 테스트가 실기기 주행 검증은 아니다.
+
+#313 정책 저장·비교는 위 `MotionPolicyTest`, `RecordedMotionReplayTest`,
+`WalkSpeedRuntimeTest`에 더해 `RecordingJournalTest`의 실제 파일 재개방과
+`WalkMigrationTest`의 15→16 이관, `WalkSpeedServiceTest`의 서비스/저장 정책 일치를
+검증한다. 세션 모델·Room 변경의 기존 소비자는 `WalkDaoTest`, `WalkTrackingTest`,
+`WalkSummaryTest`로 확인한다. 비교 정책의 상세 범위는
+[저장 계약](../../../docs/gps-policy-persistence.md)을 따른다.
+
+#319의 측정 연결은 위 엔진·정책·재생·runtime·service·journal·completion에 더해
+`WalkSessionRouteTest`, `WalkHistoryTest`, `RoomWalkRecordsSourceTest`,
+`WalkDiaryPublicationTest`, `WalkDiaryPublicationLifecycleTest`로 완료 소비자를 확인한다.
+`WalkDaoTest`, `WalkTrackingTest`, `WalkSummaryTest`는 기존 저장/요약,
+`WalkSyncTest`, `WalkRecordingSyncTest`는 v1과 eligibility 전송 경계다.
+새 채택 마커·고속/재진입·경로 상한·STOP 시각 일치·단조 시간축·60초/50m 경계·파일
+재개방을 기존 클래스에 추가했다. [적용 및 서버 후속 계약](../../../docs/gps-measurement-integration.md)을 따른다.
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*'
@@ -238,6 +413,65 @@ JSON fixture·제목·검색 seed를 바꾸면 아래 공용 helper 표의 소�
 사용자 폰 검증을 대신하지 않는다. 인증·Room·원판 조회 계약까지 바꿀 때는 아래 해당
 경계의 테스트만 추가하고, 화면 연결 때문에 전체 테스트를 실행하지 않는다.
 
+## 산책 기록의 공통 상단·통합 조건
+
+그림자 A안은 `WalkRecordsTracesTest`에서 1/2/3–4/5–7/8회 이상 농도, 숨김·복원,
+이웃 번짐의 허위 겹침 방지, 서로 다른 정책의 옅은 표시를 검증한다. `TraceBrushTest`는
+농도 필드의 타일 경계 연속성과 취소를, `WalkRecordsScreenTest`는 고정 농도 범례를 검증한다.
+선택 동선은 `RoomWalkRecordsSourceTest`에서 원래 시각과 썸네일 축약을 구분하고,
+`WalkRecordsScreenTest`는 이전 선택의 늦은 응답, `TraceLoadingWalkRecordsSourceTest`는
+계정 변경 뒤 원본 조회 결과 차단을 검증한다. 기존 동선 색 유지 검증은 `WalkRouteOverlayStoreTest`다.
+그리기 순서는 `NaverWalkLayerOrderTest`에서 셀로판이 명시한 경로 층과 SDK 기본 경로 층보다
+아래이고 경로가 지도 지명·표식보다 아래인지 확인한다. 이전 `-100` 셀로판 역전 회귀를 잡는다.
+
+```powershell
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest -PsideBySide=true -PslimAbi=arm64-v8a --tests '*WalkRecords*Test' --tests '*TraceBrushTest' --tests '*DesignLockTest' --console=plain
+```
+
+상단·선택창 변경은 `ui.walk.records.WalkRecordsFiltersTest`(5마리 복수 선택, 취소,
+빈 부분집합 금지, 기간과 함께 적용, 편집본/확정값 복원, 검색 취소, 320dp/큰 글자)와
+`WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`로 좁힌다.
+`WalkRecordsScreenTest`는 행동 조건의 목록/지도 동일 집합과 탭 전환의 상단 좌표를,
+`WalkRecordsMapFrameTest`는 메뉴·겹침 기준·목록 펼치기 중 지도 크기를 확인한다.
+강아지 집합 조회를 변경하면 `WalkRecordsSelectionTest`, `RoomWalkRecordsSourceTest`,
+`TraceLoadingWalkRecordsSourceTest`를 더해 중복 없는 OR 선택·행동 귀속·조회 경계를 확인한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsFiltersTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' --tests 'com.daengs.app.walk.records.WalkRecordsSelectionTest' --tests 'com.daengs.app.walk.records.RoomWalkRecordsSourceTest' --tests 'com.daengs.app.walk.records.TraceLoadingWalkRecordsSourceTest' -PslimAbi=x86_64 --console=plain
+```
+
+합성 화면 렌더는 `app/build/outputs/records-filters/`에 저장한다. 실제 강아지 사진·
+네이버 지도·사용자 폰 검증을 대신하지 않는다. 위 명령은 실행 지도이며 통과 기록이 아니다.
+
+## 산책 기록의 날짜별 목록
+
+`WalkRecordsListTest`는 시작 날짜의 시간대·연도/자정 경계, 같은 날짜 머리글,
+카드별 상세 진입, 제목/경로/프로필 누락, 큰 글자·5마리, 페이지·탭·스크롤 복원을 확인한다.
+`WalkRecordsFiltersTest`는 프로필 로딩과 선택한 강아지의 일부/전체 삭제도 확인한다.
+새 목록의 소비자는 `WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRouteStateTest`다.
+공통 상세 연결을 함께 갱신하면 `WalkSessionDestinationTest`, `WalkSessionDetailUiTest`를 추가한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsListTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsFiltersTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkRecordsRouteStateTest' -PslimAbi=x86_64 --console=plain
+```
+
+합성 기록의 렌더는 `app/build/outputs/records-list/`에 생성한다. 실제 지도·사용자 기록의
+실기기 검증과는 별개다. 이 변경은 기존 `WalkHistoryBrowser`의 카드·조회에는 적용하지 않는다.
+
+## 지도 중심 모아보기와 행동별 겹침
+
+`WalkRecordsMapFrameTest`는 접힌 지도 면적, 손잡이 드래그, 탭·저장 복원의 펼침 상태,
+행동 관련 산책만의 겹침 계산, 숨김 후 원래 집계 유지, 위치 없는 행동 복귀와 320dp/큰 글자를 확인한다.
+`WalkRecordsScreenTest`, `WalkRecordsRouteTest`, `WalkRecordsRefreshTest`는 선택·숨김·상세·갱신 소비자이며,
+`WalkRecordsFiltersTest`는 상단 조건 아이콘과 독립 선택창을 확인한다.
+
+```powershell
+.\gradlew.bat :app:testDebugUnitTest --tests 'com.daengs.app.ui.walk.records.WalkRecordsMapFrameTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsFiltersTest' --tests 'com.daengs.app.ui.walk.records.WalkRecordsRouteTest' --tests 'com.daengs.app.ui.walk.WalkRecordsScreenTest' --tests 'com.daengs.app.ui.walk.WalkRecordsRefreshTest' -PslimAbi=x86_64 --console=plain
+```
+
+합성 UI 렌더는 `app/build/outputs/records-map/`에 저장한다. 지도 SDK 카메라·타일·핀의 실제 표시와
+손가락 조작은 실기기에서 확인해야 하며, JVM 렌더 결과와 구별한다.
+
 ## 산책 기록의 실제 원판 조회
 
 `walk/records/WalkRecordSheetsTest`는 DEV 직렬화 fixture의 산책 매핑·원판 정책·셀 계약과
@@ -392,3 +626,13 @@ nullable `File.parentFile` 경고가 있었다. 전체 테스트·APK·실기기
   실제 저장·복구·전송 계약은 관련 Room 테스트와 묶는다.
 - 결과에는 기준 커밋·명령·실행 수·실패·skip·미검증 범위를 적는다.
 - 대응 테스트가 없으면 검증 공백으로 남긴다. 전체 실행이나 새로운 설치 도구로 대신하지 않는다.
+
+## 전봇대 객체 재사용
+
+`map/provider/naver/TerritoryOverlayStoreTest`는 ID별 본체 유지·변경분 반영·지도 수명 정리와 효과 취소를 SDK handle 대역으로 검증한다. 이 경계를 바꾸면 `TerritoryPoleArtTest`와 `TerritoryBoardPresentationTest`를 함께 선택한다. 실제 네이버 SDK의 클릭·범위 원·네 가지 색상은 Debug `TerritoryPerformanceLabActivity`와 `TerritoryPoleLabActivity`에서 확인한다. 가상 장소 측정 방법과 지표 한계는 [전봇대 성능 검증](../../../docs/territory-overlay-performance.md)에 있다. 전체 테스트로 확대하지 않는다.
+
+### 전봇대 효과 대상 갱신 (2단계)
+
+store의 현재/이전 대상·새 범위 원 초기화·프레임 목록 재사용을 바꾸면 `TerritoryOverlayStoreTest`와 유한 애니메이션 소비자인 `ui.walk.TerritoryFeedbackUiTest`만 선택한다. 이미지와 회원 소유 매핑 변경이 없으면 1단계의 이미지·보드 테스트를 반복할 필요가 없다. Debug 비교의 handleFrames는 FPS가 아닌 처리 대상 호출 수다.
+
+`WalkRecordsPinClusteringTest`는 44dp 근접 묶음의 연쇄 방지·확대 분리·동일 좌표 유지·배지 충돌을 검사한다. `WalkRecordsActionPinsUiTest`는 공간 묶음의 구성원 키를 상세 복귀/상태 복원 후에도 유지하는지 포함한다.

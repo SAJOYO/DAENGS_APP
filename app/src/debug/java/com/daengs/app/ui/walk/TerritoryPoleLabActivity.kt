@@ -19,8 +19,34 @@ import com.daengs.app.ui.theme.DaengsTheme
 class TerritoryPoleLabActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent.getBooleanExtra("measureIcons", false)) measureIcons()
         setContent { DaengsTheme { TerritoryPoleLab() } }
     }
+    // 새 프로세스 첫 호출 / 같은 프로세스 Activity 재진입을 각각 측정한다.
+    // PNG 압축과 파일 저장, 지도 SDK/GPU 업로드는 시간에 포함하지 않는다.
+    private fun measureIcons() {
+        val legacy = intent.getBooleanExtra("legacyIcons", true)
+        val export = intent.getBooleanExtra("exportIcons", false)
+        val perStyle = mutableListOf<Double>()
+        val bitmaps = TerritoryPoleStyle.entries.map { style ->
+            val start = System.nanoTime()
+            val bitmap = if (legacy) renderTerritoryPole(this, style.occupancy, style.isMine)
+                else territoryMarkerIcon(this, style.occupancy, style.isMine)
+            perStyle += (System.nanoTime() - start) / 1_000_000.0
+            bitmap
+        }
+        android.util.Log.i("TerritoryIcons", "mode=${if (legacy) "compose" else "load"} " +
+            "pid=${android.os.Process.myPid()} totalMs=${perStyle.sum()} perStyleMs=$perStyle")
+        bitmaps.forEachIndexed { index, bitmap ->
+            if (export) {
+                val name = TerritoryPoleStyle.entries[index].name.lowercase(java.util.Locale.ROOT)
+                val file = java.io.File(filesDir, "territory_pole_$name.png")
+                file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            }
+            bitmap.recycle()
+        }
+    }
+
 }
 
 @Composable

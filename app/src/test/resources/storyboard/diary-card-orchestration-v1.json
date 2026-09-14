@@ -1,0 +1,426 @@
+{
+  "format": "walk-diary-board-response-v1",
+  "session_id": "e8117d64-0778-4d9b-a457-86f3a80568be",
+  "generation": 1,
+  "input_revision": "b951c69a1f90d538a655afb47df50d535ed67834de7ddbfd86d08374bb421c49",
+  "status": "ready",
+  "entry_revisions": {
+    "d630fb42-7508-4a7f-bf6e-0fc77eca84c5": 2,
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa": 2
+  },
+  "photos_status": "not_available",
+  "photo_manifest": null,
+  "target_scene_count": 3,
+  "preparation_counts": {
+    "target": 3,
+    "user_records": 2,
+    "initial_deficit": 1,
+    "supplemented": 1,
+    "remaining_deficit": 0,
+    "total": 5,
+    "checkpoints": 0,
+    "boundaries": 2,
+    "intermediate_total": 3
+  },
+  "preparation_limits": [
+    "photo_metadata_not_available"
+  ],
+  "background_update_available": false,
+  "bundle": {
+    "format": "walk-diary-board-v1",
+    "client_session_id": "e8117d64-0778-4d9b-a457-86f3a80568be",
+    "input_revision": "8fba2e66adbab455d8b6c46b3a9308191d0a05fbc79b687296be2a64544655d8",
+    "plan_revision": "3cd6824707e4f8c3cc57810213105d04936e565e07c753bff6c6f7d0a656c7e0",
+    "title": "2026.09.09 산책",
+    "model_status": "accepted",
+    "failure_code": null,
+    "scenes": [
+      {
+        "id": "stamp:42c920273123b408f70659c3302e9e8d6a8eef9c39aad710cb00fc37271ef965",
+        "order": 1,
+        "core": {
+          "identity": "boundary:58e2914161651876d625cb3c8ddb6c2231ed2ef57ec67a247343742e32bac7e1",
+          "version": "ee3cea9cd756f14cce71582ecbe0fae1da8041c125ad8aed636042be8f69e0ff"
+        },
+        "kind": "session_boundary",
+        "anchor": {
+          "event_at": "2026-09-09T00:00:00Z",
+          "time_basis": "route_observation",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:00:00Z",
+          "accuracy_m": 5.0,
+          "position_state": "resolved",
+          "method": "observed",
+          "source_fixes": [
+            {
+              "client_seq": 0,
+              "chain_index": 0,
+              "at": "2026-09-09T00:00:00Z"
+            }
+          ]
+        },
+        "title": "산책길에서 남긴 기록",
+        "body": "이 부근에 길이 있다.",
+        "user_record": null,
+        "observation": null,
+        "checkpoint": null,
+        "boundary": "start",
+        "place_reference": [
+          {
+            "id": "slot:d2d13a76ff0a062bd6fadde12a6fcb33f3ebe810a39de0ef6d52697bc8573e4e",
+            "background_id": "normalized:5e89aa25c8a8aa5807a9f74e8723d5aa8b84972ebd5896e7348d1339d5d021c3",
+            "kind": "place_reference",
+            "schema_version": "sgis-dong-v1",
+            "facts": {
+              "dong": "도곡1동",
+              "sido": "서울특별시",
+              "sigungu": "강남구",
+              "address_type": "administrative_dong",
+              "source_ref": {
+                "source": "sgis",
+                "ref": "11:680:655"
+              },
+              "reference": "coordinate_reverse_geocoded_dong",
+              "position_method": "observed",
+              "location_basis": "original_location",
+              "temporal_basis": "lookup_snapshot",
+              "retrieved_at": "2026-09-13T14:41:55.069424+00:00"
+            }
+          }
+        ],
+        "writing": {
+          "format": "diary-card-narrative-v1",
+          "content_revision": "8478663e1b299fe8c5d08db684fc1a5dbdfe444cf90d30ea6d4dba69d41b371f",
+          "space": {
+            "text": "이 부근에 길이 있다.",
+            "origin": "generated",
+            "action_id": null,
+            "actor_id": null
+          },
+          "actions": [],
+          "original_text": null,
+          "title_origin": "generated",
+          "title_based_on_content_revision": "8478663e1b299fe8c5d08db684fc1a5dbdfe444cf90d30ea6d4dba69d41b371f"
+        }
+      },
+      {
+        "id": "stamp:9e10234e34fd86bbc3829155a4d581476eedc6ad6f1f00a3c35b839ec7f7cb1b",
+        "order": 2,
+        "core": {
+          "identity": "walk_entry:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "version": "b3ee94779f58c9cd7954d73f929bb7adf9d0157d750932b9b50bc929ed3404e5"
+        },
+        "kind": "user_record",
+        "anchor": {
+          "event_at": "2026-09-09T00:00:00Z",
+          "time_basis": "recorded_at",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:00:00Z",
+          "accuracy_m": 5.0,
+          "position_state": "legacy",
+          "method": "last_known",
+          "source_fixes": []
+        },
+        "title": "산책길에서 남긴 기록",
+        "body": "이 부근에 길이 있다.\n보리가 냄새를 맡았다.",
+        "user_record": {
+          "kind": "behavior",
+          "code": "sniffing",
+          "pet_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        },
+        "observation": null,
+        "checkpoint": null,
+        "boundary": null,
+        "place_reference": [
+          {
+            "id": "slot:03c71474d2ddf39404c2e07e6e9336300975c7c746ef79f0122057d155c7de75",
+            "background_id": "normalized:a9500ba66b6ca4e16f249d1a7aeb802f1d82d9e1129cc427743fed1c78251b7e",
+            "kind": "place_reference",
+            "schema_version": "sgis-dong-v1",
+            "facts": {
+              "dong": "도곡1동",
+              "sido": "서울특별시",
+              "sigungu": "강남구",
+              "address_type": "administrative_dong",
+              "source_ref": {
+                "source": "sgis",
+                "ref": "11:680:655"
+              },
+              "reference": "coordinate_reverse_geocoded_dong",
+              "position_method": "last_known",
+              "location_basis": "original_location",
+              "temporal_basis": "lookup_snapshot",
+              "retrieved_at": "2026-09-13T14:41:55.069424+00:00"
+            }
+          }
+        ],
+        "writing": {
+          "format": "diary-card-narrative-v1",
+          "content_revision": "433a0276d4760a0ed048df604faab9aee60d2219c787d8781fdedb9d8de86c32",
+          "space": {
+            "text": "이 부근에 길이 있다.",
+            "origin": "generated",
+            "action_id": null,
+            "actor_id": null
+          },
+          "actions": [
+            {
+              "text": "보리가 냄새를 맡았다.",
+              "origin": "generated",
+              "action_id": "action:89f7f67ca611608a96f4fb3be0fb8b321743611120c55bba1487bbe1982e2566",
+              "actor_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+            }
+          ],
+          "original_text": null,
+          "title_origin": "generated",
+          "title_based_on_content_revision": "433a0276d4760a0ed048df604faab9aee60d2219c787d8781fdedb9d8de86c32"
+        }
+      },
+      {
+        "id": "stamp:0c8729d27d49660b3d0494fdaa1486cf57562a73117f5aae99c33649a1fd2f1a",
+        "order": 3,
+        "core": {
+          "identity": "walk_entry:d630fb42-7508-4a7f-bf6e-0fc77eca84c5",
+          "version": "dc9b3b39bd67f3bc5c29616c9851df946b48ab9cd55db8a4b678c49e39cbc083"
+        },
+        "kind": "user_record",
+        "anchor": {
+          "event_at": "2026-09-09T00:00:00Z",
+          "time_basis": "recorded_at",
+          "point": {
+            "lat": 37.5,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:00:00Z",
+          "accuracy_m": 5.0,
+          "position_state": "legacy",
+          "method": "last_known",
+          "source_fixes": []
+        },
+        "title": "산책길에서 남긴 기록",
+        "body": "이 부근에 길이 있다.\n  있는 그대로\n  ",
+        "user_record": {
+          "kind": "note",
+          "text": "  있는 그대로\n  "
+        },
+        "observation": null,
+        "checkpoint": null,
+        "boundary": null,
+        "place_reference": [
+          {
+            "id": "slot:cf1c7281e0c117d8755b79c82faa3fcdecf5226dbe9f94a8eedf499ec3b814c5",
+            "background_id": "normalized:a09208cd0898ef80e813d38d076d2fb5c07c6036a531a98999823f52b396affc",
+            "kind": "place_reference",
+            "schema_version": "sgis-dong-v1",
+            "facts": {
+              "dong": "도곡1동",
+              "sido": "서울특별시",
+              "sigungu": "강남구",
+              "address_type": "administrative_dong",
+              "source_ref": {
+                "source": "sgis",
+                "ref": "11:680:655"
+              },
+              "reference": "coordinate_reverse_geocoded_dong",
+              "position_method": "last_known",
+              "location_basis": "original_location",
+              "temporal_basis": "lookup_snapshot",
+              "retrieved_at": "2026-09-13T14:41:55.069424+00:00"
+            }
+          }
+        ],
+        "writing": {
+          "format": "diary-card-narrative-v1",
+          "content_revision": "c4b2e166d25e4f720de4e405aed0ce3237af3eaecc3c198abf8f5be8a3c9d7ca",
+          "space": {
+            "text": "이 부근에 길이 있다.",
+            "origin": "generated",
+            "action_id": null,
+            "actor_id": null
+          },
+          "actions": [],
+          "original_text": "  있는 그대로\n  ",
+          "title_origin": "generated",
+          "title_based_on_content_revision": "c4b2e166d25e4f720de4e405aed0ce3237af3eaecc3c198abf8f5be8a3c9d7ca"
+        }
+      },
+      {
+        "id": "stamp:b0a9f58e739c85bb7f995d2508d36f15f96c349e4f4442288aa890f513647b71",
+        "order": 4,
+        "core": {
+          "identity": "observation:motion:8d42d5551a056a931664ad369ebc4be9cea41e7138c4ca310b60d3722c008c4d",
+          "version": "e8a2150d2a68d8fb9e981b51a73f8f0d9991bc5abf820be42d8ae28df24581ca"
+        },
+        "kind": "movement_observation",
+        "anchor": {
+          "event_at": "2026-09-09T00:01:10Z",
+          "time_basis": "route_observation",
+          "point": {
+            "lat": 37.501079,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:01:10Z",
+          "accuracy_m": 5.0,
+          "position_state": "resolved",
+          "method": "observed",
+          "source_fixes": [
+            {
+              "client_seq": 7,
+              "chain_index": 0,
+              "at": "2026-09-09T00:01:10Z"
+            }
+          ]
+        },
+        "title": "산책길에서 남긴 기록",
+        "body": "이 부근에 길이 있다.",
+        "user_record": null,
+        "observation": {
+          "id": "motion:8d42d5551a056a931664ad369ebc4be9cea41e7138c4ca310b60d3722c008c4d",
+          "version": "2bf7648bb839996f0446cdd67c60c67c09b41979224b8f2b477178df3efe6e70",
+          "analysis_id": "00000000-0000-0000-0000-000000000063",
+          "kind": "observed_dwell",
+          "subject": "recording_device",
+          "action_meaning": "not_inferred",
+          "started_at": "2026-09-09T00:01:00Z",
+          "ended_at": "2026-09-09T00:01:30Z",
+          "anchor": {
+            "event_at": "2026-09-09T00:01:10Z",
+            "time_basis": "route_observation",
+            "point": {
+              "lat": 37.501079,
+              "lng": 127.0
+            },
+            "location_at": "2026-09-09T00:01:10Z",
+            "accuracy_m": 5.0,
+            "position_state": "resolved",
+            "method": "observed",
+            "source_fixes": [
+              {
+                "client_seq": 7,
+                "chain_index": 0,
+                "at": "2026-09-09T00:01:10Z"
+              }
+            ]
+          }
+        },
+        "checkpoint": null,
+        "boundary": null,
+        "place_reference": [
+          {
+            "id": "slot:69f769f1dc525d2aad32079909a9c07a3091e7ffdd6597eb1e0bba2177e03b1d",
+            "background_id": "normalized:f876fea114e265f8818bd62ec660b64b20b5ad8a499adab0020a6705330a7709",
+            "kind": "place_reference",
+            "schema_version": "sgis-dong-v1",
+            "facts": {
+              "dong": "도곡1동",
+              "sido": "서울특별시",
+              "sigungu": "강남구",
+              "address_type": "administrative_dong",
+              "source_ref": {
+                "source": "sgis",
+                "ref": "11:680:655"
+              },
+              "reference": "coordinate_reverse_geocoded_dong",
+              "position_method": "observed",
+              "location_basis": "original_location",
+              "temporal_basis": "lookup_snapshot",
+              "retrieved_at": "2026-09-13T14:41:55.071139+00:00"
+            }
+          }
+        ],
+        "writing": {
+          "format": "diary-card-narrative-v1",
+          "content_revision": "6db22384450d21cd41094e7532f8e5e7e676f9bba97d63f46c12a7b22e1886e7",
+          "space": {
+            "text": "이 부근에 길이 있다.",
+            "origin": "generated",
+            "action_id": null,
+            "actor_id": null
+          },
+          "actions": [],
+          "original_text": null,
+          "title_origin": "generated",
+          "title_based_on_content_revision": "6db22384450d21cd41094e7532f8e5e7e676f9bba97d63f46c12a7b22e1886e7"
+        }
+      },
+      {
+        "id": "stamp:378aba32c430d8310a23e319bba1ddc261c4cb0a711f6497131feb1fc412d5c5",
+        "order": 5,
+        "core": {
+          "identity": "boundary:ec0cea52b842dd65c40a12b6985477d1888b5e82d4a1ec5014e2e4ed76dfd16a",
+          "version": "6ab073fb1755202c374877a6004947e5658ce082ce507aaef93705895ea96589"
+        },
+        "kind": "session_boundary",
+        "anchor": {
+          "event_at": "2026-09-09T00:05:30Z",
+          "time_basis": "route_observation",
+          "point": {
+            "lat": 37.505585,
+            "lng": 127.0
+          },
+          "location_at": "2026-09-09T00:05:30Z",
+          "accuracy_m": 5.0,
+          "position_state": "resolved",
+          "method": "observed",
+          "source_fixes": [
+            {
+              "client_seq": 33,
+              "chain_index": 0,
+              "at": "2026-09-09T00:05:30Z"
+            }
+          ]
+        },
+        "title": "산책길에서 남긴 기록",
+        "body": "이 부근에 길이 있다.",
+        "user_record": null,
+        "observation": null,
+        "checkpoint": null,
+        "boundary": "end",
+        "place_reference": [
+          {
+            "id": "slot:29c3dd656ffa4871944623a4a8e725103f4d67b3d498d170dd8d7cc187769e5d",
+            "background_id": "normalized:1d4dc074e0cb80b1090f16610febe7971b5928a6039a43b6ea7204872efbdaa9",
+            "kind": "place_reference",
+            "schema_version": "sgis-dong-v1",
+            "facts": {
+              "dong": "도곡1동",
+              "sido": "서울특별시",
+              "sigungu": "강남구",
+              "address_type": "administrative_dong",
+              "source_ref": {
+                "source": "sgis",
+                "ref": "11:680:655"
+              },
+              "reference": "coordinate_reverse_geocoded_dong",
+              "position_method": "observed",
+              "location_basis": "original_location",
+              "temporal_basis": "lookup_snapshot",
+              "retrieved_at": "2026-09-13T14:41:55.071796+00:00"
+            }
+          }
+        ],
+        "writing": {
+          "format": "diary-card-narrative-v1",
+          "content_revision": "26cf823c25ca547853ec680e301495f825c14f399ab2c4d300db68ba5434b971",
+          "space": {
+            "text": "이 부근에 길이 있다.",
+            "origin": "generated",
+            "action_id": null,
+            "actor_id": null
+          },
+          "actions": [],
+          "original_text": null,
+          "title_origin": "generated",
+          "title_based_on_content_revision": "26cf823c25ca547853ec680e301495f825c14f399ab2c4d300db68ba5434b971"
+        }
+      }
+    ]
+  },
+  "error_code": null
+}

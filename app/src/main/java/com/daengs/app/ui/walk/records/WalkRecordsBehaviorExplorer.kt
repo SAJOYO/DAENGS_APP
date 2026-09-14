@@ -13,23 +13,21 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.daengs.app.location.GeoPoint
-import com.daengs.app.map.layers.completedroute.CompletedRouteLayerState
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import com.daengs.app.map.layers.traces.TraceRasterTile
 import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
-import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.previewDiarySummary
-import com.daengs.app.ui.walk.toCompletedRouteLayerState
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.records.*
-import com.daengs.app.walk.toSessionRoute
+import com.daengs.app.map.features.records.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,7 +36,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-internal enum class BehaviorRecordsView { RECORD_LOCATIONS, WALK_TRACES }
+internal enum class BehaviorRecordsView { RECORD_LOCATIONS, WALK_TRACES, WALK_OVERLAP }
 
 /** Screen-owned state survives when this result's native map is unmounted. */
 @Composable
@@ -50,6 +48,8 @@ internal fun WalkRecordsBehaviorExplorer(
     onView: (BehaviorRecordsView) -> Unit,
     modifier: Modifier = Modifier,
     state: WalkRecordsBehaviorState = rememberWalkRecordsBehaviorState(),
+    routeSource: WalkRecordsSource? = null,
+    actionPinState: WalkRecordsActionPinState = rememberWalkRecordsActionPinState(),
     traceLoading: Boolean = false,
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
@@ -58,6 +58,15 @@ internal fun WalkRecordsBehaviorExplorer(
     var hiddenWalkIds by state.hiddenWalkIds
     var camera by state.camera
     val listState = state.listState
+    var expanded by state.expanded
+    var selectedWalkId by state.selectedWalkId
+    var minimumWalks by state.minimumWalks
+    var overlapPoint by state.overlapPoint
+    val overlapOnly = view == BehaviorRecordsView.WALK_OVERLAP
+    var overlapMiss by remember(result, view, minimumWalks) { mutableStateOf(false) }
+    val changeView: (BehaviorRecordsView) -> Unit = { next ->
+        if (next != view) { overlapPoint = null; overlapMiss = false; onView(next) }
+    }
     val scope = rememberCoroutineScope()
     var listScrollJob by remember { mutableStateOf<Job?>(null) }
     val relatedIds = remember(result) { result.related.sessionIds.toSet() }
@@ -68,57 +77,30 @@ internal fun WalkRecordsBehaviorExplorer(
     LaunchedEffect(result) {
         listScrollJob?.cancel()
         if (selected == null) selectedEntryKey = null
+        if (selectedWalkId !in relatedIds) selectedWalkId = null
         hiddenWalkIds = hidden
     }
 
-    var retry by remember { mutableIntStateOf(0) }
-    var prepared by remember(result, retry) { mutableStateOf<PreparedWalkRecordsTraces?>(null) }
-    var initialBounds by remember(result, retry) { mutableStateOf<List<GeoPoint>?>(null) }
-    var preparationError by remember(result, retry) { mutableStateOf<String?>(null) }
-    LaunchedEffect(result, retry) {
-        var entryAndRouteBounds = emptyList<GeoPoint>()
-        try {
-            entryAndRouteBounds = withContext(Dispatchers.Default) {
-                behaviorBounds(buildList {
-                    result.records.forEach { record ->
-                        currentCoroutineContext().ensureActive()
-                        record.point?.let(::add)
-                    }
-                    result.related.records.forEach { record ->
-                        currentCoroutineContext().ensureActive()
-                        addAll(walkRecordFocusBounds(record))
-                    }
-                })
-            }
-            // Pin inspection becomes available before any brush work completes.
-            initialBounds = entryAndRouteBounds
-            val ready = prepareWalkRecordsTraces(result.related)
-            currentCoroutineContext().ensureActive()
-            prepared = ready
-            initialBounds = behaviorBounds(ready.bounds + entryAndRouteBounds)
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            // Trace preparation does not prevent inspecting valid entry locations or real routes.
-            preparationError = "관련 산책 흔적을 표시하지 못했어요."
-            initialBounds = entryAndRouteBounds
-        }
+    val displayPolicy = rememberWalkRecordsDisplayPolicy()
+    val traceView = when (view) {
+        BehaviorRecordsView.RECORD_LOCATIONS -> TraceView.Locations
+        BehaviorRecordsView.WALK_TRACES -> TraceView.All
+        BehaviorRecordsView.WALK_OVERLAP -> TraceView.Overlap(minimumWalks)
     }
-
-    var tiles by remember(prepared, hidden) { mutableStateOf<List<TraceRasterTile>?>(null) }
-    var compositionError by remember(prepared, hidden) { mutableStateOf<String?>(null) }
-    var composeRetry by remember { mutableIntStateOf(0) }
-    LaunchedEffect(prepared, hidden, view, composeRetry) {
-        val ready = prepared ?: return@LaunchedEffect
-        if (view != BehaviorRecordsView.WALK_TRACES || tiles != null) return@LaunchedEffect
-        compositionError = null
-        try {
-            val composed = ready.compose(hidden)
-            currentCoroutineContext().ensureActive()
-            tiles = composed
-        } catch (failure: Exception) {
-            if (failure is CancellationException) throw failure
-            compositionError = "관련 산책 흔적을 표시하지 못했어요. 다시 시도해 주세요."
-        }
+    val tracePresentation = rememberWalkRecordsTraces(result.related, true, traceView, hidden, displayPolicy.trace)
+    val prepared = tracePresentation.prepared
+    val tiles = tracePresentation.tiles
+    val preparationError = tracePresentation.preparationError
+    val compositionError = tracePresentation.compositionError
+    var initialBounds by remember(result) { mutableStateOf<List<GeoPoint>?>(null) }
+    LaunchedEffect(result, prepared) {
+        val points = withContext(Dispatchers.Default) { behaviorBounds(buildList {
+            result.records.forEach { currentCoroutineContext().ensureActive(); it.point?.let(::add) }
+            result.related.records.forEach { currentCoroutineContext().ensureActive(); addAll(walkRecordFocusBounds(it)) }
+            prepared?.bounds?.let(::addAll)
+        }) }
+        currentCoroutineContext().ensureActive()
+        initialBounds = points
     }
     val visibleLocatedRecords = remember(result, hidden) {
         result.records.filter { it.point != null && it.walk.summary.sessionId !in hidden }
@@ -130,14 +112,9 @@ internal fun WalkRecordsBehaviorExplorer(
             MomentMarkerState(representative.key, point,
                 representative.entry.type.label + if (records.size > 1) " ${records.size}건" else "",
                 selected = representative.key == selectedEntryKey, aboveRouteEndpoints = true,
-                sequenceLabel = records.size.takeIf { it > 1 }?.toString())
+                sequenceLabel = records.size.takeIf { it > 1 }?.toString(),
+                behaviors = records.map { it.entry.type }.toSet())
         }
-    }
-    val route = remember(selected, hidden, view) {
-        selected?.takeIf { view == BehaviorRecordsView.WALK_TRACES && it.walk.summary.sessionId !in hidden }
-            ?.walk?.summary?.toSessionRoute()?.toCompletedRouteLayerState()?.let { layer ->
-                layer.copy(start = layer.start?.copy(compact = true), end = layer.end?.copy(compact = true))
-            } ?: CompletedRouteLayerState()
     }
     val hideableIds = remember(result, prepared) {
         result.records.filter { it.point != null }.mapTo(mutableSetOf()) { it.walk.summary.sessionId }
@@ -154,10 +131,9 @@ internal fun WalkRecordsBehaviorExplorer(
         val record = result.records.firstOrNull { it.key == key }
         if (record != null) {
             selectedEntryKey = key
+            expanded = true
             if (record.walk.summary.sessionId !in hidden) {
-                val points = if (view == BehaviorRecordsView.WALK_TRACES) {
-                    behaviorBounds(walkRecordFocusBounds(record.walk) + listOfNotNull(record.point))
-                } else record.point?.let { listOf(it, it) }.orEmpty()
+                val points = record.point?.let { listOf(it, it) }.orEmpty()
                 if (points.isNotEmpty()) {
                     // A selection before MapHost mounts takes precedence over its saved camera.
                     if (initialBounds == null) camera = null
@@ -173,137 +149,173 @@ internal fun WalkRecordsBehaviorExplorer(
         }
     }
     val hiddenCount = hidden.count { it in hideableIds }
-    val visibleTraces = prepared?.availableWalkIds?.count { it !in hidden }
     val missingLocations = result.records.count { it.point == null }
     val missingTraces = prepared?.let { result.related.records.size - it.availableWalkIds.size }
     val remoteTraces = result.related.records.any { it.traceState != null }
 
-    Column(modifier.fillMaxWidth()) {
-        BehaviorViewControls(view, onView, Modifier.padding(horizontal = 18.dp))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("행동 기록 ${result.records.size}건 · 관련 산책 ${result.related.records.size}회",
-                    Modifier.testTag("records-behavior-count"), style = MaterialTheme.typography.labelMedium)
-                Text(if (view == BehaviorRecordsView.RECORD_LOCATIONS)
-                    "위치 있는 기록 ${result.records.size - missingLocations}건 · 표시 ${visibleLocatedRecords.size}건"
-                    else visibleTraces?.let { "관련 산책 흔적 표시 ${it}개" } ?: "흔적 표시 확인 중",
-                    Modifier.testTag("records-behavior-display-count"),
-                    style = MaterialTheme.typography.labelSmall, color = TextMuted)
-            }
-            if (hiddenCount > 0) TextButton(onClick = { hiddenWalkIds = emptySet() },
-                modifier = Modifier.testTag("records-behavior-restore-all")) { Text("모두 표시") }
+    val hit = remember(prepared, overlapPoint, overlapOnly, minimumWalks) {
+        overlapPoint?.takeIf { overlapOnly }?.let { prepared?.hitTestOverlap(it, minimumWalks, snapRadiusU = 0.0) }
+    }
+    ReconcileWalkRecordsOverlapPoint(result.related, traceLoading, traceError, prepared,
+        overlapPoint, hit, { overlapPoint = null })
+    LaunchedEffect(hit) {
+        if (hit != null) {
+            expanded = true
+            if (selectedWalkId !in hit.walkIds) selectedWalkId = null
+            state.walkListState.scrollToItem(0)
         }
-        WalkRecordsTraceStatus(result.related.records, traceLoading, traceError, onReloadTraces)
-        val omissions = listOfNotNull(
-            "위치 없음 ${missingLocations}건".takeIf { missingLocations > 0 },
-            missingTraces?.takeIf { !remoteTraces && it > 0 }?.let { "흔적 없음 ${it}회" },
-            "산책 숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
-        ).joinToString(" · ")
-        Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 20.dp)) {
-            if (omissions.isNotEmpty()) Text(omissions + " · 목록 유지",
-                Modifier.testTag("records-behavior-status"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
-        }
-        if (result.records.isEmpty()) {
-            RecordsMessage("이 조건의 산책에 ${result.behavior.label} 기록이 없어요.", modifier = Modifier.weight(1f))
-        } else {
-            // A stable selection row avoids resizing the map when a card or marker is selected.
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(when {
-                    selected == null -> "핀이나 기록을 눌러 살펴보세요."
-                    selected.walk.summary.sessionId in hidden -> "고른 기록의 산책은 지도에서 숨김"
-                    selected.point == null -> selected.locationLabel
-                    else -> "${selected.entry.type.label} · ${selected.locationLabel}"
-                }, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-                if (selected != null) TextButton(onClick = { selectedEntryKey = null },
-                    modifier = Modifier.testTag("records-behavior-clear-selection")) { Text("강조 해제") }
-            }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val map: @Composable (Modifier) -> Unit = { mapModifier ->
-                    Box(mapModifier.background(CreamBg).testTag("records-behavior-map").semantics {
-                        stateDescription = "위치 표시 ${visibleLocatedRecords.size}건 · 선택 기록 ${selected?.key ?: "없음"}"
-                    }) {
-                        when {
-                            initialBounds == null -> RecordsMessage("기록 지도를 준비하고 있어요.", modifier = Modifier.fillMaxSize())
-                            initialBounds.orEmpty().isEmpty() -> RecordsMessage(
-                                preparationError ?: "지도에 표시할 위치가 없어요.",
-                                if (preparationError != null) "다시 시도" else null,
-                                { retry++ }, Modifier.fillMaxSize())
-                            else -> {
-                                MapHost(scene = MapScene(moments = markers, completedRoute = route,
-                                    traceTiles = if (view == BehaviorRecordsView.WALK_TRACES) tiles.orEmpty() else emptyList(),
-                                    allowRegionalOverview = true), searchOrigin = null, followDevice = false,
-                                    fitBounds = focusBounds ?: initialBounds, cameraRequestKey = cameraRequest,
-                                    initialCamera = camera, onCameraSnapshot = { camera = it },
-                                    onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
-                                    onSelectMoment = { markerId ->
-                                        val record = visibleLocatedRecords.firstOrNull { it.key == markerId }
-                                        val group = record?.point?.let(markerGroups::get).orEmpty()
-                                        if (group.isNotEmpty()) {
-                                            val selectedIndex = group.indexOfFirst { it.key == selectedEntryKey }
-                                            onSelect(group[(selectedIndex + 1) % group.size].key, true)
-                                        }
-                                    }, modifier = Modifier.fillMaxSize())
-                                val error = preparationError ?: compositionError
-                                val message = if (view == BehaviorRecordsView.RECORD_LOCATIONS) {
-                                    when {
-                                        markers.isNotEmpty() -> null
-                                        hiddenCount > 0 -> "표시할 행동 위치가 없어요. 숨긴 산책은 다시 표시할 수 있어요."
-                                        else -> "위치 없는 기록은 아래 목록에서 볼 수 있어요."
-                                    }
-                                } else when {
-                                    error != null -> error
-                                    traceLoading && visibleTraces == 0 -> "흔적을 불러오는 동안 기록 위치와 목록을 볼 수 있어요."
-                                    tiles == null -> "관련 산책 흔적을 준비하고 있어요."
-                                    visibleTraces == 0 && hiddenCount > 0 -> "관련 산책 흔적을 모두 숨겼어요."
-                                    visibleTraces == 0 -> if (remoteTraces)
-                                        "현재 불러온 흔적이 없어요. 기록 위치와 목록은 유지해요."
-                                        else "관련 산책의 흔적이 없어요. 기록 위치와 목록은 유지해요."
-                                    else -> null
-                                }
-                                if (message != null) Surface(Modifier.align(Alignment.TopCenter).padding(8.dp),
-                                    color = CreamBg.copy(alpha = .95f)) {
-                                    Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically) {
-                                        Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
-                                        if (view == BehaviorRecordsView.WALK_TRACES && error != null)
-                                            TextButton(onClick = { if (prepared == null) retry++ else composeRetry++ }) { Text("다시 시도") }
-                                    }
-                                }
+    }
+    val controls: @Composable () -> Unit = {
+        BehaviorViewControls(view, changeView, minimumWalks = minimumWalks, onMinimumWalks = {
+            minimumWalks = it; overlapPoint = null; overlapMiss = false; selectedWalkId = null
+        }, menuExtras = { if (view != BehaviorRecordsView.RECORD_LOCATIONS) WalkRecordsActionPinControls(actionPinState, result.behavior) })
+    }
+    if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
+        WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
+            routeSource = routeSource, actionPinState = actionPinState, pinBehavior = result.behavior,
+            onRetry = tracePresentation.retry,
+            selectedId = selectedWalkId, hiddenIds = hidden,
+            onSelect = { id ->
+                selectedWalkId = id.takeIf { it != selectedWalkId }
+                if (selectedWalkId != null && id !in hidden) {
+                    val bounds = walkRecordFocusBounds(result.related.records.first { it.summary.sessionId == id })
+                    if (bounds.isNotEmpty()) { focusBounds = bounds; cameraRequest++ }
+                }
+            },
+            onToggleHidden = { id -> if (id in hideableIds) {
+                hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
+            } }, onRestoreAll = { hiddenWalkIds = emptySet() }, onClearSelection = { selectedWalkId = null },
+            onOpen = onOpen, listState = state.walkListState, camera = camera, onCamera = { camera = it },
+            fitBounds = focusBounds ?: initialBounds.orEmpty(), cameraRequest = cameraRequest,
+            overlapOnly = overlapOnly, minimumWalks = minimumWalks,
+            overlapHit = hit, overlapMiss = overlapMiss,
+            onMapTap = { point ->
+                if (overlapOnly && tiles != null && preparationError == null && compositionError == null) {
+                    val next = prepared?.hitTestOverlap(point, minimumWalks, hiddenIds = hidden)
+                    overlapPoint = next?.point; overlapMiss = next == null; selectedWalkId = null
+                }
+            }, onClearOverlap = { overlapPoint = null; overlapMiss = false; selectedWalkId = null },
+            traceLoading = traceLoading, traceError = traceError, onReloadTraces = onReloadTraces,
+            modifier = modifier, expanded = expanded, onExpanded = { expanded = it }, controls = controls,
+            behaviorCount = "행동 기록 ${result.records.size}건 · 관련 산책 ${result.related.records.size}회")
+        return
+    }
+    val map: @Composable (Modifier) -> Unit = { mapModifier ->
+        val mapInsets = LocalRecordsMapInsets.current
+        Box(mapModifier.background(CreamBg).testTag("records-behavior-map").semantics {
+            stateDescription = "위치 표시 ${visibleLocatedRecords.size}건 · 선택 기록 ${selected?.key ?: "없음"}"
+        }) {
+            when {
+                initialBounds == null -> RecordsMessage("기록 지도를 준비하고 있어요.", modifier = Modifier.fillMaxSize())
+                initialBounds.orEmpty().isEmpty() -> RecordsMessage(
+                    preparationError ?: "지도에 표시할 위치가 없어요.",
+                    if (preparationError != null) "다시 시도" else null,
+                    tracePresentation.retry, Modifier.fillMaxSize())
+                else -> {
+                    MapHost(scene = composeWalkRecordsMapScene(displayPolicy, moments = markers).scene, searchOrigin = null, followDevice = false,
+                        fitBounds = focusBounds ?: initialBounds, cameraRequestKey = cameraRequest,
+                        topPaddingPx = mapInsets.top, bottomPaddingPx = mapInsets.bottom,
+                        initialCamera = camera, onCameraSnapshot = { camera = it },
+                        onCameraIdle = {}, onCameraGesture = {}, onSelectPlace = {},
+                        onSelectMoment = { markerId ->
+                            val record = visibleLocatedRecords.firstOrNull { it.key == markerId }
+                            val group = record?.point?.let(markerGroups::get).orEmpty()
+                            if (group.isNotEmpty()) {
+                                val selectedIndex = group.indexOfFirst { it.key == selectedEntryKey }
+                                onSelect(group[(selectedIndex + 1) % group.size].key, true)
                             }
+                        }, modifier = Modifier.fillMaxSize())
+                    val message = when {
+                        markers.isNotEmpty() -> null
+                        hiddenCount > 0 -> "표시할 행동 위치가 없어요. 숨긴 산책은 다시 표시할 수 있어요."
+                        else -> "위치 없는 기록은 아래 목록에서 볼 수 있어요."
+                    }
+                    if (message != null) Surface(Modifier.align(Alignment.Center).padding(18.dp),
+                        color = CreamBg.copy(alpha = .95f)) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(message, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall)
                         }
                     }
-                }
-                val records: @Composable (Modifier) -> Unit = { listModifier ->
-                    BehaviorRecordList(result.records, pets, selectedEntryKey, hidden, hideableIds,
-                        { onSelect(it, false) }, { id ->
-                            if (id in hideableIds) hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
-                        }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null)
-                }
-                if (maxWidth >= 600.dp) Row(Modifier.fillMaxSize()) {
-                    map(Modifier.weight(1.2f).fillMaxHeight())
-                    records(Modifier.weight(1f).fillMaxHeight())
-                } else Column(Modifier.fillMaxSize()) {
-                    map(Modifier.weight(.54f).fillMaxWidth())
-                    HorizontalDivider()
-                    records(Modifier.weight(.46f).fillMaxWidth())
                 }
             }
         }
     }
+
+    WalkRecordsMapFrame(expanded, { expanded = it }, "행동 기록 ${result.records.size}건", modifier,
+        controls = controls, map = map,
+        summary = {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("행동 기록 ${result.records.size}건 · 관련 산책 ${result.related.records.size}회",
+                        Modifier.testTag("records-behavior-count"), style = MaterialTheme.typography.labelMedium)
+                    Text("위치 있는 기록 ${result.records.size - missingLocations}건 · 표시 ${visibleLocatedRecords.size}건",
+                        Modifier.testTag("records-behavior-display-count"),
+                        style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                }
+                if (hiddenCount > 0) TextButton(onClick = { hiddenWalkIds = emptySet() },
+                    modifier = Modifier.testTag("records-behavior-restore-all")) { Text("모두 표시") }
+            }
+
+        },
+        details = {
+            WalkRecordsTraceStatus(result.related.records, traceLoading, traceError, onReloadTraces)
+            val omissions = listOfNotNull(
+                "위치 없음 ${missingLocations}건".takeIf { missingLocations > 0 },
+                missingTraces?.takeIf { !remoteTraces && it > 0 }?.let { "흔적 없음 ${it}회" },
+                "산책 숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
+            ).joinToString(" · ")
+            Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 20.dp)) {
+                if (omissions.isNotEmpty()) Text(omissions + " · 목록 유지",
+                    Modifier.testTag("records-behavior-status"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+
+            if (selected != null) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(selected.locationLabel, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = { selectedEntryKey = null },
+                    modifier = Modifier.testTag("records-behavior-clear-selection")) { Text("강조 해제") }
+            }
+        },
+        records = { listModifier ->
+            if (result.records.isEmpty()) RecordsMessage("이 조건의 산책에 ${result.behavior.label} 기록이 없어요.", modifier = listModifier)
+            else BehaviorRecordList(result.records, pets, selectedEntryKey, hidden, hideableIds,
+                { onSelect(it, false) }, { id ->
+                    if (id in hideableIds) hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
+                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null)
+        })
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun BehaviorViewControls(view: BehaviorRecordsView, onView: (BehaviorRecordsView) -> Unit, modifier: Modifier = Modifier) {
-    val colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PinkFaint, selectedLabelColor = DaengPinkDeep)
-    Row(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = view == BehaviorRecordsView.RECORD_LOCATIONS,
-            onClick = { onView(BehaviorRecordsView.RECORD_LOCATIONS) }, label = { Text("기록 위치") }, colors = colors,
-            modifier = Modifier.testTag("records-behavior-view-locations"))
-        FilterChip(selected = view == BehaviorRecordsView.WALK_TRACES,
-            onClick = { onView(BehaviorRecordsView.WALK_TRACES) }, label = { Text("산책 흔적") }, colors = colors,
-            modifier = Modifier.testTag("records-behavior-view-traces"))
+private fun BehaviorViewControls(
+    view: BehaviorRecordsView, onView: (BehaviorRecordsView) -> Unit, modifier: Modifier = Modifier,
+    minimumWalks: Int = 2, onMinimumWalks: (Int) -> Unit = {},
+    menuExtras: @Composable () -> Unit = {},
+) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        TextButton(onClick = { open = true }, modifier = Modifier.testTag("records-map-display")) {
+            Text(when (view) {
+                BehaviorRecordsView.RECORD_LOCATIONS -> "행동 위치 ▾"
+                BehaviorRecordsView.WALK_TRACES -> "전체 흔적 ▾"
+                BehaviorRecordsView.WALK_OVERLAP -> "겹친 구간 · ${minimumWalks}회 이상 ▾"
+            })
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+            listOf(Triple(BehaviorRecordsView.WALK_TRACES, "전체 흔적", "traces"),
+                Triple(BehaviorRecordsView.WALK_OVERLAP, "겹친 구간", "overlap"),
+                Triple(BehaviorRecordsView.RECORD_LOCATIONS, "행동 위치", "locations")).forEach { (mode, label, tag) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { onView(mode); if (mode != BehaviorRecordsView.WALK_OVERLAP) open = false },
+                    modifier = Modifier.testTag("records-behavior-view-$tag"))
+            }
+            if (view == BehaviorRecordsView.WALK_OVERLAP) Box(Modifier.padding(horizontal = 16.dp)) {
+                WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
+            }
+            menuExtras()
+        }
     }
 }
 

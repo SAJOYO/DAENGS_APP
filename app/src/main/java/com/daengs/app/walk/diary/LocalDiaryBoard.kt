@@ -2,7 +2,6 @@ package com.daengs.app.walk.diary
 
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.walk.*
-import com.daengs.app.walk.store.WalkPhotoRow
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
@@ -11,7 +10,7 @@ import kotlin.math.abs
 object LocalDiaryBoard {
     const val FORMAT = "walk-local-diary-board-v1"
 
-    fun build(walk: WalkSummary, fixes: List<RecordedFix>, entries: List<WalkEntry>, photos: List<WalkPhotoRow>): String {
+    fun build(walk: WalkSummary, fixes: List<RecordedFix>, entries: List<WalkEntry>, photos: List<DiaryPhotoInput>): String {
         val route = walk.toSessionRoute()
         val fixesByTime = fixes.filter { !it.isMock }.groupBy { it.atMillis }
         fun exact(point: WalkRoutePoint?) = point?.let { p ->
@@ -39,7 +38,7 @@ object LocalDiaryBoard {
                 .put("entry", it.id).put("source", it.toJson())
         } + photos.map {
             item("photo:${it.id}", it.capturedAtMillis, "산책 사진", "사진을 남겼다.", "photo",
-                GeoPoint(it.lat, it.lng)).put("photo", it.id)
+                it.point).put("photo", it.id)
         }
         val selected = mutableListOf<WalkRoutePoint>()
         // Each continuous segment has its own distance axis. A gap is never a walking interval.

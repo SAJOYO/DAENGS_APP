@@ -12,6 +12,34 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FacilityViewModelTest {
+    @Test fun returningFromAssistantPreservesSharedCardsAndTheCurrentSelection() = runTest {
+        val login = com.daengs.app.auth.Session("owner", "access", "refresh", Long.MAX_VALUE, Long.MAX_VALUE)
+        var searches = 0
+        val repository = FacilityConversationRepository(object : ConversationClient {
+            override suspend fun exchange(token: String, payload: kotlinx.serialization.json.JsonObject): kotlinx.serialization.json.JsonObject {
+                searches++
+                return com.daengs.app.place.support.conversationFixture("manual", payload)
+            }
+        }, PlaceSearchRepository { error("Unexpected legacy search") }, { login }, { login })
+        repository.search(PlaceSearchRequest(GeoPoint(37.5, 127.0), kinds = listOf(PlaceKind.SHOPPING)))
+        val result = repository.state.value.result!!
+        repository.select(result.order.last())
+        val source = object : LocationSource {
+            override suspend fun currentLocation() = LocationSample(result.origin, 0)
+            override fun locationUpdates(config: LocationUpdateConfig) = emptyFlow<LocationSample>()
+        }
+        val vm = PlacesViewModel(repository, JourneyRepository { JourneyResponse("dog", emptyList()) },
+            source, backgroundScope, conversationRepository = repository)
+        vm.updateProfiles("owner", emptyList(), false, null)
+        vm.activate(true); runCurrent()
+        vm.deactivate(); runCurrent()
+        assertEquals(result, repository.state.value.result)
+        vm.activate(true); runCurrent()
+        assertEquals(result.search, vm.state.value.visibleDiscovery().response)
+        assertEquals(result.order.last(), vm.state.value.visibleDiscovery().selectedPlaceKey)
+        assertEquals(1, searches)
+    }
+
     @Test fun confirmedServerResultReachesMapWithoutLosingAiConditionsToANormalSearch() = runTest {
         var ordinaryCalls = 0
         val queries = mutableListOf<FacilityQuery>()

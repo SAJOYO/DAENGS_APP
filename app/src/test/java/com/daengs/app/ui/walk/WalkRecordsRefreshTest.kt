@@ -85,6 +85,7 @@ class WalkRecordsRefreshTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("선택 산책 1회 · 표시 흔적 1개")
+        compose.onNodeWithTag("records-map-sheet-toggle").performClick()
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-1"))
         compose.onNodeWithTag("records-map-record-record-1").performClick()
         assertEquals(1, source.traceReads.get())
@@ -144,7 +145,7 @@ class WalkRecordsRefreshTest {
             waitText("산책 기록을 찾고 있어요.")
             compose.waitUntil(10_000) { replacement.reads.get() == 1 }
             compose.onNodeWithText("기록-1").assertDoesNotExist()
-            compose.onNodeWithTag("records-count").assertDoesNotExist()
+            compose.onNodeWithTag("records-count").assertTextEquals("불러오는 중")
             oldGate.complete(Unit)
             compose.waitForIdle()
             compose.onNodeWithText("기록-1").assertDoesNotExist()

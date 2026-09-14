@@ -7,6 +7,81 @@ import androidx.room.Query
 
 @Dao
 interface WalkDao {
+    @Query("SELECT e.* FROM walk_exploration e JOIN walk_session s ON s.id = e.sessionId " +
+        "WHERE e.sessionId = :id AND e.ownerId = :owner AND s.ownerId = :owner")
+    suspend fun exploration(id: String, owner: String): WalkExplorationRow?
+
+    @Query("INSERT OR REPLACE INTO walk_exploration(sessionId, ownerId, payload) " +
+        "SELECT id, ownerId, :payload FROM walk_session WHERE id = :id AND ownerId = :owner")
+    suspend fun saveExploration(id: String, owner: String, payload: String)
+
+    @androidx.room.Transaction
+    suspend fun saveExplorationCurrent(id: String, owner: String, payload: String, current: () -> Boolean) {
+        if (current()) saveExploration(id, owner, payload)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMeasurement(row: WalkMeasurementRow)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMeasurementChunks(rows: List<WalkMeasurementChunkRow>)
+
+    @Query("SELECT * FROM walk_measurement WHERE sessionId = :id")
+    suspend fun measurement(id: String): WalkMeasurementRow?
+
+    @Query("SELECT * FROM walk_measurement_chunk WHERE sessionId = :id ORDER BY chunkIndex")
+    suspend fun measurementChunks(id: String): List<WalkMeasurementChunkRow>
+
+    @Query("DELETE FROM walk_measurement WHERE sessionId = :id")
+    suspend fun deleteMeasurement(id: String)
+
+    @Query("SELECT measurementId FROM walk_measurement WHERE sessionId = :id")
+    fun observeMeasurement(id: String): kotlinx.coroutines.flow.Flow<String?>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMotionPrecision(row: WalkMotionPrecisionRow)
+
+    @androidx.room.Update
+    suspend fun updateMotionPrecision(row: WalkMotionPrecisionRow)
+
+    @Query("SELECT * FROM walk_motion_precision WHERE sessionId = :id")
+    suspend fun motionPrecision(id: String): WalkMotionPrecisionRow?
+
+    @Query("UPDATE walk_session SET coordinateOrigin = :origin WHERE id = :id AND ownerId = :owner")
+    suspend fun installCoordinateOrigin(id: String, owner: String, origin: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertMotionBackup(row: WalkMotionBackupRow)
+
+    @androidx.room.Update
+    suspend fun updateMotionBackup(row: WalkMotionBackupRow)
+
+    @Query("SELECT * FROM walk_motion_backup WHERE sessionId = :id")
+    suspend fun motionBackup(id: String): WalkMotionBackupRow?
+
+    @Query("SELECT * FROM walk_session WHERE endedAtMillis IS NOT NULL AND motionPolicyJson IS NOT NULL " +
+        "AND (NOT EXISTS (SELECT 1 FROM walk_motion_backup b WHERE b.sessionId = walk_session.id AND b.completedAtMillis IS NOT NULL) " +
+        "OR (coordinateOrigin IN ('captured', 'verified') AND NOT EXISTS " +
+        "(SELECT 1 FROM walk_motion_precision p WHERE p.sessionId = walk_session.id AND p.verifiedAtMillis IS NOT NULL)))")
+    suspend fun pendingMotionSessions(): List<WalkSessionRow>
+
+    @Query("SELECT * FROM walk_recording_epoch WHERE id = :id")
+    suspend fun recordingEpochById(id: String): RecordingEpochRow?
+
+    @androidx.room.Update
+    suspend fun updateMotionObservation(row: WalkFixRow)
+
+    @Query("UPDATE walk_session SET motionPolicyJson = :policy WHERE id = :id AND ownerId = :owner AND motionPolicyJson IS NULL")
+    suspend fun installMotionPolicy(id: String, owner: String, policy: String)
+
+    /** Freeze the session, policy, raw rows and close receipts together, then calculate outside SQLite. */
+    @androidx.room.Transaction
+    suspend fun motionInput(sessionId: String, ownerId: String): com.daengs.app.walk.motion.RecordedMotionInput? {
+        val row = session(sessionId)?.takeIf { it.ownerId == ownerId } ?: return null
+        return com.daengs.app.walk.motion.RecordedMotionInput(row.toModel(),
+            recordingEpochs(sessionId).map { it.toModel() }, fixes(sessionId).map { it.toModel() })
+    }
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveRecordingEpoch(row: RecordingEpochRow)
 
@@ -28,7 +103,16 @@ interface WalkDao {
     @androidx.room.Transaction
     suspend fun appendObservation(row: WalkFixRow) {
         val existing = observation(row.sessionId, row.clientSeq)
-        if (existing != null) { check(existing == row) { "Conflicting observation identity" }; return }
+        if (existing != null) {
+            val before = existing.toModel()
+            val after = row.toModel()
+            check(before == after &&
+                before.speedMps?.toRawBits() == after.speedMps?.toRawBits() &&
+                before.speedAccuracyMps?.toRawBits() == after.speedAccuracyMps?.toRawBits() &&
+                before.bearingDegrees?.toRawBits() == after.bearingDegrees?.toRawBits() &&
+                before.bearingAccuracyDegrees?.toRawBits() == after.bearingAccuracyDegrees?.toRawBits()) { "Conflicting observation identity" }
+            return
+        }
         check(row.ingressSeq == row.clientSeq.toLong()) { "Observation sequence changed" }
         check(session(row.sessionId)?.endedAtMillis == null) { "Recording session is already closed" }
         check(advanceRecordingEpoch(requireNotNull(row.sourceEpoch), row.sessionId, row.chainIndex,
@@ -69,7 +153,8 @@ interface WalkDao {
         val epochs = recordingEpochs(id)
         if (epochs.isNotEmpty()) com.daengs.app.walk.checkRecordingComplete(epochs.map { it.toModel() })
         closeSession(id, endedAt)
-        insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt, endedAt + 10_000))
+        insertDiaryPublication(WalkDiaryPublicationRow(id, endedAt,
+            endedAt + com.daengs.app.walk.diary.DIARY_PREPARATION_BUDGET_MS))
     }
 
     @androidx.room.Transaction
@@ -77,12 +162,11 @@ interface WalkDao {
         val row = diaryPublication(id) ?: return null
         val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
         if (row.baseBundle == null) {
-            val source = fixes(id).filter { it.recordingEligible != false }.map {
-                com.daengs.app.walk.RecordedFix(it.clientSeq, it.chainIndex, it.atMillis, it.lat, it.lng, it.accuracyM, it.isMock)
-            }
-            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE)
-            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source,
-                entries(id).mapNotNull { it.entry() }, photos(id)))
+            val source = fixes(id).map { it.toModel() }
+            val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE,
+                epochs = recordingEpochs(id).map { it.toModel() })
+            freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source.filter { it.recordingEligible != false },
+                entries(id).mapNotNull { it.entry() }, photos(id).map { it.toDiaryPhotoInput() }))
         }
         return diaryPublication(id)
     }
@@ -321,7 +405,7 @@ interface WalkDao {
             val publication = diaryPublication(id)
             val board = if (publication != null) publication.publishedBundle?.let {
                 com.daengs.app.walk.diary.GeoStoryboardBundle.parse(it)
-            } else com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows).bundle
+            } else com.daengs.app.walk.store.storedStoryboardAnalysisView(analyses[id], rows).bundle
             val title = board?.takeIf { it.sessionId == id }?.title
             listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
         }
@@ -394,6 +478,18 @@ interface WalkDao {
         saveStoryboard(WalkStoryboardRow(sessionId,
             draft.edit(scene, title = title, body = body, acknowledge = true,
                 bodyScope = com.daengs.app.walk.diary.SceneBodyScope.SCENE).toJson()))
+    }
+
+    /** Hiding a scene does not delete its source entry, photo or recorded route. */
+    @androidx.room.Transaction
+    suspend fun deleteDiaryScene(sessionId: String, ownerId: String,
+        scene: com.daengs.app.walk.diary.StoryboardScene) {
+        check(ownerId.isNotBlank() && session(sessionId)?.let {
+            it.ownerId == ownerId && it.endedAtMillis != null
+        } == true) { "현재 계정의 완료된 산책이 아닙니다." }
+        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
+        saveStoryboard(WalkStoryboardRow(sessionId, draft.hide(scene).toJson()))
     }
 
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")

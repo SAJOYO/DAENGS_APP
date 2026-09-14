@@ -19,6 +19,11 @@ internal class WalkRecordsBehaviorState(
     val hiddenWalkIds: MutableState<Set<String>>,
     val camera: MutableState<MapCameraSnapshot?>,
     val listState: LazyListState,
+    val expanded: MutableState<Boolean>,
+    val selectedWalkId: MutableState<String?>,
+    val minimumWalks: MutableState<Int>,
+    val overlapPoint: MutableState<GeoPoint?>,
+    val walkListState: LazyListState,
 )
 
 @Composable
@@ -28,8 +33,20 @@ internal fun rememberWalkRecordsBehaviorState(vararg inputs: Any?): WalkRecordsB
     val hidden = rememberSaveable(*inputs, stateSaver = BehaviorHiddenIdsSaver) { mutableStateOf(emptySet<String>()) }
     val camera = rememberSaveable(*inputs, stateSaver = BehaviorCameraSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     val listState = rememberSaveable(*inputs, saver = LazyListState.Saver) { LazyListState() }
-    return remember(selected, hidden, camera, listState) { WalkRecordsBehaviorState(selected, hidden, camera, listState) }
+    val expanded = rememberSaveable(*inputs) { mutableStateOf(false) }
+    val selectedWalk = rememberSaveable(*inputs) { mutableStateOf<String?>(null) }
+    val minimum = rememberSaveable(*inputs) { mutableStateOf(2) }
+    val point = rememberSaveable(*inputs, stateSaver = BehaviorPointSaver) { mutableStateOf<GeoPoint?>(null) }
+    val walkList = rememberSaveable(*inputs, saver = LazyListState.Saver) { LazyListState() }
+    return remember(selected, hidden, camera, listState, expanded, selectedWalk, minimum, point, walkList) {
+        WalkRecordsBehaviorState(selected, hidden, camera, listState, expanded, selectedWalk, minimum, point, walkList)
+    }
 }
+
+private val BehaviorPointSaver = Saver<GeoPoint?, List<Double>>(
+    save = { it?.let { p -> listOf(p.latitude, p.longitude) } ?: emptyList() },
+    restore = { it.takeIf { v -> v.size == 2 }?.let { v -> GeoPoint(v[0], v[1]) } },
+)
 
 private val BehaviorHiddenIdsSaver = listSaver<Set<String>, String>(
     save = { it.sorted() }, restore = { it.toSet() },

@@ -350,3 +350,7 @@ uv run tools/isoasset.py pastel 받은에셋/*.png -o app/src/main/res/drawable-
 당시 측정 결과는 위 "실험 결과" 항목에 남아있다 —
 도형 아이템과 ArtBox 를 똑같이 두고 잰 실루엣이 123x113 vs 126x116 으로
 3px 차이(구운 그림자 차이)였고, 상자 본체 폭은 이론값과 정확히 일치했다.
+
+## 완성 전봇대 예외 경로
+
+이미 형광·그림자·체크까지 합성된 전봇대는 `map_prepared/`로 반입한다. 256×640 투명 여백과 기준점을 그대로 유지하는 무손실 변환이며, 원본 `map/`의 crop/resize를 다시 적용하지 않는다. [생성기와 검증 절차](territory-pole-assets.md)를 따른다.

@@ -1,9 +1,5 @@
 package com.daengs.app.walk.diary
 
-import com.daengs.app.walk.store.WalkEntryRow
-import com.daengs.app.walk.store.WalkSceneAnalysisRow
-import com.daengs.app.walk.sync.storyboardEntryStamp
-
 data class StoryboardAnalysisView(
     val bundle: GeoStoryboardBundle?,
     val canReview: Boolean,
@@ -11,13 +7,8 @@ data class StoryboardAnalysisView(
 )
 
 /** A cached source is readable after failure, but only a successful current attempt can be reviewed. */
-fun storyboardAnalysisView(analysis: WalkSceneAnalysisRow?, entries: List<WalkEntryRow>,
-    photos: com.daengs.app.walk.store.WalkPhotoSyncRow? = null,
-    images: List<com.daengs.app.walk.store.WalkPhotoRow> = emptyList(),
+fun storyboardAnalysisView(analysis: StoryboardAnalysisInput?, clean: Boolean, stamp: String,
 ): StoryboardAnalysisView {
-    val clean = entries.none { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null }
-    val stamp = if (analysis?.bundleEntryStamp?.startsWith("diary:") == true)
-        com.daengs.app.walk.sync.diaryInputStamp(entries, photos, images) else storyboardEntryStamp(entries)
     // Do not resurrect deleted/changed actions from the old bundle while showing current entries.
     val bundle = if (clean && analysis?.bundleEntryStamp == stamp)
         analysis.bundle?.let { runCatching { GeoStoryboardBundle.parse(it) }.getOrNull() } else null

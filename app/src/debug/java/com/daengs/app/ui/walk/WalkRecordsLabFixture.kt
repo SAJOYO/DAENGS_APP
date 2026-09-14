@@ -84,6 +84,25 @@ internal object WalkRecordsLabFixture : WalkRecordsSource {
     override suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection =
         selectWalkRecords(records, query, zone)
 
+    override suspend fun loadRoute(record: WalkRecord): WalkSummary {
+        val summary = records.first { it.summary.sessionId == record.summary.sessionId }.summary
+        // Synthetic sample generation only. Production reads original fixes and never fills GPS gaps.
+        return summary.copy(segments = summary.segments.map { path -> buildList {
+            path.firstOrNull()?.let(::add)
+            path.zipWithNext().forEach { (a, b) ->
+                val steps = ceil((b.capturedAtMillis - a.capturedAtMillis) / 2_000.0).toInt().coerceAtLeast(1)
+                for (step in 1..steps) {
+                    val fraction = step.toDouble() / steps
+                    add(LocationSample(GeoPoint(
+                        a.point.latitude + (b.point.latitude - a.point.latitude) * fraction,
+                        a.point.longitude + (b.point.longitude - a.point.longitude) * fraction),
+                        a.capturedAtMillis + (b.capturedAtMillis - a.capturedAtMillis) * step / steps,
+                        accuracyMeters = 5f))
+                }
+            }
+        } })
+    }
+
     /** Current fictional entries, including cases that must remain searchable without a map mark. */
     private fun behaviorEntries(record: WalkRecord, index: Int): List<WalkEntry> {
         val walk = record.summary

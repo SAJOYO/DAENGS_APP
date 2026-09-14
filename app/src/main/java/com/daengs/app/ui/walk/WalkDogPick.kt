@@ -25,9 +25,10 @@ import com.daengs.app.pet.Pet
  * 이제 산책 화면에 아예 못 들어온다 — `ui/home/PetGate.kt` 의 문이 먼저 막는다.
  * 남은 것은 "아이가 있는데 다 뺀 경우" 뿐이고, 그건 의도보다 실수다.
  *
- * ⚠️ **둘러보기는 예외다.** 로그인 전에는 문이 안 서고 등록한 아이도 없으므로,
- * 목록이 비었으면 그대로 시작하게 둔다. 거기까지 막으면 둘러보기가 아무것도 못 하는
- * 화면이 된다.
+ * 🔒 **둘러보기도 예외가 아니다** (2026-09-12, `docs/design-locks.md` 4절). 예전에는
+ * "둘러보기가 아무것도 못 하는 화면이 된다" 며 목록이 비면 열어 두었는데, 사용자가
+ * **"강아지와 하는 산책 앱이니 강아지 없이는 안 되게"** 로 정했다. 그 틈으로 불러오기에
+ * 실패한 계정도 강아지 없는 산책을 시작할 수 있었다.
  */
 
 /**
@@ -44,11 +45,13 @@ fun defaultWalkDogs(pets: List<Pet>): Set<String> =
 /**
  * 지금 산책을 시작해도 되나. **강아지 앱이니 아이 없이는 안 나간다.**
  *
- * @param pets 등록한 아이들. **비어 있으면 막지 않는다** — 둘러보기다
+ * @param pets 등록한 아이들. **비어 있으면 못 나간다** (둘러보기도 예외가 아니다)
  * @param selected 지금 골라 둔 아이들
  */
 fun canStartWalk(pets: List<Pet>, selected: Set<String>): Boolean =
-    pets.isEmpty() || selected.isNotEmpty()
+    // 🔒 **잠긴 디자인 — `docs/design-locks.md` 4절.** 등록한 아이 중 **실제로 고른 아이가
+    //    있어야** 나간다. 목록이 비면(등록 전 · 불러오기 실패 · 둘러보기) 못 나간다.
+    pets.any { it.id in selected }
 
 /**
  * 고르는 자리 위에 뜰 말. **상태를 말하지 질문하지 않는다.**
@@ -72,8 +75,11 @@ fun walkDogPickLabel(pets: List<Pet>, selected: Set<String>): String {
  *
  * **버튼만 흐리게 두지 않는다** — 왜 안 눌리는지 모르면 고장으로 읽힌다.
  */
-fun walkStartBlockedReason(pets: List<Pet>, selected: Set<String>): String? =
-    if (canStartWalk(pets, selected)) null else "함께 나갈 아이를 한 마리는 골라 주세요."
+fun walkStartBlockedReason(pets: List<Pet>, selected: Set<String>): String? = when {
+    canStartWalk(pets, selected) -> null
+    pets.isEmpty() -> "강아지와 함께하는 산책이에요. 먼저 강아지를 데려와 주세요."
+    else -> "함께 나갈 아이를 한 마리는 골라 주세요."
+}
 
 /**
  * 지도의 내 위치에 **기본 얼굴 대신 세울 아이.** 그대로 둘 때는 `null`.
@@ -106,3 +112,8 @@ fun walkFaceOverride(pets: List<Pet>, selected: Set<String>): Pet? {
     if (picked.any { it.isPrimary }) return null
     return picked.first()
 }
+
+/** Unknown breed is a paw, never another dog's portrait or an accidental SDK blue dot. */
+internal fun walkFacePortraitRes(selectedPet: Pet?, defaultBreed: com.daengs.app.miniroom.art.DogBreed?): Int =
+    (if (selectedPet == null) defaultBreed else selectedPet.breedArt)?.portraitRes
+        ?: com.daengs.app.R.drawable.ic_location_paw

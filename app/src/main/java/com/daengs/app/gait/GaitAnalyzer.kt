@@ -18,16 +18,55 @@ import java.time.LocalDate
 interface GaitAnalyzer {
 
     /**
-     * @param video 고르거나 찍은 영상
-     * @param onStage 한 단계가 끝날 때마다 불린다. 화면이 이걸로 진행 카드를 다시 그린다
+     * 영상을 **올리고 접수만** 한다. 분석이 끝나기를 기다리지 않는다.
+     *
+     * 저쪽 워커는 앱과 무관하게 분석을 끝내고 DB 에 `DONE` 을 남긴다. 그런데 앱이
+     * [analyze] 로 끝까지 붙잡고 기다리면 셋이 어긋났다 — 앱을 나가면 결과를 못 받고,
+     * 서버가 분석하느라 바빠 응답이 늦으면 "닿지 못했어요" 가 뜨고, 30초 영상이
+     * "8분째" 처럼 보였다. **기다리는 일은 [com.daengs.app.gait.work] 의 Worker 가
+     * 맡는다** (#220).
+     *
      * @param title 사용자가 정한 제목. null 이면 정하지 않은 것 — 기본값은 화면이 그린다
-     * @return 대화에 남을 기록
+     * @return 접수증. 아직 결과가 아니다 ([GaitSubmission])
+     */
+    suspend fun submit(video: PreparedVideo, title: String? = null): Result<GaitSubmission>
+
+    /**
+     * 끝날 때까지 기다렸다가 완성된 기록을 준다.
+     *
+     * ⚠️ **화면은 이제 이걸 안 쓴다** (#220 에서 [submit] 으로 갈아탔다). 남겨 둔 것은
+     * 단위 테스트가 "올리면 목록 맨 앞에 얹힌다" 같은 규칙을 이 한 방으로 확인하기
+     * 때문이다 — 그 규칙 자체는 아직 유효하다. 프로덕션에서 다시 쓰려거든 먼저
+     * 위 세 가지가 왜 어긋났는지를 읽기 바란다.
+     *
+     * @param onStage 한 단계가 끝날 때마다 불린다
      */
     suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
         title: String? = null,
     ): Result<GaitRecord>
+}
+
+/**
+ * 접수증. **아직 결과가 아니다.**
+ *
+ * 서버가 기록 한 줄을 만들고 분석 큐에 넣은 시점까지만 뜻한다. [recordId] 로
+ * 나중에 상태를 물어보거나 목록에서 찾는다.
+ *
+ * 결과를 담는 [GaitRecord] 와 **일부러 다른 타입이다.** 같은 타입으로 돌려주면
+ * 화면이 "빈 결과" 를 결과처럼 그리게 된다 — 품질도 오버레이도 아직 없는데.
+ *
+ * @param status 접수 직후의 서버 상태. 보통 `UPLOADED`/`PROCESSING` 이다
+ * @param title 사용자가 정한 제목. 완료 카드를 그릴 때까지 앱이 들고 있는다
+ */
+data class GaitSubmission(
+    val recordId: String,
+    val status: String,
+    val title: String? = null,
+) {
+    /** 벌써 끝났나. 아주 짧은 영상이면 접수 직후에 이미 `DONE` 인 일이 있다. */
+    val settled: Boolean get() = GaitStatus.settled(status)
 }
 
 /**
@@ -46,6 +85,19 @@ class MockGaitAnalyzer(
     private val today: () -> LocalDate = LocalDate::now,
 ) : GaitAnalyzer {
 
+    /**
+     * 접수만 한다. **기기 안에서 도는 구현이라 기다릴 것이 없어서** 바로 끝난 것으로
+     * 돌려준다 — `@Preview` 와 단위 테스트가 Worker 나 네트워크를 타지 않게 하려는 것이다.
+     */
+    override suspend fun submit(video: PreparedVideo, title: String?): Result<GaitSubmission> =
+        runCatching {
+            GaitSubmission(
+                recordId = newId(),
+                status = GaitStatus.DONE,
+                title = GaitTitleStore.normalize(title),
+            )
+        }
+
     override suspend fun analyze(
         video: PreparedVideo,
         onStage: (GaitProgress) -> Unit,
@@ -59,7 +111,7 @@ class MockGaitAnalyzer(
             onStage(progress)
         }
         GaitRecord(
-            id = "gait-${System.currentTimeMillis()}",
+            id = newId(),
             // **기록을 만든 날**이다. 영상 파일의 날짜가 아니다 — 서버 구현도 같다.
             date = today(),
             seconds = video.seconds,
@@ -70,6 +122,8 @@ class MockGaitAnalyzer(
             title = title,
         )
     }
+
+    private fun newId() = "gait-${System.currentTimeMillis()}"
 }
 
 /**

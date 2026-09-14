@@ -2,7 +2,6 @@ package com.daengs.app.map.provider.naver
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -10,12 +9,48 @@ import android.graphics.Shader
 import androidx.annotation.DrawableRes
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
+import com.daengs.app.R
+
+/**
+ * 「내 위치」에 넘길 얼굴 리소스. **얼굴을 모르면 발바닥이다 — 절대 null 이 아니다.**
+ *
+ * 🔒 잠긴 디자인 — `docs/design-locks.md` 1절. 지도의 내 위치는 사용자 프로필이다.
+ *
+ * `MapHost` 는 `avatarRes` 와 `avatarPhoto` 가 **둘 다 null 이면 SDK 파란 점**을 쓴다
+ * (아래 [locationAvatarBitmap]). 그런데 강아지 정보가 없는 때가 흔하다 — 불러오는 중,
+ * 로그인 전, 강아지를 아직 안 데려옴, 통신 실패. 견종 얼굴만 넘기면 그때마다 파란
+ * 점으로 떨어진다. 2026-09-12 실기기에서 인자를 다 넘기고도 파란 점이 뜬 이유가 이것이다.
+ */
+@DrawableRes
+fun locationFaceRes(@DrawableRes portraitRes: Int?): Int = portraitRes ?: R.drawable.ic_location_paw
+
+/** Null means this screen requested the SDK dot; failed portraits use a local paw instead. */
+internal fun locationAvatarBitmap(
+    context: Context,
+    photo: Bitmap?,
+    @DrawableRes portraitRes: Int?,
+    sizePx: Int,
+    ringPx: Float,
+): Bitmap? {
+    if (photo == null && portraitRes == null) return null
+    val fromPhoto = photo?.takeUnless { it.isRecycled }?.let {
+        try {
+            circularAvatarBitmap(it, sizePx, ringPx)
+        } catch (error: IllegalArgumentException) {
+            android.util.Log.w("LocationAvatar", "Cannot render profile photo", error)
+            null
+        }
+    }
+    return fromPhoto
+        ?: portraitRes?.let { circularAvatarBitmap(context, it, sizePx, ringPx) }
+        ?: circularAvatarBitmap(context, R.drawable.ic_location_paw, sizePx, ringPx)
+}
 
 /**
  * 지도의 "내 위치"를 **대표 강아지 얼굴**로 만든다.
  *
- * 기본값은 파란 점이다. 그건 어느 앱에서나 같은 파란 점이라, 내 강아지의 방에서
- * 출발한 화면인데도 여기만 남의 앱처럼 보인다.
+ * 산책에서 사진과 견종을 알 수 없으면 로컬 발바닥을 쓴다. 얼굴을 요청하지 않는
+ * 다른 지도는 SDK 기본 점을 유지한다.
  *
  * 얼굴 그림([com.daengs.app.miniroom.art.DogBreed.portraitRes])은 **크림 배경이 깔린
  * 정사각 이미지**다(투명 픽셀 0%). 그대로 얹으면 지도 위에 크림색 네모가 놓인다.
@@ -29,8 +64,18 @@ fun circularAvatarBitmap(
     @DrawableRes portraitRes: Int,
     sizePx: Int,
     ringPx: Float,
-): Bitmap? = BitmapFactory.decodeResource(context.resources, portraitRes)
-    ?.let { circularAvatarBitmap(it, sizePx, ringPx) }
+): Bitmap? = try {
+    // Drawable also supports the vector fallback; BitmapFactory only decodes raster assets.
+    context.getDrawable(portraitRes)?.let { drawable ->
+        val source = createBitmap(sizePx, sizePx)
+        drawable.setBounds(0, 0, sizePx, sizePx)
+        drawable.draw(Canvas(source))
+        circularAvatarBitmap(source, sizePx, ringPx)
+    }
+} catch (error: android.content.res.Resources.NotFoundException) {
+    android.util.Log.w("LocationAvatar", "Cannot load portrait resource $portraitRes", error)
+    null
+}
 
 /**
  * 그림 하나를 그대로 받아 동그란 마커로.

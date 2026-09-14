@@ -13,7 +13,7 @@ import org.junit.Test
 class WalkSpeedRuntimeTest {
     private fun source(id: String = "e", chain: Int = 0, start: Double = 0.0, first: Long = 0) =
         RecordingEpoch(id, "s", "c", chain, 0, nanos(start), first)
-    private fun runtime() = WalkSpeedRuntime("s") { throw AssertionError(it) }.also { it.begin(source(), 0) }
+    private fun runtime() = WalkSpeedRuntime(MotionPolicies.freeze("s")) { throw AssertionError(it) }.also { it.begin(source(), 0) }
 
     @Test fun noSubscribersDoesNotStopMeasurementOrMissingInputAging() {
         val owner = runtime()
@@ -68,7 +68,7 @@ class WalkSpeedRuntimeTest {
         owner.tick(nanos(100.0))
         assertEquals(DisplayFreshness.FINAL, owner.display.value.freshness)
         assertEquals(2.0, owner.display.value.speedMps, 0.0)
-        assertEquals(MotionDisplay(), WalkSpeedRuntime("new").display.value)
+        assertEquals(MotionDisplay(), WalkSpeedRuntime(MotionPolicies.freeze("new")).display.value)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -97,13 +97,14 @@ class WalkSpeedRuntimeTest {
 
     @Test fun projectionContractFailureIsContainedAndReportedOnce() {
         val errors = mutableListOf<Exception>()
-        val owner = WalkSpeedRuntime("s", errors::add)
+        val owner = WalkSpeedRuntime(MotionPolicies.freeze("s"), errors::add)
         owner.begin(source(), 0)
         owner.observations(listOf(fix(0, 0.0, 1.0, speed = 2f)), nanos(1.1))
         owner.observations(listOf(fix(0, 0.0, 2.0)), nanos(2.1)) // corrupted duplicate ingress
         owner.observations(listOf(fix(1, 1.0, 3.0)), nanos(3.1))
         owner.tick(nanos(20.0))
         assertEquals(1, errors.size)
+        assertNull(owner.motionSnapshot())
         assertEquals(2.0, owner.display.value.speedMps, 0.0)
         assertEquals(DisplayFreshness.STALE, owner.display.value.freshness)
         owner.onLifecycle(DisplayLifecycle.FINISHED, nanos(21.0))
@@ -117,5 +118,40 @@ class WalkSpeedRuntimeTest {
         owner.observations(listOf(fix(2, 0.0, 3.0, speed = 9f, speedAccuracy = null)), nanos(3.1))
         assertEquals(2.0, owner.display.value.speedMps, 0.0)
         assertEquals(DisplayFreshness.HELD, owner.display.value.freshness)
+    }
+
+    @Test fun storedCustomPolicyMatchesLiveBatchesAndPausedReplayIncludingEmptyStop() {
+        val frozen = MotionPolicies.freeze("s", MotionConfig(minDistanceM = 7.0, maxWalkingSpeedMps = 5.0), measure = true)
+        val owner = WalkSpeedRuntime(frozen) { throw AssertionError(it) }
+        val first = source().copy(endedAtMillis = 8_000, endedElapsedNanos = nanos(8.0),
+            endKind = "PAUSE", targetIngressSeq = 2, persistedCount = 3, drained = true)
+        val second = source("e2", 1, 20.0, 3).copy(endedAtMillis = 28_000, endedElapsedNanos = nanos(28.0),
+            endKind = "PAUSE", targetIngressSeq = 5, persistedCount = 3, drained = true)
+        val stop = source("e3", 2, 30.0, 6).copy(endedAtMillis = 30_000, endedElapsedNanos = nanos(30.0),
+            endKind = "STOP", targetIngressSeq = 5, persistedCount = 0, drained = true)
+        val raw = listOf(fix(0, 0.0, 1.0), fix(1, 4.0, 4.0), fix(2, 8.0, 7.0),
+            fix(3, 500.0, 21.0, source = "e2", chain = 1),
+            fix(4, 504.0, 24.0, source = "e2", chain = 1), fix(5, 508.0, 27.0, source = "e2", chain = 1))
+        owner.begin(first, 0)
+        raw.take(3).forEach { owner.observations(listOf(it), nanos(7.5)) }
+        owner.onLifecycle(DisplayLifecycle.PAUSED, nanos(8.0)); owner.drained(first)
+        assertEquals(MeasurementTiming(8000, null), owner.measurementTiming())
+        owner.begin(second, nanos(20.0))
+        owner.observations(raw.drop(3), nanos(27.5))
+        owner.onLifecycle(DisplayLifecycle.PAUSED, nanos(28.0)); owner.drained(second)
+        owner.onLifecycle(DisplayLifecycle.FINISHED, nanos(30.0)); owner.completePausedStop(stop)
+        val loaded = (MotionPolicies.resolveJson("s", MotionPolicies.encode(frozen)) as MotionPolicySelection.Supported).policy
+        val replay = replayRecordedMotion(loaded, listOf(first, second, stop), raw.asSequence())
+        assertEquals(replay, owner.motionSnapshot())
+        assertEquals(16.0, replay.eligibleDistanceM, .00001)
+        assertEquals(nanos(16.0), replay.closedRecordingDurationNanos)
+        assertNotEquals(MotionPolicies.freeze("s").stored.configHash, replay.configHash)
+        val summary = com.daengs.app.walk.summarize(com.daengs.app.walk.RecordedSession("s", startedAtMillis = 0,
+            endedAtMillis = 30_000, motionPolicyJson = MotionPolicies.encode(frozen)), raw,
+            epochs = listOf(first, second, stop))
+        assertEquals(summary.segments, owner.trailSnapshot(com.daengs.app.walk.TrackingState.OFF).segments)
+        assertEquals(summary.distanceMeters, owner.trailSnapshot(com.daengs.app.walk.TrackingState.OFF).distanceMeters, 0.0)
+        assertEquals(summary.activeDurationMillis, owner.measurementTiming().closedMillis)
+        assertNull(owner.measurementTiming().activeSinceRealtimeMillis)
     }
 }

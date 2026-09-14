@@ -1,0 +1,12 @@
+// Opt-in native map regression app; never replaces the user's regular app.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.androidComponents.finalizeDsl { android ->
+            def root = project.rootProject.file('tools/naver-map-review')
+            android.buildTypes.debug.applicationIdSuffix = '.locationreview'
+            android.sourceSets.debug.manifest.srcFile(new File(root, 'AndroidManifest.xml'))
+            android.sourceSets.debug.kotlin.srcDir(new File(root, 'src'))
+            android.sourceSets.androidTest.kotlin.srcDir(new File(root, 'tests'))
+        }
+    }
+}

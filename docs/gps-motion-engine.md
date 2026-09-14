@@ -1,6 +1,6 @@
 # GPS 이동 정책 엔진 — 3차 구현 (#294)
 
-상태: #294에서 순수 엔진·완료 저널 재생을 구현했고, #307에서 [운영 서비스의 속도 표시에 연결했다](gps-speed-runtime.md). 거리·요약·정책 저장에는 아직 연결하지 않았다.
+상태: #294에서 순수 엔진·완료 저널 재생을 구현했고, #307에서 [운영 서비스의 속도 표시에 연결했다](gps-speed-runtime.md). #313에서 [세션별 정책 저장과 완료 기록 비교](gps-policy-persistence.md)를, #319에서 [새 산책의 거리·경로·완료 요약](gps-measurement-integration.md)을 연결했다. 이하 #294 당시 검증 기록과 현재 연결 범위를 구분한다.
 설계는 [#282](gps-motion-policy-architecture.md), 원본과 종료 증거는 [#283](gps-recording-delivery.md)를 따른다.
 
 ## 계산의 주인과 입력
@@ -9,21 +9,21 @@
 
 관측은 기존 `RecordedFix`를 그대로 받는다. `clientSeq == ingressSeq`를 확인하고 source/clock/chain을 바꾸지 않는다. 다른 세션, 역전·재사용한 접수 번호, 건너뛴 journal 번호는 계약 오류로 거절한다. 원본 접수 번호의 공백은 `INGRESS_GAP`과 `hasKnownLoss`로 남기고 거리 연결을 끊는다. 처리 관측 수에 누락 개수를 더하지 않는다.
 
-`Begin`은 구독·활동 구간을 열고 `End`는 해당 구간의 마지막 접수 번호와 단조 cutoff를 전달한다. PAUSE 이후 새 구독은 새 source와 증가한 chain을 요구한다. 시계 영역이 바뀌면 이전 시각과 차이를 계산하지 않는다. `closedRecordingDurationNanos`는 닫힌 활동 구간의 시간 합이다. 현재 진행 시간이나 완료 UI의 시간 계산을 전환한 것은 아니다.
+`Begin`은 구독·활동 구간을 열고 `End`는 해당 구간의 마지막 접수 번호와 단조 cutoff를 전달한다. PAUSE 이후 새 구독은 새 source와 증가한 chain을 요구한다. 시계 영역이 바뀌면 이전 시각과 차이를 계산하지 않는다. `closedRecordingDurationNanos`는 닫힌 활동 구간의 시간 합이다. #319의 측정 세션은 이 시간을 실시간·완료 요약에도 사용한다.
 
-완료 저널 어댑터 `replayRecordedMotion`은 #283의 명시적 STOP·drain 증거를 먼저 확인한다. 원본을 한 번 순회하며 개수·번호·source·clock·chain을 대조한다. 정렬, 번호 재작성, 미완료 꼬리의 임의 종료는 하지 않는다. `[시작, 종료)` 밖의 측정은 원본으로 처리하되 거리에는 쓰지 않는다. 검증 도중 계약 위반이 발견되면 예외를 반환한다. `onStep`은 진단용 중간 결과이며, 호출자는 함수가 정상 반환하기 전 결과를 완료본으로 공개하면 안 된다.
+완료 저널 어댑터 `replayRecordedMotion`은 #283의 명시적 STOP·drain 증거를 먼저 확인한다. 원본을 한 번 순회하며 개수·번호·source·clock·chain을 대조한다. 정렬, 번호 재작성, 미완료 꼬리의 임의 종료는 하지 않는다. 이전 정책은 `[시작, 종료)` 규칙이며, #319 측정 버전은 종료 번호 장벽 전에 접수된 동시각 점도 포함한다. 구간 밖·무효 시각의 관측은 거리에서 제외하며 수신이 종료 뒤인데 eligible인 완료 증거는 거절한다. 검증 도중 계약 위반이 발견되면 예외를 반환한다. `onStep`은 중간 결과이며, 호출자는 함수가 정상 반환하기 전 결과를 완료본으로 공개하면 안 된다.
 
 ## 동결 정책과 과거 기록
 
 `MotionPolicies.freeze(sessionId, config)`는 `motion-v1`, 관측 스키마 15, 유효 설정 JSON과 SHA-256을 고정한다. 설정은 불변 값이며 새 설정 객체를 만들어도 실행 중인 정책은 바뀌지 않는다.
 
-`StoredMotionPolicy`는 향후 저장할 수 있는 값 계약이다. 이번 PR에서 DB 칼럼이나 현재 세션 생성 흐름을 바꾸지 않았다. `resolve`는 다음을 구분한다.
+`StoredMotionPolicy`는 동결 값 계약이다. #313은 이 envelope를 최초 세션 생성과 함께 저장한다. `resolve`와 저장 문자열의 `resolveJson`은 다음을 구분한다.
 
 - 정책 없음: `Legacy`. 호출자가 기존 reader를 선택한다.
 - 지원 버전·스키마·설정·해시: `Supported`.
 - 미래 버전, 다른 스키마, 해시 손상, 누락·추가·잘못된 설정: `Unsupported`. 현재 기본값으로 대체하지 않는다.
 
-같은 설정의 저장·복원과 동일 입력의 step 결과까지 테스트했다. 과거 기록 전체를 새 규칙으로 다시 쓰거나 서버 정책과 동일하다고 주장하지 않는다. 소유자 필터링, 정책의 실제 저장·로드·새 세션 활성화는 5차 런타임 연결에서 수행해야 한다.
+같은 설정의 저장·복원과 동일 입력의 step 결과까지 테스트했다. #313의 비교 조회는 소유자를 검사하고 저장된 정책을 사용한다. 과거 기록 전체를 새 규칙으로 다시 쓰거나 서버 정책과 동일하다고 주장하지 않는다. #319는 명시적인 측정 버전을 가진 새 산책만 거리·경로를 전환한다.
 
 ## 추정과 거리의 분리
 
@@ -73,4 +73,7 @@
 ./gradlew.bat :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.walk.motion.*' --tests com.daengs.app.walk.store.WalkMigrationTest --tests com.daengs.app.walk.store.RecordingJournalTest --tests com.daengs.app.walk.RecordingCompletionTest --tests com.daengs.app.walk.TrailRecorderTest --tests com.daengs.app.walk.WalkSummaryTest
 ```
 
-4차는 세션이 소유하는 표시 상태 reducer, 5차는 정책 저장과 서비스·요약·경로의 실제 전환이다. 5차에서 종료 cutoff와 저널 순서를 확정하고 정책 소비자 완료까지 기다려야 한다. `MotionLifecycle.STOPPED` 자체는 원본 저장이 완료됐다는 영수증이 아니다. 기존 60초·50m 경계, 계정·핀·사진·전송 호환, 실시간/완료 결과 일치와 지연 예산을 그 전환 게이트로 둔다.
+4차의 표시 상태, 5-1의 서비스 연결, #313의 정책 저장에 이어 #319에서 거리·경로·완료를 연결했다.
+종료 cutoff와 저널 순서를 확정하고 정책 소비자 완료까지 기다린다. `MotionLifecycle.STOPPED`
+자체는 원본 저장 완료의 영수증이 아니다. 60초·50m, 기존 핀·전송, 실시간/완료 일치는 표적
+테스트로 검증하며, 야외 정확도·지연 예산·서버 동일 재생은 별도 후속 검증이다.

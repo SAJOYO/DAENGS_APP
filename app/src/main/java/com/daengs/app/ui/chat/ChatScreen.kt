@@ -3,6 +3,8 @@ package com.daengs.app.ui.chat
 import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
@@ -10,6 +12,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -48,6 +55,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.work.WorkManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -65,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -91,7 +101,11 @@ import com.daengs.app.gait.GaitProgress
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitVideo
 import com.daengs.app.gait.PreparedVideo
+import com.daengs.app.gait.GaitCompletions
+import com.daengs.app.gait.GaitStatus
 import com.daengs.app.gait.rememberGaitHolder
+import com.daengs.app.gait.work.GaitAnalysisWorker
+import com.daengs.app.gait.work.scheduleGaitAnalysisWatch
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.screening.Photo
@@ -120,6 +134,7 @@ import com.daengs.app.ui.gait.GaitPickSheet
 import com.daengs.app.ui.gait.GaitTitleDialog
 import com.daengs.app.ui.gait.GaitProgressCard
 import com.daengs.app.ui.gait.GaitResultCard
+import com.daengs.app.ui.gait.GaitSubmittedCard
 import com.daengs.app.ui.home.HomeDemoData
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
@@ -187,6 +202,7 @@ internal sealed interface ChatEntry {
      * 거리·주소·사실 목록이다.
      */
     data class PlaceCards(val presentation: PlaceCardsPresentation) : ChatEntry
+    data object FacilityResult : ChatEntry
 
     /**
      * 위치가 없어 못 찾겠다는 CLARIFY. 말풍선(저쪽 되묻기 질문)만으로는 사용자가 할 수
@@ -198,8 +214,22 @@ internal sealed interface ChatEntry {
     /** 보행 흐름의 첫 카드. 영상을 어디서 가져올지 고르는 자리다. */
     data object GaitIntro : ChatEntry
 
-    /** 분석 중. 단계가 넘어갈 때마다 이 자리가 새 [GaitProgress] 로 갈린다. */
+    /**
+     * 분석 중. 단계가 넘어갈 때마다 이 자리가 새 [GaitProgress] 로 갈린다.
+     *
+     * 쓰이는 구간이 **업로드·확인까지로 줄었다** (#220). 앱이 완료를 안 기다리므로
+     * 그 뒤는 [GaitSubmitted] 가 맡는다.
+     */
     data class GaitRunning(val progress: GaitProgress) : ChatEntry
+
+    /**
+     * 접수됐고 서버가 분석 중 (#220).
+     *
+     * **여기서 화면이 풀린다.** 사용자는 나가도 되고 앱을 내려도 된다 — 끝나는 것은
+     * `GaitAnalysisWorker` 가 지켜보고 알림으로 알린다. 앱이 앞에 있으면 이 자리가
+     * 완료 말풍선 + [GaitDone] 으로 갈린다.
+     */
+    data class GaitSubmitted(val recordId: String, val title: String?) : ChatEntry
 
     /**
      * 끝난 기록.
@@ -273,6 +303,10 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
+    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence ->
+        AssistantApi.query(token, text, where, dog, persistence)
+    },
+    onOpenFacilities: (() -> Unit)? = null,
     /**
      * 피부 **변화 기록**으로 가는 길. null 이면 그 줄을 안 보여 준다.
      *
@@ -280,6 +314,14 @@ fun ChatScreen(
      * null 을 준다 — 눌러 봐야 빈 화면이면 안 누르게 하는 편이 낫다.
      */
     onOpenScreeningHistory: (() -> Unit)? = null,
+    /**
+     * 알림으로 "끝났다" 고 들은 보행 기록들 (#220).
+     *
+     * **챗을 나갔다 온 사람을 위한 것이다.** 그때 대화는 서버 이력에서 다시 그려지는데
+     * 거기에는 보행 카드가 없어서([restoredChatEntries]), 이 목록이 없으면 결과를 다시
+     * 붙일 근거가 없다. 홈 버튼만 눌렀던 경우는 화면이 살아 있어 여기까지 안 온다.
+     */
+    gaitCompletions: GaitCompletions? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -490,18 +532,131 @@ fun ChatScreen(
      * 바꾼 뒤 결과 카드를 새로 얹는다.** 네 줄이 다 초록으로 찬 카드가 대화에 그대로
      * 남아 있으면, 아래에 붙은 결과 카드와 어느 쪽이 지금 것인지 겹쳐 보인다.
      */
+    // 접수해 둔 기록이 끝나는 것을 **WorkManager 가 들고 있는 상태로** 안다.
+    //
+    // 따로 저장소를 두지 않는 이유: Worker 는 Compose 밖에 있어서 화면이 저절로는
+    // 모른다. 그렇다고 완료 여부를 담을 자리를 새로 만들면 **같은 사실이 두 군데**가
+    // 되어 어긋난다 — WorkManager 가 이미 정확히 그 상태를 들고 있다.
+    //
+    // 앱이 뒤에 있으면 이 관찰이 멈춰 있다가 돌아올 때 이어진다. 그래서 홈으로 나갔다
+    // 와도 결과가 반영된다 — 알림은 알림대로 Worker 가 띄운다.
+    val submitted = entries.filterIsInstance<ChatEntry.GaitSubmitted>()
+    submitted.forEach { pending ->
+        key(pending.recordId) {
+            // LiveData 가 아니라 Flow 다 — `runtime-livedata` 를 새로 들이지 않으려는
+            // 것이다. WorkManager 가 둘 다 주고, 이쪽이 의존성이 없다.
+            val works by WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkFlow(GaitAnalysisWorker.workName(pending.recordId))
+                .collectAsState(initial = null)
+
+            LaunchedEffect(works) {
+                val info = works?.firstOrNull() ?: return@LaunchedEffect
+                if (!info.state.isFinished) return@LaunchedEffect
+                // Worker 는 끝난 이유를 출력에 남긴다 — DONE 인지, 상한에 닿아 손을 든
+                // 것인지. 뒤엣것이면 카드를 그대로 두고 기다린다(목록에는 결과가 있다).
+                when (info.outputData.getString(GaitAnalysisWorker.KEY_STATUS)) {
+                    GaitStatus.DONE -> {
+                        dogId?.let { gait.load(it) }
+                        val at = entries.indexOf(pending)
+                        if (at >= 0) {
+                            entries[at] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                            entries.add(at + 1, ChatEntry.GaitDone(pending.recordId))
+                        }
+                    }
+                    GaitStatus.FAILED -> {
+                        val at = entries.indexOf(pending)
+                        if (at >= 0) {
+                            entries[at] = ChatEntry.Failed(
+                                "분석을 마치지 못했어요. 잠시 뒤에 다시 시도해 주세요.",
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+
+    // 완료를 알림으로 알리므로 **보내도 되는지 먼저 묻는다** (Android 13+).
+    //
+    // 거절해도 분석은 그대로 돈다 — 알림만 없고, 앱으로 돌아오면 화면에 결과가 있다.
+    // 그래서 결과를 막지 않고 조용히 넘어간다. 산책이 쓰는 것과 같은 자리다
+    // (`WalkRoute.kt` 의 RequestNotificationPermission).
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* 주든 안 주든 하던 일을 계속한다 */ }
+
+    val askNotificationOnce: () -> Unit = {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // 알림으로 들은 완료를 대화에 붙인다.
+    //
+    // **복원이 끝난 뒤여야 한다** — 위 effect 가 `entries.clear()` 로 비우고 서버 이력을
+    // 채우므로, 그 전에 붙이면 곧바로 지워진다. `displayedSessionId` 가 채워진 뒤를
+    // 신호로 삼는다.
+    //
+    // 대표가 맞는 것만 붙인다. 알림을 누른 시점에 다른 아이로 바꿔 놨으면 그 아이의
+    // 대화에 남의 기록이 붙는다.
+    LaunchedEffect(displayedSessionId, dogId, gaitCompletions?.forPet(dogId)?.size) {
+        val pending = gaitCompletions?.forPet(dogId).orEmpty()
+        if (displayedSessionId == null || pending.isEmpty()) return@LaunchedEffect
+
+        // 기록 본문이 있어야 카드가 그려진다. 목록을 한 번 받아 온다 — #351 이
+        // 들어가야 최신 기록까지 닿는다.
+        dogId?.let { gait.load(it) }
+
+        pending.forEach { done ->
+            // **이미 있으면 안 붙인다.** 알림을 두 번 누르거나 화면이 다시 조합돼도
+            // 같은 카드가 겹치면 안 된다.
+            val already = entries.any {
+                it is ChatEntry.GaitDone && it.recordId == done.recordId
+            }
+            if (!already) {
+                entries += ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                entries += ChatEntry.GaitDone(done.recordId)
+            }
+            // 붙였으면 지운다. 안 그러면 챗에 들어갈 때마다 또 붙는다.
+            gaitCompletions?.consume(done.recordId)
+        }
+    }
+
     val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
         scope.launch {
             entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
             val slot = entries.size
             entries += ChatEntry.GaitRunning(GaitProgress.START)
-            val record = gait.analyze(video, title) { entries[slot] = ChatEntry.GaitRunning(it) }
-            if (record == null) {
-                entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 분석하지 못했어요.")
-                gait.clearError()
-            } else {
-                entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
-                entries += ChatEntry.GaitDone(record.id)
+
+            // 올리고 접수까지만. **완료를 여기서 기다리지 않는다** (#220) — 분석이 분
+            // 단위라 기다리면 사용자가 화면에 묶이고, 나가면 결과를 못 받았다.
+            val submission = gait.submit(video, title)
+            when {
+                submission == null -> {
+                    entries[slot] = ChatEntry.Failed(gait.error ?: "보행 영상을 올리지 못했어요.")
+                    gait.clearError()
+                }
+                // 아주 짧은 영상이면 접수 직후에 이미 끝나 있다. 그때는 Worker 를 걸 것
+                // 없이 바로 결과로 간다 — 20초를 기다렸다 알림을 띄우면 더 이상하다.
+                submission.settled -> {
+                    dogId?.let { gait.load(it) }
+                    entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
+                    entries += ChatEntry.GaitDone(submission.recordId)
+                }
+                else -> {
+                    entries[slot] = ChatEntry.GaitSubmitted(submission.recordId, submission.title)
+                    scheduleGaitAnalysisWatch(context, submission.recordId, dogId)
+                    // **접수가 된 뒤에 묻는다.** 올리기도 전에 물으면 실패했을 때
+                    // 쓸데없이 물은 것이 된다.
+                    askNotificationOnce()
+                }
             }
         }
     }
@@ -538,6 +693,7 @@ fun ChatScreen(
             entries[slot] = ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage())
             response.walkCard()?.let { entries += ChatEntry.WalkCard(it) }
             response.placeCards()?.let { entries += ChatEntry.PlaceCards(it) }
+            if (response.facility != null && onOpenFacilities != null) entries += ChatEntry.FacilityResult
             // 좌표가 없어 되물은 것이라면 다시 물을 거리를 준다. 무상태 CLARIFY 는
             // 이어 물을 토큰이 없어서, 문장만 띄우면 사용자에게 막다른 길이다.
             if (response.isLocationClarify()) entries += ChatEntry.LocationNeeded(asked)
@@ -652,7 +808,7 @@ fun ChatScreen(
                     asking = false
                 }
             } else {
-                AssistantApi.query(token, text, where, activeDogId = dogId, persistence = null)
+                assistantQuery(token, text, where, dogId, null)
                     .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
@@ -663,6 +819,59 @@ fun ChatScreen(
             }
         }
     }
+
+    // ── 음성 입력 ───────────────────────────────────────────────────────────
+    //
+    // 인식한 글은 **입력칸에 넣기만** 한다. 오인식을 보내기 전에 잡을 수 있어야
+    // 해서다. "바로 보내기" 는 설정으로 켠다 — 그때도 물어보는 중이면 보내지 않고
+    // 입력칸에 남긴다 (아래 [asking] 규칙과 같다).
+    //
+    // 잠긴 동안(busy)에도 듣기는 된다. 답을 기다리며 다음 질문을 말해 두는 건
+    // 글로 치는 것과 같은 일이다.
+    val voiceAutoSend by rememberVoiceAutoSend()
+    val voiceHoldToStop by rememberVoiceHoldToStop()
+    // 듣기 시작할 때의 초안. 부분 결과는 매번 이 뒤에 갈아 끼운다 ([mergeVoiceText]).
+    var voiceBase by remember { mutableStateOf("") }
+    val inputBusy = asking || historyState.sending ||
+        (historyCoordinator != null && dogId != null && !historyState.canSend)
+    val voice = rememberVoiceInput(
+        holdToStop = voiceHoldToStop,
+        onPartial = { draft = mergeVoiceText(voiceBase, it) },
+        onSegment = {
+            draft = mergeVoiceText(voiceBase, it)
+            voiceBase = draft
+        },
+        onFinished = {
+            val text = draft.trim()
+            if (voiceAutoSend && text.isNotEmpty() && !inputBusy) {
+                draft = ""
+                sendQuery(text)
+            }
+        },
+        onError = { notice = it },
+    )
+    val beginVoice: () -> Unit = {
+        voiceBase = draft
+        voice.start()
+    }
+    val askMic = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) beginVoice() else notice = VOICE_DENIED }
+    // 한 단추로 시작하고 멈춘다. 듣는 중에 누르면 지금까지 인식한 것으로 마무리한다.
+    val toggleVoice: () -> Unit = {
+        when {
+            voice.listening -> voice.stop()
+            hasMicPermission(context) -> beginVoice()
+            else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    // **무언가가 대화 위에 덮이면 듣기를 멈춘다.** 오버레이는 이 화면을 합성에서 빼지
+    // 않아서 인식기가 그대로 산다 — 시트 뒤에서 한 말이 입력칸에 꽂히고, 보행 촬영은
+    // 마이크를 같이 쓰려다 부딪힌다. 마이크 단추가 가려져 껐는지 볼 수도 없다.
+    val overlayOpen = chooserMode != null || pending != null || skinCapture || gaitCapture ||
+        gaitPicking != null || gaitPairPicking || gaitHistoryOpen || gaitTitlePending != null ||
+        gaitComparing != null || gaitDetail != null || recentOpen
+    LaunchedEffect(overlayOpen) { if (overlayOpen) voice.stop() }
 
     // ── 위치-CLARIFY ────────────────────────────────────────────────────────
     //
@@ -799,6 +1008,10 @@ fun ChatScreen(
                             )
                         }
 
+                        ChatEntry.FacilityResult -> BesideAvatar {
+                            androidx.compose.material3.TextButton(onClick = { onOpenFacilities?.invoke() }) { Text("현재 시설 보기") }
+                        }
+
                         is ChatEntry.LocationNeeded -> BesideAvatar {
                             LocationClarifyAction(onRetry = { retryWithLocation(entry.query) })
                         }
@@ -817,6 +1030,10 @@ fun ChatScreen(
                         }
 
                         is ChatEntry.GaitRunning -> BesideAvatar { GaitProgressCard(entry.progress) }
+
+                        is ChatEntry.GaitSubmitted -> BesideAvatar {
+                            GaitSubmittedCard(title = entry.title)
+                        }
 
                         is ChatEntry.GaitDone -> gait.find(entry.recordId)?.let { record ->
                             BesideAvatar {
@@ -841,8 +1058,7 @@ fun ChatScreen(
         ChatInput(
             value = draft,
             onValueChange = { draft = it },
-            busy = asking || historyState.sending ||
-                (historyCoordinator != null && dogId != null && !historyState.canSend),
+            busy = inputBusy,
             onSend = {
                 val text = draft.trim()
                 // 물어보는 중에는 안 받는다 — 위 [asking] 주석.
@@ -851,10 +1067,8 @@ fun ChatScreen(
                     sendQuery(text)
                 }
             },
-            // 음성은 **아직 껍데기다.** 버튼 자리와 크기를 먼저 잡아 두고, 녹음과
-            // 인식이 붙을 때 여기만 갈아 끼운다. 눌러도 아무 일이 없으면 고장으로
-            // 보이므로 준비 중이라고 말은 한다.
-            onVoice = { notice = "음성 입력은 준비 중이에요." },
+            listening = voice.listening,
+            onVoice = toggleVoice,
             // **시트는 항상 연다.** 기능이 둘이 되면서 진단 서버 유무로 시트 전체를
             // 막으면 보행 쪽까지 같이 닫힌다. 못 하는 이유는 그 줄을 눌렀을 때 말한다.
             onDiagnose = { chooserMode = ChooserMode.Full },
@@ -2325,6 +2539,8 @@ private fun ChatInput(
     onDiagnose: () -> Unit,
     /** 물어보는 중인가. 보내기 단추를 눌러도 안 되는 상태를 **눈에도 보이게** 한다. */
     busy: Boolean = false,
+    /** 음성을 듣는 중인가. 마이크가 색을 바꾸고 안내문이 바뀐다 — 눌렀는데 표시가 안 바뀌면 고장으로 읽힌다. */
+    listening: Boolean = false,
 ) {
     Surface(color = CardWhite, shadowElevation = 4.dp) {
         Row(
@@ -2341,7 +2557,13 @@ private fun ChatInput(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
-                        if (value.isEmpty()) Text("메시지를 입력하세요", color = TextMuted, fontSize = 14.sp)
+                        if (value.isEmpty()) {
+                            Text(
+                                if (listening) "듣고 있어요…" else "메시지를 입력하세요",
+                                color = if (listening) DaengPink else TextMuted,
+                                fontSize = 14.sp,
+                            )
+                        }
                         BasicTextField(
                             value = value,
                             onValueChange = onValueChange,
@@ -2352,7 +2574,20 @@ private fun ChatInput(
                     }
                     // 음성은 "입력하세요" 바로 옆이다 — 말로 넣는 것도 입력이라,
                     // 입력칸 안에 있는 편이 무엇을 대신하는 버튼인지 바로 읽힌다.
-                    InputAction(DaengsIcon.Mic, onVoice, size = 36.dp, iconSize = 19.dp)
+                    //
+                    // 듣는 동안은 마이크 뒤에서 물결이 퍼진다. 색만 바꾸면 글이 차기
+                    // 시작한 뒤에는 "듣고 있어요…" 가 글에 가려져 분홍 점 하나만 남는다 —
+                    // 움직이는 것이 있어야 잠깐 말을 멈춰도 아직 듣는 중인지 보인다.
+                    Box(contentAlignment = Alignment.Center) {
+                        if (listening) ListeningRipple(Modifier.size(36.dp))
+                        InputAction(
+                            DaengsIcon.Mic,
+                            onVoice,
+                            size = 36.dp,
+                            iconSize = 19.dp,
+                            tint = if (listening) DaengPink else TextMuted,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -2380,17 +2615,67 @@ private fun InputAction(
     onClick: () -> Unit,
     size: Dp = 44.dp,
     iconSize: Dp = 22.dp,
+    tint: Color = TextMuted,
 ) {
     Box(
         Modifier.size(size).clip(RoundedCornerShape(50)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { DaengsIconView(icon, Modifier.size(iconSize), tint = TextMuted) }
+    ) { DaengsIconView(icon, Modifier.size(iconSize), tint = tint) }
+}
+
+/**
+ * 듣는 중의 물결. 마이크 뒤에서 동심원 둘이 반 주기 어긋나 번갈아 퍼지며 옅어진다.
+ *
+ * 마이크 단추(36dp) 안에서만 그린다 — 입력칸 높이가 48dp 라 밖으로 나가면 잘린다.
+ * 안쪽 반지름은 아이콘(19dp)을 살짝 감싸는 크기에서 시작해 단추 가장자리까지 간다.
+ */
+@Composable
+private fun ListeningRipple(modifier: Modifier = Modifier) {
+    val wave = rememberInfiniteTransition(label = "listening")
+    val phase by wave.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
+        label = "listening-phase",
+    )
+    Canvas(modifier) {
+        val edge = size.minDimension / 2f
+        val inner = edge * 0.55f
+        val stroke = Stroke(width = 1.5.dp.toPx())
+        repeat(2) { ring ->
+            val p = (phase + ring * 0.5f) % 1f
+            drawCircle(
+                color = DaengPink,
+                radius = inner + (edge - inner) * p,
+                alpha = (1f - p) * 0.5f,
+                style = stroke,
+            )
+        }
+    }
 }
 
 @Preview(widthDp = 411, heightDp = 891, showBackground = true)
 @Composable
 private fun ChatScreenPreview() {
     DaengsTheme { ChatScreen({}) }
+}
+
+/** 듣는 중의 입력줄. 마이크가 분홍이고 안내문이 "듣고 있어요…" 다. */
+@Preview(widthDp = 411, showBackground = true)
+@Composable
+private fun ChatInputListeningPreview() {
+    DaengsTheme {
+        ChatInput(value = "", onValueChange = {}, onSend = {}, onVoice = {}, onDiagnose = {}, listening = true)
+    }
+}
+
+/** 부분 결과가 차는 중. 글이 있으면 안내문 대신 글이 보이고 마이크만 분홍이다. */
+@Preview(widthDp = 411, showBackground = true)
+@Composable
+private fun ChatInputListeningWithTextPreview() {
+    DaengsTheme {
+        ChatInput(value = "우리 강아지가 사료를", onValueChange = {}, onSend = {}, onVoice = {}, onDiagnose = {}, listening = true)
+    }
 }
 
 /**

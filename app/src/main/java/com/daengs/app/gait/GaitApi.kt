@@ -159,11 +159,13 @@ object GaitApi {
      * 넣으면 404 다 (옛 주소에서는 그대로 통했다 — 그게 #64 였다).
      *
      * 저쪽은 **오래된 것부터** 준다. 앱 목록은 최근이 앞이라 [GaitHolder] 가 뒤집는다.
+     * 그래서 **첫 장이 가장 오래된 장이고 새 기록은 뒷장에 있다** — 부르는 쪽이
+     * [GaitPage.nextCursor] 를 따라가야 최신까지 닿는다 ([GaitHolder.load] 참고).
      */
     suspend fun records(
         accessToken: String,
         petId: String,
-        limit: Int = 20,
+        limit: Int = PAGE_LIMIT,
         cursor: String? = null,
     ): Result<GaitPage> = call {
         val query = buildString {
@@ -332,6 +334,13 @@ object GaitApi {
         }
 
     /** backend 의 보행 계약이 사는 자리. nginx 가 접두사를 떼지 않는다 (`/screen` 과 같다). */
+    /**
+     * 한 장에 몇 개. 저쪽 기본값과 같다 — 서버가 상한을 선언하지 않아
+     * (`{"type":"integer","default":20}`) 큰 값으로 한 번에 쓸어 올 수도 있지만,
+     * 커서가 계약이므로 그쪽을 따른다.
+     */
+    const val PAGE_LIMIT = 20
+
     private const val BASE_PATH = "/app/gait"
 
     /** 저쪽 nginx `/app/gait/` 는 200m 를 받는다. 앱은 그보다 낮게 먼저 막는다. */

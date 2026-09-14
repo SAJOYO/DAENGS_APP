@@ -152,8 +152,8 @@ fun PlaceSearchLabScreen(
         },
         listState = resultsListState,
         collapseRequest = collapseRequest,
-        navigation = bookmarks?.let { saved -> { expanded, toggle ->
-            PlaceBookmarkHandle(saved.tab, expanded, onBrowseTab, toggle)
+        navigation = bookmarks?.let { saved -> { expanded, toggle, reveal ->
+            PlaceBookmarkHandle(saved.tab, expanded, { onBrowseTab(it); reveal() }, toggle)
         } },
     )
     state.hits.firstOrNull { it.place.key == state.expanded }?.let { hit ->

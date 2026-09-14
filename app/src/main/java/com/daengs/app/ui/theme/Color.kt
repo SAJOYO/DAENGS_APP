@@ -123,3 +123,13 @@ object RoomPalette {
     val GhostValid = Color(0xFF7FC98F)
     val GhostInvalid = Color(0xFFE87F7F)
 }
+
+/** 산책 모아보기 A안: 동선 아래의 먹색 그림자. 횟수는 서로 다른 산책 세션 수다. */
+object WalkTraceShadow {
+    const val RGB = 0x29252B
+    val color = Color(0xFF000000.toInt() or RGB)
+
+}
+
+/** RGB supplied by the records display policy; colour construction stays in the palette. */
+fun tracePigmentColor(rgb: Int): Color = Color(rgb or (0xFF shl 24))

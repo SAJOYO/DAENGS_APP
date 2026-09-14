@@ -19,6 +19,11 @@ internal class TraceLoadingWalkRecordsSource(
         return local.select(query).also { checkAccount() }
     }
 
+    override suspend fun loadRoute(record: WalkRecord): com.daengs.app.walk.WalkSummary {
+        checkAccount()
+        return local.loadRoute(record).also { checkAccount() }
+    }
+
     override suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection {
         checkAccount()
         val expected = selection.records.mapNotNull { record ->

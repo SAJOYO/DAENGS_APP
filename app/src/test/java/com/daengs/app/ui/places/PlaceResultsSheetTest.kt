@@ -46,7 +46,22 @@ class PlaceResultsSheetTest {
         compose.onNodeWithText(hits[2].place.name).assertIsDisplayed()
         compose.onNodeWithContentDescription("지도 보기").performClick()
         compose.onNodeWithText("카테고리 영역").assertIsDisplayed()
-        assertEquals(foldedTop, handle.fetchSemanticsNode().boundsInRoot.top, 1f)
+        assertTrue(handle.fetchSemanticsNode().boundsInRoot.top > foldedTop + 100f)
+        compose.onNodeWithTag("place-results-list").assertIsNotDisplayed()
+    }
+
+    @Test fun scrollingDownKeepsTheDrawerExpandedUntilTheListReachesItsTop() {
+        show()
+        compose.onNodeWithContentDescription("목록 보기").performClick()
+        val handle = compose.onNodeWithTag("place-results-handle")
+        val expandedTop = handle.fetchSemanticsNode().boundsInRoot.top
+        val list = compose.onNodeWithTag("place-results-list")
+        list.performScrollToIndex(12)
+        list.performTouchInput { swipe(center, Offset(center.x, center.y + 150f), 600) }
+        assertEquals(expandedTop, handle.fetchSemanticsNode().boundsInRoot.top, 1f)
+        list.performScrollToIndex(0)
+        list.performTouchInput { swipe(Offset(center.x, 24f), Offset(center.x, 424f), 600) }
+        assertTrue(handle.fetchSemanticsNode().boundsInRoot.top > expandedTop + 100f)
     }
 
     @Test fun detailButtonAndSwipeRestoreListPositionAndSheetHeight() {

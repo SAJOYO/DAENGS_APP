@@ -31,8 +31,10 @@ import com.daengs.app.miniroom.sprite.drawSpriteFrame
 import com.daengs.app.territory.TerritoryProximityRange
 import com.daengs.app.ui.*
 import com.daengs.app.ui.theme.*
+import com.daengs.app.ui.theme.PinkFaint
+import com.daengs.app.ui.theme.CreamBg
 
-/** Uses the map's pole renderer/ring palette and existing dog art; not a map or camera session. */
+/** Uses the map's finished pole resources/ring palette and existing dog art; not a map or camera session. */
 @Composable
 internal fun TerritoryGuideScene(scenario: GuideScenario, step: GuideStep, onSelectPole: (() -> Unit)? = null) {
     val mine = step == GuideStep.RESULT || (scenario == GuideScenario.EMPTY && step >= GuideStep.MARKED)
@@ -66,7 +68,7 @@ internal fun TerritoryGuideScene(scenario: GuideScenario, step: GuideStep, onSel
                 Text("예시", fontSize = 11.sp, color = TextDark)
             }
             BoxWithConstraints(Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(12.dp))
-                .background(if (photo) Color(0xFFEAF0E7) else Color(0xFFF1EDE2))) {
+                .background(if (photo) PinkFaint else CreamBg)) {
                 val poleX = maxWidth * .62f
                 val baseY = 143.dp
                 val dogX = if (step == GuideStep.APPROACH) 30.dp else poleX - 42.dp

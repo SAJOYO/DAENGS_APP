@@ -1,0 +1,219 @@
+# 산책 종료·기록 공통 상세
+
+산책 종료와 지난 기록 선택은 저장된 같은 세션 ID로 상세를 연다.
+요약·장면·편집·경로의 원본은 기존 WalkHistory와 WalkDiaryReader다.
+화면 이미지를 별도 결과 레코드로 저장하지 않는다.
+
+## 진입과 수명
+
+- MainActivity의 실제 기록 detailContent와 완료 목적지가 WalkSessionDetailRoute를 사용한다.
+- WalkSessionFlow가 산책 화면 안에서 서비스 상태를 관찰한다. 완료 상세에는 실시간 WalkRoute를 구성하지 않아 위치 구독과 권한 요청이 내려간다.
+- 계정 범위의 WalkSessionDestination이 완료 알림 소비 후에도 세션 ID를 유지한다. 새 활성/저장 중 세션이 있으면 이전 완료가 가로채지 않는다.
+- 같은 로그인과 프로세스의 화면 재생성에는 완료 목적지를 복원한다. 다른 계정·다시 로그인·새 프로세스의 이전 화면 상태는 재사용하지 않는다.
+- 종료 상세의 복귀는 홈, 기록 상세의 복귀는 기존 WalkRecordsRouteState가 보존한 목록이다.
+- 장면 공개와 준비 마감은 [기존 일기 정책](walk-diary-publication.md)을 따른다. 장면 준비 중에도 지도와 동선 탐색은 열며 장면·편집은 준비 결과를 기다린다.
+
+## 상세 데이터 경계 (#358)
+
+`WalkSessionDetailRoute.kt`에서 앱 의존성을 연결하고 `key(sessionId, accountScope)`로
+상세의 수명을 구분한다. `WalkDiaryMapForAccount`는 다음 두 계약을 주입받는다.
+
+| 계약 | 담당 |
+| --- | --- |
+| `WalkDetailSource` | 원본 변경 통지, 상세 조회, 같은 원본의 일기/기록 관찰, 현재 로그인 세대 검사 |
+| `WalkDetailActions` | 진입 시 준비/전달 예약, 일기 갱신, 기록 저장/삭제, 장면 편집, 사진 삭제 |
+
+`StoredWalkDetailData`는 기존 History·Reader·Room 저장소·동기화에 연결한다.
+새 coroutine scope나 작업 큐를 만들지 않는다. 진행 상태·오류·중복 요청은 아래 화면 상태 담당이 관리한다.
+화면 이탈은 호출 coroutine을 취소한다. 공개 준비 작업은 기존 `WalkDiaryPublication` 수명을 유지한다.
+
+- 기록 저장 후 전달을 예약하며 삭제는 기존 `deleteAndEnqueue`를 사용한다.
+  예약이 실패해도 이미 저장된 기록/삭제 표식을 되돌리지 않는다. 이 경우 `WalkDetailDeliveryPending`으로
+  로컬 저장 완료를 구분한다. 편집창은 완료하고 화면의 안내·재시도로 전달 예약만 다시 실행한다(#367).
+- 일기 생성은 인증 → 산책 동기화(`includeStoryboard = false`) → 저장된 원격 ID 조회 →
+  장면 갱신(`refresh = true`) 순서다. 공개된 일기의 새로고침은 기존 준비만 깨운다.
+- 장면 편집은 DAO의 공개 상태·소유권 검사와 원본 기록 보존을 유지한다.
+  사진 삭제는 기존 파일/DB 정리 경계를 사용한다.
+- 계정 세대를 대기 전후에 검사해 이전 로그인에서 시작한 다음 단계가 실행되지 않게 한다.
+  DB의 기존 소유권/편집 revision 검사도 유지한다.
+- 경로 준비와 `WalkDiaryReadView`·탐색 상태의 일괄 반영은 아래 화면 상태 담당을 통해 유지한다.
+  [읽기 revision과 지도 계약](walk-record-overview.md)을 변경하지 않는다.
+
+백업 상태 UI와 개발용 비교 파일 읽기는 진입부에서 별도로 전달한다.
+이 분리는 로딩/선택 상태를 새 ViewModel로 옮기거나 일기 조립 계산을 다시 만드는 작업이 아니다.
+
+## 상세 진행 상태 (#361)
+
+`WalkDetailState`가 조회·기록 관찰·준비 예약·생성·기록/장면 저장의 진행 상태와 오류를 소유한다.
+`rememberWalkDetailState`는 데이터 계약과 탐색 담당을 key로 사용하며, 해당 Compose 그룹의
+`rememberCoroutineScope`와 `LaunchedEffect`로 관찰/요청을 실행한다. 상세나 계정이 바뀌어
+그룹을 떠나면 모두 취소한다. ViewModel·서비스·영속 큐를 추가하지 않는다.
+
+- 화면은 상태를 표시하고 명시적 동작을 전달한다. 지도 선택과 재생은 기존 explorer,
+  카메라는 navigation, 입력 중인 제목/본문은 기존 편집창이 소유한다.
+- 기록 저장과 삭제는 한 진행 플래그를 공유한다. 장면 저장과 생성도 요청을 시작하기 전에
+  플래그를 올려 연속 호출을 차단한다. 로컬 저장 실패는 편집 오류를 남긴다. 로컬 저장이 완료되고
+  전달 예약만 실패하면 편집 완료 콜백과 화면의 재시도 안내를 함께 반영한다. 재시도는 `open()`을
+  통해 예약을 다시 실행하므로 이전 편집 버전으로 내용을 재저장하지 않는다(#367).
+- 취소를 저장 실패로 표시하지 않는다. 작업 완료 시 현재 계정과 coroutine을 다시 확인한다.
+  산책 누락 통지를 받으면 진행 중 편집/생성을 취소하고, 늦게 끝난 옛 작업이 새 요청의
+  진행 플래그나 편집창을 바꾸지 못하도록 세대를 구분한다.
+- 재조회는 기존 정상 화면을 유지하면서 진행한다. 원본/장면 읽기 오류와 준비 예약 오류는
+  따로 보관해 한쪽의 성공이 다른 오류를 지우지 않는다. 초기 준비/전달 예약 실패는 재시도로 다시 실행한다.
+- 경로 읽기 결과와 explorer 채택은 같은 `Snapshot.withMutableSnapshot`에서 반영한다.
+  `walkDiaryReadUpdates`의 원본 재사용·장면 revision·계정 검사와 삭제 후 복원 차단을 유지한다.
+
+사진 삭제의 진행/오류는 기존 `WalkPhotoDialog`가 소유한다. 개발용 설명 비교·미리보기 상태도
+각 화면에 유지하며, 공개 준비 작업의 마감과 복구는 기존 `WalkDiaryPublication` 책임이다.
+
+## 일기 조회와 조립 (#362)
+
+`WalkDiaryReader`는 Room 관찰과 사진 저장소 연결, 계정·세션 존재·종료 검사, IO 실행을 맡는다.
+`WalkDiaryAssembly.kt`의 `assembleDiary`는 조회한 값으로 공개 보드 선택·사용자 변경 반영·장면을 계산한다.
+`DiaryBoardInput`은 기존 `combine`이 전달한 값 묶음이며, 별도 DB 트랜잭션 스냅샷을 만들지는 않는다.
+
+- 공개 준비 중에는 장면을 숨긴다. 공개 후에는 저장된 보드에 메모 수정·추가·삭제와 사진 삭제를
+  반영한 뒤 검토본의 본문·숨김 편집을 적용한다. 동기화 ACK로 저장된 문장을 바꾸지 않는다.
+- 공개 행이 없는 기존 산책은 `storyboardAnalysisView`의 입력 stamp·이전 결과 재사용 규칙을 따른다.
+- 장면과 `sourceEntries`는 한 번 파싱한 같은 기록 목록에서 나온다. 지도 좌표는 전달받은 원본
+  관측값으로 기존 `diaryWalk`가 확인한다. 조립 함수가 DB·파일·네트워크를 읽지는 않는다.
+- `diaryTitle`은 제목 전용 경로다. 저장된 bundle과 입력 유효성에 필요한 행만 사용하며,
+  전체 일기·경로·사진 파일·편집 초안을 읽거나 사용자 변경을 조립하지 않는다.
+
+`WalkDiaryAssemblyTest`는 Room 없이 준비/공개·사용자 수정·분석 유효성·제목 계산을 검사한다.
+계정/종료 검사와 삭제 반영은 `WalkDiaryReaderTest`, 공개 작업과 원본 위치의 연결은 기존
+`WalkDiaryPublicationTest`·`WalkDiaryPublicationLifecycleTest`·`WalkSceneAnchoringTest`가 검사한다.
+
+## 편집 대상과 대화상자 (#363)
+
+`WalkDiaryEditorState`가 위치 추가 모드·선택한 원본 지점·기록/장면 편집 대상·열린 사진을 관리한다.
+`WalkDiaryEditorDialogs`가 기존 위치 안내, 기록 편집기, 장면 편집기와 사진창을 연결한다.
+상세 화면은 지도 선택을 전달하고, 화면 이탈·산책 누락에 따라 대상을 정리한다.
+
+- 기록 편집 취소는 선택 지점과 편집창을 닫되 위치 추가 모드는 유지한다.
+  저장/삭제 성공은 추가 모드까지 닫는다. 실패는 편집창을 닫지 않아 입력을 유지한다.
+- 위치와 시각·정확도는 선택한 `WalkRoutePoint`에서 가져온다. 반복 방문 시각 선택과
+  경로 없는 산책의 시작 시각·위치 없는 메모 처리를 유지한다.
+- 저장 가능한 상태는 기존과 같이 추가 모드 여부뿐이다. 편집 대상과 선택 지점·사진은
+  복원하지 않는다. 상위 `key(sessionId, accountScope)`가 로그인 세대와 산책 수명을 구분한다.
+- 입력 중인 문장은 기존 편집창, 비동기 저장/오류는 `WalkDetailState`, 사진 삭제 진행은
+  `WalkPhotoDialog`, 서랍과 탐색/카메라는 기존 담당이 관리한다.
+
+실기기 검사는 `tools/naver-map-review.init.gradle`로만 포함되는
+`DiaryEditorReviewActivity`와 `DiaryEditorDeviceTest`를 사용한다. `.locationreview` 앱의
+합성 기록·메모리 Room·검증 사진에 실제 Reader, 저장 서비스, 편집창과 SDK 지도를 연결한다.
+인증·서버 전달은 연결하지 않는다. 일반 앱의 계정/기록을 검증 데이터로 사용하지 않는다.
+
+지도 검증 앱과 같이 `DAENGS_NAVER_NCP_KEY_ID`를 설정한 환경에서 실행한다.
+
+```powershell
+.\gradlew.bat -I tools/naver-map-review.init.gradle :app:assembleDebug :app:assembleDebugAndroidTest -PslimAbi=arm64-v8a
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w -e class com.daengs.app.ui.walk.review.DiaryEditorDeviceTest com.daengs.app.locationreview.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Samsung SM-S931N / Android 16에서 네 가지 시나리오를 확인했다: 원본 재방문 시각 선택과
+실패 후 저장 재시도, 위치 없는 메모의 취소/저장, 장면 수정 재조회와 사진 삭제 확인,
+로그인 세대 교체/산책 삭제 시 열린 편집창 해제. 지도 터치는 장면 핀 옆의 기존 30m 선택
+범위 안에서 주입하며, 저장된 좌표·시각·정확도를 Room 값과 대조한다.
+
+## 화면
+
+상단은 제목·날짜·강아지·가용한 날씨와 시간·거리·평균 속도다.
+세 수치는 제목 아래 글쓴이 정보처럼 작은 한 줄로 모은다. 강아지·날씨가 있으면 같은 줄에 포함하며 긴 내용은 자연스럽게 줄바꿈한다.
+화면 읽기에는 시간·거리·평균 속도의 항목명을 따로 제공한다.
+같은 지도 위 하단 시트에서 장면과 동선 탐색을 바꾼다.
+탭 위 손잡이 영역은 24dp로 좁히고 탐색 제목이나 펼치기·접기 안내 문구를 반복하지 않는다.
+장면을 읽는 중에는 장면 목록으로 돌아가는 조작과 현재 장면 번호를 유지한다.
+장면 선택·기록 추가·수정·사진·앞뒤 장면 이동은 기존 소비자를 유지한다.
+시트 드래그와 탭 전환 자체는 지도 객체를 교체하지 않는다.
+
+동선 탐색은 전체 보기, 구간, 장면, 통과 선택, 재생의 상호 배타적인 상태를 사용한다.
+구간 확대·장면 시각 대응과 기록/동선 경계의 구분은 [동선 구간·장면 선택](walk-route-section-selection.md)을 따른다.
+장면으로 복귀·편집·백그라운드 전환·상세 이탈은 재생을 정지한다.
+탐색 선택·재생 위치는 현재 상세의 임시 상태다. 재진입·화면 재생성에는 탐색을 초기화한다.
+
+## 외부 방향과 지도 레이어
+
+MapScene.sessionExplorer를 지정한 저장 상세에만 탐색 레이어를 적용한다.
+기존 실시간 산책과 여러 세션 모아보기는 이 옵션을 사용하지 않는다.
+속도 경로는 기존 색 정책을 쓰고 상세에서 흰 외곽선을 더한다.
+
+- 외부 방향은 처음부터 활성화한다. 줌 레벨로 일괄 숨기지 않는다.
+- 실제 화면 좌표로 투영한 경로에서 짧은 연속 GPS 선분을 묶고 읽을 수 있는 방향 후보를 만든다.
+- 화면 끝·장면/출발/종료 마커·지도 설정 버튼·다른 경로·다른 화살표를 피한다.
+- 같은 후보의 기존 좌우 선택을 유지하고, 최대 6개로 제한한다. 배치 가능한 개수를 강제로 채우지 않는다.
+- 왕복·교차가 겹친 후보에는 방향 하나를 단정하지 않는다. 통과를 고르면 그 구간의 방향을 별도로 표시한다.
+- 모두 생략된 화면에는 확대 조작을 제공한다. 카메라 이동 중에는 보조 표시를 숨기고 idle에서 다시 배치한다.
+- 자체 오버레이의 충돌을 검사한다. 네이버 기본 지도 라벨 전체의 경계 상자를 읽는 기능은 구현하지 않았다.
+
+NaverSessionRouteExplorer는 자체 Marker를 사용한다. 재생 커서는 기기 현재 위치용 LocationOverlay와 분리되어 있다.
+정적 속도 경로와 선택 구간, 재생 커서는 별도로 갱신한다. 재생 틱마다 전체 경로와 아이콘을 다시 생성하지 않는다.
+카메라 리스너와 추가 오버레이는 상세가 사라질 때 정리한다.
+
+사용한 API는 설치된 NAVER Android SDK 3.23.3의
+[Projection](https://navermaps.github.io/android-map-sdk/reference/com/naver/maps/map/Projection.html)과
+[Marker](https://navermaps.github.io/android-map-sdk/reference/com/naver/maps/map/overlay/Marker.html)다.
+화면 좌표 접근은 UI 스레드에서, 경로 공간 인덱스는 백그라운드에서 수행한다.
+
+## 통과와 재생 계산
+
+RouteExplorerIndex는 전체 원본에서 만들어진 상세 경로를 사용한다. 목록의 축약 썸네일 경로는 사용하지 않는다.
+20m 격자 인덱스를 한 번 만들고, 지도에서 선택한 위치의 인접 간선을 조회한다.
+시간순 연속 간선을 한 통과로 묶으며 방향 반전·이탈 후 재진입을 구별한다.
+단순 교차는 같은 길을 반복한 것으로 합치지 않는다.
+
+초기 판정은 길이 48m, 좌우 4m의 선택 구간과 방향 일치 조건을 사용한다.
+GPS 정확도 미상/12m 초과, 관측 간격 15초 초과 등의 간선은 확정 통과 판정에서 제외한다.
+가까운 평행 흔적의 횡방향 차이가 2m를 넘으면 횟수를 단정하지 않는다.
+이는 실기 산책으로 조정할 보수적인 초기 값이며, 도로를 식별하는 지오코딩이나 확정 방문 횟수 통계가 아니다.
+판정할 자료가 부족해도 원래 경로와 장면은 계속 볼 수 있다.
+
+재생은 저장된 활동 경과 시간축을 이진 탐색하고 원래 기록 시각을 표시한다.
+동일한 연속 세그먼트의 15초 이내 관측 사이만 표시용으로 보간한다.
+세그먼트 경계·장기 공백·누락된 점·시각 역행은 직선으로 이어 그리지 않는다.
+해당 시각에 위치를 표시할 수 없으면 커서를 숨기고 공백을 알린다.
+100ms 간격의 재생은 끝에 도달하면 정지하며 저장 GPS·거리·통계를 수정하지 않는다.
+
+## 검증 범위와 남은 확인
+
+- WalkSessionDestinationTest: 완료 알림 소비 후 목적지 유지, 실시간 화면 해제, 이전 세션·계정 차단, 상태 복원.
+- RouteDirectionLayoutTest: 초기 전체 보기, 촘촘한 GPS, 왕복 모호성, 좌우 충돌 회피, 화면 배율과 회전, 선택 밖 경로 회피.
+- RouteExplorerIndexTest: 왕복·같은 방향 반복·대각 교차·평행 흔적·정지 흔들림·일시정지와 재생 공백.
+- WalkRouteExplorerStateTest: 재생 종료·정지·패널 전환, 오래된 분석 결과 무시.
+- WalkSessionDetailUiTest: 요약·장면·탐색의 공통 지도, 조작과 편집 진입, 320dp 큰 글꼴.
+- 기존 기록 복귀, 일기 화면, Reader, 공개 CAS, 지도 정책·속도 스타일 테스트를 함께 선택한다.
+
+UI 테스트의 build/outputs/walk-session-*.png는 지도 대역을 사용한 레이아웃 확인이다.
+실제 네이버 타일은 아래 에뮬레이터 검토로 확인했고, 긴 실측 산책의 통과 판정은 별도 기기 확인이 필요하다.
+SDK 인증 설정이 빠진 APK를 기존 사용자 앱에 덮어쓰지 않는다.
+공개된 일기·수정본의 다른 기기 간 동일 복원은 기존 동기화 계약의 별도 범위다.
+
+### 2026-09-11 SDK 실행 확인
+
+읽기 전용 Pixel 8 에뮬레이터(Android 17, x86_64, 1080×2400)에서 실제 NAVER SDK 타일을 확인했다.
+공용 환경 파일의 `DAENGS_NAVER_NCP_KEY_ID`만 빌드 프로세스에 주입했다.
+서버용 secret과 다른 서비스 키는 앱에 주입하지 않았고, My Style ID 없이 기본 지도를 사용했다.
+설치 성공과 설치 APK의 SHA-256 일치를 확인했다. 연결된 휴대폰의 정식 앱은 변경하지 않았다.
+
+`WalkSessionLabActivity`는 디버그 전용이며, 로그인·API 설정이 없는 에뮬레이터에서만 가상 원본을 저장한다.
+실제 WalkHistory, 일기 Reader, WalkSessionDetailRoute와 MapHost를 사용한다.
+재현 시 읽기 전용 임시 에뮬레이터를 사용하고, 가상 기록을 실제 산책이나 서버 동기화 검증으로 취급하지 않는다.
+
+```powershell
+adb -s emulator-5580 shell am start -W -n com.daengs.app/com.daengs.app.ui.walk.WalkSessionLabActivity --es case loop --ez completion true
+# 교차와 분리된 경로: --es case gap
+# 뒤로 이동하면 가상 기록 목록, 같은 항목을 누르면 RECORDS 출처로 동일 상세를 연다.
+```
+
+- 초기 전체 보기에서 외부 화살표와 속도 경로·장면 마커 표시 확인.
+- 같은 길의 3회 통과 선택과 역방향 화살표, 단순 교차의 1회 통과 확인.
+- 확대 후 외부 화살표 재배치, 분리된 경로 사이 직선 연결 없음 확인.
+- 재생/일시정지, 슬라이더 위치 이동과 SDK 커서, 장면 탭 복귀 시 커서 해제 확인.
+- 종료 출처의 상세와 프로세스 재시작·목록 재진입 후 같은 요약(12:15, 826m, 4.0km/h) 확인.
+- 짧은 구간이 같은 분으로 표시되던 문제를 발견해 통과·재생 기록 시각을 초까지 표시하도록 수정.
+- 해당 변경 후 WalkSessionDetailUiTest 3개 및 디버그 빌드 통과.
+
+장면 수정 진입은 확인했으나 비로그인 가상 기록의 저장은 소유권 검사로 거절된다.
+로그인된 실제 계정의 수정 저장·재진입, 실제 산책 서비스 종료 인계, 긴 실측 GPS와 사진은 아직 검증하지 않았다.

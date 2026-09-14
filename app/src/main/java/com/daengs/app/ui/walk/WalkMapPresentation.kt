@@ -71,6 +71,7 @@ internal fun WalkUiState.toMapPresentation(): WalkMapPresentation {
                         point = moment.point,
                         label = moment.markerLabel,
                         selected = moment.id == map.selectedMomentId,
+                        behaviors = moment.types,
                     )
                 } + diaryPhotos.photoMarkers(),
                 stayStamps = completion.detail?.stayStamps ?: tracking.stayStamps,

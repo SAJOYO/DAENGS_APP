@@ -86,13 +86,24 @@ class TraceBrushTest {
         small.filterValues { it > 0 }.forEach { (key, value) ->
             assertEquals("pixel $key", value, large.getValue(key), 0.000001f)
         }
-        val pigment = cells.associateWith { if (it.q < 0) TraceOverlapPalette.TEAL_RGB else TraceOverlapPalette.ORANGE_RGB }
+        val pigment = cells.associateWith { if (it.q < 0) 0x008F9C else 0xEB6A20 }
         val smallColors = colors(smallTiles, pigment)
         val largeColors = colors(largeTiles, pigment)
         small.filterValues { it > 0 }.keys.forEach { key ->
             assertEquals("colour $key", smallColors.getValue(key), largeColors.getValue(key))
         }
-        assertTrue(smallColors.values.any { it != 0 && it != TraceOverlapPalette.TEAL_RGB && it != TraceOverlapPalette.ORANGE_RGB })
+        assertTrue(smallColors.values.any { it != 0 && it != 0x008F9C && it != 0xEB6A20 })
+        val strengths = cells.associateWith { if (it.q < 0) .10f else .35f }
+        fun field(tiles: List<TraceRasterTile>) = pixels(tiles.map {
+            it.copy(alpha = TraceBrush.opacity(it, strengths, 8.0,
+                TraceBrushPolicy(tileSize = it.size)))
+        })
+        val smallStrengths = field(smallTiles)
+        val largeStrengths = field(largeTiles)
+        small.filterValues { it > 0 }.keys.forEach { key ->
+            assertEquals("strength $key", smallStrengths.getValue(key), largeStrengths.getValue(key), .000001f)
+        }
+        assertTrue(smallStrengths.values.any { it in .15f.. .30f })
     }
 
     @Test
@@ -100,11 +111,11 @@ class TraceBrushTest {
         val cell = SpatialDiaryCellId(0, 0)
         val tiles = TraceBrush.mask(WalkTraceSheet("island", cells = setOf(cell))).tiles
         val sourcePixels = pixels(tiles)
-        val pigment = mapOf(cell to TraceOverlapPalette.TEAL_RGB)
+        val pigment = mapOf(cell to 0x008F9C)
         val painted = colors(tiles, pigment)
 
         sourcePixels.filterValues { it > 0 }.keys.forEach { key ->
-            assertEquals(TraceOverlapPalette.TEAL_RGB, painted.getValue(key))
+            assertEquals(0x008F9C, painted.getValue(key))
         }
         assertEquals(sourcePixels, pixels(tiles))
         val first = tiles.first()
@@ -185,7 +196,15 @@ class TraceBrushTest {
         assertTrue(source.alpha.all { it == 1f })
         checks = 0
         assertThrows(CancellationException::class.java) {
-            TraceBrush.colors(source, mapOf(SpatialDiaryCellId(0, 0) to TraceOverlapPalette.TEAL_RGB), 8.0) {
+            TraceBrush.colors(source, mapOf(SpatialDiaryCellId(0, 0) to 0x008F9C), 8.0) {
+                if (++checks == 4) throw CancellationException()
+            }
+        }
+        assertEquals(4, checks)
+        assertTrue(source.alpha.all { it == 1f })
+        checks = 0
+        assertThrows(CancellationException::class.java) {
+            TraceBrush.opacity(source, mapOf(SpatialDiaryCellId(0, 0) to .20f), 8.0) {
                 if (++checks == 4) throw CancellationException()
             }
         }
