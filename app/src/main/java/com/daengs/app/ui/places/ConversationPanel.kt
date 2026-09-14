@@ -17,7 +17,8 @@ import com.daengs.app.ui.theme.DaengsTheme
 @Composable
 internal fun ConversationPanel(state: ConversationUiState, validationError: String? = null,
     showAnswer: Boolean = true, onRetryAnswer: () -> Unit = {}, onRetrySearch: () -> Unit = {},
-    onApplyCurrentFilters: () -> Unit = {}, filterSummary: String = "", onOpenFilters: () -> Unit = {}) {
+    onApplyCurrentFilters: () -> Unit = {}, filterSummary: String = "", onOpenFilters: () -> Unit = {},
+    showAnswerRecovery: Boolean = showAnswer) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (filterSummary.isNotEmpty()) TextButton(onClick = onOpenFilters) {
@@ -31,7 +32,7 @@ internal fun ConversationPanel(state: ConversationUiState, validationError: Stri
         if (state.error != null || state.result?.failed == true) {
             TextButton(onClick = onRetrySearch) { Text("검색 다시 시도") }
         }
-        if (showAnswer && !state.busy && !state.answerBusy && state.result?.answerStatus == "pending") {
+        if (showAnswerRecovery && !state.busy && !state.answerBusy && state.result?.answerStatus == "pending") {
             state.answerError?.let { Text(it) }
             TextButton(onClick = onRetryAnswer) { Text("설명 다시 받기") }
         }

@@ -14,6 +14,7 @@ import com.daengs.app.map.shell.MapHost
 import com.daengs.app.map.shell.MapScene
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.places.PlaceDogAssistant
+import com.daengs.app.ui.places.DogDialogueText
 import com.daengs.app.ui.places.PlaceMapControls
 import com.daengs.app.ui.theme.DaengsTheme
 
@@ -51,8 +52,9 @@ private fun DogBubbleLab() {
                 key(phase) {
                     PlaceDogAssistant(phase == "생각", phase == "답변", open, { open = it },
                         { phase = "생각" }, { open = false }, onUndo = if (phase == "답변") ({ phase = "입력" }) else null,
-                        avatarBreed = DogBreed.BEAGLE, searchContext = "검토용 예시 · 검색 지역 변경 없음") {
-                        Text("주차 가능한 카페를 검색 조건에 담았어. [예시]")
+                        avatarBreed = DogBreed.BEAGLE, searchContext = "현재 검색 지역 · 반경 3km",
+                        details = { Text("적용 조건 · 카페 · 주차 필수 · 현재 검색 지역", style = MaterialTheme.typography.labelSmall) }) {
+                        DogDialogueText("주차 가능한 카페를 찾았어.\n아래 카드에서 골라 봐, 멍!")
                     }
                 }
                 }

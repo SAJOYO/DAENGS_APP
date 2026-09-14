@@ -156,7 +156,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
                     onCancel = controller::cancelConversation, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
                     searchContext = "찜한 시설 안에서 · " + (filters.radiusMeters?.let { "반경 ${it / 1000.0}km" } ?: "지역 제한 없음") +
                         " · " + category.label + (if (filters.parkingFirst) " · 주차 우선" else "") + hard.summary.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
-                ) { state.aiAnswer?.let { Text(it, Modifier.padding(12.dp), fontSize = 13.sp) } }
+                ) { state.aiAnswer?.let { DogDialogueText(it) } }
             }
             }
         },

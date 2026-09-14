@@ -115,6 +115,30 @@ class ConnectedPlaceSearchUiTest {
         compose.onNodeWithContentDescription("AI 조건 검색 전환").assertDoesNotExist()
         assertEquals(result.selected, state.toConnectedSearchState("", true, result.selected, null).selected)
     }
+
+    @Test fun dialogueKeepsAnswerAndSearchRecoveryReachableWithoutResizing() {
+        val result = conversationFixture("picked").toConversationResult()
+        val state = androidx.compose.runtime.mutableStateOf(ready().copy(conversationAvailable = true,
+            facility = FacilityUiState(enabled = true)))
+        val actions = mutableListOf<PlacesAction>()
+        compose.setContent { DaengsTheme {
+            ConnectedPlaceSearchScreen(state.value, actions::add, {}, {}, {}, {}, {}, showMap = false)
+        } }
+        compose.onNodeWithTag("place-dog-anchor").performClick()
+        compose.onNodeWithTag("place-dog-input").performTextInput("카페")
+        compose.onNodeWithContentDescription("말해주기").performClick()
+        val before = compose.onNodeWithTag("place-dog-bubble").fetchSemanticsNode().boundsInWindow
+        compose.runOnIdle { state.value = state.value.copy(conversation = ConversationUiState(
+            result = result.copy(answer = null, answerStatus = "pending"), answerError = "설명 연결이 끊겼어요")) }
+        compose.onNodeWithText("설명 다시 받기").performScrollTo().performClick()
+        assertEquals(PlacesAction.RetryAi, actions.last())
+        compose.runOnIdle { state.value = state.value.copy(conversation = ConversationUiState(
+            result = result, error = "검색 연결이 끊겼어요")) }
+        compose.onNodeWithText("검색 다시 시도").performScrollTo().performClick()
+        assertTrue(actions.last() is PlacesAction.Discover)
+        assertEquals(before, compose.onNodeWithTag("place-dog-bubble").fetchSemanticsNode().boundsInWindow)
+        compose.onNodeWithContentDescription("닫기").assertIsDisplayed()
+    }
     @Test fun fixedDogRemainsAvailableWithoutGpsAndWhenSearchOriginMovesFarAway() {
         val state = androidx.compose.runtime.mutableStateOf(ready().copy(
             location = PlaceLocationState.Failed(PlaceLocationFailure.UNAVAILABLE, null)))
@@ -123,7 +147,7 @@ class ConnectedPlaceSearchUiTest {
         } }
         compose.onNodeWithTag("place-dog-anchor").assertIsDisplayed().performClick()
         compose.onNodeWithText("검색 지역을 먼저 정해 줘").assertExists()
-        compose.onNodeWithText("닫기").performClick()
+        compose.onNodeWithContentDescription("닫기").performClick()
         val before = compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot
         compose.runOnIdle {
             state.value = state.value.copy(discovery = state.value.discovery.copy(
@@ -203,7 +227,7 @@ class ConnectedPlaceSearchUiTest {
         assertTrue(actions.isEmpty())
         compose.onNodeWithTag("place-dog-input").performTextInput("주차 가능한 카페")
         assertTrue(actions.isEmpty())
-        compose.onNodeWithText("말해주기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("말해주기").performClick()
         assertEquals(listOf(PlacesAction.SetAiMode(true), PlacesAction.Discover("주차 가능한 카페")), actions)
     }
     /**
