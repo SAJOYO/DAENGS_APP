@@ -85,7 +85,7 @@ import com.daengs.app.ui.theme.DaengsTheme
  * 높이 제약은 컴포넌트 안이 아니라 이 배치 지점에 둔다 — 그래야 두 카드를
  * 다른 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
  */
-internal val CardSlotHeight = 146.dp
+internal val CardSlotHeight = 104.dp
 
 /**
  * 강아지 목록이 늦을 때 "불러오는 중" 을 띄우기까지 기다리는 시간.
