@@ -124,7 +124,6 @@ fun NaverMapSurface(
     val latestCameraCallback by rememberUpdatedState(onCameraIdle)
     val latestGestureCallback by rememberUpdatedState(onCameraGesture)
     val latestMapTapCallback by rememberUpdatedState(onMapTap)
-    val latestMomentCallback by rememberUpdatedState(onSelectMoment)
     val latestSnapshotCallback by rememberUpdatedState(onCameraSnapshot)
     // idle 은 **우리가 부른 moveCamera 에도** 뜬다. 이유를 같이 안 보면, 기기를 따라
     // 카메라가 움직인 것과 사용자가 지도를 민 것이 똑같아 보인다.
@@ -355,66 +354,7 @@ fun NaverMapSurface(
         query = visibilityQuery.takeIf { scene.moments.any { it.diaryPin != null } },
         onVisibility = onVisibility, onBounds = { diaryMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
 
-    val photoFiles = visibleMoments.mapNotNull { it.photoFile }.distinct()
-    val photoIcons by androidx.compose.runtime.produceState<Map<java.io.File, OverlayImage>>(emptyMap(), photoFiles) {
-        val loaded = mutableMapOf<java.io.File, OverlayImage>()
-        for (file in photoFiles) {
-            try {
-                val photo = com.daengs.app.screening.Photo.decodeUpright(context, android.net.Uri.fromFile(file), 96)
-                val pin = android.graphics.Bitmap.createBitmap(104, 112, android.graphics.Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(pin)
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                paint.color = Color.WHITE
-                canvas.drawRoundRect(0f, 0f, 104f, 104f, 14f, 14f, paint)
-                val tail = android.graphics.Path().apply { moveTo(42f, 102f); lineTo(52f, 112f); lineTo(62f, 102f); close() }
-                canvas.drawPath(tail, paint)
-                val edge = minOf(photo.width, photo.height)
-                val x = (photo.width - edge) / 2; val y = (photo.height - edge) / 2
-                canvas.drawBitmap(photo, android.graphics.Rect(x, y, x + edge, y + edge),
-                    android.graphics.RectF(6f, 6f, 98f, 98f), paint)
-                photo.recycle()
-                loaded[file] = OverlayImage.fromBitmap(pin)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                // 원본 파일을 잃었어도 Pin을 눌러 확인·삭제할 수 있다.
-            }
-        }
-        value = loaded
-    }
-    val badgeDensity = LocalDensity.current.density
-    DisposableEffect(naverMap, visibleMoments, photoIcons, badgeDensity, diagnostics, layerOrder.markers) {
-        val map = naverMap
-        val markers = if (map == null) emptyList() else visibleMoments.map { moment ->
-            Marker().apply {
-                position = moment.point.toLatLng()
-                val behaviorArt = moment.takeIf { it.behaviors.isNotEmpty() }?.let {
-                    actionMarkerBitmap(context, it.behaviors, it.selected, it.sequenceLabel, badgeDensity)
-                }
-                val badge = moment.sequenceLabel?.takeIf { behaviorArt == null }
-                    ?.let { diaryPinBitmap(it, moment.selected, badgeDensity) }
-                captionText = if (badge == null) moment.label else ""
-                captionMinZoom = 12.0
-                width = behaviorArt?.width ?: badge?.width ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                height = behaviorArt?.height ?: badge?.height ?: if (moment.selected) MOMENT_MARKER_PX_SELECTED else MOMENT_MARKER_PX
-                anchor = if (behaviorArt != null) PointF(0.5f, 0.5f)
-                    else if (badge == null) MARKER_ANCHOR else PointF(0.5f, 1f)
-                icon = behaviorArt?.let(OverlayImage::fromBitmap) ?: badge?.let(OverlayImage::fromBitmap) ?: photoIcons[moment.photoFile]
-                    ?: OverlayImage.fromResource(R.drawable.ic_walk_moment)
-                zIndex = if (moment.aboveRouteEndpoints) {
-                    if (moment.selected) 140 else 120
-                } else if (moment.selected) SELECTED_MARKER_Z else MOMENT_MARKER_Z
-                isHideCollidedMarkers = false
-                setOnClickListener {
-                    latestMomentCallback(moment.id)
-                    true
-                }
-                applyNativeWalkOrder(layerOrder.markers, { globalZIndex = it }, { globalZIndex })
-                this.map = map
-                diagnostics?.attached(this, NativeWalkLayerReading("마커", globalZIndex, "행동"))
-            }
-        }
-        onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
-    }
+    NaverMomentLayer(naverMap, visibleMoments, onSelectMoment, diagnostics, layerOrder.markers)
 
     NaverWalkRouteLayer(naverMap, if (drawRoute) scene.trail else com.daengs.app.map.layers.trail.TrailLayerState(),
         if (drawRoute) scene.completedRoute else com.daengs.app.map.layers.completedroute.CompletedRouteLayerState(), walkAppearance.speedPolicy, walkAppearance.themeId,
@@ -567,8 +507,6 @@ private const val MARKER_PX = 72
 
 private const val MARKER_PX_SELECTED = 92
 
-private const val MOMENT_MARKER_PX = 64
-
 private const val ROUTE_GAP_Z = 40
 
 private const val ROUTE_GAP_RADIUS_METERS = 4.0
@@ -582,11 +520,6 @@ private const val ROUTE_SELECTED_RADIUS_METERS = 6.0
 private val ROUTE_SELECTED_COLOR = DaengPink.toArgb()
 
 private const val ROUTE_SELECTED_OUTLINE_WIDTH = 4
-
-private const val MOMENT_MARKER_PX_SELECTED = 82
-
-/** 시설 마커보다 위, 사용자가 고른 마커보다는 아래에 둔다. */
-private const val MOMENT_MARKER_Z = 50
 
 @androidx.compose.ui.tooling.preview.Preview(showBackground = true)
 @Composable
