@@ -69,6 +69,12 @@ internal class DiaryMapNavigation {
     }
 }
 
+/** A completed board must not reframe a route the user is already browsing. */
+internal fun diaryOverviewBounds(route: List<GeoPoint>, anchor: GeoPoint?, scenes: List<DiaryScene>): List<GeoPoint> =
+    route.ifEmpty { listOfNotNull(anchor) }.ifEmpty { scenes.mapNotNull { it.point } }
+
+internal const val SCENE_ROUTE_MIN_ZOOM = 18.0
+
 internal fun GeoPoint.isDiaryLocation() = latitude.isFinite() && longitude.isFinite() &&
     latitude in -90.0..90.0 && longitude in -180.0..180.0
 
