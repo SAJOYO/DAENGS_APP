@@ -181,6 +181,27 @@ class InviteAcceptLinkHolderTest {
         }
     }
 
+    /** 링크로 들어와 미리보기를 받고 다 골라도, 수락 요청은 버튼([accept])에서만 나간다. */
+    @Test
+    fun `링크 진입과 미리보기와 선택만으로는 수락 요청이 안 나간다`() = runTest {
+        val stub = Stub()
+        try {
+            stub.preview(200, TWO_PETS)
+            stub.accept(200, ACCEPTED)
+            val holder = holder(stub)
+
+            holder.acceptFromLink(token)
+            holder.loadPreview("t")
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+
+            assertTrue(holder.canAccept)
+            assertEquals(0, stub.acceptCalls)
+        } finally {
+            stub.stop()
+        }
+    }
+
     /** 다 고르기 전에 눌러도 요청이 안 나가야 한다 — 나가면 서버가 409 를 낸다. */
     @Test
     fun `선택이 빠진 채로는 요청하지 않는다`() = runTest {
