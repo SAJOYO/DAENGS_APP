@@ -62,6 +62,15 @@ class PetGroupOwnerTest {
         assertFalse("견종·몸무게가 같이 가면 공통 정보가 덮인다", body.has("breed"))
     }
 
+    /**
+     * 경로에는 **목록이 준 id(= 받는 사람의 표시 행)** 가 들어가고, 전체 PUT 경로(`/{id}`)가
+     * 아니라 `/display` 로 끝난다.
+     */
+    @Test
+    fun `이름 수정 경로는 표시 행 id 의 display 다`() {
+        assertEquals("/b-row/display", PetApi.displayNamePath("b-row"))
+    }
+
     private fun base(isOwner: Boolean, isGroupOwner: Boolean) = """
         {"id":"p1","name":"네옹","breed":"beagle","is_primary":true,
          "is_owner":$isOwner,"is_group_owner":$isGroupOwner}

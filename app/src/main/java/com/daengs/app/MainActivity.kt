@@ -994,6 +994,17 @@ class MainActivity : ComponentActivity() {
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
                         onAcceptInvite = { acceptingInvite = true },
+                        // **이름만.** 전체 PUT(`pets.edit`)으로 돌아가지 않는다 — 연결된 아이에서
+                        // 그 길은 서버가 409 로 막고, 뚫리더라도 공통 정보를 덮어쓴다.
+                        onRenamePet = { pet, name ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                pets.rename(token, pet.id, name)
+                            }
+                        },
+                        renamePetBusy = pets.renameBusy,
+                        renamePetError = pets.renameError,
+                        onDismissRenamePet = { pets.clearRenameError() },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {

@@ -48,7 +48,13 @@ object PetApi {
      * 그래서 테스트는 [displayNameBody] 로 **본문 모양만** 본다.
      */
     suspend fun updateDisplayName(accessToken: String, petId: String, name: String): Result<Pet> =
-        call(accessToken, "/$petId/display", "PATCH", displayNameBody(name)) { Pet.parse(JSONObject(it)) }
+        call(accessToken, displayNamePath(petId), "PATCH", displayNameBody(name)) { Pet.parse(JSONObject(it)) }
+
+    /**
+     * [updateDisplayName] 이 부르는 경로. **목록이 준 `id` — 곧 받는 사람의 표시 행
+     * (`display_pet_id`)** 가 들어간다. 그룹 주보호자의 행 id 를 넣으면 서버가 404 다.
+     */
+    internal fun displayNamePath(petId: String): String = "/$petId/display"
 
     /** [updateDisplayName] 이 보내는 본문. **이름 한 칸뿐인 것을 테스트가 본다.** */
     internal fun displayNameBody(name: String): JSONObject = JSONObject().put("name", name)
