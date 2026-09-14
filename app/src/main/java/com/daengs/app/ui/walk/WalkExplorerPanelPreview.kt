@@ -1,8 +1,5 @@
 package com.daengs.app.ui.walk
 
-import com.daengs.app.ui.walk.detail.PreparedDiaryRoute
-import com.daengs.app.ui.walk.detail.WalkDiaryReadView
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -14,6 +11,8 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.ui.theme.*
+import com.daengs.app.ui.walk.detail.PreparedDiaryRoute
+import com.daengs.app.ui.walk.detail.WalkDiaryReadView
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.*
 
