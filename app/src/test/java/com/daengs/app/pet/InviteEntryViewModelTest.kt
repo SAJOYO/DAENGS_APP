@@ -132,4 +132,59 @@ class InviteEntryViewModelTest {
         assertEquals(emptyMap<String, PetChoice>(), model.holder.choices)
         assertEquals(InvitePaste.Result.Empty, model.holder.parsed)
     }
+
+    /**
+     * 로그인이 만료돼 다시 로그인하러 가면 **토큰만** 들고 간다. 미리보기·선택은 만료된 계정의
+     * 후보로 만든 것이라 버리고, 곧 이어지는 로그아웃 정리도 그 토큰은 남긴다.
+     */
+    @Test
+    fun `다시 로그인하러 가면 토큰만 남기고 미리보기와 선택은 버린다`() {
+        val model = model()
+        model.receive(token)
+        model.openFromLink()
+        model.holder.choose("pet-1", PetChoice.Join)
+        model.reportAuth(InviteAuthProblem.LoginRequired)
+
+        model.holdForLogin()
+        model.signOut()
+
+        assertEquals(token, model.pendingToken)
+        assertFalse(model.accepting)
+        assertNull(model.authProblem)
+        assertEquals(emptyMap<String, PetChoice>(), model.holder.choices)
+        assertEquals(InvitePaste.Result.Empty, model.holder.parsed)
+    }
+
+    /** 표시는 한 번만 먹는다 — 다시 로그인해 연 뒤의 로그아웃은 평소처럼 토큰까지 버린다. */
+    @Test
+    fun `다시 로그인한 뒤의 로그아웃은 토큰까지 버린다`() {
+        val model = model()
+        model.receive(token)
+        model.openFromLink()
+        model.holdForLogin()
+        model.signOut()
+
+        model.openFromLink()
+        model.signOut()
+
+        assertNull(model.pendingToken)
+        assertEquals(InvitePaste.Result.Empty, model.holder.parsed)
+    }
+
+    @Test
+    fun `세션 문제 안내는 화면을 닫거나 새 링크로 열면 지운다`() {
+        val model = model()
+        model.receive(token)
+        model.openFromLink()
+        model.reportAuth(InviteAuthProblem.Unreachable)
+        assertEquals(InviteAuthProblem.Unreachable, model.authProblem)
+
+        model.receive(other)
+        model.openFromLink()
+        assertNull(model.authProblem)
+
+        model.reportAuth(InviteAuthProblem.Unreachable)
+        model.close()
+        assertNull(model.authProblem)
+    }
 }

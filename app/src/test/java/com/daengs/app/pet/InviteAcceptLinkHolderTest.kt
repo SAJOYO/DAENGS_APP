@@ -257,6 +257,54 @@ class InviteAcceptLinkHolderTest {
         }
     }
 
+    /** 미리보기가 실패·만료·없는 초대면 눌러도 할 수 있는 일이 없다 — 버튼을 살려 두지 않는다. */
+    @Test
+    fun `미리보기가 실패하거나 만료되거나 없는 초대면 수락할 수 없다`() = runTest {
+        for ((status, body) in listOf(
+            500 to """{"detail":"서버 오류"}""",
+            410 to """{"detail":"만료된 초대입니다."}""",
+            404 to """{"detail":"초대를 찾을 수 없습니다."}""",
+        )) {
+            val stub = Stub()
+            try {
+                stub.preview(status, body)
+                stub.accept(200, ACCEPTED)
+                val holder = holder(stub)
+                holder.acceptFromLink(token)
+
+                holder.loadPreview("t")
+
+                assertFalse("미리보기 $status 뒤", holder.canAccept)
+                assertEquals(0, stub.acceptCalls)
+            } finally {
+                stub.stop()
+            }
+        }
+    }
+
+    /** 망이 흔들린 뒤 다시 물어봐서 받으면 그때부터 고르고 누를 수 있다. 다시 묻기만으로 수락은 안 나간다. */
+    @Test
+    fun `미리보기 실패 뒤 다시 받으면 수락할 수 있게 된다`() = runTest {
+        val stub = Stub()
+        try {
+            stub.preview(500, """{"detail":"서버 오류"}""")
+            val holder = holder(stub)
+            holder.acceptFromLink(token)
+            holder.loadPreview("t")
+            assertFalse(holder.canAccept)
+
+            stub.preview(200, TWO_PETS)
+            holder.loadPreview("t")
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Join)
+
+            assertTrue(holder.canAccept)
+            assertEquals(0, stub.acceptCalls)
+        } finally {
+            stub.stop()
+        }
+    }
+
     /** 화면을 닫거나 로그아웃하면 자격증명도 고르던 것도 남으면 안 된다. */
     @Test
     fun `잊으면 미리보기와 선택도 사라진다`() = runTest {

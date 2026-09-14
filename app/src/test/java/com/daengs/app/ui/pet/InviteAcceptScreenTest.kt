@@ -40,9 +40,12 @@ class InviteAcceptScreenTest {
         outcome: AcceptOutcome? = null,
         canAccept: Boolean = false,
         autoEntered: Boolean = false,
+        authProblem: com.daengs.app.pet.InviteAuthProblem? = null,
         onPaste: (String) -> Unit = {},
         onAccept: () -> Unit = {},
         onDone: () -> Unit = {},
+        onRetry: () -> Unit = {},
+        onSignIn: () -> Unit = {},
     ) {
         compose.setContent {
             InviteAcceptScreen(
@@ -52,11 +55,59 @@ class InviteAcceptScreenTest {
                 outcome = outcome,
                 canAccept = canAccept,
                 autoEntered = autoEntered,
+                authProblem = authProblem,
                 onPaste = onPaste,
                 onAccept = onAccept,
                 onDone = onDone,
+                onRetry = onRetry,
+                onSignIn = onSignIn,
             )
         }
+    }
+
+    // -- 세션 문제 --------------------------------------------------------------
+
+    /** 세션을 못 받았으면 이유를 말하고, 수락 대신 다시 시도를 준다. 다시 시도는 수락을 안 부른다. */
+    @Test
+    fun `서버에 못 닿으면 안내와 다시 시도를 주고 수락을 막는다`() {
+        var retried = 0
+        var accepted = 0
+        screen(
+            pasted = link,
+            parsed = InvitePaste.Result.Found(token),
+            canAccept = true,
+            autoEntered = true,
+            authProblem = com.daengs.app.pet.InviteAuthProblem.Unreachable,
+            onRetry = { retried++ },
+            onAccept = { accepted++ },
+        )
+
+        compose.onNodeWithTag("accept-unreachable").assertIsDisplayed()
+        compose.onNodeWithTag("accept-submit").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("accept-retry").performScrollTo().performClick()
+
+        assertEquals(1, retried)
+        assertEquals(0, accepted)
+    }
+
+    @Test
+    fun `로그인이 만료되면 다시 로그인을 권하고 수락을 막는다`() {
+        var signedIn = 0
+        screen(
+            pasted = link,
+            parsed = InvitePaste.Result.Found(token),
+            canAccept = true,
+            autoEntered = true,
+            authProblem = com.daengs.app.pet.InviteAuthProblem.LoginRequired,
+            onSignIn = { signedIn++ },
+        )
+
+        compose.onNodeWithTag("accept-login-required").assertIsDisplayed()
+        compose.onAllNodesWithTag("accept-retry").assertCountEquals(0)
+        compose.onNodeWithTag("accept-submit").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("accept-sign-in").performScrollTo().performClick()
+
+        assertEquals(1, signedIn)
     }
 
     // -- 입력 -----------------------------------------------------------------

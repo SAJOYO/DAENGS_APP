@@ -5,6 +5,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 
+/** 초대 미리보기·수락에 쓸 로그인을 못 받은 이유. 화면이 할 일을 다르게 권한다. */
+enum class InviteAuthProblem {
+    /** 서버에 못 닿았다. 세션은 그대로 두고 다시 시도한다. */
+    Unreachable,
+
+    /** 로그인이 만료됐거나 서버가 거절했다. 다시 로그인해야 한다. */
+    LoginRequired,
+}
+
 /**
  * 초대받기의 **진입 상태** — 링크로 받은 토큰과, 초대받기 화면이 떠 있는지.
  *
@@ -20,7 +29,8 @@ import androidx.lifecycle.ViewModel
  * 그것이 지원 범위다.
  *
  * 로그아웃하면 [signOut] 으로 전부 버린다 — 이전 계정이 받은 초대·미리보기·선택이
- * 다음 계정 화면으로 이어지면 안 된다.
+ * 다음 계정 화면으로 이어지면 안 된다. 예외는 [holdForLogin] 으로 **토큰만** 들고
+ * 다시 로그인하러 가는 경우다.
  */
 class InviteEntryViewModel(
     /** 붙여넣기·미리보기·선택·수락. 화면 상태와 같은 생애를 산다. */
@@ -44,6 +54,13 @@ class InviteEntryViewModel(
      */
     var autoEntered: Boolean by mutableStateOf(false)
         private set
+
+    /** 미리보기·수락에 쓸 세션을 못 받은 이유. null 이면 문제가 없다. */
+    var authProblem: InviteAuthProblem? by mutableStateOf(null)
+        private set
+
+    /** 곧 이어질 [signOut] 이 토큰까지 버리지 않게 하는 표시. [holdForLogin] 만 켠다. */
+    private var holdTokenThroughSignOut = false
 
     /**
      * 링크가 왔다. **나중 것이 이긴다** — 로그인을 기다리는 사이 다른 초대를 누르면
@@ -70,8 +87,28 @@ class InviteEntryViewModel(
         holder.acceptFromLink(token)
         accepting = true
         autoEntered = true
+        authProblem = null
         pendingToken = null
         return true
+    }
+
+    /** 세션을 받으려 해 본 결과. 받았으면 null 을 넘겨 안내를 지운다. */
+    fun reportAuth(problem: InviteAuthProblem?) {
+        authProblem = problem
+    }
+
+    /**
+     * 로그인이 만료돼 다시 로그인하러 간다. **토큰만 들고 간다** — 미리보기·선택은 만료된
+     * 계정의 후보로 만든 것이라 버리고, 로그인해서 홈에 닿으면 링크 진입과 같은 길로
+     * [openFromLink] 가 다시 연다. 누가 로그인하든 수락은 여전히 버튼으로만 한다.
+     */
+    fun holdForLogin() {
+        val token = (holder.parsed as? InvitePaste.Result.Found)?.token
+        close()
+        if (token != null) {
+            pendingToken = token
+            holdTokenThroughSignOut = true
+        }
     }
 
     /** 화면을 닫거나 수락을 끝냈을 때. 붙여넣은 글과 토큰을 같이 버린다. */
@@ -79,11 +116,16 @@ class InviteEntryViewModel(
         holder.forget()
         accepting = false
         autoEntered = false
+        authProblem = null
     }
 
-    /** 로그아웃·탈퇴. 아직 못 넘긴 토큰까지 버린다 — 다음 사람 것이 아니다. */
+    /**
+     * 로그아웃·탈퇴. 아직 못 넘긴 토큰까지 버린다 — 다음 사람 것이 아니다.
+     * [holdForLogin] 바로 뒤라면 그 토큰만 남긴다(미리보기·선택은 이미 버렸다).
+     */
     fun signOut() {
         close()
-        pendingToken = null
+        if (!holdTokenThroughSignOut) pendingToken = null
+        holdTokenThroughSignOut = false
     }
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.pet.AcceptOutcome
 import com.daengs.app.pet.AcceptedInvite
 import com.daengs.app.pet.AcceptResult
+import com.daengs.app.pet.InviteAuthProblem
 import com.daengs.app.pet.InvitePaste
 import com.daengs.app.pet.PreviewOutcome
 import com.daengs.app.pet.PetChoice
@@ -89,11 +90,20 @@ fun InviteAcceptScreen(
      * 같다.
      */
     autoEntered: Boolean = false,
+    /**
+     * 미리보기·수락에 쓸 로그인을 못 받았다. 있으면 이유와 할 일(다시 시도·다시 로그인)을
+     * 말하고 수락 버튼을 막는다 — 예전에는 버튼이 살아 있는데 눌러도 아무 일도 안 일어났다.
+     */
+    authProblem: InviteAuthProblem? = null,
     /** 다른 항목이 이미 가져간 기존 아이. 그 후보를 잠근다. */
     takenBy: (String) -> Set<String> = { emptySet() },
     onPaste: (String) -> Unit = {},
     onChoose: (String, PetChoice) -> Unit = { _, _ -> },
     onAccept: () -> Unit = {},
+    /** 미리보기를 다시 부른다. **수락은 안 부른다.** */
+    onRetry: () -> Unit = {},
+    /** 로그인이 만료됐을 때 다시 로그인하러 간다. */
+    onSignIn: () -> Unit = {},
     onDone: () -> Unit = {},
     onBack: () -> Unit = {},
 ) {
@@ -159,6 +169,28 @@ fun InviteAcceptScreen(
 
         val invite = (preview as? PreviewOutcome.Ready)?.preview
 
+        // **세션을 못 받았으면 그 이유부터 말한다.** 미리보기가 안 불렸으니 아래에 그릴 것이
+        // 없고 수락 버튼도 막힌다 — 무엇을 하면 되는지를 여기서 알려 줘야 한다.
+        when (authProblem) {
+            null -> Unit
+            InviteAuthProblem.Unreachable -> {
+                Notice(
+                    "지금 서버에 연결하지 못했어요. 연결을 확인하고 다시 시도해 주세요.",
+                    tag = "accept-unreachable",
+                    tint = DaengsColors.Error,
+                )
+                Box(Modifier.testTag("accept-retry")) { DaengsTextAction("다시 시도", onRetry, tint = DaengPinkDeep) }
+            }
+            InviteAuthProblem.LoginRequired -> {
+                Notice(
+                    "로그인이 만료됐어요. 다시 로그인하면 이 초대를 이어서 볼 수 있어요.",
+                    tag = "accept-login-required",
+                    tint = DaengsColors.Error,
+                )
+                DaengsWideButton(label = "다시 로그인", onClick = onSignIn, modifier = Modifier.testTag("accept-sign-in"))
+            }
+        }
+
         when (preview) {
             null, is PreviewOutcome.Ready, PreviewOutcome.Unsupported -> Unit
             // 미리보기가 실패한 이유는 수락 실패와 같은 말로 그린다 — 사용자가 볼 때
@@ -173,7 +205,13 @@ fun InviteAcceptScreen(
                 tag = "accept-error",
                 tint = DaengsColors.Error,
             )
-            is PreviewOutcome.Failed -> Notice(preview.message, tag = "accept-error", tint = DaengsColors.Error)
+            is PreviewOutcome.Failed -> {
+                Notice(preview.message, tag = "accept-error", tint = DaengsColors.Error)
+                // 망이 흔들린 것이면 다시 물어보면 된다. 수락은 여전히 버튼으로만 한다.
+                if (authProblem == null) {
+                    Box(Modifier.testTag("accept-retry")) { DaengsTextAction("다시 시도", onRetry, tint = DaengPinkDeep) }
+                }
+            }
         }
 
         invite?.let { InvitedBy(it) }
@@ -194,7 +232,7 @@ fun InviteAcceptScreen(
         DaengsWideButton(
             label = acceptLabel(invite?.pets?.size ?: 0),
             onClick = onAccept,
-            enabled = canAccept,
+            enabled = canAccept && authProblem == null,
             busy = busy,
             accent = true,
             modifier = Modifier.testTag("accept-submit"),
@@ -477,6 +515,32 @@ private fun AcceptAutoEnteredPreview() {
             parsed = InvitePaste.Result.Found("preview-token"),
             canAccept = true,
             autoEntered = true,
+        )
+    }
+}
+
+@Preview(name = "세션 문제 — 서버에 못 닿음")
+@Composable
+private fun AcceptUnreachablePreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            autoEntered = true,
+            authProblem = InviteAuthProblem.Unreachable,
+        )
+    }
+}
+
+@Preview(name = "세션 문제 — 로그인 만료")
+@Composable
+private fun AcceptLoginRequiredPreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            autoEntered = true,
+            authProblem = InviteAuthProblem.LoginRequired,
         )
     }
 }

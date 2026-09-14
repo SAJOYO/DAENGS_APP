@@ -389,6 +389,25 @@ class MainActivity : ComponentActivity() {
                 // access 는 5분이다. 앱을 켜 두고 몇 분 뒤에 강아지를 등록하면
                 // 서버가 "인증이 만료되었습니다"로 막는다 — 실제로 그렇게 걸렸다.
                 // 재발급이 되면 세션도 같이 갈아 끼워야 다음 호출이 또 만료를 안 만난다.
+                // 초대받기 전용 [freshToken]. **못 받은 이유를 화면에 남긴다** — 망 실패는 다시
+                // 시도, 로그인 만료는 다시 로그인으로 권한다. 어느 쪽도 여기서 로그아웃시키지 않는다.
+                val inviteAccess: suspend () -> String? = {
+                    when (val check = app.sessionProvider.checkSession()) {
+                        is com.daengs.app.auth.SessionCheck.Fresh -> {
+                            session = check.session
+                            inviteEntry.reportAuth(null)
+                            check.session.accessToken
+                        }
+                        com.daengs.app.auth.SessionCheck.Unreachable -> {
+                            inviteEntry.reportAuth(com.daengs.app.pet.InviteAuthProblem.Unreachable)
+                            null
+                        }
+                        com.daengs.app.auth.SessionCheck.LoginRequired -> {
+                            inviteEntry.reportAuth(com.daengs.app.pet.InviteAuthProblem.LoginRequired)
+                            null
+                        }
+                    }
+                }
                 val freshToken: suspend () -> String? = {
                     val restored = app.sessionProvider.freshSession()
                     if (restored != null) session = restored
@@ -916,7 +935,7 @@ class MainActivity : ComponentActivity() {
                         // 수 있다 — 옛 서버는 선택을 조용히 무시해 버린다.
                         LaunchedEffect(inviteAccept.parsed) {
                             if (inviteAccept.parsed !is InvitePaste.Result.Found) return@LaunchedEffect
-                            val token = freshToken() ?: return@LaunchedEffect
+                            val token = inviteAccess() ?: return@LaunchedEffect
                             inviteAccept.loadPreview(token)
                         }
                         InviteAcceptScreen(
@@ -930,12 +949,30 @@ class MainActivity : ComponentActivity() {
                             // 링크로 왔으면 붙여넣기 칸과 "찾았어요" 안내를 숨긴다 —
                             // 이미 링크를 눌러서 왔으니 다시 찾은 티를 낼 이유가 없다.
                             autoEntered = inviteEntry.autoEntered,
+                            authProblem = inviteEntry.authProblem,
                             takenBy = inviteAccept::takenBy,
                             onChoose = { petId, choice -> inviteAccept.choose(petId, choice) },
                             onPaste = inviteAccept::paste,
+                            // 세션·미리보기를 다시 받아 본다. **수락은 안 부른다** — 누를 수 있게 될 뿐이다.
+                            onRetry = {
+                                scope.launch {
+                                    val token = inviteAccess() ?: return@launch
+                                    inviteAccept.loadPreview(token)
+                                }
+                            },
+                            // 로그인이 만료됐을 때만 뜬다. **토큰만** 들고 랜딩으로 간다 — 로그인해서 홈에
+                            // 닿으면 링크 진입과 같은 길로 다시 열리고, 수락은 여전히 버튼으로만 한다.
+                            onSignIn = {
+                                inviteEntry.holdForLogin()
+                                walkController.stop()
+                                session = null
+                                pets.forget()
+                                app.sessionProvider.clear()
+                                screen = Screen.Landing
+                            },
                             onAccept = {
                                 scope.launch {
-                                    val token = freshToken() ?: return@launch
+                                    val token = inviteAccess() ?: return@launch
                                     // 성공하면 목록을 **서버에서 다시 받는다** — 수락과 함께
                                     // 서버가 대표 강아지를 세워 주기도 해서, 응답만 보고
                                     // 앱이 상태를 지어내면 규칙이 두 벌이 된다.

@@ -68,13 +68,20 @@ class InviteAcceptHolder(
      *
      * 미리보기를 받았으면 **다 골라야** 한다 — 묶음에서 선택이 빠지면 서버가 409 로 막고,
      * 한 마리여도 화면에 고르는 자리를 냈으면 다 고르게 하는 편이 일관된다.
-     * 미리보기를 못 받은 옛 서버에서는 붙여넣은 링크만 있으면 된다.
+     * 경로가 없는 옛 서버([PreviewOutcome.Unsupported])에서는 링크만 있으면 된다.
+     *
+     * **미리보기를 아직 못 물어봤거나(로그인·망 문제) 실패·만료·없는 초대면 누를 수 없다.**
+     * 예전에는 그때도 버튼이 살아 있어서, 세션을 못 받은 채 누르면 아무 일도 안 일어났다.
      */
     val canAccept: Boolean
         get() = !busy &&
             parsed is InvitePaste.Result.Found &&
             outcome !is AcceptOutcome.Joined &&
-            (!previewed || allChosen)
+            when (preview) {
+                is PreviewOutcome.Ready -> allChosen
+                PreviewOutcome.Unsupported -> true
+                else -> false
+            }
 
     /** 이미 다른 항목이 가져간 기존 아이. 화면이 그 후보를 잠근다. */
     fun takenBy(petId: String): Set<String> =
