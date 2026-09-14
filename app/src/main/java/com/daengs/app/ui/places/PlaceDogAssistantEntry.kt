@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -37,15 +39,15 @@ internal fun PlaceDogAssistantEntry(
     avatarPhoto: Bitmap? = null,
     onClick: () -> Unit,
 ) {
-    Column(
+    Box(
         Modifier.widthIn(min = 60.dp).clip(RoundedCornerShape(16.dp))
             .clickable(role = Role.Button, onClickLabel = "검색 대화 열기", onClick = onClick)
             .semantics { contentDescription = "강아지에게 검색 조건 말하기" }
             .testTag("place-dog-anchor"),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
-            Modifier.size(48.dp), shape = CircleShape, shadowElevation = 4.dp,
+            Modifier.align(Alignment.TopCenter).size(48.dp).testTag("place-dog-portrait"),
+            shape = CircleShape, shadowElevation = 4.dp,
             color = DaengsColors.Surface, border = BorderStroke(1.dp, DaengsColors.BrandPrimarySoft),
         ) {
             val portrait = Modifier.padding(3.dp).fillMaxSize().clip(CircleShape)
@@ -54,11 +56,16 @@ internal fun PlaceDogAssistantEntry(
             else Image(painterResource((avatarBreed ?: DogBreed.BEAGLE).portraitRes), contentDescription = null,
                 modifier = portrait, contentScale = ContentScale.Crop)
         }
-        // 인식표 고리는 얼굴 아래 여백 안에만 그려 얼굴이나 지도 조작을 가리지 않는다.
-        Canvas(Modifier.size(6.dp, 3.dp)) {
-            drawOval(DaengsColors.TextSecondary, style = Stroke(1.dp.toPx()))
+        // 원 안쪽 목줄에 이름표를 겹쳐 건다. 둘 사이에 지도 배경이 비치지 않는다.
+        Canvas(Modifier.align(Alignment.TopCenter).padding(top = 28.dp).size(38.dp, 14.dp)) {
+            drawArc(DaengsColors.BrandPrimary, 15f, 150f, false,
+                topLeft = Offset(2.dp.toPx(), -6.dp.toPx()),
+                size = Size(size.width - 4.dp.toPx(), 16.dp.toPx()),
+                style = Stroke(3.dp.toPx()))
         }
         Surface(
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 36.dp)
+                .testTag("place-dog-name-tag"),
             shape = RoundedCornerShape(7.dp), color = DaengsColors.BrandPrimarySoft,
             border = BorderStroke(1.dp, DaengsColors.BrandPrimary),
         ) {
