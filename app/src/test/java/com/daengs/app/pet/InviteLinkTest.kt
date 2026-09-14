@@ -119,6 +119,31 @@ class InviteLinkTest {
         assertNull(InviteLink.tokenOf("https://daengapi.weareithero.cloud/invite#"))
     }
 
+    // -- 웹 폴백 「앱에서 초대 열기」버튼의 intent:// 쿼리 통로 -------------------------
+
+    @Test
+    fun `웹 폴백 쿼리에서도 토큰을 꺼낸다`() {
+        assertEquals(
+            token,
+            InviteLink.tokenOfWebFallbackQuery("https://daengapi.weareithero.cloud/invite?t=$token"),
+        )
+    }
+
+    /** [InviteLink.tokenOf] 의 계약(프래그먼트만)은 이 통로가 있어도 안 바뀐다. */
+    @Test
+    fun `웹 폴백 통로가 있어도 정식 계약은 여전히 프래그먼트만 본다`() {
+        assertNull(InviteLink.tokenOf("https://daengapi.weareithero.cloud/invite?t=$token"))
+    }
+
+    @Test
+    fun `웹 폴백 쿼리도 호스트 경로 스킴을 그대로 검사한다`() {
+        assertNull(InviteLink.tokenOfWebFallbackQuery("https://evil.example.com/invite?t=$token"))
+        assertNull(InviteLink.tokenOfWebFallbackQuery("https://daengapi.weareithero.cloud/other?t=$token"))
+        assertNull(InviteLink.tokenOfWebFallbackQuery("http://daengapi.weareithero.cloud/invite?t=$token"))
+        assertNull(InviteLink.tokenOfWebFallbackQuery("https://daengapi.weareithero.cloud/invite"))
+        assertNull(InviteLink.tokenOfWebFallbackQuery(null))
+    }
+
     @Test
     fun `토큰 모양 검사`() {
         assertTrue(InviteLink.isValidToken("abc_DEF-123"))

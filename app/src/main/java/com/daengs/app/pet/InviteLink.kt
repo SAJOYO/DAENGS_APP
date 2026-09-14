@@ -98,6 +98,41 @@ object InviteLink {
     }
 
     /**
+     * 웹 안내 페이지의 「이미 설치했나요? 앱에서 초대 열기」버튼 **하나만을 위한 보조
+     * 통로다.** [tokenOf] 의 계약을 넓히지 않는다 — 공유 링크·붙여넣기·App Links 는
+     * 전부 그대로 [tokenOf] 만 쓴다.
+     *
+     * ⚠️ **왜 쿼리인가.** 이 버튼은 Chrome 의 `intent://` 문법으로 앱을 연다 — 이 씩
+     * assetlinks.json 검증(App Links)과 무관하게, 패키지 이름을 못박아 **설치돼 있으면
+     * 무조건** 연다. 그런데 `intent://…#Intent;…;end` 는 `#` 뒤를 자기 문법(Intent 의
+     * extra 들)으로 쓰기 때문에, 우리 계약대로 토큰을 진짜 프래그먼트에 실을 자리가
+     * 없다. 그래서 **이 버튼이 만드는 링크에서만** 쿼리에 태운다.
+     *
+     * ⚠️ **네트워크로는 안 나간다.** `intent://` 는 브라우저가 로컬에서 안드로이드
+     * Intent 로 바꾸는 문자열일 뿐 그 자체로 HTTP 요청을 만들지 않는다 — 서버 로그·
+     * Referer 에 남을 일이 없다. 리졸브에 실패했을 때만(앱이 없을 때) 별도의, **토큰이
+     * 없는** `S.browser_fallback_url`(스토어 주소)로 진짜 요청이 나간다.
+     *
+     * ⚠️ **Chrome(과 그 기반 브라우저)에서만 통한다.** 카카오톡 인앱 브라우저 등
+     * WebView 기반은 `intent://` 를 못 알아들을 수 있다 — 그때는 이 버튼이 조용히
+     * 아무 일도 안 한다. 그래서 웹 페이지는 이 버튼과 별개로 「초대 링크 복사」·
+     * 「링크 직접 보기」를 늘 보여 준다.
+     */
+    fun tokenOfWebFallbackQuery(uri: String?): String? {
+        val parsed = runCatching { URI(uri ?: return null) }.getOrNull() ?: return null
+        if (!parsed.scheme.equals("https", ignoreCase = true)) return null
+        if (!parsed.host.equals(HOST, ignoreCase = true)) return null
+        if (parsed.path?.trimEnd('/') != PATH) return null
+        val token = (parsed.query ?: return null)
+            .split('&')
+            .asSequence()
+            .map { it.split('=', limit = 2) }
+            .firstOrNull { it.size == 2 && it[0] == "t" }
+            ?.get(1)
+        return token?.takeIf { isValidToken(it) }
+    }
+
+    /**
      * 토큰답게 생겼나. 서버는 `secrets.token_urlsafe(32)` 를 주고 본문에서 1~200자를
      * 받는다(`InviteAccept`). **여기서 거르는 것은 보안이 아니라 잡음이다** — 빈 값이나
      * 남의 링크 조각을 서버까지 들고 가지 않는다. 진짜 판정은 서버가 한다.

@@ -94,6 +94,19 @@ class InviteAcceptHolder(
     }
 
     /**
+     * App Links 로 이미 검증된 토큰을 그대로 심는다. **사용자가 붙여넣지 않아도** 미리보기로
+     * 이어진다 — 링크를 연 것 자체가 그 토큰을 골랐다는 뜻이기 때문이다.
+     *
+     * **같은 토큰이 다시 오면 아무것도 안 한다.** 같은 링크가 두 번 전달돼도(연타·재실행)
+     * 이미 보고 있는 미리보기·고른 선택을 지우지 않는다. **다른 토큰**이면 [paste] 와 같이
+     * 앞 시도를 지운다 — 새 초대가 섞이면 안 된다.
+     */
+    fun acceptFromLink(token: String) {
+        if ((parsed as? InvitePaste.Result.Found)?.token == token) return
+        paste("https://${InviteLink.HOST}${InviteLink.PATH}#$token")
+    }
+
+    /**
      * 무엇이 든 초대인지 먼저 본다.
      *
      * **미리보기를 성공한 뒤에만 연결 선택을 보낸다** ([previewed]). 실패하면 화면이
