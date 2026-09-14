@@ -41,26 +41,30 @@ data class IntroFrame(
  * 하루 첫 실행만 길게 하는 식으로 갈래를 나눠야 한다.
  */
 object IntroTimeline {
-    /** 크림 막이 걷히는 데 걸리는 시간. 로딩 화면(같은 그림)에서 넘어오는 이음새다. */
-    const val VEIL_END_MS = 220L
+    // 처음엔 전체 1초로 잡았는데 실기기에서 "전혀 티가 안 난다" 였다 (2026-09-14). 콜드
+    // 스타트 5초 끝에 붙는 1초라 로딩의 일부로 묻힌다. 첫 컷을 잠깐 보여 주고 카메라를
+    // 1초 동안 빼는 것으로 늘렸다. 그래도 2초 안쪽 — 매일 여는 앱이다.
 
-    /** 카메라가 문 안에서 제자리로 빠지는 구간. */
-    const val CAMERA_START_MS = 120L
-    const val CAMERA_END_MS = 720L
+    /** 크림 막이 걷히는 데 걸리는 시간. 로딩 화면(같은 그림)에서 넘어오는 이음새다. */
+    const val VEIL_END_MS = 300L
+
+    /** 카메라가 문 안에서 제자리로 빠지는 구간. 막이 걷힌 뒤 첫 컷을 잠깐 보여 주고 시작한다. */
+    const val CAMERA_START_MS = 400L
+    const val CAMERA_END_MS = 1400L
 
     /** 카메라가 자리를 잡은 뒤 문이 닫히는 구간. 들어와서 문을 닫는 순서다. */
-    const val DOOR_CLOSE_START_MS = 600L
-    const val DOOR_CLOSE_END_MS = 900L
+    const val DOOR_CLOSE_START_MS = 1300L
+    const val DOOR_CLOSE_END_MS = 1700L
 
     /** 스위치 딸깍. 이 순간 어둠이 **단번에** [NIGHT_AFTER_CLICK] 로 떨어지고 나머지는 서서히 걷힌다. */
-    const val LIGHTS_CLICK_MS = 700L
-    const val LIGHTS_END_MS = 1000L
+    const val LIGHTS_CLICK_MS = 1400L
+    const val LIGHTS_END_MS = 1800L
 
     /** 강아지들이 달려오기 시작하는 시각. 불이 켜지는 순간과 같다 — 불이 켜져서 돌아보는 그림. */
-    const val GREET_AT_MS = 700L
+    const val GREET_AT_MS = 1400L
 
     /** 연출 전체 길이. 이 뒤로는 [IntroFrame.DONE] 이다. */
-    const val TOTAL_MS = 1000L
+    const val TOTAL_MS = 1800L
 
     /** 밤의 어둠. 1 이면 방이 안 보여서 "켜지는" 게 아니라 "나타나는" 것이 된다. */
     const val NIGHT_DARK = 0.72f
@@ -85,7 +89,7 @@ object IntroTimeline {
         if (elapsedMs >= TOTAL_MS) return IntroFrame.DONE
         val e = elapsedMs.coerceAtLeast(0L)
         val veil = 1f - ramp(e, 0L, VEIL_END_MS)
-        val pull = 1f - easeOut(ramp(e, CAMERA_START_MS, CAMERA_END_MS))
+        val pull = 1f - easeInOut(ramp(e, CAMERA_START_MS, CAMERA_END_MS))
         val doorOpen = 1f - easeOut(ramp(e, DOOR_CLOSE_START_MS, DOOR_CLOSE_END_MS))
         val dark = if (night) {
             if (e < LIGHTS_CLICK_MS) NIGHT_DARK
@@ -106,11 +110,17 @@ object IntroTimeline {
     private fun ramp(e: Long, from: Long, to: Long): Float =
         ((e - from).toFloat() / (to - from).toFloat()).coerceIn(0f, 1f)
 
-    /** 빠르게 시작해 천천히 멎는다. 카메라가 미끄러져 들어와 멈추는 느낌. */
+    /** 빠르게 시작해 천천히 멎는다. 문이 닫힐 때 쓴다. */
     private fun easeOut(p: Float): Float {
         val q = 1f - p
         return 1f - q * q * q
     }
+
+    /**
+     * 천천히 시작해 천천히 멎는다. 카메라에 쓴다 — easeOut 은 처음 몇 프레임에 대부분을
+     * 가 버려서 눈에 안 들어왔다. 뒤로 물러나는 것이 보이려면 중간이 길어야 한다.
+     */
+    private fun easeInOut(p: Float): Float = p * p * (3f - 2f * p)
 }
 
 /**

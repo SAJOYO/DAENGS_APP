@@ -507,13 +507,14 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
         /**
          * 마중 걸음의 배율. 평소 걸음은 칸/초 0.4 남짓이라(견종표 × 12/16) 방을 가로지르는
          * 데 30초가 걸린다 — 그 걸음으로는 불이 켜지고 한참 뒤에야 문 앞에 닿는다.
-         * 5배(칸/초 1.9)면 문 반대편 모서리(13칸)에서도 7초, 보통 자리에서는 2~3초다.
-         * 다리는 [GREET_STRIDE] 로 같이 빨라진다.
+         * 3.5배(칸/초 1.3)면 문 반대편 모서리(13칸)에서 10초, 보통 자리에서는 3~5초다.
+         * 5배로 해 봤더니 실기기에서 너무 급해 보여 내렸다 (2026-09-14). 다리는 [GREET_STRIDE] 로
+         * 같이 빨라진다.
          */
-        const val GREET_SPEED = 5f
+        const val GREET_SPEED = 3.5f
 
         /** 마중 때 걸음 시계 배율. 속도만큼 올리면 다리가 팔랑거려서 절반 못 미치게. */
-        const val GREET_STRIDE = 2f
+        const val GREET_STRIDE = 1.6f
 
         /** 마리마다 출발이 이만큼 늦다. 첫째가 뛰기 시작하면 둘째가 돌아보는 간격. */
         const val GREET_STAGGER_MS = 180L

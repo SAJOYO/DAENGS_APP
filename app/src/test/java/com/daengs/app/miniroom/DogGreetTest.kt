@@ -38,14 +38,14 @@ class DogGreetTest {
         val herd = settled(DogHerd(count = 3))
         herd.greet(spot, nowMs = 16L)
         // 평소 걸음(칸/초 0.4)이면 반대편에서 30초다. 마중 걸음이면 문 반대편 모서리에서도
-        // 7초 안쪽이고, 먼저 온 아이는 그동안 앉아서 기다린다([DogHerd.GREET_SIT_MS]).
+        // 10초 안쪽이고, 먼저 온 아이는 그동안 앉아서 기다린다([DogHerd.GREET_SIT_MS]).
         val sat = BooleanArray(herd.dogs.size)
-        run(herd, 16L, 8_000L) {
+        run(herd, 16L, 12_000L) {
             herd.dogs.forEachIndexed { i, d ->
                 if ((d.pos - spot).getDistance() < 2.2f && !d.moving) sat[i] = true
             }
         }
-        assertTrue("8초 안에 문 앞에 앉지 못한 아이가 있다: ${herd.dogs.map { it.pos }}", sat.all { it })
+        assertTrue("12초 안에 문 앞에 앉지 못한 아이가 있다: ${herd.dogs.map { it.pos }}", sat.all { it })
     }
 
     @Test
