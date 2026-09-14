@@ -30,7 +30,8 @@ class PlaceDogAssistantUiTest {
             }
         } }
         val before = compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithTag("place-dog-anchor").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithText("도우미견").assertIsDisplayed()
+        compose.onNodeWithTag("place-dog-anchor").assertWidthIsAtLeast(60.dp).assertHeightIsAtLeast(68.dp)
         compose.onNodeWithContentDescription("내 주변 검색").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
         compose.onNodeWithTag("place-dog-anchor").performClick()
         compose.onNodeWithTag("place-dog-input").performTextInput("카페 찾아줘")
@@ -44,5 +45,25 @@ class PlaceDogAssistantUiTest {
         assertEquals(before, compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("다시 말하기").performScrollTo().performClick()
         compose.onNodeWithTag("place-dog-input").assertExists()
+    }
+
+    @Test fun nameTagAndPortraitOpenTheSameConversation() {
+        val open = mutableStateOf(false)
+        compose.setContent { DaengsTheme {
+            PlaceMapControls(false, {}, {}) {
+                PlaceDogAssistant(false, false, open.value, { open.value = it }, {}, {}) {}
+            }
+        } }
+        // 실제 터치로 아래 인식표도 버튼 bounds 안에 포함되는지 확인한다.
+        compose.onNodeWithTag("place-dog-anchor").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(center.x, height - 2f))
+        }
+        compose.onNodeWithTag("place-dog-input").assertIsDisplayed()
+        compose.onNodeWithText("닫기").performClick()
+        compose.onNodeWithTag("place-dog-input").assertDoesNotExist()
+        compose.onNodeWithTag("place-dog-anchor").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(center.x, 16f))
+        }
+        compose.onNodeWithTag("place-dog-input").assertIsDisplayed()
     }
 }
