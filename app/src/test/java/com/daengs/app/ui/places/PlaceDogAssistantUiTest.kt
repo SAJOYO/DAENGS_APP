@@ -37,6 +37,8 @@ class PlaceDogAssistantUiTest {
         val nameTag = compose.onNodeWithTag("place-dog-name-tag", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
         assertTrue("인식표가 원 하단에 겹쳐 목에 달려 보여야 한다", nameTag.top < portrait.bottom)
+        assertTrue("인식표가 얼굴을 답답하게 덮지 않아야 한다",
+            portrait.bottom - nameTag.top <= portrait.height * .1f)
         assertTrue("인식표는 원 아래까지 이어져야 한다", nameTag.bottom > portrait.bottom)
         compose.onNodeWithContentDescription("내 주변 검색").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
         compose.onNodeWithTag("place-dog-anchor").performClick()

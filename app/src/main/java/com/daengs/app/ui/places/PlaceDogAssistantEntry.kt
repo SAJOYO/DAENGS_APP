@@ -14,8 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -40,7 +38,7 @@ internal fun PlaceDogAssistantEntry(
     onClick: () -> Unit,
 ) {
     Box(
-        Modifier.widthIn(min = 60.dp).clip(RoundedCornerShape(16.dp))
+        Modifier.widthIn(min = 60.dp)
             .clickable(role = Role.Button, onClickLabel = "검색 대화 열기", onClick = onClick)
             .semantics { contentDescription = "강아지에게 검색 조건 말하기" }
             .testTag("place-dog-anchor"),
@@ -56,22 +54,19 @@ internal fun PlaceDogAssistantEntry(
             else Image(painterResource((avatarBreed ?: DogBreed.BEAGLE).portraitRes), contentDescription = null,
                 modifier = portrait, contentScale = ContentScale.Crop)
         }
-        // 원 안쪽 목줄에 이름표를 겹쳐 건다. 둘 사이에 지도 배경이 비치지 않는다.
-        Canvas(Modifier.align(Alignment.TopCenter).padding(top = 28.dp).size(38.dp, 14.dp)) {
-            drawArc(DaengsColors.BrandPrimary, 15f, 150f, false,
-                topLeft = Offset(2.dp.toPx(), -6.dp.toPx()),
-                size = Size(size.width - 4.dp.toPx(), 16.dp.toPx()),
-                style = Stroke(3.dp.toPx()))
+        // 작은 고리만 원 끝에 연결한다. 목줄을 얼굴 위에 그리지 않는다.
+        Canvas(Modifier.align(Alignment.TopCenter).padding(top = 43.dp).size(5.dp, 6.dp)) {
+            drawOval(DaengsColors.BrandPrimary, style = Stroke(1.dp.toPx()))
         }
         Surface(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 36.dp)
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 46.dp)
                 .testTag("place-dog-name-tag"),
-            shape = RoundedCornerShape(7.dp), color = DaengsColors.BrandPrimarySoft,
+            shape = RoundedCornerShape(50), color = DaengsColors.BrandPrimarySoft,
             border = BorderStroke(1.dp, DaengsColors.BrandPrimary),
         ) {
-            Text("도우미견", Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            Text("도우미견", Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                 color = DaengsColors.TextPrimary, fontSize = 11.sp, lineHeight = 14.sp,
-                fontWeight = FontWeight.Bold, maxLines = 1)
+                fontWeight = FontWeight.Medium, maxLines = 1)
         }
     }
 }
