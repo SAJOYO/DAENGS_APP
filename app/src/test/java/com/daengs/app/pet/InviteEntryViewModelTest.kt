@@ -15,7 +15,8 @@ class InviteEntryViewModelTest {
     private val token = "abc_DEF-123"
     private val other = "zzz_YYY-999"
 
-    private fun model() = InviteEntryViewModel(InviteAcceptHolder(InviteAcceptApi { "http://127.0.0.1:1" }))
+    // 프로세스 공용 저장소를 안 쓴다 — 테스트끼리 토큰이 새지 않게 새로 만든다.
+    private fun model() = InviteEntryViewModel(InviteAcceptHolder(InviteAcceptApi { "http://127.0.0.1:1" }), InviteInbox())
 
     @Test
     fun `받아 둔 토큰은 열 때 홀더로 넘어가고 비워진다`() {

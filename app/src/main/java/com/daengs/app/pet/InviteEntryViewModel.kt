@@ -15,18 +15,19 @@ enum class InviteAuthProblem {
 }
 
 /**
- * 초대받기의 **진입 상태** — 링크로 받은 토큰과, 초대받기 화면이 떠 있는지.
+ * 초대받기의 **진입 상태** — 초대받기 화면이 떠 있는지와 그 화면의 붙여넣기·미리보기·선택.
  *
- * **왜 ViewModel 인가.** 링크로 받은 토큰을 액티비티 필드에 두고 초대받기 화면 상태를
- * `remember` 로 두면, 로그인을 기다리거나 미리보기를 보는 사이에 액티비티가 다시
- * 만들어질 때(다크 모드·글꼴 크기·언어 변경 — 회전은 `configChanges` 로 막아 두었다)
- * **초대가 통째로 사라진다.** 인텐트에서는 이미 지웠으니 다시 읽을 곳도 없다.
- * ViewModel 은 같은 액티비티가 다시 만들어져도 **메모리에서** 그대로 이어진다.
+ * **왜 ViewModel 인가.** 초대받기 화면 상태를 `remember` 로 두면 미리보기를 보는 사이
+ * 액티비티가 다시 만들어질 때(다크 모드·글꼴 크기·언어 변경 — 회전은 `configChanges` 로
+ * 막아 두었다) **화면·선택이 통째로 사라진다.** ViewModel 은 재생성을 넘어 메모리에서 이어진다.
+ *
+ * **아직 화면에 안 넘긴 링크 토큰은 여기가 아니라 [InviteInbox] 에 있다.** 다른 액티비티
+ * (카카오 로그인)가 위에 있을 때 링크로 MainActivity 가 하나 더 생겨도 토큰은 프로세스에
+ * 하나라서, 원래 인스턴스가 로그인을 마친 뒤 그 토큰을 연다.
  *
  * ⚠️ **메모리뿐이다.** `SavedStateHandle` 도 디스크도 쓰지 않는다 — 토큰은 남의 강아지
- * 초대를 가로챌 수 있는 자격증명이라, 되살리려고 어딘가에 적는 순간 그 자리가 새는
- * 곳이 된다. **프로세스가 죽으면 사라지고 사용자가 링크를 다시 누르는 것이 맞다.**
- * 그것이 지원 범위다.
+ * 초대를 가로챌 수 있는 자격증명이다. **프로세스가 죽으면 사라지고 사용자가 링크를 다시
+ * 누르는 것이 맞다.** 그것이 지원 범위다.
  *
  * 로그아웃하면 [signOut] 으로 전부 버린다 — 이전 계정이 받은 초대·미리보기·선택이
  * 다음 계정 화면으로 이어지면 안 된다. 예외는 [holdForLogin] 으로 **토큰만** 들고
@@ -35,14 +36,15 @@ enum class InviteAuthProblem {
 class InviteEntryViewModel(
     /** 붙여넣기·미리보기·선택·수락. 화면 상태와 같은 생애를 산다. */
     val holder: InviteAcceptHolder = InviteAcceptHolder(),
+    /** 아직 안 넘긴 링크 토큰. 앱에서는 프로세스에 하나다. */
+    private val inbox: InviteInbox = InviteInbox.process,
 ) : ViewModel() {
 
     /**
      * 링크로 받았는데 아직 화면에 넘기지 못한 토큰. 로그인·세션 복원을 마치고 홈에
      * 닿으면 [openFromLink] 가 가져가고 비운다.
      */
-    var pendingToken: String? by mutableStateOf(null)
-        private set
+    val pendingToken: String? get() = inbox.pendingToken
 
     /** 초대받기 화면이 떠 있나. */
     var accepting: Boolean by mutableStateOf(false)
@@ -59,15 +61,12 @@ class InviteEntryViewModel(
     var authProblem: InviteAuthProblem? by mutableStateOf(null)
         private set
 
-    /** 곧 이어질 [signOut] 이 토큰까지 버리지 않게 하는 표시. [holdForLogin] 만 켠다. */
-    private var holdTokenThroughSignOut = false
-
     /**
      * 링크가 왔다. **나중 것이 이긴다** — 로그인을 기다리는 사이 다른 초대를 누르면
      * 그것이 열려야 한다. 같은 링크가 두 번 오면 값이 같아 아무것도 안 바뀐다.
      */
     fun receive(token: String) {
-        pendingToken = token
+        inbox.receive(token)
     }
 
     /** 메뉴의 「받은 초대 링크 넣기」. 붙여넣기 칸이 보이는 예전 화면 그대로다. */
@@ -78,17 +77,16 @@ class InviteEntryViewModel(
 
     /**
      * 받아 둔 토큰으로 화면을 연다. 같은 토큰이 다시 오면 [InviteAcceptHolder.acceptFromLink]
-     * 가 미리보기·선택을 지우지 않고, 다른 토큰이면 앞 시도를 지운다.
+     * 가 미리보기·선택을 지우지 않고, 다른 토큰이면 앞 시도를 지운다. **수락은 안 부른다.**
      *
      * @return 넘긴 토큰이 있었나. 없으면 아무것도 안 했다
      */
     fun openFromLink(): Boolean {
-        val token = pendingToken ?: return false
+        val token = inbox.take() ?: return false
         holder.acceptFromLink(token)
         accepting = true
         autoEntered = true
         authProblem = null
-        pendingToken = null
         return true
     }
 
@@ -100,15 +98,12 @@ class InviteEntryViewModel(
     /**
      * 로그인이 만료돼 다시 로그인하러 간다. **토큰만 들고 간다** — 미리보기·선택은 만료된
      * 계정의 후보로 만든 것이라 버리고, 로그인해서 홈에 닿으면 링크 진입과 같은 길로
-     * [openFromLink] 가 다시 연다. 누가 로그인하든 수락은 여전히 버튼으로만 한다.
+     * [openFromLink] 가 다시 열어 미리보기를 새로 받는다. 수락은 여전히 버튼으로만 한다.
      */
     fun holdForLogin() {
         val token = (holder.parsed as? InvitePaste.Result.Found)?.token
         close()
-        if (token != null) {
-            pendingToken = token
-            holdTokenThroughSignOut = true
-        }
+        if (token != null) inbox.holdForLogin(token)
     }
 
     /** 화면을 닫거나 수락을 끝냈을 때. 붙여넣은 글과 토큰을 같이 버린다. */
@@ -125,7 +120,6 @@ class InviteEntryViewModel(
      */
     fun signOut() {
         close()
-        if (!holdTokenThroughSignOut) pendingToken = null
-        holdTokenThroughSignOut = false
+        inbox.signOut()
     }
 }

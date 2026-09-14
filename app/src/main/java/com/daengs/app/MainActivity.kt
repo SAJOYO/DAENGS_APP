@@ -68,6 +68,10 @@ import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.devPets
 import androidx.lifecycle.ViewModelProvider
 import com.daengs.app.pet.InviteEntryViewModel
+import com.daengs.app.pet.InviteInbox
+import com.daengs.app.pet.InviteOpenStep
+import com.daengs.app.pet.inviteOpenStep
+import com.daengs.app.pet.shouldHandOffInvite
 import com.daengs.app.pet.InviteLink
 import com.daengs.app.pet.InviteShare
 import com.daengs.app.pet.photoTargetId
@@ -184,18 +188,31 @@ class MainActivity : ComponentActivity() {
      * [inviteEntry] 덕분이다.
      */
     private fun readInviteLink(intent: Intent) {
-        // 진짜 App Links(프래그먼트) 먼저, 웹 폴백 버튼의 `intent://` 보조 통로(extra)는
-        // 그다음 — 정상 링크가 extra 로 올 일은 없으니 순서는 상관없지만, 우선순위를
-        // 코드로도 보이게 남긴다.
-        val token = InviteLink.tokenOf(intent.dataString)
+        val token = inviteTokenOf(intent) ?: return
+        inviteEntry.receive(token)
+        intent.data = null
+        intent.removeExtra(InviteLink.WEB_FALLBACK_EXTRA)
+    }
+
+    /**
+     * 진짜 App Links(프래그먼트) 먼저, 웹 폴백 버튼의 `intent://` 보조 통로(extra)는
+     * 그다음 — 정상 링크가 extra 로 올 일은 없으니 순서는 상관없지만, 우선순위를
+     * 코드로도 보이게 남긴다.
+     */
+    private fun inviteTokenOf(intent: Intent): String? =
+        InviteLink.tokenOf(intent.dataString)
             ?: InviteLink.tokenOfWebFallback(
                 intent.dataString,
                 intent.getStringExtra(InviteLink.WEB_FALLBACK_EXTRA),
             )
-            ?: return
-        inviteEntry.receive(token)
-        intent.data = null
-        intent.removeExtra(InviteLink.WEB_FALLBACK_EXTRA)
+
+    /** [InviteInbox] 에 살아 있는 인스턴스로 올렸나. 넘기고 닫힌 인스턴스는 안 올린다. */
+    private var registeredEntry = false
+
+    override fun onDestroy() {
+        if (registeredEntry) InviteInbox.process.unregister()
+        registeredEntry = false
+        super.onDestroy()
     }
 
     /**
@@ -218,6 +235,24 @@ class MainActivity : ComponentActivity() {
         // 시스템 스플래시. **setContent 보다 먼저** 불러야 한다.
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // **로그인 화면 같은 다른 액티비티가 위에 있을 때 링크로 또 생긴 인스턴스는 그리지 않는다.**
+        // `singleTop` 은 MainActivity 가 맨 위일 때만 새 인텐트를 받아서, 카카오 로그인(Custom Tab·
+        // AuthCodeHandlerActivity) 중에 링크가 오면 MainActivity 가 하나 더 생겼다. 토큰만
+        // [InviteInbox] 에 두고 닫으면 위에 있던 로그인 화면은 그대로 남고(닫지 않는다), 로그인
+        // 콜백을 받는 원래 인스턴스가 로그인을 마치고 홈에 닿으면 그 토큰을 연다.
+        val handOffToken = if (savedInstanceState == null) inviteTokenOf(intent) else null
+        if (shouldHandOffInvite(
+                restoring = savedInstanceState != null,
+                hasInviteToken = handOffToken != null,
+                otherEntryAlive = InviteInbox.process.hasLiveEntry,
+            )
+        ) {
+            InviteInbox.process.receive(handOffToken!!)
+            finish()
+            return
+        }
+        InviteInbox.process.register()
+        registeredEntry = true
         enableEdgeToEdge()
         val app = application as DaengsApp
         val walkRuntime = app.walkRuntime
@@ -681,17 +716,25 @@ class MainActivity : ComponentActivity() {
                 // 챗·도감에 있다는 이유로 링크가 조용히 무시되면 안 된다. 보행 완료 알림이
                 // 챗으로 끌고 가는 것과 같은 결이다. **산책 중만 예외다** — 기록 화면을 뺏지
                 // 않고, 산책을 마치고 홈에 돌아오면 그때 연다.
+                //
+                // **로그인 중 링크로 생긴 두 번째 인스턴스가 넘긴 토큰도 여기서 연다** — 토큰은
+                // 프로세스에 하나([InviteInbox])라 이 키가 그 변화를 본다. 로그인 화면에 있거나
+                // 로그인을 취소·실패해 세션이 없으면 보관만 하고, 로그인해서 홈에 닿으면 연다.
+                // 여는 것은 미리보기까지다 — 수락은 버튼으로만 한다.
                 LaunchedEffect(inviteEntry.pendingToken, screen, session, sessionRestore) {
-                    if (inviteEntry.pendingToken == null) return@LaunchedEffect
-                    // 인증 복원 중에는 성급하게 넘기지 않는다 — 복원 결과가 곧 온다.
-                    if (sessionRestore == SessionRestore.Pending) return@LaunchedEffect
-                    // 로그인 전이면 보관만 한다. 이 effect 는 session 이 바뀌면 다시 돈다.
-                    if (session == null) return@LaunchedEffect
-                    when (screen) {
-                        Screen.Loading, Screen.Landing, Screen.Nickname,
-                        Screen.Onboarding, Screen.Walk -> return@LaunchedEffect
-                        Screen.Home -> Unit
-                        else -> screen = Screen.Home
+                    val step = inviteOpenStep(
+                        hasPending = inviteEntry.pendingToken != null,
+                        sessionRestoring = sessionRestore == SessionRestore.Pending,
+                        loggedIn = session != null,
+                        screenBlocksInvite = screen in setOf(
+                            Screen.Loading, Screen.Landing, Screen.Nickname, Screen.Onboarding, Screen.Walk,
+                        ),
+                        onHome = screen == Screen.Home,
+                    )
+                    when (step) {
+                        InviteOpenStep.Wait -> return@LaunchedEffect
+                        InviteOpenStep.Open -> Unit
+                        InviteOpenStep.GoHomeThenOpen -> screen = Screen.Home
                     }
                     inviteEntry.openFromLink()
                 }

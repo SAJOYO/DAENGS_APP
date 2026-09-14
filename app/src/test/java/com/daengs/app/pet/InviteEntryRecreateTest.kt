@@ -9,6 +9,7 @@ import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -28,6 +29,13 @@ import org.robolectric.annotation.Config
 class InviteEntryRecreateTest {
 
     private val token = "abc_DEF-123"
+
+    /** 기본 ViewModel 은 프로세스 공용 [InviteInbox] 를 쓴다 — 다음 테스트로 토큰이 새지 않게 비운다. */
+    @After
+    fun clearProcessInbox() {
+        InviteInbox.process.signOut()
+        InviteInbox.process.signOut()
+    }
 
     private fun ActivityScenario<ComponentActivity>.model(): InviteEntryViewModel {
         lateinit var model: InviteEntryViewModel
