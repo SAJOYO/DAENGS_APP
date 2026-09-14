@@ -4,6 +4,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.daengs.app.ui.theme.DaengsTheme
 import org.junit.Assert.*
@@ -30,8 +32,20 @@ class PlaceDogAssistantUiTest {
             }
         } }
         val before = compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithTag("place-dog-anchor").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        compose.onNodeWithText("도우미견").assertIsDisplayed()
+        compose.onNodeWithTag("place-dog-anchor").assertWidthIsAtLeast(60.dp).assertHeightIsAtLeast(48.dp)
+        val portrait = compose.onNodeWithTag("place-dog-portrait", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val nameTag = compose.onNodeWithTag("place-dog-name-tag", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("인식표가 원 하단에 겹쳐 목에 달려 보여야 한다", nameTag.top < portrait.bottom)
+        assertTrue("인식표가 얼굴을 답답하게 덮지 않아야 한다",
+            portrait.bottom - nameTag.top <= portrait.height / 6f)
+        assertTrue("인식표는 원 아래까지 이어져야 한다", nameTag.bottom > portrait.bottom)
         compose.onNodeWithContentDescription("내 주변 검색").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        val location = compose.onNodeWithContentDescription("내 주변 검색")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals("두 원의 중심 높이가 같아야 한다", location.center.y, portrait.center.y, .5f)
         compose.onNodeWithTag("place-dog-anchor").performClick()
         compose.onNodeWithTag("place-dog-input").performTextInput("카페 찾아줘")
         assertTrue(queries.isEmpty())
@@ -44,5 +58,42 @@ class PlaceDogAssistantUiTest {
         assertEquals(before, compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("다시 말하기").performScrollTo().performClick()
         compose.onNodeWithTag("place-dog-input").assertExists()
+    }
+
+    @Test fun nameTagAndPortraitOpenTheSameConversation() {
+        val open = mutableStateOf(false)
+        compose.setContent { DaengsTheme {
+            PlaceMapControls(false, {}, {}) {
+                PlaceDogAssistant(false, false, open.value, { open.value = it }, {}, {}) {}
+            }
+        } }
+        // 실제 터치로 아래 인식표도 버튼 bounds 안에 포함되는지 확인한다.
+        compose.onNodeWithTag("place-dog-anchor").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(center.x, height - 2f))
+        }
+        compose.onNodeWithTag("place-dog-input").assertIsDisplayed()
+        compose.onNodeWithText("닫기").performClick()
+        compose.onNodeWithTag("place-dog-input").assertDoesNotExist()
+        compose.onNodeWithTag("place-dog-anchor").performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(center.x, 16f))
+        }
+        compose.onNodeWithTag("place-dog-input").assertIsDisplayed()
+    }
+
+    @Test fun largerNameTagDoesNotMisalignTheTwoCircles() {
+        compose.setContent { DaengsTheme {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                PlaceMapControls(false, {}, {}) {
+                    PlaceDogAssistant(false, false, false, {}, {}, {}) {}
+                }
+            }
+        } }
+        val portrait = compose.onNodeWithTag("place-dog-portrait", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val location = compose.onNodeWithContentDescription("내 주변 검색")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(location.center.y, portrait.center.y, .5f)
+        compose.onNodeWithText("도우미견").assertIsDisplayed()
     }
 }

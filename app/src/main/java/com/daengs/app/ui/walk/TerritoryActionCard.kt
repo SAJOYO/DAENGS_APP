@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -19,6 +20,8 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.*
+
+internal const val TERRITORY_ACTION_CARD_TEST_TAG = "territory-action-card"
 
 /** A selected map object explains ownership first, then the next available action. */
 @Composable
@@ -38,7 +41,7 @@ internal fun TerritoryActionCard(
     var detailsOpen by remember(target.site.id) { mutableStateOf(false) }
     val cardScroll = remember(target.site.id) { ScrollState(0) }
     val occupied = target.occupancyKnown && target.claim.occupancy != null
-    Surface(modifier.widthIn(max = 360.dp), shape = RoundedCornerShape(24.dp), color = CardWhite,
+    Surface(modifier.testTag(TERRITORY_ACTION_CARD_TEST_TAG).widthIn(max = 360.dp), shape = RoundedCornerShape(24.dp), color = CardWhite,
         shadowElevation = 4.dp) {
         Column(Modifier.verticalScroll(cardScroll).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {

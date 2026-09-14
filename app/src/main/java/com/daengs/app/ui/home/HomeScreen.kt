@@ -53,6 +53,7 @@ import com.daengs.app.BuildConfig
 import com.daengs.app.miniroom.DogTapTarget
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
+import com.daengs.app.miniroom.RoomIntro
 import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
@@ -161,6 +162,11 @@ fun HomeScreen(
      * 위로 올린 것과 같은 이유다.
      */
     outside: OutsideSnapshot = OutsideSnapshot.DEFAULT,
+    /**
+     * 홈 첫 진입 연출. **[MainActivity] 가 들고 내려보낸다** — 여기서 `remember` 하면
+     * 도감·산책을 갔다 올 때마다 다시 튼다 ([outside] 와 같은 이유). null 이면 없다.
+     */
+    intro: RoomIntro? = null,
     /**
      * 마이 화면이 열려 있나. **탭이 아니라 상단바의 프로필 사진 버튼으로 연다.**
      *
@@ -560,6 +566,7 @@ fun HomeScreen(
 
         val room: @Composable (Modifier) -> Unit = { roomModifier ->
             RoomSection(
+                intro = intro,
                 tourSpots = tourSpots,
                 framePicture = framePicture,
                 weatherOpen = weatherOpen,
@@ -731,6 +738,8 @@ fun HomeScreen(
             onSkip = { onTourClose?.invoke() },
         )
     }
+    // 로딩에서 넘어온 크림 막. **맨 위에** 있어야 상단바·탭바까지 같이 걷힌다.
+    HomeIntroVeil(intro)
     }
 }
 
@@ -738,6 +747,8 @@ fun HomeScreen(
 private fun RoomSection(
     /** 방 둘러보기가 밝힐 자리를 여기에 등록한다. null 이면 안 한다. */
     tourSpots: TourSpots?,
+    /** 홈 첫 진입 연출. [HomeScreen] 이 받은 것을 그대로 내린다. */
+    intro: RoomIntro?,
     state: MiniRoomState,
     catalog: ItemCatalog,
     dateLabel: String,
@@ -884,6 +895,7 @@ private fun RoomSection(
             openDoorSignal = doorSignal,
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
+            intro = intro,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —
             // 탭 하나에 두 가지 뜻을 담으면 헷갈리고, 실수로 사라지면 곤란하다.
             // 편집 모드에서 탭 = 선택. 돌리기/치우기는 버튼으로 뺐다.

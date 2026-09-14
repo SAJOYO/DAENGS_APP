@@ -33,7 +33,7 @@ class WalkTerritoryUiTest {
             onlinePhotos = true, actionLabel = "유지 연장 · 0점", guidance = "현장에서 유지 시간을 연장할 수 있어요 · 연장 보상 0점"))
         var selected: String? = null
         compose.setContent { DaengsTheme { TerritoryActionCard(game.value, { selected = it }) } }
-        compose.onNodeWithText("보리 · 미인증").assertIsDisplayed()
+        compose.onNodeWithText("영역 표시 · 미인증").assertIsDisplayed()
         compose.onNodeWithText("미점유").assertDoesNotExist()
         compose.onNodeWithText("점령 유지 · 2일 3시간 남음").assertIsDisplayed()
         compose.onNodeWithText("유지 연장 · 0점").assertIsEnabled().performClick()
@@ -42,8 +42,8 @@ class WalkTerritoryUiTest {
         compose.runOnIdle { game.value = game.value.copy(canMark = false, canPhotograph = true,
             sites = listOf(target.copy(claim = target.claim.copy(occupancy = occupancy.copy(certification = ClaimCertification.VERIFIED)))),
             photoActionLabel = "사진으로 유지 연장", guidance = "새 사진으로 유지 시간을 연장할 수 있어요 · 연장 보상 0점") }
-        compose.onNodeWithText("보리 · 인증").assertIsDisplayed()
-        compose.onNodeWithText("사진으로 유지 연장").assertIsEnabled()
+        compose.onNodeWithText("사진 인증 완료").assertIsDisplayed()
+        compose.onNodeWithText(territoryPhotoButtonLabel(game.value)).assertIsEnabled()
         compose.onNodeWithText("유지 연장 · 0점").assertDoesNotExist()
         screenshot("first-season-photo-renewal")
     }
@@ -85,7 +85,7 @@ class WalkTerritoryUiTest {
         compose.onNodeWithText("영역표시 확인 중 · 산책을 계속해도 돼요").assertIsDisplayed()
         compose.onNodeWithText("보리").assertIsNotEnabled()
         compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled()
-        compose.onNodeWithContentDescription("영역표시 인증 촬영").assertDoesNotExist()
+        compose.onNodeWithText(territoryPhotoButtonLabel(pending)).assertDoesNotExist()
         screenshot("server-mark-pending")
         compose.runOnIdle {
             val target = pending.target!!
@@ -94,7 +94,7 @@ class WalkTerritoryUiTest {
                     occupancy = TerritoryOccupancy("p1", null, null, ClaimCertification.UNVERIFIED, 1000)))),
                 guidance = "영역표시가 접수됐어요 · 현재 점유는 지도에서 확인해요"))
         }
-        compose.onNodeWithText("보리 · 미인증").assertIsDisplayed()
+        compose.onNodeWithText("영역 표시 · 미인증").assertIsDisplayed()
         compose.onNodeWithText("영역표시").assertDoesNotExist()
         screenshot("server-mark-confirmed")
     }
@@ -116,23 +116,27 @@ class WalkTerritoryUiTest {
         compose.onNodeWithText("미점유").assertDoesNotExist()
         kotlinx.coroutines.runBlocking { provider.refresh(listOf(site)) }
         compose.runOnIdle { state.value = snapshot() }
-        compose.onNodeWithText("두부 · 인증").assertIsDisplayed()
+        compose.onNodeWithText("두부").assertIsDisplayed()
+        compose.onNodeWithText("사진 인증 완료").assertIsDisplayed()
+        compose.onNodeWithText("점령 정보 자세히").performScrollTo().performClick()
         compose.onNodeWithText("점령 시각 · ${territoryOccupiedAtLabel(1000)}").assertIsDisplayed()
-        compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
+        compose.onNodeWithText("확인").performClick()
+        compose.onNodeWithText("함께 점령할 강아지").assertDoesNotExist()
         compose.onNodeWithText("점령 연습 · 점유 정보").assertDoesNotExist()
         screenshot("server-browsing")
         compose.runOnIdle {
             state.value = screen(TerritoryWalkPhase.WALKING).copy(territoryGame = state.value.territoryGame.copy(phase = TerritoryWalkPhase.WALKING))
         }
-        compose.onNodeWithContentDescription("영역표시 인증 촬영").assertDoesNotExist()
-        compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
+        compose.onNodeWithText(territoryPhotoButtonLabel(state.value.territoryGame)).assertDoesNotExist()
+        compose.onNodeWithText("함께 점령할 강아지").assertDoesNotExist()
         compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled()
         failing = true
         kotlinx.coroutines.runBlocking { provider.refresh(listOf(site)) }
         compose.runOnIdle { state.value = snapshot() }
         compose.onNodeWithText("점유 조회 실패").assertIsDisplayed()
         compose.onNodeWithText("미점유").assertDoesNotExist()
-        compose.onNodeWithText("두부 · 인증").assertDoesNotExist()
+        compose.onNodeWithText("두부").assertDoesNotExist()
+        compose.onNodeWithText("사진 인증 완료").assertDoesNotExist()
         compose.onNodeWithText("점령 시각", substring = true).assertDoesNotExist()
         compose.onNodeWithText("점유 정보를 불러오지 못했어요 · 잠시 후 다시 확인해요").assertIsDisplayed()
         screenshot("server-error")
@@ -176,16 +180,16 @@ class WalkTerritoryUiTest {
         val actions = mutableListOf<WalkAction>()
         compose.setContent { DaengsTheme { WalkScreen(state.value, actions::add, showMap = false) } }
         compose.onNodeWithText("미점유").assertExists()
-        compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
-        compose.onNodeWithContentDescription("영역표시 인증 촬영").assertDoesNotExist()
+        compose.onNodeWithText("함께 점령할 강아지").assertDoesNotExist()
+        compose.onNodeWithText(territoryPhotoButtonLabel(state.value.territoryGame)).assertDoesNotExist()
         compose.onNodeWithContentDescription("산책 사진 촬영").assertDoesNotExist()
-        compose.onNodeWithText("산책 시작").assertExists()
+        compose.onNodeWithText("산책 준비하기").assertIsDisplayed()
         screenshot("browsing")
         compose.runOnIdle { state.value = screen(TerritoryWalkPhase.WALKING) }
-        compose.onNodeWithText("영역표시할 강아지").assertExists()
+        compose.onNodeWithText("함께 점령할 강아지").assertExists()
         compose.onNodeWithContentDescription("산책 사진 촬영").assertIsEnabled().performClick()
         assertEquals(WalkAction.PhotographWalk, actions.last())
-        compose.onNodeWithContentDescription("영역표시 인증 촬영").performClick()
+        compose.onNodeWithText(territoryPhotoButtonLabel(state.value.territoryGame)).performClick()
         assertEquals(WalkAction.PhotographTerritory("A"), actions.last())
         screenshot("walking")
         compose.onNodeWithText("보리").performClick()
@@ -198,7 +202,7 @@ class WalkTerritoryUiTest {
         compose.runOnIdle { state.value = screen(TerritoryWalkPhase.PAUSED) }
         compose.onNodeWithText("지도 둘러보기").performClick()
         compose.onNodeWithText("산책을 재개하면 영역표시할 수 있어요").assertIsDisplayed()
-        compose.onNodeWithText("영역표시할 강아지").assertDoesNotExist()
+        compose.onNodeWithText("함께 점령할 강아지").assertDoesNotExist()
         compose.onNodeWithContentDescription("산책 사진 촬영").assertIsNotEnabled()
         screenshot("paused")
         compose.onNodeWithContentDescription("산책 재개 메뉴").performClick()
@@ -230,12 +234,12 @@ class WalkTerritoryUiTest {
     @Test @Config(qualifiers = "w320dp-h844dp")
     fun narrowScreenKeepsClaimAndWalkControlsSeparate() {
         compose.setContent { DaengsTheme { WalkScreen(screen(TerritoryWalkPhase.WALKING), {}, showMap = false) } }
-        val claim = compose.onNodeWithText("영역표시").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val claim = compose.onNodeWithTag(TERRITORY_ACTION_CARD_TEST_TAG).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val dock = compose.onNodeWithContentDescription("행동 기록").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(claim.bottom <= dock.top)
         compose.onNodeWithContentDescription("GPS 불안정").assertIsDisplayed()
         screenshot("narrow")
-        compose.onNodeWithContentDescription("영역표시 인증 촬영").assertIsDisplayed()
+        compose.onNodeWithText(territoryPhotoButtonLabel(game(TerritoryWalkPhase.WALKING))).assertIsDisplayed()
         compose.onNodeWithContentDescription("내 위치").assertIsDisplayed()
         compose.onNodeWithContentDescription("산책 사진 촬영").assertIsDisplayed()
     }
@@ -243,7 +247,7 @@ class WalkTerritoryUiTest {
     @Test @Config(qualifiers = "w844dp-h390dp")
     fun landscapeSeparatesCardFromDock() {
         compose.setContent { DaengsTheme { WalkScreen(screen(TerritoryWalkPhase.WALKING), {}, showMap = false) } }
-        val card = compose.onNodeWithText("영역표시").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val card = compose.onNodeWithTag(TERRITORY_ACTION_CARD_TEST_TAG).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val dock = compose.onNodeWithContentDescription("행동 기록").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(card.right <= dock.left)
         screenshot("landscape")
@@ -254,9 +258,12 @@ class WalkTerritoryUiTest {
                 com.daengs.app.location.LocationSample(GeoPoint(37.5,127.0), System.currentTimeMillis(),
                     android.os.SystemClock.elapsedRealtimeNanos(), 3f)
             }
-            val state = screen(TerritoryWalkPhase.BROWSING).copy(location = WalkLocationUiState(
-                permissionGranted = true, precisePermission = true, currentPosition = sample.point,
-                sample = sample, owner = WalkLocationOwner.SCREEN))
+            val base = screen(TerritoryWalkPhase.BROWSING)
+            val state = base.copy(
+                location = WalkLocationUiState(permissionGranted = true, precisePermission = true,
+                    currentPosition = sample.point, sample = sample, owner = WalkLocationOwner.SCREEN),
+                territory = base.territory.copy(selectedSiteId = null),
+            )
             DaengsTheme { WalkScreen(state, {}, showMap = false) }
         }
         compose.onNodeWithContentDescription("GPS 양호").assertIsDisplayed().performClick()

@@ -2,13 +2,9 @@ package com.daengs.app.ui.places
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -17,18 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -70,19 +62,10 @@ internal fun PlaceDogAssistant(
     val keyboard = LocalSoftwareKeyboardController.current
     var draft by rememberSaveable { mutableStateOf("") }
     var composing by rememberSaveable { mutableStateOf(false) }
-    Box(Modifier.size(48.dp)) {
-        Surface(Modifier.fillMaxSize(), shape = CircleShape, shadowElevation = 4.dp,
-            color = DaengsColors.Surface, border = BorderStroke(1.dp, DaengsColors.BrandPrimarySoft)) {
-            Box(Modifier.fillMaxSize().clip(CircleShape)
-                .clickable(role = Role.Button) { composing = !replyAvailable; onOpen(!open) }
-                .semantics { contentDescription = "강아지에게 검색 조건 말하기" }
-                .testTag("place-dog-anchor").padding(3.dp)) {
-                val portrait = Modifier.fillMaxSize().clip(CircleShape)
-                if (avatarPhoto != null) Image(avatarPhoto.asImageBitmap(), contentDescription = null,
-                    modifier = portrait, contentScale = ContentScale.Crop)
-                else Image(painterResource((avatarBreed ?: DogBreed.BEAGLE).portraitRes), contentDescription = null,
-                    modifier = portrait, contentScale = ContentScale.Crop)
-            }
+    Box {
+        PlaceDogAssistantEntry(avatarBreed, avatarPhoto) {
+            composing = !replyAvailable
+            onOpen(!open)
         }
         if (open) {
             val position = remember(density, busy) { BubblePositionProvider(with(density) { 8.dp.roundToPx() }, busy) }
