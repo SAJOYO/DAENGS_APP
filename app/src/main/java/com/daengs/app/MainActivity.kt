@@ -240,6 +240,20 @@ class MainActivity : ComponentActivity() {
                 // Login lifetime, not a token refresh or a pet-name update, owns record navigation.
                 val recordsAccount by app.sessionProvider.accountScope.collectAsState()
                 val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
+                // 다른 보호자가 다녀온 산책의 **읽기 전용** 공동 조회. 로그인마다 새로 만들고, 계정이
+                // 바뀌면 늦게 온 답을 버린다 — 이전 계정의 산책이 다음 계정 화면에 남으면 안 된다.
+                val sharedWalks = remember(recordsAccount) {
+                    if (recordsAccount.ownerId.isNullOrBlank()) null else com.daengs.app.walk.shared.SharedWalksHolder(
+                        reader = com.daengs.app.walk.shared.SharedWalkApi(),
+                        accessToken = {
+                            app.sessionProvider.freshSession()?.takeIf {
+                                it.appUserId == recordsAccount.ownerId &&
+                                    app.sessionProvider.accountScope.value == recordsAccount
+                            }?.accessToken
+                        },
+                        isCurrentAccount = { app.sessionProvider.accountScope.value == recordsAccount },
+                    )
+                }
                 val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
                 val completedDestination = key(recordsAccount) {
                     com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
@@ -1206,6 +1220,7 @@ class MainActivity : ComponentActivity() {
                             accountScope = recordsAccount,
                             source = recordsSource,
                             state = recordsRouteState,
+                            sharedWalks = sharedWalks,
                             pets = pets.pets,
                             onBack = { screen = Screen.Home },
                             onSignIn = { screen = Screen.Landing },

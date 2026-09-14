@@ -148,6 +148,13 @@ private fun CareDayContent(
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
         )
+        // 그날 산책을 **누가** 다녀왔는지. 산책은 서버 `walks` 가 진실이라 여기에 지우기는 없다.
+        summary.walkRows.forEach { row ->
+            Column(Modifier.fillMaxWidth()) {
+                Text("산책 · ${Instant.ofEpochMilli(row.startedAtMs).atZone(zone).format(TIME)}", color = TextDark, fontSize = 14.sp)
+                Text(row.actor.displayName, color = TextMuted, fontSize = 12.sp)
+            }
+        }
         if (summary.events.isEmpty()) {
             Text("아직 오늘 챙긴 기록이 없어요", color = TextMuted, fontSize = 13.sp)
         } else {
