@@ -38,6 +38,7 @@ import com.daengs.app.auth.loginWithKakao
 import com.daengs.app.chat.ChatHistoryCoordinator
 import com.daengs.app.chat.ChatSummaryCoordinator
 import com.daengs.app.miniroom.art.DogBreed
+import com.daengs.app.miniroom.RoomIntro
 import com.daengs.app.miniroom.rememberRoomStore
 import com.daengs.app.ui.dogcard.rememberComposedCard
 import com.daengs.app.dogcard.CardHolder
@@ -225,6 +226,10 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                // 홈 첫 진입 연출. **여기서 든다** — 홈 안에서 들면 도감·산책을 갔다 올
+                // 때마다 다시 튼다. 로딩을 떠나는 자리에서 한 번 무장하고, 그 뒤 홈은
+                // 몇 번을 다시 합성돼도 안 튼다.
+                val homeIntro = remember { RoomIntro() }
 
                 // 보행 완료 알림을 누르면 챗으로 간다. **화면을 나갔던 사람도** 결과를
                 // 보게 하려는 것이다 — 홈 버튼만 눌렀던 경우는 이미 챗이라 아무것도
@@ -564,6 +569,8 @@ class MainActivity : ComponentActivity() {
                         StartupTarget.Home -> Screen.Home
                     }
                     delay(loadingHoldMs(loadingSince, SystemClock.elapsedRealtime()))
+                    // 로딩(크림 + 아이콘)에서 홈으로 넘어가는 그 컷에 연출을 건다.
+                    homeIntro.arm()
                     screen = next
                 }
 
@@ -887,6 +894,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { membersFor = null },
                         )
                     } else HomeScreen(
+                        intro = homeIntro,
                         tourOpen = tourOpen,
                         onReplayTour = { tourOpen = true },
                         onTourClose = {
