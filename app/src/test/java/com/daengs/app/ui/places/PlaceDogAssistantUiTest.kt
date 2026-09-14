@@ -4,6 +4,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.daengs.app.ui.theme.DaengsTheme
 import org.junit.Assert.*
@@ -38,9 +40,12 @@ class PlaceDogAssistantUiTest {
             .fetchSemanticsNode().boundsInRoot
         assertTrue("인식표가 원 하단에 겹쳐 목에 달려 보여야 한다", nameTag.top < portrait.bottom)
         assertTrue("인식표가 얼굴을 답답하게 덮지 않아야 한다",
-            portrait.bottom - nameTag.top <= portrait.height * .1f)
+            portrait.bottom - nameTag.top <= portrait.height / 6f)
         assertTrue("인식표는 원 아래까지 이어져야 한다", nameTag.bottom > portrait.bottom)
         compose.onNodeWithContentDescription("내 주변 검색").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+        val location = compose.onNodeWithContentDescription("내 주변 검색")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals("두 원의 중심 높이가 같아야 한다", location.center.y, portrait.center.y, .5f)
         compose.onNodeWithTag("place-dog-anchor").performClick()
         compose.onNodeWithTag("place-dog-input").performTextInput("카페 찾아줘")
         assertTrue(queries.isEmpty())
@@ -73,5 +78,22 @@ class PlaceDogAssistantUiTest {
             click(androidx.compose.ui.geometry.Offset(center.x, 16f))
         }
         compose.onNodeWithTag("place-dog-input").assertIsDisplayed()
+    }
+
+    @Test fun largerNameTagDoesNotMisalignTheTwoCircles() {
+        compose.setContent { DaengsTheme {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                PlaceMapControls(false, {}, {}) {
+                    PlaceDogAssistant(false, false, false, {}, {}, {}) {}
+                }
+            }
+        } }
+        val portrait = compose.onNodeWithTag("place-dog-portrait", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val location = compose.onNodeWithContentDescription("내 주변 검색")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(location.center.y, portrait.center.y, .5f)
+        compose.onNodeWithText("도우미견").assertIsDisplayed()
     }
 }

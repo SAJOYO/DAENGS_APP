@@ -55,11 +55,11 @@ internal fun PlaceDogAssistantEntry(
                 modifier = portrait, contentScale = ContentScale.Crop)
         }
         // 작은 고리만 원 끝에 연결한다. 목줄을 얼굴 위에 그리지 않는다.
-        Canvas(Modifier.align(Alignment.TopCenter).padding(top = 43.dp).size(5.dp, 6.dp)) {
+        Canvas(Modifier.align(Alignment.TopCenter).padding(top = 39.dp).size(5.dp, 6.dp)) {
             drawOval(DaengsColors.BrandPrimary, style = Stroke(1.dp.toPx()))
         }
         Surface(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 46.dp)
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 42.dp)
                 .testTag("place-dog-name-tag"),
             shape = RoundedCornerShape(50), color = DaengsColors.BrandPrimarySoft,
             border = BorderStroke(1.dp, DaengsColors.BrandPrimary),
