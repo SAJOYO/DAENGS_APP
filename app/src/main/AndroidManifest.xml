@@ -107,6 +107,29 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- 공동 돌봄 초대 링크. `InviteLink.HOST`·`PATH` 와 반드시 같은 값이다 —
+                 갈라지면 링크를 열어도 앱이 안 뜬다. android:host 는 늘 운영 도메인이다
+                 (`InviteLink.of` 의 DEV_HOST 는 링크를 "만들 때"만 쓰는 예외이고, 받는 쪽
+                 매니페스트와는 무관하다 — 개발 서버로 만든 링크도 이 운영 호스트로 나간다).
+
+                 **`autoVerify="true"` 만으로 바로 열리지 않는다.** Android 가 이 앱의
+                 서명 인증서 지문이 `https://daengapi.weareithero.cloud/.well-known/assetlinks.json`
+                 에 있는지 실제로 확인해야 "검증됨"이 된다 — 그 파일에 진짜 Play 서명
+                 지문이 올라가기 전까지는 이 필터가 있어도 링크는 그냥 브라우저로 간다
+                 (그래서 웹 `/invite` 페이지가 fallback 으로 필요하다). 토큰은 프래그먼트에
+                 있어 `path` 매칭에는 안 걸린다 — `InviteLink.tokenOf` 참고. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="daengapi.weareithero.cloud"
+                    android:path="/invite" />
+            </intent-filter>
         </activity>
 
         <!-- 카카오 로그인이 끝나면 이리로 돌아온다. 스킴의 키는 build.gradle.kts 가
