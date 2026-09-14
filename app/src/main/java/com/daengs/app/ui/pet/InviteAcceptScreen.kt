@@ -80,6 +80,15 @@ fun InviteAcceptScreen(
     preview: PreviewOutcome? = null,
     /** 아이마다 고른 것. 키가 없으면 아직 안 고른 것이다. */
     choices: Map<String, PetChoice> = emptyMap(),
+    /**
+     * App Links 로 링크를 눌러서 바로 들어왔나.
+     *
+     * **참이면 붙여넣기 칸·안내 문구·"초대 링크를 찾았어요" 를 숨긴다.** 이미 링크를
+     * 눌러서 왔으니 다시 찾아 달라고 하거나 찾았다고 말할 이유가 없다 — 보낸 사람·
+     * 강아지·선택·최종 수락 버튼은 그대로 보여 준다. 거짓이면(수동 붙여넣기 경로) 예전과
+     * 같다.
+     */
+    autoEntered: Boolean = false,
     /** 다른 항목이 이미 가져간 기존 아이. 그 후보를 잠근다. */
     takenBy: (String) -> Set<String> = { emptySet() },
     onPaste: (String) -> Unit = {},
@@ -118,18 +127,26 @@ fun InviteAcceptScreen(
             return@Column
         }
 
-        Text(
-            "받은 초대 링크를 붙여넣어 주세요. 카카오톡에서 복사한 메시지를 통째로 붙여넣어도 괜찮아요.",
-            color = TextMuted,
-            fontSize = 13.sp,
-        )
+        if (!autoEntered) {
+            Text(
+                "받은 초대 링크를 붙여넣어 주세요. 카카오톡에서 복사한 메시지를 통째로 붙여넣어도 괜찮아요.",
+                color = TextMuted,
+                fontSize = 13.sp,
+            )
 
-        PasteField(value = pasted, onChange = onPaste, enabled = !busy)
+            PasteField(value = pasted, onChange = onPaste, enabled = !busy)
+        }
 
         // 입력 상태를 그대로 말해 준다 — 왜 버튼이 안 눌리는지 화면이 설명해야 한다.
+        // **Found 는 자동 진입에서 숨긴다** — 링크를 눌러서 왔다는 사실 자체가 "찾았다"는
+        // 뜻이라, 붙여넣기 칸도 없는 화면에 그 안내만 남으면 무엇을 찾았다는 건지 안 보인다.
+        // NoLink·Ambiguous 는 자동 진입 경로에서 나올 일이 없다 — 여기 오는 토큰은
+        // `InviteLink.tokenOf` 로 이미 검증됐다. 그래도 방어적으로 그대로 둔다.
         when (parsed) {
             is InvitePaste.Result.Empty -> Unit
-            is InvitePaste.Result.Found -> Notice("초대 링크를 찾았어요.", tag = "accept-link-ok", tint = DaengPink)
+            is InvitePaste.Result.Found -> if (!autoEntered) {
+                Notice("초대 링크를 찾았어요.", tag = "accept-link-ok", tint = DaengPink)
+            }
             is InvitePaste.Result.NoLink -> Notice(
                 "초대 링크를 찾지 못했어요. 받은 메시지를 다시 복사해 붙여넣어 주세요.",
                 tag = "accept-no-link",
@@ -447,6 +464,19 @@ private fun AcceptFoundPreview() {
             pasted = PREVIEW_LINK,
             parsed = InvitePaste.Result.Found("preview-token"),
             canAccept = true,
+        )
+    }
+}
+
+@Preview(name = "App Links 로 자동 진입")
+@Composable
+private fun AcceptAutoEnteredPreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            canAccept = true,
+            autoEntered = true,
         )
     }
 }

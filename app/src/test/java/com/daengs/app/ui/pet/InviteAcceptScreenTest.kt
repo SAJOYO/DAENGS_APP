@@ -39,6 +39,7 @@ class InviteAcceptScreenTest {
         busy: Boolean = false,
         outcome: AcceptOutcome? = null,
         canAccept: Boolean = false,
+        autoEntered: Boolean = false,
         onPaste: (String) -> Unit = {},
         onAccept: () -> Unit = {},
         onDone: () -> Unit = {},
@@ -50,6 +51,7 @@ class InviteAcceptScreenTest {
                 busy = busy,
                 outcome = outcome,
                 canAccept = canAccept,
+                autoEntered = autoEntered,
                 onPaste = onPaste,
                 onAccept = onAccept,
                 onDone = onDone,
@@ -92,6 +94,28 @@ class InviteAcceptScreenTest {
 
         compose.onNodeWithTag("accept-ambiguous").assertIsDisplayed()
         compose.onNodeWithTag("accept-submit").assertIsNotEnabled()
+    }
+
+    // -- App Links 자동 진입 -----------------------------------------------------
+
+    /** 링크를 눌러서 왔으면 붙여넣기 칸과 "찾았어요" 안내를 다시 보여줄 이유가 없다. */
+    @Test
+    fun `자동 진입에서는 붙여넣기 칸과 찾았다는 안내를 숨긴다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), canAccept = true, autoEntered = true)
+
+        compose.onAllNodesWithTag("accept-input").assertCountEquals(0)
+        compose.onAllNodesWithTag("accept-link-ok").assertCountEquals(0)
+        // 그래도 수락 버튼은 그대로 있고 눌린다 — 링크만으로 자동 수락되는 것은 아니다.
+        compose.onNodeWithTag("accept-submit").assertIsEnabled()
+    }
+
+    /** 수동 붙여넣기 경로는 그대로다 — autoEntered 가 기본값(false)이면 예전과 같다. */
+    @Test
+    fun `수동 경로는 자동 진입 화면을 숨기지 않는다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), canAccept = true)
+
+        compose.onNodeWithTag("accept-input").assertIsDisplayed()
+        compose.onNodeWithTag("accept-link-ok").assertIsDisplayed()
     }
 
     // -- 확인 -----------------------------------------------------------------
