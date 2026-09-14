@@ -53,7 +53,7 @@ APP #353 · 완료 산책 지도/장면 개선의 5번째 구현 단위.
 |---|---|
 | `ui/walk/DiaryMapNavigation.kt` | 명시적 카메라 요청, 두 보기 범위, 고유 장면 집계 |
 | `map/shell/MapVisibility.kt`, `map/provider/naver/NaverMapVisibility.kt` | 실제 투영·핀 크기·가림 영역, 오래된 조회 배제 |
-| `ui/walk/WalkDiaryReadView.kt` | 준비 전 기존 화면 유지, 같은 원본 재사용, revision/계정 검사 |
+| `ui/walk/detail/WalkDiaryReadView.kt` | 준비 전 기존 화면 유지, 같은 원본 재사용, revision/계정 검사 |
 | `walk/diary/WalkDiaryReader.kt` | 장면과 binding 입력 entry의 같은 emission |
 | `ui/walk/WalkDiaryMapScreen.kt`, `WalkDiaryReadingLayout.kt` | 원자적 채택, 지도 클릭 고정, pending 중 읽기 유지 |
 | debug `WalkRouteReviewLabActivity.kt` | 실제 검토 화면에서 동일한 갱신/탐색 계약 사용 |

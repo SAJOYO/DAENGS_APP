@@ -1,5 +1,8 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.detail.PreparedDiaryRoute
+import com.daengs.app.ui.walk.detail.WalkDiaryReadView
+
 import android.app.Application
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryWalk

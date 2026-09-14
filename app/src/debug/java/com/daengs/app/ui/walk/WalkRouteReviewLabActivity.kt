@@ -1,5 +1,10 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.detail.PreparedDiaryRoute
+import com.daengs.app.ui.walk.detail.WalkDiaryReadView
+import com.daengs.app.ui.walk.detail.DiaryReadUpdate
+import com.daengs.app.ui.walk.detail.walkDiaryReadUpdates
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
