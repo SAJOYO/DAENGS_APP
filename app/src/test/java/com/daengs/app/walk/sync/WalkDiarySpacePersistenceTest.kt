@@ -29,6 +29,7 @@ class WalkDiarySpacePersistenceTest {
     @Test fun normalizedDiarySurvivesReopen() = assertPublicationSurvives("diary-space-board-v1.json")
 
     @Test fun independentCardWritingSurvivesReopen() = assertPublicationSurvives("diary-card-orchestration-v1.json")
+    @Test fun confirmedObservationsSurviveReopen() = assertPublicationSurvives("diary-observation-card-v1.json")
 
     private fun assertPublicationSurvives(resource: String) = runBlocking {
         val response = JSONObject(javaClass.getResource("/storyboard/$resource")!!.readText())

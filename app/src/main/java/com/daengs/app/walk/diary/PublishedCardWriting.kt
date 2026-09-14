@@ -5,12 +5,20 @@ import org.json.JSONObject
 /** Provenance of the immutable server publication; local title/body edits remain independent. */
 data class PublishedCardPart(val text: String, val origin: String, val actionId: String?, val actorId: String?)
 
+data class PublishedCardObservation(
+    val text: String,
+    val kind: String,
+    val coreIdentity: String,
+    val coreVersion: String,
+)
+
 data class PublishedCardWriting(
     val contentRevision: String,
     val titleOrigin: String,
     val space: PublishedCardPart,
     val actions: List<PublishedCardPart>,
     val originalText: String?,
+    val observation: PublishedCardObservation? = null,
 )
 
 internal fun publishedCardWriting(card: JSONObject): PublishedCardWriting? {
@@ -29,6 +37,18 @@ internal fun publishedCardWriting(card: JSONObject): PublishedCardWriting? {
     }
     val space = part(value.getJSONObject("space"))
     require(space.actionId == null && space.actorId == null && space.text.isNotBlank())
+    val observation = if (value.isNull("observation")) null else {
+        val item = value.getJSONObject("observation")
+        require(card.getString("kind") == "movement_observation")
+        val source = card.getJSONObject("observation")
+        val core = item.getJSONObject("core")
+        require(canonicalJson(core) == canonicalJson(card.getJSONObject("core")))
+        require(item.getString("kind") == source.getString("kind"))
+        require(item.getString("subject") == "recording_device")
+        require(item.getString("action_meaning") == "not_inferred")
+        PublishedCardObservation(item.requiredText("text", 220), item.getString("kind"),
+            core.requiredText("identity", 220), core.digestText("version"))
+    }
     val rawActions = value.getJSONArray("actions")
     require(rawActions.length() <= 1)
     val actions = (0 until rawActions.length()).map { part(rawActions.getJSONObject(it)) }
@@ -43,8 +63,8 @@ internal fun publishedCardWriting(card: JSONObject): PublishedCardWriting? {
     val original = if (value.isNull("original_text")) null else value.getString("original_text")
     if (record?.optString("kind") == "note") require(original == record.getString("text"))
     if (record?.optString("kind") !in setOf("note", "photo")) require(original == null)
-    val body = (listOf(space.text) + actions.map { it.text } + listOfNotNull(original))
+    val body = (listOfNotNull(observation?.text) + listOf(space.text) + actions.map { it.text } + listOfNotNull(original))
         .filter { it.isNotEmpty() }.joinToString("\n")
     require(card.getString("body") == body)
-    return PublishedCardWriting(revision, titleOrigin, space, actions, original)
+    return PublishedCardWriting(revision, titleOrigin, space, actions, original, observation)
 }
