@@ -45,7 +45,26 @@ private fun MiniRoomCanvasPreview() {
     }
 }
 
-/** 문이 반쯤 열린 상태. 무한 애니메이션은 미리보기에서 안 돌아서 값을 찍어준다. */
+/**
+ * 홈 첫 진입 연출의 **한가운데.** 카메라가 문에서 반쯤 빠져나온 순간 — 문은 아직 열려
+ * 있고, 밤이라 방은 어둡다. 확대된 그림이 캔버스 밖으로 안 새는지(`clipToBounds`)와
+ * 문밖 풍경이 문틀 안에만 보이는지를 여기서 본다.
+ */
+@Preview(name = "첫 진입 — 문으로 들어오기(밤)", widthDp = 411, heightDp = 380, showBackground = true, backgroundColor = 0xFFFDF1EC)
+@Composable
+private fun MiniRoomIntroPreview() {
+    DaengsTheme {
+        MiniRoomCanvas(
+            state = rememberMiniRoomState(),
+            catalog = rememberItemCatalog(),
+            outside = OutsideView.NIGHT_CLEAR,
+            modifier = Modifier.fillMaxWidth().aspectRatio(RoomSpec.ASPECT),
+            frameTimeMs = 400L,
+            intro = RoomIntro(previewElapsedMs = (IntroTimeline.CAMERA_START_MS + IntroTimeline.CAMERA_END_MS) / 2),
+        )
+    }
+}
+
 /**
  * 배웅한 아이가 있는 방.
  *

@@ -23,7 +23,9 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import com.daengs.app.R
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.art.DoorSpec
@@ -118,6 +120,14 @@ fun MiniRoomCanvas(
     openDoorSignal: Int = 0,
     /** 개발자 오버레이. 격자·발자국·강아지 반경을 그림 위에 덧그린다. */
     developer: Boolean = false,
+    /**
+     * 홈 첫 진입 연출. null 이면 평소 그림이다.
+     *
+     * 값은 **draw 람다 안에서만** 읽는다 ([RoomIntro.frameAt]) — 프레임마다 바뀌는 것을
+     * 파라미터로 내리면 60fps 재구성이 된다. 카메라·문 열림·어둠 막을 여기서 덮어쓰고,
+     * 불이 켜지는 순간 [herd] 에 마중을 시킨다. 화면을 만지면 건너뛴다.
+     */
+    intro: RoomIntro? = null,
 ) {
     val clock = rememberFrameClock()
 
@@ -209,9 +219,15 @@ fun MiniRoomCanvas(
             }
             // 키는 반드시 Unit. state.items 같은 걸 키로 주면 아이템을 놓는 순간
             // 제스처 코루틴이 재시작되면서 드래그가 도중에 죽는다.
+            // 연출 중에는 카메라가 방을 확대해 그린다. 안 자르면 확대된 방이 상단바까지 덮는다.
+            .clipToBounds()
             .pointerInput(tapEnabled) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = true)
+                    // 연출 중에 무엇이든 만지면 건너뛴다. 터치 판정은 평소 좌표로 이어진다 —
+                    // 확대된 그림 위 좌표로 강아지를 잡으려 들면 엉뚱한 아이가 잡히는데,
+                    // 건너뛰는 순간 그림이 제자리로 오므로 그대로 둔다.
+                    intro?.skip()
                     val g = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
 
                     // 편집 모드가 아니면 강아지만 만진다.
@@ -363,10 +379,31 @@ fun MiniRoomCanvas(
                 val g = RoomGeometry.of(size.width, size.height)
                 val t = frameTimeMs ?: clock.value
                 val d = state.drag
-                val open = doorOpenOverride ?: doorOpen.value
+
+                // 첫 진입 연출. 끝났거나 없으면 DONE 이라 아래가 전부 평소 값이 된다.
+                val cut = intro?.frameAt(t, night = outside.time == OutsideTime.NIGHT) ?: IntroFrame.DONE
+                val open = doorOpenOverride ?: if (cut.active) cut.doorOpen else doorOpen.value
                 // 누를 수 있다는 은은한 표시. 열리기 시작하면 꺼진다.
                 val pulse = ((sin(t / 900f) + 1f) / 2f) * (1f - open)
 
+                // 불이 켜지는 순간 한 번. 연출을 건너뛰어도 나간다.
+                if (herd != null && !editing && intro?.takeGreet(cut) == true) {
+                    herd.greet(g.doorstep(), t, blocked)
+                }
+
+                // 카메라. 문짝이 화면을 채운 상태(pull=1)에서 제자리(pull=0)로 빠진다.
+                // 문 한가운데를 축으로 키우고, 그 축이 화면 한가운데로 오도록 민다.
+                val door = DoorSpec.rectOf(g, DoorSpec.leaf)
+                val zoomIn = minOf(size.width / door.width, size.height / door.height).coerceIn(1.5f, 3.5f)
+                val zoom = 1f + (zoomIn - 1f) * cut.pull
+                val shift = (center - door.center) * cut.pull
+
+                withTransform({
+                    if (cut.pull > 0f) {
+                        translate(shift.x, shift.y)
+                        scale(zoom, zoom, pivot = door.center)
+                    }
+                }) {
                 drawRoomBackground(g, roomImage)
                 // 창밖은 방 그림 **바로 뒤에.** 유리 모양으로 잘려 있어 창틀·창살을
                 // 덮지 않는다.
@@ -427,10 +464,16 @@ fun MiniRoomCanvas(
                 if (developer) {
                     drawDeveloperOverlay(g, state, catalog, herd?.dogs.orEmpty(), measurer)
                 }
+                } // withTransform
 
+                // 어둠 막은 카메라 밖에서. 확대와 무관하게 화면 전체를 덮어야 한다.
+                if (cut.dark > 0f) drawRect(IntroInk, alpha = cut.dark)
             }
     )
 }
+
+/** 불 꺼진 방의 색. 검정이면 화면이 꺼진 것 같고, 살짝 보라가 도는 남색이 밤이다. */
+private val IntroInk = Color(0xFF1A1424)
 
 /**
  * 방 안에서 **누를 수 있는 자리**의 화면 사각형 (창 기준).

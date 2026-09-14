@@ -60,32 +60,7 @@ fun LoadingScreen(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // **스플래시가 보여 주는 것과 같은 모양·같은 크기여야 한다.**
-            //
-            // 시스템 스플래시는 아이콘의 **가운데 2/3 만** 기기 모양(원·스퀘어클)으로
-            // 잘라서 보여 준다. 배경 색을 따로 안 준 아이콘은 **288 판에 192 가
-            // 보이는** 규격이다 — 갤럭시 노트20 에서 재 보니 188dp 였다.
-            //
-            // 그래서 **창이 [SPLASH_ICON_DP], 그림이 그 1.5배**다. 그림을 창 가운데
-            // 두면 보이는 것이 정확히 가운데 2/3 이고, 창을 자르면 스플래시가 하는
-            // 일과 같아진다. `requiredSize` 인 이유는 부모가 창 크기로 죄기 때문이다.
-            //
-            // 여기서 안 자르고 그냥 그렸을 때가 문제였다 — **아이콘의 네모 가장자리가
-            // 크림 배경 위에 드러나서**, 스플래시(둥근 모양)에서 넘어오는 순간 모양이
-            // 바뀐 것처럼 보였다. 크기도 160 으로 잡아 두어 한 번 작아졌다.
-            //
-            // 원으로 자르는 것은 **이 앱의 얼굴이 다 원**이라서다 (`ui/DogAvatar.kt`).
-            // 스플래시 모양은 기기마다 다른데(원·스퀘어클), 원이 제일 덜 튄다.
-            Box(
-                Modifier.size(SPLASH_ICON_DP.dp).clip(CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(R.mipmap.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.requiredSize((SPLASH_ICON_DP * 3 / 2).dp),
-                )
-            }
+            SplashIcon()
             Spacer(Modifier.height(8.dp))
             if (slow) {
                 Text(
@@ -99,7 +74,39 @@ fun LoadingScreen(modifier: Modifier = Modifier) {
     }
 }
 
-/** 이만큼 지나면 기다리는 중이라고 알린다. */
+/**
+ * 시스템 스플래시가 보여 주는 **그 아이콘, 그 크기.** 로딩 화면과 홈 첫 진입의 크림 막이
+ * 같이 쓴다 — 로딩 마지막 프레임과 홈 첫 프레임이 같아야 이음새가 안 보인다.
+ *
+ * 시스템 스플래시는 아이콘의 **가운데 2/3 만** 기기 모양(원·스퀘어클)으로
+ * 잘라서 보여 준다. 배경 색을 따로 안 준 아이콘은 **288 판에 192 가
+ * 보이는** 규격이다 — 갤럭시 노트20 에서 재 보니 188dp 였다.
+ *
+ * 그래서 **창이 [SPLASH_ICON_DP], 그림이 그 1.5배**다. 그림을 창 가운데
+ * 두면 보이는 것이 정확히 가운데 2/3 이고, 창을 자르면 스플래시가 하는
+ * 일과 같아진다. `requiredSize` 인 이유는 부모가 창 크기로 죄기 때문이다.
+ *
+ * 여기서 안 자르고 그냥 그렸을 때가 문제였다 — **아이콘의 네모 가장자리가
+ * 크림 배경 위에 드러나서**, 스플래시(둥근 모양)에서 넘어오는 순간 모양이
+ * 바뀐 것처럼 보였다. 크기도 160 으로 잡아 두어 한 번 작아졌다.
+ *
+ * 원으로 자르는 것은 **이 앱의 얼굴이 다 원**이라서다 (`ui/DogAvatar.kt`).
+ * 스플래시 모양은 기기마다 다른데(원·스퀘어클), 원이 제일 덜 튄다.
+ */
+@Composable
+fun SplashIcon(modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(SPLASH_ICON_DP.dp).clip(CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(R.mipmap.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.requiredSize((SPLASH_ICON_DP * 3 / 2).dp),
+        )
+    }
+}
+
 /**
  * 시스템 스플래시가 보여 주는 아이콘의 지름 (dp).
  *
