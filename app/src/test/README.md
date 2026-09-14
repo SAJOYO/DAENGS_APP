@@ -1,5 +1,13 @@
 # 기능별 테스트 실행 지도
 
+읽기 준비 패키지 분리 (#400)는 `ui.walk.detail.DiaryReadBoundaryTest`로 상위 화면·저장 구현의
+직접 역참조를 검사한다. 기존 `WalkDiaryReadViewTest`, `WalkMeasurementReadViewTest`,
+`WalkDetailStateTest`, `WalkRangeContextTest`, `WalkRangeContextUiTest`,
+`WalkExplorationBookmarkTest`, `WalkExplorationPersistenceTest`로 준비·계정·선택·복원을 확인하고,
+`WalkDetailDataUiTest`, `WalkReadingBaselineUiTest`, `WalkRouteExplorerStateTest`로 소비 화면과
+탐색 상태를 함께 확인한다. 클래스의 기본 패키지는 `com.daengs.app.ui.walk`다.
+[분리 경계와 보존 조건](../../../docs/diary-read-boundary.md).
+
 실제 지도 탐색 읽기 공간 (#385)은 `WalkExplorerPanelUiTest`의 NOTICES 시나리오와 별도 `MeasurementDeviceTest#verifyExplorerActions`로
 지도 안내가 읽기 영역을 없애지 않는지 확인한다. [실기기 8개 검사와 재현](../../../docs/walk-explorer-usability.md).
 

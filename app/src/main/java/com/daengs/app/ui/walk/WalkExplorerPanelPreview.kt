@@ -13,6 +13,8 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.ui.theme.*
+import com.daengs.app.ui.walk.detail.PreparedDiaryRoute
+import com.daengs.app.ui.walk.detail.WalkDiaryReadView
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.*
 

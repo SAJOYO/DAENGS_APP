@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.detail.WalkDiaryReadView
+
 import android.app.Application
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
