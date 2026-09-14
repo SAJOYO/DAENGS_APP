@@ -76,7 +76,7 @@ fun WalkSummaryCard(
         color = CardWhite,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -108,7 +108,7 @@ fun WalkSummaryCard(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
 
             // **좁으면 한 마디를 아래로 내린다.**
             //
@@ -121,7 +121,7 @@ fun WalkSummaryCard(
                     Row(
                         m
                             .background(PinkFaint, RoundedCornerShape(18.dp))
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
                         todayStats(totals).forEachIndexed { i, stat ->
@@ -138,7 +138,7 @@ fun WalkSummaryCard(
                 } else {
                     Column {
                         stats(Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(11.dp))
+                        Spacer(Modifier.height(8.dp))
                         DailyWordNote(dailyWord, Modifier.fillMaxWidth())
                     }
                 }
@@ -211,7 +211,7 @@ private fun DailyWordNote(lines: List<String>, modifier: Modifier = Modifier) {
                         style = Stroke(width = 2.5f, pathEffect = dashEffect()),
                     )
                 }
-                .padding(horizontal = 13.dp, vertical = 12.dp),
+                .padding(horizontal = 13.dp, vertical = 9.dp),
         ) {
             Column {
                 Text(

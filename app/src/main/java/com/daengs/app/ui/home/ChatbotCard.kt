@@ -58,7 +58,7 @@ fun ChatbotCard(
         // 남은 높이를 위아래로 고르게 편다. 칸을 줄여 방을 키우는 것은 별도 과제다
         // (STATUS.md 의 열린 질문 ⑤).
         Column(
-            Modifier.fillMaxHeight().padding(horizontal = 16.dp, vertical = 11.dp),
+            Modifier.fillMaxHeight().padding(horizontal = 16.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.SpaceEvenly,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
