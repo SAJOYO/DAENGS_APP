@@ -46,7 +46,7 @@ class WalkDiarySyncTest {
             }
         })
         sync.sync("token", id, "remote")
-        val view = storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id))
+        val view = storedStoryboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id))
         assertTrue(view.canReview)
         assertTrue(view.notice.contains("배경 문장을 만들지 못했어요"))
         assertEquals(4, view.bundle!!.scenes.size)
@@ -75,7 +75,7 @@ class WalkDiarySyncTest {
         })
         sync.sync("token", id, "remote")
         assertEquals(0, posts)
-        val view = storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id))
+        val view = storedStoryboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id))
         assertTrue(view.canReview)
         assertEquals("두부와 함께 남긴 아침", view.bundle!!.title)
         assertTrue(dao.sceneAnalysis(id)!!.entryStamp.startsWith("diary:"))
@@ -127,7 +127,7 @@ class WalkDiarySyncTest {
         edit = true
         assertTrue(runCatching { sync.sync("token", id, "remote") }.isFailure)
         assertEquals(previous, dao.sceneAnalysis(id)!!.bundle)
-        assertNull(storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id), dao.photoSync(id)).bundle)
+        assertNull(storedStoryboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id), dao.photoSync(id)).bundle)
     }
 
     @Test fun `unacknowledged photos stop generation and a different server publisher is rejected`() = checkDb { dao ->

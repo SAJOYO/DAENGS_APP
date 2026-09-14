@@ -1,6 +1,8 @@
 package com.daengs.app.walk.diary
 
 import com.daengs.app.walk.WalkSummary
+import com.daengs.app.walk.store.diaryBoardSource
+import com.daengs.app.walk.store.diaryBoardInput
 import com.daengs.app.walk.store.WalkDao
 import com.daengs.app.walk.store.WalkPhotoStore
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +23,7 @@ class WalkDiaryReader(
         val records = combine(sessionIds.distinct().map { id ->
             combine(dao.observeEntries(id), dao.observeSceneAnalysis(id), dao.observePhotoSync(id), dao.observePhotos(id),
                 dao.observeDiaryPublication(id)) { entries, analysis, state, images, publication ->
-                id to diaryTitle(id, DiaryBoardInput(entries, analysis, state, images, publication))
+                id to diaryTitle(id, diaryBoardSource(entries, analysis, state, images, publication))
             }
         }) { it.toList() }
         return combine(records, dao.observeSessions()) { titles, sessions ->
@@ -51,7 +53,7 @@ class WalkDiaryReader(
                     }) null
                 else assembleDiary(
                     walk,
-                    DiaryBoardInput(entries, state.first, images.first, images.second, state.second),
+                    diaryBoardInput(entries, state.first, images.first, images.second, state.second),
                     images.third, draft?.payload, observations[walk.sessionId].orEmpty(), measurements[walk.sessionId],
                 )
             }

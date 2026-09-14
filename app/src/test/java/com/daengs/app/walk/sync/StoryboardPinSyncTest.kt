@@ -6,7 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.diary.GeoStoryboardBundle
-import com.daengs.app.walk.diary.storyboardAnalysisView
+import com.daengs.app.walk.store.storedStoryboardAnalysisView
 import com.daengs.app.walk.store.*
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -54,7 +54,7 @@ class StoryboardPinSyncTest {
             assertEquals(GeoStoryboardBundle.FORMAT_V5, body.getString("bundle_format"))
             response()
         }.sync("opaque.encrypted.jwe.token.value", "s", "walk")
-        val view = storyboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
+        val view = storedStoryboardAnalysisView(dao.sceneAnalysis("s"), dao.entries("s"))
         assertTrue(view.canReview)
         assertTrue(view.bundle!!.scenes.single().evidence.contains("추정 위치"))
         assertNull(view.bundle.scenes.single().observation)

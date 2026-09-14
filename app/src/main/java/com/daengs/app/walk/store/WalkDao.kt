@@ -166,7 +166,7 @@ interface WalkDao {
             val summary = com.daengs.app.walk.summarize(walk.toModel(), source, Int.MAX_VALUE,
                 epochs = recordingEpochs(id).map { it.toModel() })
             freezeDiaryBase(id, com.daengs.app.walk.diary.LocalDiaryBoard.build(summary, source.filter { it.recordingEligible != false },
-                entries(id).mapNotNull { it.entry() }, photos(id)))
+                entries(id).mapNotNull { it.entry() }, photos(id).map { it.toDiaryPhotoInput() }))
         }
         return diaryPublication(id)
     }
@@ -405,7 +405,7 @@ interface WalkDao {
             val publication = diaryPublication(id)
             val board = if (publication != null) publication.publishedBundle?.let {
                 com.daengs.app.walk.diary.GeoStoryboardBundle.parse(it)
-            } else com.daengs.app.walk.diary.storyboardAnalysisView(analyses[id], rows).bundle
+            } else com.daengs.app.walk.store.storedStoryboardAnalysisView(analyses[id], rows).bundle
             val title = board?.takeIf { it.sessionId == id }?.title
             listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
         }

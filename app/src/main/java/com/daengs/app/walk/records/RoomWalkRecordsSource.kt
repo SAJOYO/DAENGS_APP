@@ -3,7 +3,7 @@ package com.daengs.app.walk.records
 import androidx.room.withTransaction
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.countsAsWalk
-import com.daengs.app.walk.diary.storyboardAnalysisView
+import com.daengs.app.walk.store.storedStoryboardAnalysisView
 import com.daengs.app.walk.diary.GeoStoryboardBundle
 import com.daengs.app.walk.forHistoryThumbnail
 import com.daengs.app.walk.store.WalkDatabase
@@ -97,7 +97,7 @@ class RoomWalkRecordsSource(
                 // Deleted rows still belong to the source stamp, but never return as visible entries.
                 val publication = dao.diaryPublication(session.id)
                 val board = if (publication != null) publication.publishedBundle?.let(GeoStoryboardBundle::parse)
-                    else storyboardAnalysisView(analyses[session.id], rows, photoSync, photos).bundle
+                    else storedStoryboardAnalysisView(analyses[session.id], rows, photoSync, photos).bundle
                 val title = board?.takeIf { it.sessionId == session.id }?.title
                 val notes = visibleEntries.mapNotNull { it.note }
                 // Read GPS only after the current title/notes match, within the same DB snapshot.

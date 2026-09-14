@@ -68,7 +68,7 @@ class WalkDiaryBoardSyncTest {
         assertEquals("직접 붙인 제목", edits.single { it.id == note.id }.title)
         assertEquals("", edits.single { it.id == checkpoint.id }.sceneBody())
         assertTrue(edits.last().hidden)
-        assertTrue(storyboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
+        assertTrue(storedStoryboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
     }
 
     @Test fun `preparing publication sends only the budget left since end and stops all reads after publication`() = checkDb(preparing = true) { dao ->
