@@ -81,4 +81,68 @@ class RouteExplorerIndexTest {
         assertEquals(500L, advanceRoutePlayback(500, -100, 1_000))
         assertEquals(0L, advanceRoutePlayback(0, 500, 0))
     }
+
+    @Test fun `tap distance selects the nearby edge without enlarging the passage corridor`() {
+        val index = RouteExplorerIndex(explorerRoute(straightExplorerPath()))
+        val near = index.passagesAt(explorerPoint(0.0, 19.9))
+        assertFalse(near.uncertain)
+        assertEquals(1, near.passes.size)
+        assertEquals(explorerPoint(0.0).latitude, near.anchor.latitude, .00000001)
+        val far = index.passagesAt(explorerPoint(0.0, 20.1))
+        assertTrue(far.uncertain)
+        assertTrue(far.passes.isEmpty())
+    }
+
+    @Test fun `passage accuracy accepts twelve meters but rejects invalid fixes without changing replay`() {
+        assertEquals(1, RouteExplorerIndex(twoPointRoute(accuracy = 12f)).passagesAt(explorerPoint(0.0)).passes.size)
+        for (accuracy in listOf(null, 0f, -1f, Float.NaN, Float.POSITIVE_INFINITY, 12.01f)) {
+            val index = RouteExplorerIndex(twoPointRoute(accuracy = accuracy))
+            assertTrue("accuracy=$accuracy", index.passagesAt(explorerPoint(0.0)).uncertain)
+            // Legacy replay represents recorded positions; passage eligibility must not filter it.
+            assertFalse("accuracy=$accuracy", index.frameAt(500).inGap)
+        }
+    }
+
+    @Test fun `passage sample gap is inclusive and independent of the active replay clock`() {
+        val accepted = RouteExplorerIndex(twoPointRoute(wallGap = 15_000, activeGap = 30_000))
+        assertEquals(1, accepted.passagesAt(explorerPoint(0.0)).passes.size)
+        assertTrue(accepted.frameAt(500).inGap)
+        for (gap in listOf(0L, -1L, 15_001L)) {
+            val result = RouteExplorerIndex(twoPointRoute(wallGap = gap)).passagesAt(explorerPoint(0.0))
+            assertTrue("wall gap=$gap", result.uncertain)
+            assertTrue(result.passes.isEmpty())
+        }
+    }
+
+    @Test fun `replay requires both clocks within fifteen seconds but preserves exact observations`() {
+        val valid = RouteExplorerIndex(twoPointRoute(wallGap = 15_000, activeGap = 15_000))
+        val halfway = valid.frameAt(7_500)
+        assertFalse(halfway.inGap)
+        assertEquals(explorerPoint(0.0).longitude, halfway.point!!.longitude, .00000001)
+        assertEquals(17_500L, halfway.recordedAtMillis)
+        for ((wall, active) in listOf(15_001L to 15_000L, 15_000L to 15_001L, 0L to 15_000L)) {
+            val index = RouteExplorerIndex(twoPointRoute(wallGap = wall, activeGap = active))
+            assertTrue("wall=$wall active=$active", index.frameAt(7_500).inGap)
+            assertNull(index.frameAt(7_500).point)
+            assertEquals(explorerPoint(30.0), index.frameAt(active).point)
+            assertEquals(10_000L + wall, index.frameAt(active).recordedAtMillis)
+        }
+    }
+
+    @Test fun `a traversal must cover eighteen meters and reach both sides of the anchor`() {
+        fun passes(from: Double, to: Double) = RouteExplorerIndex(
+            explorerRoute(listOf(from to 0.0, to to 0.0))).passagesAt(explorerPoint(0.0)).passes.size
+        assertEquals(1, passes(-9.1, 9.1))
+        assertEquals(0, passes(-8.9, 8.9))
+        assertEquals(0, passes(-5.9, 12.5))
+    }
+
+    private fun twoPointRoute(wallGap: Long = 1_000, activeGap: Long = 1_000,
+        accuracy: Float? = 3f): WalkSessionRoute {
+        val segment = explorerRoute(listOf(-30.0 to 0.0, 30.0 to 0.0)).segments.single()
+        return WalkSessionRoute(listOf(segment.copy(points = segment.points.mapIndexed { index, point ->
+            point.copy(capturedAtMillis = 10_000 + index * wallGap, activeElapsedMillis = index * activeGap,
+                accuracyMeters = accuracy)
+        })))
+    }
 }

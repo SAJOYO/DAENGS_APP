@@ -37,11 +37,14 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
     private val longitudeScale = 111_195.0 * cos(Math.toRadians(origin.latitude))
     private fun xy(p: GeoPoint) = XY((p.longitude - origin.longitude) * longitudeScale,
         (p.latitude - origin.latitude) * 111_195.0)
-    private fun cell(value: Double) = floor(value / 20).toInt()
+    private fun cell(value: Double) = floor(value / RouteIndexGrid.CELL_SIZE_METERS).toInt()
     private val edges = route.segments.flatMap { it.points.zipWithNext() }.mapIndexedNotNull { ordinal, (a, b) ->
         val start = xy(a.point); val end = xy(b.point)
-        if ((end - start).length !in .3..120.0 || b.capturedAtMillis - a.capturedAtMillis !in 1L..15_000L ||
-            listOf(a.accuracyMeters, b.accuracyMeters).any { it == null || !it.isFinite() || it <= 0 || it > 12 }) null
+        if ((end - start).length !in RoutePassageCriteria.MIN_EDGE_LENGTH_METERS..RoutePassageCriteria.MAX_EDGE_LENGTH_METERS ||
+            b.capturedAtMillis - a.capturedAtMillis !in 1L..RoutePassageCriteria.MAX_SAMPLE_GAP_MILLIS ||
+            listOf(a.accuracyMeters, b.accuracyMeters).any {
+                it == null || !it.isFinite() || it <= 0 || it > RoutePassageCriteria.MAX_ACCURACY_METERS
+            }) null
         else IndexedEdge(ordinal, a, b, start, end)
     }
     private val grid = buildMap<Pair<Int, Int>, MutableList<IndexedEdge>> {
@@ -58,8 +61,9 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
 
     fun passagesAt(point: GeoPoint): RoutePassages {
         val tap = xy(point)
-        val seed = nearby(tap, 20.0).minByOrNull { it.distance(tap) }
-            ?.takeIf { it.distance(tap) <= 20 } ?: return RoutePassages(point, emptyList(), uncertain = true)
+        val seed = nearby(tap, RouteTapCriteria.MAX_EDGE_DISTANCE_METERS).minByOrNull { it.distance(tap) }
+            ?.takeIf { it.distance(tap) <= RouteTapCriteria.MAX_EDGE_DISTANCE_METERS }
+            ?: return RoutePassages(point, emptyList(), uncertain = true)
         val delta = seed.b - seed.a
         val direction = XY(delta.x / delta.length, delta.y / delta.length)
         val normal = XY(-direction.y, direction.x)
@@ -68,23 +72,24 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
         val anchor = GeoPoint(origin.latitude + center.y / 111_195, origin.longitude + center.x / longitudeScale)
         data class Piece(val edge: IndexedEdge, val start: Double, val end: Double, val side: Double,
             val sign: Int)
-        val pieces = nearby(center, 30.0).sortedBy { it.ordinal }.mapNotNull { edge ->
+        val pieces = nearby(center, RoutePassageCriteria.CANDIDATE_SEARCH_METERS).sortedBy { it.ordinal }.mapNotNull { edge ->
             val vector = edge.b - edge.a
             val alignment = vector.dot(direction) / vector.length
-            if (abs(alignment) < .9) return@mapNotNull null
+            if (abs(alignment) < RoutePassageCriteria.MIN_DIRECTION_ALIGNMENT) return@mapNotNull null
             val a = edge.a - center; val b = edge.b - center
             val ax = a.dot(direction); val bx = b.dot(direction)
             val ay = a.dot(normal); val by = b.dot(normal)
-            // A 48m corridor with a narrow lateral tolerance: intersections are not repeat passes.
+            // The corridor's longitudinal and lateral criteria have different meanings.
             var low = 0.0; var high = 1.0
             fun clip(start: Double, end: Double, limit: Double): Boolean {
                 val change = end - start
-                if (abs(change) < .0001) return abs(start) <= limit
+                if (abs(change) < CLIP_PARALLEL_EPSILON_METERS) return abs(start) <= limit
                 val p = (-limit - start) / change; val q = (limit - start) / change
                 low = max(low, min(p, q)); high = min(high, max(p, q))
                 return low <= high
             }
-            if (!clip(ax, bx, 24.0) || !clip(ay, by, 4.0)) null
+            if (!clip(ax, bx, RoutePassageCriteria.CORRIDOR_HALF_LENGTH_METERS) ||
+                !clip(ay, by, RoutePassageCriteria.CORRIDOR_HALF_WIDTH_METERS)) null
             else Piece(edge, ax + (bx - ax) * low, ax + (bx - ax) * high,
                 (ay + (by - ay) * low + ay + (by - ay) * high) / 2, if (alignment > 0) 1 else -1)
         }
@@ -101,11 +106,13 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
         if (run.isNotEmpty()) runs += run
         val traversals = runs.filter {
             val a = it.first().start; val b = it.last().end
-            (a <= -6 && b >= 6 || a >= 6 && b <= -6) && abs(b - a) >= 18
+            (a <= -RoutePassageCriteria.MIN_CENTER_CROSSING_METERS && b >= RoutePassageCriteria.MIN_CENTER_CROSSING_METERS ||
+                a >= RoutePassageCriteria.MIN_CENTER_CROSSING_METERS && b <= -RoutePassageCriteria.MIN_CENTER_CROSSING_METERS) &&
+                abs(b - a) >= RoutePassageCriteria.MIN_TRAVERSAL_SPAN_METERS
         }
         // Parallel lanes or inconsistent GPS offsets cannot support a definite count.
         val offsets = traversals.map { it.map(Piece::side).average() }
-        if (offsets.isNotEmpty() && offsets.max() - offsets.min() > 2.0)
+        if (offsets.isNotEmpty() && offsets.max() - offsets.min() > RoutePassageCriteria.MAX_LATERAL_SPREAD_METERS)
             return RoutePassages(anchor, emptyList(), uncertain = true)
         return RoutePassages(anchor, traversals.map { passage ->
             val first = passage.first().edge; val last = passage.last().edge
@@ -129,7 +136,8 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
         val after = points.getOrNull(low) ?: return RouteReplayFrame(null, null, true)
         val delta = after.activeElapsedMillis - before.activeElapsedMillis
         if (before.segmentIndex != after.segmentIndex || after.pointIndex != before.pointIndex + 1 ||
-            delta !in 1L..15_000L || after.capturedAtMillis - before.capturedAtMillis !in 1L..15_000L)
+            delta !in 1L..RouteReplayCriteria.MAX_INTERPOLATION_GAP_MILLIS ||
+            after.capturedAtMillis - before.capturedAtMillis !in 1L..RouteReplayCriteria.MAX_INTERPOLATION_GAP_MILLIS)
             return RouteReplayFrame(null, null, true)
         val fraction = (elapsed - before.activeElapsedMillis).toDouble() / delta
         return RouteReplayFrame(GeoPoint(
@@ -139,6 +147,9 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
     }
     val durationMillis: Long = timedPoints.lastOrNull()?.activeElapsedMillis ?: 0
 }
+
+/** Numerical tolerance for clipping a nearly parallel edge, not a GPS acceptance threshold. */
+private const val CLIP_PARALLEL_EPSILON_METERS = .0001
 
 internal enum class RoutePlaybackSpeed(val multiplier: Int) {
     ONE(1), TWO(2), FOUR(4), EIGHT(8), SIXTEEN(16),
