@@ -46,7 +46,8 @@ internal fun PlaceMapControls(
         }
         Row(Modifier.align(Alignment.BottomEnd).padding(start = 16.dp, end = 16.dp, bottom = 40.dp)
             .testTag("place-assistant-dock"),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 원은 둘 다 48dp다. 인식표까지 포함한 전체 높이로 가운데 정렬하지 않는다.
+            verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(shape = CircleShape, shadowElevation = 2.dp, color = DaengsColors.Surface) {
                 IconButton(onClick = onDeviceSearch, modifier = Modifier.size(48.dp)
                     .semantics { contentDescription = "내 주변 검색" }) {
