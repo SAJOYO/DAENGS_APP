@@ -53,3 +53,23 @@ pre-draw에서 크기와 Surface를 갱신한다. 이번 수정은 해당 단계
 추가 draw 한 번으로 같은 지도 객체가 준비된 실험에 근거한다.
 
 실기기 실행 결과와 수정 전후 비교는 PR #355에 기록한다.
+
+## 일반 행동·사진 핀 회귀 검사
+
+`MomentReviewActivity`는 같은 검증 Application 아래서 실제 `NaverMapSurface`에 짖기·킁킁·
+배설·메모·사진·누락 사진의 여섯 핀과 경로를 표시한다. 사진은 앱 캐시에 만드는 단색
+합성 PNG이며 사용자 사진·계정·산책 저장소를 사용하지 않는다. 빌드와 설치 명령은 위와 같다.
+
+```powershell
+& $adbPath -s $deviceSerial shell am instrument -w -r -e class com.daengs.app.map.review.MomentLayerDeviceTest com.daengs.app.locationreview.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+- `nativeTapPhotoReplacementAndFallbackKeepRouteAndCamera`: 실제 터치 입력으로 새 콜백과
+  선택을 확인한다. 사진 교체 픽셀과 누락 사진의 기본 핀 클릭을 검사하고, 같은 경로 객체와
+  카메라가 유지되는지 확인한다.
+- `backgroundMapReplacementAndReentryReleaseOldPins`: Activity 중지/복귀, 지도 객체 교체,
+  지도 제거/재진입에서 이전 핀의 연결 해제와 새 지도 준비를 확인한다.
+
+그림 확인용 진입은 `am start -n com.daengs.app.locationreview/com.daengs.app.map.review.MomentReviewActivity`다.
+스크린샷은 검증 Activity가 전면인지 확인한 다음 촬영한다. runner 결과와 실제 화면 확인은
+구분해서 기록하며, 이 검사는 야외 GPS·서버 저장·성능 측정을 포함하지 않는다. PR #394에 결과를 기록한다.

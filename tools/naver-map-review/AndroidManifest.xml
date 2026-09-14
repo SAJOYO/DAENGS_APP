@@ -4,6 +4,7 @@
         android:label="댕스 지도 검증" android:allowBackup="false"
         tools:replace="android:name,android:label,android:allowBackup">
         <activity android:name="com.daengs.app.MainActivity" android:enabled="false" />
+        <activity android:name="com.daengs.app.map.review.MomentReviewActivity" android:exported="true" />
         <activity android:name="com.daengs.app.ui.walk.review.DiaryEditorReviewActivity" android:exported="true" />
         <activity android:name="com.daengs.app.map.review.MapReviewActivity" android:exported="true">
             <intent-filter>
