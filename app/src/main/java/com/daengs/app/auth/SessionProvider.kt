@@ -13,10 +13,10 @@ data class AccountScope(val ownerId: String?, val generation: Long)
 sealed interface SessionCheck {
     data class Fresh(val session: Session) : SessionCheck
 
-    /** 저장된 세션이 없거나 refresh 가 만료·거절(401·403)됐다. 다시 로그인해야 한다. */
+    /** 저장된 세션이 없거나 refresh 가 만료됐거나 서버가 refresh 를 401 로 거절했다. 다시 로그인해야 한다. */
     data object LoginRequired : SessionCheck
 
-    /** 서버에 못 닿았거나 5xx 였다. 세션은 그대로 두고 다시 시도한다. */
+    /** 서버에 못 닿았거나 401 이 아닌 오류였다. 세션은 그대로 두고 다시 시도한다. */
     data object Unreachable : SessionCheck
 }
 
@@ -60,8 +60,11 @@ class SessionProvider internal constructor(
      *
      * 망이 끊긴 것과 로그인이 만료된 것을 가른다 — 앞쪽은 다시 시도하면 되고 뒤쪽은 다시
      * 로그인해야 한다. **어느 쪽이든 여기서 로그아웃시키지 않는다**(refresh 가 이미 만료돼
-     * 지우던 기존 갈래만 그대로다). 서버가 refresh 를 거절한 것(401·403)도 저장 세션은
-     * 두고, 다시 로그인할지는 화면이 사용자에게 묻는다.
+     * 지우던 기존 갈래만 그대로다). 서버가 refresh 를 401 로 거절한 것도 저장 세션은 두고,
+     * 다시 로그인할지는 화면이 사용자에게 묻는다.
+     *
+     * ⚠️ **인증 API 의 refresh 응답만 본다.** 기능 API(강아지·케어 등)의 401·403 은 여기로
+     * 오지 않는다 — 권한 부족을 로그인 만료로 읽으면 멀쩡한 사람을 다시 로그인시킨다.
      */
     suspend fun checkSession(): SessionCheck = refreshMutex.withLock {
         val snapshot = synchronized(stateLock) { generation to loadSession() }
@@ -86,12 +89,10 @@ class SessionProvider internal constructor(
         if (!configured()) return@withLock SessionCheck.Unreachable
 
         val refreshed = refreshSession(saved.refreshToken).getOrElse { failure ->
+            // 서버 계약상 refresh 실패는 **전부 401** 이다(DAENGS_dev `routers/app_auth.py` `refresh`).
+            // 403 은 카카오 로그인에서 정지 회원에게만 쓰므로 여기서 "로그인 만료" 로 읽지 않는다.
             val status = (failure as? AuthApi.HttpStatusException)?.status
-            return@withLock if (status == 401 || status == 403) {
-                SessionCheck.LoginRequired
-            } else {
-                SessionCheck.Unreachable
-            }
+            return@withLock if (status == 401) SessionCheck.LoginRequired else SessionCheck.Unreachable
         }
         synchronized(stateLock) {
             if (generation != snapshot.first) return@synchronized superseded()

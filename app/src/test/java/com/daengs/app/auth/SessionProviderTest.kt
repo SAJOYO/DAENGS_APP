@@ -176,6 +176,24 @@ class SessionProviderTest {
         }
     }
 
+    /**
+     * 서버 계약상 refresh 실패는 전부 401 이다. 403 은 카카오 로그인의 정지 회원에게만 쓰는 값이라,
+     * refresh 에서 오더라도 "로그인 만료" 로 읽어 다시 로그인시키지 않는다.
+     */
+    @Test
+    fun `refresh 가 401 이 아닌 거절이면 로그인 만료로 보지 않는다`() = runBlocking {
+        var stored: Session? = expiredSession()
+        val provider = provider(
+            load = { stored },
+            save = { stored = it },
+            clear = { stored = null },
+            refresh = { Result.failure(AuthApi.HttpStatusException(403, "이용이 정지된 계정입니다.")) },
+        )
+
+        assertEquals(SessionCheck.Unreachable, provider.checkSession())
+        assertEquals(expiredSession(), stored)
+    }
+
     @Test
     fun `저장된 세션이 없으면 로그인이 필요하다`() = runBlocking {
         val provider = provider(load = { null }, save = {}, clear = {}, refresh = { error("부르면 안 된다") })

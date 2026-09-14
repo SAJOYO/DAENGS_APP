@@ -286,8 +286,9 @@ object AuthApi {
 
     /**
      * 서버가 **답은 했는데** 200 대가 아니었다. 망이 끊긴 것(`IOException`)과 가르려고 상태
-     * 코드를 같이 나른다 — refresh 가 401·403 이면 다시 로그인해야 하고, 망 실패면 기다리면
-     * 된다. `IllegalStateException` 을 물려받아 기존 `recoverCatching` 갈래는 그대로다.
+     * 코드를 같이 나른다 — refresh 가 401 이면 다시 로그인해야 하고, 망 실패면 기다리면
+     * 된다(`SessionProvider.checkSession`). 403 은 로그인의 정지 회원 응답이라 뜻이 다르다.
+     * `IllegalStateException` 을 물려받아 기존 `recoverCatching` 갈래는 그대로다.
      */
     class HttpStatusException(val status: Int, message: String) : IllegalStateException(message)
 
