@@ -59,7 +59,7 @@ class ConnectedPlaceBookmarkUiTest {
         }
         compose.onNodeWithTag("place-dog-anchor").performClick()
         compose.onNodeWithTag("place-dog-input").performTextInput("멀어도 돼 주차 우선")
-        compose.onNodeWithText("말해주기").performClick()
+        compose.onNodeWithContentDescription("말해주기").performClick()
         compose.onNodeWithTag("place-dog-search-context").assertTextContains("지역 제한 없음", substring = true)
         compose.onNodeWithText("찜한 시설 안에서 조건에 맞는 1곳을 찾았어요.").assertExists()
         compose.runOnIdle {
@@ -118,7 +118,7 @@ class ConnectedPlaceBookmarkUiTest {
         compose.onNodeWithTag("place-tab-BOOKMARKS").performClick()
         compose.onNodeWithTag("place-dog-anchor").performClick()
         compose.onNodeWithTag("place-dog-input").performTextInput("찜 제한 풀고 정원 찾아줘")
-        compose.onNodeWithText("말해주기").performClick()
+        compose.onNodeWithContentDescription("말해주기").performClick()
         compose.runOnIdle {
             assertEquals(ordinaryPlan, transfer!!.filters)
             assertTrue(transfer!!.isCurrent())
