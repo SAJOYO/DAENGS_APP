@@ -1,4 +1,4 @@
-package com.daengs.app.ui.walk
+package com.daengs.app.ui.walk.reading
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider

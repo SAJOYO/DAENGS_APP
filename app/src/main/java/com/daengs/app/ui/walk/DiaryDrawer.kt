@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiaryReadingChrome
+
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

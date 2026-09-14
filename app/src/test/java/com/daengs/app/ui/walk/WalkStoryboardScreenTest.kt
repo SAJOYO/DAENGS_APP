@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiarySceneText
+
 import com.daengs.app.walk.support.diaryFixture
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*

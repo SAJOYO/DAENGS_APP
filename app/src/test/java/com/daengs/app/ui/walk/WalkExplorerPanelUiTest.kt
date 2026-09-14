@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiaryReviewTheme
+
 import android.app.Application
 import android.graphics.Bitmap
 import android.view.View

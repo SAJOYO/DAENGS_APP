@@ -1,5 +1,14 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiaryReadingChrome
+import com.daengs.app.ui.walk.reading.DiaryReadingTabs
+import com.daengs.app.ui.walk.reading.DiaryReviewTheme
+import com.daengs.app.ui.walk.reading.DiaryReadingHeader
+import com.daengs.app.ui.walk.reading.DiaryReadingNotices
+import com.daengs.app.ui.walk.reading.DiarySceneText
+import com.daengs.app.ui.walk.reading.DiarySceneFooter
+import com.daengs.app.ui.walk.reading.DiarySceneExploreActions
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
