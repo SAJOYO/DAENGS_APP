@@ -1,5 +1,10 @@
 # 기능별 테스트 실행 지도
 
+탐색 상태·Compose 연결 분리 (#401)는 `ui.walk.WalkRouteExplorerLifecycleTest`로 PAUSE/STOP,
+생명주기 소유자 교체·이탈·재진입과 observer 해제를 검사한다. `WalkRouteExplorerStateTest`의
+선택·배속·구형 Saver 복원, `WalkRangeContextTest`의 장면 왕복, `WalkExplorationPersistenceTest`의
+저장 복원과 소비 화면 검사를 함께 선택한다. [분리 경계와 유지할 수명](../../../docs/route-explorer-lifecycle.md).
+
 읽기 준비 패키지 분리 (#400)는 `ui.walk.detail.DiaryReadBoundaryTest`로 상위 화면·저장 구현의
 직접 역참조를 검사한다. 기존 `WalkDiaryReadViewTest`, `WalkMeasurementReadViewTest`,
 `WalkDetailStateTest`, `WalkRangeContextTest`, `WalkRangeContextUiTest`,
