@@ -145,13 +145,16 @@ class ServerTerritoryGameProviderTest {
         assertEquals(listOf(100, 100, 5), sizes)
     }
 
-    @Test fun `browsing is the default and release never enables practice or actions`() {
+    @Test fun `debug defaults to browsing and release allows actions but never practice`() {
         assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true))
         assertEquals(TerritoryGameMode.LOCAL, territoryGameMode(true, false))
         assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true, true))
         assertEquals(TerritoryGameMode.SERVER_ACTIONS, territoryGameMode(true, true, true))
         for (read in listOf(false, true)) for (actions in listOf(false, true)) {
-            assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(false, read, actions))
+            assertEquals(
+                if (actions) TerritoryGameMode.SERVER_ACTIONS else TerritoryGameMode.SERVER_READ,
+                territoryGameMode(false, read, actions),
+            )
         }
     }
 

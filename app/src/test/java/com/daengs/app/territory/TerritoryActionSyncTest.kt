@@ -97,11 +97,12 @@ class TerritoryActionSyncTest {
         assertEquals("PENDING", dao.all().last().state)
     }
 
-    @Test fun `server writes require an explicit debug flag and release remains read only`() {
+    @Test fun `server writes follow the actions flag in debug and release`() {
         assertEquals(TerritoryGameMode.LOCAL, territoryGameMode(true, false, false))
         assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(true, true, false))
         assertEquals(TerritoryGameMode.SERVER_ACTIONS, territoryGameMode(true, false, true))
-        assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(false, true, true))
+        assertEquals(TerritoryGameMode.SERVER_ACTIONS, territoryGameMode(false, true, true))
+        assertEquals(TerritoryGameMode.SERVER_READ, territoryGameMode(false, true, false))
     }
 
     @Test fun `server ended session cannot be reopened by an offline resume`() = runTest {

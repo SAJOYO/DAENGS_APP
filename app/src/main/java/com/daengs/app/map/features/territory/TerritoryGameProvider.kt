@@ -38,9 +38,9 @@ interface TerritoryGameProvider {
 
 enum class TerritoryGameMode { DISABLED, LOCAL, SERVER_READ, SERVER_ACTIONS }
 fun territoryGameMode(debug: Boolean, serverRead: Boolean = true, serverActions: Boolean = false): TerritoryGameMode = when {
-    // Release browsing must not inherit debug-only local play or write activation.
-    !debug -> TerritoryGameMode.SERVER_READ
     serverActions -> TerritoryGameMode.SERVER_ACTIONS
+    // Release may send server actions, but never falls back to local practice.
+    !debug -> TerritoryGameMode.SERVER_READ
     serverRead -> TerritoryGameMode.SERVER_READ
     else -> TerritoryGameMode.LOCAL
 }
