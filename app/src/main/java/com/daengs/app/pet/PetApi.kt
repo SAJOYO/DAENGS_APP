@@ -35,6 +35,30 @@ object PetApi {
     suspend fun update(accessToken: String, petId: String, draft: PetDraft): Result<Pet> =
         call(accessToken, "/$petId", "PUT", draft.toJson()) { Pet.parse(JSONObject(it)) }
 
+    /**
+     * 이름만 바꾼다. 저쪽 `PATCH /app/pets/{pet_id}/display`.
+     *
+     * **연결된 아이에게는 [update] 를 쓰면 안 된다.** 그쪽은 전체 PUT 이라 공통 정보까지
+     * 덮어쓰고, 그룹 주보호자가 아니면 서버가 409 (`not_group_owner`) 로 막는다. 이름과
+     * 사진은 보호자마다 자기 값이라 이 경로로 따로 바꾼다.
+     *
+     * ⚠️ **JVM 단위 테스트로는 왕복을 못 재 본다.** JDK 의 `HttpURLConnection` 은 허용
+     * 메서드 목록에 PATCH 가 없어 `ProtocolException` 을 던진다 — 안드로이드는 OkHttp
+     * 기반이라 정상이다 (`AuthApi` 의 `PATCH /auth/app/me` 가 같은 자리에 있다).
+     * 그래서 테스트는 [displayNameBody] 로 **본문 모양만** 본다.
+     */
+    suspend fun updateDisplayName(accessToken: String, petId: String, name: String): Result<Pet> =
+        call(accessToken, displayNamePath(petId), "PATCH", displayNameBody(name)) { Pet.parse(JSONObject(it)) }
+
+    /**
+     * [updateDisplayName] 이 부르는 경로. **목록이 준 `id` — 곧 받는 사람의 표시 행
+     * (`display_pet_id`)** 가 들어간다. 그룹 주보호자의 행 id 를 넣으면 서버가 404 다.
+     */
+    internal fun displayNamePath(petId: String): String = "/$petId/display"
+
+    /** [updateDisplayName] 이 보내는 본문. **이름 한 칸뿐인 것을 테스트가 본다.** */
+    internal fun displayNameBody(name: String): JSONObject = JSONObject().put("name", name)
+
     /** 삭제. **대표를 지우면 서버가 남은 아이 중 먼저 등록한 아이로 승계한다.** */
     suspend fun delete(accessToken: String, petId: String): Result<Unit> =
         call(accessToken, "/$petId", "DELETE") { }

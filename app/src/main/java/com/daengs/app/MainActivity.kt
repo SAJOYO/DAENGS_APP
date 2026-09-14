@@ -48,7 +48,9 @@ import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.PetAvatar
-import com.daengs.app.ui.pet.PetInvitesScreen
+import com.daengs.app.ui.pet.InviteAcceptScreen
+import com.daengs.app.ui.storage.ownsPetRow
+import com.daengs.app.ui.pet.InviteBundleScreen
 import com.daengs.app.ui.pet.PetMembersScreen
 import com.daengs.app.ui.pet.PetPhotoPicker
 import com.daengs.app.ui.dogcard.CardDrawScreen
@@ -64,10 +66,11 @@ import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.devPets
 import com.daengs.app.pet.InviteShare
-import com.daengs.app.pet.isOwnedBy
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
-import com.daengs.app.pet.rememberPetInviteHolder
+import com.daengs.app.pet.InvitePaste
+import com.daengs.app.pet.rememberInviteAcceptHolder
+import com.daengs.app.pet.rememberPetInviteBundleHolder
 import com.daengs.app.pet.rememberPetMemberHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
 import com.daengs.app.screening.rememberScreeningHolder
@@ -280,7 +283,10 @@ class MainActivity : ComponentActivity() {
                 // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
                 val petMembers = rememberPetMemberHolder()
-                val petInvites = rememberPetInviteHolder()
+                val inviteAccept = rememberInviteAcceptHolder()
+                // 여러 아이를 한 링크로 부르는 자리. **강아지별 초대와 스코프가 다르다** —
+                // 저쪽은 아이 하나이고 이쪽은 계정 전체라 상한도 주보호자당 3묶음이다.
+                val inviteBundles = rememberPetInviteBundleHolder()
                 LaunchedEffect(pets.pets) {
                     // 캐시를 그린다. 서버와 맞추는 것은 로그인 직후 아래에서 한다 —
                     // 여기서 하면 목록이 바뀔 때마다 서버를 두드리게 되고,
@@ -384,8 +390,13 @@ class MainActivity : ComponentActivity() {
                 var farewell by remember { mutableStateOf<Pet?>(null) }
                 // 보호자 목록을 보려는 아이. **소유 여부로 가리지 않는다** — 돌보미도 본다.
                 var membersFor by remember { mutableStateOf<Pet?>(null) }
-                // 초대를 관리하려는 아이. **대표만 들어온다** (아래 `isOwnedBy`).
-                var invitesFor by remember { mutableStateOf<Pet?>(null) }
+                // 초대를 만들러 들어온 아이. **그 아이가 미리 골라진 채로 열린다** —
+                // 「누구를 부를까」는 그 아이의 맥락에서 시작하는 일이라, 계정 어딘가의
+                // 버튼이 아니라 강아지 카드 안에서 들어온다.
+                var invitingFor by remember { mutableStateOf<Pet?>(null) }
+                // 초대받기 화면이 떠 있나. **토큰은 홀더의 메모리에만 있다** —
+                // rememberSaveable 을 쓰면 자격증명이 savedInstanceState 로 새어 나간다.
+                var acceptingInvite by remember { mutableStateOf(false) }
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
@@ -480,6 +491,13 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(session) {
                     if (session == null) {
                         pets.forget()
+                        // 로그아웃·탈퇴가 모두 여기를 지난다. **붙여넣은 초대 링크와 토큰을
+                        // 같이 버린다** — 다음 사람의 화면에 남의 자격증명이 남으면 안 된다.
+                        inviteAccept.forget()
+                        acceptingInvite = false
+                        // 만든 초대의 평문 토큰도 같이 버린다 — 다음 사람 화면에 남으면 안 된다.
+                        inviteBundles.forget()
+                        invitingFor = null
                         // 남의 방 이름표가 남으면 안 된다. 로그아웃하면 지어진 이름으로.
                         roomName = null
                         ocrConsent = false
@@ -662,6 +680,10 @@ class MainActivity : ComponentActivity() {
                         // 없앴다 — "강아지 없이 갈 곳이 없다" 는 이유였는데, 이제 빈 방이
                         // 갈 곳이다. 빠져나갈 수 없는 화면이 첫 진입 이탈의 큰 몫이었다.
                         onCancel = { pets.clearError(); editing = null; screen = Screen.Home },
+                        // 첫 등록일 때만 — 고치기로 들어온 사람에게는 초대받기가 할 말이 아니다.
+                        onAcceptInvite = if (editing == null) {
+                            { pets.clearError(); screen = Screen.Home; acceptingInvite = true }
+                        } else null,
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
                         onClearPhoto = editing?.let { pet ->
@@ -756,41 +778,40 @@ class MainActivity : ComponentActivity() {
                                 farewell = null
                             },
                         )
-                    } else if (invitesFor != null) {
-                        val pet = invitesFor!!
-                        // **대표인지는 내 줄의 `isOwner` 로 본다.** 목록에 대표가 있는지만
-                        // 보면 늘 참이라 돌보미도 통과한다. 대표가 아니면 조회조차 시작하지
-                        // 않는다 — 서버도 404 로 막지만 헛된 요청을 내보내지 않는다.
-                        val owns = petMembers.members
-                            .takeIf { petMembers.petId == pet.id }
-                            ?.isOwnedBy(session?.appUserId) == true
-                        LaunchedEffect(pet.id, session?.appUserId, owns) {
-                            if (!owns) return@LaunchedEffect
+                    } else if (invitingFor != null) {
+                        val from = invitingFor!!
+                        // **들어올 때마다 새로 읽는다.** 다른 기기에서 만들거나 취소한
+                        // 초대가 있으면 상한 셈이 어긋난다. 목록과 상한은 **주보호자 전체**
+                        // 기준이라 어느 아이로 들어왔든 같은 것을 본다.
+                        LaunchedEffect(from.id, session?.appUserId) {
+                            inviteBundles.startWith(from.id)
                             val token = freshToken() ?: return@LaunchedEffect
-                            petInvites.load(token, pet.id)
+                            inviteBundles.load(token)
                         }
-                        PetInvitesScreen(
-                            petName = pet.name,
-                            isOwner = owns,
-                            invites = petInvites.invites.takeIf { petInvites.petId == pet.id },
-                            justCreated = petInvites.justCreated,
-                            statusOf = petInvites::statusOf,
-                            activeCount = petInvites.activeCount,
-                            busy = petInvites.busy,
-                            error = petInvites.error,
+                        InviteBundleScreen(
+                            pets = pets.pets.orEmpty(),
+                            selected = inviteBundles.selected,
+                            invites = inviteBundles.invites,
+                            justCreated = inviteBundles.justCreated,
+                            statusOf = inviteBundles::statusOf,
+                            activeCount = inviteBundles.activeCount,
+                            canCreate = inviteBundles.canCreate,
+                            busy = inviteBundles.busy,
+                            error = inviteBundles.error,
+                            onToggle = inviteBundles::toggle,
                             onCreate = {
                                 scope.launch {
                                     val token = freshToken() ?: return@launch
-                                    petInvites.create(token, pet.id)
+                                    inviteBundles.create(token)
                                 }
                             },
                             onCancel = { invite ->
                                 scope.launch {
                                     val token = freshToken() ?: return@launch
-                                    petInvites.cancel(token, pet.id, invite.id)
+                                    inviteBundles.cancel(token, invite.id)
                                 }
                             },
-                            onDismissCreated = { petInvites.clearCreated() },
+                            onDismissCreated = { inviteBundles.clearCreated() },
                             onShare = { message -> InviteShare.share(context, message) },
                             onCopy = { link ->
                                 val copied = InviteShare.copy(context, link)
@@ -799,7 +820,50 @@ class MainActivity : ComponentActivity() {
                                     Toast.makeText(context, "초대 링크를 복사했어요", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            onBack = { invitesFor = null },
+                            onBack = {
+                                // 화면을 닫으면 만든 링크의 평문 토큰을 같이 버린다.
+                                inviteBundles.forget()
+                                invitingFor = null
+                            },
+                        )
+                    } else if (acceptingInvite) {
+                        // **링크를 찾자마자 무엇이 든 초대인지 물어본다.** 사용자가 버튼을
+                        // 한 번 더 누를 이유가 없고, 미리보기가 성공해야 연결 선택을 보낼
+                        // 수 있다 — 옛 서버는 선택을 조용히 무시해 버린다.
+                        LaunchedEffect(inviteAccept.parsed) {
+                            if (inviteAccept.parsed !is InvitePaste.Result.Found) return@LaunchedEffect
+                            val token = freshToken() ?: return@LaunchedEffect
+                            inviteAccept.loadPreview(token)
+                        }
+                        InviteAcceptScreen(
+                            pasted = inviteAccept.pasted,
+                            parsed = inviteAccept.parsed,
+                            busy = inviteAccept.busy,
+                            outcome = inviteAccept.outcome,
+                            canAccept = inviteAccept.canAccept,
+                            preview = inviteAccept.preview,
+                            choices = inviteAccept.choices,
+                            takenBy = inviteAccept::takenBy,
+                            onChoose = { petId, choice -> inviteAccept.choose(petId, choice) },
+                            onPaste = inviteAccept::paste,
+                            onAccept = {
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    // 성공하면 목록을 **서버에서 다시 받는다** — 수락과 함께
+                                    // 서버가 대표 강아지를 세워 주기도 해서, 응답만 보고
+                                    // 앱이 상태를 지어내면 규칙이 두 벌이 된다.
+                                    if (inviteAccept.accept(token) != null) pets.refresh(token)
+                                }
+                            },
+                            onDone = {
+                                inviteAccept.forget()
+                                acceptingInvite = false
+                            },
+                            onBack = {
+                                // 화면을 닫으면 붙여넣은 글과 토큰을 같이 버린다.
+                                inviteAccept.forget()
+                                acceptingInvite = false
+                            },
                         )
                     } else if (membersFor != null) {
                         val pet = membersFor!!
@@ -816,9 +880,10 @@ class MainActivity : ComponentActivity() {
                             currentUserId = session?.appUserId,
                             busy = petMembers.busy,
                             error = petMembers.error,
-                            // 대표에게만 넘긴다 — null 이면 그 줄 자체가 안 뜬다.
-                            onOpenInvites = { invitesFor = pet }
-                                .takeIf { members?.isOwnedBy(session?.appUserId) == true },
+                            // **그룹 주보호자에게만 넘긴다** — null 이면 그 줄 자체가 안 뜬다.
+                            // 연결된 아이에서는 `isOwner` 가 참이어도 그룹 주보호자는
+                            // 초대한 쪽이라, 그 기준으로 열면 눌러 봐야 서버가 막는다.
+                            onOpenInvites = { invitingFor = pet }.takeIf { pet.isGroupOwner },
                             onBack = { membersFor = null },
                         )
                     } else HomeScreen(
@@ -857,7 +922,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = storageModifier,
                                 currentUserId = session?.appUserId,
-                                selectedPetIsOwner = pets.primary?.isOwner == true,
+                                // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
+                                // 재면 그룹 조회로 섞여 온 남의 기록에도 삭제가 뜬다.
+                                ownsPetRow = { petId -> ownsPetRow(pets.pets.orEmpty(), petId) },
                             )
                         },
                         onOpenPlaces = { screen = Screen.Places },
@@ -921,10 +988,23 @@ class MainActivity : ComponentActivity() {
                         onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
-                        onEditPet = { pet -> if (pet.isOwner) { editing = pet; screen = Screen.Onboarding } },
-                        onFarewell = { pet -> if (pet.isOwner) farewell = pet },
+                        onEditPet = { pet -> if (pet.isGroupOwner) { editing = pet; screen = Screen.Onboarding } },
+                        // 배웅은 전체 PUT 으로 나간다 — 수정과 같은 기준으로 가린다.
+                        onFarewell = { pet -> if (pet.isGroupOwner) farewell = pet },
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
+                        onAcceptInvite = { acceptingInvite = true },
+                        // **이름만.** 전체 PUT(`pets.edit`)으로 돌아가지 않는다 — 연결된 아이에서
+                        // 그 길은 서버가 409 로 막고, 뚫리더라도 공통 정보를 덮어쓴다.
+                        onRenamePet = { pet, name ->
+                            scope.launch {
+                                val token = freshToken() ?: return@launch
+                                pets.rename(token, pet.id, name)
+                            }
+                        },
+                        renamePetBusy = pets.renameBusy,
+                        renamePetError = pets.renameError,
+                        onDismissRenamePet = { pets.clearRenameError() },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
