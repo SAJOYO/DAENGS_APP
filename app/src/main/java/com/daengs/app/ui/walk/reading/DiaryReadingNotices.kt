@@ -1,4 +1,4 @@
-package com.daengs.app.ui.walk
+package com.daengs.app.ui.walk.reading
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*

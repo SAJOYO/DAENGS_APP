@@ -1,5 +1,8 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiaryReadingChrome
+import com.daengs.app.ui.walk.reading.DiaryReviewTheme
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape

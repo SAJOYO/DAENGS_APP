@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiaryReviewTheme
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*

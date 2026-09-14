@@ -1,5 +1,7 @@
 package com.daengs.app.ui.walk
 
+import com.daengs.app.ui.walk.reading.DiarySceneText
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
