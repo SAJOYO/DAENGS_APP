@@ -69,7 +69,25 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         readingMemory.groupIds.isNotEmpty() -> readingMemory.inspect(emptyList())
         else -> onBack()
     } }
-    val originalScenes = diary?.scenes.orEmpty()
+    val originalScenes = remember(diary) { diary?.scenes.orEmpty().filterNot { it.isWalkBoundary() } }
+    val actionEntries = remember(diary, sessionId) { diary?.sourceEntries.orEmpty().filter {
+        it.sessionId == sessionId && it.type != WalkMomentType.NOTE
+    }.sortedBy { it.recordedAtMillis } }
+    var selectedActions by remember(sessionId) { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(explorer.mode, explorer.panelOpen) {
+        if (explorer.mode != RouteExplorerMode.OVERVIEW || !explorer.panelOpen) selectedActions = emptySet()
+    }
+    fun selectActions(ids: Set<String>) {
+        selectedActions = ids.intersect(actionEntries.map { diaryActionKey(it) }.toSet())
+        if (selectedActions.isNotEmpty()) {
+            editors.cancelAdding(); readingMemory.inspect(emptyList()); explorer.choosePanel(true); explorer.overview()
+            readingMemory.explorer.dispatchRawDelta(-readingMemory.explorer.value.toFloat())
+        }
+    }
+    LaunchedEffect(actionEntries, selectedId, diary) {
+        selectedActions = selectedActions.intersect(actionEntries.map { diaryActionKey(it) }.toSet())
+        if (diary?.scenes?.any { it.id == selectedId && it.isWalkBoundary() } == true) explorer.closeScene()
+    }
     LaunchedEffect(originalScenes, readView?.scenesLoading, readingMemory.groupIds) {
         if (loaded && readView?.scenesLoading == false && diary != null) {
             val valid = originalScenes.mapTo(hashSetOf()) { it.id }
@@ -101,16 +119,18 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         val original = originalScenes.singleOrNull { it.id == scene.id } ?: return
         val insideGroup = scene.id in readingMemory.groupIds
         if (!navigation.selectScene(current, original, fromMap || insideGroup)) return
+        selectedActions = emptySet()
         if (!insideGroup) readingMemory.inspect(emptyList())
         explorer.selectScene(scene.id, fromMap || insideGroup)
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
-    val markers = remember(originalScenes, selectedId, readingMemory.groupIds) {
-        diarySceneMarkers(originalScenes, selectedId, readingMemory.groupIds)
+    val markers = remember(originalScenes, selectedId, readingMemory.groupIds, actionEntries, selectedActions) {
+        diarySceneMarkers(originalScenes, selectedId, readingMemory.groupIds) + diaryActionObjects(actionEntries, sessionId, selectedActions)
     }
     val currentReview = readView?.route?.review
     val sceneFocus = selectedOriginal?.let { readView?.focusFor(it) }
     fun selectContext(context: com.daengs.app.walk.trajectory.RecordContext, fromMap: Boolean = false) {
+        selectedActions = emptySet()
         readingMemory.inspect(emptyList())
         explorer.selectContext(context.id, openExplorer = context.kind != com.daengs.app.walk.trajectory.RecordContextKind.GAP,
             fromMap = fromMap)
@@ -131,7 +151,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val offscreen = diaryOffscreenScenes(originalScenes, visibility?.takeIf {
         it.query.revisionKey == readView?.revisionKey && it.query.targets == visibilityTargets })
     LaunchedEffect(walkingBounds) { navigation.initialize(walkingBounds) }
-    fun wholeRecord() { readingMemory.inspect(emptyList()); explorer.overview(); navigation.fit(wholeBounds, DiaryMapView.WHOLE) }
+    fun wholeRecord() { selectedActions = emptySet(); readingMemory.inspect(emptyList()); explorer.overview(); navigation.fit(wholeBounds, DiaryMapView.WHOLE) }
     Column(modifier.fillMaxSize().background(CreamBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         if (loaded && detail == null && error == null) {
             TextButton(onClick = onBack) { Text("‹ ${origin.backLabel}") }
@@ -202,6 +222,9 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     editors.cancelAdding(); explorer.choosePanel(open)
                 },
                 explorerPanel = { notices -> WalkRouteExplorerPanel(explorer, onOverview = ::wholeRecord,
+                    recordContent = { DiaryActionObjectsReading(actionEntries, selectedActions,
+                        visibility?.takeIf { it.query.revisionKey == readView?.revisionKey }?.unplacedIds.orEmpty().count { it.startsWith("diary-action:") },
+                        { selectActions(setOf(it)) }, { selectedActions = emptySet() }) },
                     readingNotices = notices,
                     reading = readingMemory,
                     onSection = { section -> navigation.fit(section.path) },
@@ -242,12 +265,16 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         visibilityQuery = query, onVisibility = { if (it.query == latestQuery) visibility = it },
                         onSelectMoment = { id -> scenes.firstOrNull { it.id == id }?.let { selectScene(it, fromMap = true) } },
                         onSelectMomentGroup = { ids ->
+                            if (ids.any { it.startsWith("diary-action:") }) selectActions(ids.toSet())
+                            else {
+                            selectedActions = emptySet()
                             val members = originalScenes.filter { it.id in ids }
                             if (members.size == 1) selectScene(members.single(), fromMap = true)
                             else if (members.isNotEmpty()) {
                                 editors.cancelAdding(); explorer.choosePanel(false)
                                 readingMemory.inspect(members.map { it.id })
                                 readingMemory.groupList.requestScrollToItem(0)
+                            }
                             }
                         },
                         onSelectRecordContext = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },

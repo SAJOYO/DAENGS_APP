@@ -16,37 +16,41 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlin.math.ceil
 
-internal fun diaryPinSize(label: String, density: Float, endpoint: Boolean = false): Pair<Int, Int> {
+internal fun diaryPinSize(label: String, density: Float, endpoint: Boolean = false, detached: Boolean = false,
+    minimumWidthDp: Float = 0f): Pair<Int, Int> {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = (if (endpoint) 11f else 14f) * density
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
-    val width = ceil(maxOf(if (endpoint) 36f else 32f, paint.measureText(label) / density + 20f) * density).toInt()
-    return width to ceil(((if (endpoint) 22f else 30f) + 7f) * density).toInt()
+    val width = ceil(maxOf(if (endpoint) 36f else 32f, minimumWidthDp, paint.measureText(label) / density + 20f) * density).toInt()
+    return width to ceil(((if (endpoint) 22f else 30f) + if (detached) 2f else 7f) * density).toInt()
 }
 
 /** The tail anchors the true coordinate. Endpoints sit below it; scene numbers sit above it. */
-internal fun diaryPinBitmap(label: String, selected: Boolean, density: Float, endpoint: Boolean = false): Bitmap {
+internal fun diaryPinBitmap(label: String, selected: Boolean, density: Float, endpoint: Boolean = false, detached: Boolean = false,
+    minimumWidthDp: Float = 0f): Bitmap {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = (if (endpoint) 11f else 14f) * density
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
     }
-    val (width, height) = diaryPinSize(label, density, endpoint)
+    val (width, height) = diaryPinSize(label, density, endpoint, detached, minimumWidthDp)
     val bodyHeight = (if (endpoint) 22f else 30f) * density
     val tail = 5f * density
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val left = density
     val right = width - density
-    val top = density + if (endpoint) tail else 0f
+    val top = density + if (endpoint && !detached) tail else 0f
     val bottom = top + bodyHeight
     val center = width / 2f
     val fill = if (selected) Color.rgb(128, 48, 92) else Color.WHITE
     val ink = if (selected) Color.WHITE else Color.rgb(107, 48, 81)
     val shape = Path().apply {
         addRoundRect(left, top, right, bottom, 10f * density, 10f * density, Path.Direction.CW)
-        if (endpoint) { moveTo(center - tail, top); lineTo(center, 0f); lineTo(center + tail, top) }
-        else { moveTo(center - tail, bottom); lineTo(center, bitmap.height.toFloat()); lineTo(center + tail, bottom) }
+        if (!detached) {
+            if (endpoint) { moveTo(center - tail, top); lineTo(center, 0f); lineTo(center + tail, top) }
+            else { moveTo(center - tail, bottom); lineTo(center, bitmap.height.toFloat()); lineTo(center + tail, bottom) }
+        }
         close()
     }
     paint.color = fill

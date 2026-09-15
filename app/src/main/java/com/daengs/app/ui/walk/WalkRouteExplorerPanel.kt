@@ -33,6 +33,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     onSection: (CompletedRouteSection) -> Unit = {}, onAuxiliary: (ObservedRouteSection) -> Unit = {},
     onContext: (RecordContext) -> Unit = {}, reading: DiaryReadingMemory? = null,
     readingNotices: @Composable () -> Unit = {},
+    recordContent: @Composable () -> Unit = {},
 ) {
     val scroll = reading?.explorer ?: rememberScrollState()
     var localDetails by remember { mutableStateOf(false) }
@@ -51,6 +52,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
         CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.bodySmall.copy(color = TextMuted, lineHeight = 20.sp)) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
                 .testTag("explorer-reading").padding(horizontal = DiaryReadingChrome.Gutter).padding(bottom = 20.dp)) {
+                recordContent()
                 state.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 state.preparationError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 if (state.index == null && state.preparationError == null) Text("동선 탐색을 준비하고 있어요.")
