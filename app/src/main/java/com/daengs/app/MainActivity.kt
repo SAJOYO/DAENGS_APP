@@ -12,6 +12,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,10 +43,13 @@ import com.daengs.app.chat.ChatSummaryCoordinator
 import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.miniroom.RoomIntro
 import com.daengs.app.miniroom.rememberRoomStore
-import com.daengs.app.ui.dogcard.rememberComposedCard
+import com.daengs.app.ui.dogcard.rememberFramePicture
 import com.daengs.app.dogcard.CardHolder
 import com.daengs.app.dogcard.CardSyncRunner
 import com.daengs.app.dogcard.MissLog
+import com.daengs.app.dogcard.photo.HttpPhotoCardRemote
+import com.daengs.app.dogcard.photo.PhotoCardFiles
+import com.daengs.app.dogcard.photo.PhotoCardHolder
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
@@ -80,6 +86,8 @@ import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
 import com.daengs.app.ui.dex.OwnedCard
+import com.daengs.app.ui.dex.PhotoCardMakeScreen
+import com.daengs.app.ui.dex.PhotoDog
 import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.home.PetNeed
@@ -359,6 +367,16 @@ class MainActivity : ComponentActivity() {
                 // 앞서 선언된 지역 변수만 잡는다 — 위에 두면 컴파일이 안 된다.
                 val cards = remember { CardHolder(cardStore, freshToken, MissLog(context)) }
 
+                // 서버가 그려 준 포토 카드. **정본은 서버라** 기기에는 완성 그림만 둔다
+                // (`PhotoCardHolder`). `freshToken` 뒤여야 잡힌다 — 위 `cards` 와 같은 이유.
+                val photos = remember {
+                    PhotoCardHolder(
+                        remote = HttpPhotoCardRemote,
+                        files = PhotoCardFiles(java.io.File(context.filesDir, "photo-cards")),
+                        accessToken = freshToken,
+                    )
+                }
+
                 // 카드를 서버와 맞추는 자리. **claimOrphans 뒤에 돈다** — 순서가
                 // 뒤집히면 방금 로그인한 사람의 둘러보기 카드가 안 올라간다.
                 val cardSync = remember { CardSyncRunner(cardStore, app.cardFiles, freshToken) }
@@ -507,6 +525,8 @@ class MainActivity : ComponentActivity() {
                         // 남의 방 이름표가 남으면 안 된다. 로그아웃하면 지어진 이름으로.
                         roomName = null
                         ocrConsent = false
+                        // 남의 포토 카드 그림이 다음 사람에게 남으면 안 된다 (로그아웃·탈퇴 모두 여기).
+                        photos.forget()
                         return@LaunchedEffect
                     }
                     // **조용히 끝내지 않는다.** 못 받았으면 못 받았다고 남겨야
@@ -553,6 +573,21 @@ class MainActivity : ComponentActivity() {
                     // 기기 것만으로도 온전히 돈다.
                     cardSync.syncOnce(session?.appUserId)
                     cards.load(session?.appUserId)
+                    // 포토 카드. **실패해도 조용하다** — 도감을 열 때 다시 받는다.
+                    photos.load()
+                }
+
+                // 도감을 열 때마다 목록을 맞춘다 — 다른 기기에서 만든 카드가 여기서 들어온다.
+                LaunchedEffect(screen == Screen.Dex, session?.appUserId) {
+                    if (screen == Screen.Dex && session != null) photos.load()
+                }
+                // **앱이 앞에 있는 동안만** 다시 묻는다. 뒤로 가면 멈추고, 돌아오면 이어서 묻는다.
+                val photoLifecycle = LocalLifecycleOwner.current.lifecycle
+                LaunchedEffect(photos.generating) {
+                    if (!photos.generating) return@LaunchedEffect
+                    photoLifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        photos.pollWhileGenerating()
+                    }
                 }
 
                 // **로딩을 떠나는 곳은 여기 하나다.** 갈림길 판정은 순수 함수로 빼서
@@ -903,8 +938,10 @@ class MainActivity : ComponentActivity() {
                             roomStore.markTourSeen()
                         },
                         // 액자 그림. 고른 카드가 지워졌으면 못 찾고, 그때는 발자국이다.
-                        framePicture = rememberComposedCard(
-                            cards.cards.firstOrNull { it.id == frameCardId },
+                        // 누끼 카드에서 못 찾으면 포토 카드의 받아 둔 그림을 본다.
+                        framePicture = rememberFramePicture(
+                            drawn = cards.cards.firstOrNull { it.id == frameCardId },
+                            photoFile = frameCardId?.let { photos.images[it] },
                         ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { askPetThen(PetNeed.Chat) { screen = Screen.Chat } },
@@ -1283,7 +1320,16 @@ class MainActivity : ComponentActivity() {
                       }
                     }
 
-                    Screen.Dex -> CardDexScreen(
+                    Screen.Dex -> {
+                        // 포토 지우기 실패를 한 줄로 알린다. `CardDexScreen` 의 `removedNote` 는
+                        // 성공했을 때만 뜬다 — 서버 실패는 여기서 따로 띄운다.
+                        LaunchedEffect(photos.error) {
+                            photos.error?.let {
+                                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                                photos.clearError()
+                            }
+                        }
+                        CardDexScreen(
                         onClose = { screen = Screen.Home },
                         onImmersiveChange = {
                             immersiveOpen = it
@@ -1300,6 +1346,38 @@ class MainActivity : ComponentActivity() {
                         },
                         startInDraw = dexOpensDraw.also { dexOpensDraw = false },
                         drawn = cards.cards,
+                        photos = photos.cards,
+                        photoFiles = photos.images,
+                        photoFailure = photos.latestFailure,
+                        // 「확인」 = 서버 행을 지운다. 실패 행이 남아 있으면 다음에도 같은 줄이 뜬다.
+                        onDismissPhotoFailure = { failed -> scope.launch { photos.remove(failed.id) } },
+                        // 강아지가 없으면 뽑기와 같은 문을 연다. **로그인 전은 여기서 안 막는다** —
+                        // `PetNeed` 에 로그인 갈래가 없어서, 만들기 화면에서 「로그인하면 포토 카드를
+                        // 만들 수 있어요」(`PhotoCardHolder.create`)가 뜨게 둔다.
+                        onMakePhotoBlocked = if (waitsForPet && session != null) {
+                            { petNeed = PetNeed.Card }
+                        } else {
+                            null
+                        },
+                        makePhoto = { startMonth, done ->
+                            LaunchedEffect(Unit) { photos.clearCreateError() }
+                            PhotoCardMakeScreen(
+                                startMonth = startMonth,
+                                // 대표 강아지가 먼저 보이게 한다 (`sortedByDescending` 은 안정 정렬이라
+                                // 나머지는 서버가 준 순서 그대로다).
+                                dogs = pets.pets.orEmpty()
+                                    .sortedByDescending { it.isPrimary }
+                                    .map { PhotoDog(it.id, it.name, it.isPrimary) },
+                                busy = photos.creating,
+                                error = photos.createError,
+                                onSubmit = { month, dog, jpeg ->
+                                    scope.launch {
+                                        if (photos.create(month, dog.name, dog.id, jpeg)) done()
+                                    }
+                                },
+                                onCancel = done,
+                            )
+                        },
                         framedCardId = frameCardId,
                         onFrame = { card ->
                             frameCardId = card?.id
@@ -1307,16 +1385,15 @@ class MainActivity : ComponentActivity() {
                         },
                         onDelete = { card ->
                             scope.launch {
-                                // **액자를 먼저 비운다.** 걸려 있던 카드를 지우고
-                                // 액자만 두면 그림이 사라진 자리가 남는다 (탈퇴할 때와
-                                // 같은 정리다).
-                                if (frameCardId == card.id) {
+                                val gone = when (card) {
+                                    is OwnedCard.Drawn -> { cards.remove(card.id); true }
+                                    is OwnedCard.Photo -> photos.remove(card.id)
+                                }
+                                // **액자를 먼저 비우던 것을 지운 뒤로 옮겼다.** 포토는 서버가 못 지우면
+                                // 카드가 남으므로, 그때 액자만 비면 걸려 있던 그림이 사라진다.
+                                if (gone && frameCardId == card.id) {
                                     frameCardId = null
                                     roomStore.saveFrameCardId(null)
-                                }
-                                when (card) {
-                                    is OwnedCard.Drawn -> cards.remove(card.id)
-                                    is OwnedCard.Photo -> Unit // Task 7
                                 }
                             }
                         },
@@ -1353,7 +1430,8 @@ class MainActivity : ComponentActivity() {
                                 onOpenDex = done,
                             )
                         },
-                    )
+                        )
+                    }
 
                     Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
                 }
