@@ -97,6 +97,8 @@ internal fun WalkDiaryMapContent(
     walkPets: List<Pet> = emptyList(),
     onReturnToRange: (() -> Unit)? = null,
     onSceneNeighborhood: (() -> Unit)? = null,
+    walkStartedAtMillis: Long? = null,
+    walkEndedAtMillis: Long? = null,
 ) {
     DiaryReadingSystemBars()
     val compactDrawer = explorerPanel != null
@@ -108,15 +110,23 @@ internal fun WalkDiaryMapContent(
     val groupList = readingMemory?.groupList ?: rememberLazyListState()
     val list = if (sceneGroup != null) groupList else fullList
     val displayedScenes = sceneGroup ?: scenes
+    val showStart = sceneGroup == null && walkStartedAtMillis != null
+    val showEnd = sceneGroup == null && walkEndedAtMillis != null
     val ordinals = remember(scenes) { scenes.withIndex().associate { it.value.id to it.index+1 } }
     val gapSlots = remember(scenes, gapContexts, sceneGroup) { if (sceneGroup != null) emptyMap() else diaryGapSlots(scenes, gapContexts) }
+    val emptyStoryboard = scenes.isEmpty() && gapSlots.isEmpty() && error == null
     val hasReadingExtras = offscreenScenes.isNotEmpty() || !generationNotice.isNullOrBlank() || directionNotice || error != null
-    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected, sceneGroup == null) {
+    LaunchedEffect(readingMemory?.pendingList, loading, selected == null, explorerSelected, sceneGroup == null,
+        walkStartedAtMillis, walkEndedAtMillis) {
         val saved = readingMemory?.pendingList
         if (!loading && selected == null && !explorerSelected && saved != null && sceneGroup == null) {
-            val keys = buildList { scenes.forEachIndexed { index, scene ->
+            val keys = buildList {
+                if (showStart) add("storyboard-start")
+                if ((showStart || showEnd) && emptyStoryboard) add("storyboard-empty")
+                scenes.forEachIndexed { index, scene ->
                 gapSlots[index].orEmpty().forEach { add("gap:${it.id}") }; add("scene:${scene.id}")
             }; gapSlots[scenes.size].orEmpty().forEach { add("gap:${it.id}") }
+                if (showEnd) add("storyboard-end")
                 if (hasReadingExtras && scenes.isNotEmpty()) add("reading-notices") }
             val index = keys.indexOf(saved.optString("key"))
             if (index >= 0) list.scrollToItem(index, saved.optInt("offset").coerceIn(0, 100_000))
@@ -304,12 +314,20 @@ internal fun WalkDiaryMapContent(
                         } else if (selectedGap != null) {
                             DiaryGapDetail(selectedGap, onContextDismiss)
                         } else if (selected == null) {
-                            if (scenes.isEmpty() && gapSlots.isEmpty() && error == null) {
+                            if (scenes.isEmpty() && gapSlots.isEmpty() && error == null && !showStart && !showEnd) {
                                 Text("아직 남긴 장면이 없어요.", Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
                                 TextButton(onClick = onAdd, modifier = Modifier.padding(horizontal = 12.dp)) { Text("기록 남기기") }
                             }
                             LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth().testTag("diary-scene-list"),
                                 contentPadding = PaddingValues(bottom = 20.dp)) {
+                                if (showStart) item(key="storyboard-start") {
+                                    DiaryStoryboardBoundary(true, requireNotNull(walkStartedAtMillis))
+                                    HorizontalDivider(Modifier.padding(horizontal=DiaryReadingChrome.Gutter), color=PinkFaint)
+                                }
+                                if ((showStart || showEnd) && emptyStoryboard) item(key="storyboard-empty") {
+                                    Text("아직 남긴 장면이 없어요.", Modifier.padding(horizontal=20.dp, vertical=12.dp))
+                                    TextButton(onClick=onAdd, modifier=Modifier.padding(horizontal=12.dp)) { Text("기록 남기기") }
+                                }
                                 displayedScenes.forEachIndexed { index, scene ->
                                     gapSlots[index].orEmpty().forEach { gap ->
                                         item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
@@ -325,6 +343,10 @@ internal fun WalkDiaryMapContent(
                                 }
                                 gapSlots[scenes.size].orEmpty().forEach { gap ->
                                     item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
+                                }
+                                if (showEnd) item(key="storyboard-end") {
+                                    HorizontalDivider(Modifier.padding(horizontal=DiaryReadingChrome.Gutter), color=PinkFaint)
+                                    DiaryStoryboardBoundary(false, requireNotNull(walkEndedAtMillis))
                                 }
                                 if (hasReadingExtras && scenes.isNotEmpty()) item(key = "reading-notices") { readingExtras() }
                             }

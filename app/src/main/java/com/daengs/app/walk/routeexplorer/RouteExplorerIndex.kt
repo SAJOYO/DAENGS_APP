@@ -9,7 +9,9 @@ internal data class RoutePass(
     val path: List<GeoPoint>, val reverse: Boolean,
 )
 internal data class RoutePassages(val anchor: GeoPoint, val passes: List<RoutePass>, val uncertain: Boolean = false)
-internal data class RouteReplayFrame(val point: GeoPoint?, val recordedAtMillis: Long?, val inGap: Boolean)
+internal data class RouteReplayFrame(val point: GeoPoint?, val recordedAtMillis: Long?, val inGap: Boolean,
+    /** Speed of the same proven edge used for replay, never affected by the viewing multiplier. */
+    val derivedSpeedMetersPerSecond: Double? = null)
 
 private data class XY(val x: Double, val y: Double) {
     operator fun minus(p: XY) = XY(x - p.x, y - p.y)
@@ -132,7 +134,8 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
             if (points[mid].activeElapsedMillis <= elapsed) low = mid + 1 else high = mid
         }
         val before = points.getOrNull(low - 1) ?: return RouteReplayFrame(null, null, true)
-        if (before.activeElapsedMillis == elapsed) return RouteReplayFrame(before.point, before.capturedAtMillis, false)
+        if (before.activeElapsedMillis == elapsed) return RouteReplayFrame(before.point, before.capturedAtMillis, false,
+            before.derivedSpeedMetersPerSecond)
         val after = points.getOrNull(low) ?: return RouteReplayFrame(null, null, true)
         val delta = after.activeElapsedMillis - before.activeElapsedMillis
         if (before.segmentIndex != after.segmentIndex || after.pointIndex != before.pointIndex + 1 ||
@@ -143,7 +146,8 @@ internal class RouteExplorerIndex(val route: WalkSessionRoute) {
         return RouteReplayFrame(GeoPoint(
             before.point.latitude + (after.point.latitude - before.point.latitude) * fraction,
             before.point.longitude + (after.point.longitude - before.point.longitude) * fraction),
-            before.capturedAtMillis + ((after.capturedAtMillis - before.capturedAtMillis) * fraction).toLong(), false)
+            before.capturedAtMillis + ((after.capturedAtMillis - before.capturedAtMillis) * fraction).toLong(), false,
+            after.derivedSpeedMetersPerSecond)
     }
     val durationMillis: Long = timedPoints.lastOrNull()?.activeElapsedMillis ?: 0
 }

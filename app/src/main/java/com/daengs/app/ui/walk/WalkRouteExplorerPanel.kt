@@ -36,6 +36,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     recordContent: @Composable () -> Unit = {},
     replayContent: (@Composable () -> Unit)? = null,
     replayContentKey: Any? = null,
+    replayTimeline: DiaryReplayTimeline? = null,
 ) {
     val normalScroll = reading?.explorer ?: rememberScrollState()
     val replayScroll = rememberScrollState()
@@ -55,7 +56,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
         }
     }
     Column(Modifier.fillMaxSize()) {
-        WalkExplorerTimeHeader(state)
+        if (replayContent != null) DiaryReplayPlayer(state, replayTimeline) else WalkExplorerTimeHeader(state)
         HorizontalDivider(color = PinkFaint)
         CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.bodySmall.copy(color = TextMuted, lineHeight = 20.sp)) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
@@ -73,7 +74,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                             ?: "기기 시간으로 확인한 위치예요. 표시 시각은 확정하지 않아요.",
                         style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 }
-                WalkExplorerRangeActions(state, onOverview)
+                if (replayContent == null || slice != null) WalkExplorerRangeActions(state, onOverview)
                 if (measured && !replay && slice != null) ExplorerRangePresets(state)
                 WalkExplorerSelectionDetails(state)
                 if (!measured && !state.canPlayback) {
@@ -95,6 +96,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                     }
                 }
                 if (details) {
+                    if (replayContent != null && slice == null) WalkExplorerRangeActions(state, onOverview)
                     if (measured) {
                         if (!replay && slice == null) ExplorerRangePresets(state)
                         Text("기록 중 경과 시간이에요. 일시정지 시간은 제외하고, 시계 경계와 경로 공백은 이어 그리지 않아요.",

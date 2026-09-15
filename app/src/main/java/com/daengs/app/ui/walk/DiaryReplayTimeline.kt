@@ -43,6 +43,10 @@ internal class DiaryReplayTimeline(events: List<DiaryReplayEvent>, val unresolve
 
     fun previous(elapsed: Long, from: Long = 0): Long? = checkpoints.lastOrNull { it.elapsed in from until elapsed }?.elapsed
     fun next(elapsed: Long, until: Long): Long? = checkpoints.firstOrNull { it.elapsed > elapsed && it.elapsed <= until }?.elapsed
+
+    /** Boundaries are navigation records, not numbered/described scenes. */
+    fun navigationStops(duration: Long, from: Long = 0, until: Long = duration): List<Long> =
+        (listOf(0L, duration) + checkpoints.map { it.elapsed }).filter { it in from..until }.distinct().sorted()
 }
 
 internal fun diaryReplayMarkers(markers: List<MomentMarkerState>, ids: Set<String>): List<MomentMarkerState> =

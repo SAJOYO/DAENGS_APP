@@ -9,6 +9,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiaryReplayTimelineTest {
+    @Test fun `navigation includes start end once and never leaks boundaries into a partial range`() {
+        val timeline=DiaryReplayTimeline(listOf(DiaryReplayEvent("a",10),DiaryReplayEvent("b",20)))
+        assertEquals(listOf(0L,10L,20L,30L),timeline.navigationStops(30))
+        assertEquals(listOf(10L,20L),timeline.navigationStops(30,5,25))
+        assertEquals(listOf(0L,30L),DiaryReplayTimeline(emptyList()).navigationStops(30))
+    }
     @Test fun `absolute seeking groups simultaneous records and clears future or out of range records`() {
         val timeline=DiaryReplayTimeline(listOf(DiaryReplayEvent("late",30), DiaryReplayEvent("a",10), DiaryReplayEvent("b",10)))
         assertNull(timeline.at(9))
