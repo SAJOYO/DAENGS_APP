@@ -47,6 +47,7 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     private var selectionRevision = 0
     internal var adoptedRead: WalkDiaryReadView? = null
     var userRevision by mutableIntStateOf(0); private set
+    var seekRevision by mutableIntStateOf(0); private set
     val duration get() = review?.timeline?.durationMillis ?: review?.context?.takeIf { it.available }?.let { it.durationMillis ?: 0 }
         ?: maxOf(activeDuration, index?.durationMillis ?: 0)
     val mode get() = when (selection) {
@@ -185,6 +186,7 @@ internal class WalkRouteExplorerState(private val scope: CoroutineScope, activeD
     fun seek(value: Long) {
         val slice = selectedSlice
         if (timeRange != null && slice == null) return
+        if (mode != RouteExplorerMode.REPLAY || value != elapsed) seekRevision++
         replaceSelection(WalkRouteSelection.Replay(value.coerceIn(slice?.from ?: 0, slice?.until ?: duration), timeRange))
     }
     fun selectTimeRange(from: Long, until: Long) {

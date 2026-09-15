@@ -379,7 +379,10 @@ internal fun WalkDiaryMapContent(
                         mapView?.let { view -> DiaryRecordMapButtons(view,
                             onWalking = { onClose(); onContextDismiss(); onWalkingOverview(); scope.launch { sheet.partialExpand() } },
                             onWhole = { onClose(); onContextDismiss(); onOverview(); scope.launch { sheet.partialExpand() } }) }
-                        mapLegend()
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (compactDrawer) WalkSpeedLegend(kilometersPerHour = true)
+                            mapLegend()
+                        }
                     }
                     Surface(Modifier.align(Alignment.TopEnd).padding(end = 12.dp)
                         .padding(top = with(density) { toolsSize.height.toDp() }), shape = CircleShape,

@@ -117,3 +117,9 @@ fun walkFaceOverride(pets: List<Pet>, selected: Set<String>): Pet? {
 internal fun walkFacePortraitRes(selectedPet: Pet?, defaultBreed: com.daengs.app.miniroom.art.DogBreed?): Int =
     (if (selectedPet == null) defaultBreed else selectedPet.breedArt)?.portraitRes
         ?: com.daengs.app.R.drawable.ic_location_paw
+
+/** A replay represents this walk's participants, never a primary pet who stayed home. */
+internal fun replayParticipant(pets: List<Pet>, dogIds: List<String>): Pet? {
+    val participants = dogIds.mapNotNull { id -> pets.firstOrNull { it.id == id } }
+    return participants.firstOrNull { it.isPrimary } ?: participants.firstOrNull()
+}
