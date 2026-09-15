@@ -266,13 +266,16 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     editors.cancelAdding(); explorer.choosePanel(open)
                 },
                 explorerPanel = { notices -> WalkRouteExplorerPanel(explorer, onOverview = { wholeRecord() },
+                    replayTimeline = replayTimeline,
                     replayContent = {
                         if (replayInspection.active) DiaryReplayInspectionReading(replayInspection)
                         else DiaryReplayReading(replayTimeline, explorer)
                     },
                     replayContentKey = if (replayInspection.active) replayInspection.markerIds to replayInspection.explorer.selection
                         else replayCheckpoint?.elapsed,
-                    recordContent = { DiaryActionObjectsReading(actionEntries, selectedActions,
+                    recordContent = { if (selectedActions.isEmpty() && explorer.mode == RouteExplorerMode.OVERVIEW)
+                        DiaryReplayReading(replayTimeline, explorer)
+                    else DiaryActionObjectsReading(actionEntries, selectedActions,
                         visibility?.takeIf { it.query.revisionKey == readView?.revisionKey }?.unplacedIds.orEmpty().count { it.startsWith("diary-action:") },
                         { selectActions(setOf(it)) }, { selectedActions = emptySet() }) },
                     readingNotices = notices,

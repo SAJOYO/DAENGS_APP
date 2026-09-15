@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.daengs.app.R
 import com.daengs.app.ui.theme.*
 import com.daengs.app.ui.walk.reading.DiarySceneText
@@ -25,32 +26,40 @@ internal fun DiaryReplayReading(timeline: DiaryReplayTimeline, state: WalkRouteE
     val until = state.selectedSlice?.until ?: state.duration
     val checkpoint = timeline.current(state.elapsed, state.duration, from, until)
     val ended = state.elapsed >= state.duration
-    val previous = timeline.previous(state.elapsed, from)
-    val next = timeline.next(state.elapsed, until)
+    val stops = timeline.navigationStops(state.duration, from, until)
+    val previous = stops.lastOrNull { it < state.elapsed }
+    val next = stops.firstOrNull { it > state.elapsed }
+    val events = checkpoint?.readingEvents().orEmpty()
+    val boundary = ended || state.elapsed == 0L
     Column(Modifier.fillMaxWidth().testTag("diary-replay-reading")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-            Text(when {
-                ended -> "산책 끝"
-                state.elapsed == 0L -> "산책 시작"
-                checkpoint == null -> "이동 중"
-                else -> "이때의 기록"
-            }, Modifier.weight(1f), style=MaterialTheme.typography.titleSmall, color=TextDark)
-            TextButton(onClick={ state.seek(requireNotNull(previous)) }, enabled=previous!=null,
-                modifier=Modifier.testTag("replay-previous-event"), contentPadding=PaddingValues(horizontal=8.dp)) { Text("이전") }
-            TextButton(onClick={ state.seek(requireNotNull(next)) }, enabled=next!=null,
-                modifier=Modifier.testTag("replay-next-event"), contentPadding=PaddingValues(horizontal=8.dp)) { Text("다음") }
+            Column(Modifier.weight(1f).padding(vertical=8.dp)) {
+                if (boundary || events.isEmpty()) {
+                    Text(when { ended -> "산책 끝"; state.elapsed == 0L -> "산책 시작"; else -> "이동 중" },
+                        color=TextDark, style=MaterialTheme.typography.titleSmall)
+                    if (boundary) {
+                        val boundaryTime = if (ended) state.review?.summary?.endedAtMillis else state.review?.summary?.startedAtMillis
+                        Text(boundaryTime?.let(::formatRouteExplorerClock) ?: "시각 정보 없음",
+                            modifier=Modifier.testTag("replay-boundary-time"), color=TextMuted,
+                            fontSize=11.sp, lineHeight=16.sp)
+                    }
+                } else DiaryReplayEventReading(events.first(), showBody=false)
+            }
+            ReplayRecordNavigation(true, previous != null) { state.seek(requireNotNull(previous)) }
+            ReplayRecordNavigation(false, next != null) { state.seek(requireNotNull(next)) }
         }
-        checkpoint?.readingEvents()?.forEach { event -> DiaryReplayEventReading(event) }
+        if (!boundary) events.firstOrNull()?.scene?.let { Box(Modifier.padding(bottom=12.dp)) { DiarySceneText(it.body) } }
+        (if (boundary) events else events.drop(1)).forEach { event -> DiaryReplayEventReading(event) }
         if (timeline.unresolvedCount > 0) Text("시간을 연결하지 못한 기록 ${timeline.unresolvedCount}건",
             style=MaterialTheme.typography.bodySmall, color=TextMuted)
     }
 }
 
 @Composable
-private fun DiaryReplayEventReading(event: DiaryReplayEvent) {
+private fun DiaryReplayEventReading(event: DiaryReplayEvent, showBody: Boolean = true) {
     val action = event.action
     val scene = event.scene
-    Column(Modifier.fillMaxWidth().testTag("replay-event:${event.id}").padding(bottom=12.dp)) {
+    Column(Modifier.fillMaxWidth().testTag("replay-event:${event.id}").padding(bottom=if(showBody)12.dp else 0.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             Surface(shape=RoundedCornerShape(10.dp), color=PinkFaint) {
                 Box(Modifier.size(36.dp), contentAlignment=Alignment.Center) {
@@ -70,7 +79,7 @@ private fun DiaryReplayEventReading(event: DiaryReplayEvent) {
                     style=MaterialTheme.typography.bodySmall)
             }
         }
-        if (scene != null) Box(Modifier.padding(top=8.dp)) { DiarySceneText(scene.body) }
+        if (showBody && scene != null) Box(Modifier.padding(top=8.dp)) { DiarySceneText(scene.body) }
     }
 }
 
@@ -78,8 +87,9 @@ private fun DiaryReplayEventReading(event: DiaryReplayEvent) {
 internal fun DiaryReplayInspectionReading(inspection: DiaryReplayInspection) {
     Column(Modifier.fillMaxWidth().testTag("diary-replay-inspection")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-            Text("선택한 기록", Modifier.weight(1f), style=MaterialTheme.typography.titleSmall, color=TextDark)
-            TextButton(onClick=inspection::clear, modifier=Modifier.testTag("return-to-replay")) { Text("재생으로 돌아가기") }
+            Text("선택한 기록", Modifier.weight(1f), fontSize=10.sp, color=TextMuted)
+            TextButton(onClick=inspection::clear, modifier=Modifier.testTag("return-to-replay"),
+                contentPadding=PaddingValues(horizontal=4.dp)) { Text("재생으로 돌아가기", fontSize=11.sp) }
         }
         if (inspection.markerIds.isNotEmpty()) {
             DiaryReplayCheckpoint(0,inspection.events()).readingEvents().forEach { DiaryReplayEventReading(it) }

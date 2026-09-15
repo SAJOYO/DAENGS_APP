@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -23,6 +26,40 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DiaryReplayReadingUiTest {
     @get:Rule val compose=createComposeRule()
+
+    @Test fun `compact player keeps records visible at 320dp and large text before and during replay`() {
+        val read = explorerPanelPreviewRead()
+        val timeline = diaryReplayTimeline(read)
+        lateinit var state: WalkRouteExplorerState
+        var px = 1f
+        compose.setContent { DaengsTheme {
+            val density = LocalDensity.current
+            px = density.density
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.3f)) {
+                val scope = rememberCoroutineScope()
+                state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); choosePanel(true) } }
+                Box(Modifier.width(320.dp).height(290.dp)) {
+                    WalkRouteExplorerPanel(state, {}, replayTimeline=timeline,
+                        recordContent={ DiaryReplayReading(timeline, state) },
+                        replayContent={ DiaryReplayReading(timeline, state) })
+                }
+            }
+        } }
+        val header=compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot
+        assertTrue("player leaves room for records", header.height / px < 140)
+        val play=compose.onNodeWithTag("replay-play").fetchSemanticsNode().boundsInRoot
+        assertTrue(play.width / px >= 48)
+        compose.onNodeWithText("산책 시작").assertIsDisplayed()
+        compose.onNodeWithTag("replay-boundary-time").assertTextEquals(formatRouteExplorerClock(read.route.detail.summary.startedAtMillis))
+        compose.onNodeWithTag("replay-play").performClick()
+        compose.runOnIdle { state.tick(15_000) }
+        compose.onNodeWithText(read.diary!!.scenes[1].title).assertIsDisplayed()
+        assertEquals(header,compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot)
+        compose.onNodeWithContentDescription("다음 기록").assertHasClickAction()
+        val clock=compose.onNodeWithTag("replay-clock").fetchSemanticsNode().boundsInRoot
+        val speed=compose.onNodeWithTag("replay-current-speed").fetchSemanticsNode().boundsInRoot
+        assertTrue(clock.right <= speed.left)
+    }
 
     @Test fun `map inspection stays readable while playback advances and return follows the current event`() {
         val read=explorerPanelPreviewRead()
@@ -82,7 +119,7 @@ class DiaryReplayReadingUiTest {
                 map={ DisposableEffect(Unit) { mounts++; onDispose {} }; Box(Modifier.fillMaxSize()) })
         } }
         val top=compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
-        compose.onNodeWithText("동선 재생").performClick()
+        compose.onNodeWithTag("replay-play").performClick()
         compose.onNodeWithText("산책 시작").assertIsDisplayed()
         compose.runOnIdle { state.tick(7_500) }
         compose.onNodeWithText("킁킁").assertIsDisplayed()
@@ -95,8 +132,13 @@ class DiaryReplayReadingUiTest {
         compose.onNodeWithTag("explorer-replay-slider").performSemanticsAction(SemanticsActions.SetProgress) { it(30_000f) }
         compose.onNodeWithText(scenes[1].title).assertIsDisplayed()
         compose.onNodeWithText("킁킁").assertDoesNotExist()
+        compose.onNodeWithTag("replay-next-event").performClick()
+        compose.runOnIdle { assertEquals(state.duration, state.elapsed) }
+        compose.onNodeWithText("산책 끝").assertIsDisplayed()
+        compose.onNodeWithTag("replay-boundary-time").assertTextEquals(formatRouteExplorerClock(read.route.detail.summary.endedAtMillis!!))
         compose.onNodeWithTag("explorer-replay-slider").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
         compose.onNodeWithText("산책 시작").assertIsDisplayed()
+        compose.onNodeWithTag("replay-boundary-time").assertIsDisplayed()
         compose.onNodeWithText(scenes[1].title).assertDoesNotExist()
         compose.onNodeWithTag("explorer-replay-slider").performSemanticsAction(SemanticsActions.SetProgress) { it(state.duration.toFloat()) }
         compose.onNodeWithText("산책 끝").assertIsDisplayed()
