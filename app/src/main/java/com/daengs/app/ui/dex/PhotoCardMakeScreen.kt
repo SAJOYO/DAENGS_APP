@@ -100,7 +100,10 @@ fun PhotoCardMakeScreen(
             reading = false
         }
     }
-    BackHandler(enabled = !busy) { onCancel() }
+    // **항상 등록해 둔다.** `busy` 일 때 꺼 두면 뒤로가기가 바깥(도감)의 핸들러로 넘어가
+    // 업로드 중에 화면이 닫히고, 뒤이어 오는 서버 오류(429·404)가 숨은 `createError` 로만 남는다.
+    // 눌러도 `busy` 면 무시한다.
+    BackHandler { if (!busy) onCancel() }
 
     PhotoCardMakeContent(
         month = month,
@@ -152,8 +155,10 @@ private fun PhotoCardMakeContent(
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OPEN_PHOTO_MONTHS.sorted().forEach { m ->
-                val card = photoCardFor(m) ?: return@forEach
-                Choice("${m}월\n${card.name}", on = m == month) { onMonth(m) }
+                // 카탈로그에 없는 달은 안 보인다 — 이름은 이제 안 보여줘도 열 수 없는
+                // 달까지 칸으로 뜨면 안 된다(사용자 결정, 2026-09-15: 달만 적는다).
+                photoCardFor(m) ?: return@forEach
+                Choice("${m}월", on = m == month) { onMonth(m) }
             }
         }
 
@@ -203,7 +208,9 @@ private fun PhotoCardMakeContent(
             )
         }
         Spacer(Modifier.height(6.dp))
-        DaengsTextAction("그만두기", onCancel, tint = TextMuted)
+        // `DaengsTextAction` 은 `enabled` 를 안 받는다 — 업로드 중엔 눌러도 무시해서
+        // 같은 자리를 두 번 안 닫는다 (`BackHandler` 와 같은 이유).
+        DaengsTextAction("그만두기", { if (!busy) onCancel() }, tint = TextMuted)
     }
 }
 

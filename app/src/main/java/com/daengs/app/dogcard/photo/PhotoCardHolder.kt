@@ -31,8 +31,13 @@ class PhotoCardHolder(
     var cards: List<PhotoCard> by mutableStateOf(emptyList())
         private set
 
-    /** 받아 둔 완성 그림. 여기 있어야 칸에 완성으로 뜬다. */
-    var images: Map<String, File> by mutableStateOf(emptyMap())
+    /**
+     * 받아 둔 완성 그림. 여기 있어야 칸에 완성으로 뜬다.
+     *
+     * **켜지자마자 기기에 있는 파일부터 쓴다** — 목록이 오기 전에도(콜드스타트·오프라인)
+     * 방 액자와 칸이 발바닥이 아니라 그림을 보여준다. `load()` 가 서버 목록으로 맞춘다.
+     */
+    var images: Map<String, File> by mutableStateOf(files.existing())
         private set
 
     var creating: Boolean by mutableStateOf(false)
@@ -42,7 +47,10 @@ class PhotoCardHolder(
     var createError: String? by mutableStateOf(null)
         private set
 
-    /** 목록·지우기 실패. 도감이 한 줄로 알린다. */
+    /**
+     * 지우기 실패(그리고 토큰 없이 지우려 할 때). 도감이 한 줄로 알린다.
+     * **목록 실패는 안 쓴다** — `load()` 참고.
+     */
     var error: String? by mutableStateOf(null)
         private set
 
@@ -57,17 +65,27 @@ class PhotoCardHolder(
 
     fun clearError() { error = null }
 
-    /** 목록을 받는다. **실패해도 들고 있던 것을 안 비운다** (`CardHolder.load` 원칙). */
+    /**
+     * 목록을 받는다. **실패해도 들고 있던 것을 안 비운다** (`CardHolder.load` 원칙).
+     *
+     * **실패해도 조용하다.** 도감을 열 때마다 도는 자리라, 여기서 `error` 를 쓰면
+     * 오프라인이거나 서버 점검 중인 사람이 도감을 열 때마다 토스트를 본다 — 지우기와
+     * 달리 사용자가 방금 누른 동작이 아니다(docs/photo-cards.md §3). `error` 는
+     * `remove()` 실패에만 쓴다.
+     */
     suspend fun load() {
         val token = accessToken() ?: return
-        remote.list(token)
-            .onSuccess { list ->
-                cards = list
-                files.keepOnly(list.map { it.id }.toSet())
-                images = files.existing()
-                fetchImages(token)
-            }
-            .onFailure { error = it.message ?: "포토 카드를 불러오지 못했어요." }
+        // 비우는 동안(로그아웃·탈퇴) 목록이 뒤늦게 오면 이전 사람 것이 되살아난다 —
+        // `create()`·`store()` 와 같은 이유로 세대 번호를 찍어 둔다.
+        val started = epoch
+        val list = remote.list(token).getOrNull() ?: return
+        if (epoch != started) return
+        cards = list
+        files.keepOnly(list.map { it.id }.toSet())
+        images = files.existing()
+        // keepOnly 가 걸린 동안 비워졌을 수 있다 — 그 사이 온 그림을 또 받지 않는다.
+        if (epoch != started) return
+        fetchImages(token)
     }
 
     suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Boolean {

@@ -1351,13 +1351,31 @@ class MainActivity : ComponentActivity() {
                         photoFailure = photos.latestFailure,
                         // 「확인」 = 서버 행을 지운다. 실패 행이 남아 있으면 다음에도 같은 줄이 뜬다.
                         onDismissPhotoFailure = { failed -> scope.launch { photos.remove(failed.id) } },
-                        // 강아지가 없으면 뽑기와 같은 문을 연다. **로그인 전은 여기서 안 막는다** —
-                        // `PetNeed` 에 로그인 갈래가 없어서, 만들기 화면에서 「로그인하면 포토 카드를
-                        // 만들 수 있어요」(`PhotoCardHolder.create`)가 뜨게 둔다.
-                        onMakePhotoBlocked = if (waitsForPet && session != null) {
-                            { petNeed = PetNeed.Card }
-                        } else {
-                            null
+                        // **로그인 전 → 강아지 없음 → 만드는 중** 순서로 막는다(docs/photo-cards.md §5).
+                        // 로그인 전과 "이미 만드는 중"은 만들기 화면을 아예 안 연다 — 열면 아이 목록이
+                        // 비거나(로그인 전) 이미 도는 조회를 또 돌게 된다. 강아지가 없을 때만 기존
+                        // `PetNeed` 문을 연다. `photos.generating` 을 읽으므로 recomposition 마다
+                        // 새로 계산되어야 해서 여기서 인라인으로 만든다.
+                        onMakePhotoBlocked = when {
+                            session == null -> {
+                                {
+                                    Toast.makeText(context, "로그인하면 포토 카드를 만들 수 있어요", Toast.LENGTH_SHORT)
+                                        .show()
+                                }
+                            }
+                            waitsForPet -> {
+                                { petNeed = PetNeed.Card }
+                            }
+                            photos.generating -> {
+                                {
+                                    Toast.makeText(
+                                        context,
+                                        "만들고 있는 카드가 있어요. 끝나면 다시 시도해 주세요.",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
+                            else -> null
                         },
                         makePhoto = { startMonth, done ->
                             LaunchedEffect(Unit) { photos.clearCreateError() }

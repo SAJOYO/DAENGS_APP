@@ -3,7 +3,6 @@ package com.daengs.app.dogcard.photo
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -24,6 +23,7 @@ class PhotoCardHolderTest {
         val urls = mutableMapOf<String, String>()
         var onDownload: (suspend () -> Unit)? = null
         var onCreate: (suspend () -> Unit)? = null
+        var onList: (suspend () -> Unit)? = null
 
         override suspend fun create(token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Result<PhotoCard> {
             onCreate?.invoke()
@@ -33,8 +33,10 @@ class PhotoCardHolderTest {
             server.add(0, made)
             return Result.success(made)
         }
-        override suspend fun list(token: String) =
-            if (failList) Result.failure(IllegalStateException("서버에 닿지 못했어요.")) else Result.success(server.toList())
+        override suspend fun list(token: String): Result<List<PhotoCard>> {
+            onList?.invoke()
+            return if (failList) Result.failure(IllegalStateException("서버에 닿지 못했어요.")) else Result.success(server.toList())
+        }
         override suspend fun get(token: String, id: String): Result<PhotoCardDetail> {
             gets++
             val c = server.first { it.id == id }
@@ -86,7 +88,13 @@ class PhotoCardHolderTest {
         assertEquals(1, remote.gets)
     }
 
-    /** 목록이 통째로 사라지면 사용자는 카드가 지워진 줄 안다. */
+    /**
+     * 목록이 통째로 사라지면 사용자는 카드가 지워진 줄 안다.
+     *
+     * **`error` 는 안 남는다.** 도감을 열 때마다 도는 자리라, 여기서 `error` 를 남기면
+     * 오프라인이거나 서버 점검 중인 사람이 도감을 열 때마다 토스트를 본다 — 실패는
+     * 조용하다(docs/photo-cards.md §3). `error` 는 `remove()` 실패에만 쓴다.
+     */
     @Test
     fun `못 불러와도 들고 있던 것을 유지한다`() = runTest {
         val remote = FakeRemote().apply { server += card("a", 4, PhotoCardStatus.Generating) }
@@ -95,7 +103,23 @@ class PhotoCardHolderTest {
         remote.failList = true
         h.load()
         assertEquals(1, h.cards.size)
-        assertNotNull(h.error)
+        assertNull(h.error)
+    }
+
+    /** 목록을 받는 사이 로그아웃하면 그 응답이 늦게 와도 이전 사람 목록이 안 돌아온다. */
+    @Test
+    fun `목록을 받는 사이 비우면 이전 사람의 목록이 안 돌아온다`() = runTest {
+        val remote = FakeRemote().apply {
+            server += card("a", 4, PhotoCardStatus.Ready)
+            urls["a"] = "https://x/a.png"
+        }
+        val dir = tmp.newFolder()
+        val h = PhotoCardHolder(remote, PhotoCardFiles(dir), { "t" }, { 0L })
+        remote.onList = { h.forget() }
+        h.load()
+        assertTrue(h.cards.isEmpty())
+        assertTrue(h.images.isEmpty())
+        assertTrue(dir.listFiles { f -> f.name.endsWith(".png") }.orEmpty().isEmpty())
     }
 
     @Test
@@ -275,5 +299,15 @@ class PhotoCardHolderTest {
         h.load()
         assertFalse(h.images.containsKey("a"))
         assertFalse(java.io.File(dir, "a.png").exists())
+    }
+
+    /** 콜드스타트·오프라인에서도 방 액자·칸이 발바닥이 아니라 기기에 있던 그림을 보여준다. */
+    @Test
+    fun `켜자마자 기기에 받아 둔 그림을 쓴다`() = runTest {
+        val dir = tmp.newFolder()
+        val files = PhotoCardFiles(dir)
+        files.write("a", byteArrayOf(1, 2, 3))
+        val h = PhotoCardHolder(FakeRemote(), files, { "t" }, { 0L })
+        assertTrue(h.images.containsKey("a"))
     }
 }

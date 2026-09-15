@@ -105,7 +105,7 @@ data class DexSlot(val card: DexCard, val owned: List<OwnedCard>)
 포토 탭 머리말의 「＋ 포토 카드 만들기」 → `PhotoCardMakeScreen`(도감 위에 덮는다, 뽑기와 같은 방식).
 
 ```
-어느 카드로 만들까요?      [4월 BLOSSOM] [9월 CHUSEOK ●]     ← OPEN_PHOTO_MONTHS
+어느 카드로 만들까요?      [4월] [9월 ●]     ← OPEN_PHOTO_MONTHS
 어느 아이인가요?           [콩이 ▾]                           ← 대표가 먼저
 [ 사진 고르기 ]            → 시스템 사진 고르기 → 미리보기
 안내 한 줄: 얼굴이 정면으로 잘 보이는 사진이 잘 나와요          ← 서버 README 「정면 사진 안내」
