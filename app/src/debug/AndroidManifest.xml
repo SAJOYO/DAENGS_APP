@@ -19,6 +19,7 @@
     <application
         android:usesCleartextTraffic="true"
         tools:targetApi="28">
+        <activity android:name=".ui.walk.WalkDirectionLabActivity" android:exported="true" android:label="산책 방향 표시 검토" />
         <activity android:name="com.daengs.app.ui.walk.WalkRoutePerformanceLabActivity" android:exported="true" android:label="산책 경로 성능 비교" />
         <activity android:name=".ui.walk.TerritoryPerformanceLabActivity" android:exported="true" android:label="전봇대 성능 비교" />
         <activity android:name=".ui.walk.TerritoryPoleLabActivity" android:exported="true" android:label="전봇대 표시 검토" />
