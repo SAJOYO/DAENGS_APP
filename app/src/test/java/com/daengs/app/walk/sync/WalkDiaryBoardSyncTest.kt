@@ -71,7 +71,7 @@ class WalkDiaryBoardSyncTest {
         assertTrue(storedStoryboardAnalysisView(dao.sceneAnalysis(id), dao.entries(id)).canReview)
     }
 
-    @Test fun `preparing publication sends only the budget left since end and stops all reads after publication`() = checkDb(preparing = true) { dao ->
+    @Test fun `preparing publication sends remaining budget and only checks capabilities after publication`() = checkDb(preparing = true) { dao ->
         var posts = 0
         var requests = 0
         val sync = WalkDiarySync(dao, { "owner" }, nowMillis = { 14000 }, request = { _, path, method, body ->
@@ -95,7 +95,7 @@ class WalkDiaryBoardSyncTest {
         val requestsBeforeRefresh = requests
         sync.sync("token", id, "remote", refresh = true)
         assertEquals(1, posts)
-        assertEquals(requestsBeforeRefresh, requests)
+        assertEquals(requestsBeforeRefresh + 1, requests) // Capability check only; closed legacy board remains untouched.
         assertEquals(published, dao.diaryPublication(id)!!.publishedBundle)
     }
 
@@ -166,12 +166,19 @@ class WalkDiaryBoardSyncTest {
         assertNull(dao.diaryPublication(id)!!.publishedBundle)
     }
 
-    @Test fun `expired unpublished preparation performs no network even at the exact deadline`() = checkDb(preparing = true) { dao ->
+    @Test fun `expired preparation can discover formats but cannot request a legacy board`() = checkDb(preparing = true) { dao ->
         val state = requireNotNull(dao.diaryPublication(id))
         for (now in listOf(state.deadlineAtMillis, state.deadlineAtMillis + 1)) {
+            var checks = 0
             WalkDiarySync(dao, { "owner" }, nowMillis = { now },
-                request = { _, _, _, _ -> throw AssertionError("Expired unpublished preparation must not access HTTP") })
+                request = { _, path, method, _ ->
+                    assertEquals("/storyboard/capabilities", path)
+                    assertEquals("GET", method)
+                    checks++
+                    capability
+                })
                 .sync("token", id, "remote", refresh = true)
+            assertEquals(1, checks)
             assertEquals(state, dao.diaryPublication(id)) // No direct DAO publication concealing the expiry guard.
             assertNull(dao.sceneAnalysis(id))
         }

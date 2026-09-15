@@ -95,7 +95,6 @@ fun InviteBundleScreen(
     onCancel: (InviteBundle) -> Unit = {},
     onDismissCreated: () -> Unit = {},
     onShare: (String) -> Unit = {},
-    onCopy: (String) -> Unit = {},
     onBack: () -> Unit = {},
 ) {
     BackHandler { onBack() }
@@ -145,7 +144,6 @@ fun InviteBundleScreen(
                 petName = namesOf(created.petIds, pets),
                 link = linkOf(created.token),
                 onShare = onShare,
-                onCopy = onCopy,
                 onDismiss = onDismissCreated,
             )
         }

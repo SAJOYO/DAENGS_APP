@@ -39,9 +39,15 @@ class InviteAcceptScreenTest {
         busy: Boolean = false,
         outcome: AcceptOutcome? = null,
         canAccept: Boolean = false,
+        autoEntered: Boolean = false,
+        authProblem: com.daengs.app.pet.InviteAuthProblem? = null,
         onPaste: (String) -> Unit = {},
         onAccept: () -> Unit = {},
         onDone: () -> Unit = {},
+        onRetry: () -> Unit = {},
+        onSignIn: () -> Unit = {},
+        onJoinWithoutLink: () -> Unit = {},
+        onDismissBlockedLink: () -> Unit = {},
     ) {
         compose.setContent {
             InviteAcceptScreen(
@@ -50,11 +56,117 @@ class InviteAcceptScreenTest {
                 busy = busy,
                 outcome = outcome,
                 canAccept = canAccept,
+                autoEntered = autoEntered,
+                authProblem = authProblem,
                 onPaste = onPaste,
                 onAccept = onAccept,
                 onDone = onDone,
+                onRetry = onRetry,
+                onSignIn = onSignIn,
+                onJoinWithoutLink = onJoinWithoutLink,
+                onDismissBlockedLink = onDismissBlockedLink,
             )
         }
+    }
+
+    // -- 연결 차단 (has_other_carers) ------------------------------------------------
+
+    private val blockedLink = AcceptOutcome.Conflict(
+        "선택한 아이는 연결할 수 없어요.",
+        "link_not_allowed",
+        reason = "has_other_carers",
+        petId = "p1",
+    )
+
+    @Test
+    fun `다른 공동 보호자 때문에 막힌 연결은 안내와 두 버튼을 띄운다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), outcome = blockedLink, autoEntered = true)
+
+        compose.onNodeWithText("이 강아지는 바로 연결할 수 없어요").assertIsDisplayed()
+        compose.onNodeWithText(
+            "선택한 강아지를 함께 돌보는 보호자가 있어 다른 공동 돌봄 그룹과 연결할 수 없습니다. " +
+                "연결하지 않고 초대를 수락하거나, 기존 공동 돌봄 관계를 정리한 후 다시 시도해 주세요.",
+        ).assertIsDisplayed()
+        compose.onNodeWithText("연결 없이 참여").assertIsDisplayed()
+        compose.onNodeWithText("확인").assertIsDisplayed()
+        compose.onAllNodesWithTag("accept-error").assertCountEquals(0)
+    }
+
+    /** 두 버튼은 각자 콜백만 부른다. **수락은 부르지 않는다** — 사용자가 최종 버튼을 다시 눌러야 한다. */
+    @Test
+    fun `연결 없이 참여와 확인은 수락을 부르지 않는다`() {
+        var joined = 0
+        var dismissed = 0
+        var accepted = 0
+        screen(
+            pasted = link,
+            parsed = InvitePaste.Result.Found(token),
+            outcome = blockedLink,
+            canAccept = true,
+            onJoinWithoutLink = { joined++ },
+            onDismissBlockedLink = { dismissed++ },
+            onAccept = { accepted++ },
+        )
+
+        compose.onNodeWithText("연결 없이 참여").performClick()
+        compose.onNodeWithText("확인").performClick()
+
+        assertEquals(1, joined)
+        assertEquals(1, dismissed)
+        assertEquals(0, accepted)
+    }
+
+    @Test
+    fun `다른 409 는 안내 없이 기존 문장만 보인다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), outcome = AcceptOutcome.Conflict("돌보는 아이가 너무 많습니다."))
+
+        compose.onNodeWithTag("accept-error").assertExists()
+        compose.onAllNodesWithText("이 강아지는 바로 연결할 수 없어요").assertCountEquals(0)
+    }
+
+    // -- 세션 문제 --------------------------------------------------------------
+
+    /** 세션을 못 받았으면 이유를 말하고, 수락 대신 다시 시도를 준다. 다시 시도는 수락을 안 부른다. */
+    @Test
+    fun `서버에 못 닿으면 안내와 다시 시도를 주고 수락을 막는다`() {
+        var retried = 0
+        var accepted = 0
+        screen(
+            pasted = link,
+            parsed = InvitePaste.Result.Found(token),
+            canAccept = true,
+            autoEntered = true,
+            authProblem = com.daengs.app.pet.InviteAuthProblem.Unreachable,
+            onRetry = { retried++ },
+            onAccept = { accepted++ },
+        )
+
+        compose.onNodeWithTag("accept-unreachable").assertIsDisplayed()
+        compose.onNodeWithTag("accept-submit").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("accept-retry").performScrollTo().performClick()
+
+        assertEquals(1, retried)
+        assertEquals(0, accepted)
+    }
+
+    @Test
+    fun `로그인이 만료되면 다시 로그인을 권하고 수락을 막는다`() {
+        var signedIn = 0
+        screen(
+            pasted = link,
+            parsed = InvitePaste.Result.Found(token),
+            canAccept = true,
+            autoEntered = true,
+            authProblem = com.daengs.app.pet.InviteAuthProblem.LoginRequired,
+            onSignIn = { signedIn++ },
+        )
+
+        compose.onNodeWithTag("accept-login-required").assertIsDisplayed()
+        compose.onAllNodesWithTag("accept-retry").assertCountEquals(0)
+        compose.onNodeWithTag("accept-submit").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("accept-sign-in").performScrollTo().performClick()
+
+        assertEquals(1, signedIn)
     }
 
     // -- 입력 -----------------------------------------------------------------
@@ -92,6 +204,28 @@ class InviteAcceptScreenTest {
 
         compose.onNodeWithTag("accept-ambiguous").assertIsDisplayed()
         compose.onNodeWithTag("accept-submit").assertIsNotEnabled()
+    }
+
+    // -- App Links 자동 진입 -----------------------------------------------------
+
+    /** 링크를 눌러서 왔으면 붙여넣기 칸과 "찾았어요" 안내를 다시 보여줄 이유가 없다. */
+    @Test
+    fun `자동 진입에서는 붙여넣기 칸과 찾았다는 안내를 숨긴다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), canAccept = true, autoEntered = true)
+
+        compose.onAllNodesWithTag("accept-input").assertCountEquals(0)
+        compose.onAllNodesWithTag("accept-link-ok").assertCountEquals(0)
+        // 그래도 수락 버튼은 그대로 있고 눌린다 — 링크만으로 자동 수락되는 것은 아니다.
+        compose.onNodeWithTag("accept-submit").assertIsEnabled()
+    }
+
+    /** 수동 붙여넣기 경로는 그대로다 — autoEntered 가 기본값(false)이면 예전과 같다. */
+    @Test
+    fun `수동 경로는 자동 진입 화면을 숨기지 않는다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), canAccept = true)
+
+        compose.onNodeWithTag("accept-input").assertIsDisplayed()
+        compose.onNodeWithTag("accept-link-ok").assertIsDisplayed()
     }
 
     // -- 확인 -----------------------------------------------------------------

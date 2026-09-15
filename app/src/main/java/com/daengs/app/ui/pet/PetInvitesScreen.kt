@@ -78,7 +78,6 @@ fun PetInvitesScreen(
     onCancel: (PetInvite) -> Unit = {},
     onDismissCreated: () -> Unit = {},
     onShare: (String) -> Unit = {},
-    onCopy: (String) -> Unit = {},
     onBack: () -> Unit = {},
 ) {
     BackHandler { onBack() }
@@ -122,7 +121,6 @@ fun PetInvitesScreen(
                 petName = petName,
                 link = linkOf(created.token),
                 onShare = onShare,
-                onCopy = onCopy,
                 onDismiss = onDismissCreated,
             )
         }
@@ -213,14 +211,13 @@ private fun CreateRow(activeCount: Int, enabled: Boolean, onCreate: () -> Unit) 
  *
  * **묶음 초대([InviteBundleScreen])도 같은 것을 쓴다** — 그쪽은 [petName] 자리에 담긴
  * 아이들 이름을 이어 붙여 넘긴다. 초대장이 두 벌이 되면 토큰을
- * 다루는 규칙(글자로 안 띄운다·공유와 복사 둘뿐)이 두 군데로 갈린다.
+ * 다루는 규칙(글자로 안 띄운다·내보내는 길은 공유 하나)이 두 군데로 갈린다.
  */
 @Composable
 internal fun InviteTicket(
     petName: String?,
     link: String?,
     onShare: (String) -> Unit,
-    onCopy: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     Surface(
@@ -266,14 +263,23 @@ internal fun InviteTicket(
                 )
             } else {
                 // **링크 글자 자체는 안 보여 준다.** 화면에 띄워 두면 스크린샷·어깨너머로
-                // 토큰이 샌다. 내보내는 길은 공유와 복사 둘뿐이다.
+                // 토큰이 샌다. 내보내는 길은 공유 하나다.
+                //
+                // **복사 버튼을 두지 않는다.** 한 초대장은 한 사람만 수락하는데, 복사가 따로
+                // 있으면 여럿에게 돌리는 공용 링크로 읽혔다. 재전달을 막는 장치가 아니라
+                // 오해를 줄이려는 것이다 — 받는 쪽 웹 안내의 복사는 폴백이라 그대로 둔다.
                 val message = InviteShare.message(petName, link)
                 DaengsWideButton(
                     label = "초대 링크 공유하기",
                     onClick = { onShare(message) },
                     modifier = Modifier.testTag("ticket-share"),
                 )
-                DaengsTextAction("링크 복사", { onCopy(link) }, tint = DaengPinkDeep)
+                Text(
+                    "한 사람만 수락할 수 있어요.\n다른 보호자는 새 초대장을 만들어 초대해 주세요.",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.testTag("ticket-one-recipient"),
+                )
             }
         }
     }

@@ -62,7 +62,7 @@ class InviteAcceptApi(private val baseUrl: () -> String = { BuildConfig.API_BASE
                         404 -> AcceptOutcome.NotFound
                         410 -> AcceptOutcome.Expired
                         409 -> it.failure("지금은 참여할 수 없어요.").let { f ->
-                            AcceptOutcome.Conflict(f.message, f.code, f.missingPetIds, f.reason)
+                            AcceptOutcome.Conflict(f.message, f.code, f.missingPetIds, f.reason, f.petId)
                         }
                         422 -> it.failure("초대 정보가 바뀌었어요. 다시 불러와 주세요.").let { f ->
                             AcceptOutcome.Invalid(f.message, f.code)

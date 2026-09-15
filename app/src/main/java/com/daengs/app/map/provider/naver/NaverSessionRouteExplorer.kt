@@ -1,9 +1,17 @@
 package com.daengs.app.map.provider.naver
 
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.graphics.PointF
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.daengs.app.R
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.map.layers.completedroute.*
@@ -21,15 +29,25 @@ internal fun NaverSessionRouteExplorer(
     size: IntSize, bottomPadding: Int, density: Float,
     onDirectionCount: (Int) -> Unit,
     markerBounds: List<com.daengs.app.map.layout.MarkerRect> = emptyList(),
+    cursorAvatarRes: Int? = null,
+    cursorAvatarPhoto: Bitmap? = null,
 ) {
     val arrowIcon = remember { OverlayImage.fromResource(R.drawable.ic_walk_external_direction) }
-    val cursorIcon = remember { OverlayImage.fromResource(R.drawable.ic_walk_replay_cursor) }
+    val context = LocalContext.current
+    val cursorSize = (34 * density).toInt().coerceAtLeast(1)
+    val cursorIcon = remember(context, cursorAvatarRes, cursorAvatarPhoto, cursorSize, density) {
+        OverlayImage.fromBitmap(requireNotNull(locationAvatarBitmap(context, cursorAvatarPhoto,
+            locationFaceRes(cursorAvatarRes), cursorSize, 2 * density)))
+    }
     val latestCount by rememberUpdatedState(onDirectionCount)
     val highlight = state?.highlightPaths.orEmpty()
     val parts = state?.observedParts.orEmpty()
+    // Camera/viewport/marker-bound changes retain source anchors. Another route or map starts fresh.
+    val previousDirections = remember(map, state != null, paths, highlight, state?.useOverviewDirections, parts) {
+        mutableListOf<RouteDirectionArrow>()
+    }
     DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight, state?.useOverviewDirections, parts, markerBounds) {
         val arrows = mutableListOf<Marker>()
-        var sides = emptyMap<String, Int>()
         fun clear() { arrows.forEach { it.map = null }; arrows.clear() }
         fun redraw() {
             clear()
@@ -56,10 +74,11 @@ internal fun NaverSessionRouteExplorer(
                     it.x + 28 * density, it.y + 14 * density)
             } + markerBounds.map { RouteScreenRect(it.left*density, it.top*density, it.right*density, it.bottom*density) } +
                 RouteScreenRect(size.width - 68.0 * density, 0.0, size.width.toDouble(), 68.0 * density)
-            val placements = placeRouteDirections(edges, visible, exclusions, density.toDouble(), sides,
+            val placements = placeRouteDirections(edges, visible, exclusions, density.toDouble(), previousDirections,
                 distinguishPasses = highlight.isNotEmpty() || parts.any { it.selected },
                 collisionEdges = projectEdges(paths + parts.filterNot { it.selected }.map { it.path }))
-            sides = placements.associate { it.id to it.side }
+            previousDirections.clear()
+            previousDirections.addAll(placements)
             for (placement in placements) {
                 val coordinate = projection.fromScreenLocation(PointF(placement.center.x.toFloat(), placement.center.y.toFloat()))
                 if (!coordinate.isValid) continue
@@ -67,7 +86,7 @@ internal fun NaverSessionRouteExplorer(
                     parts.firstOrNull { placement.id.startsWith(it.id + ":") }?.let {
                         iconTintColor = RecordPresentationPolicy.stroke(it.role, it.selected || parts.any { p -> p.id == it.id && p.selected }).color
                     }
-                    width = (24 * density).toInt(); height = width
+                    width = (RouteDirectionPolicy.iconSizeDp * density).toInt(); height = width
                     anchor = PointF(.5f, .5f); angle = placement.angle
                     isFlat = false; zIndex = 110
                     this.map = map
@@ -116,9 +135,12 @@ internal fun NaverSessionRouteExplorer(
     }
     val cursor = remember(map, state != null) {
         if (map == null || state == null) null else Marker().apply {
-            icon = cursorIcon; anchor = PointF(.5f, .5f); zIndex = 160
-            width = (24 * density).toInt(); height = width
+            anchor = PointF(.5f, .5f); zIndex = 160
+            icon = cursorIcon; width = cursorSize; height = cursorSize
         }
+    }
+    LaunchedEffect(cursor, cursorIcon, cursorSize) {
+        cursor?.let { it.icon = cursorIcon; it.width = cursorSize; it.height = cursorSize }
     }
     SideEffect {
         val point = state?.cursor
@@ -129,4 +151,14 @@ internal fun NaverSessionRouteExplorer(
         }
     }
     DisposableEffect(cursor) { onDispose { cursor?.map = null } }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun ReplayParticipantAvatarPreview() {
+    val context = LocalContext.current
+    val bitmap = remember(context) {
+        requireNotNull(locationAvatarBitmap(context, null, R.drawable.ic_location_paw, 102, 6f))
+    }
+    Image(bitmap.asImageBitmap(), "산책 재생 위치", Modifier.size(34.dp))
 }

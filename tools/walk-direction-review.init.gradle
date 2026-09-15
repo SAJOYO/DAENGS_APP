@@ -1,0 +1,9 @@
+// Native direction review only; keep the user's installed app and data separate.
+allprojects { project ->
+    project.plugins.withId('com.android.application') {
+        project.androidComponents.finalizeDsl { android ->
+            android.buildTypes.debug.applicationIdSuffix = '.directionreview'
+            android.buildTypes.debug.manifestPlaceholders['appLabel'] = '댕스 방향 검토'
+        }
+    }
+}

@@ -17,6 +17,9 @@ data class DiarySceneContent(
     val locationAtMillis: Long? = null,
     val positionState: String? = null,
     val publishedWriting: PublishedCardWriting? = null,
+    val administrativeAddress: DiarySceneAddress? = null,
+    val temperatureC: Double? = null,
+    val temperatureObservation: DiarySceneTemperature? = null,
 )
 
 data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int, val showFailureNotice: Boolean = true) {
@@ -146,11 +149,9 @@ object ServerDiaryBundle {
         }
         // Keep explicit address data; never stringify arbitrary dictionaries for the reader.
         val places = obj.getJSONArray("place_reference")
-        val address = (0 until places.length()).mapNotNull {
-            val piece = places.getJSONObject(it)
-            require(piece.getString("kind") == "place_reference")
-            piece.getJSONObject("facts").optString("dong").takeIf(String::isNotBlank)
-        }.distinct().joinToString(" · ").ifBlank { null }
+        val administrativeAddress = sceneAddress(places)
+        val address = administrativeAddress?.cardLabel()
+        val temperature = sceneTemperature(obj, at)
         val label = when {
             state == "provisional" -> "위치 확인 중"
             method == "estimated" -> "동선에서 추정한 위치"
@@ -161,7 +162,9 @@ object ServerDiaryBundle {
         return StoryboardScene(id, at, title, body, "$label\n$original", storyboardHash(canonicalJson(obj)),
             sourcePayload = obj.toString(), entryReference = entry, observation = observation,
             diary = DiarySceneContent(original, kind, photoId, point.takeUnless { state == "provisional" }, label, address, order,
-                locationMethod = method, locationAtMillis = locationAt, positionState = state))
+                locationMethod = method, locationAtMillis = locationAt, positionState = state,
+                administrativeAddress = administrativeAddress, temperatureC = temperature?.celsius,
+                temperatureObservation = temperature))
     }
 }
 

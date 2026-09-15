@@ -65,6 +65,8 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
     /** Combined record presentation. sceneFocus remains the unchanged walking-only correspondence. */
     fun recordSceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
         measurementReview?.let { return it.focus(scene, entry) }
+        if (scene.relational != null && scene.source?.observation == null)
+            return SceneRouteFocus(SceneRouteRelation.NO_ROUTE, point = scene.point)
         val walking = sceneFocus(scene, entry)
         return if (walking.relation == SceneRouteRelation.CONNECTED) walking
             else observed.sceneFocus(scene, entry) ?: walking
@@ -72,6 +74,8 @@ internal class CompletedRouteReview(val detail: WalkSessionDetail) {
 
     fun sceneFocus(scene: DiaryScene, entry: WalkEntry? = null): SceneRouteFocus {
         measurementReview?.let { return it.focus(scene, entry) }
+        if (scene.relational != null && scene.source?.observation == null)
+            return SceneRouteFocus(SceneRouteRelation.NO_ROUTE, point = scene.point)
         fun unavailable(relation: SceneRouteRelation = SceneRouteRelation.NO_ROUTE) = SceneRouteFocus(relation)
         if (scene.sessionId != summary.sessionId || summary.endedAtMillis == null ||
             scene.atMillis !in summary.startedAtMillis..summary.endedAtMillis) return unavailable()

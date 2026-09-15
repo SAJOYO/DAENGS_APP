@@ -86,9 +86,16 @@
              **이머시브 무대가 그대로 닫힌다** (눕히기 버튼을 눌러도 무대가 사라지고
              세로로 돌아왔다). Compose 는 설정 변경을 재구성으로 받으므로 이 넷을
              우리가 받아도 따로 할 일이 없다. -->
+        <!-- ⚠️ singleTop — 앱이 떠 있을 때 초대 링크(카톡·Chrome 은 NEW_TASK 로 보낸다)가
+             standard 모드에서는 `onNewIntent` 가 아니라 **MainActivity 를 하나 더 쌓았다.**
+             에뮬레이터에서 링크 넷에 인스턴스 넷이 쌓였고, 링크로 연 뒤 런처 아이콘을
+             눌러도 하나가 더 생겼다. 인스턴스마다 ViewModel 이 따로라 같은 링크 중복 판정도,
+             로그아웃 정리도 위에 있는 하나에만 먹는다. 알림 PendingIntent 는 이미
+             SINGLE_TOP 플래그를 달고 있어 동작이 같다. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="${appLabel}"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:screenOrientation="portrait"
@@ -106,6 +113,29 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 공동 돌봄 초대 링크. `InviteLink.HOST`·`PATH` 와 반드시 같은 값이다 —
+                 갈라지면 링크를 열어도 앱이 안 뜬다. android:host 는 늘 운영 도메인이다
+                 (`InviteLink.of` 의 DEV_HOST 는 링크를 "만들 때"만 쓰는 예외이고, 받는 쪽
+                 매니페스트와는 무관하다 — 개발 서버로 만든 링크도 이 운영 호스트로 나간다).
+
+                 **`autoVerify="true"` 만으로 바로 열리지 않는다.** Android 가 이 앱의
+                 서명 인증서 지문이 `https://daengapi.weareithero.cloud/.well-known/assetlinks.json`
+                 에 있는지 실제로 확인해야 "검증됨"이 된다 — 그 파일에 진짜 Play 서명
+                 지문이 올라가기 전까지는 이 필터가 있어도 링크는 그냥 브라우저로 간다
+                 (그래서 웹 `/invite` 페이지가 fallback 으로 필요하다). 토큰은 프래그먼트에
+                 있어 `path` 매칭에는 안 걸린다 — `InviteLink.tokenOf` 참고. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="daengapi.weareithero.cloud"
+                    android:path="/invite" />
             </intent-filter>
         </activity>
 

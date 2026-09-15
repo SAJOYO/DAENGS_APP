@@ -38,6 +38,8 @@ data class CardPop(val subject: String, val fit: ImmersiveScene.Fit)
 enum class DexDeck(val label: String) {
     Veggie("야채"),
     Fruit("과일"),
+    /** 서버가 사진 한 장으로 그려 준 달별 카드 (`PhotoCards.kt`). */
+    Photo("포토"),
 }
 
 @Immutable

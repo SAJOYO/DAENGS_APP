@@ -79,11 +79,11 @@ class WalkRecordsRouteTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-sync-notice").assertExists()
         replaceSearch("기록")
-        waitText("선택 산책 8회")
+        waitText("산책 8회")
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-dog-dog-1").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
-        waitText("선택 산책 8회")
+        waitText("산책 8회")
         compose.onNodeWithText("다음 ›").performClick()
         waitText("2 페이지")
         compose.onNodeWithText("기록-3").performClick()
@@ -175,10 +175,10 @@ class WalkRecordsRouteTest {
         compose.onNodeWithText("B의 기록").performClick()
         waitText("실제 상세 자리: record-9")
         compose.runOnIdle { currentAccount.value = AccountScope("owner-a", 3) }
-        waitText("선택 산책 8회")
+        waitText("산책 8회")
         compose.onNodeWithTag("records-test-detail").assertDoesNotExist()
         replaceSearch("기록")
-        waitText("선택 산책 8회")
+        waitText("산책 8회")
         compose.onNodeWithText("다음 ›").performClick()
         waitText("2 페이지")
         compose.runOnIdle { currentAccount.value = AccountScope("owner-a", 4) }
@@ -209,6 +209,45 @@ class WalkRecordsRouteTest {
         assertEquals(1, backs.get())
         assertEquals(0, syncs.get())
         assertEquals(0, details.get())
+    }
+
+    @Test fun `shared walks open from records as a separate read-only screen without my own walks`() {
+        val reader = object : com.daengs.app.walk.shared.SharedWalkReader {
+            override suspend fun list(accessToken: String, petId: String, cursor: String?, limit: Int) =
+                com.daengs.app.walk.shared.SharedWalkResult.Ready(com.daengs.app.walk.shared.SharedWalkPage(petId, listOf(
+                    com.daengs.app.walk.shared.SharedWalk("shared-1", 1L, 2L, 60L, null, null,
+                        com.daengs.app.care.CareActor("u2", "키키"), false, listOf(petId)),
+                    com.daengs.app.walk.shared.SharedWalk("mine-1", 1L, 2L, 60L, null, null,
+                        com.daengs.app.care.CareActor("owner-a", "나"), true, listOf(petId)),
+                ), null))
+            override suspend fun detail(accessToken: String, petId: String, walkId: String) =
+                com.daengs.app.walk.shared.SharedWalkResult.Unsupported
+        }
+        val holder = com.daengs.app.walk.shared.SharedWalksHolder(reader, accessToken = { "sample-token" },
+            isCurrentAccount = { true })
+        val source = WalkRecordsSource { query -> selectWalkRecords(records, query) }
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            val state = rememberWalkRecordsRouteState(account)
+            WalkRecordsRoute(account, source, state, pets, {}, {}, {}, { id, back -> TestDetail(id, back) },
+                sharedWalks = holder)
+        } } }
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-shared-open").performClick()
+        waitText("키키님이 다녀왔어요")
+        compose.onNodeWithText("나님이 다녀왔어요").assertDoesNotExist()
+        compose.onNodeWithText("기록-8").assertDoesNotExist()
+        compose.onNodeWithTag("shared-walks-back").performClick()
+        waitText("1 페이지")
+    }
+
+    @Test fun `records without a shared holder show no shared entry`() {
+        val source = WalkRecordsSource { query -> selectWalkRecords(records, query) }
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            val state = rememberWalkRecordsRouteState(account)
+            WalkRecordsRoute(account, source, state, pets, {}, {}, {}, { id, back -> TestDetail(id, back) })
+        } } }
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-shared-open").assertDoesNotExist()
     }
 
     private fun backFromDetail() = compose.onNodeWithTag("records-test-detail-back").performClick()

@@ -12,6 +12,17 @@ internal fun measuredTimedDetail(clockCorrection: Boolean = false): WalkSessionD
 }
 
 class MeasurementTimelineTest {
+    @Test fun `display speed follows the replay edge and remains absent in gaps`() {
+        val original = CompletedRouteReview(measuredTimedDetail()).timeline!!
+        val shifted = CompletedRouteReview(measuredTimedDetail(true)).timeline!!
+        for (at in listOf(13_000L, 57_000L)) {
+            val speed = original.frameAt(at).derivedSpeedMetersPerSecond
+            assertNotNull(speed)
+            assertTrue(speed!! >= 0 && speed.isFinite())
+            assertEquals(speed, shifted.frameAt(at).derivedSpeedMetersPerSecond)
+        }
+        assertNull(original.frameAt(30_000).derivedSpeedMetersPerSecond)
+    }
     @Test fun `large boot clocks are subtracted before adding recording offsets`() {
         val base = measuredSceneDetail(secondVisit = true)
         val boot = Long.MAX_VALUE - 12_000_000_000L

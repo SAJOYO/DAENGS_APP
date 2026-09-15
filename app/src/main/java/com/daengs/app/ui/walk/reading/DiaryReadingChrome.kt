@@ -36,7 +36,7 @@ internal fun DiaryReadingTabs(count: Int, explorer: Boolean, onScenes: () -> Uni
             verticalAlignment = Alignment.CenterVertically) {
             DiaryReadingTab("장면 $count", !explorer, onScenes)
             Spacer(Modifier.width(20.dp))
-            DiaryReadingTab("동선 탐색", explorer, onExplorer)
+            DiaryReadingTab("걸어온 길", explorer, onExplorer)
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onLower, enabled = canLower, modifier = Modifier.size(48.dp)
                 .semantics { contentDescription = "서랍 접기" }) { DiaryReadingChevron(false, canLower) }

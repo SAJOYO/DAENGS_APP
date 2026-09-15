@@ -29,7 +29,12 @@ class PetCardMembersRowTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun pet(id: String, isOwner: Boolean) = Pet(
+    private fun pet(
+        id: String,
+        isOwner: Boolean,
+        isGroupOwner: Boolean = isOwner,
+        hasOtherCarers: Boolean = false,
+    ) = Pet(
         id = id,
         name = if (isOwner) "네옹" else "몽이",
         breed = DogBreed.BEAGLE.id,
@@ -40,6 +45,8 @@ class PetCardMembersRowTest {
         birthDateKind = null,
         isPrimary = isOwner,
         isOwner = isOwner,
+        isGroupOwner = isGroupOwner,
+        hasOtherCarers = hasOtherCarers,
     )
 
     private fun screen(pets: List<Pet>, onOpenMembers: (Pet) -> Unit, onEditPet: (Pet) -> Unit = {}) {
@@ -100,5 +107,55 @@ class PetCardMembersRowTest {
         screen(listOf(pet("mine", isOwner = true), pet("shared", isOwner = false)), onOpenMembers = {})
 
         compose.onAllNodesWithText("함께 돌보는 사람").assertCountEquals(2)
+    }
+
+    // -- 공동 돌봄 뱃지 --------------------------------------------------------------
+
+    /**
+     * 기존 강아지와 연결한 공동 보호자의 카드(`display_pet_id` = 자기 행). 자기 행의 대표라
+     * `isOwner` 는 true 인데 그룹 주보호자는 남이다 — 행 기준으로 가르면 뱃지가 사라진다.
+     */
+    @Test
+    fun `연결한 공동 보호자의 자기 행 카드에도 공동 돌봄 뱃지가 보인다`() {
+        screen(listOf(pet("linked", isOwner = true, isGroupOwner = false)), onOpenMembers = {})
+
+        compose.onNodeWithText("공동 돌봄").assertIsDisplayed()
+    }
+
+    @Test
+    fun `연결 없이 돌보미로 참여한 아이에도 뱃지가 보인다`() {
+        screen(listOf(pet("shared", isOwner = false)), onOpenMembers = {})
+
+        compose.onNodeWithText("공동 돌봄").assertIsDisplayed()
+    }
+
+    /**
+     * 공동 보호자를 둔 **그룹 주보호자 본인** 카드. `isOwner`·`isGroupOwner` 가 둘 다 true 라
+     * 혼자 등록한 아이와 같은 값이다 — 서버 `has_other_carers` 로만 갈린다.
+     */
+    @Test
+    fun `다른 보호자가 있는 그룹 주보호자 카드에도 뱃지가 보인다`() {
+        screen(listOf(pet("co", isOwner = true, isGroupOwner = true, hasOtherCarers = true)), onOpenMembers = {})
+
+        compose.onNodeWithText("공동 돌봄").assertIsDisplayed()
+    }
+
+    /** 뱃지 자리는 빈칸으로 남지만 **글자는 없어야** 한다 — 화면 읽기가 없는 뱃지를 읽으면 안 된다. */
+    @Test
+    fun `혼자 돌보는 아이에는 뱃지가 없다`() {
+        screen(listOf(pet("mine", isOwner = true)), onOpenMembers = {})
+
+        compose.onAllNodesWithText("공동 돌봄", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `뱃지 조건표`() {
+        fun badge(isOwner: Boolean, isGroupOwner: Boolean, hasOtherCarers: Boolean) =
+            showsCoCareBadge(pet("p", isOwner, isGroupOwner, hasOtherCarers))
+
+        assertEquals("그룹 주보호자 + 다른 보호자", true, badge(true, true, true))
+        assertEquals("혼자 돌봄", false, badge(true, true, false))
+        assertEquals("연결한 공동 보호자 자기 행", true, badge(true, false, false))
+        assertEquals("연결 없이 참여한 돌보미", true, badge(false, false, false))
     }
 }

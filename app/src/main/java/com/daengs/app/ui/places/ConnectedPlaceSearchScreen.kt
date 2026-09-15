@@ -265,7 +265,6 @@ fun ConnectedPlaceSearchScreen(
                         },
                         onCancel = { onAction(PlacesAction.CancelAi) },
                         onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,
-                        avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
                         searchContext = if (display.origin == null) "검색 지역을 먼저 정해 줘"
                             else "현재 검색 지역 · 반경 " + if (display.radiusMeters % 1000 == 0) "${display.radiusMeters / 1000}km" else "${display.radiusMeters}m",
                         details = if (state.conversationAvailable) ({

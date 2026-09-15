@@ -2,6 +2,8 @@ package com.daengs.app.ui.dex
 
 import androidx.compose.ui.unit.IntRect
 import com.daengs.app.dogcard.DrawnCard
+import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.PhotoCardStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,7 +54,7 @@ class DexSlotsTest {
     fun `칸 안에서 최근이 앞이다`() {
         val slots = dexSlots(drawn = listOf(card("cabbage", 10), card("cabbage", 30), card("cabbage", 20)))
         val owned = slots.first { it.card.id == "cabbage" }.owned
-        assertEquals(listOf(30L, 20L, 10L), owned.map { it.drawnAtMillis })
+        assertEquals(listOf(30L, 20L, 10L), owned.map { it.madeAtMillis })
     }
 
     @Test
@@ -106,5 +108,65 @@ class DexSlotsTest {
         val cabbage = after.first { it.card.id == "cabbage" }
         assertFalse(cabbage.locked)
         assertEquals(1, cabbage.count)
+    }
+
+    private fun photo(id: String, month: Int, status: PhotoCardStatus, at: Long) = PhotoCard(
+        id = id, dogId = null, month = month, dogName = "콩이", title = "T",
+        status = status, errorCode = null, likeness = null, createdAtMillis = at,
+    )
+
+    private val all = DEX_CARDS + PHOTO_CARDS
+
+    @Test
+    fun `포토는 달 칸에 겹치고 최근이 앞이다`() {
+        val slots = dexSlots(all, emptyList(), listOf(photo("a", 4, PhotoCardStatus.Ready, 10), photo("b", 4, PhotoCardStatus.Ready, 20)))
+        val april = slots.first { it.card.id == "photo-04" }
+        assertEquals(listOf("b", "a"), april.owned.map { it.id })
+        assertTrue(slots.first { it.card.id == "photo-09" }.locked)
+    }
+
+    /** 실패한 카드는 칸을 열지 않는다 — 머리말의 한 줄이 알린다. */
+    @Test
+    fun `실패한 포토는 칸에 안 들어간다`() {
+        val slots = dexSlots(all, emptyList(), listOf(photo("x", 9, PhotoCardStatus.Failed, 10)))
+        assertTrue(slots.first { it.card.id == "photo-09" }.locked)
+    }
+
+    /** 만드는 중이면 칸은 열리지만 아직 "만든 장수" 는 아니다. */
+    @Test
+    fun `만드는 중인 포토는 칸을 열되 장수에는 안 센다`() {
+        val slots = dexSlots(all, emptyList(), listOf(photo("g", 9, PhotoCardStatus.Generating, 10)))
+        val sep = slots.first { it.card.id == "photo-09" }
+        assertFalse(sep.locked)
+        assertEquals(0, sep.drawnCount)
+        assertTrue((sep.owned.single() as OwnedCard.Photo).pending)
+    }
+
+    @Test
+    fun `완성인데 그림 파일이 있어야 만든 장으로 센다`() {
+        val ready = photo("r", 4, PhotoCardStatus.Ready, 10)
+        val noFile = dexSlots(all, emptyList(), listOf(ready)).first { it.card.id == "photo-04" }
+        assertEquals(0, noFile.drawnCount)
+        val withFile = dexSlots(all, emptyList(), listOf(ready), mapOf("r" to java.io.File("r.png")))
+            .first { it.card.id == "photo-04" }
+        assertEquals(1, withFile.drawnCount)
+        assertFalse((withFile.owned.single() as OwnedCard.Photo).pending)
+    }
+
+    @Test
+    fun `포토를 넣어도 야채 칸은 그대로다`() {
+        val before = dexSlots(drawn = listOf(card("cabbage", 10)))
+        val after = dexSlots(all, listOf(card("cabbage", 10)), listOf(photo("a", 4, PhotoCardStatus.Ready, 5)))
+        assertEquals(before.map { it.card.id to it.count }, after.take(DEX_CARDS.size).map { it.card.id to it.count })
+    }
+
+    @Test
+    fun `포토 표지는 파일이고 파일이 없으면 빈 판이다`() {
+        val april = photoCardFor(4)!!
+        assertEquals(null, coverOf(april, null))
+        assertEquals(null, coverOf(april, OwnedCardArt(drawn = null, photoFile = null)))
+        val f = java.io.File("a.png")
+        assertEquals(CardArt.Local(f), coverOf(april, OwnedCardArt(drawn = null, photoFile = f)))
+        assertEquals(CardArt.Asset("neo-hologram/art/cabbage.webp"), coverOf(DEX_CARDS.first(), null))
     }
 }

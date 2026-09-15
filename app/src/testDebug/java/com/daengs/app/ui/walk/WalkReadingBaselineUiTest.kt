@@ -57,7 +57,7 @@ class WalkReadingBaselineUiTest {
     private fun seek(millis: Float) = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
         .performSemanticsAction(SemanticsActions.SetProgress) { it(millis) }
     private fun speedAndPause() {
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithContentDescription("재생 속도").performClick()
         compose.onNodeWithText("16×").performClick()
         compose.onNodeWithText("동선 재생").performClick()
@@ -108,7 +108,7 @@ class WalkReadingBaselineUiTest {
         fold()
         assertTrue(top() > middle)
         compose.onNodeWithText("16×").assertIsNotDisplayed()
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithText("16×").assertIsDisplayed()
         compose.onNodeWithText("일시정지").assertDoesNotExist()
         assertEquals(middle, top(), 1f)
@@ -169,7 +169,7 @@ class WalkReadingBaselineUiTest {
             assertNull(input!!.scene.sessionExplorer!!.cursor)
             assertNull(input!!.scene.sessionExplorer!!.recordContext!!.selectedGapGuide)
         }
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithText("16×").assertIsDisplayed()
         compose.onNodeWithText("동선 재생").assertIsDisplayed()
         compose.onNodeWithText("일시정지").assertDoesNotExist()

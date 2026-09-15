@@ -99,7 +99,7 @@ internal fun diaryWalkingBounds(detail: WalkSessionDetail, review: CompletedRout
 
 /** Count scene identities, including every number sharing a marker, at its actual display position. */
 internal fun diaryVisibilityTargets(scenes: List<DiaryScene>): List<MapLocationTarget> =
-    diaryLocationGroups(scenes.filter { it.point?.isDiaryLocation() == true }).flatMap { group ->
+    diaryLocationGroups(scenes.filter { !it.isWalkBoundary() && it.point?.isDiaryLocation() == true }).flatMap { group ->
         group.map { it.id to requireNotNull(group.first().point) }
     }.groupBy({ it.first }, { it.second }).map { (id, points) -> MapLocationTarget(id, points.distinct()) }
 

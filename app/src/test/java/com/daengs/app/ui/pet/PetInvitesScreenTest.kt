@@ -53,7 +53,6 @@ class PetInvitesScreenTest {
         onCreate: () -> Unit = {},
         onCancel: (PetInvite) -> Unit = {},
         onShare: (String) -> Unit = {},
-        onCopy: (String) -> Unit = {},
         onDismissCreated: () -> Unit = {},
     ) {
         compose.setContent {
@@ -72,7 +71,6 @@ class PetInvitesScreenTest {
                 onCreate = onCreate,
                 onCancel = onCancel,
                 onShare = onShare,
-                onCopy = onCopy,
                 onDismissCreated = onDismissCreated,
             )
         }
@@ -200,18 +198,14 @@ class PetInvitesScreenTest {
         assertTrue(shared!!.endsWith(fakeLink))
     }
 
-    /** 복사는 링크만 넘긴다 — 안내 문구까지 클립보드에 넣지 않는다. */
+    /** 한 초대장은 한 사람만 수락한다 — 복사 버튼이 따로 있으면 공용 링크로 읽힌다. */
     @Test
-    fun `링크 복사는 눌렀을 때 링크만 넘긴다`() {
-        var copied: String? = null
-        screen(
-            justCreated = CreatedInvite("live", "p1", "fake-token", now + 24 * hour),
-            onCopy = { copied = it },
-        )
+    fun `초대장에는 복사 버튼 없이 한 사람만 수락한다고 알린다`() {
+        screen(justCreated = CreatedInvite("live", "p1", "fake-token", now + 24 * hour))
 
-        compose.onNodeWithText("링크 복사").performClick()
-
-        assertEquals(fakeLink, copied)
+        compose.onNodeWithText("초대 링크 공유하기").assertIsDisplayed()
+        compose.onAllNodesWithText("링크 복사").assertCountEquals(0)
+        compose.onNodeWithTag("ticket-one-recipient").assertIsDisplayed()
     }
 
     @Test

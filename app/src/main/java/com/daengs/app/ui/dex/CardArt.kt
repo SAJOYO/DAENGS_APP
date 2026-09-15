@@ -37,8 +37,11 @@ sealed interface CardArt {
     data class Local(val file: File) : CardArt
 }
 
-/** 카탈로그 카드의 그림 자리. */
-val DexCard.artSource: CardArt get() = CardArt.Asset(art)
+/**
+ * 카탈로그 카드의 그림 자리. **포토 카드는 null 이다** — 달별 틀 그림은 서버에만 있고,
+ * 잠긴 칸은 빈 판에 자물쇠를 얹는다 (docs/photo-cards.md §2).
+ */
+val DexCard.artSource: CardArt? get() = if (isPhoto) null else CardArt.Asset(art)
 
 /**
  * 내가 뽑은 카드 한 장을 그릴 재료.
@@ -124,4 +127,33 @@ private fun rememberFileImage(file: File, sample: Int): ImageBitmap? {
         }
     }
     return image
+}
+
+/**
+ * 칸이 가진 한 장을 그릴 재료. **여기서만 누끼와 포토가 갈린다.**
+ *
+ * @param drawn 누끼 카드면 채운다 (틀 + 얼굴 + 글자)
+ * @param photoFile 포토 카드의 받아 둔 완성 그림. 만드는 중이면 null
+ */
+@Immutable
+data class OwnedCardArt(val drawn: DrawnCardArt?, val photoFile: File?) {
+    val composed: Boolean get() = drawn?.composed == true
+}
+
+@Composable
+fun rememberOwnedCardArt(owned: OwnedCard?): OwnedCardArt? = when (owned) {
+    null -> null
+    is OwnedCard.Drawn -> OwnedCardArt(rememberDrawnCardArt(owned.card), null)
+    is OwnedCard.Photo -> OwnedCardArt(null, owned.file)
+}
+
+/**
+ * 칸 표지·확대 뷰에 깔 판. **null 이면 빈 판**(포토의 잠긴 칸 · 만드는 중)을 그린다.
+ */
+fun coverOf(card: DexCard, art: OwnedCardArt?): CardArt? = when {
+    art == null -> card.artSource
+    art.photoFile != null -> CardArt.Local(art.photoFile)
+    art.drawn == null -> null
+    art.drawn.composed -> CardArt.Asset(art.drawn.template!!.art)
+    else -> art.drawn.fallback
 }
