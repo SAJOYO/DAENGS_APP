@@ -62,7 +62,7 @@ class DiaryReadingStyleTest {
         }
         compose.onNodeWithText("보리 · 두부 · 이름 미확인 1마리").assertIsDisplayed()
         compose.onNodeWithText("장면 2").assertIsDisplayed()
-        compose.onNodeWithText("동선 탐색").assertIsDisplayed()
+        compose.onNodeWithText("걸어온 길").assertIsDisplayed()
         capture("reading-multiple-320")
         val primary = Pet("other", "다른 아이", "mix", null, null, null, null, null, isPrimary = true)
         val actual = primary.copy(id = "a", name = "보리", isPrimary = false)

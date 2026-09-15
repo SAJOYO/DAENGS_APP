@@ -56,9 +56,10 @@ internal fun WalkRecordsList(
         LazyColumn(state = scroll, modifier = Modifier.weight(1f).testTag("records-walk-list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            groups.forEach { (day, walks) ->
+            groups.entries.forEachIndexed { groupIndex, (day, walks) ->
                 item(key = "day:$day", contentType = "date") {
-                    Text(day.format(RECORD_DAY), Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 2.dp)
+                    Text(day.format(RECORD_DAY), Modifier.fillMaxWidth()
+                        .padding(top = if (groupIndex == 0) 2.dp else 12.dp, bottom = 2.dp)
                         .testTag("records-day-$day").semantics { heading() },
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 }

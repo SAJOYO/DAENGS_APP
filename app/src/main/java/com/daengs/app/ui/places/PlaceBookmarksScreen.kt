@@ -153,7 +153,7 @@ internal fun PlaceBookmarksScreen(controller: PlaceBookmarkController, state: Pl
                 PlaceDogAssistant(busy = state.aiBusy, replyAvailable = state.aiAnswer != null,
                     open = dogOpen, onOpen = { dogOpen = it },
                     onSubmit = { if (profilesPending) controller.notice("반려견 정보를 확인한 뒤 다시 말해 주세요.") else controller.chat(it, onSearch) },
-                    onCancel = controller::cancelConversation, avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
+                    onCancel = controller::cancelConversation,
                     searchContext = "찜한 시설 안에서 · " + (filters.radiusMeters?.let { "반경 ${it / 1000.0}km" } ?: "지역 제한 없음") +
                         " · " + category.label + (if (filters.parkingFirst) " · 주차 우선" else "") + hard.summary.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
                 ) { state.aiAnswer?.let { DogDialogueText(it) } }

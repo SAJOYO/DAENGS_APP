@@ -129,7 +129,8 @@ interface WalkDao {
     @Query("SELECT * FROM walk_diary_publication WHERE sessionId = :id")
     fun observeDiaryPublication(id: String): kotlinx.coroutines.flow.Flow<WalkDiaryPublicationRow?>
 
-    @Query("SELECT sessionId FROM walk_diary_publication WHERE publishedBundle IS NULL")
+    @Query("SELECT sessionId FROM walk_diary_publication WHERE publishedBundle IS NULL " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_scene_analysis a WHERE a.sessionId = walk_diary_publication.sessionId AND a.entryStamp LIKE 'diary:relational:%')")
     suspend fun pendingDiaryPublications(): List<String>
 
     @Query("SELECT COUNT(publishedBundle) FROM walk_diary_publication")
@@ -139,11 +140,13 @@ interface WalkDao {
     suspend fun freezeDiaryBase(id: String, bundle: String)
 
     @Query("UPDATE walk_diary_publication SET publishedBundle = :bundle, publishedAtMillis = :now " +
-        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now < deadlineAtMillis")
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now < deadlineAtMillis " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_scene_analysis a WHERE a.sessionId = :id AND a.entryStamp LIKE 'diary:relational:%')")
     suspend fun publishDiaryCandidate(id: String, bundle: String, now: Long): Int
 
     @Query("UPDATE walk_diary_publication SET publishedBundle = baseBundle, publishedAtMillis = :now " +
-        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now >= deadlineAtMillis")
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now >= deadlineAtMillis " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_scene_analysis a WHERE a.sessionId = :id AND a.entryStamp LIKE 'diary:relational:%')")
     suspend fun publishDiaryBase(id: String, now: Long): Int
 
     @androidx.room.Transaction
@@ -159,6 +162,7 @@ interface WalkDao {
 
     @androidx.room.Transaction
     suspend fun prepareLocalDiary(id: String, ownerId: String): WalkDiaryPublicationRow? {
+        if (isRelationalDiary(id)) return null
         val row = diaryPublication(id) ?: return null
         val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
         if (row.baseBundle == null) {
@@ -403,10 +407,8 @@ interface WalkDao {
         return allowed.associateWith { id ->
             val rows = entries[id].orEmpty()
             val publication = diaryPublication(id)
-            val board = if (publication != null) publication.publishedBundle?.let {
-                com.daengs.app.walk.diary.GeoStoryboardBundle.parse(it)
-            } else com.daengs.app.walk.store.storedStoryboardAnalysisView(analyses[id], rows).bundle
-            val title = board?.takeIf { it.sessionId == id }?.title
+            val title = com.daengs.app.walk.diary.diaryTitle(id,
+                diaryBoardSource(rows, analyses[id], photoSync(id), photos(id), publication, session(id), ownerId))
             listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
         }
     }
@@ -419,6 +421,38 @@ interface WalkDao {
     suspend fun saveSceneAnalysis(row: WalkSceneAnalysisRow)
     @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
     suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM walk_scene_analysis WHERE sessionId = :id AND entryStamp LIKE 'diary:relational:%')")
+    suspend fun isRelationalDiary(id: String): Boolean
+
+    @Query("SELECT a.sessionId FROM walk_scene_analysis a INNER JOIN walk_session w ON w.id = a.sessionId " +
+        "WHERE w.ownerId = :ownerId AND w.endedAtMillis IS NOT NULL AND a.entryStamp LIKE 'diary:relational:%' " +
+        "AND (a.status IN ('pending', 'running') OR a.bundle LIKE '%\"submission_pending\":true%')")
+    suspend fun pendingRelationalDiaries(ownerId: String): List<String>
+
+    @androidx.room.Transaction
+    suspend fun selectRelationalDiary(sessionId: String, walkId: String, ownerId: String): Boolean =
+        RelationalDiaryStorage.select(this, sessionId, walkId, ownerId)
+
+    @androidx.room.Transaction
+    suspend fun markRelationalSubmission(sessionId: String, walkId: String, ownerId: String, stamp: String): Boolean =
+        RelationalDiaryStorage.markSubmission(this, sessionId, walkId, ownerId, stamp)
+
+    suspend fun relationalSubmissionPending(sessionId: String): Boolean =
+        RelationalDiaryStorage.submissionPending(sceneAnalysis(sessionId))
+    @androidx.room.Transaction
+    suspend fun relationalDiaryInputStamp(sessionId: String): String =
+        RelationalDiaryStorage.currentStamp(this, sessionId)
+
+    @androidx.room.Transaction
+    suspend fun acceptRelationalDiary(raw: String, sessionId: String, walkId: String,
+        ownerId: String, expectedStamp: String): Boolean =
+        RelationalDiaryStorage.accept(this, raw, sessionId, walkId, ownerId, expectedStamp)
+
+    @androidx.room.Transaction
+    suspend fun readRelationalDiary(sessionId: String, ownerId: String): RelationalDiaryCache? =
+        RelationalDiaryStorage.read(this, sessionId, ownerId)
+
     @androidx.room.Transaction
     suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String, nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (session(row.sessionId)?.ownerId != ownerId) return false
@@ -427,6 +461,8 @@ interface WalkDao {
             else com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId))
         if (stamp != row.entryStamp) return false
         val current = sceneAnalysis(row.sessionId)
+        // An old in-flight sync must not replace the new format or trigger legacy base publication.
+        if (current?.entryStamp?.startsWith(RelationalDiaryStorage.STAMP_PREFIX) == true) return false
         if (current != null && current.generation > row.generation) return false
         // A pending/failed/stale response must not erase the last successful source or relabel it
         // as belonging to the new input. Acceptance of that input is still checked above.
@@ -473,7 +509,8 @@ interface WalkDao {
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
         require(title.isNotBlank() && title.length <= 80 &&
             body.length <= com.daengs.app.walk.diary.MAX_DIARY_SCENE_BODY_LENGTH)
-        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        check(if (isRelationalDiary(sessionId)) isCurrentDiaryOriginal(sessionId, scene) || readRelationalDiary(sessionId, ownerId)?.published != null
+            else diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId,
             draft.edit(scene, title = title, body = body, acknowledge = true,
@@ -487,9 +524,21 @@ interface WalkDao {
         check(ownerId.isNotBlank() && session(sessionId)?.let {
             it.ownerId == ownerId && it.endedAtMillis != null
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
-        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        check(if (isRelationalDiary(sessionId)) isCurrentDiaryOriginal(sessionId, scene) || readRelationalDiary(sessionId, ownerId)?.published != null
+            else diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId, draft.hide(scene).toJson()))
+    }
+
+    /** Source-only cards remain editable while generated prose is stale or unavailable. */
+    suspend fun isCurrentDiaryOriginal(sessionId: String, scene: com.daengs.app.walk.diary.StoryboardScene): Boolean = when {
+        scene.id.startsWith("original:entry:") -> entry(scene.id.removePrefix("original:entry:"))?.let {
+            it.sessionId == sessionId && it.payload != null && scene.entryReference?.entryId == it.id
+        } == true
+        scene.id.startsWith("original:photo:") -> photo(scene.id.removePrefix("original:photo:"))?.let {
+            it.sessionId == sessionId && scene.diary?.photoId == it.id
+        } == true
+        else -> false
     }
 
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")

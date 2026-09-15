@@ -17,6 +17,7 @@ internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?, in
 /** Display-only suppression at the same observed position; route and stay data stay intact. */
 internal fun diaryDisplayScene(scene: MapScene): MapScene = scene.copy(
     allowRegionalOverview = true,
+    detachedDiaryPins = true,
     completedRoute = scene.completedRoute.copy(
         start = scene.completedRoute.start?.copy(compact = true),
         end = scene.completedRoute.end?.copy(compact = true)),

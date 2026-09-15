@@ -347,6 +347,12 @@ internal fun WalkDiaryMapContent(
                                             Modifier.fillMaxWidth().padding(top = 6.dp), detail = true)
                                         Spacer(Modifier.height(18.dp))
                                         DiarySceneText(selected.body)
+                                        com.daengs.app.ui.walk.reading.RelationalSceneOriginals(selected, onPhoto)
+                                        selected.relational?.comparisonSceneId?.let { previousId ->
+                                            scenes.singleOrNull { it.relational?.sceneId == previousId }?.let { previous ->
+                                                TextButton(onClick = { onSelect(previous) }) { Text("비교한 앞 장면 보기") }
+                                            }
+                                        }
                                         selectedRouteNotice?.let { Text(it, Modifier.padding(top = 12.dp),
                                             style = MaterialTheme.typography.bodySmall, color = TextMuted) }
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
@@ -379,7 +385,10 @@ internal fun WalkDiaryMapContent(
                         mapView?.let { view -> DiaryRecordMapButtons(view,
                             onWalking = { onClose(); onContextDismiss(); onWalkingOverview(); scope.launch { sheet.partialExpand() } },
                             onWhole = { onClose(); onContextDismiss(); onOverview(); scope.launch { sheet.partialExpand() } }) }
-                        mapLegend()
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (compactDrawer) WalkSpeedLegend(kilometersPerHour = true)
+                            mapLegend()
+                        }
                     }
                     Surface(Modifier.align(Alignment.TopEnd).padding(end = 12.dp)
                         .padding(top = with(density) { toolsSize.height.toDp() }), shape = CircleShape,
