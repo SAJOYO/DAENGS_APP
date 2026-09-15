@@ -46,6 +46,8 @@ class InviteAcceptScreenTest {
         onDone: () -> Unit = {},
         onRetry: () -> Unit = {},
         onSignIn: () -> Unit = {},
+        onJoinWithoutLink: () -> Unit = {},
+        onDismissBlockedLink: () -> Unit = {},
     ) {
         compose.setContent {
             InviteAcceptScreen(
@@ -61,8 +63,65 @@ class InviteAcceptScreenTest {
                 onDone = onDone,
                 onRetry = onRetry,
                 onSignIn = onSignIn,
+                onJoinWithoutLink = onJoinWithoutLink,
+                onDismissBlockedLink = onDismissBlockedLink,
             )
         }
+    }
+
+    // -- 연결 차단 (has_other_carers) ------------------------------------------------
+
+    private val blockedLink = AcceptOutcome.Conflict(
+        "선택한 아이는 연결할 수 없어요.",
+        "link_not_allowed",
+        reason = "has_other_carers",
+        petId = "p1",
+    )
+
+    @Test
+    fun `다른 공동 보호자 때문에 막힌 연결은 안내와 두 버튼을 띄운다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), outcome = blockedLink, autoEntered = true)
+
+        compose.onNodeWithText("이 강아지는 바로 연결할 수 없어요").assertIsDisplayed()
+        compose.onNodeWithText(
+            "선택한 강아지를 함께 돌보는 보호자가 있어 다른 공동 돌봄 그룹과 연결할 수 없습니다. " +
+                "연결하지 않고 초대를 수락하거나, 기존 공동 돌봄 관계를 정리한 후 다시 시도해 주세요.",
+        ).assertIsDisplayed()
+        compose.onNodeWithText("연결 없이 참여").assertIsDisplayed()
+        compose.onNodeWithText("확인").assertIsDisplayed()
+        compose.onAllNodesWithTag("accept-error").assertCountEquals(0)
+    }
+
+    /** 두 버튼은 각자 콜백만 부른다. **수락은 부르지 않는다** — 사용자가 최종 버튼을 다시 눌러야 한다. */
+    @Test
+    fun `연결 없이 참여와 확인은 수락을 부르지 않는다`() {
+        var joined = 0
+        var dismissed = 0
+        var accepted = 0
+        screen(
+            pasted = link,
+            parsed = InvitePaste.Result.Found(token),
+            outcome = blockedLink,
+            canAccept = true,
+            onJoinWithoutLink = { joined++ },
+            onDismissBlockedLink = { dismissed++ },
+            onAccept = { accepted++ },
+        )
+
+        compose.onNodeWithText("연결 없이 참여").performClick()
+        compose.onNodeWithText("확인").performClick()
+
+        assertEquals(1, joined)
+        assertEquals(1, dismissed)
+        assertEquals(0, accepted)
+    }
+
+    @Test
+    fun `다른 409 는 안내 없이 기존 문장만 보인다`() {
+        screen(pasted = link, parsed = InvitePaste.Result.Found(token), outcome = AcceptOutcome.Conflict("돌보는 아이가 너무 많습니다."))
+
+        compose.onNodeWithTag("accept-error").assertExists()
+        compose.onAllNodesWithText("이 강아지는 바로 연결할 수 없어요").assertCountEquals(0)
     }
 
     // -- 세션 문제 --------------------------------------------------------------

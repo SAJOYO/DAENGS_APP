@@ -202,6 +202,93 @@ class InviteAcceptLinkHolderTest {
         }
     }
 
+    // -- 다른 공동 보호자 때문에 막힌 연결 (has_other_carers) ---------------------------
+
+    private val blockedLinkBody = """{"detail":{"code":"link_not_allowed","message":"선택한 아이는 연결할 수 없어요.",""" +
+        """"pet_id":"p2","link_to_pet_id":"m1","reason":"has_other_carers"}}"""
+
+    /** 「연결 없이 참여」는 막힌 줄만 새 참여로 바꾸고 안내를 닫는다. **수락은 다시 부르지 않는다.** */
+    @Test
+    fun `연결 없이 참여는 막힌 줄만 새 참여로 바꾸고 다시 수락하지 않는다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, blockedLinkBody)
+            assertNull(holder.accept("t"))
+            assertTrue((holder.outcome as AcceptOutcome.Conflict).linkBlockedByOtherCarers)
+
+            holder.joinInsteadOfBlockedLink()
+
+            assertEquals(mapOf("p1" to PetChoice.Join, "p2" to PetChoice.Join), holder.choices)
+            assertNull(holder.outcome)
+            assertEquals("처음 누른 한 번뿐이다", 1, stub.acceptCalls)
+            assertTrue("사용자가 다시 누를 수 있다", holder.canAccept)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    @Test
+    fun `확인은 안내만 닫고 선택을 그대로 둔다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, blockedLinkBody)
+            holder.accept("t")
+
+            holder.dismissBlockedLink()
+
+            assertEquals(PetChoice.Link("m1"), holder.choices["p2"])
+            assertNull(holder.outcome)
+            assertEquals(1, stub.acceptCalls)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 서버가 어느 줄인지 안 주면 연결로 고른 줄을 전부 새 참여로 바꾼다 — 막힌 연결이 남으면 또 409 다. */
+    @Test
+    fun `막힌 줄을 모르면 연결로 고른 줄을 전부 새 참여로 바꾼다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, """{"detail":{"code":"link_not_allowed","message":"x","reason":"has_other_carers"}}""")
+            holder.accept("t")
+
+            holder.joinInsteadOfBlockedLink()
+
+            assertEquals(mapOf("p1" to PetChoice.Join, "p2" to PetChoice.Join), holder.choices)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 다른 409(상한 등)에는 「연결 없이 참여」가 아무것도 바꾸지 않는다. */
+    @Test
+    fun `다른 409 에는 연결 없이 참여가 선택을 바꾸지 않는다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, """{"detail":"돌보는 아이가 너무 많습니다."}""")
+            holder.accept("t")
+
+            holder.joinInsteadOfBlockedLink()
+
+            assertEquals(PetChoice.Link("m1"), holder.choices["p2"])
+            assertTrue(holder.outcome is AcceptOutcome.Conflict)
+        } finally {
+            stub.stop()
+        }
+    }
+
     /** 다 고르기 전에 눌러도 요청이 안 나가야 한다 — 나가면 서버가 409 를 낸다. */
     @Test
     fun `선택이 빠진 채로는 요청하지 않는다`() = runTest {

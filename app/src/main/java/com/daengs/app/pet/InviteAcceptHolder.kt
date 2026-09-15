@@ -150,6 +150,26 @@ class InviteAcceptHolder(
         return true
     }
 
+    /**
+     * 「연결 없이 참여」 — 연결이 막힌(`has_other_carers`) 선택을 새로 참여로 바꾸고 안내를 닫는다.
+     *
+     * 서버가 거절된 초대 강아지 id 를 줬으면 그 줄만, 못 가르면 연결로 고른 줄 전부를 바꾼다.
+     * **수락을 다시 부르지 않는다** — 사용자가 바뀐 선택을 보고 최종 수락 버튼을 눌러야 한다.
+     */
+    fun joinInsteadOfBlockedLink() {
+        val blocked = outcome as? AcceptOutcome.Conflict ?: return
+        if (!blocked.linkBlockedByOtherCarers) return
+        val targets = blocked.petId?.takeIf { it in choices }?.let { setOf(it) }
+            ?: choices.filterValues { it is PetChoice.Link }.keys
+        choices = choices + targets.associateWith { PetChoice.Join }
+        outcome = null
+    }
+
+    /** 「확인」 — 연결 차단 안내만 닫는다. 선택은 그대로 둔다. */
+    fun dismissBlockedLink() {
+        if ((outcome as? AcceptOutcome.Conflict)?.linkBlockedByOtherCarers == true) outcome = null
+    }
+
     /** 화면을 닫거나 로그아웃할 때. **입력과 토큰을 같이 버린다.** */
     fun forget() {
         pasted = ""

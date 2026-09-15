@@ -104,6 +104,10 @@ fun InviteAcceptScreen(
     onRetry: () -> Unit = {},
     /** 로그인이 만료됐을 때 다시 로그인하러 간다. */
     onSignIn: () -> Unit = {},
+    /** 연결 차단(`has_other_carers`) 안내의 「연결 없이 참여」. 선택만 바꾸고 **수락은 안 부른다.** */
+    onJoinWithoutLink: () -> Unit = {},
+    /** 연결 차단 안내의 「확인」. 닫기만 한다. */
+    onDismissBlockedLink: () -> Unit = {},
     onDone: () -> Unit = {},
     onBack: () -> Unit = {},
 ) {
@@ -239,6 +243,12 @@ fun InviteAcceptScreen(
         )
 
         outcome?.let { Failure(it) }
+
+        // **연결 차단(has_other_carers)은 문장 한 줄이 아니라 고를 수 있는 안내다.** 고른 내 강아지를
+        // 다른 공동 보호자가 함께 돌보고 있어 서버가 막았다 — 사용자가 할 수 있는 일(연결 없이 참여)을 준다.
+        if ((outcome as? AcceptOutcome.Conflict)?.linkBlockedByOtherCarers == true) {
+            BlockedLinkDialog(onJoinWithoutLink = onJoinWithoutLink, onDismiss = onDismissBlockedLink)
+        }
     }
 }
 
@@ -470,7 +480,8 @@ private fun Failure(outcome: AcceptOutcome) {
         // 404 와 410 을 한 문장으로 묶지 않는다 — 뒤쪽은 새 초대를 받으면 되고 앞쪽은 아니다.
         is AcceptOutcome.NotFound -> "사용할 수 없는 초대예요. 링크가 잘못됐거나 다른 분이 이미 사용했어요."
         is AcceptOutcome.Expired -> "만료된 초대예요. 대표 보호자에게 새 초대를 요청해 주세요."
-        is AcceptOutcome.Conflict -> outcome.message // 서버가 사용자에게 보여 줄 문장으로 써 놨다.
+        // 연결 차단(has_other_carers)은 문장 대신 [BlockedLinkDialog] 가 말한다 — 두 번 보이면 안 된다.
+        is AcceptOutcome.Conflict -> if (outcome.linkBlockedByOtherCarers) return else outcome.message // 서버가 사용자에게 보여 줄 문장으로 써 놨다.
         // 422 는 사용자 잘못이 아니다 — 화면이 중복 선택을 막고 있으므로, 여기까지 왔으면
         // 미리보기 이후 상태가 바뀐 것이다. 다시 불러오라고만 말한다.
         is AcceptOutcome.Invalid -> outcome.message
@@ -482,6 +493,55 @@ private fun Failure(outcome: AcceptOutcome) {
 @Composable
 private fun Notice(text: String, tag: String, tint: androidx.compose.ui.graphics.Color = TextMuted) {
     Text(text, color = tint, fontSize = 13.sp, modifier = Modifier.testTag(tag))
+}
+
+/**
+ * 고른 내 강아지를 **다른 공동 보호자가 함께 돌보고 있어** 연결이 막혔을 때(서버 `has_other_carers`).
+ * 연결하면 그 사람의 기록이 동의 없이 새 그룹에 열리므로 MVP 에서는 연결하지 않는다.
+ *
+ * 「연결 없이 참여」는 **선택만** 새 참여로 바꾼다 — 수락은 사용자가 최종 버튼을 다시 눌러야 나간다.
+ */
+@Composable
+private fun BlockedLinkDialog(onJoinWithoutLink: () -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("이 강아지는 바로 연결할 수 없어요") },
+        text = {
+            Text(
+                "선택한 강아지를 함께 돌보는 보호자가 있어 다른 공동 돌봄 그룹과 연결할 수 없습니다. " +
+                    "연결하지 않고 초대를 수락하거나, 기존 공동 돌봄 관계를 정리한 후 다시 시도해 주세요.",
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onJoinWithoutLink, modifier = Modifier.testTag("blocked-link-join")) {
+                Text("연결 없이 참여", color = DaengPinkDeep)
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.testTag("blocked-link-ok")) {
+                Text("확인", color = TextMuted)
+            }
+        },
+        modifier = Modifier.testTag("blocked-link-dialog"),
+    )
+}
+
+@Preview(name = "연결 차단 — 다른 공동 보호자")
+@Composable
+private fun AcceptBlockedLinkPreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            autoEntered = true,
+            outcome = AcceptOutcome.Conflict(
+                "선택한 아이는 연결할 수 없어요.",
+                "link_not_allowed",
+                reason = "has_other_carers",
+                petId = "p1",
+            ),
+        )
+    }
 }
 
 // -- @Preview -----------------------------------------------------------------

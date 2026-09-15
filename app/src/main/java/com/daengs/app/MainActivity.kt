@@ -1022,6 +1022,9 @@ class MainActivity : ComponentActivity() {
                                     if (inviteAccept.accept(token) != null) pets.refresh(token)
                                 }
                             },
+                            // 연결 차단 안내 — 선택만 바꾸거나 닫는다. 수락은 사용자가 버튼을 다시 눌러야 나간다.
+                            onJoinWithoutLink = inviteAccept::joinInsteadOfBlockedLink,
+                            onDismissBlockedLink = inviteAccept::dismissBlockedLink,
                             onDone = { inviteEntry.close() },
                             // 화면을 닫으면 붙여넣은 글과 토큰을 같이 버린다.
                             onBack = { inviteEntry.close() },
