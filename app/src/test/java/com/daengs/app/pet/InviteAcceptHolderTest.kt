@@ -16,8 +16,9 @@ class InviteAcceptHolderTest {
 
     private fun holder(stub: Stub) = InviteAcceptHolder(InviteAcceptApi { stub.base })
 
+    /** 링크를 찾아도 미리보기를 못 받았으면(로그인·망 문제) 눌러도 할 수 있는 일이 없다. */
     @Test
-    fun `유효한 링크를 붙여넣어야 수락할 수 있다`() {
+    fun `유효한 링크를 붙여넣어도 미리보기 전에는 수락할 수 없다`() {
         val holder = InviteAcceptHolder(InviteAcceptApi { "http://127.0.0.1:1" })
 
         assertFalse("아무것도 안 붙여넣었을 때", holder.canAccept)
@@ -26,7 +27,8 @@ class InviteAcceptHolderTest {
         assertFalse("우리 링크가 아닐 때", holder.canAccept)
 
         holder.paste(link)
-        assertTrue(holder.canAccept)
+        assertEquals(InvitePaste.Result.Found(token), holder.parsed)
+        assertFalse("미리보기 전", holder.canAccept)
     }
 
     /** 확인을 누르기 전에는 서버에 아무것도 안 보낸다. */
@@ -93,7 +95,7 @@ class InviteAcceptHolderTest {
 
             assertNull(pet)
             assertEquals("입력이 남아 있어야 한다", link, holder.pasted)
-            assertTrue(holder.canAccept)
+            assertEquals(InvitePaste.Result.Found(token), holder.parsed)
             assertTrue(holder.outcome is AcceptOutcome.Failed)
         } finally {
             stub.stop()
@@ -164,6 +166,49 @@ class InviteAcceptHolderTest {
         } finally {
             stub.stop()
         }
+    }
+
+    // -- App Links 자동 진입 -----------------------------------------------------
+
+    /** 딥링크로 이미 검증된 토큰이면 붙여넣지 않아도 미리보기로 이어질 준비가 된다. */
+    @Test
+    fun `링크에서 받은 토큰도 붙여넣은 것과 같이 취급한다`() {
+        val holder = InviteAcceptHolder(InviteAcceptApi { "http://127.0.0.1:1" })
+
+        holder.acceptFromLink(token)
+
+        assertEquals(InvitePaste.Result.Found(token), holder.parsed)
+        assertFalse("미리보기 전에는 누를 수 없다", holder.canAccept)
+    }
+
+    /** 같은 링크가 두 번(연타·재실행) 전달돼도 이미 보고 있는 미리보기·선택을 지우지 않는다. */
+    @Test
+    fun `같은 토큰이 다시 오면 아무것도 지우지 않는다`() = runTest {
+        val stub = Stub(200, """{"pet_id":"p1","name":"네옹"}""")
+        try {
+            val holder = holder(stub)
+            holder.acceptFromLink(token)
+            holder.choose("pet-1", PetChoice.Join)
+
+            holder.acceptFromLink(token)
+
+            assertEquals(mapOf("pet-1" to PetChoice.Join), holder.choices)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 다른 초대를 받았으면 앞서 고르던 것이 섞이면 안 된다. */
+    @Test
+    fun `다른 토큰이 오면 앞선 선택을 지운다`() {
+        val holder = InviteAcceptHolder(InviteAcceptApi { "http://127.0.0.1:1" })
+        holder.acceptFromLink(token)
+        holder.choose("pet-1", PetChoice.Join)
+
+        holder.acceptFromLink("zzz_YYY-999")
+
+        assertEquals(InvitePaste.Result.Found("zzz_YYY-999"), holder.parsed)
+        assertEquals(emptyMap<String, PetChoice>(), holder.choices)
     }
 
     @Test

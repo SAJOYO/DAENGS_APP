@@ -1,10 +1,13 @@
 package com.daengs.app.gait.work
 
+import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.BackoffPolicy
@@ -22,7 +25,6 @@ import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitStatus
 import com.daengs.app.ui.theme.DaengsColors
 import androidx.compose.ui.graphics.toArgb
-import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,7 +34,7 @@ import java.util.concurrent.TimeUnit
  *
  * 분석은 저쪽 `gait-worker` 가 앱과 무관하게 한다. 여기서 하는 일은 **상태를 물어보고
  * 끝났으면 알려 주는 것**뿐이다. 그래서 영상 바이트도, 모델도, 배터리 많이 먹는 것도
- * 여기 없다 — 요청 한 번이 전부다.
+ * 여기 없다 — 짧은 GET 요청이 전부다.
  *
  * ### 왜 화면에서 떼어냈나
  *
@@ -44,18 +46,26 @@ import java.util.concurrent.TimeUnit
  *    죽은 게 아니라 일하는 중이었다
  *  - **체감 지연** — 30초 영상이 "8분째" 처럼 보였다
  *
- * ### 되풀이는 [BackoffPolicy.LINEAR] 다
+ * ### 한 번 시작하면 그 실행 안에서 끝까지 묻는다
  *
- * 지수(기본값)로 두면 `10 → 20 → 40 → 80` 이라 누적 150초다. 분석이 120초쯤이니
- * **끝난 것을 30초 늦게 안다.** 선형이면 `10 → 20 → 30 → 40` 으로 같은 구간을 더
- * 촘촘히 훑는다. WorkManager 최소 backoff 가 10초라 그보다 잦게는 못 한다.
+ * 처음에는 20초 뒤 한 번 묻고 아직이면 `Result.retry()` 로 끝내는 식이었다. 그러면
+ * **앱이 background 에 있을 때 다음 실행이 몇 분씩 밀렸다** — 실기기(Galaxy S26)에서
+ * 13초 영상도 3분 넘게 알림이 없다가, 앱을 다시 열자마자 결과와 알림이 같이 왔다.
+ * 이유와 지금 방식은 [watchUntilSettled] 에 적었다. 요약하면:
  *
- * ### 끝이 없는 되풀이는 두지 않는다
+ *  - **첫 지연을 두지 않는다.** 제출 직후는 사용자가 아직 챗 화면에 있을 때라, 이때
+ *    시작해야 시스템이 미루지 않는다
+ *  - 실행 하나 안에서 [POLL_INTERVAL_MILLIS] 마다 묻고, [POLL_BUDGET_MILLIS] 를 넘기면
+ *    그때만 `Result.retry()` 한다
+ *  - `retry()` 는 [MAX_ATTEMPTS] 번까지다. 거기 닿으면 **조용히 손을 든다**: 알림을
+ *    띄우지 않는다. 서버에서는 끝났을 수도 있고, 그때 "실패했어요" 라고 하면 거짓말이
+ *    된다. 목록에는 결과가 있다.
  *
- * `Result.retry()` 는 스스로 멈추지 않는다 — [runAttemptCount] 를 직접 봐야 한다.
- * [MAX_ATTEMPTS] 는 옛 foreground 폴링의 10분 상한과 같은 뜻이다. 거기 닿으면
- * **조용히 손을 든다**: 알림을 띄우지 않는다. 서버에서는 끝났을 수도 있고, 그때
- * "실패했어요" 라고 하면 거짓말이 된다. 목록에는 결과가 있다.
+ * ### 로그
+ *
+ * [LOG_TAG] 로 시작 · 조회마다 상태 · 끝남 · 알림 호출을 남긴다. 앱이 앞(`fg`)인지
+ * 뒤(`bg(중요도)`)인지를 같이 적어, 실기기에서 background 간격이 지켜지는지 본다.
+ * **토큰은 남기지 않는다.** 기록 id 도 앞 8자만 쓴다.
  */
 class GaitAnalysisWorker(
     context: Context,
@@ -70,46 +80,61 @@ class GaitAnalysisWorker(
         val petId = inputData.getString(KEY_PET_ID)
         if (!GaitApi.configured) return finished(null)
 
-        // **매번 새로 받는다.** access token 이 5분이라 2분짜리 분석 하나에도 중간에
-        // 만료될 수 있다 ([com.daengs.app.gait.HttpGaitAnalyzer] 폴링과 같은 사정).
-        val session = app.sessionProvider.freshSession()
-            ?: return if (app.tokenStore.load() == null) {
+        val startedAt = SystemClock.elapsedRealtime()
+        val trace = Trace(recordId.take(8), startedAt)
+        trace.log("start attempt=${runAttemptCount + 1}/$MAX_ATTEMPTS")
+
+        val outcome = watchUntilSettled(
+            budgetMillis = POLL_BUDGET_MILLIS,
+            intervalMillis = POLL_INTERVAL_MILLIS,
+            elapsedMillis = { SystemClock.elapsedRealtime() - startedAt },
+        ) { attempt ->
+            // **매번 새로 받는다.** access token 이 5분이라 한 번의 지켜보기 안에서도
+            // 만료될 수 있다 ([com.daengs.app.gait.HttpGaitAnalyzer] 폴링과 같은 사정).
+            val session = app.sessionProvider.freshSession()
+            val step = when {
+                session != null -> GaitApi.record(session.accessToken, recordId).fold(
+                    onSuccess = { GaitCheck.Status(it.status) },
+                    onFailure = { GaitCheck.Missed },
+                )
                 // 로그아웃했다. 기다릴 이유가 없다.
-                finished(null)
-            } else {
-                // 토큰을 못 살렸을 뿐이다. 다음에 다시 해 본다.
-                retryOrGiveUp()
+                app.tokenStore.load() == null -> GaitCheck.SignedOut
+                // 토큰을 못 살렸을 뿐이다. 다음 차례에 다시 해 본다.
+                else -> GaitCheck.Missed
             }
+            trace.log("check #$attempt ${step.label()}")
+            step
+        }
 
-        return try {
-            val record = GaitApi.record(session.accessToken, recordId).getOrNull()
-                ?: return retryOrGiveUp()
-
-            when {
-                record.status == GaitStatus.DONE -> {
-                    notify(app, DONE_TITLE, DONE_TEXT, recordId, petId)
-                    finished(GaitStatus.DONE)
-                }
+        return when (outcome) {
+            is GaitWatchOutcome.Settled -> {
+                trace.log("settled ${outcome.status}")
                 // **실패도 알린다.** 기다리던 사람에게 아무 말도 안 하면 계속 기다린다.
                 // 다만 저쪽 failure_reason 은 안 띄운다 — 운영 진단용이라 내부 경로가
                 // 들어 있을 수 있다.
-                record.status == GaitStatus.FAILED -> {
+                val posted = if (outcome.status == GaitStatus.DONE) {
+                    notify(app, DONE_TITLE, DONE_TEXT, recordId, petId)
+                } else {
                     notify(app, FAILED_TITLE, FAILED_TEXT, recordId, petId)
-                    // 서버가 끝을 냈으니 우리 일도 끝이다. 되풀이할 것이 없다.
-                    finished(GaitStatus.FAILED)
                 }
-                else -> retryOrGiveUp()
+                trace.log(if (posted) "notify posted" else "notify skipped (disabled or failed)")
+                finished(outcome.status)
             }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            retryOrGiveUp()
+            GaitWatchOutcome.SignedOut -> {
+                trace.log("signed out")
+                finished(null)
+            }
+            GaitWatchOutcome.OutOfTime ->
+                if (runAttemptCount + 1 >= MAX_ATTEMPTS) {
+                    // 위 머리말의 "거짓말이 된다" 참고.
+                    trace.log("out of time, giving up")
+                    finished(null)
+                } else {
+                    trace.log("out of time, retry")
+                    Result.retry()
+                }
         }
     }
-
-    /** 상한에 닿았으면 조용히 끝낸다. 위 머리말의 "거짓말이 된다" 참고. */
-    private fun retryOrGiveUp(): Result =
-        if (runAttemptCount + 1 >= MAX_ATTEMPTS) finished(null) else Result.retry()
 
     /**
      * 끝났다고 알리면서 **무엇으로 끝났는지**를 같이 남긴다.
@@ -122,7 +147,7 @@ class GaitAnalysisWorker(
         Result.success(workDataOf(KEY_STATUS to status))
 
     /**
-     * 완료 알림.
+     * 완료 알림. 실제로 띄웠으면 `true`.
      *
      * **id 를 `recordId` 로 잡는다.** 같은 기록의 알림이 두 번 뜨지 않게 하려는 것이다 —
      * Worker 가 어떤 이유로 다시 돌아도 같은 자리에 덮어쓴다.
@@ -133,8 +158,8 @@ class GaitAnalysisWorker(
         text: String,
         recordId: String,
         petId: String?,
-    ) {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+    ): Boolean {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         ensureChannel(context)
 
         val open = PendingIntent.getActivity(
@@ -165,9 +190,9 @@ class GaitAnalysisWorker(
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .build()
 
-        runCatching {
+        return runCatching {
             NotificationManagerCompat.from(context).notify(recordId.hashCode(), notification)
-        }
+        }.isSuccess
     }
 
     private fun ensureChannel(context: Context) {
@@ -182,6 +207,27 @@ class GaitAnalysisWorker(
                     NotificationManager.IMPORTANCE_DEFAULT,
                 ).apply { description = "보행 영상 분석이 끝나면 알려 드립니다." },
             )
+    }
+
+    /** 한 번의 실행에 대한 타이밍 로그. 시작한 뒤 흐른 ms 와 앱이 앞/뒤인지를 붙인다. */
+    private class Trace(private val shortId: String, private val startedAt: Long) {
+        fun log(message: String) {
+            Log.i(LOG_TAG, "[$shortId] +${SystemClock.elapsedRealtime() - startedAt}ms ${appState()} $message")
+        }
+
+        /**
+         * 앱이 앞에 있나. `fg` 가 아니면 중요도 숫자를 같이 적는다 — background 에서
+         * 잡이 도는 동안의 값이 기기마다 달라서, 추측하지 않고 그대로 본다.
+         */
+        private fun appState(): String {
+            val info = ActivityManager.RunningAppProcessInfo()
+            ActivityManager.getMyMemoryState(info)
+            return if (info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
+                "fg"
+            } else {
+                "bg(${info.importance})"
+            }
+        }
     }
 
     companion object {
@@ -200,17 +246,29 @@ class GaitAnalysisWorker(
         /** 알림 채널. 산책(`walk_tracking`)과 가른 이유는 [ensureChannel] 참고. */
         const val CHANNEL_ID = "gait_analysis"
 
+        /** logcat 태그. `adb logcat -s GaitWatch` 로 본다. */
+        const val LOG_TAG = "GaitWatch"
+
         /**
-         * 되풀이 상한. 선형 10초 backoff 로 `10+20+…+150` ≈ **20분**이다.
-         * 옛 foreground 폴링의 10분보다 넉넉한데, 앱이 잠든 동안 시스템이 미루는 몫을
-         * 감안한 것이다. 그래도 끝은 있다.
+         * 조회 간격. 옛 foreground 폴링(`HttpGaitAnalyzer.POLL_INTERVAL_MS`)과 같은 5초다.
+         * 요청 하나가 짧은 GET 이고, 13초 영상도 수십 초면 끝나서 이보다 드물면 늦게 안다.
          */
-        const val MAX_ATTEMPTS = 15
+        const val POLL_INTERVAL_MILLIS = 5_000L
 
-        /** 첫 확인까지. 분석이 분 단위라 바로 물어봐야 "아직" 이라는 답만 받는다. */
-        const val INITIAL_DELAY_SECONDS = 20L
+        /**
+         * 한 번의 실행에서 묻는 시간 상한. Worker 실행 한계(10분)에서 **2분을 남긴다** —
+         * 상한 직전에 시작한 조회 하나가 연결 15초 + 읽기 30초까지 걸릴 수 있고, 토큰
+         * 갱신과 알림까지 끝내야 한다.
+         */
+        const val POLL_BUDGET_MILLIS = 8 * 60_000L
 
-        /** WorkManager 가 허용하는 최소 backoff 가 10초다. 그보다 잦게는 못 한다. */
+        /**
+         * 실행 횟수 상한. 한 번이 8분이라 세 번이면 **24분**을 지켜본다 — 예전 상한(약
+         * 20분)과 같은 뜻이다. 그래도 끝은 있다.
+         */
+        const val MAX_ATTEMPTS = 3
+
+        /** 상한을 넘겨 `retry()` 할 때만 쓴다. WorkManager 최소 backoff 가 10초다. */
         const val BACKOFF_SECONDS = 10L
 
         private const val DONE_TITLE = "보행 분석이 완료되었어요."
@@ -221,10 +279,13 @@ class GaitAnalysisWorker(
         /** 한 기록에 하나. 같은 영상으로 Worker 가 둘 생기지 않게 하는 열쇠다. */
         fun workName(recordId: String): String = "gait:$recordId"
 
+        /**
+         * **첫 지연을 두지 않는다.** 머리말의 "한 번 시작하면" 참고 — 제출 직후 앱이 아직
+         * 앞에 있을 때 시작해야 한다.
+         */
         fun request(recordId: String, petId: String?): OneTimeWorkRequest =
             OneTimeWorkRequestBuilder<GaitAnalysisWorker>()
                 .setInputData(workDataOf(KEY_RECORD_ID to recordId, KEY_PET_ID to petId))
-                .setInitialDelay(INITIAL_DELAY_SECONDS, TimeUnit.SECONDS)
                 .setBackoffCriteria(BackoffPolicy.LINEAR, BACKOFF_SECONDS, TimeUnit.SECONDS)
                 // 챗에 다시 들어왔을 때 진행 중인 카드를 되살리려고 단다 ([pendingGaitRecords]).
                 // `WorkInfo` 는 입력 데이터를 안 주고 tag 만 준다.
@@ -232,6 +293,13 @@ class GaitAnalysisWorker(
                 .apply { if (petId != null) addTag(GaitWatchTags.pet(petId)) }
                 .build()
     }
+}
+
+/** 로그에 남길 한 단어. 상태 값은 서버 것 그대로다. */
+private fun GaitCheck.label(): String = when (this) {
+    is GaitCheck.Status -> value
+    GaitCheck.Missed -> "missed"
+    GaitCheck.SignedOut -> "signed-out"
 }
 
 /**

@@ -73,11 +73,17 @@ import com.daengs.app.ui.startup.startupTarget
 import com.daengs.app.ui.startup.loadingHoldMs
 import com.daengs.app.miniroom.rememberOutsideView
 import com.daengs.app.pet.devPets
+import androidx.lifecycle.ViewModelProvider
+import com.daengs.app.pet.InviteEntryViewModel
+import com.daengs.app.pet.InviteInbox
+import com.daengs.app.pet.InviteOpenStep
+import com.daengs.app.pet.inviteOpenStep
+import com.daengs.app.pet.shouldHandOffInvite
+import com.daengs.app.pet.InviteLink
 import com.daengs.app.pet.InviteShare
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
 import com.daengs.app.pet.InvitePaste
-import com.daengs.app.pet.rememberInviteAcceptHolder
 import com.daengs.app.pet.rememberPetInviteBundleHolder
 import com.daengs.app.pet.rememberPetMemberHolder
 import com.daengs.app.pet.rememberPetPhotoHolder
@@ -162,10 +168,61 @@ class MainActivity : ComponentActivity() {
     /** 알림으로 들어왔나. 챗으로 보내는 신호이고, 한 번 쓰면 화면이 내린다. */
     private var openChatRequest by mutableStateOf(0)
 
+    /**
+     * 링크로 받은 초대 토큰과 초대받기 화면 상태. `onNewIntent` 때문에 [gaitCompletions] 와
+     * 같은 이유로 액티비티가 받아 두고 화면이 읽어 간다 — `setContent` 안에서는 그 순간을
+     * 못 본다.
+     *
+     * **필드가 아니라 ViewModel 이다.** 필드에 두면 로그인을 기다리는 사이 액티비티가 다시
+     * 만들어질 때(다크 모드·글꼴 크기·언어 변경) 토큰이 사라지는데, 인텐트에서는 이미
+     * 지웠으니 다시 읽을 곳도 없다 — 에뮬레이터에서 그대로 재현됐다. ViewModel 은
+     * 재생성을 넘어 메모리에서 이어지고, 디스크에는 안 남는다 ([InviteEntryViewModel]).
+     */
+    private val inviteEntry: InviteEntryViewModel by lazy {
+        ViewModelProvider(this)[InviteEntryViewModel::class.java]
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         readGaitNotification(intent)
+        readInviteLink(intent)
+    }
+
+    /**
+     * 초대 링크로 열렸으면 토큰을 꺼낸다. 우리 링크가 아니면 조용히 지나간다 —
+     * 이 액티비티는 `MAIN`/`LAUNCHER` 로도 열리므로 `intent.data` 가 없는 게 보통이다.
+     *
+     * **인텐트에서 지운다** — `readGaitNotification` 과 같은 이유다. 같은 인텐트를 다시
+     * 읽어도 토큰을 또 심지 않는다. 재생성 뒤에도 토큰이 남는 것은 인텐트가 아니라
+     * [inviteEntry] 덕분이다.
+     */
+    private fun readInviteLink(intent: Intent) {
+        val token = inviteTokenOf(intent) ?: return
+        inviteEntry.receive(token)
+        intent.data = null
+        intent.removeExtra(InviteLink.WEB_FALLBACK_EXTRA)
+    }
+
+    /**
+     * 진짜 App Links(프래그먼트) 먼저, 웹 폴백 버튼의 `intent://` 보조 통로(extra)는
+     * 그다음 — 정상 링크가 extra 로 올 일은 없으니 순서는 상관없지만, 우선순위를
+     * 코드로도 보이게 남긴다.
+     */
+    private fun inviteTokenOf(intent: Intent): String? =
+        InviteLink.tokenOf(intent.dataString)
+            ?: InviteLink.tokenOfWebFallback(
+                intent.dataString,
+                intent.getStringExtra(InviteLink.WEB_FALLBACK_EXTRA),
+            )
+
+    /** [InviteInbox] 에 살아 있는 인스턴스로 올렸나. 넘기고 닫힌 인스턴스는 안 올린다. */
+    private var registeredEntry = false
+
+    override fun onDestroy() {
+        if (registeredEntry) InviteInbox.process.unregister()
+        registeredEntry = false
+        super.onDestroy()
     }
 
     /**
@@ -188,6 +245,24 @@ class MainActivity : ComponentActivity() {
         // 시스템 스플래시. **setContent 보다 먼저** 불러야 한다.
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // **로그인 화면 같은 다른 액티비티가 위에 있을 때 링크로 또 생긴 인스턴스는 그리지 않는다.**
+        // `singleTop` 은 MainActivity 가 맨 위일 때만 새 인텐트를 받아서, 카카오 로그인(Custom Tab·
+        // AuthCodeHandlerActivity) 중에 링크가 오면 MainActivity 가 하나 더 생겼다. 토큰만
+        // [InviteInbox] 에 두고 닫으면 위에 있던 로그인 화면은 그대로 남고(닫지 않는다), 로그인
+        // 콜백을 받는 원래 인스턴스가 로그인을 마치고 홈에 닿으면 그 토큰을 연다.
+        val handOffToken = if (savedInstanceState == null) inviteTokenOf(intent) else null
+        if (shouldHandOffInvite(
+                restoring = savedInstanceState != null,
+                hasInviteToken = handOffToken != null,
+                otherEntryAlive = InviteInbox.process.hasLiveEntry,
+            )
+        ) {
+            InviteInbox.process.receive(handOffToken!!)
+            finish()
+            return
+        }
+        InviteInbox.process.register()
+        registeredEntry = true
         enableEdgeToEdge()
         val app = application as DaengsApp
         val walkRuntime = app.walkRuntime
@@ -195,6 +270,10 @@ class MainActivity : ComponentActivity() {
         val walkController = walkRuntime.controller
         // 앱이 꺼져 있다가 알림으로 열린 경우. 떠 있는 동안 온 것은 onNewIntent 가 받는다.
         readGaitNotification(intent)
+        // **복원이면 초대 링크를 읽지 않는다.** 프로세스가 죽은 뒤 되살릴 때 시스템은 처음
+        // 연 링크 인텐트를 그대로 돌려줘서(여기서 지운 것은 이 프로세스 안의 사본뿐이다)
+        // 이미 닫거나 수락한 초대가 다시 열린다. 재생성 중인 토큰은 [inviteEntry] 에 있다.
+        if (savedInstanceState == null) readInviteLink(intent)
         setContent {
             DaengsTheme {
               com.daengs.app.ui.game.bookmarks.TerritoryBookmarkProvider(app.sessionProvider) {
@@ -250,6 +329,20 @@ class MainActivity : ComponentActivity() {
                 // Login lifetime, not a token refresh or a pet-name update, owns record navigation.
                 val recordsAccount by app.sessionProvider.accountScope.collectAsState()
                 val recordsSource = remember(recordsAccount) { app.walkRecordsSource() }
+                // 다른 보호자가 다녀온 산책의 **읽기 전용** 공동 조회. 로그인마다 새로 만들고, 계정이
+                // 바뀌면 늦게 온 답을 버린다 — 이전 계정의 산책이 다음 계정 화면에 남으면 안 된다.
+                val sharedWalks = remember(recordsAccount) {
+                    if (recordsAccount.ownerId.isNullOrBlank()) null else com.daengs.app.walk.shared.SharedWalksHolder(
+                        reader = com.daengs.app.walk.shared.SharedWalkApi(),
+                        accessToken = {
+                            app.sessionProvider.freshSession()?.takeIf {
+                                it.appUserId == recordsAccount.ownerId &&
+                                    app.sessionProvider.accountScope.value == recordsAccount
+                            }?.accessToken
+                        },
+                        isCurrentAccount = { app.sessionProvider.accountScope.value == recordsAccount },
+                    )
+                }
                 val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
                 val completedDestination = key(recordsAccount) {
                     com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
@@ -298,7 +391,9 @@ class MainActivity : ComponentActivity() {
                 // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
                 val petMembers = rememberPetMemberHolder()
-                val inviteAccept = rememberInviteAcceptHolder()
+                // 초대받기의 붙여넣기·미리보기·선택. **액티비티 재생성을 넘어 산다** —
+                // 화면 상태와 같이 [inviteEntry] 에 있다.
+                val inviteAccept = inviteEntry.holder
                 // 여러 아이를 한 링크로 부르는 자리. **강아지별 초대와 스코프가 다르다** —
                 // 저쪽은 아이 하나이고 이쪽은 계정 전체라 상한도 주보호자당 3묶음이다.
                 val inviteBundles = rememberPetInviteBundleHolder()
@@ -353,6 +448,25 @@ class MainActivity : ComponentActivity() {
                 // access 는 5분이다. 앱을 켜 두고 몇 분 뒤에 강아지를 등록하면
                 // 서버가 "인증이 만료되었습니다"로 막는다 — 실제로 그렇게 걸렸다.
                 // 재발급이 되면 세션도 같이 갈아 끼워야 다음 호출이 또 만료를 안 만난다.
+                // 초대받기 전용 [freshToken]. **못 받은 이유를 화면에 남긴다** — 망 실패는 다시
+                // 시도, 로그인 만료는 다시 로그인으로 권한다. 어느 쪽도 여기서 로그아웃시키지 않는다.
+                val inviteAccess: suspend () -> String? = {
+                    when (val check = app.sessionProvider.checkSession()) {
+                        is com.daengs.app.auth.SessionCheck.Fresh -> {
+                            session = check.session
+                            inviteEntry.reportAuth(null)
+                            check.session.accessToken
+                        }
+                        com.daengs.app.auth.SessionCheck.Unreachable -> {
+                            inviteEntry.reportAuth(com.daengs.app.pet.InviteAuthProblem.Unreachable)
+                            null
+                        }
+                        com.daengs.app.auth.SessionCheck.LoginRequired -> {
+                            inviteEntry.reportAuth(com.daengs.app.pet.InviteAuthProblem.LoginRequired)
+                            null
+                        }
+                    }
+                }
                 val freshToken: suspend () -> String? = {
                     val restored = app.sessionProvider.freshSession()
                     if (restored != null) session = restored
@@ -421,9 +535,9 @@ class MainActivity : ComponentActivity() {
                 // 「누구를 부를까」는 그 아이의 맥락에서 시작하는 일이라, 계정 어딘가의
                 // 버튼이 아니라 강아지 카드 안에서 들어온다.
                 var invitingFor by remember { mutableStateOf<Pet?>(null) }
-                // 초대받기 화면이 떠 있나. **토큰은 홀더의 메모리에만 있다** —
-                // rememberSaveable 을 쓰면 자격증명이 savedInstanceState 로 새어 나간다.
-                var acceptingInvite by remember { mutableStateOf(false) }
+                // 초대받기 화면이 떠 있나·링크로 들어왔나는 [inviteEntry] 가 든다.
+                // **토큰은 메모리에만 있다** — rememberSaveable·SavedStateHandle 을 쓰면
+                // 자격증명이 savedInstanceState 로 새어 나간다.
                 // 강아지가 있어야 하는 기능을 눌렀을 때 뜨는 문. null 이면 안 뜬다.
                 // **한 벌만 둔다** — 자리마다 만들면 문구가 갈린다 (`PetGate.kt`).
                 var petNeed by remember { mutableStateOf<PetNeed?>(null) }
@@ -520,8 +634,9 @@ class MainActivity : ComponentActivity() {
                         pets.forget()
                         // 로그아웃·탈퇴가 모두 여기를 지난다. **붙여넣은 초대 링크와 토큰을
                         // 같이 버린다** — 다음 사람의 화면에 남의 자격증명이 남으면 안 된다.
-                        inviteAccept.forget()
-                        acceptingInvite = false
+                        // 링크로 받아 아직 못 넘긴 토큰도 같이 버린다 — 로그아웃한
+                        // 계정 것이 다음에 로그인하는 사람 화면으로 이어지면 안 된다.
+                        inviteEntry.signOut()
                         // 만든 초대의 평문 토큰도 같이 버린다 — 다음 사람 화면에 남으면 안 된다.
                         inviteBundles.forget()
                         invitingFor = null
@@ -639,6 +754,44 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 링크로 받은 초대를 화면으로 넘긴다.
+                //
+                // **로그인과 온보딩이 끝난 뒤에만.** 로그인 직후의 닉네임 확인 사이에 끼어들어
+                // 화면을 바꾸지 않는다. `session`·`sessionRestore` 도 키에 넣어서, 로그인 전에
+                // 받은 토큰은 로그인해서 홈에 닿을 때까지 그대로 기다렸다가 이어진다.
+                //
+                // **강아지 등록은 관문이 아니다** (`StartupGate.kt`). 강아지가 없는 사람도
+                // 빈 방으로 들어오므로 등록 없이 초대를 확인하고 수락할 수 있다 — 초대받기가
+                // 곧 첫 강아지가 생기는 길이기도 하다. 등록 화면에 **직접** 들어가 있을 때만
+                // (`Screen.Onboarding`) 그 입력을 끊지 않으려고 기다린다.
+                //
+                // 앱이 떠 있는 채로 링크를 누르면 지금 화면이 무엇이든 홈으로 돌아와 연다 —
+                // 챗·도감에 있다는 이유로 링크가 조용히 무시되면 안 된다. 보행 완료 알림이
+                // 챗으로 끌고 가는 것과 같은 결이다. **산책 중만 예외다** — 기록 화면을 뺏지
+                // 않고, 산책을 마치고 홈에 돌아오면 그때 연다.
+                //
+                // **로그인 중 링크로 생긴 두 번째 인스턴스가 넘긴 토큰도 여기서 연다** — 토큰은
+                // 프로세스에 하나([InviteInbox])라 이 키가 그 변화를 본다. 로그인 화면에 있거나
+                // 로그인을 취소·실패해 세션이 없으면 보관만 하고, 로그인해서 홈에 닿으면 연다.
+                // 여는 것은 미리보기까지다 — 수락은 버튼으로만 한다.
+                LaunchedEffect(inviteEntry.pendingToken, screen, session, sessionRestore) {
+                    val step = inviteOpenStep(
+                        hasPending = inviteEntry.pendingToken != null,
+                        sessionRestoring = sessionRestore == SessionRestore.Pending,
+                        loggedIn = session != null,
+                        screenBlocksInvite = screen in setOf(
+                            Screen.Loading, Screen.Landing, Screen.Nickname, Screen.Onboarding, Screen.Walk,
+                        ),
+                        onHome = screen == Screen.Home,
+                    )
+                    when (step) {
+                        InviteOpenStep.Wait -> return@LaunchedEffect
+                        InviteOpenStep.Open -> Unit
+                        InviteOpenStep.GoHomeThenOpen -> screen = Screen.Home
+                    }
+                    inviteEntry.openFromLink()
+                }
+
                 when (screen) {
                     Screen.Loading -> LoadingScreen()
 
@@ -728,7 +881,7 @@ class MainActivity : ComponentActivity() {
                         onCancel = { pets.clearError(); editing = null; screen = Screen.Home },
                         // 첫 등록일 때만 — 고치기로 들어온 사람에게는 초대받기가 할 말이 아니다.
                         onAcceptInvite = if (editing == null) {
-                            { pets.clearError(); screen = Screen.Home; acceptingInvite = true }
+                            { pets.clearError(); screen = Screen.Home; inviteEntry.openManually() }
                         } else null,
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
@@ -859,26 +1012,19 @@ class MainActivity : ComponentActivity() {
                             },
                             onDismissCreated = { inviteBundles.clearCreated() },
                             onShare = { message -> InviteShare.share(context, message) },
-                            onCopy = { link ->
-                                val copied = InviteShare.copy(context, link)
-                                // 13 부터는 시스템이 "복사됨" 을 띄운다 — 여기서 또 띄우면 두 번 뜬다.
-                                if (copied && InviteShare.needsCopiedNotice()) {
-                                    Toast.makeText(context, "초대 링크를 복사했어요", Toast.LENGTH_SHORT).show()
-                                }
-                            },
                             onBack = {
                                 // 화면을 닫으면 만든 링크의 평문 토큰을 같이 버린다.
                                 inviteBundles.forget()
                                 invitingFor = null
                             },
                         )
-                    } else if (acceptingInvite) {
+                    } else if (inviteEntry.accepting) {
                         // **링크를 찾자마자 무엇이 든 초대인지 물어본다.** 사용자가 버튼을
                         // 한 번 더 누를 이유가 없고, 미리보기가 성공해야 연결 선택을 보낼
                         // 수 있다 — 옛 서버는 선택을 조용히 무시해 버린다.
                         LaunchedEffect(inviteAccept.parsed) {
                             if (inviteAccept.parsed !is InvitePaste.Result.Found) return@LaunchedEffect
-                            val token = freshToken() ?: return@LaunchedEffect
+                            val token = inviteAccess() ?: return@LaunchedEffect
                             inviteAccept.loadPreview(token)
                         }
                         InviteAcceptScreen(
@@ -889,27 +1035,45 @@ class MainActivity : ComponentActivity() {
                             canAccept = inviteAccept.canAccept,
                             preview = inviteAccept.preview,
                             choices = inviteAccept.choices,
+                            // 링크로 왔으면 붙여넣기 칸과 "찾았어요" 안내를 숨긴다 —
+                            // 이미 링크를 눌러서 왔으니 다시 찾은 티를 낼 이유가 없다.
+                            autoEntered = inviteEntry.autoEntered,
+                            authProblem = inviteEntry.authProblem,
                             takenBy = inviteAccept::takenBy,
                             onChoose = { petId, choice -> inviteAccept.choose(petId, choice) },
                             onPaste = inviteAccept::paste,
+                            // 세션·미리보기를 다시 받아 본다. **수락은 안 부른다** — 누를 수 있게 될 뿐이다.
+                            onRetry = {
+                                scope.launch {
+                                    val token = inviteAccess() ?: return@launch
+                                    inviteAccept.loadPreview(token)
+                                }
+                            },
+                            // 로그인이 만료됐을 때만 뜬다. **토큰만** 들고 랜딩으로 간다 — 로그인해서 홈에
+                            // 닿으면 링크 진입과 같은 길로 다시 열리고, 수락은 여전히 버튼으로만 한다.
+                            onSignIn = {
+                                inviteEntry.holdForLogin()
+                                walkController.stop()
+                                session = null
+                                pets.forget()
+                                app.sessionProvider.clear()
+                                screen = Screen.Landing
+                            },
                             onAccept = {
                                 scope.launch {
-                                    val token = freshToken() ?: return@launch
+                                    val token = inviteAccess() ?: return@launch
                                     // 성공하면 목록을 **서버에서 다시 받는다** — 수락과 함께
                                     // 서버가 대표 강아지를 세워 주기도 해서, 응답만 보고
                                     // 앱이 상태를 지어내면 규칙이 두 벌이 된다.
                                     if (inviteAccept.accept(token) != null) pets.refresh(token)
                                 }
                             },
-                            onDone = {
-                                inviteAccept.forget()
-                                acceptingInvite = false
-                            },
-                            onBack = {
-                                // 화면을 닫으면 붙여넣은 글과 토큰을 같이 버린다.
-                                inviteAccept.forget()
-                                acceptingInvite = false
-                            },
+                            // 연결 차단 안내 — 선택만 바꾸거나 닫는다. 수락은 사용자가 버튼을 다시 눌러야 나간다.
+                            onJoinWithoutLink = inviteAccept::joinInsteadOfBlockedLink,
+                            onDismissBlockedLink = inviteAccept::dismissBlockedLink,
+                            onDone = { inviteEntry.close() },
+                            // 화면을 닫으면 붙여넣은 글과 토큰을 같이 버린다.
+                            onBack = { inviteEntry.close() },
                         )
                     } else if (membersFor != null) {
                         val pet = membersFor!!
@@ -1042,7 +1206,7 @@ class MainActivity : ComponentActivity() {
                         onFarewell = { pet -> if (pet.isGroupOwner) farewell = pet },
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
-                        onAcceptInvite = { acceptingInvite = true },
+                        onAcceptInvite = { inviteEntry.openManually() },
                         // **이름만.** 전체 PUT(`pets.edit`)으로 돌아가지 않는다 — 연결된 아이에서
                         // 그 길은 서버가 409 로 막고, 뚫리더라도 공통 정보를 덮어쓴다.
                         onRenamePet = { pet, name ->
@@ -1247,6 +1411,7 @@ class MainActivity : ComponentActivity() {
                             accountScope = recordsAccount,
                             source = recordsSource,
                             state = recordsRouteState,
+                            sharedWalks = sharedWalks,
                             pets = pets.pets,
                             onBack = { screen = Screen.Home },
                             onSignIn = { screen = Screen.Landing },

@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,7 +31,9 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
+import com.daengs.app.ui.walk.shared.SharedWalksRoute
 import com.daengs.app.walk.records.WalkRecordsSource
+import com.daengs.app.walk.shared.SharedWalksHolder
 import kotlinx.coroutines.CancellationException
 
 /** The caller keeps this login's source and state above its navigation branches. */
@@ -45,6 +48,11 @@ internal fun WalkRecordsRoute(
     onSync: suspend () -> Unit,
     detailContent: @Composable (String, () -> Unit) -> Unit,
     photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    /**
+     * 다른 보호자가 다녀온 산책의 **읽기 전용** 공동 조회. null 이면 입구를 안 보인다.
+     * 기기 기록 선택·지도·페이지와 섞지 않고 따로 연다.
+     */
+    sharedWalks: SharedWalksHolder? = null,
 ) {
     // An expired login must not show even a restored detail id.
     if (accountScope.ownerId.isNullOrBlank() || source == null) {
@@ -59,9 +67,17 @@ internal fun WalkRecordsRoute(
         }
         return
     }
+    var sharedOpen by rememberSaveable(accountScope) { mutableStateOf(false) }
     val opened = state.openedSessionId
     if (opened != null) {
         detailContent(opened, state::closeDetail)
+        return
+    }
+    if (sharedWalks != null && sharedOpen) {
+        SharedWalksRoute(sharedWalks, pets.orEmpty(), onBack = {
+            sharedWalks.closeDetail()
+            sharedOpen = false
+        })
         return
     }
 
@@ -80,6 +96,10 @@ internal fun WalkRecordsRoute(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
                 .testTag("records-sync-notice"),
             color = TextMuted, style = MaterialTheme.typography.labelSmall)
+        if (sharedWalks != null) TextButton(onClick = { sharedOpen = true },
+            modifier = Modifier.padding(horizontal = 10.dp).testTag("records-shared-open")) {
+            Text("함께 돌보는 보호자의 산책 보기")
+        }
         RetainedWalkRecords(state) {
             WalkRecordsScreen(source, pets.orEmpty(), onBack = {
                 state.captureRecords()
