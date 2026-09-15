@@ -39,7 +39,7 @@ internal fun NaverRouteEndpointLayer(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             endpoints.forEach {
                 if (it.compact) Image(diaryPinBitmap(it.label, it.selected, density, endpoint = true,
-                    detached = it.abovePoint).asImageBitmap(), it.label)
+                    tailBelow = it.abovePoint).asImageBitmap(), it.label)
                 else Image(painterResource(it.kind.iconRes), it.label)
             }
         }
@@ -49,16 +49,16 @@ internal fun NaverRouteEndpointLayer(
     val context = LocalContext.current
     val latestSelect by rememberUpdatedState(onSelect)
     DisposableEffect(map, endpoints, context.resources.configuration.densityDpi, density, diagnostics, globalZ) {
-        val markers = if (map == null) emptyList() else endpoints.flatMap { endpoint ->
+        val markers = if (map == null) emptyList() else endpoints.map { endpoint ->
             val resource = endpoint.kind.iconRes
             // Vector intrinsic dimensions are dp-aware and are also used by Preview.
             val art = requireNotNull(context.getDrawable(resource))
-            val compact = if (endpoint.compact) diaryPinBitmap(endpoint.label, endpoint.selected, density, endpoint = true, detached = endpoint.abovePoint) else null
+            val compact = if (endpoint.compact) diaryPinBitmap(endpoint.label, endpoint.selected, density, endpoint = true, tailBelow = endpoint.abovePoint) else null
             val marker = Marker().apply {
                 position = LatLng(endpoint.point.latitude, endpoint.point.longitude)
                 width = compact?.width ?: art.intrinsicWidth
                 height = compact?.height ?: art.intrinsicHeight
-                anchor = PointF(0.5f, if (endpoint.abovePoint) 1.2f else if (compact == null) 0.5f else 0f)
+                anchor = PointF(0.5f, if (endpoint.abovePoint) 1f else if (compact == null) 0.5f else 0f)
                 icon = compact?.let(OverlayImage::fromBitmap) ?: OverlayImage.fromResource(resource)
                 captionText = endpoint.label.takeIf { endpoint.selected && !endpoint.compact }.orEmpty()
                 captionMinZoom = 0.0
@@ -73,11 +73,7 @@ internal fun NaverRouteEndpointLayer(
                 this.map = map
                 diagnostics?.attached(this, NativeWalkLayerReading("마커", globalZIndex, "출발·도착"))
             }
-            if (!endpoint.abovePoint) listOf(marker) else listOf(marker, Marker().apply {
-                position = marker.position; icon = OverlayImage.fromResource(R.drawable.ic_walk_replay_cursor)
-                width = (7*density).toInt(); height = width; anchor = PointF(.5f,.5f)
-                globalZIndex = globalZ; this.map = map
-            })
+            marker
         }
         onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
     }

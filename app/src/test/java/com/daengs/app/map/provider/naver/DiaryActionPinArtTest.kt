@@ -16,6 +16,34 @@ import org.robolectric.annotation.GraphicsMode
 class DiaryActionPinArtTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
 
+    @Test fun `fixed endpoint tail reaches coordinate and matches collision footprint`() {
+        for (density in listOf(1f, 2.75f)) {
+            val bitmap = diaryPinBitmap("산책 시작", false, density, endpoint=true, tailBelow=true)
+            val footprint = diaryPinSize("산책 시작", density, endpoint=true)
+            assertEquals(footprint, bitmap.width to bitmap.height)
+            assertTrue(android.graphics.Color.alpha(bitmap.getPixel(bitmap.width/2, bitmap.height-1)) > 0)
+            assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(0, bitmap.height-1)))
+            // Text body remains above the tail, and the old below-point tail is still supported.
+            val legacy = diaryPinBitmap("출발", false, density, endpoint=true)
+            assertTrue(android.graphics.Color.alpha(legacy.getPixel(legacy.width/2, 0)) > 0)
+            bitmap.recycle(); legacy.recycle()
+        }
+    }
+
+    @Test fun `route anchor selection keeps centered footprint and white separation ring`() {
+        for (density in listOf(1f, 2.75f)) {
+            val normal = diaryRouteAnchorBitmap(false, density)
+            val selected = diaryRouteAnchorBitmap(true, density)
+            assertEquals(normal.width to normal.height, selected.width to selected.height)
+            val center = normal.width/2
+            // Sample inside the white ring, away from its antialiased outer stroke.
+            assertEquals(android.graphics.Color.WHITE, normal.getPixel(center+(4*density).toInt(), center))
+            assertTrue(normal.getPixel(center, center) != android.graphics.Color.WHITE)
+            assertEquals(0, android.graphics.Color.alpha(selected.getPixel(0,0)))
+            normal.recycle(); selected.recycle()
+        }
+    }
+
     @Test fun `single action and scene share frame dimensions and selection never resizes it`() {
         for (density in listOf(1f, 2.75f)) {
             val scene = diaryGroupPinBitmap(1,1,false,density,detached=true)

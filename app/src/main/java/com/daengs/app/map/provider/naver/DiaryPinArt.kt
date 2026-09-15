@@ -26,9 +26,9 @@ internal fun diaryPinSize(label: String, density: Float, endpoint: Boolean = fal
     return width to ceil(((if (endpoint) 22f else 30f) + if (detached) 2f else 7f) * density).toInt()
 }
 
-/** The tail anchors the true coordinate. Endpoints sit below it; scene numbers sit above it. */
+/** The tail anchors the true coordinate; completed diary endpoints explicitly sit above it. */
 internal fun diaryPinBitmap(label: String, selected: Boolean, density: Float, endpoint: Boolean = false, detached: Boolean = false,
-    minimumWidthDp: Float = 0f): Bitmap {
+    minimumWidthDp: Float = 0f, tailBelow: Boolean = !endpoint): Bitmap {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = (if (endpoint) 11f else 14f) * density
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -40,7 +40,7 @@ internal fun diaryPinBitmap(label: String, selected: Boolean, density: Float, en
     val canvas = Canvas(bitmap)
     val left = density
     val right = width - density
-    val top = density + if (endpoint && !detached) tail else 0f
+    val top = density + if (!tailBelow && !detached) tail else 0f
     val bottom = top + bodyHeight
     val center = width / 2f
     val fill = if (selected) Color.rgb(128, 48, 92) else Color.WHITE
@@ -48,8 +48,12 @@ internal fun diaryPinBitmap(label: String, selected: Boolean, density: Float, en
     val shape = Path().apply {
         addRoundRect(left, top, right, bottom, 10f * density, 10f * density, Path.Direction.CW)
         if (!detached) {
-            if (endpoint) { moveTo(center - tail, top); lineTo(center, 0f); lineTo(center + tail, top) }
-            else { moveTo(center - tail, bottom); lineTo(center, bitmap.height.toFloat()); lineTo(center + tail, bottom) }
+            val triangle = Path().apply {
+                if (!tailBelow) { moveTo(center - tail, top); lineTo(center, 0f); lineTo(center + tail, top) }
+                else { moveTo(center - tail, bottom); lineTo(center, bitmap.height.toFloat()); lineTo(center + tail, bottom) }
+                close()
+            }
+            op(triangle, Path.Op.UNION)
         }
         close()
     }

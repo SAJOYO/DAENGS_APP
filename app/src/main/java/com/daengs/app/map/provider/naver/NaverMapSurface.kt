@@ -344,9 +344,9 @@ fun NaverMapSurface(
     // 새로 할 때 산책 중 사용자가 남긴 순간까지 사라진다.
     val fixedMarkerFootprints = scene.routeEndpointStamps().map { endpoint ->
         val art = requireNotNull(context.getDrawable(endpoint.kind.iconRes))
-        val dimensions = if (endpoint.compact) diaryPinSize(endpoint.label,density,endpoint=true,detached=endpoint.abovePoint) else art.intrinsicWidth to art.intrinsicHeight
+        val dimensions = if (endpoint.compact) diaryPinSize(endpoint.label,density,endpoint=true) else art.intrinsicWidth to art.intrinsicHeight
         endpoint.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),
-            .5,if(endpoint.abovePoint) 1.2 else if(endpoint.compact) 0.0 else .5)
+            .5,if(endpoint.abovePoint) 1.0 else if(endpoint.compact) 0.0 else .5)
     }
     if (scene.detachedDiaryPins) {
         val obstacles = fixedMarkerFootprints + scene.stayStamps.map {

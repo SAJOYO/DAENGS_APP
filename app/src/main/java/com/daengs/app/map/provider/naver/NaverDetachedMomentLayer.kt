@@ -80,24 +80,34 @@ internal fun NaverDetachedMomentLayer(map: NaverMap?, moments: List<MomentMarker
             query?.let { visibility(MapVisibilityResult(it,if(map.isCameraIdlePending) null else visible.flatMap { p->p.glyph.group.points.map { it.id } }.toSet(), missing)) }
             offsets.keys.retainAll(result.map { it.glyph.group.key }.toSet())
             clear()
+            val anchorIcons = listOf(false, true).associateWith {
+                OverlayImage.fromBitmap(diaryRouteAnchorBitmap(it, density))
+            }
             for (placement in visible) {
                 val group=placement.glyph.group; val a=art(group)
+                val members=group.points.map { source.getValue(it.id) }
+                val selected=members.any { it.selected || it.diaryPin?.inspected==true }
                 offsets[group.key]=MarkerPoint(group.key,placement.point.x-group.anchor.x,placement.point.y-group.anchor.y)
                 val start=coordinate(group.anchor); val end=coordinate(placement.point)
                 if (placement.point.distance(group.anchor)>1) {
                     overlays+=PolylineOverlay().apply {
-                        coords=listOf(start,end); width=density.roundToInt().coerceAtLeast(1)
-                        color=WalkTraceShadow.color.copy(alpha=.55f).toArgb(); globalZIndex=order.markers-1; this.map=map
+                        coords=listOf(start,end); width=(4*density).roundToInt().coerceAtLeast(1)
+                        color=CardWhite.toArgb(); globalZIndex=order.markers-3; this.map=map
+                    }
+                    overlays+=PolylineOverlay().apply {
+                        coords=listOf(start,end); width=((if(selected) 2.2f else 1.8f)*density).roundToInt().coerceAtLeast(1)
+                        color=TextDark.toArgb(); globalZIndex=order.markers-2; this.map=map
                     }
                 }
-                overlays+=Marker(start,OverlayImage.fromResource(com.daengs.app.R.drawable.ic_walk_replay_cursor)).apply {
-                    width=(7*density).roundToInt(); height=width; anchor=PointF(.5f,.5f)
+                overlays+=Marker(start,anchorIcons.getValue(selected)).apply {
+                    width=kotlin.math.ceil(26*density).toInt(); height=width; anchor=PointF(.5f,.5f)
+                    isHideCollidedMarkers=false
+                    setOnClickListener { select(group.points.map { it.id }); true }
                     globalZIndex=order.markers-1; this.map=map
                 }
                 overlays+=Marker(end,a.icon).apply {
                     width=a.width; height=a.height; anchor=PointF(.5f,.5f)
                     globalZIndex=order.markers; zIndex=120+placement.glyph.priority*10; isHideCollidedMarkers=false
-                    val members=group.points.map { source.getValue(it.id) }
                     alpha=if(members.all { it.diaryPin?.dimmed==true }) .42f else 1f
                     setOnClickListener { select(group.points.map { it.id }); true }; this.map=map
                 }
