@@ -320,7 +320,7 @@ internal fun WalkRecordsOverview(
                 else BehaviorRecordList(pinRecords, pets, actionPinState.selectedKey.value, hiddenIds,
                     displayableWalkIds,
                     { key -> pinRecords.firstOrNull { it.key == key }?.let(choosePin) }, onToggleHidden,
-                    onOpen, listModifier, actionPinState.listState, onOpenAction = onOpenAction)
+                    onOpen, listModifier, actionPinState.listState, onOpenAction = onOpenAction, readingSource = routeSource)
             } else WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, displayableWalkIds,
                 { setExpanded(true); onSelect(it) }, onToggleHidden, onOpen, listModifier, listState)
         })

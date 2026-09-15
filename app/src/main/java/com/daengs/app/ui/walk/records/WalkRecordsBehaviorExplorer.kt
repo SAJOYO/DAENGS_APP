@@ -285,7 +285,7 @@ internal fun WalkRecordsBehaviorExplorer(
             else BehaviorRecordList(result.records, pets, selectedEntryKey, hidden, hideableIds,
                 { onSelect(it, false) }, { id ->
                     if (id in hideableIds) hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
-                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null, onOpenAction = onOpenAction)
+                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null, onOpenAction = onOpenAction, readingSource = routeSource)
         })
 }
 
