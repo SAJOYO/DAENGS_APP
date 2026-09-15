@@ -80,6 +80,7 @@ import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
 import com.daengs.app.ui.theme.PinkFaint
+import com.daengs.app.ui.theme.PinkSoft
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -214,6 +215,30 @@ private fun PhotoBlankPreview() {
     }
 }
 
+/**
+ * 「9월 카드가 완성됐어요 · 보기」. **저절로 사라지지 않는다** — 결과를 보면(`onRevealed`) 홀더가 지운다.
+ * 화면을 저절로 바꾸지 않는 이유는 다른 카드를 보던 중에 튀기 때문이다 (docs/photo-cards.md §8 결정 9).
+ */
+@Composable
+private fun PhotoReadyNotice(month: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(TextDark.copy(alpha = 0.92f))
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${month}월 카드가 완성됐어요", color = CardWhite, fontSize = 13.sp)
+        Spacer(Modifier.width(10.dp))
+        Text("보기", color = PinkSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF6E9E3)
+@Composable
+private fun PhotoReadyNoticePreview() = PhotoReadyNotice(9, {})
+
 /** 뽑은 날. 기기 시간대로 읽는다 — 뽑은 사람의 하루가 기준이다. */
 private fun drawnOn(millis: Long): String =
     java.time.Instant.ofEpochMilli(millis)
@@ -291,6 +316,15 @@ fun CardDexScreen(
     photoFailure: PhotoCard? = null,
     /** 실패 알림의 「확인」 — 그 행을 지운다. null 이면 「확인」이 안 뜬다 */
     onDismissPhotoFailure: ((PhotoCard) -> Unit)? = null,
+    /**
+     * 나가서 기다리는 동안 완성된 포토 카드. 확대 뷰가 닫혀 있으면 바닥에 한 줄 알림이
+     * 뜬다 (`PhotoReadyNotice`). null 이면 알림이 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
+     */
+    revealCard: PhotoCard? = null,
+    /** [revealCard] 의 그림. 같이 와야 알림이 뜬다. */
+    revealFile: File? = null,
+    /** 알림을 눌러 뒤집기가 끝났을 때 부른다. `PhotoRevealFlow.onRevealed` 그대로 얹힌다. */
+    onRevealed: ((String) -> Unit)? = null,
 ) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
@@ -344,8 +378,13 @@ fun CardDexScreen(
     }
     val slots = remember(all, deck) { all.filter { it.card.deck == deck } }
 
+    // 알림에서 연 결과. **누른 순간의 카드를 붙잡아 둔다** — 뒤집기가 끝나면 `onRevealed` 로
+    // `revealCard` 가 null 이 되는데, 그걸 그대로 보면 결과 화면이 뜨자마자 사라진다.
+    var revealing by remember { mutableStateOf<Pair<PhotoCard, File>?>(null) }
+
     BackHandler {
         when {
+            revealing != null -> revealing = null
             makingPhoto -> makingPhoto = false
             drawing -> drawing = false
             scene != null -> scene = null
@@ -362,6 +401,20 @@ fun CardDexScreen(
     if (makingPhoto && makePhoto != null) {
         makePhoto(makingMonth) { makingPhoto = false }
         return
+    }
+
+    revealing?.let { (card, file) ->
+        val dex = photoCardFor(card.month)
+        if (dex != null) {
+            PhotoRevealFlow(
+                dex = dex,
+                card = card,
+                file = file,
+                onRevealed = { onRevealed?.invoke(it) },
+                onOpenDex = { deck = DexDeck.Photo; revealing = null },
+            )
+            return
+        }
     }
 
     // 무대가 열리고 닫히는 것을 바깥에 알린다 (화면 방향).
@@ -442,6 +495,16 @@ fun CardDexScreen(
             )
         }
 
+        // 나가서 기다린 사람에게 알린다. **확대 뷰가 열려 있으면 숨긴다** — 설명 시트
+        // 버튼을 가린다.
+        if (revealCard != null && revealFile != null && opened == null) {
+            PhotoReadyNotice(
+                month = revealCard.month,
+                onOpen = { revealing = revealCard to revealFile },
+                modifier = Modifier.align(Alignment.BottomCenter).systemBarsPadding().padding(bottom = 28.dp),
+            )
+        }
+
         // **알림은 제일 위 겹이다.** 확대 뷰가 닫히면서 그 아래 도감이 드러나는데,
         // 알림이 확대 뷰 안에 있으면 같이 사라져서 아무 말도 못 하고 끝난다.
         removedNote?.let { note ->
@@ -452,7 +515,7 @@ fun CardDexScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .systemBarsPadding()
-                    .padding(bottom = 28.dp)
+                    .padding(bottom = if (revealCard != null && revealFile != null && opened == null) 80.dp else 28.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(Color(0xE6241C1A))
                     .padding(horizontal = 16.dp, vertical = 9.dp),
@@ -747,17 +810,20 @@ private fun GridCard(
             if (cover == null) {
                 // **포토 카드는 앱에 틀 그림이 없다.** 잠긴 칸이거나 아직 만드는 중이면
                 // 빈 판 + 자물쇠(또는 안내 한 줄)로 대신한다.
-                PhotoBlank(
-                    locked = slot.locked,
-                    label = if (pending) "만드는 중…" else null,
-                    // **`HoloCard` 와 같은 손짓을 받는다.** 빈 판이라고 탭·꾹 누르기가
-                    // 안 먹으면 만드는 중인 칸은 열 길이 없다 — 확대 뷰도, 그 안의
-                    // 지우기도 못 쓰게 된다.
-                    modifier = Modifier
-                        .height(maxWidth * SLOT_RATIO)
-                        .onGloballyPositioned { at = it.boundsInWindow() }
-                        .rubbable(rub, consume = false),
-                )
+                // **`HoloCard` 와 같은 손짓을 받는다.** 빈 판이라고 탭·꾹 누르기가
+                // 안 먹으면 만드는 중인 칸은 열 길이 없다 — 확대 뷰도, 그 안의
+                // 지우기도 못 쓰게 된다.
+                val slotModifier = Modifier
+                    .height(maxWidth * SLOT_RATIO)
+                    .onGloballyPositioned { at = it.boundsInWindow() }
+                    .rubbable(rub, consume = false)
+                if (pending) {
+                    // 서버가 그리는 중이면 잠금 판 대신 반짝이는 뒷면을 보여 준다 —
+                    // 완성되면 알림이 뜬다는 걸 여기서부터 느끼게 한다.
+                    PhotoCardBack(modifier = slotModifier, label = "만드는 중…", matchHeight = true)
+                } else {
+                    PhotoBlank(locked = slot.locked, label = null, modifier = slotModifier)
+                }
             } else {
                 HoloCard(
                     art = art,
@@ -1008,17 +1074,21 @@ private fun CardViewer(
             Box(Modifier.fillMaxWidth().graphicsLayer { alpha = cardAlpha }) {
             if (cover == null) {
                 // 포토 카드는 앱에 틀 그림이 없다. 잠긴 칸이거나 만드는 중이면 빈 판이다.
-                PhotoBlank(
-                    locked = slot.locked,
-                    label = if (pending) "만드는 중이에요. 잠시 뒤 다시 열어 보세요" else null,
-                    // **`HoloCard` 와 같은 손짓을 받는다.** 안 달면 만드는 중인 장은 탭이
-                    // 바깥으로 새어 "밖을 눌러 닫기" 가 대신 발동해 설명 시트를 못 연다
-                    // (지우기가 그 안에 있다).
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onGloballyPositioned { at = it.boundsInWindow() }
-                        .rubbable(rub),
-                )
+                // **`HoloCard` 와 같은 손짓을 받는다.** 안 달면 만드는 중인 장은 탭이
+                // 바깥으로 새어 "밖을 눌러 닫기" 가 대신 발동해 설명 시트를 못 연다
+                // (지우기가 그 안에 있다).
+                val viewerModifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { at = it.boundsInWindow() }
+                    .rubbable(rub)
+                if (pending) {
+                    PhotoCardBack(
+                        modifier = viewerModifier,
+                        label = "만드는 중이에요. 다 되면 알려 드려요",
+                    )
+                } else {
+                    PhotoBlank(locked = slot.locked, label = null, modifier = viewerModifier)
+                }
             } else {
             HoloCard(
                 art = art,
