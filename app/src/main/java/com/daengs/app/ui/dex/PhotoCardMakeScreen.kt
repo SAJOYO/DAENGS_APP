@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -152,6 +153,9 @@ fun PhotoCardMakeScreen(
             BackHandler { onOpenDex() }
             if (dex != null && watchingFile != null) {
                 PhotoRevealFlow(dex, card, watchingFile, onRevealed = onRevealed, onOpenDex = onOpenDex)
+            } else if (dex == null) {
+                // 모르는 달이면(카탈로그에 없는 달) 빈 화면에 갇힌다 — 도감으로 보낸다.
+                LaunchedEffect(card.id) { onOpenDex() }
             }
         }
         PhotoMakeStage.Failed -> {

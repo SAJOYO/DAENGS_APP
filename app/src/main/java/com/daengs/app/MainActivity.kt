@@ -50,6 +50,7 @@ import com.daengs.app.dogcard.MissLog
 import com.daengs.app.dogcard.photo.HttpPhotoCardRemote
 import com.daengs.app.dogcard.photo.PhotoCardFiles
 import com.daengs.app.dogcard.photo.PhotoCardHolder
+import com.daengs.app.dogcard.photo.PrefsRevealLog
 import androidx.compose.runtime.mutableIntStateOf
 import com.daengs.app.farewell.FarewellScreen
 import com.daengs.app.ui.DogAvatar
@@ -374,6 +375,8 @@ class MainActivity : ComponentActivity() {
                         remote = HttpPhotoCardRemote,
                         files = PhotoCardFiles(java.io.File(context.filesDir, "photo-cards")),
                         accessToken = freshToken,
+                        // 결과를 봤는지는 서버가 모른다 — 기기에 남겨야 나갔다 온 뒤에도 도감이 알린다.
+                        reveals = PrefsRevealLog(context),
                     )
                 }
 
@@ -1379,6 +1382,9 @@ class MainActivity : ComponentActivity() {
                         },
                         makePhoto = { startMonth, done ->
                             LaunchedEffect(Unit) { photos.clearCreateError() }
+                            // 방금 보낸 카드. 이 오버레이가 떠 있는 동안만 기억한다 — 닫으면 처음부터.
+                            var watchId by remember { mutableStateOf<String?>(null) }
+                            val watching = watchId?.let { id -> photos.cards.firstOrNull { it.id == id } }
                             PhotoCardMakeScreen(
                                 startMonth = startMonth,
                                 // 대표 강아지가 먼저 보이게 한다 (`sortedByDescending` 은 안정 정렬이라
@@ -1388,17 +1394,20 @@ class MainActivity : ComponentActivity() {
                                     .map { PhotoDog(it.id, it.name, it.isPrimary) },
                                 busy = photos.creating,
                                 error = photos.createError,
-                                // Task 6 에서 진짜로 잇는다 — 지금은 컴파일만 맞춘다.
-                                watching = null,
-                                watchingFile = null,
+                                watching = watching,
+                                watchingFile = watching?.let { photos.images[it.id] },
                                 onSubmit = { month, dog, jpeg ->
-                                    scope.launch {
-                                        if (photos.create(month, dog.name, dog.id, jpeg) != null) done()
-                                    }
+                                    // **여기서 `done()` 을 부르지 않는다.** 보낸 뒤에도 화면은 열린 채
+                                    // 그리는 중 → 뒤집기로 넘어간다 — 나가는 건 「다 되면 알려 주세요」뿐이다.
+                                    scope.launch { photos.create(month, dog.name, dog.id, jpeg)?.let { watchId = it } }
                                 },
                                 onWaitElsewhere = done,
-                                onRevealed = {},
-                                onRetry = {},
+                                onRevealed = { photos.markRevealed(it) },
+                                // 실패 행은 서버에서 지운다 — 남으면 도감 머리말에 같은 실패가 또 뜬다.
+                                onRetry = { failed ->
+                                    scope.launch { photos.remove(failed.id) }
+                                    watchId = null
+                                },
                                 onOpenDex = done,
                                 onCancel = done,
                             )
@@ -1455,6 +1464,10 @@ class MainActivity : ComponentActivity() {
                                 onOpenDex = done,
                             )
                         },
+                        // 나가서 기다린 사람도 도감을 열면 완성을 안다 — 결과를 안 본 카드만 뜬다.
+                        revealCard = photos.readyToReveal,
+                        revealFile = photos.readyToReveal?.let { photos.images[it.id] },
+                        onRevealed = { photos.markRevealed(it) },
                         )
                     }
 
