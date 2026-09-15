@@ -809,7 +809,93 @@ private fun PhotoReadyNoticePreview() = PhotoReadyNotice(9, {})
 
 ---
 
-### Task 7: 실기기 확인 (컨트롤러가 직접)
+### Task 7: 남은 횟수 · 제목 이름 · 강아지별 달 — 데이터
+
+spec **§9** 를 먼저 읽는다. 서버 계약은 `SAJOYO/DAENGS_dev` #543 본문.
+
+**Files:**
+- Modify: `app/src/main/java/com/daengs/app/dogcard/photo/PhotoCard.kt` · `PhotoCardApi.kt` · `PhotoCardHolder.kt`
+- Test: `app/src/test/java/com/daengs/app/dogcard/photo/PhotoCardJsonTest.kt` · `PhotoCardHolderTest.kt`
+- Modify (컴파일만): `app/src/main/java/com/daengs/app/MainActivity.kt`
+
+**Interfaces:**
+- Produces:
+  - `data class PhotoCardList(val cards: List<PhotoCard>, val dailyRemaining: Int?)` · `fun parsePhotoCardList(body: String): PhotoCardList` (`daily_remaining` 이 없거나 null 이면 null)
+  - `fun photoCardQuery(month: Int, dogName: String, dogId: String?, titleName: String? = null): String` — `titleName` 이 공백을 걷고 비어 있지 않으면 `&title_name=` (UTF-8 인코딩)
+  - `PhotoCardRemote.list(token): Result<PhotoCardList>` · `PhotoCardRemote.create(token, month, dogName, dogId, jpeg, titleName: String?)`
+  - 홀더: `var dailyRemaining: Int?` (state) · `suspend fun create(month, dogName, dogId, jpeg, titleName: String? = null): String?` · `fun takenMonths(dogId: String?): Set<Int>` (그 강아지의 `Ready`·`Generating` 카드의 달. `dogId` null 이면 빈 집합)
+
+- [ ] **Step 1: 실패하는 테스트**
+  - `PhotoCardJsonTest`: `{"cards":[…],"daily_limit":1,"daily_remaining":0}` → `dailyRemaining == 0`; `daily_remaining` 없음 → null; `"daily_remaining":null` → null. `photoCardQuery(9, "안녕", "d-1", " NEO ")` == `"month=9&dog_name=%EC%95%88%EB%85%95&dog_id=d-1&title_name=NEO"`; `titleName = "  "` → `title_name` 없음.
+  - `PhotoCardHolderTest` (FakeRemote 의 `list` 를 `PhotoCardList(server.toList(), remaining)` 로, `var remaining: Int? = null` 추가; `create` 에 `titleName` 인자 추가하고 `var lastTitleName: String?` 기록):
+    - `목록의 남은 횟수를 들고 있는다` — remaining=1 → load → `dailyRemaining == 1`
+    - `완성돼 그림을 받으면 남은 횟수를 하나 줄인다` — remaining=1, load, create, 서버 행 Ready + url, pollOnce → `dailyRemaining == 0`
+    - `남은 횟수를 모르면 줄이지 않는다` — remaining=null 로 같은 흐름 → null
+    - `제목 이름을 서버로 넘긴다` — `h.create(4, "안녕", "d-1", jpeg, "NEO")` → `remote.lastTitleName == "NEO"`
+    - `강아지별로 이미 있는 달을 모은다` — 서버에 dog d-1 의 4월 Ready · 9월 Failed, dog d-2 의 9월 Generating → `takenMonths("d-1") == setOf(4)`, `takenMonths("d-2") == setOf(9)`, `takenMonths(null)` 빈 집합
+- [ ] **Step 2: 실패를 본다.**
+- [ ] **Step 3: 구현** — `load()` 에서 `cards = list.cards` 와 함께 `dailyRemaining = list.dailyRemaining`(세대 확인 뒤). `pollOnce()` 에서 `Ready` 카드의 그림 저장이 성공해 `cards` 를 바꾼 직후 `dailyRemaining = dailyRemaining?.let { (it - 1).coerceAtLeast(0) }`. `forget()` 에서 `dailyRemaining = null`. `create` 는 `titleName` 을 `remote.create` 로 넘긴다. `HttpPhotoCardRemote.create` 는 `photoCardQuery(month, dogName, dogId, titleName)`.
+- [ ] **Step 4: `MainActivity` 컴파일만** — `photos.create(month, dog.name, dog.id, jpeg)` 호출은 기본값으로 그대로 컴파일돼야 한다(안 되면 `titleName = null` 을 넘긴다).
+- [ ] **Step 5: 빌드·테스트** — `… :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.dogcard.photo.*'`.
+- [ ] **Step 6: 커밋** — 제목 `포토 카드 하루 남은 횟수와 강아지별로 이미 만든 달, 제목 이름을 앱이 몰랐던 것`.
+
+---
+
+### Task 8: 만들기 화면 — 남은 횟수 · 달 막기 · 제목 이름 칸
+
+**Files:**
+- Modify: `app/src/main/java/com/daengs/app/ui/dex/PhotoCardMakeScreen.kt`
+- Create test: `app/src/test/java/com/daengs/app/ui/dex/PhotoMakeRulesTest.kt`
+- Modify (컴파일만): `app/src/main/java/com/daengs/app/MainActivity.kt`
+
+**Interfaces:**
+- Consumes: Task 7 `takenMonths` 의 모양(Set<Int>) — 화면은 홀더를 모르고 값만 받는다.
+- Produces:
+  - `fun topicName(name: String): String` — 마지막 글자가 한글이면 받침 있으면 `"${name}은"`, 없으면 `"${name}는"`; 한글이 아니면 `"${name}은(는)"`
+  - `fun photoRemainingText(remaining: Int?): String?` — null → null · 0 → `"오늘은 다 만들었어요 · 내일 다시 만들 수 있어요"` · n → `"오늘 ${n}번 남았어요"`
+  - `fun choosePhotoMonth(preferred: Int, open: Set<Int>, taken: Set<Int>): Int?` — preferred 가 열렸고 안 막혔으면 그것, 아니면 열린 달 중 안 막힌 첫 달(오름차순), 없으면 null
+  - `PhotoCardMakeScreen` 새 인자: `remaining: Int? = null` · `takenMonths: (dogId: String) -> Set<Int> = { emptySet() }` · `onSubmit: (month: Int, dog: PhotoDog, jpeg: ByteArray, titleName: String?) -> Unit`
+
+- [ ] **Step 1: 실패하는 테스트 (`PhotoMakeRulesTest`)**
+  - `topicName("안녕") == "안녕은"` · `topicName("보리") == "보리는"` · `topicName("NEO") == "NEO은(는)"`
+  - `photoRemainingText(null) == null` · `photoRemainingText(0)` 이 「오늘은 다 만들었어요」로 시작 · `photoRemainingText(1) == "오늘 1번 남았어요"`
+  - `choosePhotoMonth(9, setOf(4,9), emptySet()) == 9` · `choosePhotoMonth(9, setOf(4,9), setOf(9)) == 4` · `choosePhotoMonth(9, setOf(4,9), setOf(4,9)) == null`
+- [ ] **Step 2: 실패를 본다.**
+- [ ] **Step 3: 구현**
+  - 상태: `var titleName by remember { mutableStateOf("") }`. `month` 는 강아지가 바뀔 때 `choosePhotoMonth(month, OPEN_PHOTO_MONTHS, takenMonths(dog.id))` 로 다시 고른다(`LaunchedEffect(dog?.id)`), 결과가 null 이면 month 는 그대로 두고 제출을 막는다.
+  - `PhotoCardMakeContent` 에 인자 `remainingText: String?` · `taken: Set<Int>` · `dogName: String?` · `titleName: String` · `onTitleName: (String) -> Unit` · `blockedNote: String?`.
+  - 부제 아래 `remainingText` 한 줄(0 이면 `TextDark`, 그 밖 `TextMuted`).
+  - 달 칸: `m in taken` 이면 흐린 칸(`PinkFaint` 바탕 · `TextMuted` 글자) + 누르면 아무 일 없음. 칸 줄 아래 막힌 달이 있으면 `"${topicName(dogName)} 이미 ${m}월 카드가 있어요"`(막힌 달마다 한 줄 또는 "4·9월" 로 이어서).
+  - 사진 칸 위에 이름 칸: `OutlinedTextField(value = titleName, onValueChange = { onTitleName(it.take(20)) }, label = { Text("카드에 적힐 이름 (선택)") }, placeholder = { Text(dogName.orEmpty()) }, supportingText = { Text("영어 대문자를 추천해요 (예: NEO)") }, singleLine = true)` — 색은 M3 기본(테마 칸이 채워져 있다).
+  - 「이 사진으로 만들기」 enabled = `preview != null && dog != null && remaining != 0 && month !in taken`.
+  - 제출: `onSubmit(month, dog, jpeg, titleName.trim().ifEmpty { null })`.
+  - 기존 `PhotoCardMakeContentPreview` 를 새 인자로 고치고, 막힌 달이 있는 프리뷰 하나를 더한다.
+- [ ] **Step 4: `MainActivity` 컴파일만** — `onSubmit = { month, dog, jpeg, _ -> … }` 로 받는다(진짜 전달은 Task 9).
+- [ ] **Step 5: 빌드·테스트** — `… :app:assembleDebug :app:testDebugUnitTest --tests 'com.daengs.app.ui.dex.*' --tests 'com.daengs.app.DesignLockTest'`.
+- [ ] **Step 6: 커밋** — 제목 `만들기 화면이 오늘 남은 횟수와 이미 만든 달을 알려 주지 않고 제목 이름을 받지 못하던 것`.
+
+---
+
+### Task 9: 도감 남은 횟수 · 배선
+
+**Files:**
+- Modify: `app/src/main/java/com/daengs/app/ui/dex/CardDexScreen.kt` · `app/src/main/java/com/daengs/app/MainActivity.kt`
+
+**Interfaces:**
+- Consumes: Task 7 `dailyRemaining` · `takenMonths` · `create(…, titleName)`; Task 8 `photoRemainingText` · 새 `PhotoCardMakeScreen` 인자.
+- Produces: `CardDexScreen` 새 인자 `photoRemaining: Int? = null`.
+
+- [ ] **Step 1: 도감 머리말** — 「＋ 포토 카드 만들기」 바로 아래 `photoRemainingText(photoRemaining)` 한 줄(`TextMuted`, 12sp). 포토 탭에서만.
+- [ ] **Step 2: 배선 (`MainActivity`)**
+  - `CardDexScreen(…, photoRemaining = photos.dailyRemaining, …)`.
+  - `onMakePhotoBlocked` 의 `when` 에서 `photos.generating` 다음에 `photos.dailyRemaining == 0 -> { { Toast.makeText(context, "오늘은 포토 카드를 다 만들었어요. 내일 다시 만들 수 있어요", Toast.LENGTH_SHORT).show() } }`.
+  - `PhotoCardMakeScreen(…, remaining = photos.dailyRemaining, takenMonths = { id -> photos.takenMonths(id) }, onSubmit = { month, dog, jpeg, titleName -> scope.launch { photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { watchId = it } } }, …)`.
+- [ ] **Step 3: 빌드 + 전체 단위 테스트** — `… :app:assembleDebug` 후 `… :app:testDebugUnitTest` 한 번(알려진 `FacilityConnectedUiTest` 1건 외 실패 없음).
+- [ ] **Step 4: 커밋** — 제목 `도감이 오늘 포토 카드를 더 만들 수 있는지 말하지 않고 다 쓴 날에도 만들기가 열리던 것`.
+
+---
+
+### Task 10: 실기기 확인 (컨트롤러가 직접)
 
 - 설치 후 `Success` 와 설치 시각을 직접 본다. 스크린샷 전 앞 화면이 `com.daengs.app` 인지 본다.
 - **카드 생성은 비용·하루 한도 1장을 쓴다 — 시작 전에 사용자에게 묻고, 사진은 사용자가 고른다.**
