@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,6 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -599,6 +606,8 @@ private fun RoomToggle(inRoom: Boolean, onToggle: (() -> Unit)?) {
         color = if (inRoom) TextMuted else DaengPink,
         fontSize = 11.sp,
         fontWeight = if (inRoom) FontWeight.Normal else FontWeight.Bold,
+        maxLines = 1,
+        softWrap = false,
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = toggle)
@@ -806,7 +815,7 @@ private fun PetCard(
         color = CardWhite,
         shape = RoundedCornerShape(16.dp),
         border = if (inRoom) BorderStroke(1.5.dp, DaengPink.copy(alpha = 0.45f)) else null,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("pet-card-${pet.id}"),
     ) {
         Column {
             Row(
@@ -818,20 +827,18 @@ private fun PetCard(
                 PetFace(pet, 46.dp, photo)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
+                    // ① 이름. **한 줄이고 넘치면 말줄임이다** — 두 줄로 접히면 아이마다 카드 높이가
+                    // 달라지고, 뱃지를 이름 옆에 붙이던 때처럼 긴 이름이 뒤를 밀어낸다.
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        if (!pet.isOwner) {
-                            Spacer(Modifier.width(6.dp))
-                            Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp)) {
-                                Text(
-                                    "공동 돌봄",
-                                    color = DaengPinkDeep,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                                )
-                            }
-                        }
+                        Text(
+                            pet.name,
+                            color = TextDark,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
                         // 배웅한 아이. **글자가 아니라 무지개다** — "사망" 같은 말을 목록에
                         // 붙여 두면 매번 그 단어를 읽게 된다.
                         if (sentOn != null) {
@@ -840,7 +847,7 @@ private fun PetCard(
                         }
                     }
                     Spacer(Modifier.height(2.dp))
-                    // 배웅한 아이는 나이·몸무게 대신 **간 날**을 적는다. 떠난 아이에게
+                    // ② 배웅한 아이는 나이·몸무게 대신 **간 날**을 적는다. 떠난 아이에게
                     // "3살" 이라고 붙어 있으면 시간이 멈춘 것처럼 읽힌다.
                     if (sentOn != null) {
                         Text(
@@ -851,76 +858,87 @@ private fun PetCard(
                             ),
                             color = TextMuted,
                             fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    } else {
-                        Text(petSubtitle(pet), color = TextMuted, fontSize = 12.sp)
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-                // **대표 자리는 배웅한 아이에게도 그대로 둔다.** 한 마리만 키우다 보낸
-                // 경우 그 아이가 대표일 수밖에 없고, 여러 마리여도 떠난 아이를 대표로
-                // 두고 싶을 수 있다. 여기서 막으면 그 선택을 못 하게 된다.
-                //
-                // 대신 **삭제는 아이의 자리로 옮겼다.** 떠난 아이 옆에 지우기 버튼이 매번
-                // 붙어 있는 것과, 그 아이의 화면에서 조용히 고르는 것은 다르다.
-                if (sentOn != null) {
-                    if (pet.isPrimary) {
-                        Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     } else {
                         Text(
-                            "대표로",
+                            petSubtitle(pet),
                             color = TextMuted,
-                            fontSize = 11.sp,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable(onClick = onPickPrimary)
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    // **배웅한 아이도 방에 두고 뺄 수 있다.** 배웅은 지우는 일이 아니라는
-                    // 것이 그 화면의 전제라, 방 구성에서만 손을 못 대면 말이 안 맞는다.
-                    RoomToggle(inRoom, onToggleRoom)
-                    return@Row
-                }
-                if (pet.isPrimary) {
-                    Text("대표", color = DaengPink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                } else {
-                    Text(
-                        "대표로",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onPickPrimary)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-                RoomToggle(inRoom, onToggleRoom)
-                // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
-                // 고치기이고, 지우기는 한 번 더 묻는다.
-                if (onDelete != null) {
-                    Text(
-                        "삭제",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onDelete)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    )
-                }
-                // 연결된 보호자의 이름 바꾸기. **삭제와 한 카드에 같이 뜨지 않는다** — 삭제는
-                // 그룹 주보호자에게만, 이것은 그 반대에게만 온다.
-                if (onRename != null) {
-                    Text(
-                        "이름 변경",
-                        color = TextMuted,
-                        fontSize = 11.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onRename)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    )
+                    Spacer(Modifier.height(6.dp))
+                    // ③ 상태·액션 줄. 왼쪽 뱃지, 오른쪽 액션 — 액션이 뜨는 조건은 전과 같다.
+                    PetCardStatusRow(
+                        coCare = showsCoCareBadge(pet),
+                        modifier = Modifier.testTag("pet-card-status-${pet.id}"),
+                    ) {
+                        // **대표 자리는 배웅한 아이에게도 그대로 둔다.** 한 마리만 키우다 보낸
+                        // 경우 그 아이가 대표일 수밖에 없고, 여러 마리여도 떠난 아이를 대표로
+                        // 두고 싶을 수 있다. 여기서 막으면 그 선택을 못 하게 된다.
+                        if (pet.isPrimary) {
+                            Text(
+                                "대표",
+                                color = DaengPink,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        } else {
+                            Text(
+                                "대표로",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable(onClick = onPickPrimary)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                        // **배웅한 아이도 방에 두고 뺄 수 있다.** 배웅은 지우는 일이 아니라는
+                        // 것이 그 화면의 전제라, 방 구성에서만 손을 못 대면 말이 안 맞는다.
+                        RoomToggle(inRoom, onToggleRoom)
+                        // 배웅한 아이는 **삭제를 그 아이의 자리로 옮겼다.** 떠난 아이 옆에 지우기
+                        // 버튼이 매번 붙어 있는 것과, 그 아이의 화면에서 조용히 고르는 것은 다르다.
+                        if (sentOn == null) {
+                            // 지우기. **눈에 띄되 손이 먼저 가지는 않게** 옅은 글씨다 — 카드를 누르면
+                            // 고치기이고, 지우기는 한 번 더 묻는다.
+                            if (onDelete != null) {
+                                Text(
+                                    "삭제",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable(onClick = onDelete)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                )
+                            }
+                            // 연결된 보호자의 이름 바꾸기. **삭제와 한 카드에 같이 뜨지 않는다** — 삭제는
+                            // 그룹 주보호자에게만, 이것은 그 반대에게만 온다.
+                            if (onRename != null) {
+                                Text(
+                                    "이름 변경",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable(onClick = onRename)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         // **프로필 수정과 다른 동작이다.** 카드 본체를 누르면 고치기이고(공동 돌봄
@@ -941,6 +959,143 @@ private fun PetCard(
                 Text("보기", color = DaengPinkDeep, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+        }
+    }
+}
+
+/**
+ * 「공동 돌봄」 뱃지를 붙이나. **행이 아니라 실제 공동 돌봄 관계로 가른다.**
+ *
+ * - `!isOwner` — 연결 없이 돌보미로 참여한 아이
+ * - `!isGroupOwner` — 기존 강아지와 연결한 공동 보호자의 자기 행 (행의 대표지만 그룹 주보호자는 남)
+ * - `hasOtherCarers` — 공동 보호자를 둔 **그룹 주보호자 본인** 카드. 앞의 두 값으로는 혼자
+ *   등록한 아이와 구별되지 않는다. 구 서버는 이 칸을 안 줘서 false 고, 그때는 앞의 두 조건만 남는다.
+ */
+internal fun showsCoCareBadge(pet: Pet): Boolean = !pet.isOwner || !pet.isGroupOwner || pet.hasOtherCarers
+
+/**
+ * 카드 ③ 줄 — 왼쪽 「공동 돌봄」 뱃지, 오른쪽 액션.
+ *
+ * **뱃지가 없는 카드도 뱃지 자리를 똑같이 잰다.** 뱃지 대신 같은 글씨로 잰 빈 자리를 둬서
+ * ([CoCareBadgeSpace]), 뱃지 유무로 줄 높이·오른쪽 액션 위치·카드 높이가 바뀌지 않는다.
+ * 빈 자리에는 글자가 없다 — 투명한 뱃지를 두면 화면 읽기가 없는 뱃지를 읽는다.
+ *
+ * 좁은 화면이나 큰 글씨에서 한 줄에 다 안 들어가면 **버튼을 빼지 않고** 액션을 뱃지 아래로
+ * 내린다(오른쪽 정렬 유지). 이 판단도 뱃지 폭으로 하므로 뱃지 없는 카드와 같은 모양이 된다.
+ * 액션만으로도 폭을 넘으면 액션끼리 줄을 나눈다 — 글자 하나가 두 줄로 접히지는 않는다.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PetCardStatusRow(
+    coCare: Boolean,
+    modifier: Modifier = Modifier,
+    actions: @Composable () -> Unit,
+) {
+    Layout(
+        content = {
+            if (coCare) CoCareBadge() else CoCareBadgeSpace()
+            FlowRow(
+                horizontalArrangement = Arrangement.End,
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) { actions() }
+        },
+        modifier = modifier.fillMaxWidth(),
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val gap = 8.dp.roundToPx()
+        val stackGap = 4.dp.roundToPx()
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val badge = measurables[0].measure(loose)
+        val actionsWant = measurables[1].maxIntrinsicWidth(Constraints.Infinity)
+        val inline = badge.width + gap + actionsWant <= width
+        val actions = measurables[1].measure(
+            loose.copy(maxWidth = if (inline) width - badge.width - gap else width),
+        )
+        if (inline) {
+            val height = maxOf(badge.height, actions.height)
+            layout(width, height) {
+                badge.place(0, (height - badge.height) / 2)
+                actions.place(width - actions.width, (height - actions.height) / 2)
+            }
+        } else {
+            val height = badge.height + stackGap + actions.height
+            layout(width, height) {
+                badge.place(0, 0)
+                actions.place(width - actions.width, badge.height + stackGap)
+            }
+        }
+    }
+}
+
+private const val CO_CARE_BADGE_TEXT = "공동 돌봄"
+private val CoCareBadgePadH = 7.dp
+private val CoCareBadgePadV = 3.dp
+
+@Composable
+private fun CoCareBadge() {
+    Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp)) {
+        Text(
+            CO_CARE_BADGE_TEXT,
+            color = DaengPinkDeep,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = CoCareBadgePadH, vertical = CoCareBadgePadV),
+        )
+    }
+}
+
+/**
+ * 뱃지가 없는 카드의 뱃지 자리. [CoCareBadge] 와 **같은 글씨·같은 여백으로 잰 크기**의 빈칸이다.
+ * 글씨 배율이 커지면 같이 커진다 — 고정 dp 로 두면 큰 글씨에서 뱃지 있는 카드만 높아진다.
+ */
+@Composable
+private fun CoCareBadgeSpace() {
+    val measurer = rememberTextMeasurer()
+    val style = LocalTextStyle.current.merge(
+        TextStyle(color = DaengPinkDeep, fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+    )
+    Layout(content = {}) { _, constraints ->
+        val text = measurer.measure(
+            CO_CARE_BADGE_TEXT,
+            style = style,
+            maxLines = 1,
+            softWrap = false,
+            constraints = Constraints(maxWidth = constraints.maxWidth),
+        )
+        layout(
+            text.size.width + CoCareBadgePadH.roundToPx() * 2,
+            text.size.height + CoCareBadgePadV.roundToPx() * 2,
+        ) {}
+    }
+}
+
+private fun previewPet(id: String, name: String, isOwner: Boolean, isGroupOwner: Boolean, hasOtherCarers: Boolean) = Pet(
+    id = id, name = name, breed = DogBreed.BEAGLE.id,
+    sex = Pet.Sex.MALE, neutered = null, weightKg = 5.0f, birthDate = null,
+    birthDateKind = null, isPrimary = false,
+    isOwner = isOwner, isGroupOwner = isGroupOwner, hasOtherCarers = hasOtherCarers,
+)
+
+/** 공동 보호자를 둔 그룹 주보호자 카드 · 혼자 돌보는 카드 · 긴 이름 — 셋의 액션 줄이 같은 높이여야 한다. */
+@Preview(widthDp = 360, showBackground = true)
+@Composable
+private fun PetCardCoCarePreview() {
+    DaengsTheme {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PetCard(
+                previewPet("co", "몽몽이", isOwner = true, isGroupOwner = true, hasOtherCarers = true),
+                photo = null, onToggleRoom = {}, onEdit = {}, onPickPrimary = {}, onDelete = {}, onOpenMembers = {},
+            )
+            PetCard(
+                previewPet("solo", "네옹", isOwner = true, isGroupOwner = true, hasOtherCarers = false),
+                photo = null, onToggleRoom = {}, onEdit = {}, onPickPrimary = {}, onDelete = {}, onOpenMembers = {},
+            )
+            PetCard(
+                previewPet("long", "이름이아주아주아주길어서한줄에다안들어가는강아지", isOwner = true, isGroupOwner = false, hasOtherCarers = true),
+                photo = null, onToggleRoom = {}, onEdit = null, onPickPrimary = {}, onDelete = null, onRename = {}, onOpenMembers = {},
+            )
         }
     }
 }
@@ -1061,6 +1216,12 @@ private fun MyScreenSignedInPreview() {
                     id = "shared", name = "몽이", breed = DogBreed.BEAGLE.id,
                     sex = null, neutered = null, weightKg = null, birthDate = null,
                     birthDateKind = null, isPrimary = false, isOwner = false,
+                ),
+                // 기존 강아지와 연결한 공동 보호자의 카드 — 자기 행의 대표지만 그룹 주보호자는 남이다.
+                Pet(
+                    id = "linked", name = "롱롱씨", breed = DogBreed.BEAGLE.id,
+                    sex = null, neutered = null, weightKg = null, birthDate = null,
+                    birthDateKind = null, isPrimary = false, isOwner = true, isGroupOwner = false,
                 ),
             ),
             canAddMore = true,
