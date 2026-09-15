@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -20,7 +21,8 @@ import com.daengs.app.ui.walk.formatWalkDistance
 @Composable
 internal fun WalkRecordsTotals(count: Int?, distanceMeters: Double, activeDurationMillis: Long, failed: Boolean) {
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(count?.let { "산책 ${it}회" } ?: if (failed) "산책 기록" else "불러오는 중",
             Modifier.testTag("records-count").alignByBaseline(),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
