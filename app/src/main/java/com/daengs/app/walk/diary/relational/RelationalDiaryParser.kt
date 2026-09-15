@@ -1,6 +1,7 @@
 package com.daengs.app.walk.diary.relational
 
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.walk.diary.DiarySceneAddress
 import com.daengs.app.walk.diary.strictLong
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -58,7 +59,13 @@ internal object RelationalDiaryParser {
         val anchor = anchor(obj.getJSONObject("anchor"))
         val header = obj.getJSONObject("header").let {
             require(it.text("scene_id") == id)
-            RelationalHeader(id, it.optionalText("dong"), it.objectOrNull("weather")?.jsonValue())
+            val dong = it.optionalText("dong")
+            val address = it.objectOrNull("administrative_address")?.let { value ->
+                DiarySceneAddress(value.optionalText("sido"), value.optionalText("sigungu"),
+                    value.text("dong"), value.optionalText("address_type"))
+                    .also { parsed -> require(parsed.dong == dong) }
+            }
+            RelationalHeader(id, dong, it.objectOrNull("weather")?.jsonValue(), address)
         }
         val context = snapshot(obj.getJSONObject("current_context"))
         require(context.sceneId == id && context.recordedAt == anchor.eventAt)

@@ -1,6 +1,7 @@
 package com.daengs.app.walk.diary.relational
 
 import com.daengs.app.location.GeoPoint
+import com.daengs.app.walk.diary.DiarySceneAddress
 import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 
@@ -30,7 +31,8 @@ data class RelationalAnchor(
 )
 
 /** Header data is available to the existing location/weather display, never added to prose. */
-data class RelationalHeader(val sceneId: String, val dong: String?, val weather: JsonObject?)
+data class RelationalHeader(val sceneId: String, val dong: String?, val weather: JsonObject?,
+    val administrativeAddress: DiarySceneAddress? = null)
 data class RelationalFactScope(val kind: String, val description: String, val coverageKey: String?)
 data class RelationalSceneFact(
     val id: String,
