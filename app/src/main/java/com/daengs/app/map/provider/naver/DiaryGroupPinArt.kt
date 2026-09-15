@@ -15,10 +15,14 @@ import com.daengs.app.ui.theme.*
 import kotlin.math.ceil
 
 /** Badge is included in the bitmap and in the layout footprint; the tail remains at the anchor. */
-internal fun diaryGroupPinBitmap(ordinal: Int, count: Int, selected: Boolean, density: Float): android.graphics.Bitmap {
-    val base = diaryPinBitmap(ordinal.toString(), selected, density)
+internal fun diaryGroupPinBitmap(ordinal: Int, count: Int, selected: Boolean, density: Float, detached: Boolean = false): android.graphics.Bitmap {
+    val base = diaryPinBitmap(ordinal.toString(), selected, density, detached = detached)
     if (count <= 1) return base
-    val label = "+${count-1}"
+    return withDiaryCountBadge(base, "+${count-1}", density)
+}
+
+/** Shared badge position and footprint for both kinds of detached object. Owns [base]. */
+internal fun withDiaryCountBadge(base: android.graphics.Bitmap, label: String, density: Float): android.graphics.Bitmap {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 10*density; typeface = Typeface.create("sans-serif", Typeface.BOLD)
     }
@@ -45,4 +49,5 @@ private fun DiaryGroupPinPreview() { Row {
     val density = LocalDensity.current.density
     Image(diaryGroupPinBitmap(2, 8, false, density).asImageBitmap(), "2번 외 7개")
     Image(diaryGroupPinBitmap(17, 121, true, density).asImageBitmap(), "17번 외 120개")
+    Image(diaryGroupPinBitmap(2, 3, false, density, detached = true).asImageBitmap(), "경로 옆 장면 객체")
 } }

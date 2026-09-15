@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.daengs.app.ui.places.PlaceSearchStyle
+import com.daengs.app.ui.places.LocalPlaceAssistantInputFocus
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.launch
@@ -46,6 +47,7 @@ internal fun PlaceResultsScaffold(
     collapseRequest: Int = 0,
     navigation: (@Composable (Boolean, () -> Unit, () -> Unit) -> Unit)? = null,
     initialPosition: PlaceResultsPosition = PlaceResultsPosition.Preview,
+    imeInsets: WindowInsets = WindowInsets.ime,
     results: LazyListScope.() -> Unit,
 ) {
     val sheet = rememberSaveable(saver = AnchoredDraggableState.Saver()) { AnchoredDraggableState(initialPosition) }
@@ -54,6 +56,17 @@ internal fun PlaceResultsScaffold(
     val scope = rememberCoroutineScope()
     val defaultList = rememberLazyListState()
     val list = listState ?: defaultList
+    var assistantFocused by remember { mutableStateOf(false) }
+    val imeVisible = imeInsets.getBottom(LocalDensity.current) > 0
+    val onAssistantFocus: (Boolean) -> Unit = remember { { assistantFocused = it } }
+    var assistantOwnsIme by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible, assistantFocused) {
+        if (!imeVisible) assistantOwnsIme = false
+        else if (assistantFocused) assistantOwnsIme = true
+    }
+    // 도우미견 키보드는 카드 위를 덮는다. 지도/서랍의 가용 높이에서 IME를 빼지 않는다.
+    // 전송으로 입력칸이 먼저 사라져도 키보드가 내려가기 전에는 배경을 다시 줄이지 않는다.
+    val assistantKeyboard = assistantFocused || assistantOwnsIme
     val expanded = sheet.targetValue == PlaceResultsPosition.Expanded
     LaunchedEffect(collapseRequest) {
         if (collapseRequest > 0) sheet.animateTo(PlaceResultsPosition.Collapsed)
@@ -61,7 +74,9 @@ internal fun PlaceResultsScaffold(
     BackHandler(enabled = sheet.currentValue == PlaceResultsPosition.Expanded && !detailOpen) {
         scope.launch { sheet.animateTo(PlaceResultsPosition.Preview) }
     }
-    Column(Modifier.fillMaxSize().background(DaengsColors.AppBackground).safeDrawingPadding()) {
+    val systemInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+    val contentInsets = if (assistantKeyboard) systemInsets else systemInsets.union(imeInsets)
+    Column(Modifier.fillMaxSize().background(DaengsColors.AppBackground).windowInsetsPadding(contentInsets)) {
         // Keep the 48dp search controls; reclaim only the gap before categories (12 -> 4dp).
         Column(Modifier.fillMaxWidth().background(DaengsColors.Surface)
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp), content = header)
@@ -86,7 +101,9 @@ internal fun PlaceResultsScaffold(
                         categories()
                     }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth()) { map() }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    CompositionLocalProvider(LocalPlaceAssistantInputFocus provides onAssistantFocus) { map() }
+                }
             }
             Surface(
                 modifier = Modifier.align(Alignment.TopCenter).widthIn(max = BottomSheetDefaults.SheetMaxWidth)

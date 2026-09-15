@@ -76,6 +76,12 @@ class DogActor(
      * 뜰 뿐이다. 멈춰 세우면 그 순간 방이 박제가 된다.
      */
     var departed: Boolean = false
+
+    /**
+     * 마중 나가는 중. 문 앞 자리를 향해 **평소보다 빨리** 가고, 닿으면 앉아서
+     * [DogHerd.GREET_SIT_MS] 만큼 있다가 제 갈 길로 돌아간다 ([DogHerd.greet]).
+     */
+    var greeting: Boolean = false
 }
 
 /**
@@ -345,6 +351,30 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
     }
 
     /**
+     * **현관 마중.** 모두 [spot] 근처로 달려와 앉는다. 홈 첫 진입 연출이 불이 켜지는
+     * 순간에 부른다 ([RoomIntro.takeGreet]).
+     *
+     * 마리마다 [GREET_STAGGER_MS] 씩 늦게 출발한다 — 동시에 뛰면 한 몸처럼 보인다
+     * ([DogActor.animOffsetMs] 와 같은 이유). 자리는 [spot] 을 중심으로 **방 안쪽으로**
+     * 펼친다. 문이 왼쪽 벽이라 col 이 늘고 row 가 주는 쪽이 안쪽이다. 막힌 자리면
+     * 평소 규칙대로 빈 자리를 고른다 — 문 앞에 소파를 놓은 방에서 강아지가 소파에
+     * 박히면 안 된다.
+     *
+     * 손에 잡힌 아이는 빼놓는다. 잡고 있는데 끌려가면 손가락이 거짓말이 된다.
+     */
+    fun greet(spot: Offset, nowMs: Long, blocked: Set<IntOffset> = emptySet()) {
+        var slot = 0
+        for (d in dogs) {
+            if (d.id == draggingId) continue
+            val want = clampToFloor(spot + GREET_FAN[slot % GREET_FAN.size])
+            d.target = if (blockedAt(want.x, want.y, blocked, d.bodyRadius)) freeSpot(blocked, d) else want
+            d.greeting = true
+            d.restUntil = nowMs + slot * GREET_STAGGER_MS
+            slot++
+        }
+    }
+
+    /**
      * 매 프레임 호출. 목표까지 걸어가고, 도착하면 잠깐 쉬었다가 새 목표를 고른다.
      *
      * @param nowMs 프레임 시계 값
@@ -362,6 +392,9 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
         for (d in dogs) {
             if (d.id == draggingId) {
                 d.moving = false
+                // 마중 가다 잡혔다. 놓으면 평소 걸음으로 돌아간다 — 손에서 놓인 아이가
+                // 문 앞으로 달려가면 손가락이 거짓말이 된다.
+                d.greeting = false
                 continue
             }
 
@@ -371,6 +404,8 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
             if (trapped) {
                 d.target = nearestFree(d.pos, blocked)
                 d.restUntil = 0L
+                // 탈출이 먼저다. 마중 걸음으로 뛰쳐나와 거기 앉아 있으면 이상하다.
+                d.greeting = false
             } else if (nowMs < d.restUntil) {
                 d.moving = false
                 continue
@@ -379,14 +414,22 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
             val delta = d.target - d.pos
             val dist = delta.getDistance()
             if (dist < ARRIVE_DIST) {
-                // 오래 쉰다. 계속 돌아다니면 방이 소란스럽고, 원래 원한 그림은
-                // "제자리에서 꼬리 흔들기" 쪽이다. 여기 한 곳만 보면 된다.
-                d.restUntil = nowMs + REST_MIN_MS + rnd.nextLong(REST_SPREAD_MS)
+                if (d.greeting) {
+                    // 마중 끝. 문 앞에 앉아 있다가 아래 평소 규칙으로 돌아간다 —
+                    // 다음 목적지는 이미 골라 두므로 앉은 시간이 끝나면 제 갈 길을 간다.
+                    d.greeting = false
+                    d.restUntil = nowMs + GREET_SIT_MS
+                } else {
+                    // 오래 쉰다. 계속 돌아다니면 방이 소란스럽고, 원래 원한 그림은
+                    // "제자리에서 꼬리 흔들기" 쪽이다. 여기 한 곳만 보면 된다.
+                    d.restUntil = nowMs + REST_MIN_MS + rnd.nextLong(REST_SPREAD_MS)
+                }
                 d.target = freeSpot(blocked, d)
                 d.moving = false
                 continue
             }
-            val step = d.speed * dt
+            // 마중은 달려온다. 평소 걸음으로 오면 불이 켜지고 한참 뒤에야 문 앞에 닿는다.
+            val step = d.speed * (if (d.greeting) GREET_SPEED else 1f) * dt
             val want = clampToFloor(d.pos + delta * (step / dist).coerceAtMost(1f))
             // 갇힌 동안에는 막힘 판정을 끈다. 안 그러면 가구 밑에서 영영 못 나온다.
             val next = if (trapped) want else slide(d.pos, want, blocked, d.bodyRadius)
@@ -394,6 +437,8 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
             val gained = (next - d.pos).getDistance()
             if (gained < step * 0.2f) {
                 // 미끄러질 여지도 없이 막혔다. 떠는 대신 다른 목표를 고른다.
+                // 마중 가던 길이면 마중을 포기한다 — 못 가는 자리를 계속 노리면 벽에 붙어 떤다.
+                d.greeting = false
                 d.target = freeSpot(blocked, d)
                 d.restUntil = nowMs + 250L
                 d.moving = false
@@ -412,7 +457,8 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
             // 걸음 시계는 **시간 기반**이다 — 저쪽 목업 그대로.
             // 거리 기반으로 하면 발이 안 미끄러지는 대신, 미끄러져 돌아가는 동안
             // 다리가 얼어붙어 더 어색하다.
-            d.phase += dt * WALK_FPS
+            // 마중 때는 다리도 빨리 돌린다. 몸만 빨라지면 미끄러지듯 보인다.
+            d.phase += dt * WALK_FPS * (if (d.greeting) GREET_STRIDE else 1f)
         }
 
         // 앉기 <-> 서기. 위 루프가 `continue` 로 여러 군데서 빠져나가므로 여기서 한 번에 민다.
@@ -457,6 +503,38 @@ class DogHerd(initialRoster: List<DogBreed>, seed: Int = 7) {
          * [freeSpot] 의 1단계가 매번 실패해서 간격이 사실상 없는 것과 같아진다.
          */
         const val MIN_DOG_GAP = 1.3f
+
+        /**
+         * 마중 걸음의 배율. 평소 걸음은 칸/초 0.4 남짓이라(견종표 × 12/16) 방을 가로지르는
+         * 데 30초가 걸린다 — 그 걸음으로는 불이 켜지고 한참 뒤에야 문 앞에 닿는다.
+         * 3.5배(칸/초 1.3)면 문 반대편 모서리(13칸)에서 10초, 보통 자리에서는 3~5초다.
+         * 5배로 해 봤더니 실기기에서 너무 급해 보여 내렸다 (2026-09-14). 다리는 [GREET_STRIDE] 로
+         * 같이 빨라진다.
+         */
+        const val GREET_SPEED = 3.5f
+
+        /** 마중 때 걸음 시계 배율. 속도만큼 올리면 다리가 팔랑거려서 절반 못 미치게. */
+        const val GREET_STRIDE = 1.6f
+
+        /** 마리마다 출발이 이만큼 늦다. 첫째가 뛰기 시작하면 둘째가 돌아보는 간격. */
+        const val GREET_STAGGER_MS = 180L
+
+        /** 문 앞에 앉아 있는 시간. 평소 쉬는 시간(4~10초)보다 짧다 — 반긴 뒤엔 제 할 일. */
+        const val GREET_SIT_MS = 2_800L
+
+        /**
+         * 문 앞 자리를 마리 수만큼 펼치는 간격. 첫째는 문 바로 앞, 나머지는 방 안쪽으로
+         * 비스듬히. col 이 늘고 row 가 주는 쪽이 문(왼쪽 벽)에서 멀어지는 방향이다.
+         * 간격은 [MIN_DOG_GAP] 언저리 — 마중 나와 겹쳐 앉으면 한 마리로 보인다.
+         */
+        private val GREET_FAN = listOf(
+            Offset(0f, 0f),
+            Offset(1.3f, -0.3f),
+            Offset(0.4f, -1.4f),
+            Offset(1.7f, -1.5f),
+            Offset(2.6f, -0.5f),
+            Offset(0.9f, -2.7f),
+        )
     }
 }
 

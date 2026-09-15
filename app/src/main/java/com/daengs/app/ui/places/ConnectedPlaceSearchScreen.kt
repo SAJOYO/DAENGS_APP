@@ -265,16 +265,27 @@ fun ConnectedPlaceSearchScreen(
                         },
                         onCancel = { onAction(PlacesAction.CancelAi) },
                         onUndo = if (state.conversationAvailable && state.conversation.canUndo) ({ onAction(PlacesAction.UndoAi) }) else null,
-                        avatarBreed = avatarBreed, avatarPhoto = avatarPhoto,
                         searchContext = if (display.origin == null) "검색 지역을 먼저 정해 줘"
                             else "현재 검색 지역 · 반경 " + if (display.radiusMeters % 1000 == 0) "${display.radiusMeters / 1000}km" else "${display.radiusMeters}m",
-                    ) {
-                        if (state.conversationAvailable) {
-                            ConversationPanel(state.conversation, state.facility.error,
+                        details = if (state.conversationAvailable) ({
+                            Text("적용 조건 · " + listOfNotNull(category.label,
+                                appliedFilters?.summary?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                                style = androidx.compose.material3.MaterialTheme.typography.labelSmall)
+                            ConversationPanel(state.conversation, state.facility.error, showAnswer = false,
+                                showAnswerRecovery = true,
                                 onRetryAnswer = { onAction(PlacesAction.RetryAi) }, onRetrySearch = ::retryConversationSearch,
                                 onApplyCurrentFilters = { state.conversation.result?.let {
                                     onAction(PlacesAction.ApplyFilters(ConversationFilterEdit(it.sessionId, it.revision)))
                                 } })
+                        }) else null,
+                    ) {
+                        if (state.conversationAvailable) {
+                            val answer = state.conversation.commandAnswer ?: state.conversation.result?.answer
+                            if (state.conversation.error == null && state.facility.error == null && answer != null)
+                                DogDialogueText(answer)
+                            else Text(if (state.conversation.error != null || state.facility.error != null)
+                                "검색을 마치지 못했어.\n아래 안내를 확인해 줘, 멍."
+                                else "아래에서 검색 상태를 확인해 줘, 멍.")
                         } else FacilitySearchPanel(state.facility,
                             { onAction(PlacesAction.ChooseAi(it)) }, { onAction(PlacesAction.RetryAi) })
                     }

@@ -119,6 +119,46 @@ class InviteLinkTest {
         assertNull(InviteLink.tokenOf("https://daengapi.weareithero.cloud/invite#"))
     }
 
+    // -- 웹 폴백 「앱에서 초대 열기」버튼의 intent:// extra 통로 -------------------------
+
+    private val invitePage = "https://daengapi.weareithero.cloud/invite"
+
+    @Test
+    fun `웹 폴백 extra 에서도 토큰을 꺼낸다`() {
+        assertEquals(token, InviteLink.tokenOfWebFallback(invitePage, token))
+        assertEquals(token, InviteLink.tokenOfWebFallback("$invitePage/", token))
+    }
+
+    /** [InviteLink.tokenOf] 의 계약(프래그먼트만)은 이 통로가 있어도 안 바뀐다 — 쿼리는 여전히 안 받는다. */
+    @Test
+    fun `웹 폴백 통로가 있어도 정식 계약은 여전히 프래그먼트만 본다`() {
+        assertNull(InviteLink.tokenOf("$invitePage?t=$token"))
+        assertNull(InviteLink.tokenOf("$invitePage?token=$token"))
+    }
+
+    /** extra 는 데이터 URI 가 우리 `/invite` 일 때만 본다 — 런처·알림 진입에 실려 와도 안 읽는다. */
+    @Test
+    fun `웹 폴백 extra 도 호스트 경로 스킴을 그대로 검사한다`() {
+        assertNull(InviteLink.tokenOfWebFallback("https://evil.example.com/invite", token))
+        assertNull(InviteLink.tokenOfWebFallback("https://daengapi.weareithero.cloud/other", token))
+        assertNull(InviteLink.tokenOfWebFallback("http://daengapi.weareithero.cloud/invite", token))
+        assertNull("데이터 URI 없이 extra 만 온 것", InviteLink.tokenOfWebFallback(null, token))
+    }
+
+    @Test
+    fun `웹 폴백 extra 가 비거나 토큰답지 않으면 받지 않는다`() {
+        assertNull(InviteLink.tokenOfWebFallback(invitePage, null))
+        assertNull(InviteLink.tokenOfWebFallback(invitePage, ""))
+        assertNull(InviteLink.tokenOfWebFallback(invitePage, "has space"))
+        assertNull(InviteLink.tokenOfWebFallback(invitePage, "x".repeat(201)))
+    }
+
+    /** 토큰은 extra 로만 온다 — 쿼리에 실어 보내도 안 받는다 (URL 에 토큰을 두지 않는 계약). */
+    @Test
+    fun `웹 폴백은 쿼리의 토큰을 받지 않는다`() {
+        assertNull(InviteLink.tokenOfWebFallback("$invitePage?t=$token", null))
+    }
+
     @Test
     fun `토큰 모양 검사`() {
         assertTrue(InviteLink.isValidToken("abc_DEF-123"))

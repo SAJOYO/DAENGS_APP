@@ -15,10 +15,11 @@
 | `-PterritoryServerRead=false` | 로컬 점유·페이크 사진 연습 |
 | `-PterritoryServerRead=true` | 서버 점유 둘러보기만 |
 | `-PterritoryServerActions=true` | 서버 점유 조회 + 게임 세션 + 영역표시 |
-| release | 서버 점유 둘러보기, 액션은 비활성 |
+| release | 서버 점유 조회·액션 기본 활성화 (#402) |
 
 Actions가 켜지면 Read를 따로 지정하지 않아도 조회 공급자를 사용한다. 같은 `API_BASE_URL`과
-공용 `SessionProvider`를 사용한다. 서버 준비 후 명시적으로 테스트 빌드한다.
+공용 `SessionProvider`를 사용한다. Release에서도 같은 액션 경로를 사용하며 로컬 연습으로
+폴백하지 않는다. Debug 온라인 테스트는 아래 옵션으로 빌드한다.
 
 ```powershell
 ./gradlew.bat :app:assembleDebug -PterritoryServerActions=true

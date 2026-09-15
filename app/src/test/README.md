@@ -1,5 +1,11 @@
 # 기능별 테스트 실행 지도
 
+완료 산책 화살표 (#419)는 `map.layers.completedroute.RouteDirectionLayoutTest`의 곡률·일정 이격·
+충돌·이전 후보 재검사와 `SessionRouteExplorerLayerStateTest`의 방향 대상 계약을 선택한다.
+`map.provider.naver.NaverSessionRouteExplorerTest`는 카메라·화면 크기 변경, 커서 독립성과
+마커/리스너 해제를 검사한다. `DesignLockTest`를 함께 확인하며 클래스 앞에는
+`com.daengs.app.`을 붙인다. [정책과 별도 기기 검토](../../../docs/walk-direction-policy.md).
+
 탐색 상태·Compose 연결 분리 (#401)는 `ui.walk.WalkRouteExplorerLifecycleTest`로 PAUSE/STOP,
 생명주기 소유자 교체·이탈·재진입과 observer 해제를 검사한다. `WalkRouteExplorerStateTest`의
 선택·배속·구형 Saver 복원, `WalkRangeContextTest`의 장면 왕복, `WalkExplorationPersistenceTest`의

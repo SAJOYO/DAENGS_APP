@@ -65,6 +65,11 @@ data class CareDaySummary(
     val snack: Int,
     val walk: Int,
     val events: List<CareEvent>,
+    /**
+     * 그날 그 아이가 나간 산책과 **누가 다녀왔는지** (`walk_rows`). 다른 보호자가 다녀온 산책도
+     * 들어온다. 옛 서버는 이 칸이 없어 빈 목록이다 — 그때도 [walk] 수는 그대로 온다.
+     */
+    val walkRows: List<CareWalkRow> = emptyList(),
 ) {
     companion object {
         fun parse(json: JSONObject): CareDaySummary = CareDaySummary(
@@ -76,6 +81,28 @@ data class CareDaySummary(
             snack = json.optInt("snack"),
             walk = json.optInt("walk"),
             events = json.optJSONArray("events").toObjectList(CareEvent::parse),
+            walkRows = json.optJSONArray("walk_rows").toObjectList(CareWalkRow::parse),
+        )
+    }
+}
+
+/**
+ * 하루 요약의 산책 한 줄 (`DayWalkOut`). **읽기만 한다** — 산책은 서버 `walks` 가 진실이고,
+ * 고치거나 지우는 길은 올린 사람의 산책 기록에만 있다.
+ *
+ * [actor] 는 케어 기록과 같은 규칙이다 — 지금 그 아이의 구성원이 아니면 닉네임이 없고
+ * "이전 보호자" 로 그린다.
+ */
+data class CareWalkRow(
+    val walkId: String,
+    val startedAtMs: Long,
+    val actor: CareActor,
+) {
+    companion object {
+        fun parse(json: JSONObject): CareWalkRow = CareWalkRow(
+            walkId = json.getString("walk_id"),
+            startedAtMs = json.getString("started_at").toEpochMillis(),
+            actor = json.optJSONObject("actor")?.let(CareActor::parse) ?: CareActor(null, null),
         )
     }
 }

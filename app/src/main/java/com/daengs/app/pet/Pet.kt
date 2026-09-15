@@ -59,6 +59,13 @@ data class Pet(
      * 연결이 없으면 두 값은 언제나 같다.
      */
     val isGroupOwner: Boolean = isOwner,
+    /**
+     * 이 아이의 논리 그룹에 **나 말고 다른 보호자**가 있나 (서버 `has_other_carers`).
+     *
+     * [isOwner]·[isGroupOwner] 만으로는 공동 보호자를 둔 **주보호자 본인 카드**를 혼자 등록한
+     * 아이와 구별할 수 없다 — 둘 다 true·true 다. 구 서버는 이 칸을 안 주므로 기본값 false 다.
+     */
+    val hasOtherCarers: Boolean = false,
     /** 이 아이의 정보가 마지막으로 바뀐 시각. **아래 [photoUpdatedAt] 과 다른 값이다.** */
     val updatedAt: String? = null,
     /**
@@ -167,6 +174,8 @@ data class Pet(
             // 다중 초대 전 서버에는 없다. **기본값을 `is_owner` 로 둔다** — 연결이 없으면
             // 둘이 같은 값이라, 구 서버에서도 그룹 판정이 지금까지와 똑같이 나온다.
             isGroupOwner = json.optBoolean("is_group_owner", json.optBoolean("is_owner", true)),
+            // 구 서버에는 없다. 없으면 false — 그때 뱃지는 `is_owner`·`is_group_owner` 로만 갈린다.
+            hasOtherCarers = json.optBoolean("has_other_carers", false),
             updatedAt = json.optStringOrNull("updated_at"),
             hasPhoto = json.optBoolean("has_photo"),
             photoUpdatedAt = json.optStringOrNull("photo_updated_at"),

@@ -65,7 +65,6 @@ class InviteBundleScreenTest {
         onCreate: () -> Unit = {},
         onCancel: (InviteBundle) -> Unit = {},
         onShare: (String) -> Unit = {},
-        onCopy: (String) -> Unit = {},
     ) {
         compose.setContent {
             InviteBundleScreen(
@@ -84,7 +83,6 @@ class InviteBundleScreenTest {
                 onCreate = onCreate,
                 onCancel = onCancel,
                 onShare = onShare,
-                onCopy = onCopy,
             )
         }
     }
@@ -192,21 +190,20 @@ class InviteBundleScreenTest {
         compose.onNodeWithText("롱이·몽이의 공동 돌봄 초대장").assertExists()
     }
 
+    /** 한 초대장은 한 사람만 수락한다 — 복사 버튼이 따로 있으면 공용 링크로 읽힌다. */
     @Test
-    fun `초대장에서 공유와 복사를 내준다`() {
+    fun `초대장에서 공유만 내주고 한 사람만 수락한다고 알린다`() {
         var shared: String? = null
-        var copied: String? = null
         screen(
             justCreated = CreatedInviteBundle("i1", listOf("p1"), token, 0L),
             onShare = { shared = it },
-            onCopy = { copied = it },
         )
 
         compose.onNodeWithTag("ticket-share").performScrollTo().performClick()
-        compose.onNodeWithText("링크 복사").performScrollTo().performClick()
 
         assertTrue("공유 문구에 링크가 들어간다", shared!!.contains(link))
-        assertEquals("복사는 링크만 넘긴다", link, copied)
+        compose.onAllNodesWithText("링크 복사").assertCountEquals(0)
+        compose.onNodeWithTag("ticket-one-recipient").performScrollTo().assertIsDisplayed()
     }
 
     /** 화면에 토큰이 글자로 뜨면 어깨너머·스크린샷으로 샌다. */

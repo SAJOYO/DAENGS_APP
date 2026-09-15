@@ -200,7 +200,9 @@ daengs.naverMapStyleId=<Style Editor 에서 발행한 My Style ID>   # 없어도
 `GET /app/territory/occupancies`가 배포된 API가 필요하다. 먼 지역의 전봇대를 선택해도
 산책 시작 없이 강아지·인증·점령 시각을 볼 수 있다. 조회 실패는 미점유로 표시하지 않는다.
 로컬 연습은 debug에 `-PterritoryServerRead=false`, 온라인 액션 테스트는
-`-PterritoryServerActions=true`를 명시한다. [설정과 검증](docs/territory-server-browsing.md).
+`-PterritoryServerActions=true`를 명시한다. Release는 점령·인증 액션이 기본 활성화되며,
+접속 서버의 게임 활성화·시즌·세션·위치 조건을 충족해야 전송할 수 있다.
+[설정과 검증](docs/territory-server-browsing.md).
 
 점령 게임의 `점령 지도 보기`는 [내 점령지 전용 지도·목록](docs/owned-territory-browser.md)을
 연다. 이 화면은 산책이나 위치 권한 없이 DEV #418의 회원 전체·강아지별 현재 점령지를 읽는다.

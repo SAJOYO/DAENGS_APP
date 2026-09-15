@@ -224,7 +224,7 @@ android {
         release {
             buildConfigField("Boolean", "FACILITY_CONVERSATION", "true")
             buildConfigField("Boolean", "TERRITORY_SERVER_READ", "true")
-            buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS", "false")
+            buildConfigField("Boolean", "TERRITORY_SERVER_ACTIONS", "true")
             optimization {
                 enable = false
             }

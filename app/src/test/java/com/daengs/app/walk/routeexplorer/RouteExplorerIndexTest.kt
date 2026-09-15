@@ -20,6 +20,15 @@ internal fun explorerRoute(vararg paths: List<Pair<Double, Double>>): WalkSessio
 internal fun straightExplorerPath(y: Double = 0.0) = (-10..10).map { it * 5.0 to y }
 
 class RouteExplorerIndexTest {
+    @Test fun `replay uses stored segment speed and never carries it into a gap`() {
+        val base = explorerRoute(listOf(0.0 to 0.0, 10.0 to 0.0), listOf(20.0 to 0.0, 30.0 to 0.0))
+        val route = base.copy(segments=base.segments.map { segment -> segment.copy(points=segment.points.map {
+            it.copy(derivedSpeedMetersPerSecond=2.0)
+        }) })
+        val index = RouteExplorerIndex(route)
+        assertEquals(2.0, index.frameAt(500).derivedSpeedMetersPerSecond!!, 0.0)
+        assertNull(index.frameAt(1_500).derivedSpeedMetersPerSecond)
+    }
     @Test fun `fast playback saturates at the end without overflowing or running backward`() {
         assertEquals(Long.MAX_VALUE, advanceRoutePlayback(Long.MAX_VALUE - 5, Long.MAX_VALUE,
             Long.MAX_VALUE, RoutePlaybackSpeed.SIXTEEN))
