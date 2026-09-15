@@ -226,6 +226,33 @@ class InviteAcceptApiTest {
         }
     }
 
+    /** 고른 내 강아지에 다른 공동 보호자가 있으면 서버가 `has_other_carers` 로 막는다 — 어느 줄인지도 읽는다. */
+    @Test
+    fun `다른 공동 보호자 때문에 막힌 연결은 거절된 초대 강아지 id 와 함께 읽는다`() = runTest {
+        val stub = Stub(
+            409,
+            """
+            {"detail":{"code":"link_not_allowed","message":"선택한 아이는 연결할 수 없어요.",
+                       "pet_id":"p2","link_to_pet_id":"m1","reason":"has_other_carers"}}
+            """.trimIndent(),
+        )
+        try {
+            val conflict = InviteAcceptApi { stub.base }.accept("t", inviteToken) as AcceptOutcome.Conflict
+
+            assertEquals("p2", conflict.petId)
+            assertTrue(conflict.linkBlockedByOtherCarers)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    @Test
+    fun `다른 사유의 연결 거절은 공동 보호자 안내로 보지 않는다`() {
+        val conflict = AcceptOutcome.Conflict("x", InviteErrorCode.LINK_NOT_ALLOWED, reason = "farewelled", petId = "p1")
+
+        assertFalse(conflict.linkBlockedByOtherCarers)
+    }
+
     /** 422 는 상한 409 와 다른 뜻이다 — 다시 눌러도 같고, 불러오기부터 다시 해야 한다. */
     @Test
     fun `422 는 Conflict 가 아니라 Invalid 로 가른다`() = runTest {

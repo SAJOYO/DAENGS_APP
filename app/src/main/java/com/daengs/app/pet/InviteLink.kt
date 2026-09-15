@@ -98,6 +98,52 @@ object InviteLink {
     }
 
     /**
+     * 웹 안내 페이지의 「이미 설치했나요? 앱에서 초대 열기」버튼이 토큰을 싣는 **Intent
+     * extra 의 이름.** 서버 `routers/invite_web.py` 의 `intent://` 문자열과 반드시 같다.
+     *
+     * 이름에 패키지를 박아 두는 것은 다른 앱·브라우저가 쓰는 extra 와 안 겹치게 하려는
+     * 것이다. Chrome 이 지우는 것은 `browser_fallback_url` 하나뿐이라 이 extra 는 그대로
+     * 앱에 닿는다 (Chrome 의 "Android Intents with Chrome" 문서).
+     */
+    const val WEB_FALLBACK_EXTRA = "com.daengs.app.extra.INVITE_TOKEN"
+
+    /**
+     * 웹 안내 페이지의 「이미 설치했나요? 앱에서 초대 열기」버튼 **하나만을 위한 보조
+     * 통로다.** [tokenOf] 의 계약을 넓히지 않는다 — 공유 링크·붙여넣기·App Links 는
+     * 전부 그대로 [tokenOf] 만 쓴다.
+     *
+     * ⚠️ **왜 extra 인가.** 이 버튼은 Chrome 의 `intent://` 문법으로 앱을 연다. 그런데
+     * `intent://…#Intent;…;end` 는 `#` 뒤를 자기 문법으로 쓰기 때문에, 우리 계약대로
+     * 토큰을 진짜 URL 프래그먼트에 실을 자리가 없다. 그렇다고 쿼리나 경로에 실으면
+     * 토큰이 URL 의 일부가 된다 — 그래서 `S.<이름>=<값>` 문자열 extra 로 싣는다.
+     * 데이터 URI 는 `https://daengapi.weareithero.cloud/invite` 그대로라 매니페스트의
+     * 필터와 맞고, 토큰은 URL 어디에도 없다.
+     *
+     * ⚠️ **네트워크로는 안 나간다.** `intent://` 는 브라우저가 로컬에서 안드로이드
+     * Intent 로 바꾸는 문자열일 뿐 그 자체로 HTTP 요청을 만들지 않는다. 리졸브에
+     * 실패했을 때만(앱이 없을 때) 별도의, **토큰이 없는** `S.browser_fallback_url`
+     * (스토어 주소)로 진짜 요청이 나간다.
+     *
+     * ⚠️ **열린다고 단정하지 않는다.** Chrome(과 그 기반 브라우저)이 사용자 제스처 안에서
+     * 만든 `intent://` 만 처리하고, 카카오톡 인앱 브라우저 같은 WebView 는 이 문법을
+     * 아예 못 알아들을 수 있다 — 그때는 이 버튼이 조용히 아무 일도 안 한다. 그래서 웹
+     * 페이지는 이 버튼과 별개로 「초대 링크 복사」·「링크 직접 보기」를 늘 보여 준다.
+     *
+     * **데이터 URI 가 우리 `/invite` 일 때만** extra 를 본다 — 아무 인텐트에나 이 이름의
+     * extra 를 실어 보내도, 이 액티비티의 다른 진입(런처·알림)에서는 읽지 않는다.
+     *
+     * @param uri 인텐트의 데이터 URI. 프래그먼트가 있으면 [tokenOf] 가 먼저 가져간다
+     * @param extra 인텐트의 [WEB_FALLBACK_EXTRA] 값 그대로
+     */
+    fun tokenOfWebFallback(uri: String?, extra: String?): String? {
+        val parsed = runCatching { URI(uri ?: return null) }.getOrNull() ?: return null
+        if (!parsed.scheme.equals("https", ignoreCase = true)) return null
+        if (!parsed.host.equals(HOST, ignoreCase = true)) return null
+        if (parsed.path?.trimEnd('/') != PATH) return null
+        return extra?.takeIf { isValidToken(it) }
+    }
+
+    /**
      * 토큰답게 생겼나. 서버는 `secrets.token_urlsafe(32)` 를 주고 본문에서 1~200자를
      * 받는다(`InviteAccept`). **여기서 거르는 것은 보안이 아니라 잡음이다** — 빈 값이나
      * 남의 링크 조각을 서버까지 들고 가지 않는다. 진짜 판정은 서버가 한다.
