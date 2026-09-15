@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -18,10 +19,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.daengs.app.care.CareActor
 import com.daengs.app.pet.Pet
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
+import com.daengs.app.ui.theme.DaengPinkDeep
 import com.daengs.app.ui.theme.DaengsTheme
+import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.walk.WalkRouteThumbnail
 import com.daengs.app.ui.walk.formatWalkClock
 import com.daengs.app.ui.walk.formatWalkDistance
@@ -31,8 +36,10 @@ import com.daengs.app.ui.walk.walkDiaryTitle
 import com.daengs.app.ui.walk.weatherLabel
 import com.daengs.app.walk.WalkDepartureWeather
 import com.daengs.app.walk.records.WalkRecord
+import com.daengs.app.walk.records.WalkRecordRow
+import com.daengs.app.walk.records.sharedWalkRecord
+import com.daengs.app.walk.shared.SharedWalk
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -41,6 +48,9 @@ import java.util.Locale
 internal fun groupWalkRecordDays(records: List<WalkRecord>, zone: ZoneId = ZoneId.systemDefault()) =
     records.groupBy { Instant.ofEpochMilli(it.summary.startedAtMillis).atZone(zone).toLocalDate() }
 
+internal fun groupWalkRecordRowDays(rows: List<WalkRecordRow>, zone: ZoneId = ZoneId.systemDefault()) =
+    rows.groupBy { Instant.ofEpochMilli(it.startedAtMillis).atZone(zone).toLocalDate() }
+
 private val RECORD_DAY = DateTimeFormatter.ofPattern("yyyy년 M월 d일 (E)", Locale.KOREAN)
 
 @Composable
@@ -48,10 +58,22 @@ internal fun WalkRecordsList(
     records: List<WalkRecord>, pageNumber: Int, pageCount: Int,
     onPrevious: () -> Unit, onNext: () -> Unit, onOpen: (String) -> Unit,
     pets: List<Pet>, modifier: Modifier = Modifier,
+) = WalkRecordRowsList(records.map { WalkRecordRow.Mine(it) }, pageNumber, pageCount, onPrevious, onNext,
+    onOpen, {}, pets, modifier)
+
+/**
+ * 내 산책과 공동 보호자 산책을 섞은 한 쪽. [showActor] 면 모든 카드의 같은 자리에 수행자 배지를 둔다
+ * — 내 산책은 "나", 공동 보호자 산책은 닉네임.
+ */
+@Composable
+internal fun WalkRecordRowsList(
+    rows: List<WalkRecordRow>, pageNumber: Int, pageCount: Int,
+    onPrevious: () -> Unit, onNext: () -> Unit, onOpen: (String) -> Unit, onOpenShared: (SharedWalk) -> Unit,
+    pets: List<Pet>, modifier: Modifier = Modifier, showActor: Boolean = false,
 ) {
     val scroll = rememberLazyListState()
     val zone = ZoneId.systemDefault()
-    val groups = remember(records, zone) { groupWalkRecordDays(records, zone) }
+    val groups = remember(rows, zone) { groupWalkRecordRowDays(rows, zone) }
     Column(modifier) {
         LazyColumn(state = scroll, modifier = Modifier.weight(1f).testTag("records-walk-list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
@@ -63,8 +85,18 @@ internal fun WalkRecordsList(
                         .testTag("records-day-$day").semantics { heading() },
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 }
-                items(walks, key = { "walk:${it.summary.sessionId}" }, contentType = { "walk" }) { record ->
-                    WalkRecordCard(record, pets, { onOpen(record.summary.sessionId) })
+                items(walks, key = { row -> if (row is WalkRecordRow.Shared) "shared:${row.id}" else "walk:${row.id}" },
+                    contentType = { "walk" }) { row ->
+                    when (row) {
+                        is WalkRecordRow.Mine -> WalkRecordCard(row.record, pets, { onOpen(row.id) },
+                            actor = if (showActor) MY_WALK_ACTOR else null)
+                        is WalkRecordRow.Shared -> {
+                            val record = remember(row.walk) { sharedWalkRecord(row.walk) }
+                            WalkRecordCard(record, pets, { onOpenShared(row.walk) },
+                                actor = sharedWalkActor(row.walk.actor),
+                                distance = row.walk.distanceM?.let { formatWalkDistance(it.toDouble()) } ?: "측정 전")
+                        }
+                    }
                 }
             }
         }
@@ -88,9 +120,21 @@ internal fun WalkRecordsList(
     }
 }
 
+/** 카드의 수행자 배지 — 보이는 이름과 읽어 주는 뜻. */
+internal data class WalkActorLabel(val name: String, val description: String)
+
+internal val MY_WALK_ACTOR = WalkActorLabel("나", "내 산책")
+
+/** 닉네임이 없으면(지금 구성원이 아닌 사람) "이전 보호자" — 케어 기록과 같은 규칙이다. */
+internal fun sharedWalkActor(actor: CareActor) = WalkActorLabel(actor.displayName, "${actor.displayName}의 산책")
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun WalkRecordCard(record: WalkRecord, pets: List<Pet>, onOpen: () -> Unit) {
+private fun WalkRecordCard(
+    record: WalkRecord, pets: List<Pet>, onOpen: () -> Unit,
+    actor: WalkActorLabel? = null,
+    distance: String = formatWalkDistance(record.summary.distanceMeters),
+) {
     val walk = record.summary
     val names = walk.dogIds.distinct().map { id -> pets.firstOrNull { it.id == id }?.name ?: "이름 미확인" }
     val companions = if (names.isEmpty()) "동행견 미기록" else names.take(2).joinToString(" · ") +
@@ -110,6 +154,7 @@ private fun WalkRecordCard(record: WalkRecord, pets: List<Pet>, onOpen: () -> Un
                     contentDescription = if (names.isEmpty()) companions else "동행견: ${names.joinToString(", ")}"
                 }, style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                actor?.let { WalkActorBadge(it, Modifier.testTag("records-walk-actor-${walk.sessionId}")) }
                 Text("${formatWalkClock(walk.startedAtMillis)} · $weather",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -117,8 +162,25 @@ private fun WalkRecordCard(record: WalkRecord, pets: List<Pet>, onOpen: () -> Un
         HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.background)
         FlowRow(Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            RecordMetric(DaengsIcon.Pin, "거리", formatWalkDistance(walk.distanceMeters))
+            RecordMetric(DaengsIcon.Pin, "거리", distance)
             RecordMetric(DaengsIcon.Clock, "시간", formatWalkDuration(walk.activeDurationMillis))
+        }
+    }
+}
+
+/**
+ * 산책 수행자. 마이 화면 「공동 돌봄」 배지와 같은 바탕·글자색·크기에 앱 공용 사람 아이콘을 얹고
+ * 문장 없이 이름만 둔다. 읽어 주기는 "키키의 산책"·"내 산책" 이다.
+ */
+@Composable
+internal fun WalkActorBadge(actor: WalkActorLabel, modifier: Modifier = Modifier) {
+    Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp),
+        modifier = modifier.clearAndSetSemantics { contentDescription = actor.description }) {
+        Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            DaengsIconView(DaengsIcon.Person, Modifier.size(11.dp), DaengPinkDeep)
+            Text(actor.name, color = DaengPinkDeep, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -141,4 +203,16 @@ private fun RecordsListPreview() {
         WalkRecord(walk.copy(dogIds = listOf("dog-0", "dog-1", "dog-2")), "나무 그늘 따라 걸은 오후"),
         WalkRecord(walk.copy(sessionId = "without-route", segments = emptyList()), ""),
     ), 1, 2, {}, {}, {}, recordsPreviewPets(), Modifier.fillMaxSize()) }
+}
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 720)
+@Composable
+private fun UnifiedRecordsListPreview() {
+    val walk = previewDiarySummary()
+    val shared = SharedWalk("shared-1", walk.startedAtMillis - 3_600_000, walk.startedAtMillis - 1_800_000, 1_800,
+        1_240, 1_600, CareActor("u2", "키키"), false, listOf("dog-0"), weatherCode = 3, isDay = true)
+    DaengsTheme { WalkRecordRowsList(listOf(
+        WalkRecordRow.Mine(WalkRecord(walk.copy(dogIds = listOf("dog-0")), "나무 그늘 따라 걸은 오후")),
+        WalkRecordRow.Shared(shared),
+    ), 1, 1, {}, {}, {}, {}, recordsPreviewPets(), Modifier.fillMaxSize(), showActor = true) }
 }

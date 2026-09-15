@@ -120,6 +120,55 @@ class WalkRecordsFiltersTest {
         assertEquals(WalkRecordsQuery(), query.get())
     }
 
+    @Test fun `carer checkboxes follow all and individual rules and candidates follow the chosen dogs`() {
+        val carers = listOf(
+            com.daengs.app.walk.shared.SharedWalkCarer("me", "롱롱씨 메인", true, listOf("dog-0", "dog-1")),
+            com.daengs.app.walk.shared.SharedWalkCarer("u2", "키키", false, listOf("dog-0")),
+            com.daengs.app.walk.shared.SharedWalkCarer("u3", "보리아빠", false, listOf("dog-1")),
+        )
+        val reader = object : com.daengs.app.walk.shared.SharedWalkReader {
+            override suspend fun feed(accessToken: String, query: com.daengs.app.walk.shared.SharedWalkFeedQuery, cursor: String?, limit: Int) =
+                com.daengs.app.walk.shared.SharedWalkResult.Ready(com.daengs.app.walk.shared.SharedWalkFeedPage(
+                    emptyList(), com.daengs.app.walk.shared.SharedWalkTotals(0, 0, 0), carers, null))
+            override suspend fun detail(accessToken: String, petId: String, walkId: String) =
+                com.daengs.app.walk.shared.SharedWalkResult.Unsupported
+        }
+        val holder = com.daengs.app.walk.shared.SharedWalksHolder(reader, { "sample-token" }, { true })
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsScreen(source, recordsPreviewPets(), {}, {}, today = today, sharedWalks = holder, myId = "me")
+        } } }
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true)
+            .assertTextContains("모든 강아지 · 모든 보호자 · 전체 기간", substring = true)
+        compose.onNodeWithTag("records-conditions").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-carer-u2").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-carer-all").performScrollTo().assertIsOn()
+        compose.onNodeWithText("나").performScrollTo().assertExists()
+
+        compose.onNodeWithTag("records-carer-u2").performScrollTo().performClick()
+        compose.onNodeWithTag("records-carer-all").assertIsOff()
+        compose.onNodeWithTag("records-carer-u2").assertIsOn()
+        compose.onNodeWithTag("records-carer-u3").performScrollTo().performClick()
+        compose.onNodeWithTag("records-carer-u2").assertIsOn()
+        compose.onNodeWithTag("records-carer-u3").assertIsOn()
+        compose.onNodeWithTag("records-carer-all").performScrollTo().performClick()
+        compose.onNodeWithTag("records-carer-all").assertIsOn()
+        compose.onNodeWithTag("records-carer-u2").performScrollTo().assertIsOff()
+        compose.onNodeWithTag("records-carer-u3").assertIsOff()
+        compose.onNodeWithTag("records-carer-me").performScrollTo().performClick()
+        compose.onNodeWithTag("records-carer-me").performClick()
+        compose.onNodeWithTag("records-carer-all").assertIsOn()
+
+        // 보리(dog-1)만 고르면 보리를 함께 돌보는 사람만 후보다.
+        compose.onNodeWithTag("records-dog-dog-1").performScrollTo().performClick()
+        compose.onNodeWithTag("records-carer-u3").performScrollTo().assertExists()
+        compose.onNodeWithTag("records-carer-u2").assertDoesNotExist()
+        compose.onNodeWithTag("records-carer-u3").performClick()
+        compose.onNodeWithTag("records-carer-me").performScrollTo().performClick()
+        compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true)
+            .assertTextContains("콩이 · 나 외 1명 · 전체 기간", substring = true)
+    }
+
     @Suppress("DEPRECATION")
     private fun show(fontScale: Float = 1f) {
         // Use the actual resource configuration so the separate bottom-sheet window inherits it too.

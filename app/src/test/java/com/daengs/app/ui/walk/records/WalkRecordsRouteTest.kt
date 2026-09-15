@@ -211,18 +211,132 @@ class WalkRecordsRouteTest {
         assertEquals(0, details.get())
     }
 
-    @Test fun `shared walks open from records as a separate read-only screen without my own walks`() {
-        val reader = object : com.daengs.app.walk.shared.SharedWalkReader {
-            override suspend fun list(accessToken: String, petId: String, cursor: String?, limit: Int) =
-                com.daengs.app.walk.shared.SharedWalkResult.Ready(com.daengs.app.walk.shared.SharedWalkPage(petId, listOf(
-                    com.daengs.app.walk.shared.SharedWalk("shared-1", 1L, 2L, 60L, null, null,
-                        com.daengs.app.care.CareActor("u2", "키키"), false, listOf(petId)),
-                    com.daengs.app.walk.shared.SharedWalk("mine-1", 1L, 2L, 60L, null, null,
-                        com.daengs.app.care.CareActor("owner-a", "나"), true, listOf(petId)),
-                ), null))
-            override suspend fun detail(accessToken: String, petId: String, walkId: String) =
-                com.daengs.app.walk.shared.SharedWalkResult.Unsupported
+    @Test fun `co-carer walks join my walks in one list with actor badges and open a read-only detail`() {
+        val reader = SharedReader()
+        showShared(reader)
+        waitText("산책 9회")
+        compose.onNodeWithTag("records-shared-open").assertDoesNotExist()
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true)
+            .assertTextEquals("모든 강아지 · 모든 보호자 · 전체 기간")
+        // 9/8 12:00 에 다녀온 공동 보호자 산책이 9/8 00:00 의 내 산책보다 앞선다.
+        compose.onNodeWithTag("records-walk-list").onChildren().filterToOne(hasTestTag("records-day-2026-09-08")).assertExists()
+        compose.onNodeWithTag("records-walk-shared-1").assertExists()
+        compose.onNodeWithContentDescription("키키의 산책", useUnmergedTree = true).assertExists()
+        // 목록은 화면에 보이는 카드만 그린다 — 개수 대신 내 카드에도 같은 배지가 있는지만 본다.
+        compose.onNodeWithTag("records-walk-actor-record-8", useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithContentDescription("내 산책", useUnmergedTree = true).fetchSemanticsNodes()
+            .let { assertEquals(true, it.isNotEmpty()) }
+        compose.onNodeWithText("측정 전").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(null, reader.queries.last().actorIds) }
+
+        compose.onNodeWithText("다음 ›").performClick()
+        waitText("2 페이지")
+        compose.onNodeWithText("‹ 이전").performClick()
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-walk-shared-1").performClick()
+        waitText("키키님이 다녀왔어요")
+        compose.runOnIdle { assertEquals(listOf("dog-1" to "shared-1"), reader.details) }
+        compose.onNodeWithText("기록-8").assertDoesNotExist()
+        compose.onNodeWithTag("shared-walk-detail-back").performClick()
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-walk-shared-1").assertExists()
+
+        // 모아보기는 내 산책 경로만 — 공동 보호자 산책은 들어가지 않는다.
+        compose.onNodeWithTag("records-view-overview").performClick()
+        waitText("선택 산책 8회 · 표시 흔적 8개")
+        compose.onNodeWithTag("records-overview-mine-only-notice").assertExists()
+        compose.onNodeWithTag("records-map-record-shared-1").assertDoesNotExist()
+    }
+
+    @Test fun `carer condition narrows walks to chosen people and overview never pretends to show them`() {
+        val reader = SharedReader()
+        showShared(reader)
+        waitText("산책 9회")
+        compose.onNodeWithTag("records-conditions").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-carer-u2").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-carer-u2").performScrollTo().performClick()
+        compose.onNodeWithTag("records-conditions-apply").performClick()
+        waitText("산책 1회")
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true).assertTextContains("키키", substring = true)
+        compose.onNodeWithTag("records-walk-shared-1").assertExists()
+        compose.onNodeWithText("기록-8").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(setOf("u2"), reader.queries.last().actorIds) }
+
+        compose.onNodeWithTag("records-view-overview").performClick()
+        waitTag("records-overview-mine-only")
+        compose.onNodeWithTag("records-overview-map").assertDoesNotExist()
+        compose.onNodeWithText("모든 보호자 보기").performClick()
+        waitText("선택 산책 8회 · 표시 흔적 8개")
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true).assertTextContains("모든 보호자", substring = true)
+    }
+
+    @Test fun `shared walk failure keeps my walks and retry brings them back`() {
+        val reader = SharedReader(failFirst = true)
+        showShared(reader)
+        waitTag("records-shared-failed")
+        waitText("산책 8회")
+        compose.onNodeWithTag("records-walk-record-8").assertExists()
+        compose.onNodeWithTag("records-walk-shared-1").assertDoesNotExist()
+        compose.onNodeWithTag("records-shared-retry").performClick()
+        waitText("산책 9회")
+        compose.onNodeWithTag("records-shared-failed").assertDoesNotExist()
+        compose.onNodeWithTag("records-walk-shared-1").assertExists()
+    }
+
+    @Test fun `keyword search finds only my walks and says so`() {
+        val reader = SharedReader()
+        showShared(reader)
+        waitText("산책 9회")
+        replaceSearch("기록")
+        waitText("산책 8회")
+        compose.onNodeWithTag("records-shared-excluded").assertExists()
+        compose.onNodeWithTag("records-walk-shared-1").assertDoesNotExist()
+    }
+
+    @Test fun `records without a shared holder keep my walks only and no carer condition`() {
+        val source = WalkRecordsSource { query -> selectWalkRecords(records, query) }
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            val state = rememberWalkRecordsRouteState(account)
+            WalkRecordsRoute(account, source, state, pets, {}, {}, {}, { id, back -> TestDetail(id, back) })
+        } } }
+        waitText("1 페이지")
+        compose.onNodeWithTag("records-active-filters", useUnmergedTree = true).assertTextEquals("모든 강아지 · 전체 기간")
+        compose.onAllNodesWithContentDescription("내 산책").fetchSemanticsNodes().let { assertEquals(0, it.size) }
+        compose.onNodeWithTag("records-conditions").performClick()
+        compose.onNodeWithTag("records-carer-all").assertDoesNotExist()
+    }
+
+    private class SharedReader(private var failFirst: Boolean = false) : com.daengs.app.walk.shared.SharedWalkReader {
+        val queries = mutableListOf<com.daengs.app.walk.shared.SharedWalkFeedQuery>()
+        val details = mutableListOf<Pair<String, String>>()
+        private val sharedAt = LocalDate.of(2026, 9, 8).atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        private val walk = com.daengs.app.walk.shared.SharedWalk("shared-1", sharedAt, sharedAt + 600_000, 600, 700, 500,
+            com.daengs.app.care.CareActor("u2", "키키"), false, listOf("dog-1"), weatherCode = 0, isDay = true)
+        private val carers = listOf(
+            com.daengs.app.walk.shared.SharedWalkCarer("owner-a", "에이", true, listOf("dog-1")),
+            com.daengs.app.walk.shared.SharedWalkCarer("u2", "키키", false, listOf("dog-1")),
+        )
+
+        override suspend fun feed(
+            accessToken: String, query: com.daengs.app.walk.shared.SharedWalkFeedQuery, cursor: String?, limit: Int,
+        ): com.daengs.app.walk.shared.SharedWalkResult<com.daengs.app.walk.shared.SharedWalkFeedPage> {
+            if (limit > 1) queries += query
+            if (limit > 1 && failFirst) {
+                failFirst = false
+                return com.daengs.app.walk.shared.SharedWalkResult.Failed("서버에 닿지 못했어요.")
+            }
+            return com.daengs.app.walk.shared.SharedWalkResult.Ready(com.daengs.app.walk.shared.SharedWalkFeedPage(
+                listOf(walk), com.daengs.app.walk.shared.SharedWalkTotals(1, 700, 600), carers, null))
         }
+
+        override suspend fun detail(accessToken: String, petId: String, walkId: String):
+            com.daengs.app.walk.shared.SharedWalkResult<com.daengs.app.walk.shared.SharedWalkDetail> {
+            details += petId to walkId
+            return com.daengs.app.walk.shared.SharedWalkResult.Ready(com.daengs.app.walk.shared.SharedWalkDetail(walk, emptyList()))
+        }
+    }
+
+    private fun showShared(reader: SharedReader) {
         val holder = com.daengs.app.walk.shared.SharedWalksHolder(reader, accessToken = { "sample-token" },
             isCurrentAccount = { true })
         val source = WalkRecordsSource { query -> selectWalkRecords(records, query) }
@@ -231,23 +345,6 @@ class WalkRecordsRouteTest {
             WalkRecordsRoute(account, source, state, pets, {}, {}, {}, { id, back -> TestDetail(id, back) },
                 sharedWalks = holder)
         } } }
-        waitText("1 페이지")
-        compose.onNodeWithTag("records-shared-open").performClick()
-        waitText("키키님이 다녀왔어요")
-        compose.onNodeWithText("나님이 다녀왔어요").assertDoesNotExist()
-        compose.onNodeWithText("기록-8").assertDoesNotExist()
-        compose.onNodeWithTag("shared-walks-back").performClick()
-        waitText("1 페이지")
-    }
-
-    @Test fun `records without a shared holder show no shared entry`() {
-        val source = WalkRecordsSource { query -> selectWalkRecords(records, query) }
-        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
-            val state = rememberWalkRecordsRouteState(account)
-            WalkRecordsRoute(account, source, state, pets, {}, {}, {}, { id, back -> TestDetail(id, back) })
-        } } }
-        waitText("1 페이지")
-        compose.onNodeWithTag("records-shared-open").assertDoesNotExist()
     }
 
     private fun backFromDetail() = compose.onNodeWithTag("records-test-detail-back").performClick()
