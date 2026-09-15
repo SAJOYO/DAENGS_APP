@@ -37,6 +37,9 @@ class PhotoCardFiles(private val dir: File) {
 
     suspend fun keepOnly(ids: Set<String>) = withContext(Dispatchers.IO) {
         existing().filterKeys { it !in ids }.values.forEach { it.delete() }
+        // 반쯤 받은 파일도 치운다 — 나중에 되살아나면 안 된다
+        dir.listFiles { f -> f.isFile && f.name.endsWith(".part") }
+            ?.forEach { it.delete() }
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) { dir.deleteRecursively(); Unit }

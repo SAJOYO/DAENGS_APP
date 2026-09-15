@@ -46,6 +46,9 @@ class PhotoCardHolder(
     var error: String? by mutableStateOf(null)
         private set
 
+    /** 비우거나 지우기 도중 받던 그림이 되살아나지 않도록. */
+    private var epoch = 0
+
     val generating: Boolean get() = cards.any { it.status == PhotoCardStatus.Generating }
 
     val latestFailure: PhotoCard? get() = cards.firstOrNull { it.status == PhotoCardStatus.Failed }
@@ -74,12 +77,15 @@ class PhotoCardHolder(
         }
         creating = true
         createError = null
-        val result = remote.create(token, month, dogName, dogId, jpeg)
-        creating = false
-        return result.fold(
-            onSuccess = { made -> cards = listOf(made) + cards.filterNot { it.id == made.id }; true },
-            onFailure = { createError = it.message ?: "카드를 만들지 못했어요."; false },
-        )
+        return try {
+            val result = remote.create(token, month, dogName, dogId, jpeg)
+            result.fold(
+                onSuccess = { made -> cards = listOf(made) + cards.filterNot { it.id == made.id }; true },
+                onFailure = { createError = it.message ?: "카드를 만들지 못했어요."; false },
+            )
+        } finally {
+            creating = false
+        }
     }
 
     suspend fun pollOnce() {
@@ -123,6 +129,7 @@ class PhotoCardHolder(
 
     /** 로그아웃·탈퇴. 다음 사람이 남의 카드 그림을 물려받으면 안 된다. */
     suspend fun forget() {
+        epoch++
         cards = emptyList()
         images = emptyMap()
         createError = null
@@ -137,9 +144,21 @@ class PhotoCardHolder(
     }
 
     private suspend fun store(detail: PhotoCardDetail) {
+        val started = epoch
+        val id = detail.card.id
         val url = detail.imageUrl ?: return
         val png = remote.download(url).getOrNull() ?: return
-        val file = files.write(detail.card.id, png) ?: return
-        images = images + (detail.card.id to file)
+        // 다운로드 도중 비우거나 이 카드를 지우면 받은 파일을 버린다
+        if (epoch != started || cards.none { it.id == id }) {
+            files.delete(id)
+            return
+        }
+        val file = files.write(id, png) ?: return
+        // 저장 도중에도 다시 확인한다
+        if (epoch != started || cards.none { it.id == id }) {
+            files.delete(id)
+            return
+        }
+        images = images + (id to file)
     }
 }

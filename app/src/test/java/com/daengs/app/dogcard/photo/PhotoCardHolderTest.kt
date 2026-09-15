@@ -18,11 +18,14 @@ class PhotoCardHolderTest {
         val server = mutableListOf<PhotoCard>()
         var failList = false
         var failDelete = false
+        var throwOnCreate = false
         var createError: String? = null
         var gets = 0
         val urls = mutableMapOf<String, String>()
+        var onDownload: (suspend () -> Unit)? = null
 
         override suspend fun create(token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Result<PhotoCard> {
+            if (throwOnCreate) throw IllegalStateException("만드는 중 예외")
             createError?.let { return Result.failure(IllegalStateException(it)) }
             val made = card("new-$month", month, PhotoCardStatus.Generating, at = 1_000L)
             server.add(0, made)
@@ -40,7 +43,10 @@ class PhotoCardHolderTest {
             server.removeAll { it.id == id }
             return Result.success(Unit)
         }
-        override suspend fun download(url: String) = Result.success(byteArrayOf(1, 2, 3))
+        override suspend fun download(url: String): Result<ByteArray> {
+            onDownload?.invoke()
+            return Result.success(byteArrayOf(1, 2, 3))
+        }
     }
 
     companion object {
@@ -200,5 +206,51 @@ class PhotoCardHolderTest {
         h.forget()
         assertTrue(h.cards.isEmpty())
         assertTrue(h.images.isEmpty())
+    }
+
+    @Test
+    fun `만들기 도중 예외가 나도 만드는 중 표시가 풀린다`() = runTest {
+        val remote = FakeRemote().apply { throwOnCreate = true }
+        val h = holder(remote)
+        runCatching { h.create(4, "콩이", null, byteArrayOf(9)) }
+        assertFalse(h.creating)
+    }
+
+    @Test
+    fun `반쯤 받은 파일은 목록을 맞출 때 치운다`() = runTest {
+        val dir = tmp.newFolder()
+        val files = PhotoCardFiles(dir)
+        java.io.File(dir, "partial.part").writeBytes(byteArrayOf(1))
+        val h = PhotoCardHolder(FakeRemote(), files, { "t" }, { 0L })
+        h.load()
+        assertFalse(java.io.File(dir, "partial.part").exists())
+    }
+
+    @Test
+    fun `그림을 받는 사이 비우면 그림이 되살아나지 않는다`() = runTest {
+        val remote = FakeRemote()
+        val dir = tmp.newFolder()
+        val files = PhotoCardFiles(dir)
+        val h = PhotoCardHolder(remote, files, { "t" }, { 0L })
+        remote.server += card("a", 4, PhotoCardStatus.Ready)
+        remote.urls["a"] = "https://x/a.png"
+        remote.onDownload = { h.forget() }
+        h.load()
+        assertTrue(h.images.isEmpty())
+        assertFalse(java.io.File(dir, "a.png").exists())
+    }
+
+    @Test
+    fun `그림을 받는 사이 그 카드를 지우면 파일이 남지 않는다`() = runTest {
+        val remote = FakeRemote()
+        val dir = tmp.newFolder()
+        val files = PhotoCardFiles(dir)
+        val h = PhotoCardHolder(remote, files, { "t" }, { 0L })
+        remote.server += card("a", 4, PhotoCardStatus.Ready)
+        remote.urls["a"] = "https://x/a.png"
+        remote.onDownload = { h.remove("a") }
+        h.load()
+        assertFalse(h.images.containsKey("a"))
+        assertFalse(java.io.File(dir, "a.png").exists())
     }
 }
