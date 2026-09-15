@@ -226,6 +226,10 @@ class GaitAnalysisWorker(
                 .setInputData(workDataOf(KEY_RECORD_ID to recordId, KEY_PET_ID to petId))
                 .setInitialDelay(INITIAL_DELAY_SECONDS, TimeUnit.SECONDS)
                 .setBackoffCriteria(BackoffPolicy.LINEAR, BACKOFF_SECONDS, TimeUnit.SECONDS)
+                // 챗에 다시 들어왔을 때 진행 중인 카드를 되살리려고 단다 ([pendingGaitRecords]).
+                // `WorkInfo` 는 입력 데이터를 안 주고 tag 만 준다.
+                .addTag(GaitWatchTags.record(recordId))
+                .apply { if (petId != null) addTag(GaitWatchTags.pet(petId)) }
                 .build()
     }
 }
