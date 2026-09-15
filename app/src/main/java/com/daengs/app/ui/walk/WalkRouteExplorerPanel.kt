@@ -34,16 +34,24 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     onContext: (RecordContext) -> Unit = {}, reading: DiaryReadingMemory? = null,
     readingNotices: @Composable () -> Unit = {},
     recordContent: @Composable () -> Unit = {},
+    replayContent: (@Composable () -> Unit)? = null,
+    replayContentKey: Any? = null,
 ) {
-    val scroll = reading?.explorer ?: rememberScrollState()
+    val normalScroll = reading?.explorer ?: rememberScrollState()
+    val replayScroll = rememberScrollState()
     var localDetails by remember { mutableStateOf(false) }
     val details = reading?.explorerDetails ?: localDetails
     val measured = state.review?.timeline?.durationMillis != null && state.duration > 0
     val replay = state.mode == RouteExplorerMode.REPLAY
+    val eventReplay = replay && replayContent != null
+    val scroll = if (eventReplay) replayScroll else normalScroll
     val slice = state.selectedSlice
+    LaunchedEffect(eventReplay, replayContentKey) {
+        if (eventReplay) replayScroll.scrollTo(0)
+    }
     LaunchedEffect(reading, reading?.pendingExplorerOffset) {
         reading?.pendingExplorerOffset?.let { offset ->
-            scroll.scrollTo(offset); reading.pendingExplorerOffset = null
+            normalScroll.scrollTo(offset); reading.pendingExplorerOffset = null
         }
     }
     Column(Modifier.fillMaxSize()) {
@@ -52,13 +60,13 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
         CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.bodySmall.copy(color = TextMuted, lineHeight = 20.sp)) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
                 .testTag("explorer-reading").padding(horizontal = DiaryReadingChrome.Gutter).padding(bottom = 20.dp)) {
-                recordContent()
+                if (eventReplay) replayContent?.invoke() else recordContent()
                 state.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 state.preparationError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 if (state.index == null && state.preparationError == null) Text("동선 탐색을 준비하고 있어요.")
                 if (state.analyzing) Text("선택한 길을 지난 시각을 확인하고 있어요.")
                 if (slice != null && !state.canPlayback) Text("선택 범위에 재생할 이동 근거가 없어요.", style = MaterialTheme.typography.bodySmall)
-                if (replay) {
+                if (replay && (!eventReplay || state.replayFrame?.inGap != false)) {
                     val frame = state.replayFrame
                     Text(if (frame?.inGap != false) "이 시각에는 재생할 위치 근거가 충분하지 않아요."
                         else frame.recordedAtMillis?.let { "기록 시각 " + formatRouteExplorerClock(it) }
@@ -103,7 +111,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
 
 /** Existing route/observation/context/passage entry points remain under the reading region. */
 @Composable
-private fun WalkExplorerSelectionDetails(state: WalkRouteExplorerState) {
+internal fun WalkExplorerSelectionDetails(state: WalkRouteExplorerState) {
     state.selectedContext?.let { RecordContextDetail(it) }
     state.selectedAuxiliary?.let { Text(observedRouteDescription(it), style = MaterialTheme.typography.bodySmall) }
     if (state.mode == RouteExplorerMode.PASSAGE) {

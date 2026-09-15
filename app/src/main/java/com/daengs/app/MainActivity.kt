@@ -1218,7 +1218,7 @@ class MainActivity : ComponentActivity() {
                             },
                             detailContent = { id, backToRecords ->
                                 com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history,
-                                    onBack = backToRecords, pets = pets.pets.orEmpty())
+                                    onBack = backToRecords, pets = pets.pets.orEmpty(), photoOf = { petPhotos[it] })
                             },
                         )
                     }
@@ -1254,7 +1254,8 @@ class MainActivity : ComponentActivity() {
                         onExit = { screen = Screen.Home },
                         detail = { id, close ->
                             com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history, close,
-                                pets = pets.pets.orEmpty(), origin = com.daengs.app.ui.walk.WalkSessionOrigin.COMPLETION)
+                                pets = pets.pets.orEmpty(), origin = com.daengs.app.ui.walk.WalkSessionOrigin.COMPLETION,
+                                photoOf = { petPhotos[it] })
                         },
                       ) {
                        WalkRoute(

@@ -379,7 +379,8 @@ fun NaverMapSurface(
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
         scene.moments.filter { it.diaryPin == null && it.recordPin == null }.map { it.point } + scene.routeEndpointStamps().map { it.point } +
             scene.sessionExplorer?.recordContext?.markers.orEmpty().map { it.point },
-        viewportSize, bottomPaddingPx, density, onRouteDirectionCount, recordMarkerBounds + diaryMarkerBounds)
+        viewportSize, bottomPaddingPx, density, onRouteDirectionCount, recordMarkerBounds + diaryMarkerBounds,
+        cursorAvatarRes = avatarRes, cursorAvatarPhoto = avatarPhoto)
 
     DisposableEffect(naverMap, visibleGaps) {
         val map = naverMap
