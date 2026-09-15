@@ -77,7 +77,9 @@ internal fun WalkRecordsConditionsSheet(
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).testTag("records-filter-sheet")) {
             Text(kind.title, style = MaterialTheme.typography.headlineSmall)
             Text(when (kind) {
-                RecordsFilter.ALL -> "산책별과 모아보기에 함께 적용돼요."
+                // 보호자 조건은 「산책별」에만 적용된다 — 보호자 선택이 있을 때는 그 차이를 적는다.
+                RecordsFilter.ALL -> if (carerChoice) "강아지·기간 조건은 산책별과 모아보기에, 보호자 조건은 산책별에만 적용돼요."
+                    else "산책별과 모아보기에 함께 적용돼요."
                 RecordsFilter.DOGS -> "함께 보고 싶은 강아지를 골라 주세요."
                 RecordsFilter.CARERS -> "산책을 다녀온 보호자를 골라 주세요. 산책별에만 적용돼요."
                 RecordsFilter.PERIOD -> "산책을 시작한 날짜를 기준으로 찾아요."

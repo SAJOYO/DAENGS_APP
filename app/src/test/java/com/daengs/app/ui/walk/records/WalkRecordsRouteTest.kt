@@ -304,6 +304,8 @@ class WalkRecordsRouteTest {
         compose.onAllNodesWithContentDescription("내 산책").fetchSemanticsNodes().let { assertEquals(0, it.size) }
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-carer-all").assertDoesNotExist()
+        // 보호자 조건이 없는 화면은 예전 안내 그대로다.
+        compose.onNodeWithText("산책별과 모아보기에 함께 적용돼요.").assertExists()
     }
 
     private class SharedReader(private var failFirst: Boolean = false) : com.daengs.app.walk.shared.SharedWalkReader {

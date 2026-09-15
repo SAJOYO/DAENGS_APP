@@ -141,6 +141,8 @@ class WalkRecordsFiltersTest {
             .assertTextContains("모든 강아지 · 모든 보호자 · 전체 기간", substring = true)
         compose.onNodeWithTag("records-conditions").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-carer-u2").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("강아지·기간 조건은 산책별과 모아보기에, 보호자 조건은 산책별에만 적용돼요.").assertExists()
+        compose.onNodeWithText("산책별과 모아보기에 함께 적용돼요.").assertDoesNotExist()
         compose.onNodeWithTag("records-carer-all").performScrollTo().assertIsOn()
         compose.onNodeWithText("나").performScrollTo().assertExists()
 
