@@ -24,8 +24,8 @@ class WalkRecordsDisplayPolicyTest {
 
     @Test fun `density and legend use the same distinct walk bands`() {
         val scale = policy.trace.density
-        assertEquals(listOf(0f, .04f, .12f, .22f, .22f, .34f, .34f, .34f, .46f, .46f), (0..9).map(scale::alpha))
-        assertEquals(listOf("1회", "2회", "3–4회", "5–7회", "8회 이상"), scale.legend().map { it.label })
+        assertEquals(listOf(0f, .24f, .49f, .77f, .77f, .77f, .77f, .77f, .77f, .77f), (0..9).map(scale::alpha))
+        assertEquals(listOf("1회", "2회", "3회 이상"), scale.legend().map { it.label })
         assertEquals(scale.bands.map { scale.alpha(it.minimum) }, scale.legend().map { it.opacity })
     }
 
@@ -58,7 +58,7 @@ class WalkRecordsDisplayPolicyTest {
         assertEquals(speed.speedScaleStops("pink"), plan.routeLegend)
     }
 
-    @Test fun `route theme does not affect shadow legend and density does not affect route style`() {
+    @Test fun `route theme does not affect trace legend and density does not affect route style`() {
         val baseline = composeWalkRecordsMapScene(policy)
         val recolored = composeWalkRecordsMapScene(policy.copy(route = policy.route.copy(themeId = "blue")))
         assertEquals(baseline.traceLegend, recolored.traceLegend)

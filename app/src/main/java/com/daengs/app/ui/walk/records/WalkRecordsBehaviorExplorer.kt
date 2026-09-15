@@ -316,6 +316,9 @@ private fun BehaviorViewControls(
             if (view == BehaviorRecordsView.WALK_OVERLAP) Box(Modifier.padding(horizontal = 16.dp)) {
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
+            if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
+                TraceDensityLegend(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
             menuExtras()
         }
     }

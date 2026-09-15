@@ -413,6 +413,7 @@ class WalkRecordsScreenTest {
         waitText("선택 산책 3회 · 표시 흔적 2개")
         compose.onNodeWithTag("records-overlap-legend").assertDoesNotExist()
         compose.onNodeWithTag("records-map-display").performClick()
+        assertFixedOverlapLegend()
         compose.onNodeWithTag("records-traces-overlap").performClick()
         waitText("선택 산책 3회 · 겹침 표시 2회")
         assertFixedOverlapLegend()
@@ -453,10 +454,9 @@ class WalkRecordsScreenTest {
 
     private fun assertFixedOverlapLegend() {
         compose.onNodeWithTag("records-overlap-legend").assertIsDisplayed()
-        listOf(Triple("1", "1회", 4), Triple("2", "2회", 12), Triple("3-4", "3–4회", 22),
-            Triple("5-7", "5–7회", 34), Triple("8", "8회 이상", 46)).forEach { (tag, label, opacity) ->
+        listOf(Triple("1", "1회", 24), Triple("2", "2회", 49), Triple("3", "3회 이상", 77)).forEach { (tag, label, opacity) ->
             compose.onNodeWithTag("records-overlap-legend-$tag").assertTextEquals(label)
-                .assertContentDescriptionEquals("$label 그림자 농도 ${opacity}퍼센트")
+                .assertContentDescriptionEquals("$label 흔적 농도 ${opacity}퍼센트")
         }
     }
 
@@ -475,7 +475,7 @@ class WalkRecordsScreenTest {
             }),
             WalkRecordsSelection(selection.query, sample.map { it.copy(trace = null, traceState = WalkTraceState.EMPTY) }))
         val preparedStages = runBlocking { stages.map { prepareWalkRecordsTraces(it) } }
-        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2, style = com.daengs.app.map.features.records.TraceDisplayPolicy(com.daengs.app.ui.theme.WalkTraceShadow.RGB)) } }
+        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2, style = com.daengs.app.map.features.records.TraceDisplayPolicy(com.daengs.app.ui.theme.WalkTraceIndigo.RGB)) } }
         val initialPoint = preparedStages.first().hitTestOverlap(SpatialDiaryHexGrid.center(cell, 8.0), 2)!!.point
         val stage = mutableStateOf(0)
         val selectedPoint = mutableStateOf<GeoPoint?>(initialPoint)
