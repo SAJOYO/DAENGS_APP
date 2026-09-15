@@ -58,7 +58,7 @@ class WalkRecordsActionPinsUiTest {
         assertEquals(listOf(com.daengs.app.walk.diary.DiaryActionTarget("second", "second-0")), opened)
         compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
         compose.onNodeWithTag("records-count").assertTextEquals("산책 2회")
-        compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 1건")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("액션 기록 1건 · 접기")
     }
 
     @Test fun `native group inspection lists every action and preserves the selected action after restoration`() {

@@ -222,15 +222,18 @@ internal fun WalkRecordsOverview(
     WalkRecordsMapFrame(sheetExpanded, setExpanded,
         if (actionPinState.browsing.value) "액션 기록 ${pinRecords.size}건" else "관련 산책 ${relatedRecords.size}회", modifier,
         controls = {
-            Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (controls != null) controls() else WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
-                    menuExtras = { WalkRecordsActionPinControls(actionPinState, pinBehavior) })
-                TextButton(onClick = { actionPinState.allRecords(); setExpanded(true); pinScope.launch { actionPinState.listState.scrollToItem(0) } }, Modifier.testTag("records-pins-browse")) {
-                    Text("액션 ${pins.records.size}건")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.widthIn(max = 112.dp)) {
+                    if (controls != null) controls() else WalkRecordsTraceControls(overlapOnly, minimumWalks, onOverlapOnly, onMinimumWalks,
+                        menuExtras = {
+                            WalkRecordsActionPinControls(actionPinState, pinBehavior)
+                            WalkRecordsTraceStatus(selection.records, traceLoading, traceError, onReloadTraces, compact = true)
+                        })
                 }
-            }
-            WalkRecordsActionSearch(actionPinState, pinBehavior)
+                WalkRecordsActionSearch(actionPinState, pinBehavior, Modifier.weight(1f)) {
+                    actionPinState.allRecords(); setExpanded(true)
+                    pinScope.launch { actionPinState.listState.scrollToItem(0) }
+                }
             }
         },
         map = map,
@@ -238,11 +241,21 @@ internal fun WalkRecordsOverview(
             if (behaviorCount != null) Text(behaviorCount, Modifier.padding(horizontal = 18.dp)
                 .testTag("records-behavior-count"), style = MaterialTheme.typography.labelMedium)
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (visibleCount == null) "지도 흔적을 준비하고 있어요."
+                if (actionPinState.browsing.value) Text(
+                    if (pinGroup != null) (if (pinRecords.mapNotNull { it.point }.distinct().size > 1) "이 구간의 액션 ${pinRecords.size}건" else "이 위치의 액션 ${pinRecords.size}건")
+                    else "핀 표시 ${pins.visibleCount}건 · 위치 없음 ${pins.unlocatedCount}건",
+                    Modifier.weight(1f).testTag("records-pins-summary"), style = MaterialTheme.typography.labelSmall)
+                else Text(if (visibleCount == null) "지도 흔적을 준비하고 있어요."
                     else if (overlapOnly) "선택 산책 ${selection.records.size}회 · 겹침 표시 ${visibleCount}회"
                     else "선택 산책 ${selection.records.size}회 · 표시 흔적 ${visibleCount}개",
                     Modifier.weight(1f).testTag("records-map-count"), style = MaterialTheme.typography.labelMedium)
-                WalkRecordsTraceStatus(selection.records, traceLoading, traceError, onReloadTraces, compact = true)
+                if (actionPinState.browsing.value) TextButton(onClick = {
+                    actionPinState.browsing.value = false; actionPinState.clearInspection(); pinCenter = null
+                }, Modifier.testTag("records-pins-back-walks")) { Text("산책 목록") }
+                else TextButton(onClick = {
+                    actionPinState.allRecords(); setExpanded(true)
+                    pinScope.launch { actionPinState.listState.scrollToItem(0) }
+                }, Modifier.testTag("records-pins-browse")) { Text("액션 ${pins.records.size}건") }
                 if (hiddenCount > 0) {
                     TextButton(onClick = onRestoreAll, modifier = Modifier.testTag("records-map-restore-all")) {
                         Text("모두 표시")
@@ -252,12 +265,8 @@ internal fun WalkRecordsOverview(
 
         },
         details = {
-            if (actionPinState.browsing.value) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-                    Text(if (pinGroup != null) (if (pinRecords.mapNotNull { it.point }.distinct().size > 1) "이 구간의 액션 ${pinRecords.size}건" else "이 위치의 액션 ${pinRecords.size}건") else
-                        "핀 표시 ${pins.visibleCount}건 · 위치 없음 ${pins.unlocatedCount}건",
-                        Modifier.fillMaxWidth().testTag("records-pins-summary"), style = MaterialTheme.typography.labelSmall)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            if (actionPinState.browsing.value && pinGroup != null) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (pinGroup != null && pinRecords.mapNotNull { it.point }.distinct().size > 1 && (camera?.zoom ?: 16.0) < 21.0) {
                         TextButton(onClick = {
                             val points = pinRecords.mapNotNull { it.point }
@@ -268,9 +277,6 @@ internal fun WalkRecordsOverview(
                         }, Modifier.testTag("records-pins-expand")) { Text("구간 확대") }
                     }
                     if (pinGroup != null) TextButton(onClick = actionPinState::allRecords, Modifier.testTag("records-pins-all")) { Text("모든 액션") }
-                    TextButton(onClick = { actionPinState.browsing.value = false; actionPinState.clearInspection(); pinCenter = null },
-                        Modifier.testTag("records-pins-back-walks")) { Text("산책 목록") }
-                    }
                 }
             }
             // The expanded list covers the map's center; keep result/error feedback reachable here too.
@@ -286,30 +292,18 @@ internal fun WalkRecordsOverview(
             if (overlapOnly && partialTraces) Text("불러온 흔적 기준 · 아직 준비되지 않은 산책은 겹침에 포함되지 않아요.",
                 Modifier.padding(horizontal = 18.dp).testTag("records-overlap-partial"),
                 style = MaterialTheme.typography.labelSmall, color = TextMuted)
-            if (prepared != null) {
-                val missing = selection.records.size - prepared.availableWalkIds.size
-                if ((!remoteTraces && missing > 0) || hiddenCount > 0) Text(
-                    listOfNotNull("숨김 ${hiddenCount}회".takeIf { hiddenCount > 0 },
-                        "흔적 없음 ${missing}회".takeIf { !remoteTraces && missing > 0 }).joinToString(" · ") + " · 목록에는 모두 남아 있어요.",
-                    Modifier.padding(start = 18.dp, end = 18.dp, bottom = 6.dp).testTag("records-map-status"),
-                    style = MaterialTheme.typography.labelSmall, color = TextMuted)
-            }
             // The map frame stays mounted at a fixed size; only meaningful inspection results appear.
-            if (!actionPinState.browsing.value && (selected != null || overlapHit != null || overlapMiss)) Row(
+            if (!actionPinState.browsing.value && (overlapHit != null || overlapMiss)) Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp).heightIn(min = 48.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(when {
                     overlapHit != null -> "이 구간: ${selection.records.size}회 중 ${overlapHit.walkIds.size}회 겹침\n아래에서 관련 산책을 살펴보세요."
                     overlapMiss -> "이곳에는 ${minimumWalks}회 이상 겹친 흔적이 없어요."
-                    selected?.summary?.sessionId in hiddenIds -> "고른 산책은 지도에서 숨김"
-                    route.paths.none { it.isNotEmpty() } -> "이 산책에는 강조할 경로가 없어요."
-                    else -> "고른 산책 경로"
+                    else -> ""
                 }, Modifier.weight(1f).testTag("records-inspection-summary"), style = MaterialTheme.typography.labelSmall)
                 if (overlapHit != null) TextButton(onClick = onClearOverlap, modifier = Modifier.testTag("records-overlap-clear")) {
                     Text("전체 목록")
-                } else if (selected != null) TextButton(onClick = onClearSelection, modifier = Modifier.testTag("records-map-clear-selection")) {
-                    Text("강조 해제")
                 }
             }
 

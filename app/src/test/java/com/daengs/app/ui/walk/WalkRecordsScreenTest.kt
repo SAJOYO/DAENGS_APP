@@ -296,6 +296,8 @@ class WalkRecordsScreenTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-view-overview").performClick()
         expandMapList()
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         waitText("흔적을 불러오고 있어요.")
         compose.onNodeWithText("확인").performClick()
@@ -342,9 +344,8 @@ class WalkRecordsScreenTest {
         chooseMapRecord("record-2")
         compose.onNodeWithTag("records-map-record-record-2").assertIsSelected()
         assertEquals(mapBeforeSelection, compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot())
-        compose.onNodeWithTag("records-map-clear-selection").assertIsDisplayed()
-        assertTrue(compose.onNodeWithTag("records-map-clear-selection").getUnclippedBoundsInRoot().top >=
-            compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot().top)
+        compose.onNodeWithTag("records-map-clear-selection").assertDoesNotExist()
+        compose.onNodeWithTag("records-inspection-summary").assertDoesNotExist()
         compose.onNodeWithText("상세: record-2").assertDoesNotExist()
         compose.onNodeWithTag("records-overview-map").assert(
             SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "강조한 산책: 기록-2"))
@@ -501,6 +502,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-hide-record-1").assertTextEquals("지도에 다시 표시")
         compose.onNodeWithTag("records-map-open-record-1").performScrollTo().performClick()
         assertEquals("record-1", opened.get())
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         compose.onNodeWithTag("records-traces-refresh").performClick()
         waitText("흔적을 불러오고 있어요.")
@@ -510,11 +513,15 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-3"))
         compose.onNodeWithTag("records-map-record-record-3").assertExists()
         compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 2 }
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         waitText("흔적 조회 실패")
         compose.onNodeWithText("확인").performClick()
         compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
         compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 3 }
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         compose.onAllNodes(hasText("서버에서 흔적 계산 중") and hasAnyAncestor(isDialog())).assertCountEquals(2)
         compose.onNodeWithText("확인").performClick()
@@ -526,6 +533,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-record-record-3").assertDoesNotExist()
         // Successfully checked empty sheets do prove removal; a later load must not resurrect it.
         compose.runOnIdle { stage.value = 4 }
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         waitText("3회 중 0회 흔적이 준비됐어요.")
         compose.onNodeWithText("확인").performClick()

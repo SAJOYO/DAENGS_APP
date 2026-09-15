@@ -170,7 +170,12 @@ internal fun WalkRecordsBehaviorExplorer(
     val controls: @Composable () -> Unit = {
         BehaviorViewControls(view, changeView, minimumWalks = minimumWalks, onMinimumWalks = {
             minimumWalks = it; overlapPoint = null; overlapMiss = false; selectedWalkId = null
-        }, menuExtras = { if (view != BehaviorRecordsView.RECORD_LOCATIONS) WalkRecordsActionPinControls(actionPinState, result.behavior) })
+        }, menuExtras = {
+            if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
+                WalkRecordsActionPinControls(actionPinState, result.behavior)
+                WalkRecordsTraceStatus(result.related.records, traceLoading, traceError, onReloadTraces, compact = true)
+            }
+        })
     }
     if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
         WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
@@ -273,12 +278,7 @@ internal fun WalkRecordsBehaviorExplorer(
                     Modifier.testTag("records-behavior-status"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
             }
 
-            if (selected != null) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(selected.locationLabel, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-                TextButton(onClick = { selectedEntryKey = null },
-                    modifier = Modifier.testTag("records-behavior-clear-selection")) { Text("강조 해제") }
-            }
+
         },
         records = { listModifier ->
             if (result.records.isEmpty()) RecordsMessage("이 조건의 산책에 ${result.behavior.label} 기록이 없어요.", modifier = listModifier)
@@ -303,10 +303,9 @@ private fun BehaviorViewControls(
                 BehaviorRecordsView.RECORD_LOCATIONS -> "행동 위치 ▾"
                 BehaviorRecordsView.WALK_TRACES -> "전체 흔적 ▾"
                 BehaviorRecordsView.WALK_OVERLAP -> "겹친 구간 · ${minimumWalks}회 이상 ▾"
-            })
+            }, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = 220.dp, max = 280.dp)) {
             listOf(Triple(BehaviorRecordsView.WALK_TRACES, "전체 흔적", "traces"),
                 Triple(BehaviorRecordsView.WALK_OVERLAP, "겹친 구간", "overlap"),
                 Triple(BehaviorRecordsView.RECORD_LOCATIONS, "행동 위치", "locations")).forEach { (mode, label, tag) ->

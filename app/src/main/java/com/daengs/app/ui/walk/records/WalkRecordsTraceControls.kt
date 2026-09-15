@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,10 +45,9 @@ internal fun WalkRecordsTraceControls(
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         TextButton(onClick = { open = true }, modifier = Modifier.testTag("records-map-display")) {
-            Text(if (overlapOnly) "겹친 구간 · ${minimumWalks}회 이상 ▾" else "전체 흔적 ▾")
+            Text(if (overlapOnly) "겹친 구간 · ${minimumWalks}회 이상 ▾" else "전체 흔적 ▾", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = 220.dp, max = 280.dp)) {
             DropdownMenuItem(text = { Text("전체 흔적") }, onClick = { onOverlapOnly(false); open = false },
                 modifier = Modifier.testTag("records-traces-all"))
             DropdownMenuItem(text = { Text("겹친 구간") }, onClick = { onOverlapOnly(true) },
@@ -55,7 +55,6 @@ internal fun WalkRecordsTraceControls(
             if (overlapOnly) Box(Modifier.padding(horizontal = 16.dp)) {
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
-            if (!overlapOnly) ShadowLegend(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             menuExtras()
         }
     }

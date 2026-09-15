@@ -52,6 +52,8 @@ class WalkRecordsMapFrameTest {
         val map = compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot()
         val sheet = compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot()
         assertTrue(map.bottom - map.top > (sheet.bottom - sheet.top) * 2f)
+        val controls = compose.onNodeWithTag("records-map-controls").getUnclippedBoundsInRoot()
+        assertTrue((controls.bottom - controls.top).value <= 56f)
         capture("collapsed")
         compose.onNodeWithTag("records-map-sheet-toggle").performTouchInput {
             down(center); moveBy(androidx.compose.ui.geometry.Offset(0f, -120f)); up()

@@ -53,10 +53,10 @@ internal fun WalkRecordsMapFrame(
         }
         Surface(Modifier.align(Alignment.TopStart).padding(12.dp)
             .widthIn(max = (maxWidth - if (wide) panelWidth else 0.dp) - 24.dp),
-            shape = RoundedCornerShape(16.dp), shadowElevation = 3.dp) {
-            Column(Modifier.onSizeChanged { controlsHeight = it.height }
+            shape = RoundedCornerShape(12.dp), shadowElevation = 2.dp) {
+            Column(Modifier.testTag("records-map-controls").onSizeChanged { controlsHeight = it.height }
                 .heightIn(max = maxHeight * .35f).verticalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 4.dp)) { controls() }
+                .padding(horizontal = 6.dp)) { controls() }
         }
         Surface(Modifier.align(if (wide) Alignment.CenterEnd else Alignment.BottomCenter)
             .width(panelWidth).height(panelHeight).testTag("records-map-sheet").semantics {
