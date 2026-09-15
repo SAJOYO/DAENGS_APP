@@ -12,11 +12,10 @@ import com.daengs.app.map.layers.moments.*
 import com.daengs.app.ui.theme.*
 import com.daengs.app.walk.*
 import com.daengs.app.walk.diary.DiaryScene
+import com.daengs.app.walk.diary.boundaryKind
 
 /** Stable source identities only; an editable title or the first/last ordinal is not an endpoint. */
-internal fun DiaryScene.isWalkBoundary(): Boolean = entryId == null && photo == null &&
-    ((source?.id?.removePrefix("geo:") in setOf("start","end")) ||
-        id in setOf("$sessionId/start","$sessionId/end","$sessionId/geo:start","$sessionId/geo:end"))
+internal fun DiaryScene.isWalkBoundary(): Boolean = boundaryKind() != null
 
 internal fun diaryActionKey(entry: WalkEntry) = "diary-action:${entry.id}"
 internal fun diaryActionObjects(entries: List<WalkEntry>, sessionId: String, selected: Set<String>): List<MomentMarkerState> =

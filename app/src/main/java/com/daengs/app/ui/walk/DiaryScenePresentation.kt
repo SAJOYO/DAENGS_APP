@@ -3,6 +3,7 @@ package com.daengs.app.ui.walk
 import com.daengs.app.ui.walk.reading.DiaryReviewTheme
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +11,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,8 +50,19 @@ internal fun DiarySceneBadge(kind: DiarySceneKind, modifier: Modifier = Modifier
                 DiarySceneKind.NOTE -> R.drawable.ic_walk_note
                 else -> null
             }
-            if (drawable != null) Image(painterResource(drawable), null, Modifier.size(24.dp))
+            if (kind == DiarySceneKind.END) Canvas(Modifier.size(22.dp)) {
+                val stroke = 1.8.dp.toPx()
+                val canvasSize = this.size
+                drawLine(TextDark, Offset(canvasSize.width*.2f,canvasSize.height*.15f), Offset(canvasSize.width*.2f,canvasSize.height*.9f),stroke,StrokeCap.Round)
+                drawPath(Path().apply {
+                    moveTo(canvasSize.width*.2f,canvasSize.height*.16f); lineTo(canvasSize.width*.84f,canvasSize.height*.16f)
+                    lineTo(canvasSize.width*.68f,canvasSize.height*.37f); lineTo(canvasSize.width*.84f,canvasSize.height*.58f)
+                    lineTo(canvasSize.width*.2f,canvasSize.height*.58f); close()
+                },TextDark,style=Stroke(stroke))
+            }
+            else if (drawable != null) Image(painterResource(drawable), null, Modifier.size(24.dp))
             else DaengsIconView(when (kind) {
+                DiarySceneKind.START -> DaengsIcon.Play
                 DiarySceneKind.PHOTO -> DaengsIcon.Camera
                 DiarySceneKind.DWELL -> DaengsIcon.Clock
                 DiarySceneKind.FAST, DiarySceneKind.SLOW -> DaengsIcon.Chart
@@ -67,10 +83,13 @@ internal fun DiarySceneHeading(scene: DiaryScene, kind: DiarySceneKind, modifier
                 lineHeight = if (detail) 27.sp else 22.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = if (detail) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
             Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(formatWalkClock(scene.atMillis), fontSize = 12.sp, color = TextMuted)
-                Text(" · ", fontSize = 12.sp, color = TextMuted)
-                Text(kind.label, Modifier.weight(1f), fontSize = 12.sp, color = TextMuted,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val boundary = kind == DiarySceneKind.START || kind == DiarySceneKind.END
+                Text(if (boundary) formatRouteExplorerClock(scene.atMillis) else formatWalkClock(scene.atMillis), fontSize = 12.sp, color = TextMuted)
+                if (!boundary) {
+                    Text(" · ", fontSize = 12.sp, color = TextMuted)
+                    Text(kind.label, Modifier.weight(1f), fontSize = 12.sp, color = TextMuted,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             if (detail) com.daengs.app.ui.walk.reading.DiarySceneConditions(scene.content)
         }
@@ -83,6 +102,7 @@ internal fun DiarySceneListButton(scene: DiaryScene, kind: DiarySceneKind, onCli
     onEdit: (() -> Unit)? = null, onDelete: (() -> Unit)? = null,
 ) {
     var menu by remember(scene.id) { mutableStateOf(false) }
+    val menuLabel = if (kind == DiarySceneKind.START || kind == DiarySceneKind.END) kind.label else "장면 $ordinal"
     Row(modifier.heightIn(min = 66.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 11.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -92,15 +112,15 @@ internal fun DiarySceneListButton(scene: DiaryScene, kind: DiarySceneKind, onCli
             if (onEdit == null && onDelete == null) Text("›", Modifier.padding(start = 8.dp), fontSize = 20.sp, color = TextMuted)
         }
         if (onEdit != null || onDelete != null) Box {
-            IconButton(onClick = { menu = true }, modifier = Modifier.semantics { contentDescription = "장면 $ordinal 메뉴" }) {
+            IconButton(onClick = { menu = true }, modifier = Modifier.semantics { contentDescription = "$menuLabel 메뉴" }) {
                 Text("⋯", fontSize = 20.sp, color = TextMuted)
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 onEdit?.let { edit -> DropdownMenuItem(text = { Text("내용 수정") },
-                    modifier = Modifier.semantics { contentDescription = "장면 $ordinal 수정" },
+                    modifier = Modifier.semantics { contentDescription = "$menuLabel 수정" },
                     onClick = { menu = false; edit() }) }
                 onDelete?.let { remove -> DropdownMenuItem(text = { Text("장면 삭제") },
-                    modifier = Modifier.semantics { contentDescription = "장면 $ordinal 삭제" },
+                    modifier = Modifier.semantics { contentDescription = "$menuLabel 삭제" },
                     onClick = { menu = false; remove() }) }
             }
         }

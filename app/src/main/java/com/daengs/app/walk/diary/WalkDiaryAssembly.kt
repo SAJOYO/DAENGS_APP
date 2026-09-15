@@ -24,6 +24,7 @@ internal fun assembleDiary(
     measurement: com.daengs.app.walk.WalkMeasurementDetail? = null,
 ): DiaryWalk {
     if (input.source.relationalSelected) return relationalDiaryWalk(walk, input, photos, draftPayload)
+        .withBoundaryScenes(StoryboardDraft.parse(draftPayload))
     val publication = input.source.publication
     val live = input.entries
     if (publication != null && publication.publishedBundle == null)
@@ -38,4 +39,5 @@ internal fun assembleDiary(
 
     return diaryWalk(walk, live, photos, StoryboardDraft.parse(draftPayload), analysis, observations, measurement)
         .copy(published = publication != null, sourceEntries = live)
+        .withBoundaryScenes(StoryboardDraft.parse(draftPayload))
 }

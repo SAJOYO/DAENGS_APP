@@ -532,6 +532,9 @@ interface WalkDao {
 
     /** Source-only cards remain editable while generated prose is stale or unavailable. */
     suspend fun isCurrentDiaryOriginal(sessionId: String, scene: com.daengs.app.walk.diary.StoryboardScene): Boolean = when {
+        scene.id in setOf("start", "end") && scene.entryReference == null -> session(sessionId)?.let {
+            scene.atMillis == (if (scene.id == "start") it.startedAtMillis else it.endedAtMillis)
+        } == true
         scene.id.startsWith("original:entry:") -> entry(scene.id.removePrefix("original:entry:"))?.let {
             it.sessionId == sessionId && it.payload != null && scene.entryReference?.entryId == it.id
         } == true

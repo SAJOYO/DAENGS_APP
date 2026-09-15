@@ -24,7 +24,24 @@ class RelationalDiaryReadingTest {
         DiaryBoardSource(StoryboardAnalysisView(null, false, ""), DiaryPublicationInput("invalid old base", null),
             true, RelationalDiaryCache(value, value), "ready"), images)
     private fun read(input: DiaryBoardInput = input(), photos: List<WalkPhoto> = emptyList(), draft: String? = null) =
-        assembleDiary(walk, input, photos, draft, emptyList())
+        assembleDiary(walk, input, photos, draft, emptyList()).let { board ->
+            // These existing checks concern provider/original cards; local bookends
+            // have their own assembly and edit round-trip assertions below.
+            board.copy(scenes=board.scenes.filter { it.boundaryKind() == null })
+        }
+
+    @Test fun `relational board includes editable local bookends without altering provider cards`() {
+        val board=assembleDiary(walk,input(),emptyList(),null,emptyList())
+        assertEquals(DiarySceneKind.START,board.scenes.first().boundaryKind())
+        assertEquals(DiarySceneKind.END,board.scenes.last().boundaryKind())
+        val end=board.scenes.last()
+        val draft=StoryboardDraft().edit(end.source!!,title="다음에도 함께",body="집에 돌아와 물을 마셨다.",acknowledge=true,bodyScope=SceneBodyScope.SCENE)
+        val reopened=assembleDiary(walk,input(),emptyList(),draft.toJson(),emptyList())
+        assertEquals("다음에도 함께",reopened.scenes.last().title)
+        assertEquals("집에 돌아와 물을 마셨다.",reopened.scenes.last().body)
+        assertEquals(walk.endedAtMillis,reopened.scenes.last().atMillis)
+        assertEquals(board.scenes.filter { it.boundaryKind()==null },reopened.scenes.filter { it.boundaryKind()==null })
+    }
 
     @Test fun `saved cards supersede legacy preparing publication without inventing missing prose`() {
         val diary = read()

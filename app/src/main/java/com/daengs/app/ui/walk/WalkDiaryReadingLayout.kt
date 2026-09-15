@@ -42,6 +42,7 @@ import com.daengs.app.walk.WalkPhoto
 import com.daengs.app.walk.diary.DiaryScene
 import com.daengs.app.walk.diary.DiarySceneContent
 import com.daengs.app.walk.diary.DiarySceneKind
+import com.daengs.app.walk.diary.boundaryKind
 import com.daengs.app.walk.trajectory.RecordContext
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -110,9 +111,9 @@ internal fun WalkDiaryMapContent(
     val groupList = readingMemory?.groupList ?: rememberLazyListState()
     val list = if (sceneGroup != null) groupList else fullList
     val displayedScenes = sceneGroup ?: scenes
-    val showStart = sceneGroup == null && walkStartedAtMillis != null
-    val showEnd = sceneGroup == null && walkEndedAtMillis != null
-    val ordinals = remember(scenes) { scenes.withIndex().associate { it.value.id to it.index+1 } }
+    val showStart = sceneGroup == null && walkStartedAtMillis != null && scenes.none { it.boundaryKind() == DiarySceneKind.START }
+    val showEnd = sceneGroup == null && walkEndedAtMillis != null && scenes.none { it.boundaryKind() == DiarySceneKind.END }
+    val ordinals = remember(scenes) { scenes.filterNot { it.isWalkBoundary() }.withIndex().associate { it.value.id to it.index+1 } }
     val gapSlots = remember(scenes, gapContexts, sceneGroup) { if (sceneGroup != null) emptyMap() else diaryGapSlots(scenes, gapContexts) }
     val emptyStoryboard = scenes.isEmpty() && gapSlots.isEmpty() && error == null
     val hasReadingExtras = offscreenScenes.isNotEmpty() || !generationNotice.isNullOrBlank() || directionNotice || error != null
@@ -333,7 +334,7 @@ internal fun WalkDiaryMapContent(
                                         item(key = "gap:${gap.id}") { DiaryGapItem(gap) { onSelectGap(gap) } }
                                     }
                                     item(key = "scene:${scene.id}") {
-                                        DiarySceneListButton(scene, sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
+                                        DiarySceneListButton(scene, scene.boundaryKind() ?: sceneKinds[scene.id] ?: DiarySceneKind.GENERAL,
                                             onClick = { onSelect(scene) }, ordinal = ordinals[scene.id],
                                             modifier = Modifier.fillMaxWidth().padding(horizontal = DiaryReadingChrome.Gutter),
                                             onEdit = { onEdit(scene) }, onDelete = onDelete?.let { remove -> { remove(scene) } })
@@ -365,7 +366,7 @@ internal fun WalkDiaryMapContent(
                                     state = bodyList,
                                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
                                     item {
-                                        DiarySceneHeading(selected, sceneKinds[selected.id] ?: DiarySceneKind.GENERAL,
+                                        DiarySceneHeading(selected, selected.boundaryKind() ?: sceneKinds[selected.id] ?: DiarySceneKind.GENERAL,
                                             Modifier.fillMaxWidth().padding(top = 6.dp), detail = true)
                                         Spacer(Modifier.height(18.dp))
                                         DiarySceneText(selected.body)
