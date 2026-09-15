@@ -199,6 +199,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
             Text("삭제되었거나 현재 계정에서 볼 수 없는 산책이에요.", Modifier.padding(24.dp))
         } else {
             WalkDiaryMapContent(scenes, selected, !loaded || readView?.scenesLoading == true, error,
+                walkStartedAtMillis = detail?.summary?.startedAtMillis,
+                walkEndedAtMillis = detail?.summary?.endedAtMillis,
                 readingMemory = readingMemory,
                 onReturnToRange = if (explorer.returnRange != null) ({
                     if (explorer.returnToRange()) readingMemory.inspect(emptyList())
