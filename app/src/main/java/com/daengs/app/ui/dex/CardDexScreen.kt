@@ -652,7 +652,13 @@ private fun GridCard(
                 PhotoBlank(
                     locked = slot.locked,
                     label = if (pending) "만드는 중…" else null,
-                    modifier = Modifier.height(maxWidth * SLOT_RATIO),
+                    // **`HoloCard` 와 같은 손짓을 받는다.** 빈 판이라고 탭·꾹 누르기가
+                    // 안 먹으면 만드는 중인 칸은 열 길이 없다 — 확대 뷰도, 그 안의
+                    // 지우기도 못 쓰게 된다.
+                    modifier = Modifier
+                        .height(maxWidth * SLOT_RATIO)
+                        .onGloballyPositioned { at = it.boundsInWindow() }
+                        .rubbable(rub, consume = false),
                 )
             } else {
                 HoloCard(
@@ -907,7 +913,13 @@ private fun CardViewer(
                 PhotoBlank(
                     locked = slot.locked,
                     label = if (pending) "만드는 중이에요. 잠시 뒤 다시 열어 보세요" else null,
-                    modifier = Modifier.fillMaxWidth(),
+                    // **`HoloCard` 와 같은 손짓을 받는다.** 안 달면 만드는 중인 장은 탭이
+                    // 바깥으로 새어 "밖을 눌러 닫기" 가 대신 발동해 설명 시트를 못 연다
+                    // (지우기가 그 안에 있다).
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { at = it.boundsInWindow() }
+                        .rubbable(rub),
                 )
             } else {
             HoloCard(
