@@ -31,7 +31,14 @@ internal fun DiaryReplayPlayer(state: WalkRouteExplorerState, timeline: DiaryRep
     val replay = state.mode == RouteExplorerMode.REPLAY
     val frame = state.replayFrame
     val position = if (replay) state.elapsed else state.selectedSlice?.from ?: 0L
-    val wall = if (replay) frame?.recordedAtMillis else state.review?.summary?.startedAtMillis
+    // Session bookends do not depend on a GPS fix. A selected range uses its own
+    // recording-clock position; never substitute elapsed time for a wall clock.
+    val wall = when {
+        position == 0L -> state.review?.summary?.startedAtMillis
+        position == state.duration && state.duration > 0 -> state.review?.summary?.endedAtMillis
+        replay -> frame?.recordedAtMillis
+        else -> state.review?.timeline?.frameAt(position)?.recordedAtMillis
+    }
     val speed = frame?.derivedSpeedMetersPerSecond?.takeIf { it.isFinite() && it >= 0 && !frame.inGap }
     Column(Modifier.fillMaxWidth().padding(horizontal = DiaryReadingChrome.Gutter)
         .padding(top = 8.dp, bottom = 8.dp).testTag("explorer-time-header")) {
@@ -53,8 +60,9 @@ internal fun DiaryReplayPlayer(state: WalkRouteExplorerState, timeline: DiaryRep
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text(wall?.let(::formatRouteExplorerClock) ?: formatWalkDuration(position),
-                    fontSize = 19.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, color = TextDark,
+                Text(wall?.let(::formatRouteExplorerClock) ?: "시각 정보 없음",
+                    fontSize = if (wall != null) 19.sp else 11.sp, lineHeight = 24.sp,
+                    fontWeight = FontWeight.SemiBold, color = TextDark,
                     maxLines = 1, modifier = Modifier.testTag("replay-clock"))
                 Text(when {
                     replay && frame?.inGap != false -> "위치 기록 없음"
