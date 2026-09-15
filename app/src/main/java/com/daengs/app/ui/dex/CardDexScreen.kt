@@ -448,6 +448,10 @@ fun CardDexScreen(
     }
 
     Box(modifier.fillMaxSize().background(DexBg)) {
+        // 알림을 보여줄지 — 확대 뷰가 열려 있으면 숨긴다(설명 시트 버튼을 가린다). 한 곳에
+        // 모아서 아래 알림 자리와 지운 알림의 여백 자리가 어긋나지 않게 한다.
+        val readyNotice: Pair<PhotoCard, File>? =
+            if (opened == null) revealCard?.let { c -> revealFile?.let { f -> c to f } } else null
         DexGrid(
             slots = slots,
             deck = deck,
@@ -499,11 +503,11 @@ fun CardDexScreen(
         }
 
         // 나가서 기다린 사람에게 알린다. **확대 뷰가 열려 있으면 숨긴다** — 설명 시트
-        // 버튼을 가린다.
-        if (revealCard != null && revealFile != null && opened == null) {
+        // 버튼을 가린다. 한 곳에 모아 둔 조건을 아래 지운 알림 자리와도 같이 쓴다.
+        readyNotice?.let { (card, file) ->
             PhotoReadyNotice(
-                month = revealCard.month,
-                onOpen = { revealing = revealCard to revealFile },
+                month = card.month,
+                onOpen = { revealing = card to file },
                 modifier = Modifier.align(Alignment.BottomCenter).systemBarsPadding().padding(bottom = 28.dp),
             )
         }
@@ -518,7 +522,7 @@ fun CardDexScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .systemBarsPadding()
-                    .padding(bottom = if (revealCard != null && revealFile != null && opened == null) 80.dp else 28.dp)
+                    .padding(bottom = if (readyNotice != null) 80.dp else 28.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(Color(0xE6241C1A))
                     .padding(horizontal = 16.dp, vertical = 9.dp),

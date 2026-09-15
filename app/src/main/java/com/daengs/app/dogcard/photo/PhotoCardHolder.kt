@@ -123,7 +123,18 @@ class PhotoCardHolder(
         val started = epoch
         val list = remote.list(token).getOrNull() ?: return
         if (epoch != started) return
-        cards = list.cards
+        // **그림을 받기 전에는 완성으로 바꾸지 않는다.** 여기서 로컬이 이미 `Generating`
+        // 이던 카드가 새 목록에서 `Ready` 로 왔다고 바로 반영하면(10분 스테일 경로·시계가
+        // 앞선 기기라 매번 이 경로를 타는 기기), `generating` 이 꺼져 이 코루틴을 돌리던
+        // `MainActivity` 의 `LaunchedEffect(photos.generating)` 이 취소되고 그림을 못 받는다
+        // — `pollOnce()` 를 고친 것과 같은 문제(커밋 2d4cd243). 그림을 받아 `store()` 할
+        // 때까지 로컬 사본(Generating)을 그대로 낸다. 로컬에서 이미 완성·실패였던 카드나
+        // 로컬에 없던 새 카드는 그대로 서버 값을 쓴다.
+        val stillDrawing = cards.filter { it.status == PhotoCardStatus.Generating }.associateBy { it.id }
+        cards = list.cards.map { fresh ->
+            val waiting = stillDrawing[fresh.id]
+            if (waiting != null && fresh.status == PhotoCardStatus.Ready) waiting else fresh
+        }
         dailyRemaining = list.dailyRemaining
         val kept = unrevealed.filter { id -> list.cards.any { it.id == id && it.status != PhotoCardStatus.Failed } }.toSet()
         if (kept != unrevealed) rememberUnrevealed(kept)
@@ -132,6 +143,15 @@ class PhotoCardHolder(
         // keepOnly 가 걸린 동안 비워졌을 수 있다 — 그 사이 온 그림을 또 받지 않는다.
         if (epoch != started) return
         fetchImages(token)
+        // 방금 위에서 붙잡아 둔 카드들 — 그림을 받아야 완성으로 바꾼다. `pollOnce()` 의
+        // 조회 한 장과 같은 순서다: 그림부터 받고(`store`), 성공해야 `cards` 를 바꾼다.
+        // `store()` 가 비우기·지우기 도중이면 스스로 거른다.
+        list.cards.filter { fresh -> stillDrawing.containsKey(fresh.id) && fresh.status == PhotoCardStatus.Ready }
+            .forEach { fresh ->
+                val detail = remote.get(token, fresh.id).getOrNull() ?: return@forEach
+                if (detail.card.status == PhotoCardStatus.Ready && !store(detail)) return@forEach
+                cards = cards.map { if (it.id == detail.card.id) detail.card else it }
+            }
     }
 
     suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null): String? {

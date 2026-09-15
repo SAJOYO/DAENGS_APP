@@ -243,6 +243,27 @@ class PhotoCardHolderTest {
         assertEquals("old", h.latestFailure?.id)
     }
 
+    /**
+     * `pollOnce()` 의 스테일 경로(10분 지남·시계가 앞선 기기)가 `load()` 를 부르는데,
+     * 그 사이 서버가 완성해 버리면 `load()` 가 그림을 받기 전에 `Ready` 로 바꿔 `generating`
+     * 이 꺼지고 조회 코루틴이 취소되던 것 — §1 재현·회귀 테스트.
+     */
+    @Test
+    fun `목록을 다시 받는 사이 완성된 카드도 그림을 받기 전에는 완성으로 바꾸지 않는다`() = runTest {
+        val remote = FakeRemote().apply { server += card("old", 9, PhotoCardStatus.Generating, at = 0L) }
+        val h = holder(remote, now = PHOTO_STALE_MS + 1)
+        h.load()
+        assertTrue(h.generating)
+        remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready, likeness = 4)
+        remote.urls["old"] = "https://x/old.png"
+        var seen: PhotoCardStatus? = null
+        remote.onDownload = { seen = h.cards.first().status }
+        h.pollOnce()
+        assertEquals(PhotoCardStatus.Generating, seen)
+        assertEquals(PhotoCardStatus.Ready, h.cards.first().status)
+        assertTrue(h.images.containsKey("old"))
+    }
+
     @Test
     fun `만드는 중이 없으면 조회를 안 돈다`() = runTest {
         val remote = FakeRemote().apply { server += card("a", 4, PhotoCardStatus.Failed) }

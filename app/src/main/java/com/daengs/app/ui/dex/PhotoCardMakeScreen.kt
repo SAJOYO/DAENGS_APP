@@ -149,9 +149,15 @@ fun PhotoCardMakeScreen(
     val taken = dog?.let { takenMonths(it.id) } ?: emptySet()
 
     // 강아지가 바뀌면(처음 고른 것 포함) 그 강아지에게 안 막힌 달로 다시 고른다.
+    // **`taken` 도 키에 넣는다** — 화면이 열릴 때 `cards` 가 아직 안 와서 `taken` 이 비어
+    // 있다가 목록이 늦게 도착하면, `dog?.id` 만 키면 다시 안 돌아 막힌 달이 기본으로 남는다.
+    // **지금 고른 달이 막혔을 때만** 바꾼다 — 사용자가 손으로 고른 안 막힌 달은 그대로 둔다
+    // (막힌 칸은 어차피 못 누르니, 남은 경우는 다 서버가 알려 준 뒤 자동으로 고른 달뿐이다).
     // 안 막힌 열린 달이 없으면(null) `month` 는 그대로 두고 제출을 막는다.
-    LaunchedEffect(dog?.id) {
-        choosePhotoMonth(month, OPEN_PHOTO_MONTHS, taken)?.let { month = it }
+    LaunchedEffect(dog?.id, taken) {
+        if (month in taken) {
+            choosePhotoMonth(month, OPEN_PHOTO_MONTHS, taken)?.let { month = it }
+        }
     }
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
