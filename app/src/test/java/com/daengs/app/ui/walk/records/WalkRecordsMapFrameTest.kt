@@ -130,7 +130,7 @@ class WalkRecordsMapFrameTest {
     private fun openOverview() {
         waitTag("records-count")
         compose.onNodeWithTag("records-view-overview").performClick()
-        waitText("선택 산책 3회 · 표시 흔적 3개")
+        waitTag("records-place-peek")
     }
     private fun sheetState(value: String) = compose.onNodeWithTag("records-map-sheet")
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, value))

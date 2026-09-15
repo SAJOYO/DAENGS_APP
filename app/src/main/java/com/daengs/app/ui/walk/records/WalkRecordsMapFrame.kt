@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import com.daengs.app.ui.theme.DaengsTheme
 
 internal data class RecordsMapInsets(val top: Int = 0, val bottom: Int = 0)
@@ -36,12 +37,14 @@ internal fun WalkRecordsMapFrame(
     summary: @Composable () -> Unit,
     details: @Composable () -> Unit,
     records: @Composable (Modifier) -> Unit,
+    collapsedContent: (@Composable () -> Unit)? = null,
+    collapsedHeight: Dp = 112.dp,
 ) {
     BoxWithConstraints(modifier.fillMaxSize().testTag("records-map-frame")) {
         val wide = maxWidth >= 600.dp
         val panelWidth = if (wide) 340.dp.coerceAtMost(maxWidth * .45f) else maxWidth
         val panelHeight = if (wide) maxHeight else if (expanded) maxHeight * .61f
-            else 112.dp.coerceAtMost(maxHeight * .42f)
+            else collapsedHeight.coerceAtMost(maxHeight * .42f)
         val density = LocalDensity.current
         var controlsHeight by remember { mutableIntStateOf(0) }
         val insets = with(density) { RecordsMapInsets(
@@ -82,7 +85,9 @@ internal fun WalkRecordsMapFrame(
                         }
                     }
                 } else Text(title, Modifier.padding(18.dp), style = MaterialTheme.typography.titleSmall)
-                summary()
+                if (!expanded && !wide && collapsedContent != null)
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { collapsedContent() }
+                else summary()
                 if (expanded || wide) Column(Modifier.heightIn(max = panelHeight * .30f)
                     .verticalScroll(rememberScrollState())) { details() }
                 if (expanded || wide) records(Modifier.weight(1f).fillMaxWidth())

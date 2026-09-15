@@ -656,14 +656,19 @@ class WalkRecordsScreenTest {
         assertEquals(1, reads.get())
         restore.emulateSavedInstanceStateRestore()
         waitText("산책 기록")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-map-sheet-toggle").fetchSemanticsNodes().isNotEmpty() }
+        expandMapList()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
         chooseBehavior("barking")
         compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
+        expandMapList()
         compose.onNodeWithTag("records-behavior-count").assertTextContains("1건", substring = true)
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-behavior-all").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-place-peek").fetchSemanticsNodes().isNotEmpty() }
+        expandMapList()
         waitText("선택 산책 3회 · 표시 흔적 1개")
     }
 
@@ -730,6 +735,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-behavior-all").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-place-peek").fetchSemanticsNodes().isNotEmpty() }
+        expandMapList()
         waitText("선택 산책 3회 · 표시 흔적 1개")
     }
 
