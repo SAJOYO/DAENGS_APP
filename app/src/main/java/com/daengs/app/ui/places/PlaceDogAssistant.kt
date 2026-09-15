@@ -12,7 +12,6 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.ui.theme.DaengsTheme
 
 internal data class DogBubblePlacement(val offset: IntOffset, val tailX: Float)
@@ -34,8 +33,6 @@ internal fun PlaceDogAssistant(
     onSubmit: (String) -> Unit,
     onCancel: () -> Unit,
     onUndo: (() -> Unit)? = null,
-    avatarBreed: DogBreed? = null,
-    avatarPhoto: android.graphics.Bitmap? = null,
     searchContext: String? = null,
     details: (@Composable () -> Unit)? = null,
     reply: @Composable () -> Unit,
@@ -45,7 +42,7 @@ internal fun PlaceDogAssistant(
     var draft by rememberSaveable { mutableStateOf("") }
     var composing by rememberSaveable { mutableStateOf(false) }
     Box {
-        PlaceDogAssistantEntry(avatarBreed, avatarPhoto) {
+        PlaceDogAssistantEntry {
             composing = !replyAvailable
             onOpen(!open)
         }
