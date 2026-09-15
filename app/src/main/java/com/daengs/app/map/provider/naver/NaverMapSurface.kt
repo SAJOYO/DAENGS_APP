@@ -192,7 +192,7 @@ fun NaverMapSurface(
         onDispose { if (original != null) map?.mapType = original }
     }
 
-    if (scene.moments.none { it.diaryPin != null })
+    if (!scene.detachedRecordPins && !scene.detachedDiaryPins && scene.moments.none { it.diaryPin != null })
         NaverMapVisibility(naverMap, viewportSize, density, visibilityQuery, scene.moments, onVisibility)
 
     LaunchedEffect(naverMap, searchOrigin) {
@@ -348,7 +348,7 @@ fun NaverMapSurface(
         endpoint.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),
             .5,if(endpoint.abovePoint) 1.0 else if(endpoint.compact) 0.0 else .5)
     }
-    if (scene.detachedDiaryPins) {
+    if (scene.detachedDiaryPins || scene.detachedRecordPins) {
         val obstacles = fixedMarkerFootprints + scene.stayStamps.map {
             it.point to com.daengs.app.map.layout.MarkerFootprint(56.0,34.0)
         } + scene.sessionExplorer?.recordContext?.markers.orEmpty().map {
@@ -357,9 +357,11 @@ fun NaverMapSurface(
             it.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),.5,0.0)
         }
         NaverDetachedMomentLayer(naverMap, recordMoments + diaryMoments, viewportSize, density, layerOrder,
-            onSelectMomentGroup, scene.completedRoute.paths + scene.sessionExplorer?.observedParts.orEmpty().map { it.path },
+            onSelectMomentGroup, (scene.markerAvoidancePaths + scene.completedRoute.paths +
+                scene.sessionExplorer?.observedParts.orEmpty().map { it.path }).distinct(),
             visibilityQuery, bottomPaddingPx, obstacles,
-            onBounds = { diaryMarkerBounds = it; recordMarkerBounds = emptyList() }, onVisibility = onVisibility)
+            onBounds = { diaryMarkerBounds = it; recordMarkerBounds = emptyList() }, onVisibility = onVisibility,
+            topInset = if (scene.detachedRecordPins) topPaddingPx else 0)
     } else {
     NaverGroupedMomentLayer(naverMap, recordMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
         topInset = topPaddingPx, bottomInset = bottomPaddingPx, onBounds = { recordMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)

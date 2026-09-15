@@ -52,6 +52,11 @@ class WalkRecordsMapFrameTest {
         val map = compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot()
         val sheet = compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot()
         assertTrue(map.bottom - map.top > (sheet.bottom - sheet.top) * 2f)
+        val controls = compose.onNodeWithTag("records-map-controls").getUnclippedBoundsInRoot()
+        assertTrue((controls.bottom - controls.top).value <= 56f)
+        assertTrue((sheet.bottom - sheet.top).value <= 168f)
+        assertTrue(sheet.left > map.left && sheet.right < map.right && sheet.bottom < map.bottom)
+        assertEquals(compose.onNodeWithTag("records-header").getUnclippedBoundsInRoot().bottom, map.top)
         capture("collapsed")
         compose.onNodeWithTag("records-map-sheet-toggle").performTouchInput {
             down(center); moveBy(androidx.compose.ui.geometry.Offset(0f, -120f)); up()
@@ -128,7 +133,7 @@ class WalkRecordsMapFrameTest {
     private fun openOverview() {
         waitTag("records-count")
         compose.onNodeWithTag("records-view-overview").performClick()
-        waitText("선택 산책 3회 · 표시 흔적 3개")
+        waitTag("records-place-peek")
     }
     private fun sheetState(value: String) = compose.onNodeWithTag("records-map-sheet")
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, value))

@@ -18,13 +18,14 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal fun walkRouteExplorerSaver(scope: CoroutineScope) = Saver<WalkRouteExplorerState, Any>(
-    save = { listOf(it.selectedSceneId.orEmpty(), it.playbackSpeed.name) },
+    save = { listOf(it.selectedSceneId.orEmpty(), it.playbackSpeed.name, it.panelOpen) },
     restore = { saved ->
         // Accept the scene-only value saved by earlier app versions as well.
         val values = saved as? List<*>
         val id = (saved as? String) ?: (values?.getOrNull(0) as? String).orEmpty()
         WalkRouteExplorerState(scope, 0).apply {
-            restoreSelection(if (id.isNotEmpty()) WalkRouteSelection.Scene(id) else WalkRouteSelection.Overview, false,
+            restoreSelection(if (id.isNotEmpty()) WalkRouteSelection.Scene(id) else WalkRouteSelection.Overview,
+                values?.getOrNull(2) as? Boolean ?: false,
                 RoutePlaybackSpeed.entries.firstOrNull { it.name == values?.getOrNull(1) } ?: RoutePlaybackSpeed.ONE)
         }
     },

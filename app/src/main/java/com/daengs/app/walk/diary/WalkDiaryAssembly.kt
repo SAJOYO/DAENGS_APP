@@ -28,7 +28,9 @@ internal fun assembleDiary(
     val publication = input.source.publication
     val live = input.entries
     if (publication != null && publication.publishedBundle == null)
-        return DiaryWalk(walk, emptyList(), "", preparing = true)
+        // The pending board still owns prose/photos. Original actions can be inspected independently.
+        return DiaryWalk(walk, emptyList(), "", preparing = true,
+            sourceEntries = live.filter { it.type != com.daengs.app.walk.WalkMomentType.NOTE })
 
     val analysis = if (publication?.publishedBundle != null) StoryboardAnalysisView(
         LocalDiaryBoard.withUserChanges(

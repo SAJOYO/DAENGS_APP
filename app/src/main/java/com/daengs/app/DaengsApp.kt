@@ -119,7 +119,7 @@ class DaengsApp : Application() {
 
     /** Keep the returned source for this login; request a new one after accountScope changes. */
     fun walkRecordsSource(): com.daengs.app.walk.records.WalkRecordsSource? =
-        com.daengs.app.walk.records.accountWalkRecordsSource(walkDatabase, sessionProvider)
+        com.daengs.app.walk.records.accountWalkRecordsSource(walkDatabase, sessionProvider, photos = walkPhotos)
 
     fun routeBackupSource(scope: com.daengs.app.auth.AccountScope): com.daengs.app.walk.sync.WalkRouteBackupSource? {
         val owner = scope.ownerId?.takeIf { it.isNotBlank() } ?: return null

@@ -18,7 +18,7 @@ internal class WalkRecordsActionPinState(
     fun inspect(group: WalkActionPinGroup) {
         groupPoint.value = group.point
         groupKeys.value = group.records.map { it.key }
-        selectedKey.value = group.records.first().key.takeIf { group.records.size == 1 }
+        selectedKey.value = placeWalks(group.records).currentPlaceAction(null)?.key
         browsing.value = true
     }
     fun allRecords() { groupPoint.value = null; groupKeys.value = emptyList(); browsing.value = true }

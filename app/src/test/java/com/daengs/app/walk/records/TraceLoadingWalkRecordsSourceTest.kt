@@ -6,6 +6,7 @@ import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.diary.SpatialDiaryCellId
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -19,6 +20,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TraceLoadingWalkRecordsSourceTest {
+    @Test fun `diary observation stays local and rejects stale account emissions`() = runBlocking {
+        val record = record("local", null)
+        var current = true
+        val diary = com.daengs.app.walk.diary.DiaryWalk(record.summary, emptyList(), "")
+        val local = object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selection(record)
+            override fun observeDiary(record: WalkRecord) = kotlinx.coroutines.flow.flow {
+                emit(diary)
+                current = false
+                emit(diary)
+            }
+        }
+        val source = TraceLoadingWalkRecordsSource(local, "owner", { current },
+            { error("diary must not refresh tokens") }, { _, _ -> error("diary must not fetch") })
+        val received = mutableListOf<com.daengs.app.walk.diary.DiaryWalk?>()
+        assertTrue(runCatching { source.observeDiary(record).collect { received += it } }.isFailure)
+        assertEquals(listOf(diary), received)
+    }
+
     @Test fun `route loading delegates locally and rejects an account change during the read`() = runBlocking {
         val record = record("local", null)
         var current = true

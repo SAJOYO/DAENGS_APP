@@ -23,18 +23,20 @@ internal fun NaverDetachedMomentLayer(map: NaverMap?, moments: List<MomentMarker
     paths: List<List<GeoPoint>>, query: MapVisibilityQuery?, bottomInset: Int,
     fixedMarkers: List<Pair<GeoPoint, MarkerFootprint>>, onBounds: (List<MarkerRect>) -> Unit,
     onVisibility: (MapVisibilityResult) -> Unit,
+    topInset: Int = 0,
 ) {
     val context=LocalContext.current
+    val diagnostics=LocalWalkMapDiagnostics.current
     val select by rememberUpdatedState(onSelect)
     val visibility by rememberUpdatedState(onVisibility)
     val bounds by rememberUpdatedState(onBounds)
     val offsets=remember(map) { mutableMapOf<String,MarkerPoint>() }
-    DisposableEffect(map,moments,size,density,order,paths,query,bottomInset,fixedMarkers) {
+    DisposableEffect(map,moments,size,density,order,paths,query,bottomInset,fixedMarkers,topInset,diagnostics) {
         val overlays=mutableListOf<Overlay>()
-        fun clear() { overlays.forEach { it.map=null }; overlays.clear() }
+        fun clear() { overlays.forEach { diagnostics?.detached(it); it.map=null }; overlays.clear() }
         fun redraw() {
             if (map==null || size.width==0 || size.height==0 || density<=0) return
-            val viewport=markerViewport(size,density,0,query?.bottomOcclusionPx ?: bottomInset)
+            val viewport=markerViewport(size,density,topInset,query?.bottomOcclusionPx ?: bottomInset)
             fun project(point: GeoPoint,id: String=""): MarkerPoint {
                 val p=map.projection.toScreenLocation(LatLng(point.latitude,point.longitude))
                 return MarkerPoint(id,p.x/density.toDouble(),p.y/density.toDouble())
@@ -110,6 +112,9 @@ internal fun NaverDetachedMomentLayer(map: NaverMap?, moments: List<MomentMarker
                     globalZIndex=order.markers; zIndex=120+placement.glyph.priority*10; isHideCollidedMarkers=false
                     alpha=if(members.all { it.diaryPin?.dimmed==true }) .42f else 1f
                     setOnClickListener { select(group.points.map { it.id }); true }; this.map=map
+                    diagnostics?.attached(this, NativeWalkLayerReading(
+                        if (members.first().diaryPin != null) "장면 묶음" else "액션 핀",
+                        globalZIndex, "${members.sumOf { it.recordPin?.count ?: 1 }}건 · 경로 옆 공통 배치"))
                 }
             }
         }

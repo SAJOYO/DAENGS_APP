@@ -1433,7 +1433,8 @@ class MainActivity : ComponentActivity() {
                             },
                             detailContent = { id, backToRecords ->
                                 com.daengs.app.ui.walk.WalkSessionDetailRoute(id, walkRuntime.history,
-                                    onBack = backToRecords, pets = pets.pets.orEmpty(), photoOf = { petPhotos[it] })
+                                    onBack = backToRecords, pets = pets.pets.orEmpty(), photoOf = { petPhotos[it] },
+                                    initialAction = recordsRouteState.openedAction)
                             },
                         )
                     }

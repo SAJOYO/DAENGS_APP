@@ -50,18 +50,28 @@ class StoredWalkDetailDataTest {
             calls += "sync"; dao.markRawUploaded(id, "remote", 1000)
         },
         enqueue: suspend (String) -> Unit = { calls += "enqueue:$it" },
+        prepareOnRead: Boolean = true,
     ) = StoredWalkDetailData("s", account, { account },
         WalkHistory(RoomWalkFixLog(dao) { account.ownerId.orEmpty() }), dao, entries, photos,
         { calls += "prepare:$it" }, enqueue, fresh, sync,
         { token, id, remote ->
             assertEquals("token", token); assertEquals("s", id); assertEquals("remote", remote)
             calls += "generate"
-        })
+        }, prepareOnRead = prepareOnRead)
 
     @Test fun `opening schedules existing publication and delivery while refresh only wakes publication`() = runBlocking {
         val data = data()
         data.open(); data.prepareDiary()
         assertEquals(listOf("prepare:s", "enqueue:s", "prepare:s"), calls)
+    }
+
+    @Test fun `action lookup reads without scheduling publication or delivery`() = runBlocking {
+        val data = data(prepareOnRead = false)
+        data.open(); data.prepareDiary()
+        assertNotNull(data.load())
+        assertTrue(calls.isEmpty())
+        data.generateDiary()
+        assertEquals(listOf("auth", "sync", "generate"), calls)
     }
 
     @Test fun `exploration is scoped to the current login and disappears with its session`() = runBlocking {

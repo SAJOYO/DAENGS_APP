@@ -7,6 +7,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DetachedMarkerViewportTest {
+    @Test fun `records header and drawer constrain the full pin bounds at device density`() {
+        val viewport = markerViewport(IntSize(720,1280), 2f, 300, 400)
+        assertEquals(MarkerRect(4.0,154.0,356.0,436.0), viewport)
+        listOf(MarkerPoint("top",180.0,150.0), MarkerPoint("bottom",180.0,440.0)).forEach { point ->
+            val placed = placeDetachedMarkers(listOf(MarkerGlyph(MarkerGroup(listOf(point),point),
+                MarkerFootprint(44.0,44.0))),viewport).single()
+            assertFalse(placed.crowded)
+            assertTrue(placed.bounds.top >= viewport.top)
+            assertTrue(placed.bounds.bottom <= viewport.bottom)
+        }
+    }
+
     @Test fun `offset map settings are excluded at their actual displayed position`() {
         val size = IntSize(720,1280)
         val query = MapVisibilityQuery("r", emptyList(), 600, 200, 100, 100, 120)

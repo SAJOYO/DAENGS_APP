@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -79,6 +80,7 @@ fun WalkRecordsScreen(
     today: LocalDate = LocalDate.now(),
     petsLoaded: Boolean = true,
     photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
 ) {
     var dogIds by rememberSaveable(stateSaver = RecordsDogIdsSaver) { mutableStateOf<Set<String>?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
@@ -207,20 +209,17 @@ fun WalkRecordsScreen(
         if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
     }
     BackHandler(onBack = onBack)
+    val current = remember(selection, behavior) {
+        selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
+    }
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
             onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
-            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today)
+            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today,
+            countLabel = current?.let { "산책 ${it.records.size}회" } ?: if (error != null) "산책 기록" else "불러오는 중")
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        val current = remember(selection, behavior) {
-            selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
-        }
-        WalkRecordsTotals(current?.records?.size,
-            current?.records?.sumOf { it.summary.distanceMeters } ?: 0.0,
-            current?.records?.sumOf { it.summary.activeDurationMillis } ?: 0L,
-            failed = error != null)
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))
@@ -241,7 +240,7 @@ fun WalkRecordsScreen(
                 } else if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
-                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source, onOpenAction = onOpenAction,
                         view = behaviorView, onView = { behaviorView = it }, state = behaviorState, actionPinState = actionPinState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
@@ -251,6 +250,7 @@ fun WalkRecordsScreen(
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
+                        onInspect = { selectedId = it },
                         onSelect = { id ->
                             selectedId = id.takeIf { it != selectedId }
                             if (selectedId != null && id !in hiddenIds) {
@@ -285,7 +285,7 @@ fun WalkRecordsScreen(
                             }
                         },
                         onClearOverlap = { overlapPoint = null; overlapMiss = false; selectedId = null },
-                        onOpen = onOpen, listState = overviewScroll,
+                        onOpen = onOpen, onOpenAction = onOpenAction, listState = overviewScroll,
                         camera = camera, onCamera = { camera = it },
                         fitBounds = focusBounds ?: prepared?.bounds.orEmpty(), cameraRequest = cameraRequest,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },

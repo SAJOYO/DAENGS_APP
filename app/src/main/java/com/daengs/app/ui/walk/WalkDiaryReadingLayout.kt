@@ -366,23 +366,15 @@ internal fun WalkDiaryMapContent(
                                     state = bodyList,
                                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
                                     item {
-                                        DiarySceneHeading(selected, selected.boundaryKind() ?: sceneKinds[selected.id] ?: DiarySceneKind.GENERAL,
-                                            Modifier.fillMaxWidth().padding(top = 6.dp), detail = true)
-                                        Spacer(Modifier.height(18.dp))
-                                        DiarySceneText(selected.body)
-                                        com.daengs.app.ui.walk.reading.RelationalSceneOriginals(selected, onPhoto)
-                                        selected.relational?.comparisonSceneId?.let { previousId ->
-                                            scenes.singleOrNull { it.relational?.sceneId == previousId }?.let { previous ->
-                                                TextButton(onClick = { onSelect(previous) }) { Text("비교한 앞 장면 보기") }
+                                        com.daengs.app.ui.walk.reading.DiarySceneReading(selected,
+                                            selected.boundaryKind() ?: sceneKinds[selected.id] ?: DiarySceneKind.GENERAL,
+                                            onPhoto = onPhoto, routeNotice = selectedRouteNotice) {
+                                            selected.relational?.comparisonSceneId?.let { previousId ->
+                                                scenes.singleOrNull { it.relational?.sceneId == previousId }?.let { previous ->
+                                                    TextButton(onClick = { onSelect(previous) }) { Text("비교한 앞 장면 보기") }
+                                                }
                                             }
                                         }
-                                        selectedRouteNotice?.let { Text(it, Modifier.padding(top = 12.dp),
-                                            style = MaterialTheme.typography.bodySmall, color = TextMuted) }
-                                        if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",
-                                            Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium)
-                                        selected.photo?.let { photo -> DiaryReadingPhoto(photo) { onPhoto(photo) } }
-                                        if (selected.content?.photoId != null && selected.photo == null)
-                                            Text("사진 파일은 촬영한 기기에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
                                         DiarySceneExploreActions(if (compactDrawer) null else onReturnToRange, onSceneNeighborhood)
                                         val index = displayedScenes.indexOfFirst { it.id == selected.id }
                                         DiarySceneFooter(index, displayedScenes.size, onEdit = { onEdit(selected) },
