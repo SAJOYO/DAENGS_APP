@@ -13,7 +13,9 @@
 
 ## 기온 연결 경계
 
-현재 walk-diary-board-v1 / walk-diary-bundle-v1 장면 응답에는 기온 필드가 없다.
-장면에 대응하는 기온·관측 시각을 서버가 제공하는 계약은 별도 연결이 필요하다.
-APP은 기온 표시 모델을 준비하되, 산책 전체 기온이나 현재 날씨로 대체하지 않는다.
+DEV의 별도 feat/diary-scene-conditions 브랜치에서 walk-diary-board-v1 장면의 선택 필드
+`temperature`를 제공한다. 기존 서버 응답에는 필드가 없으며 배포 전에는 주소만 보인다.
+APP은 temperature_c/unit/provider/observed_at/scene_at/grid/evidence_id를 읽고,
+장면 시각 일치·기온 범위·실황 공급자·2시간 이내 과거 관측인지 확인한다.
+산책 전체 기온이나 현재 날씨로 대체하지 않는다. 잘못된 기온은 숨기고 본문은 유지한다.
 미제공 기온은 숨기고 0°C를 만들지 않는다. Preview 값은 예시다.

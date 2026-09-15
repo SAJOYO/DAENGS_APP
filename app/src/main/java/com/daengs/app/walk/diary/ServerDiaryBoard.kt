@@ -120,11 +120,13 @@ object ServerDiaryBoard {
         val places = obj.getJSONArray("place_reference")
         val administrativeAddress = sceneAddress(places)
         val address = administrativeAddress?.cardLabel()
+        val temperature = sceneTemperature(obj, at)
         return StoryboardScene(id, at, obj.requiredText("title", 80), obj.requiredText("body", 2400),
             "", storyboardHash(canonicalJson(obj)), sourcePayload = obj.toString(),
             entryReference = entry, observation = observation,
             diary = DiarySceneContent(original, recordKind, photoId, point.takeUnless { state == "provisional" }, "", address, order,
-                publishedWriting = publishedCardWriting(obj), administrativeAddress = administrativeAddress),
+                publishedWriting = publishedCardWriting(obj), administrativeAddress = administrativeAddress,
+                temperatureC = temperature?.celsius, temperatureObservation = temperature),
             bodyScope = SceneBodyScope.SCENE)
     }
 

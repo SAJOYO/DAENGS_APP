@@ -18,8 +18,8 @@ data class DiarySceneContent(
     val positionState: String? = null,
     val publishedWriting: PublishedCardWriting? = null,
     val administrativeAddress: DiarySceneAddress? = null,
-    // Unbound until a scene-time observation is exposed by the server; never use session weather.
     val temperatureC: Double? = null,
+    val temperatureObservation: DiarySceneTemperature? = null,
 )
 
 data class DiaryGenerationInfo(val modelStatus: String, val missingScenes: Int, val showFailureNotice: Boolean = true) {
@@ -151,6 +151,7 @@ object ServerDiaryBundle {
         val places = obj.getJSONArray("place_reference")
         val administrativeAddress = sceneAddress(places)
         val address = administrativeAddress?.cardLabel()
+        val temperature = sceneTemperature(obj, at)
         val label = when {
             state == "provisional" -> "위치 확인 중"
             method == "estimated" -> "동선에서 추정한 위치"
@@ -162,7 +163,8 @@ object ServerDiaryBundle {
             sourcePayload = obj.toString(), entryReference = entry, observation = observation,
             diary = DiarySceneContent(original, kind, photoId, point.takeUnless { state == "provisional" }, label, address, order,
                 locationMethod = method, locationAtMillis = locationAt, positionState = state,
-                administrativeAddress = administrativeAddress))
+                administrativeAddress = administrativeAddress, temperatureC = temperature?.celsius,
+                temperatureObservation = temperature))
     }
 }
 
