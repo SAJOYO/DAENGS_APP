@@ -3,6 +3,7 @@ package com.daengs.app.gait
 import android.app.Application
 import android.net.Uri
 import com.daengs.app.gait.work.GaitAnalysisWorker
+import com.daengs.app.gait.work.GaitWatchTags
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -152,6 +153,30 @@ class GaitSubmitTest {
     @Test
     fun `backoff 는 WorkManager 최소치 아래로 내려가지 않는다`() {
         assertTrue(GaitAnalysisWorker.BACKOFF_SECONDS >= 10)
+    }
+
+    /**
+     * 챗에 다시 들어왔을 때 진행 중인 카드를 되살리는 근거다. `WorkInfo` 는 입력 데이터를
+     * 안 주고 tag 만 주므로, 강아지와 기록이 tag 에 없으면 되살릴 수 없다.
+     *
+     * `WorkRequest.tags` 는 라이브러리 내부용(`@RestrictTo`)이라 WorkManager 를 올릴 때
+     * 깨질 수 있다. 등록 결과를 읽는 공개 API 가 없어서 이렇게 본다.
+     */
+    @Test
+    fun `작업에 강아지와 기록 tag 를 단다`() {
+        val tags = GaitAnalysisWorker.request("rec-1", "pet-1").tags
+
+        assertTrue(GaitWatchTags.record("rec-1") in tags)
+        assertTrue(GaitWatchTags.pet("pet-1") in tags)
+        assertEquals("rec-1", GaitWatchTags.recordIdOf(tags))
+    }
+
+    @Test
+    fun `강아지를 모르면 강아지 tag 는 달지 않는다`() {
+        val tags = GaitAnalysisWorker.request("rec-1", petId = null).tags
+
+        assertTrue(GaitWatchTags.record("rec-1") in tags)
+        assertFalse(tags.any { it.startsWith(GaitWatchTags.pet("")) })
     }
 
 
