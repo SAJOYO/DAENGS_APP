@@ -97,6 +97,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.photoFailureText
 import java.io.File
 
 // ---------------------------------------------------------------------------
@@ -279,6 +280,17 @@ fun CardDexScreen(
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
     onDelete: ((OwnedCard) -> Unit)? = null,
+    /**
+     * 포토 만들기 화면을 띄운다. null 이면 「＋ 포토 카드 만들기」 자리가 안 보인다 —
+     * `@Preview` 와 테스트가 그렇게 부른다. 잠긴 칸에서 왔으면 `startMonth` 로 그 달을 들고 간다.
+     */
+    makePhoto: (@Composable (startMonth: Int?, onDone: () -> Unit) -> Unit)? = null,
+    /** 포토 만들기를 막고 대신 부를 것. null 이면 그냥 만들기 화면이 뜬다. */
+    onMakePhotoBlocked: (() -> Unit)? = null,
+    /** 뒤에서 실패한 포토 카드. 머리말 아래 한 줄로만 알린다 — 칸에는 안 넣는다 */
+    photoFailure: PhotoCard? = null,
+    /** 실패 알림의 「확인」 — 그 행을 지운다. null 이면 「확인」이 안 뜬다 */
+    onDismissPhotoFailure: ((PhotoCard) -> Unit)? = null,
 ) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
@@ -317,6 +329,15 @@ fun CardDexScreen(
     // **탭은 여기서 다룬다.** `slots` 가 그리드와 확대 뷰 **양쪽**에 넘어가고
     // `opened` 는 그 리스트의 **인덱스**라, 탭을 그리드 안에만 두면 확대 뷰가 엉뚱한
     // 카드를 연다.
+    // 포토 만들기도 뽑기처럼 **도감 위에 덮는다.** 잠긴 칸에서 왔으면 그 달을 들고 간다.
+    var makingPhoto by remember { mutableStateOf(false) }
+    var makingMonth by remember { mutableStateOf<Int?>(null) }
+    val startMake: (Int?) -> Unit = { month ->
+        onMakePhotoBlocked?.invoke() ?: run {
+            makingMonth = month
+            makingPhoto = true
+        }
+    }
     var deck by rememberSaveable { mutableStateOf(DexDeck.Veggie) }
     val all = remember(drawn, photos, photoFiles) {
         dexSlots(cards = DEX_CARDS + PHOTO_CARDS, drawn = drawn, photos = photos, photoFiles = photoFiles)
@@ -325,6 +346,7 @@ fun CardDexScreen(
 
     BackHandler {
         when {
+            makingPhoto -> makingPhoto = false
             drawing -> drawing = false
             scene != null -> scene = null
             opened != null -> opened = null
@@ -334,6 +356,11 @@ fun CardDexScreen(
 
     if (drawing && draw != null) {
         draw { drawing = false }
+        return
+    }
+
+    if (makingPhoto && makePhoto != null) {
+        makePhoto(makingMonth) { makingPhoto = false }
         return
     }
 
@@ -380,6 +407,14 @@ fun CardDexScreen(
                 sceneName = whose
                 sceneFace = theirFace
             },
+            onMakePhoto = makePhoto?.let { { startMake(null) } },
+            // **안 연 달은 막는다** — 누르면 서버가 404 를 준다. 연 달이면 그 달로 만들러 간다.
+            onLockedPhoto = { card ->
+                if (card.no in OPEN_PHOTO_MONTHS && makePhoto != null) startMake(card.no)
+                else removedNote = "준비 중인 달이에요"
+            },
+            photoFailure = photoFailure,
+            onDismissPhotoFailure = onDismissPhotoFailure,
         )
 
         AnimatedVisibility(
@@ -445,6 +480,10 @@ private fun DexGrid(
     onClose: () -> Unit,
     onImmersive: (Rect, ImmersiveScene, String?, SubjectFace?) -> Unit,
     onDraw: (() -> Unit)? = null,
+    onMakePhoto: (() -> Unit)? = null,
+    onLockedPhoto: (DexCard) -> Unit = {},
+    photoFailure: PhotoCard? = null,
+    onDismissPhotoFailure: ((PhotoCard) -> Unit)? = null,
 ) {
     LazyVerticalGrid(
         // **폭에 맞춰 칸 수가 늘어난다.** 폰에서는 두 칸 그대로다(383dp 를 175 로
@@ -471,14 +510,18 @@ private fun DexGrid(
                 of = slots.size,
                 total = slots.ownedTotal(),
                 onClose = onClose,
-                // **포토 탭에서는 안 띄운다.** 만들기 버튼은 Task 6 이 그 자리에 단다.
+                // **포토 탭에서는 안 띄운다.** 대신 포토 만들기 버튼이 그 자리에 뜬다.
                 onDraw = onDraw.takeIf { deck != DexDeck.Photo },
+                // 포토 만들기·실패 한 줄은 **포토 탭에서만** 넘긴다.
+                onMakePhoto = onMakePhoto.takeIf { deck == DexDeck.Photo },
+                failure = photoFailure.takeIf { deck == DexDeck.Photo },
+                onDismissFailure = onDismissPhotoFailure.takeIf { deck == DexDeck.Photo },
             )
         }
         itemsIndexed(slots) { index, slot ->
             GridCard(
                 slot = slot,
-                onOpen = { onOpen(index) },
+                onOpen = { if (slot.locked && slot.card.isPhoto) onLockedPhoto(slot.card) else onOpen(index) },
                 // 이머시브인 카드는 [IMMERSIVE_SCENES] 가 정한다. 없으면 null 이 가고,
                 // 그러면 꾹 누르기도 캡션 아래 배지도 안 붙는다.
                 //
@@ -507,6 +550,9 @@ private fun DexHeader(
     total: Int,
     onClose: () -> Unit,
     onDraw: (() -> Unit)? = null,
+    onMakePhoto: (() -> Unit)? = null,
+    failure: PhotoCard? = null,
+    onDismissFailure: ((PhotoCard) -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -557,6 +603,44 @@ private fun DexHeader(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
+        onMakePhoto?.let { go ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "＋ 포토 카드 만들기",
+                color = DaengPink,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CardWhite)
+                    .clickable(onClick = go)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
+        // **뒤에서 실패한 카드는 칸에 안 넣고 여기 한 줄로 알린다.** 실패는 하루 한도에 안 센다.
+        failure?.let { failed ->
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    photoFailureText(failed.month, failed.errorCode),
+                    color = TextDark,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                onDismissFailure?.let { dismiss ->
+                    Text(
+                        "확인",
+                        color = DaengPink,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { dismiss(failed) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -596,6 +680,20 @@ private fun DeckTabsPreview() {
         Spacer(Modifier.height(8.dp))
         DeckTabs(DexDeck.Fruit) {}
     }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF6E9E3)
+@Composable
+private fun DexHeaderPhotoPreview() {
+    DexHeader(
+        deck = DexDeck.Photo, onDeck = {}, kinds = 1, of = 12, total = 2, onClose = {},
+        onMakePhoto = {},
+        failure = com.daengs.app.dogcard.photo.PhotoCard(
+            "x", null, 9, "콩이", "CHUSEOK 콩이",
+            com.daengs.app.dogcard.photo.PhotoCardStatus.Failed, "no_image", null, 0L,
+        ),
+        onDismissFailure = {},
+    )
 }
 
 @Composable
