@@ -10,7 +10,37 @@ fun relationalFixture(): JSONObject = JSONObject(
     RelationalDiaryParserTest::class.java.getResource("/storyboard/relational-diary-v1.json")!!.readText(),
 )
 
+fun relationalBehaviorFixture(): JSONObject = relationalFixture().apply {
+    val card = getJSONObject("bundle").getJSONArray("cards").getJSONObject(1)
+    val id = getJSONObject("entry_revisions").keys().next()
+    card.put("originals", JSONArray().put(JSONObject()
+        .put("ref", JSONObject().put("store", "walk_entry").put("id", id)
+            .put("version", getJSONObject("entry_revisions").getLong(id).toString())
+            .put("version_kind", "revision").put("pin_revision", JSONObject.NULL))
+        .put("deleted", false).put("content", JSONObject().put("kind", "behavior")
+            .put("code", "sniffing").put("pet_id", JSONObject.NULL))
+        .put("anchor", JSONObject(card.getJSONObject("anchor").toString()))
+        .put("pin_payload", JSONObject.NULL)))
+}
+
 class RelationalDiaryParserTest {
+    @Test fun `behavior references preserve identity and reject mismatched revision anchor or duplicates`() {
+        val value = RelationalDiaryResponse.parse(relationalBehaviorFixture().toString())
+        val original = value.bundle!!.cards[1].originals.single()
+        assertEquals(value.entryRevisions.getValue(original.ref.id).toString(), original.ref.version)
+        assertEquals(RelationalRecordContent.Behavior("sniffing", null), original.content)
+        for (change in listOf<(JSONObject, JSONObject) -> Unit>(
+            { _, record -> record.getJSONObject("ref").put("id", "unknown") },
+            { _, record -> record.getJSONObject("ref").put("version", "999") },
+            { _, record -> record.getJSONObject("anchor").put("accuracy_m", 987.0) },
+            { card, record -> card.getJSONArray("originals").put(JSONObject(record.toString())) },
+        )) {
+            val json = relationalBehaviorFixture()
+            val card = json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(1)
+            change(card, card.getJSONArray("originals").getJSONObject(0))
+            assertThrows(IllegalArgumentException::class.java) { RelationalDiaryResponse.parse(json.toString()) }
+        }
+    }
     @Test fun `administrative address cannot disagree with the same cards dong`() {
         val json = relationalFixture()
         json.firstCard().getJSONObject("header").put("administrative_address", JSONObject()
