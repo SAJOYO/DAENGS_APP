@@ -484,6 +484,7 @@ private fun DexHeader(
             when (deck) {
                 DexDeck.Veggie -> "채소가 된 우리 아이"
                 DexDeck.Fruit -> "과일이 된 우리 아이"
+                DexDeck.Photo -> "포토 속 우리 아이"
             },
             color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold,
         )
