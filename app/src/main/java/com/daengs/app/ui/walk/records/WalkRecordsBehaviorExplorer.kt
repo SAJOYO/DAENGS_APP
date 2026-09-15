@@ -182,6 +182,7 @@ internal fun WalkRecordsBehaviorExplorer(
             routeSource = routeSource, actionPinState = actionPinState, pinBehavior = result.behavior,
             onRetry = tracePresentation.retry,
             selectedId = selectedWalkId, hiddenIds = hidden,
+            onInspect = { selectedWalkId = it },
             onSelect = { id ->
                 selectedWalkId = id.takeIf { it != selectedWalkId }
                 if (selectedWalkId != null && id !in hidden) {

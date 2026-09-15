@@ -20,10 +20,12 @@ fun composeWalkRecordsMapScene(
     tiles: List<TraceRasterTile> = emptyList(),
     route: CompletedRouteLayerState = CompletedRouteLayerState(),
     moments: List<MomentMarkerState> = emptyList(),
+    recordPinPaths: List<List<com.daengs.app.location.GeoPoint>>? = null,
 ): WalkRecordsRenderPlan {
     require(tiles.all { it.rgb != null }) { "모아보기 흔적의 표시 색이 준비되지 않았어요." }
     return WalkRecordsRenderPlan(
         MapScene(traceTiles = tiles, completedRoute = route, moments = moments, allowRegionalOverview = true,
+            detachedRecordPins = recordPinPaths != null, markerAvoidancePaths = recordPinPaths.orEmpty(),
             walkPresentation = WalkLayerPresentation(WalkLayerStack.RECORDS, policy.route)),
         policy.trace.density.legend(), policy.route.speedPolicy.speedScaleStops(policy.route.themeId),
     )

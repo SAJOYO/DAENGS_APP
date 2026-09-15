@@ -253,6 +253,7 @@ fun WalkRecordsScreen(
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
+                        onInspect = { selectedId = it },
                         onSelect = { id ->
                             selectedId = id.takeIf { it != selectedId }
                             if (selectedId != null && id !in hiddenIds) {

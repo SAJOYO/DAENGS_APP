@@ -11,6 +11,17 @@ class WalkRecordsDisplayPolicyTest {
     private val speed = WalkStylePolicy.parse(File("src/main/assets/walk-style-v1.json").readText())
     private val policy = WalkRecordsDisplayPolicy(TraceDisplayPolicy(0x29252B), WalkRouteAppearance(speed, "pink"))
 
+    @Test fun `detached records share packing without diary endpoint semantics or drawing obstacle paths`() {
+        val paths = listOf(listOf(com.daengs.app.location.GeoPoint(37.5,127.0), com.daengs.app.location.GeoPoint(37.6,127.1)))
+        val scene = composeWalkRecordsMapScene(policy, recordPinPaths = paths).scene
+        assertTrue(scene.detachedRecordPins)
+        assertFalse(scene.detachedDiaryPins)
+        assertEquals(paths, scene.markerAvoidancePaths)
+        assertTrue(scene.completedRoute.paths.isEmpty())
+        assertTrue(composeWalkRecordsMapScene(policy, recordPinPaths = emptyList()).scene.detachedRecordPins)
+        assertFalse(composeWalkRecordsMapScene(policy).scene.detachedRecordPins)
+    }
+
     @Test fun `density and legend use the same distinct walk bands`() {
         val scale = policy.trace.density
         assertEquals(listOf(0f, .04f, .12f, .22f, .22f, .34f, .34f, .34f, .46f, .46f), (0..9).map(scale::alpha))
