@@ -1,6 +1,5 @@
 package com.daengs.app.ui.places
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -14,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -33,8 +31,6 @@ import com.daengs.app.ui.theme.DaengsTheme
 /** 얼굴과 인식표를 한 버튼으로 묶어 이름표 아래까지 같은 대화 입구로 사용한다. */
 @Composable
 internal fun PlaceDogAssistantEntry(
-    avatarBreed: DogBreed? = null,
-    avatarPhoto: Bitmap? = null,
     onClick: () -> Unit,
 ) {
     Box(
@@ -49,9 +45,7 @@ internal fun PlaceDogAssistantEntry(
             color = DaengsColors.Surface, border = BorderStroke(1.dp, DaengsColors.BrandPrimarySoft),
         ) {
             val portrait = Modifier.padding(3.dp).fillMaxSize().clip(CircleShape)
-            if (avatarPhoto != null) Image(avatarPhoto.asImageBitmap(), contentDescription = null,
-                modifier = portrait, contentScale = ContentScale.Crop)
-            else Image(painterResource((avatarBreed ?: DogBreed.BEAGLE).portraitRes), contentDescription = null,
+            Image(painterResource(DogBreed.LABRADOR_RETRIEVER.portraitRes), contentDescription = null,
                 modifier = portrait, contentScale = ContentScale.Crop)
         }
         // 작은 고리만 원 끝에 연결한다. 목줄을 얼굴 위에 그리지 않는다.
