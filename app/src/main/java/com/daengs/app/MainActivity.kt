@@ -1354,6 +1354,7 @@ class MainActivity : ComponentActivity() {
                         photoFailure = photos.latestFailure,
                         // 「확인」 = 서버 행을 지운다. 실패 행이 남아 있으면 다음에도 같은 줄이 뜬다.
                         onDismissPhotoFailure = { failed -> scope.launch { photos.remove(failed.id) } },
+                        photoRemaining = photos.dailyRemaining,
                         // **로그인 전 → 강아지 없음 → 만드는 중** 순서로 막는다(docs/photo-cards.md §5).
                         // 로그인 전과 "이미 만드는 중"은 만들기 화면을 아예 안 연다 — 열면 아이 목록이
                         // 비거나(로그인 전) 이미 도는 조회를 또 돌게 된다. 강아지가 없을 때만 기존
@@ -1378,6 +1379,16 @@ class MainActivity : ComponentActivity() {
                                     ).show()
                                 }
                             }
+                            // **`null` 은 안 막는다** — 배포 전·무제한이라 하루 한도라는 개념 자체가 없다(§9.2).
+                            photos.dailyRemaining == 0 -> {
+                                {
+                                    Toast.makeText(
+                                        context,
+                                        "오늘은 포토 카드를 다 만들었어요. 내일 다시 만들 수 있어요",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
                             else -> null
                         },
                         makePhoto = { startMonth, done ->
@@ -1396,11 +1407,14 @@ class MainActivity : ComponentActivity() {
                                 error = photos.createError,
                                 watching = watching,
                                 watchingFile = watching?.let { photos.images[it.id] },
-                                onSubmit = { month, dog, jpeg, _ ->
+                                remaining = photos.dailyRemaining,
+                                takenMonths = { id -> photos.takenMonths(id) },
+                                onSubmit = { month, dog, jpeg, titleName ->
                                     // **여기서 `done()` 을 부르지 않는다.** 보낸 뒤에도 화면은 열린 채
                                     // 그리는 중 → 뒤집기로 넘어간다 — 나가는 건 「다 되면 알려 주세요」뿐이다.
-                                    // 제목 이름(4번째 값) 전달은 다음 과제(Task 9) — 여기서는 컴파일만 맞춘다.
-                                    scope.launch { photos.create(month, dog.name, dog.id, jpeg)?.let { watchId = it } }
+                                    scope.launch {
+                                        photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { watchId = it }
+                                    }
                                 },
                                 onWaitElsewhere = done,
                                 onRevealed = { photos.markRevealed(it) },

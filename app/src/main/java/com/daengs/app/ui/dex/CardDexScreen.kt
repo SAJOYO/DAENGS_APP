@@ -312,6 +312,8 @@ fun CardDexScreen(
     makePhoto: (@Composable (startMonth: Int?, onDone: () -> Unit) -> Unit)? = null,
     /** 포토 만들기를 막고 대신 부를 것. null 이면 그냥 만들기 화면이 뜬다. */
     onMakePhotoBlocked: (() -> Unit)? = null,
+    /** 목록의 `daily_remaining`. null 이면(배포 전·무제한) 머리말에 아무것도 안 띄운다(§9.2) */
+    photoRemaining: Int? = null,
     /** 뒤에서 실패한 포토 카드. 머리말 아래 한 줄로만 알린다 — 칸에는 안 넣는다 */
     photoFailure: PhotoCard? = null,
     /** 실패 알림의 「확인」 — 그 행을 지운다. null 이면 「확인」이 안 뜬다 */
@@ -468,6 +470,7 @@ fun CardDexScreen(
             },
             photoFailure = photoFailure,
             onDismissPhotoFailure = onDismissPhotoFailure,
+            photoRemaining = photoRemaining,
         )
 
         AnimatedVisibility(
@@ -547,6 +550,7 @@ private fun DexGrid(
     onLockedPhoto: (DexCard) -> Unit = {},
     photoFailure: PhotoCard? = null,
     onDismissPhotoFailure: ((PhotoCard) -> Unit)? = null,
+    photoRemaining: Int? = null,
 ) {
     LazyVerticalGrid(
         // **폭에 맞춰 칸 수가 늘어난다.** 폰에서는 두 칸 그대로다(383dp 를 175 로
@@ -579,6 +583,7 @@ private fun DexGrid(
                 onMakePhoto = onMakePhoto.takeIf { deck == DexDeck.Photo },
                 failure = photoFailure.takeIf { deck == DexDeck.Photo },
                 onDismissFailure = onDismissPhotoFailure.takeIf { deck == DexDeck.Photo },
+                remaining = photoRemaining.takeIf { deck == DexDeck.Photo },
             )
         }
         itemsIndexed(slots) { index, slot ->
@@ -616,6 +621,8 @@ private fun DexHeader(
     onMakePhoto: (() -> Unit)? = null,
     failure: PhotoCard? = null,
     onDismissFailure: ((PhotoCard) -> Unit)? = null,
+    /** 목록의 `daily_remaining`. 포토 만들기 버튼 아래 한 줄로만 쓴다(§9.2) */
+    remaining: Int? = null,
 ) {
     Column(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -679,6 +686,11 @@ private fun DexHeader(
                     .clickable(onClick = go)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             )
+            // **`null` 이면 아무것도 안 띄운다** — 배포 전·무제한이라 막을 것도 알릴 것도 없다(§9.2).
+            photoRemainingText(remaining)?.let { text ->
+                Spacer(Modifier.height(6.dp))
+                Text(text, color = TextMuted, fontSize = 12.sp)
+            }
         }
         // **뒤에서 실패한 카드는 칸에 안 넣고 여기 한 줄로 알린다.** 실패는 하루 한도에 안 센다.
         failure?.let { failed ->
@@ -751,6 +763,7 @@ private fun DexHeaderPhotoPreview() {
     DexHeader(
         deck = DexDeck.Photo, onDeck = {}, kinds = 1, of = 12, total = 2, onClose = {},
         onMakePhoto = {},
+        remaining = 1,
         failure = com.daengs.app.dogcard.photo.PhotoCard(
             "x", null, 9, "콩이", "CHUSEOK 콩이",
             com.daengs.app.dogcard.photo.PhotoCardStatus.Failed, "no_image", null, 0L,
