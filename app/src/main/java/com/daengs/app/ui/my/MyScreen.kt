@@ -820,7 +820,9 @@ private fun PetCard(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(pet.name, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        if (!pet.isOwner) {
+                        // **행이 아니라 논리 그룹으로 가른다.** 기존 강아지와 연결한 공동 보호자는 자기
+                        // 행의 대표라 `isOwner` 가 true 지만 그룹 주보호자는 남이다(`isGroupOwner` false).
+                        if (!pet.isOwner || !pet.isGroupOwner) {
                             Spacer(Modifier.width(6.dp))
                             Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp)) {
                                 Text(
@@ -1061,6 +1063,12 @@ private fun MyScreenSignedInPreview() {
                     id = "shared", name = "몽이", breed = DogBreed.BEAGLE.id,
                     sex = null, neutered = null, weightKg = null, birthDate = null,
                     birthDateKind = null, isPrimary = false, isOwner = false,
+                ),
+                // 기존 강아지와 연결한 공동 보호자의 카드 — 자기 행의 대표지만 그룹 주보호자는 남이다.
+                Pet(
+                    id = "linked", name = "롱롱씨", breed = DogBreed.BEAGLE.id,
+                    sex = null, neutered = null, weightKg = null, birthDate = null,
+                    birthDateKind = null, isPrimary = false, isOwner = true, isGroupOwner = false,
                 ),
             ),
             canAddMore = true,
