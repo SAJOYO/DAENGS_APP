@@ -33,6 +33,46 @@ class WalkDiaryReaderTest {
     }
     @After fun close() { db.close() }
 
+    @Test fun `relational Room publication reaches titles search edit and hide without legacy publication`() = runBlocking {
+        withTimeout(10000) {
+            val raw = org.json.JSONObject(javaClass.getResource("/storyboard/relational-diary-v1.json")!!.readText())
+                .put("entry_revisions", org.json.JSONObject())
+            val id = raw.getString("session_id")
+            val savedSummary = summary.copy(sessionId = id)
+            dao.insertSession(WalkSessionRow(id, 0, owner, 10000, serverWalkId = "remote"))
+            dao.insertDiaryPublication(WalkDiaryPublicationRow(id, 10000, 30000, "invalid legacy base"))
+            assertTrue(dao.acceptRelationalDiary(raw.toString(), id, "remote", owner, dao.relationalDiaryInputStamp(id)))
+            val diary = reader.observe(listOf(savedSummary)).first().single()
+            assertTrue(diary.published)
+            assertFalse(diary.preparing)
+            assertEquals(3, diary.scenes.size)
+            assertEquals("", diary.scenes.last().body)
+            assertEquals(diary.title, reader.observeTitles(listOf(id)).first()[id])
+            assertTrue(dao.historySearchText(listOf(id), owner).getValue(id).contains(diary.title))
+            val source = requireNotNull(diary.scenes.first().source)
+            dao.saveDiarySceneEdit(id, owner, source, "수정한 제목", "수정한 문장")
+            val edited = reader.observe(listOf(savedSummary)).first().single().scenes.first()
+            assertEquals("수정한 문장", edited.body)
+            assertEquals(source.id, edited.source!!.id)
+            dao.deleteDiaryScene(id, owner, edited.source!!)
+            assertEquals(2, reader.observe(listOf(savedSummary)).first().single().scenes.size)
+            assertNull(dao.diaryPublication(id)!!.publishedBundle)
+            val note = WalkEntry("new-note", id, WalkMomentType.NOTE, 1000, note = "수정 중인 원문")
+            dao.insertEntry(WalkEntryRow(note.id, id, note.toJson().toString(), 0, "pending", true))
+            val stale = reader.observe(listOf(savedSummary)).first().single()
+            assertEquals(listOf(note.note), stale.scenes.single().originalNotes)
+            assertNull(stale.title)
+            val original = stale.scenes.single().source!!
+            dao.saveDiarySceneEdit(id, owner, original, "원본 카드", "내 문장")
+            assertEquals("내 문장", reader.observe(listOf(savedSummary)).first().single().scenes.single().body)
+            dao.deleteDiaryScene(id, owner, original)
+            assertTrue(reader.observe(listOf(savedSummary)).first().single().scenes.isEmpty())
+            assertNotNull(dao.entry(note.id)!!.payload)
+            owner = "other"
+            assertTrue(reader.observe(listOf(savedSummary)).first().isEmpty())
+        }
+    }
+
     @Test fun `photo revision change removes the generated title in both page and map readers`() = runBlocking {
         withTimeout(10000) {
             val raw = diaryFixture().put("session_id", "s")
