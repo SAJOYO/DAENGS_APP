@@ -56,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -105,6 +106,8 @@ import com.daengs.app.gait.GaitCompletions
 import com.daengs.app.gait.GaitStatus
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.gait.work.GaitAnalysisWorker
+import com.daengs.app.gait.work.GaitWatchTags
+import com.daengs.app.gait.work.pendingGaitRecords
 import com.daengs.app.gait.work.scheduleGaitAnalysisWatch
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
@@ -626,6 +629,43 @@ fun ChatScreen(
             }
             // 붙였으면 지운다. 안 그러면 챗에 들어갈 때마다 또 붙는다.
             gaitCompletions?.consume(done.recordId)
+        }
+    }
+
+    // 챗을 나갔다 오면 **진행 중인 분석 카드도 되살린다.**
+    //
+    // 대화는 서버 이력에서 다시 그려지는데 보행 카드는 거기 없어서, 예전에는 뒤로 갔다
+    // 들어오면 "분석 중" 카드가 사라져 분석이 도는지 확인할 길이 없었다. 진행 중인지는
+    // WorkManager 가 들고 있으므로 따로 저장하지 않고 거기서 찾는다 — 작업마다 강아지 ·
+    // 기록 tag 가 달려 있다 ([GaitWatchTags]).
+    //
+    // 무엇을 붙이는지는 [pendingGaitRecords] 에 있다: 이 강아지 것만 · 아직 안 끝난 것만 ·
+    // 이미 대화에 있는 기록은 빼고. 끝난 것은 위의 알림 완료 경로가 맡는다. 되살린 카드는
+    // 위쪽 관찰이 그대로 받아서, 끝나면 완료 말풍선과 결과 카드로 바뀐다.
+    //
+    // 복원이 끝난 뒤여야 하는 이유는 위 완료 붙이기와 같다 (`displayedSessionId`).
+    val petWatches = if (dogId == null) {
+        emptyList<WorkInfo>()
+    } else {
+        key(dogId) {
+            remember { WorkManager.getInstance(context).getWorkInfosByTagFlow(GaitWatchTags.pet(dogId)) }
+                .collectAsState(initial = emptyList())
+                .value
+        }
+    }
+    LaunchedEffect(displayedSessionId, dogId, petWatches) {
+        if (displayedSessionId == null) return@LaunchedEffect
+        val shown = entries.mapNotNullTo(mutableSetOf()) {
+            when (it) {
+                is ChatEntry.GaitSubmitted -> it.recordId
+                is ChatEntry.GaitDone -> it.recordId
+                else -> null
+            }
+        }
+        pendingGaitRecords(petWatches, dogId, shown).forEach { recordId ->
+            // 제목은 목록에 그 기록이 있으면 쓴다. 없으면 제목 없는 카드("완료되면
+            // 알려드릴게요")로 둔다 — 제목 하나 때문에 여기서 목록을 부르지 않는다.
+            entries += ChatEntry.GaitSubmitted(recordId, gait.find(recordId)?.title)
         }
     }
 
