@@ -124,11 +124,16 @@ object RoomPalette {
     val GhostInvalid = Color(0xFFE87F7F)
 }
 
-/** 산책 모아보기 A안: 동선 아래의 먹색 그림자. 횟수는 서로 다른 산책 세션 수다. */
+/** 행동 표식의 보조 점·연결선에 쓰는 중립색. */
 object WalkTraceShadow {
     const val RGB = 0x29252B
     val color = Color(0xFF000000.toInt() or RGB)
 
+}
+
+/** 모아보기 누적 흔적: 승인된 청보라 시안. 앱 분홍 UI와 구별하고 세션 수는 농도로 표현한다. */
+object WalkTraceIndigo {
+    const val RGB = 0x7263B6
 }
 
 /** RGB supplied by the records display policy; colour construction stays in the palette. */
