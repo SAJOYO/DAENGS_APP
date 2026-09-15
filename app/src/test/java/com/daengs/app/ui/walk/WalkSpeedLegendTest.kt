@@ -20,14 +20,23 @@ import org.robolectric.annotation.Config
 class WalkSpeedLegendTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun compactScaleUsesKmhWithoutNumericTicks() {
+    @Test fun kmhTicksFollowTheMapPolicyAndRefreshWithoutReopening() {
         val context = ApplicationProvider.getApplicationContext<Application>()
-        WalkStyleStore(context).preferences.edit().clear().commit()
-        compose.setContent { DaengsTheme { WalkSpeedLegend(compact = true) } }
+        val store = WalkStyleStore(context)
+        store.preferences.edit().clear().commit()
+        compose.setContent { DaengsTheme { WalkSpeedLegend(kilometersPerHour = true) } }
         compose.onNodeWithText("이동 속도 km/h").assertIsDisplayed()
-        compose.onNodeWithText("0").assertDoesNotExist()
+        compose.onNodeWithText("0").assertIsDisplayed()
+        compose.onNodeWithText("3.6").assertIsDisplayed()
+        compose.onNodeWithText("7.2+").assertIsDisplayed()
         compose.onNodeWithText("2+").assertDoesNotExist()
         compose.onNodeWithContentDescription("핑크 속도 스펙트럼. 왼쪽 0 km/h에서 오른쪽 7.2 km/h 이상으로 빨라져요.").assertIsDisplayed()
+        val source = context.assets.open("walk-style-v1.json").bufferedReader().use { it.readText() }
+        val update = JSONObject(source).put("speed_max_mps", 4.0)
+            .put("boundaries_mps", org.json.JSONArray(listOf(.8, 1.6, 2.4, 3.2)))
+        compose.runOnIdle { store.cachePolicy(update.toString()) }
+        compose.onNodeWithText("7.2").assertIsDisplayed()
+        compose.onNodeWithText("14.4+").assertIsDisplayed()
     }
 
     @Test fun policyRefreshUpdatesVisibleScaleWithoutReopeningMap() {

@@ -380,7 +380,7 @@ internal fun WalkDiaryMapContent(
                             onWalking = { onClose(); onContextDismiss(); onWalkingOverview(); scope.launch { sheet.partialExpand() } },
                             onWhole = { onClose(); onContextDismiss(); onOverview(); scope.launch { sheet.partialExpand() } }) }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (compactDrawer) WalkSpeedLegend(compact = true)
+                            if (compactDrawer) WalkSpeedLegend(kilometersPerHour = true)
                             mapLegend()
                         }
                     }
