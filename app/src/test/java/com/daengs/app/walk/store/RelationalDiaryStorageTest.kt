@@ -16,6 +16,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class RelationalDiaryStorageTest {
+    @Test fun `behavior reference survives Room storage and saved read`() = checkDb { dao ->
+        val json = relationalBehaviorFixture().toString()
+        val stamp = dao.relationalDiaryInputStamp(id)
+        assertTrue(dao.acceptRelationalDiary(json, id, "remote", "owner", stamp))
+        val restored = dao.readRelationalDiary(id, "owner")!!.published!!
+        assertEquals(json, restored.rawJson)
+        assertEquals(RelationalDiaryResponse.parse(json).bundle!!.cards[1].originals,
+            restored.bundle!!.cards[1].originals)
+    }
     private val raw get() = relationalFixture().toString()
     private val response get() = RelationalDiaryResponse.parse(raw)
     private val id get() = response.sessionId

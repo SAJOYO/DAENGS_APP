@@ -24,6 +24,11 @@ internal object RelationalDiaryParser {
         val revisions = obj.getJSONObject("entry_revisions").let { values ->
             values.keys().asSequence().associateWith { values.strictLong(it, 0, Long.MAX_VALUE) }
         }
+        bundle?.cards?.forEach { card ->
+            card.originals.filter { !it.deleted && it.content is RelationalRecordContent.Behavior }.forEach {
+                require(it.ref.versionKind == "revision" && it.ref.version.toLongOrNull() == revisions[it.ref.id])
+            }
+        }
         val photosStatus = obj.choice("photos_status", "complete", "not_available")
         val manifest = obj.objectOrNull("photo_manifest")?.let {
             RelationalPhotoManifest(it.text("publisher_id"), it.strictLong("revision", 1, Long.MAX_VALUE))
@@ -74,8 +79,11 @@ internal object RelationalDiaryParser {
         val body = obj.text("body", blank = true)
         // Check the server's part/body contract; keep its original string rather than replacing it.
         require(body == listOf(space.text, action.text).filter { it.isNotEmpty() }.joinToString("\n"))
+        val originals = obj.getJSONArray("originals").objects(::original)
+        val behaviors = originals.filter { !it.deleted && it.content is RelationalRecordContent.Behavior }
+        require(behaviors.size <= 1 && behaviors.all { it.anchor == anchor })
         return RelationalDiaryCard(id, anchor, header, space, action, body, context,
-            obj.optionalText("comparison_scene_id"), obj.getJSONArray("originals").objects(::original))
+            obj.optionalText("comparison_scene_id"), originals)
     }
 
     private fun part(obj: JSONObject): RelationalDiaryPart {

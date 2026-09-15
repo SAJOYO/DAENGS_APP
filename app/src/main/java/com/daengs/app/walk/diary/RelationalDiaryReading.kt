@@ -28,10 +28,11 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
     val editedOriginalIds = draft.edits.map { it.id }.filter { it.startsWith("original:") }.toSet()
     val scenes = bundle.cards.mapIndexedNotNull { index, card ->
         val anchor = card.anchor
+        val behavior = relationalBehaviorReference(card, input.entries, walk.sessionId)
         val originals = card.originals.filterNot { it.deleted ||
             "original:${if (it.ref.store == "walk_photo") "photo" else "entry"}:${it.ref.id}" in editedOriginalIds }
         val temperature = relationalTemperature(card)
-        val content = DiarySceneContent("", "relational", point = anchor.point, locationLabel = "",
+        val content = DiarySceneContent("", if (behavior != null) "behavior" else "relational", point = anchor.point, locationLabel = "",
             address = card.header.administrativeAddress?.cardLabel() ?: card.header.dong, order = index,
             administrativeAddress = card.header.administrativeAddress,
             locationMethod = anchor.method.name.lowercase(Locale.ROOT),
@@ -45,14 +46,14 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
                     anchor.point != null && anchor.locationAt == it.at &&
                     it.clientSeq in 0..Int.MAX_VALUE.toLong() && it.chainIndex in 0..Int.MAX_VALUE.toLong()
             }?.let { StoryboardObservation(it.clientSeq.toInt(), it.chainIndex.toInt(), it.at.toEpochMilli(), requireNotNull(anchor.point)) },
-            bodyScope = SceneBodyScope.SCENE)
+            entryReference = behavior, bodyScope = SceneBodyScope.SCENE)
         val edit = draft.edits.singleOrNull { it.id == source.id }
         if (edit?.hidden == true) return@mapIndexedNotNull null
         val displayed = if (edit == null) source else source.copy(title = edit.title, body = edit.body,
             needsReview = edit.sourceFingerprint != source.fingerprint)
         DiaryScene("${walk.sessionId}/${source.id}", walk.sessionId, displayed.atMillis, displayed.title,
             displayed.body, anchor.point, "", needsReview = displayed.needsReview,
-            content = content, source = displayed, relational = card,
+            entryId = behavior?.entryId, content = content, source = displayed, relational = card,
             originalNotes = originals.mapNotNull { (it.content as? RelationalRecordContent.Note)?.text },
             originalPhotos = originals.filter { it.content is RelationalRecordContent.Photo }.map { original ->
                 DiaryOriginalPhoto(original.ref.id, photos.singleOrNull {

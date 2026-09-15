@@ -48,6 +48,32 @@ class RelationalDiaryReadingTest {
         assertEquals("", relationalPartNotice(card.copy(space = card.action)))
     }
 
+    @Test fun `behavior card binds only the current matching original and keeps failed action identity`() {
+        val parsed = RelationalDiaryResponse.parse(relationalBehaviorFixture().toString())
+        val card = parsed.bundle!!.cards[1]
+        val ref = card.originals.single().ref
+        val entry = WalkEntry(ref.id, parsed.sessionId, WalkMomentType.SNIFFING, card.anchor.eventAt.toEpochMilli(),
+            baseVersion = WalkEntryVersion(ref.version.toInt(), "m"))
+        val source = input(parsed).copy(entries = listOf(entry, entry.copy(id = "other-pin", type = WalkMomentType.BARKING)))
+        val scene = read(source).scenes[1]
+        assertEquals(entry.id, scene.entryId)
+        assertEquals(StoryboardEntryReference(entry.id, ref.version.toLong(), null), scene.source!!.entryReference)
+        assertEquals(DiarySceneKind.SNIFFING, diarySceneKind(scene, source.entries, entry.sessionId))
+        assertEquals(card.body, scene.body)
+        for (entries in listOf(emptyList(), listOf(entry, entry), listOf(entry.copy(id = "other-pin")),
+            listOf(entry.copy(sessionId = "other-walk")), listOf(entry.copy(type = WalkMomentType.BARKING)),
+            listOf(entry.copy(petId = "other-dog")), listOf(entry.copy(syncPending = true)),
+            listOf(entry.copy(baseVersion = WalkEntryVersion(999, "m"))))) {
+            assertNull(read(source.copy(entries = entries)).scenes[1].entryId)
+        }
+        val failed = card.copy(action = card.action.copy(status = RelationalPartStatus.FAILED,
+            semanticStatus = RelationalSemanticStatus.NOT_PUBLISHED, text = ""), body = card.space.text)
+        val failedValue = parsed.copy(bundle = parsed.bundle.copy(cards = listOf(failed)))
+        val failedScene = read(input(failedValue).copy(entries = listOf(entry))).scenes.single()
+        assertEquals(entry.id, failedScene.entryId)
+        assertEquals(DiarySceneKind.SNIFFING, diarySceneKind(failedScene, listOf(entry), entry.sessionId))
+    }
+
     @Test fun `administrative header uses existing address label and survives saved response parsing`() {
         val json = JSONObject(raw)
         val first = json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(0)
