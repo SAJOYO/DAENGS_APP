@@ -27,9 +27,12 @@ internal fun NaverSessionRouteExplorer(
     val latestCount by rememberUpdatedState(onDirectionCount)
     val highlight = state?.highlightPaths.orEmpty()
     val parts = state?.observedParts.orEmpty()
+    // Camera/viewport/marker-bound changes retain source anchors. Another route or map starts fresh.
+    val previousDirections = remember(map, state != null, paths, highlight, state?.useOverviewDirections, parts) {
+        mutableListOf<RouteDirectionArrow>()
+    }
     DisposableEffect(map, state != null, paths, obstacles, size, bottomPadding, density, highlight, state?.useOverviewDirections, parts, markerBounds) {
         val arrows = mutableListOf<Marker>()
-        var sides = emptyMap<String, Int>()
         fun clear() { arrows.forEach { it.map = null }; arrows.clear() }
         fun redraw() {
             clear()
@@ -56,10 +59,11 @@ internal fun NaverSessionRouteExplorer(
                     it.x + 28 * density, it.y + 14 * density)
             } + markerBounds.map { RouteScreenRect(it.left*density, it.top*density, it.right*density, it.bottom*density) } +
                 RouteScreenRect(size.width - 68.0 * density, 0.0, size.width.toDouble(), 68.0 * density)
-            val placements = placeRouteDirections(edges, visible, exclusions, density.toDouble(), sides,
+            val placements = placeRouteDirections(edges, visible, exclusions, density.toDouble(), previousDirections,
                 distinguishPasses = highlight.isNotEmpty() || parts.any { it.selected },
                 collisionEdges = projectEdges(paths + parts.filterNot { it.selected }.map { it.path }))
-            sides = placements.associate { it.id to it.side }
+            previousDirections.clear()
+            previousDirections.addAll(placements)
             for (placement in placements) {
                 val coordinate = projection.fromScreenLocation(PointF(placement.center.x.toFloat(), placement.center.y.toFloat()))
                 if (!coordinate.isValid) continue
@@ -67,7 +71,7 @@ internal fun NaverSessionRouteExplorer(
                     parts.firstOrNull { placement.id.startsWith(it.id + ":") }?.let {
                         iconTintColor = RecordPresentationPolicy.stroke(it.role, it.selected || parts.any { p -> p.id == it.id && p.selected }).color
                     }
-                    width = (24 * density).toInt(); height = width
+                    width = (RouteDirectionPolicy.iconSizeDp * density).toInt(); height = width
                     anchor = PointF(.5f, .5f); angle = placement.angle
                     isFlat = false; zIndex = 110
                     this.map = map
