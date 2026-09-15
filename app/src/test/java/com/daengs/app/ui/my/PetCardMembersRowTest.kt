@@ -29,7 +29,12 @@ class PetCardMembersRowTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun pet(id: String, isOwner: Boolean, isGroupOwner: Boolean = isOwner) = Pet(
+    private fun pet(
+        id: String,
+        isOwner: Boolean,
+        isGroupOwner: Boolean = isOwner,
+        hasOtherCarers: Boolean = false,
+    ) = Pet(
         id = id,
         name = if (isOwner) "네옹" else "몽이",
         breed = DogBreed.BEAGLE.id,
@@ -41,6 +46,7 @@ class PetCardMembersRowTest {
         isPrimary = isOwner,
         isOwner = isOwner,
         isGroupOwner = isGroupOwner,
+        hasOtherCarers = hasOtherCarers,
     )
 
     private fun screen(pets: List<Pet>, onOpenMembers: (Pet) -> Unit, onEditPet: (Pet) -> Unit = {}) {
@@ -123,10 +129,33 @@ class PetCardMembersRowTest {
         compose.onNodeWithText("공동 돌봄").assertIsDisplayed()
     }
 
+    /**
+     * 공동 보호자를 둔 **그룹 주보호자 본인** 카드. `isOwner`·`isGroupOwner` 가 둘 다 true 라
+     * 혼자 등록한 아이와 같은 값이다 — 서버 `has_other_carers` 로만 갈린다.
+     */
     @Test
-    fun `내가 그룹 주보호자인 아이에는 뱃지가 없다`() {
+    fun `다른 보호자가 있는 그룹 주보호자 카드에도 뱃지가 보인다`() {
+        screen(listOf(pet("co", isOwner = true, isGroupOwner = true, hasOtherCarers = true)), onOpenMembers = {})
+
+        compose.onNodeWithText("공동 돌봄").assertIsDisplayed()
+    }
+
+    /** 뱃지 자리는 빈칸으로 남지만 **글자는 없어야** 한다 — 화면 읽기가 없는 뱃지를 읽으면 안 된다. */
+    @Test
+    fun `혼자 돌보는 아이에는 뱃지가 없다`() {
         screen(listOf(pet("mine", isOwner = true)), onOpenMembers = {})
 
-        compose.onAllNodesWithText("공동 돌봄").assertCountEquals(0)
+        compose.onAllNodesWithText("공동 돌봄", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `뱃지 조건표`() {
+        fun badge(isOwner: Boolean, isGroupOwner: Boolean, hasOtherCarers: Boolean) =
+            showsCoCareBadge(pet("p", isOwner, isGroupOwner, hasOtherCarers))
+
+        assertEquals("그룹 주보호자 + 다른 보호자", true, badge(true, true, true))
+        assertEquals("혼자 돌봄", false, badge(true, true, false))
+        assertEquals("연결한 공동 보호자 자기 행", true, badge(true, false, false))
+        assertEquals("연결 없이 참여한 돌보미", true, badge(false, false, false))
     }
 }
