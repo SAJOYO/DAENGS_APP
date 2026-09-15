@@ -644,7 +644,7 @@ fun ChatScreen(
                     gait.clearError()
                 }
                 // 아주 짧은 영상이면 접수 직후에 이미 끝나 있다. 그때는 Worker 를 걸 것
-                // 없이 바로 결과로 간다 — 20초를 기다렸다 알림을 띄우면 더 이상하다.
+                // 없이 바로 결과로 간다 — 보고 있는 화면에 알림까지 띄우면 더 이상하다.
                 submission.settled -> {
                     dogId?.let { gait.load(it) }
                     entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
