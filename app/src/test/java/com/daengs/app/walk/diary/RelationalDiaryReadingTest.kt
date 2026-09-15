@@ -101,6 +101,30 @@ class RelationalDiaryReadingTest {
         assertNull(diaryTitle(walk.sessionId, stale.source))
     }
 
+    @Test fun `stale or failed generation keeps live originals without old prose or deleted records`() {
+        val note = WalkEntry("note", walk.sessionId, WalkMomentType.NOTE, walk.startedAtMillis, note = "  수정한 메모\n원문  ")
+        val action = WalkEntry("action", walk.sessionId, WalkMomentType.SNIFFING, walk.startedAtMillis + 1)
+        val image = DiaryPhotoInput("p", walk.startedAtMillis + 2, GeoPoint(37.5, 127.0), walk.startedAtMillis)
+        val base = input().copy(entries = listOf(note, action), photos = listOf(image), photoIds = setOf("p"))
+        val missing = base.copy(source = base.source.copy(relational = null, relationalStatus = "stale"))
+        for (status in listOf("stale", "failed", "pending", "running")) {
+            val diary = read(missing.copy(source = missing.source.copy(relationalStatus = status)))
+            assertEquals(3, diary.scenes.size)
+            assertFalse(diary.preparing)
+            assertTrue(diary.scenes.all { it.body.isEmpty() })
+            assertEquals(listOf(note.note), diary.scenes.first().originalNotes)
+            assertEquals("action", diary.scenes[1].entryId)
+            assertEquals("last_known", diary.scenes[2].content!!.locationMethod)
+        }
+        val first = read(missing).scenes.first().source!!
+        val draft = StoryboardDraft().edit(first, body = "내가 남긴 문장", acknowledge = true).toJson()
+        assertEquals("내가 남긴 문장", read(missing, draft = draft).scenes.first().body)
+        // A later valid generation does not silently swallow the user's independent original-card edit.
+        assertTrue(read(base, draft = draft).scenes.any { it.source?.id == first.id && it.body == "내가 남긴 문장" })
+        assertFalse(read(missing.copy(entries = listOf(action)), draft = draft).scenes.any { it.entryId == "note" })
+        assertEquals(1, read(missing.copy(entries = listOf(action), photos = emptyList(), photoIds = emptySet()), draft = draft).scenes.size)
+    }
+
     @Test fun `only matching historical temperature enters the existing header`() {
         val card = response.bundle!!.cards.first()
         val facts = JSONObject().put("provider", "kma-vilage-fcst:ncst").put("unit", "celsius")

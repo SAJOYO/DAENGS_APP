@@ -57,6 +57,17 @@ class WalkDiaryReaderTest {
             dao.deleteDiaryScene(id, owner, edited.source!!)
             assertEquals(2, reader.observe(listOf(savedSummary)).first().single().scenes.size)
             assertNull(dao.diaryPublication(id)!!.publishedBundle)
+            val note = WalkEntry("new-note", id, WalkMomentType.NOTE, 1000, note = "수정 중인 원문")
+            dao.insertEntry(WalkEntryRow(note.id, id, note.toJson().toString(), 0, "pending", true))
+            val stale = reader.observe(listOf(savedSummary)).first().single()
+            assertEquals(listOf(note.note), stale.scenes.single().originalNotes)
+            assertNull(stale.title)
+            val original = stale.scenes.single().source!!
+            dao.saveDiarySceneEdit(id, owner, original, "원본 카드", "내 문장")
+            assertEquals("내 문장", reader.observe(listOf(savedSummary)).first().single().scenes.single().body)
+            dao.deleteDiaryScene(id, owner, original)
+            assertTrue(reader.observe(listOf(savedSummary)).first().single().scenes.isEmpty())
+            assertNotNull(dao.entry(note.id)!!.payload)
             owner = "other"
             assertTrue(reader.observe(listOf(savedSummary)).first().isEmpty())
         }

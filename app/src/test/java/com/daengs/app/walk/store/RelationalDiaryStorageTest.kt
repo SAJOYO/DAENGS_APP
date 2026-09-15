@@ -101,6 +101,18 @@ class RelationalDiaryStorageTest {
         assertEquals(raw, dao.readRelationalDiary(id, "owner")!!.published!!.rawJson)
     }
 
+    @Test fun `remote photo manifest survives a read on a device without a local publisher`() = checkDb { dao ->
+        val remote = relationalFixture().put("photos_status", "complete")
+            .put("photo_manifest", JSONObject().put("publisher_id", "other-device").put("revision", 3))
+        assertNull(dao.photoSync(id))
+        assertTrue(dao.acceptRelationalDiary(remote.toString(), id, "remote", "owner", dao.relationalDiaryInputStamp(id)))
+        assertEquals("other-device", dao.readRelationalDiary(id, "owner")!!.published!!.photoManifest!!.publisherId)
+        assertNull(dao.photoSync(id)) // Reading does not create a local uploader or overwrite the remote manifest.
+        dao.insertPhotoSync(WalkPhotoSyncRow(id, "owner", "local", 1, 0))
+        assertNull(dao.readRelationalDiary(id, "owner"))
+        assertFalse(dao.acceptRelationalDiary(remote.toString(), id, "remote", "owner", dao.relationalDiaryInputStamp(id)))
+    }
+
     @Test fun `photo acknowledgement is required and malformed responses leave cache intact`() = checkDb { dao ->
         val stamp = dao.relationalDiaryInputStamp(id)
         assertTrue(dao.acceptRelationalDiary(raw, id, "remote", "owner", stamp))

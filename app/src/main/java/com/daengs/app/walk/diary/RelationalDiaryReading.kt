@@ -19,12 +19,17 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
         "stale" -> "기록이 바뀌었어요. 일기를 다시 생성해 주세요."
         else -> if (bundle == null) "저장된 일기를 확인하지 못했어요. 다시 불러와 주세요." else ""
     }
-    if (bundle == null) return DiaryWalk(walk, emptyList(), notice,
-        preparing = status in setOf("pending", "running"), sourceEntries = input.entries)
+    if (bundle == null) {
+        val originals = relationalOriginalScenes(walk, input, photos, StoryboardDraft.parse(draftPayload))
+        return DiaryWalk(walk, originals, notice,
+            preparing = originals.isEmpty() && status in setOf("pending", "running"), sourceEntries = input.entries)
+    }
     val draft = StoryboardDraft.parse(draftPayload)
+    val editedOriginalIds = draft.edits.map { it.id }.filter { it.startsWith("original:") }.toSet()
     val scenes = bundle.cards.mapIndexedNotNull { index, card ->
         val anchor = card.anchor
-        val originals = card.originals.filterNot { it.deleted }
+        val originals = card.originals.filterNot { it.deleted ||
+            "original:${if (it.ref.store == "walk_photo") "photo" else "entry"}:${it.ref.id}" in editedOriginalIds }
         val temperature = relationalTemperature(card)
         val content = DiarySceneContent("", "relational", point = anchor.point, locationLabel = "",
             address = card.header.dong, order = index,
@@ -54,7 +59,10 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
                 })
             }, notice = relationalPartNotice(card))
     }
-    return DiaryWalk(walk, scenes, notice, bundle.title, published = true, sourceEntries = input.entries)
+    val editedOriginals = relationalOriginalScenes(walk, input, photos, draft).filter { it.source?.id in editedOriginalIds }
+    return DiaryWalk(walk, (scenes + editedOriginals).sortedWith(compareBy<DiaryScene> { it.atMillis }
+        .thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { it.id }), notice, bundle.title,
+        published = true, sourceEntries = input.entries)
 }
 
 internal fun relationalPartNotice(card: RelationalDiaryCard): String {

@@ -509,7 +509,7 @@ interface WalkDao {
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
         require(title.isNotBlank() && title.length <= 80 &&
             body.length <= com.daengs.app.walk.diary.MAX_DIARY_SCENE_BODY_LENGTH)
-        check(if (isRelationalDiary(sessionId)) readRelationalDiary(sessionId, ownerId)?.published != null
+        check(if (isRelationalDiary(sessionId)) isCurrentDiaryOriginal(sessionId, scene) || readRelationalDiary(sessionId, ownerId)?.published != null
             else diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId,
@@ -524,10 +524,21 @@ interface WalkDao {
         check(ownerId.isNotBlank() && session(sessionId)?.let {
             it.ownerId == ownerId && it.endedAtMillis != null
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
-        check(if (isRelationalDiary(sessionId)) readRelationalDiary(sessionId, ownerId)?.published != null
+        check(if (isRelationalDiary(sessionId)) isCurrentDiaryOriginal(sessionId, scene) || readRelationalDiary(sessionId, ownerId)?.published != null
             else diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId, draft.hide(scene).toJson()))
+    }
+
+    /** Source-only cards remain editable while generated prose is stale or unavailable. */
+    suspend fun isCurrentDiaryOriginal(sessionId: String, scene: com.daengs.app.walk.diary.StoryboardScene): Boolean = when {
+        scene.id.startsWith("original:entry:") -> entry(scene.id.removePrefix("original:entry:"))?.let {
+            it.sessionId == sessionId && it.payload != null && scene.entryReference?.entryId == it.id
+        } == true
+        scene.id.startsWith("original:photo:") -> photo(scene.id.removePrefix("original:photo:"))?.let {
+            it.sessionId == sessionId && scene.diary?.photoId == it.id
+        } == true
+        else -> false
     }
 
     @Query("SELECT * FROM walk_entry WHERE sessionId = :sessionId ORDER BY id")

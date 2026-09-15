@@ -27,7 +27,9 @@ internal data class DiaryBoardInput(
     val entries: List<WalkEntry>,
     val source: DiaryBoardSource,
     val photoIds: Set<String>,
+    val photos: List<DiaryPhotoInput> = emptyList(),
 )
 
 /** A recorded photo's facts; local board generation does not need files or upload state. */
-data class DiaryPhotoInput(val id: String, val capturedAtMillis: Long, val point: GeoPoint)
+data class DiaryPhotoInput(val id: String, val capturedAtMillis: Long, val point: GeoPoint,
+    val locationAtMillis: Long = capturedAtMillis)

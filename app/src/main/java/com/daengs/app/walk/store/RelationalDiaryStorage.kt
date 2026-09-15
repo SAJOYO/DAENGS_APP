@@ -104,7 +104,9 @@ internal object RelationalDiaryStorage {
         if (entries.any { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null ||
                 it.pinPayload?.let { pin -> JSONObject(pin).optString("state") == "provisional" } == true }) return false
         if (entries.associate { it.id to it.revision.toLong() } != response.entryRevisions) return false
-        if (photos == null) return images.isEmpty() && response.photoManifest == null
+        // A restored walk has no local publisher. Its authenticated server manifest belongs
+        // to the saved diary, not to a local upload awaiting acknowledgement.
+        if (photos == null) return images.isEmpty()
         return photos.ownerId == ownerId && photos.pendingPayload == null && photos.revision == photos.acknowledgedRevision &&
             response.photoManifest?.let { it.publisherId == photos.publisherId && it.revision == photos.acknowledgedRevision } == true
     }

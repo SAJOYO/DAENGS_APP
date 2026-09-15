@@ -46,7 +46,8 @@ internal fun diaryBoardInput(entries: List<WalkEntryRow>, analysis: WalkSceneAna
     entries.mapNotNull { it.entry() },
     diaryBoardSource(entries, analysis, photos, images, publication, walk, ownerId),
     images.map { it.id }.toSet(),
+    images.map { it.toDiaryPhotoInput() },
 )
 
 fun WalkPhotoRow.toDiaryPhotoInput(): DiaryPhotoInput =
-    DiaryPhotoInput(id, capturedAtMillis, GeoPoint(lat, lng))
+    DiaryPhotoInput(id, capturedAtMillis, GeoPoint(lat, lng), locationCapturedAtMillis)

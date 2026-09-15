@@ -46,6 +46,7 @@ internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
         val location = scene.point?.takeIf { it.latitude.isFinite() && it.longitude.isFinite() &&
             it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 } ?: return result(SceneRouteRelation.UNLOCATED)
         if (scene.source?.let { !it.available || it.hidden || it.atMillis != scene.atMillis } == true) return result()
+        if (scene.relational != null) return relationalFocus(scene, location, key)
         if (scene.entryId != null) {
             if (entry == null || entry.id != scene.entryId || entry.sessionId != sessionId || entry.recordedAtMillis != scene.atMillis) return result()
             if (entry.pin?.state in setOf("provisional", "legacy", "unlocated")) return result(SceneRouteRelation.UNLOCATED)
@@ -152,6 +153,53 @@ internal class MeasurementSceneReview(private val detail: WalkSessionDetail) {
             ((a.point.longitude + lng * fraction + 540.0) % 360.0) - 180.0)
         if (projected.distanceTo(location) > 12.0) return result(point = location)
         return connected(scene, section, i, i+1, location, scene.atMillis, null, key, null)
+    }
+
+    /** Consume the complete card receipt before the source-less time/geometry fallback. */
+    private fun relationalFocus(scene: DiaryScene, location: GeoPoint, key: SceneBindingKey): SceneRouteFocus {
+        val anchor = requireNotNull(scene.relational).anchor
+        fun unbound() = SceneRouteFocus(SceneRouteRelation.NO_ROUTE, point = location, key = key)
+        if (anchor.eventAt.toEpochMilli() != scene.atMillis || anchor.point != location ||
+            anchor.positionState != "resolved" || anchor.sourceFixes.isEmpty()) return unbound()
+        val fixes = anchor.sourceFixes.map { r ->
+            if (r.clientSeq !in 0..Int.MAX_VALUE.toLong()) return unbound()
+            val f = raw[r.clientSeq.toInt()]?.singleOrNull() ?: return unbound()
+            if (f.chainIndex.toLong() != r.chainIndex || f.atMillis != r.at.toEpochMilli() ||
+                f.sourceEpoch == null || f.clockEpochId == null || fix(f.measurementRef(sessionId)) == null) return unbound()
+            f
+        }.sortedBy { it.clientSeq }
+        if (fixes.map { Triple(it.chainIndex, it.sourceEpoch, it.clockEpochId) }.distinct().size != 1 ||
+            fixes.zipWithNext().any { (a, b) -> a.clientSeq >= b.clientSeq || a.elapsedRealtimeNanos!! >= b.elapsedRealtimeNanos!! }) return unbound()
+        val method = anchor.method
+        if (method in setOf(com.daengs.app.walk.diary.relational.RelationalPositionMethod.OBSERVED,
+                com.daengs.app.walk.diary.relational.RelationalPositionMethod.LAST_KNOWN)) {
+            val f = fixes.singleOrNull() ?: return unbound()
+            if (anchor.locationAt?.toEpochMilli() != f.atMillis || f.atMillis > scene.atMillis ||
+                GeoPoint(f.lat, f.lng).distanceTo(location) > 1.0) return unbound()
+            val ref = f.measurementRef(sessionId)
+            if (method == com.daengs.app.walk.diary.relational.RelationalPositionMethod.LAST_KNOWN || f.atMillis != scene.atMillis)
+                return SceneRouteFocus(SceneRouteRelation.EARLIER_LOCATION, point = location, key = key,
+                    binding = binding(scene, f.atMillis, ref, ref, ref, null, null))
+            return sourceFocus(scene, ref, location, key, null)
+        }
+        if (method != com.daengs.app.walk.diary.relational.RelationalPositionMethod.ESTIMATED ||
+            anchor.locationAt?.toEpochMilli() != scene.atMillis) return unbound()
+        val refs = fixes.map { it.measurementRef(sessionId) }
+        val section = sections.singleOrNull { section -> refs.all { ref ->
+            val first = section.source.points.first(); val last = section.source.points.last()
+            ref.sourceEpoch == first.sourceEpoch && ref.clockEpochId == first.clockEpochId &&
+                ref.clientSeq!! in first.clientSeq!!..last.clientSeq!!
+        } } ?: return unbound()
+        // An extrapolated point outside its evidence window remains only a map position.
+        if (scene.atMillis !in fixes.first().atMillis..fixes.last().atMillis) return unbound()
+        val edge = (0 until section.route.points.lastIndex).singleOrNull { i ->
+            val a = section.route.points[i]; val b = section.route.points[i+1]
+            scene.atMillis > a.capturedAtMillis && scene.atMillis < b.capturedAtMillis && timed(section, i)
+        }
+        val vertex = section.route.points.indices.singleOrNull { section.route.points[it].capturedAtMillis == scene.atMillis }
+        if (edge == null && vertex == null) return unbound()
+        val a = vertex ?: requireNotNull(edge); val b = vertex ?: (requireNotNull(edge) + 1)
+        return connected(scene, section, a, b, location, scene.atMillis, null, key, null)
     }
 
     private fun resolve(anchor: StoryboardObservation): RecordedFix? {
