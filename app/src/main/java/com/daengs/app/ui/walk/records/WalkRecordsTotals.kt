@@ -20,7 +20,7 @@ import com.daengs.app.ui.walk.formatWalkDistance
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WalkRecordsTotals(count: Int?, distanceMeters: Double, activeDurationMillis: Long, failed: Boolean) {
-    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(count?.let { "산책 ${it}회" } ?: if (failed) "산책 기록" else "불러오는 중",
