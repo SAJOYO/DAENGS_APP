@@ -22,6 +22,7 @@ internal class WalkRecordsLabDetailData(private val record: WalkRecord) : WalkDe
         diaryWalk(detail.summary, current, emptyList(), edits,
             StoryboardAnalysisView(null, false, "가상 산책 · 변경은 이 화면을 나가면 초기화돼요."))
             .copy(title = record.title, sourceEntries = current)
+            .withBoundaryScenes(edits)
     }
     override suspend fun open() = Unit
     override fun prepareDiary() { revision.value++ }

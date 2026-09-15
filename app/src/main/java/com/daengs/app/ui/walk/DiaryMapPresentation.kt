@@ -7,7 +7,7 @@ import com.daengs.app.walk.distanceTo
 
 /** Preserve one input per scene; the provider groups projected positions using the shared map policy. */
 internal fun diarySceneMarkers(scenes: List<DiaryScene>, selectedId: String?, inspected: List<String> = emptyList()): List<MomentMarkerState> =
-    scenes.mapIndexedNotNull { index, scene -> scene.point?.takeIf { it.isDiaryLocation() }?.let { point ->
+    scenes.filterNot { it.isWalkBoundary() }.mapIndexedNotNull { index, scene -> scene.point?.takeIf { it.isDiaryLocation() }?.let { point ->
         MomentMarkerState(scene.id, point, "${index+1}", selected = scene.id == selectedId,
             aboveRouteEndpoints = true,
             diaryPin = com.daengs.app.map.layers.moments.DiaryPinAppearance(index+1,

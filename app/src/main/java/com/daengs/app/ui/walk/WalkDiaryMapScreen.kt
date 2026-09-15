@@ -83,7 +83,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         readingMemory.groupIds.isNotEmpty() -> readingMemory.inspect(emptyList())
         else -> onBack()
     } }
-    val originalScenes = remember(diary) { diary?.scenes.orEmpty().filterNot { it.isWalkBoundary() } }
+    val originalScenes = remember(diary) { diary?.scenes.orEmpty() }
     val actionEntries = remember(diary, sessionId) { diary?.sourceEntries.orEmpty().filter {
         it.sessionId == sessionId && it.type != WalkMomentType.NOTE
     }.sortedBy { it.recordedAtMillis } }
@@ -103,7 +103,6 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     }
     LaunchedEffect(actionEntries, selectedId, diary) {
         selectedActions = selectedActions.intersect(actionEntries.map { diaryActionKey(it) }.toSet())
-        if (diary?.scenes?.any { it.id == selectedId && it.isWalkBoundary() } == true) explorer.closeScene()
     }
     LaunchedEffect(originalScenes, readView?.scenesLoading, readingMemory.groupIds) {
         if (loaded && readView?.scenesLoading == false && diary != null) {

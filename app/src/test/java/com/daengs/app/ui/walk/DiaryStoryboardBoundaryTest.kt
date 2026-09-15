@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.walk.diary.DiaryScene
+import com.daengs.app.walk.diary.StoryboardScene
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Rule
@@ -26,6 +27,35 @@ import org.robolectric.annotation.GraphicsMode
 class DiaryStoryboardBoundaryTest {
     @get:Rule val compose=createComposeRule()
     private val scenes=(1..3).map { DiaryScene("s/$it","s",it*30_000L,"기록 $it","장면 본문",null,"") }
+
+    @Test fun `editable bookends use kind badges and open existing scene reading and editing`() {
+        val start=DiaryScene("s/start","s",1_000,"오늘의 첫 발걸음","설레는 마음",null,"",
+            source=StoryboardScene("start",1_000,"오늘의 첫 발걸음","설레는 마음","","1"))
+        val end=start.copy(id="s/end",atMillis=300_000,title="잘 다녀왔어",body="편안한 마무리",
+            source=StoryboardScene("end",300_000,"잘 다녀왔어","편안한 마무리","","2"))
+        var selected by mutableStateOf<DiaryScene?>(null)
+        var editing: DiaryScene?=null
+        compose.setContent { DaengsTheme {
+            WalkDiaryMapContent(listOf(start)+scenes+end,selected,false,null,{selected=it},{selected=null},{editing=it},{},{},{},
+                walkStartedAtMillis=1_000,walkEndedAtMillis=300_000,
+                explorerPanel={Text("걸어온 길")},map={Box(Modifier.fillMaxSize())})
+        } }
+        compose.onNodeWithTag("storyboard-start").assertDoesNotExist()
+        compose.onNodeWithContentDescription("산책 시작").assertIsDisplayed()
+        compose.onNodeWithText(start.title).performClick()
+        compose.onNodeWithText(start.body).assertIsDisplayed()
+        compose.runOnIdle { selected=null }
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText(end.title))
+        compose.onNodeWithContentDescription("산책 끝").assertIsDisplayed()
+        compose.onNodeWithContentDescription("산책 끝 메뉴").performClick()
+        compose.onNodeWithText("내용 수정").performClick()
+        compose.runOnIdle { assertEquals(end,editing) }
+        compose.onNodeWithText(end.title).performClick()
+        compose.onNodeWithText(end.body).assertIsDisplayed()
+        assertTrue(diarySceneMarkers(listOf(start,end),null).isEmpty())
+        val located=scenes.first().copy(point=com.daengs.app.location.GeoPoint(37.5,127.0))
+        assertEquals("1",diarySceneMarkers(listOf(start,located,end),null).single().label)
+    }
 
     @Test fun `scene tab reads start scenes and end with session times and unchanged numbering`() {
         var selected: DiaryScene? = null

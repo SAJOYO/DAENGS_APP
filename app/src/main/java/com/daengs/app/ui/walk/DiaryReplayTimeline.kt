@@ -5,6 +5,8 @@ import com.daengs.app.ui.walk.detail.focusFor
 import com.daengs.app.walk.WalkEntry
 import com.daengs.app.walk.WalkMomentType
 import com.daengs.app.walk.diary.DiaryScene
+import com.daengs.app.walk.diary.DiarySceneKind
+import com.daengs.app.walk.diary.boundaryKind
 import com.daengs.app.walk.routeexplorer.MeasurementTimeAddress
 import com.daengs.app.map.layers.moments.MomentMarkerState
 import kotlin.math.abs
@@ -86,11 +88,18 @@ internal fun diaryReplayTimeline(read: WalkDiaryReadView): DiaryReplayTimeline {
     }
     var unresolved = 0
     val events = buildList {
-        read.diary?.scenes.orEmpty().filter { it.sessionId == sessionId && !it.isWalkBoundary() }
-            .forEachIndexed { index, scene ->
-                val elapsed = if (timeline != null) read.focusFor(scene)?.let(timeline::scenePosition) ?: position(scene.atMillis)
-                    else position(scene.atMillis)
-                if (elapsed == null) unresolved++ else add(DiaryReplayEvent(scene.id, elapsed, scene, index+1))
+        var ordinal = 0
+        read.diary?.scenes.orEmpty().filter { it.sessionId == sessionId }
+            .forEach { scene ->
+                val boundary = scene.boundaryKind()
+                val number = if (boundary == null) ++ordinal else null
+                val elapsed = when (boundary) {
+                    DiarySceneKind.START -> 0L
+                    DiarySceneKind.END -> timeline?.durationMillis ?: review.context.durationMillis
+                    else -> if (timeline != null) read.focusFor(scene)?.let(timeline::scenePosition) ?: position(scene.atMillis)
+                        else position(scene.atMillis)
+                }
+                if (elapsed == null) unresolved++ else add(DiaryReplayEvent(scene.id, elapsed, scene, number))
             }
         read.diary?.sourceEntries.orEmpty().filter { it.sessionId == sessionId && it.type != WalkMomentType.NOTE }.forEach { entry ->
             // Event time is the tap time, not an earlier location capture or a relocated pin time.

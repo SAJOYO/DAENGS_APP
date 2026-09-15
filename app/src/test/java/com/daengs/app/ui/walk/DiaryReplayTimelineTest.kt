@@ -45,7 +45,7 @@ class DiaryReplayTimelineTest {
         assertEquals(2,unrelated.readingEvents().size)
     }
 
-    @Test fun `actions use event time even without a location and boundaries never become scenes`() {
+    @Test fun `actions use event time and editable boundaries keep ordinary scene numbering`() {
         val base=explorerPanelPreviewRead()
         val scene=base.diary!!.scenes[1]
         val action=WalkEntry("a",scene.sessionId,WalkMomentType.SNIFFING,7_500,
@@ -54,7 +54,8 @@ class DiaryReplayTimelineTest {
             sourceEntries=listOf(action,action.copy(id="unlocated",point=null,locationCapturedAtMillis=null),
                 action.copy(id="foreign",sessionId="other"))))
         val timeline=diaryReplayTimeline(read)
-        assertEquals(listOf(7_500L,15_000L),timeline.checkpoints.map { it.elapsed })
+        assertEquals(listOf(0L,7_500L,15_000L),timeline.checkpoints.map { it.elapsed })
+        assertNull(timeline.at(0)!!.events.single().ordinal)
         assertEquals(2,timeline.at(7_500)!!.events.size)
         assertEquals(1,timeline.at(15_000)!!.events.single().ordinal)
         assertEquals(0,timeline.unresolvedCount)
