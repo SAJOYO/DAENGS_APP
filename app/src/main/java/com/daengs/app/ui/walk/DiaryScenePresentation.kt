@@ -72,9 +72,7 @@ internal fun DiarySceneHeading(scene: DiaryScene, kind: DiarySceneKind, modifier
                 Text(kind.label, Modifier.weight(1f), fontSize = 12.sp, color = TextMuted,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            scene.content?.address?.takeIf { detail && it.isNotBlank() }?.let {
-                Text(it, fontSize = 13.sp, color = TextMuted)
-            }
+            if (detail) com.daengs.app.ui.walk.reading.DiarySceneConditions(scene.content)
         }
     }
 }
