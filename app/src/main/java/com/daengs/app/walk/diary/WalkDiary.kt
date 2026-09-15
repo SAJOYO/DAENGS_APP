@@ -49,7 +49,13 @@ data class DiaryScene(
     val entryId: String? = null,
     val content: DiarySceneContent? = null,
     val source: StoryboardScene? = null,
+    val relational: com.daengs.app.walk.diary.relational.RelationalDiaryCard? = null,
+    val originalPhotos: List<DiaryOriginalPhoto> = emptyList(),
+    val originalNotes: List<String> = emptyList(),
+    val notice: String = "",
 )
+
+data class DiaryOriginalPhoto(val id: String, val photo: WalkPhoto?)
 
 data class DiaryWalk(val summary: WalkSummary, val scenes: List<DiaryScene>, val notice: String,
     val title: String? = null, val preparing: Boolean = false, val published: Boolean = false,

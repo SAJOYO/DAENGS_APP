@@ -24,18 +24,27 @@ fun storedStoryboardAnalysisView(analysis: WalkSceneAnalysisRow?, entries: List<
 
 internal fun diaryBoardSource(entries: List<WalkEntryRow>, analysis: WalkSceneAnalysisRow?,
     photos: WalkPhotoSyncRow?, images: List<WalkPhotoRow>, publication: WalkDiaryPublicationRow?,
-): DiaryBoardSource = DiaryBoardSource(
+    walk: WalkSessionRow? = null, ownerId: String = "",
+): DiaryBoardSource {
+    if (analysis?.entryStamp?.startsWith(RelationalDiaryStorage.STAMP_PREFIX) == true) {
+        return DiaryBoardSource(StoryboardAnalysisView(null, false, ""), null, relationalSelected = true,
+            relational = RelationalDiaryStorage.project(analysis, entries, photos, images, walk, ownerId),
+            relationalStatus = if (analysis.entryStamp == RelationalDiaryStorage.stamp(entries, photos, images)) analysis.status else "stale")
+    }
+    return DiaryBoardSource(
     // Publication has precedence: do not inspect legacy analysis or hash its inputs here.
     if (publication == null) storedStoryboardAnalysisView(analysis, entries, photos, images)
     else StoryboardAnalysisView(null, false, ""),
     publication?.let { DiaryPublicationInput(it.baseBundle, it.publishedBundle) },
 )
+}
 
 internal fun diaryBoardInput(entries: List<WalkEntryRow>, analysis: WalkSceneAnalysisRow?,
     photos: WalkPhotoSyncRow?, images: List<WalkPhotoRow>, publication: WalkDiaryPublicationRow?,
+    walk: WalkSessionRow? = null, ownerId: String = "",
 ): DiaryBoardInput = DiaryBoardInput(
     entries.mapNotNull { it.entry() },
-    diaryBoardSource(entries, analysis, photos, images, publication),
+    diaryBoardSource(entries, analysis, photos, images, publication, walk, ownerId),
     images.map { it.id }.toSet(),
 )
 

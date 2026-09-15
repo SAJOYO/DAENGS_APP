@@ -80,21 +80,31 @@ internal object RelationalDiaryStorage {
     /** Read the saved response only. A changed/deleted record never reappears from the cache. */
     suspend fun read(dao: WalkDao, sessionId: String, ownerId: String): RelationalDiaryCache? {
         val walk = dao.session(sessionId) ?: return null
-        if (ownerId.isBlank() || walk.ownerId != ownerId || walk.endedAtMillis == null) return null
-        val row = dao.sceneAnalysis(sessionId) ?: return null
-        if (!row.entryStamp.startsWith(STAMP_PREFIX) || row.entryStamp != currentStamp(dao, sessionId)) return null
+        return project(dao.sceneAnalysis(sessionId), dao.entries(sessionId), dao.photoSync(sessionId),
+            dao.photos(sessionId), walk, ownerId)
+    }
+
+    /** Same checks for Room reads and flow projections; never issue a second read while assembling. */
+    fun project(row: WalkSceneAnalysisRow?, entries: List<WalkEntryRow>, photos: WalkPhotoSyncRow?,
+        images: List<WalkPhotoRow>, walk: WalkSessionRow?, ownerId: String): RelationalDiaryCache? {
+        if (walk == null || ownerId.isBlank() || walk.ownerId != ownerId || walk.endedAtMillis == null) return null
+        if (row == null || row.sessionId != walk.id || !row.entryStamp.startsWith(STAMP_PREFIX) ||
+            row.entryStamp != stamp(entries, photos, images)) return null
+        if (entries.any { it.sessionId != walk.id } || images.any { it.sessionId != walk.id || it.ownerId != ownerId }) return null
         val cache = decode(row, walk.serverWalkId ?: return null) ?: return null
-        if (!matchesSources(dao, cache.latest, ownerId)) return null
-        return cache
+        return cache.takeIf { matchesSources(it.latest, ownerId, entries, photos, images) }
     }
 
     private suspend fun matchesSources(dao: WalkDao, response: RelationalDiaryResponse, ownerId: String): Boolean {
-        val entries = dao.entries(response.sessionId)
+        return matchesSources(response, ownerId, dao.entries(response.sessionId), dao.photoSync(response.sessionId), dao.photos(response.sessionId))
+    }
+
+    private fun matchesSources(response: RelationalDiaryResponse, ownerId: String, entries: List<WalkEntryRow>,
+        photos: WalkPhotoSyncRow?, images: List<WalkPhotoRow>): Boolean {
         if (entries.any { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null ||
                 it.pinPayload?.let { pin -> JSONObject(pin).optString("state") == "provisional" } == true }) return false
         if (entries.associate { it.id to it.revision.toLong() } != response.entryRevisions) return false
-        val photos = dao.photoSync(response.sessionId)
-        if (photos == null) return dao.photos(response.sessionId).isEmpty()
+        if (photos == null) return images.isEmpty() && response.photoManifest == null
         return photos.ownerId == ownerId && photos.pendingPayload == null && photos.revision == photos.acknowledgedRevision &&
             response.photoManifest?.let { it.publisherId == photos.publisherId && it.revision == photos.acknowledgedRevision } == true
     }

@@ -33,6 +33,35 @@ class WalkDiaryReaderTest {
     }
     @After fun close() { db.close() }
 
+    @Test fun `relational Room publication reaches titles search edit and hide without legacy publication`() = runBlocking {
+        withTimeout(10000) {
+            val raw = org.json.JSONObject(javaClass.getResource("/storyboard/relational-diary-v1.json")!!.readText())
+                .put("entry_revisions", org.json.JSONObject())
+            val id = raw.getString("session_id")
+            val savedSummary = summary.copy(sessionId = id)
+            dao.insertSession(WalkSessionRow(id, 0, owner, 10000, serverWalkId = "remote"))
+            dao.insertDiaryPublication(WalkDiaryPublicationRow(id, 10000, 30000, "invalid legacy base"))
+            assertTrue(dao.acceptRelationalDiary(raw.toString(), id, "remote", owner, dao.relationalDiaryInputStamp(id)))
+            val diary = reader.observe(listOf(savedSummary)).first().single()
+            assertTrue(diary.published)
+            assertFalse(diary.preparing)
+            assertEquals(3, diary.scenes.size)
+            assertEquals("", diary.scenes.last().body)
+            assertEquals(diary.title, reader.observeTitles(listOf(id)).first()[id])
+            assertTrue(dao.historySearchText(listOf(id), owner).getValue(id).contains(diary.title))
+            val source = requireNotNull(diary.scenes.first().source)
+            dao.saveDiarySceneEdit(id, owner, source, "수정한 제목", "수정한 문장")
+            val edited = reader.observe(listOf(savedSummary)).first().single().scenes.first()
+            assertEquals("수정한 문장", edited.body)
+            assertEquals(source.id, edited.source!!.id)
+            dao.deleteDiaryScene(id, owner, edited.source!!)
+            assertEquals(2, reader.observe(listOf(savedSummary)).first().single().scenes.size)
+            assertNull(dao.diaryPublication(id)!!.publishedBundle)
+            owner = "other"
+            assertTrue(reader.observe(listOf(savedSummary)).first().isEmpty())
+        }
+    }
+
     @Test fun `photo revision change removes the generated title in both page and map readers`() = runBlocking {
         withTimeout(10000) {
             val raw = diaryFixture().put("session_id", "s")

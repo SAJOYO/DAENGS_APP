@@ -407,10 +407,8 @@ interface WalkDao {
         return allowed.associateWith { id ->
             val rows = entries[id].orEmpty()
             val publication = diaryPublication(id)
-            val board = if (publication != null) publication.publishedBundle?.let {
-                com.daengs.app.walk.diary.GeoStoryboardBundle.parse(it)
-            } else com.daengs.app.walk.store.storedStoryboardAnalysisView(analyses[id], rows).bundle
-            val title = board?.takeIf { it.sessionId == id }?.title
+            val title = com.daengs.app.walk.diary.diaryTitle(id,
+                diaryBoardSource(rows, analyses[id], photoSync(id), photos(id), publication, session(id), ownerId))
             listOfNotNull(title) + rows.mapNotNull { runCatching { it.entry()?.note }.getOrNull() }
         }
     }
@@ -511,7 +509,8 @@ interface WalkDao {
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
         require(title.isNotBlank() && title.length <= 80 &&
             body.length <= com.daengs.app.walk.diary.MAX_DIARY_SCENE_BODY_LENGTH)
-        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        check(if (isRelationalDiary(sessionId)) readRelationalDiary(sessionId, ownerId)?.published != null
+            else diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId,
             draft.edit(scene, title = title, body = body, acknowledge = true,
@@ -525,7 +524,8 @@ interface WalkDao {
         check(ownerId.isNotBlank() && session(sessionId)?.let {
             it.ownerId == ownerId && it.endedAtMillis != null
         } == true) { "현재 계정의 완료된 산책이 아닙니다." }
-        check(diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
+        check(if (isRelationalDiary(sessionId)) readRelationalDiary(sessionId, ownerId)?.published != null
+            else diaryPublication(sessionId)?.let { it.publishedBundle != null } != false) { "산책을 정리하고 있어요." }
         val draft = com.daengs.app.walk.diary.StoryboardDraft.parse(storyboard(sessionId)?.payload)
         saveStoryboard(WalkStoryboardRow(sessionId, draft.hide(scene).toJson()))
     }

@@ -347,6 +347,12 @@ internal fun WalkDiaryMapContent(
                                             Modifier.fillMaxWidth().padding(top = 6.dp), detail = true)
                                         Spacer(Modifier.height(18.dp))
                                         DiarySceneText(selected.body)
+                                        com.daengs.app.ui.walk.reading.RelationalSceneOriginals(selected, onPhoto)
+                                        selected.relational?.comparisonSceneId?.let { previousId ->
+                                            scenes.singleOrNull { it.relational?.sceneId == previousId }?.let { previous ->
+                                                TextButton(onClick = { onSelect(previous) }) { Text("비교한 앞 장면 보기") }
+                                            }
+                                        }
                                         selectedRouteNotice?.let { Text(it, Modifier.padding(top = 12.dp),
                                             style = MaterialTheme.typography.bodySmall, color = TextMuted) }
                                         if (selected.needsReview) Text("원본 기록이 바뀌었어요. 수정한 문장은 유지했어요.",

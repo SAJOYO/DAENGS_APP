@@ -17,6 +17,9 @@ internal data class DiaryPublicationInput(val baseBundle: String?, val published
 internal data class DiaryBoardSource(
     val analysis: StoryboardAnalysisView,
     val publication: DiaryPublicationInput?,
+    val relationalSelected: Boolean = false,
+    val relational: com.daengs.app.walk.store.RelationalDiaryCache? = null,
+    val relationalStatus: String? = null,
 )
 
 /** Full assembly receives already decoded entries, distinct from the lightweight title source. */
