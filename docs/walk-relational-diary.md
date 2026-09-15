@@ -115,3 +115,20 @@ LLM 호출·구형 기본 문장 생성·구형 bundle 변환을 하지 않는�
 디자인 잠금 7, 원문 화면 1, 기존 서랍 6. Room → Reader → 제목/검색 → 수정/숨김을 포함한다.
 초기 통합 입력의 세션 ID가 UUID가 아니어서 한 건 실패했고, 실제 재현 자료의 UUID로 바로잡아
 그 한 건을 재실행해 통과했다. 본문 생성 응답을 새로 요청한 검사는 아니다.
+
+## 4단계: APK 빌드와 기기 기동 (2026-09-15)
+
+- 소스 `0504934`, JDK 25, `gradlew.bat :app:assembleDebug -PsideBySide=true`: 1분 58초에 성공.
+- `com.daengs.app.preview` / `1.0-preview` / versionCode 1. 기존 정식 앱과 다른 패키지다.
+- 서명 검사 성공, `adb install -r` 결과 `Success`, MainActivity 기동 `Status: ok` / COLD / 676ms.
+  기동 후 프로세스가 살아 있으며 해당 PID의 AndroidRuntime 오류 출력은 없었다.
+- 폰의 기존 미리보기 패키지를 업데이트했으며 데이터를 지우지 않았다. 정식 앱 `com.daengs.app`
+  버전 1.1.3/code 8, 최종 설치 시각 2026-09-14 23:07:35는 그대로다.
+- APK SHA-256: `9e45eb4cc03faadc5ed4c3d7d913786bad7970cef02a5a8512fdba17cd88fd70`.
+- API 주소는 문서의 `https://daengapi.weareithero.cloud`. 지도 클라이언트 ID는 제공된 환경에서
+  빌드 시 주입했다. 카카오 네이티브 앱 키는 없으며 사용자가 보유하지 않았다고 확인했다.
+  인증/지도 표시와 새 일기 화면의 실제 사용자 왕복은 기동 성공만으로 검증됐다고 보지 않는다.
+- GCP·개발 공개 서버의 `/app/walks/storyboard/capabilities`는 인증 없는 요청에 401을 반환했다.
+  두 서버의 공개 OpenAPI는 200이지만 관계 일기 형식/스키마는 없고 구형 storyboard 응답만 등록돼 있다.
+- **남음:** 새 서버 배포 및 인증 준비 후 실제 생성→저장→GET→앱 열람 확인. 이번 단계에서 새 LLM 호출,
+  운영 서버 변경, PR 머지는 하지 않았다. 전체 왕복까지 완료한 것은 아니다.
