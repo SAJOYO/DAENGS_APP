@@ -17,6 +17,7 @@ class PhotoCardHolderTest {
         val server = mutableListOf<PhotoCard>()
         var failList = false
         var failDelete = false
+        var failDownload = false
         var throwOnCreate = false
         var createError: String? = null
         var gets = 0
@@ -49,6 +50,7 @@ class PhotoCardHolderTest {
         }
         override suspend fun download(url: String): Result<ByteArray> {
             onDownload?.invoke()
+            if (failDownload) return Result.failure(IllegalStateException("그림을 받지 못했어요"))
             return Result.success(byteArrayOf(1, 2, 3))
         }
     }
@@ -184,6 +186,43 @@ class PhotoCardHolderTest {
         assertEquals(PhotoCardStatus.Ready, h.cards.first().status)
         assertTrue(h.images.containsKey("new-4"))
         assertFalse(h.generating)
+    }
+
+    /**
+     * **그림을 받는 동안 카드가 아직 완성이면 안 된다.** 완성으로 먼저 바꾸면 `generating` 이
+     * 꺼져 조회 코루틴(`LaunchedEffect(photos.generating)`)이 취소되고, 받던 그림이 끊겨
+     * 칸이 계속 「만드는 중」 으로 남는다 — 실기기에서 도감을 나갔다 와야 바뀌던 원인.
+     */
+    @Test
+    fun `그림을 받는 동안에는 아직 완성으로 바꾸지 않는다`() = runTest {
+        val remote = FakeRemote()
+        val h = holder(remote)
+        h.create(4, "콩이", null, byteArrayOf(9))
+        remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready, likeness = 4)
+        remote.urls["new-4"] = "https://x/n.png"
+        var seen: PhotoCardStatus? = null
+        remote.onDownload = { seen = h.cards.first().status }
+        h.pollOnce()
+        assertEquals(PhotoCardStatus.Generating, seen)
+        assertEquals(PhotoCardStatus.Ready, h.cards.first().status)
+        assertTrue(h.images.containsKey("new-4"))
+    }
+
+    @Test
+    fun `그림을 못 받으면 만드는 중으로 남아 다음 조회에서 다시 받는다`() = runTest {
+        val remote = FakeRemote()
+        val h = holder(remote)
+        h.create(4, "콩이", null, byteArrayOf(9))
+        remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
+        remote.urls["new-4"] = "https://x/n.png"
+        remote.failDownload = true
+        h.pollOnce()
+        assertEquals(PhotoCardStatus.Generating, h.cards.first().status)
+        assertTrue(h.generating)
+        remote.failDownload = false
+        h.pollOnce()
+        assertEquals(PhotoCardStatus.Ready, h.cards.first().status)
+        assertTrue(h.images.containsKey("new-4"))
     }
 
     /** 서버는 9분 지나면 조회 때 interrupted 로 바꾼다. 앱은 10분 뒤 목록을 다시 받는다. */

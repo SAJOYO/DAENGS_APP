@@ -120,8 +120,11 @@ class PhotoCardHolder(
         }
         cards.filter { it.status == PhotoCardStatus.Generating }.forEach { waiting ->
             val detail = remote.get(token, waiting.id).getOrNull() ?: return@forEach
+            // **그림을 먼저 받고 나서 완성으로 바꾼다.** 먼저 바꾸면 `generating` 이 꺼져
+            // 이 조회를 돌리던 코루틴이 취소되고(`MainActivity` 의 `LaunchedEffect(photos.generating)`),
+            // 받던 그림이 끊겨 칸이 계속 「만드는 중」 으로 남는다. 못 받으면 다음 조회에서 다시 받는다.
+            if (detail.card.status == PhotoCardStatus.Ready && !store(detail)) return@forEach
             cards = cards.map { if (it.id == detail.card.id) detail.card else it }
-            if (detail.card.status == PhotoCardStatus.Ready) store(detail)
         }
     }
 
@@ -165,22 +168,24 @@ class PhotoCardHolder(
         }
     }
 
-    private suspend fun store(detail: PhotoCardDetail) {
+    /** 그림 파일을 남기고 `images` 에 넣었으면 true — `pollOnce()` 가 이걸 보고 완성으로 바꾼다. */
+    private suspend fun store(detail: PhotoCardDetail): Boolean {
         val started = epoch
         val id = detail.card.id
-        val url = detail.imageUrl ?: return
-        val png = remote.download(url).getOrNull() ?: return
+        val url = detail.imageUrl ?: return false
+        val png = remote.download(url).getOrNull() ?: return false
         // 다운로드 도중 비우거나 이 카드를 지우면 받은 파일을 버린다
         if (epoch != started || cards.none { it.id == id }) {
             files.delete(id)
-            return
+            return false
         }
-        val file = files.write(id, png) ?: return
+        val file = files.write(id, png) ?: return false
         // 저장 도중에도 다시 확인한다
         if (epoch != started || cards.none { it.id == id }) {
             files.delete(id)
-            return
+            return false
         }
         images = images + (id to file)
+        return true
     }
 }
