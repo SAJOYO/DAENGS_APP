@@ -30,7 +30,7 @@ import java.util.Locale
 
 /** The host chooses when to show this; colors follow the same preference as the native path. */
 @Composable
-internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
+internal fun WalkSpeedLegend(modifier: Modifier = Modifier, compact: Boolean = false) {
     val selection by rememberWalkStyle()
     val policy = selection.policy
     val theme = policy.theme(selection.themeId)
@@ -38,18 +38,19 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
         policy.speedScaleStops(theme.id).map { (offset, color) -> offset to Color(color) }.toTypedArray()
     }
     val number = remember { DecimalFormat("0.##", DecimalFormatSymbols(Locale.ROOT)) }
-    val max = number.format(policy.speedMax)
+    val max = number.format(policy.speedMax * if (compact) 3.6 else 1.0)
     val middle = number.format(policy.speedMax / 2)
+    val unit = if (compact) "km/h" else "m/s"
     Surface(modifier.testTag("speedLegend"), shape = RoundedCornerShape(8.dp), color = CardWhite) {
         Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("속도 m/s", fontSize = 10.sp, lineHeight = 12.sp)
+                Text(if (compact) "이동 속도 km/h" else "속도 m/s", fontSize = 10.sp, lineHeight = 12.sp)
                 Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
                     .background(Brush.horizontalGradient(*stops))
                     .semantics {
-                        contentDescription = "${theme.label} 속도 스펙트럼. 왼쪽 0 m/s에서 오른쪽 $max m/s 이상으로 빨라져요."
+                        contentDescription = "${theme.label} 속도 스펙트럼. 왼쪽 0 ${unit}에서 오른쪽 $max $unit 이상으로 빨라져요."
                     })
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     for (label in listOf("0", middle, "$max+")) Text(label, fontSize = 10.sp, lineHeight = 12.sp)
                 }
             }
@@ -61,3 +62,7 @@ internal fun WalkSpeedLegend(modifier: Modifier = Modifier) {
 @Preview(showBackground = true)
 @Composable
 private fun WalkSpeedLegendPreview() { DaengsTheme { WalkSpeedLegend() } }
+
+@Preview(showBackground = true)
+@Composable
+private fun CompactWalkSpeedLegendPreview() { DaengsTheme { WalkSpeedLegend(compact = true) } }

@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.rememberScrollState
@@ -39,14 +40,13 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
     val measured = state.review?.timeline?.durationMillis != null && state.duration > 0
     val replay = state.mode == RouteExplorerMode.REPLAY
     val slice = state.selectedSlice
-    val auxiliary = state.mode in setOf(RouteExplorerMode.SECTION, RouteExplorerMode.AUXILIARY, RouteExplorerMode.CONTEXT, RouteExplorerMode.PASSAGE)
     LaunchedEffect(reading, reading?.pendingExplorerOffset) {
         reading?.pendingExplorerOffset?.let { offset ->
             scroll.scrollTo(offset); reading.pendingExplorerOffset = null
         }
     }
     Column(Modifier.fillMaxSize()) {
-        WalkExplorerTimeHeader(state, onOverview)
+        WalkExplorerTimeHeader(state)
         HorizontalDivider(color = PinkFaint)
         CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.bodySmall.copy(color = TextMuted, lineHeight = 20.sp)) {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
@@ -63,35 +63,37 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
                             ?: "기기 시간으로 확인한 위치예요. 표시 시각은 확정하지 않아요.",
                         style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 }
-                if (measured && !replay) ExplorerRangePresets(state)
-                if (auxiliary) WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
-                if (measured) {
-                    if (!auxiliary) {
-                        HorizontalDivider(color = PinkFaint)
-                        TextButton(onClick = { if (reading != null) reading.explorerDetails = !details else localDetails = !details },
-                            modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 0.dp)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (details) "경로 정보 접기" else "경로 정보 · 구간과 전후 관계",
-                                    Modifier.weight(1f), fontSize = 12.sp, lineHeight = 18.sp, color = TextMuted)
-                                Text(if (details) "⌃" else "⌄", fontSize = 16.sp, color = TextMuted)
-                            }
-                        }
-                    }
-                    if (details || auxiliary) {
-                        Text("기록 중 경과 시간이에요. 일시정지 시간은 제외하고, 시계 경계와 경로 공백은 이어 그리지 않아요.",
-                            Modifier.padding(bottom = 12.dp), fontSize = 12.sp, lineHeight = 20.sp, color = TextMuted)
-                        if (!auxiliary) WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
-                    }
-                } else {
+                WalkExplorerRangeActions(state, onOverview)
+                if (measured && !replay && slice != null) ExplorerRangePresets(state)
+                WalkExplorerSelectionDetails(state)
+                if (!measured && !state.canPlayback) {
                     Text("이 산책은 시간 구간을 고를 수 있는 측정 정보가 없어요.",
                         Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = TextMuted)
                     if (state.review?.context?.available == true && state.review?.context?.durationMillis == null)
                         Text("기록 시간의 순서를 확정하지 못해 자동 재생을 제공하지 않아요. 전후 관계에서 해당 범위를 열 수 있어요.",
                             style = MaterialTheme.typography.bodySmall)
-                    if (!auxiliary) WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
                 }
                 readingNotices()
-                if (!replay) WalkSpeedLegend(Modifier.padding(top = 8.dp))
+                HorizontalDivider(color = PinkFaint)
+                TextButton(onClick = { if (reading != null) reading.explorerDetails = !details else localDetails = !details },
+                    modifier = Modifier.fillMaxWidth().testTag("explorer-details-toggle")
+                        .semantics { stateDescription = if (details) "펼침" else "접힘" },
+                    contentPadding = PaddingValues(horizontal = 0.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("기록 상세", Modifier.weight(1f), fontSize = 12.sp, color = TextMuted)
+                        Text(if (details) "−" else "+", fontSize = 16.sp, color = TextMuted)
+                    }
+                }
+                if (details) {
+                    if (measured) {
+                        if (!replay && slice == null) ExplorerRangePresets(state)
+                        Text("기록 중 경과 시간이에요. 일시정지 시간은 제외하고, 시계 경계와 경로 공백은 이어 그리지 않아요.",
+                            Modifier.padding(bottom = 12.dp), fontSize = 12.sp, lineHeight = 20.sp, color = TextMuted)
+                    } else if (state.canPlayback) {
+                        Text("이 산책은 시간 구간을 고를 수 있는 측정 정보가 없어요.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    WalkExplorerRouteDetails(state, onSection, onAuxiliary, onContext)
+                }
             }
         }
     }
@@ -99,11 +101,7 @@ internal fun WalkRouteExplorerPanel(state: WalkRouteExplorerState, onOverview: (
 
 /** Existing route/observation/context/passage entry points remain under the reading region. */
 @Composable
-private fun WalkExplorerRouteDetails(state: WalkRouteExplorerState, onSection: (CompletedRouteSection) -> Unit,
-    onAuxiliary: (ObservedRouteSection) -> Unit, onContext: (RecordContext) -> Unit) {
-    val review = state.review ?: return
-    Text("기록 " + formatRouteExplorerClock(review.summary.startedAtMillis) + "–" +
-        (review.summary.endedAtMillis?.let(::formatRouteExplorerClock) ?: "진행 중"), style = MaterialTheme.typography.bodySmall)
+private fun WalkExplorerSelectionDetails(state: WalkRouteExplorerState) {
     state.selectedContext?.let { RecordContextDetail(it) }
     state.selectedAuxiliary?.let { Text(observedRouteDescription(it), style = MaterialTheme.typography.bodySmall) }
     if (state.mode == RouteExplorerMode.PASSAGE) {
@@ -120,6 +118,14 @@ private fun WalkExplorerRouteDetails(state: WalkRouteExplorerState, onSection: (
             }
         }
     }
+}
+
+@Composable
+private fun WalkExplorerRouteDetails(state: WalkRouteExplorerState, onSection: (CompletedRouteSection) -> Unit,
+    onAuxiliary: (ObservedRouteSection) -> Unit, onContext: (RecordContext) -> Unit) {
+    val review = state.review ?: return
+    Text("기록 " + formatRouteExplorerClock(review.summary.startedAtMillis) + "–" +
+        (review.summary.endedAtMillis?.let(::formatRouteExplorerClock) ?: "진행 중"), style = MaterialTheme.typography.bodySmall)
     review.sections.forEachIndexed { ordinal, section ->
         ExplorerRouteOption("동선 ${ordinal + 1} · " + formatRouteExplorerClock(section.startedAtMillis) + "–" +
             formatRouteExplorerClock(section.endedAtMillis), state.selectedSection?.index == section.index) {
@@ -164,5 +170,8 @@ private fun ExplorerRouteDetailsPreview() {
     val scope = rememberCoroutineScope()
     val read = remember { explorerPanelPreviewRead() }
     val state = remember { WalkRouteExplorerState(scope, 0).apply { adopt(read); selectSection(0) } }
-    DiaryReviewTheme { Column(Modifier.padding(DiaryReadingChrome.Gutter)) { WalkExplorerRouteDetails(state, {}, {}, {}) } }
+    DiaryReviewTheme { Column(Modifier.padding(DiaryReadingChrome.Gutter)) {
+        WalkExplorerSelectionDetails(state)
+        WalkExplorerRouteDetails(state, {}, {}, {})
+    } }
 }

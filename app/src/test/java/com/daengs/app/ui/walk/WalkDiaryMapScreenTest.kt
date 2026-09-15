@@ -69,12 +69,13 @@ class WalkDiaryMapScreenTest {
         compose.onNodeWithTag("diary-sheet-handle").performTouchInput { swipeUp(startY = 10f, endY = -450f) }
         compose.onNodeWithText("위치를 몰라도 메모는 남아 있어요.").assertIsDisplayed()
         compose.onNodeWithText("이 장면에는 확인된 위치가 없어요.").assertIsDisplayed()
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
         assertEquals(detail.route.segments[1].points.map { it.point }, zoomed)
         assertEquals(1, explorer.selectedSection?.index)
         assertNull(explorer.selectedSceneId)
-        compose.onNodeWithText("전체 동선").assertIsDisplayed().performClick()
+        compose.onNodeWithText("전체 동선").performScrollTo().performClick()
         assertEquals(RouteExplorerMode.OVERVIEW, explorer.mode)
         assertEquals(1, mounts)
     }
@@ -153,12 +154,12 @@ class WalkDiaryMapScreenTest {
         compose.onNodeWithText("전체 동선 보기").performClick()
         val initialViewport = viewport
         val initialBounds = compose.onNodeWithTag("diary-map").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithText("저장된 동선 탐색").assertIsDisplayed()
         compose.onNodeWithTag("diary-scenes-preparing").assertDoesNotExist()
         compose.onNodeWithText("장면 0").performClick()
         compose.onNodeWithTag("diary-scenes-preparing").assertIsDisplayed()
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.runOnIdle { loading = false }
         compose.onNodeWithText("저장된 동선 탐색").assertIsDisplayed()
         compose.onNodeWithText("장면 1").performClick()

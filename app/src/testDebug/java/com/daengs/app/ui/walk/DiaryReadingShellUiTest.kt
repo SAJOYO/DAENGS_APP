@@ -55,7 +55,7 @@ class DiaryReadingShellUiTest {
         compose.onNodeWithContentDescription("서랍 펼치기").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("서랍 펼치기").assertIsNotEnabled()
         compose.onNodeWithContentDescription("서랍 접기").performClick()
-        compose.onNodeWithText("동선 탐색").assertIsDisplayed()
+        compose.onNodeWithText("걸어온 길").assertIsDisplayed()
         val list = compose.onNodeWithTag("diary-scene-list").fetchSemanticsNode().boundsInRoot
         assertTrue("Reading viewport must survive the header and tabs", list.height > 100)
     }
