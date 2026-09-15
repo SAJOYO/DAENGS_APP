@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,9 +37,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.photoFailureText
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.ui.common.DaengsTextAction
@@ -46,9 +50,11 @@ import com.daengs.app.ui.common.DaengsWideButton
 import com.daengs.app.ui.theme.CardWhite
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengPink
+import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.LocalDate
 
 /** 만들기 화면이 고르는 아이. 이름이 제목판에 찍힌다. */
@@ -79,7 +85,17 @@ fun PhotoCardMakeScreen(
     dogs: List<PhotoDog>,
     busy: Boolean,
     error: String?,
+    /** 방금 보낸 카드. null 이면 아직 안 보냈다 */
+    watching: PhotoCard?,
+    /** 그 카드의 받아 둔 그림 */
+    watchingFile: File?,
     onSubmit: (month: Int, dog: PhotoDog, jpeg: ByteArray) -> Unit,
+    /** 「다 되면 알려 주세요」 · 그리는 중 뒤로가기 — 요청은 서버에 있다, 취소가 아니다 */
+    onWaitElsewhere: () -> Unit,
+    onRevealed: (String) -> Unit,
+    /** 실패 뒤 「다시 만들기」 — 실패 행을 지우고 사진 고르기로 */
+    onRetry: (PhotoCard) -> Unit,
+    onOpenDex: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -100,28 +116,54 @@ fun PhotoCardMakeScreen(
             reading = false
         }
     }
-    // **항상 등록해 둔다.** `busy` 일 때 꺼 두면 뒤로가기가 바깥(도감)의 핸들러로 넘어가
-    // 업로드 중에 화면이 닫히고, 뒤이어 오는 서버 오류(429·404)가 숨은 `createError` 로만 남는다.
-    // 눌러도 `busy` 면 무시한다.
-    BackHandler { if (!busy) onCancel() }
 
-    PhotoCardMakeContent(
-        month = month,
-        onMonth = { month = it },
-        dogs = dogs,
-        dog = dog,
-        onDog = { dog = it },
-        preview = picked?.thumbnail?.asImageBitmap(),
-        busy = busy || reading,
-        error = error ?: pickError,
-        onPick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-        onSubmit = {
-            val chosen = dog
-            val photo = picked
-            if (chosen != null && photo != null) onSubmit(month, chosen, photo.jpeg)
-        },
-        onCancel = onCancel,
-    )
+    when (photoMakeStage(watching, watchingFile)) {
+        PhotoMakeStage.Pick -> {
+            // **항상 등록해 둔다.** `busy` 일 때 꺼 두면 뒤로가기가 바깥(도감)의 핸들러로 넘어가
+            // 업로드 중에 화면이 닫히고, 뒤이어 오는 서버 오류(429·404)가 숨은 `createError` 로만 남는다.
+            // 눌러도 `busy` 면 무시한다.
+            BackHandler { if (!busy) onCancel() }
+            PhotoCardMakeContent(
+                month = month,
+                onMonth = { month = it },
+                dogs = dogs,
+                dog = dog,
+                onDog = { dog = it },
+                preview = picked?.thumbnail?.asImageBitmap(),
+                busy = busy || reading,
+                error = error ?: pickError,
+                onPick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onSubmit = {
+                    val chosen = dog
+                    val photo = picked
+                    if (chosen != null && photo != null) onSubmit(month, chosen, photo.jpeg)
+                },
+                onCancel = onCancel,
+            )
+        }
+        PhotoMakeStage.Drawing -> {
+            val card = watching!!
+            BackHandler { onWaitElsewhere() }
+            PhotoDrawingBody(dogName = card.dogName, month = card.month, onWaitElsewhere = onWaitElsewhere)
+        }
+        PhotoMakeStage.Reveal -> {
+            val card = watching!!
+            val dex = photoCardFor(card.month)
+            BackHandler { onOpenDex() }
+            if (dex != null && watchingFile != null) {
+                PhotoRevealFlow(dex, card, watchingFile, onRevealed = onRevealed, onOpenDex = onOpenDex)
+            }
+        }
+        PhotoMakeStage.Failed -> {
+            val card = watching!!
+            BackHandler { onRetry(card); onCancel() }
+            PhotoFailedBody(
+                text = photoFailureText(card.month, card.errorCode),
+                onRetry = { onRetry(card) },
+                onCancel = { onRetry(card); onCancel() },
+            )
+        }
+    }
 }
 
 @Composable
@@ -240,4 +282,51 @@ private fun PhotoCardMakeContentPreview() {
         error = "오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요.",
         onPick = {}, onSubmit = {}, onCancel = {},
     )
+}
+
+/** 서버가 그리는 동안. 뒷면이 살아 있고, 나가도 된다는 걸 말해 준다. */
+@Composable
+private fun PhotoDrawingBody(dogName: String, month: Int, onWaitElsewhere: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(CreamBg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(40.dp))
+        PhotoCardBack(Modifier.fillMaxWidth(0.62f))
+        Spacer(Modifier.height(20.dp))
+        LinearProgressIndicator(Modifier.fillMaxWidth(0.62f), color = DaengPink, trackColor = PinkFaint)
+        Spacer(Modifier.height(16.dp))
+        Text("${dogName}의 ${month}월 카드를 그리는 중이에요", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(4.dp))
+        Text("1분쯤 걸려요. 나가도 다 되면 도감에서 알려 드려요.", color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp))
+        DaengsWideButton("다 되면 알려 주세요", onWaitElsewhere, Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun PhotoFailedBody(text: String, onRetry: () -> Unit, onCancel: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(CreamBg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(text, color = TextDark, fontSize = 15.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(20.dp))
+        DaengsWideButton("다시 만들기", onRetry, Modifier.fillMaxWidth(), accent = true)
+        Spacer(Modifier.height(6.dp))
+        DaengsTextAction("그만두기", onCancel, tint = TextMuted)
+    }
+}
+
+@Preview(showBackground = true, heightDp = 640)
+@Composable
+private fun PhotoDrawingBodyPreview() {
+    PhotoDrawingBody("안녕", 9) {}
+}
+
+@Preview(showBackground = true, heightDp = 400)
+@Composable
+private fun PhotoFailedBodyPreview() {
+    PhotoFailedBody("9월 카드를 만들지 못했어요 · 잠시 뒤 다시 만들어 주세요", {}, {})
 }

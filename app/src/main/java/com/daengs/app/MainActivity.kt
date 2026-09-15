@@ -1388,11 +1388,18 @@ class MainActivity : ComponentActivity() {
                                     .map { PhotoDog(it.id, it.name, it.isPrimary) },
                                 busy = photos.creating,
                                 error = photos.createError,
+                                // Task 6 에서 진짜로 잇는다 — 지금은 컴파일만 맞춘다.
+                                watching = null,
+                                watchingFile = null,
                                 onSubmit = { month, dog, jpeg ->
                                     scope.launch {
                                         if (photos.create(month, dog.name, dog.id, jpeg) != null) done()
                                     }
                                 },
+                                onWaitElsewhere = done,
+                                onRevealed = {},
+                                onRetry = {},
+                                onOpenDex = done,
                                 onCancel = done,
                             )
                         },
