@@ -48,6 +48,24 @@ class RelationalDiaryReadingTest {
         assertEquals("", relationalPartNotice(card.copy(space = card.action)))
     }
 
+    @Test fun `administrative header uses existing address label and survives saved response parsing`() {
+        val json = JSONObject(raw)
+        val first = json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(0)
+        first.getJSONObject("header").put("administrative_address", JSONObject()
+            .put("sido", "서울특별시").put("sigungu", "서초구").put("dong", "반포4동")
+            .put("address_type", "administrative_dong"))
+        val parsed = RelationalDiaryResponse.parse(json.toString())
+        val restored = RelationalDiaryResponse.parse(parsed.rawJson)
+        val scene = read(input(restored)).scenes.first()
+        assertEquals("서울 서초구 반포4동", scene.content!!.address)
+        assertEquals("서초구", scene.content.administrativeAddress!!.sigungu)
+        assertEquals(response.bundle!!.cards.first().body, scene.body)
+        assertFalse(scene.body.contains("서초구"))
+        // The pre-address saved format remains readable with its original dong label.
+        assertEquals("반포4동", read().scenes.first().content!!.address)
+        assertNull(read().scenes.first().content!!.administrativeAddress)
+    }
+
     @Test fun `notes and multiple photos survive space failure and editing separately`() {
         val original = response.bundle!!.cards.last()
         val note = "  직접 남긴 메모\n두 번째 줄  "

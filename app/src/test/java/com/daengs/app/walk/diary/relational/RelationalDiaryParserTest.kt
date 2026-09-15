@@ -11,6 +11,14 @@ fun relationalFixture(): JSONObject = JSONObject(
 )
 
 class RelationalDiaryParserTest {
+    @Test fun `administrative address cannot disagree with the same cards dong`() {
+        val json = relationalFixture()
+        json.firstCard().getJSONObject("header").put("administrative_address", JSONObject()
+            .put("sido", "서울특별시").put("sigungu", "강남구").put("dong", "역삼동")
+            .put("address_type", "administrative_dong"))
+        assertThrows(IllegalArgumentException::class.java) { RelationalDiaryResponse.parse(json.toString()) }
+    }
+
     @Test fun `actual response keeps accepted action beside failed space and empty final card`() {
         val raw = relationalFixture().toString()
         val response = RelationalDiaryResponse.parse(raw)

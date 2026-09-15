@@ -32,7 +32,8 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
             "original:${if (it.ref.store == "walk_photo") "photo" else "entry"}:${it.ref.id}" in editedOriginalIds }
         val temperature = relationalTemperature(card)
         val content = DiarySceneContent("", "relational", point = anchor.point, locationLabel = "",
-            address = card.header.dong, order = index,
+            address = card.header.administrativeAddress?.cardLabel() ?: card.header.dong, order = index,
+            administrativeAddress = card.header.administrativeAddress,
             locationMethod = anchor.method.name.lowercase(Locale.ROOT),
             locationAtMillis = anchor.locationAt?.toEpochMilli(), positionState = anchor.positionState,
             temperatureC = temperature?.celsius, temperatureObservation = temperature)
