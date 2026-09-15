@@ -43,8 +43,6 @@ import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.HistoryFilterSaver
-import com.daengs.app.ui.walk.formatWalkDistance
-import com.daengs.app.ui.walk.formatWalkDuration
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkMomentType
@@ -219,16 +217,10 @@ fun WalkRecordsScreen(
         val current = remember(selection, behavior) {
             selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
         }
-        run {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(current?.let { "선택 산책 ${it.records.size}회" } ?: if (error != null) "산책 기록" else "불러오는 중", Modifier.testTag("records-count"),
-                    style = MaterialTheme.typography.titleSmall)
-                Text(current?.let { rows ->
-                    "${formatWalkDistance(rows.records.sumOf { it.summary.distanceMeters })} · ${formatWalkDuration(rows.records.sumOf { it.summary.activeDurationMillis })}"
-                } ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        WalkRecordsTotals(current?.records?.size,
+            current?.records?.sumOf { it.summary.distanceMeters } ?: 0.0,
+            current?.records?.sumOf { it.summary.activeDurationMillis } ?: 0L,
+            failed = error != null)
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))

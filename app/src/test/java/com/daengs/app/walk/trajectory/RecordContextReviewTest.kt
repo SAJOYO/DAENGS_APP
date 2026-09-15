@@ -24,6 +24,8 @@ class RecordContextReviewTest {
         assertEquals(90_000L, review.durationMillis)
         assertNull(review.frameAt(5_000).point); assertEquals(5_000L, review.frameAt(5_000).recordedAtMillis)
         assertNotNull(review.frameAt(13_000).point); assertNull(review.frameAt(80_000).point)
+        assertTrue(review.frameAt(13_000).derivedSpeedMetersPerSecond!! > 0)
+        assertNull(review.frameAt(80_000).derivedSpeedMetersPerSecond)
     }
     @Test fun `chain gap retains two source endpoints without replaying the relation`() {
         val raw = walk() + (9..17).map { fix(it, 60_000 + (it - 9) * 2_000L, 200.0 + it * 4, 1) }

@@ -68,7 +68,7 @@ class WalkExplorerPanelUiTest {
         compose.onNodeWithTag("explorer-range-slider").assertHeightIsAtLeast(48.dp)
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(2)
         capture("range-390")
-        compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().assertIsDisplayed()
         assertEquals(header, compose.onNodeWithTag("explorer-time-header").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("동선 재생").assertIsDisplayed().performClick()
@@ -76,11 +76,11 @@ class WalkExplorerPanelUiTest {
         compose.onNodeWithTag("explorer-replay-slider").assertIsDisplayed()
         assertNoScenes()
         capture("replay-390")
-        compose.onNodeWithText("구간 수정").performClick()
+        compose.onNodeWithText("구간 수정").performScrollTo().performClick()
         compose.onNodeWithTag("explorer-range-slider").assertIsDisplayed()
         compose.onNodeWithTag("explorer-replay-slider").assertDoesNotExist()
         assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
-        compose.onNodeWithText("전체 산책").performClick()
+        compose.onNodeWithText("전체 산책").performScrollTo().performClick()
         assertNoScenes()
         capture("overview-390")
     }
@@ -114,7 +114,7 @@ class WalkExplorerPanelUiTest {
         capture("replay-320-large-font")
         compose.onNodeWithText("장면 6").performClick()
         compose.onNodeWithText("일시정지").assertDoesNotExist()
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithText("– 01:00").assertIsDisplayed()
         compose.onNodeWithText("일시정지").assertDoesNotExist()
     }
@@ -128,9 +128,11 @@ class WalkExplorerPanelUiTest {
         compose.runOnIdle { example = ExplorerPanelExample.LEGACY }
         compose.onNodeWithText("구간 고르기").assertDoesNotExist()
         compose.onNodeWithTag("explorer-range-slider").assertDoesNotExist()
+        compose.onNodeWithText("동선 2", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("이 산책은 시간 구간을 고를 수 있는 측정 정보가 없어요.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
-        compose.onNodeWithText("전체 동선").assertIsDisplayed().performClick()
+        compose.onNodeWithText("전체 동선").performScrollTo().performClick()
         assertNoScenes()
         compose.onNodeWithText("장면 6").performClick()
         compose.onNodeWithText("산책을 시작했어요", useUnmergedTree = true).performScrollTo().performClick()
@@ -154,7 +156,7 @@ class WalkExplorerPanelUiTest {
         compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("다시 시도"))
         compose.onNodeWithText("다시 시도").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("화면 밖 장면 1개").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithText("– 00:30").assertIsDisplayed()
         assertNoScenes()
         assertEquals(sheet, compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top, 1f)
@@ -163,10 +165,10 @@ class WalkExplorerPanelUiTest {
     @Test fun `route details remain reachable independently of scene loading`() {
         show(ExplorerPanelExample.LOADING)
         compose.onNodeWithText("장면을 불러오고 있어요.").assertDoesNotExist()
-        compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("동선 2", substring = true).performScrollTo().performClick()
-        compose.onNodeWithText("전체 산책").assertIsDisplayed().performClick()
-        compose.onNodeWithText("경로 정보 접기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("전체 산책").performScrollTo().performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().assertIsDisplayed()
         assertNoScenes()
     }
 
@@ -182,7 +184,7 @@ class WalkExplorerPanelUiTest {
             com.daengs.app.ui.theme.DaengsTheme { WalkRouteExplorerPanel(state, {},
                 onAuxiliary = { observedId = it.id }, onContext = { contextId = it.id }) }
         }
-        compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("관측 경로 1", substring = true).performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(read.route.review.observed.sections.first().id, observedId)
@@ -190,7 +192,7 @@ class WalkExplorerPanelUiTest {
         }
         compose.onNodeWithText(recordContextTitle(context) + "\n" + recordContextTime(context)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(context.id, contextId); assertEquals(context, state.selectedContext) }
-        compose.onNodeWithText("전체 산책").assertIsDisplayed().performClick()
+        compose.onNodeWithText("전체 산책").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(RouteExplorerMode.OVERVIEW, state.mode) }
     }
 
@@ -266,7 +268,8 @@ class WalkExplorerPanelUiTest {
             assertEquals(80.0, read.route.detail.summary.distanceMeters, 0.0)
         }
         compose.onNodeWithText("01:00 선택").assertIsDisplayed()
-        compose.onNodeWithText("전체 산책").performClick()
+        compose.onNodeWithText("전체 산책").performScrollTo().performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("1분").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(0L, state.selectedSlice!!.from); assertEquals(60_000L, state.selectedSlice!!.until) }
     }

@@ -21,9 +21,11 @@ class WalkDiaryReader(
         if (sessionIds.isEmpty()) return flowOf(emptyMap())
         val expectedOwner = owner()
         val records = combine(sessionIds.distinct().map { id ->
-            combine(dao.observeEntries(id), dao.observeSceneAnalysis(id), dao.observePhotoSync(id), dao.observePhotos(id),
-                dao.observeDiaryPublication(id)) { entries, analysis, state, images, publication ->
-                id to diaryTitle(id, diaryBoardSource(entries, analysis, state, images, publication))
+            val board = combine(dao.observeSceneAnalysis(id), dao.observeDiaryPublication(id)) { analysis, publication -> analysis to publication }
+            combine(dao.observeEntries(id), board, dao.observePhotoSync(id), dao.observePhotos(id),
+                dao.observeSessions()) { entries, saved, state, images, sessions ->
+                val walk = sessions.singleOrNull { it.id == id }
+                id to diaryTitle(id, diaryBoardSource(entries, saved.first, state, images, saved.second, walk, expectedOwner))
             }
         }) { it.toList() }
         return combine(records, dao.observeSessions()) { titles, sessions ->
@@ -53,7 +55,8 @@ class WalkDiaryReader(
                     }) null
                 else assembleDiary(
                     walk,
-                    diaryBoardInput(entries, state.first, images.first, images.second, state.second),
+                    diaryBoardInput(entries, state.first, images.first, images.second, state.second,
+                        sessions.single { it.id == walk.sessionId }, expectedOwner),
                     images.third, draft?.payload, observations[walk.sessionId].orEmpty(), measurements[walk.sessionId],
                 )
             }

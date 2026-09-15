@@ -64,7 +64,7 @@ class DiaryReadingMatrixTest {
             capture("$width-$fontScale-$name", requireNotNull(rendered))
             if (index >= reader.size) {
                 compose.onNodeWithText("풀 냄새에 잠깐 멈춤").assertDoesNotExist()
-                compose.onNodeWithText("동선 탐색").assertIsDisplayed()
+                compose.onNodeWithText("걸어온 길").assertIsDisplayed()
             } else when (reader[index]) {
                 DiaryReadingExample.LONG_TITLE, DiaryReadingExample.BODY, DiaryReadingExample.ADDRESS -> {
                     val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top

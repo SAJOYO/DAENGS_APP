@@ -65,7 +65,10 @@ class WalkSessionDetailUiTest {
         compose.onNodeWithContentDescription("평균 속도", substring = true).assertIsDisplayed()
         compose.onNodeWithContentDescription("홈으로").assertExists()
         capture("walk-session-overview")
-        compose.onNodeWithText("동선 탐색").performClick()
+        val legend = compose.onNodeWithTag("speedLegend").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("걸어온 길").performClick()
+        compose.onAllNodesWithTag("speedLegend").assertCountEquals(1)
+        assertEquals(legend, compose.onNodeWithTag("speedLegend").assertIsDisplayed().fetchSemanticsNode().boundsInRoot)
         capture("walk-session-explorer")
         compose.onNodeWithContentDescription("재생 속도").performClick()
         compose.onNodeWithText("4×").performClick()
@@ -73,6 +76,7 @@ class WalkSessionDetailUiTest {
         compose.onNode(SemanticsMatcher.keyIsDefined(
             androidx.compose.ui.semantics.SemanticsActions.SetProgress)).assertIsDisplayed()
         capture("walk-session-replay")
+        assertEquals(legend, compose.onNodeWithTag("speedLegend").assertIsDisplayed().fetchSemanticsNode().boundsInRoot)
         compose.runOnIdle {
             assertTrue(explorer.playing)
             explorer.tick(1_000)
@@ -86,6 +90,7 @@ class WalkSessionDetailUiTest {
             assertEquals(RoutePlaybackSpeed.EIGHT, explorer.playbackSpeed)
         }
         compose.onNodeWithText("장면 0").performClick()
+        assertEquals(legend, compose.onNodeWithTag("speedLegend").assertIsDisplayed().fetchSemanticsNode().boundsInRoot)
         compose.runOnIdle { assertFalse(explorer.playing); assertEquals(1, mounts) }
         compose.onNodeWithTag("session-map").assertIsDisplayed()
     }
@@ -138,7 +143,7 @@ class WalkSessionDetailUiTest {
         }
         compose.onNodeWithContentDescription("걸은 시간", substring = true).assertIsDisplayed()
         compose.onNodeWithText("장면 0").assertIsDisplayed()
-        compose.onNodeWithText("동선 탐색").assertIsDisplayed()
+        compose.onNodeWithText("걸어온 길").assertIsDisplayed()
         compose.onNodeWithTag("session-map").assertIsDisplayed()
         compose.onNodeWithTag("route-backup-request").assertIsDisplayed()
         capture("walk-session-small")

@@ -48,7 +48,7 @@ class WalkRecordsActionPinsUiTest {
         await("records-count")
         compose.onNodeWithTag("records-view-overview").performClick()
         await("records-pins-browse")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 2회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 2회")
         compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 3건").performClick()
         compose.onNodeWithTag("records-pins-summary").assertTextEquals("핀 표시 2건 · 위치 없음 1건")
         val key = WalkBehaviorRecord(records[1].entries.single(), records[1]).key
@@ -57,7 +57,7 @@ class WalkRecordsActionPinsUiTest {
         compose.onNodeWithTag("records-behavior-open-$key").performScrollTo().performClick()
         assertEquals(listOf("second"), opened)
         compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 2회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 2회")
         compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 1건")
     }
 

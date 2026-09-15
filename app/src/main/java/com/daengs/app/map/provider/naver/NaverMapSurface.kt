@@ -346,13 +346,27 @@ fun NaverMapSurface(
         val art = requireNotNull(context.getDrawable(endpoint.kind.iconRes))
         val dimensions = if (endpoint.compact) diaryPinSize(endpoint.label,density,endpoint=true) else art.intrinsicWidth to art.intrinsicHeight
         endpoint.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),
-            .5,if(endpoint.compact) 0.0 else .5)
+            .5,if(endpoint.abovePoint) 1.0 else if(endpoint.compact) 0.0 else .5)
     }
+    if (scene.detachedDiaryPins) {
+        val obstacles = fixedMarkerFootprints + scene.stayStamps.map {
+            it.point to com.daengs.app.map.layout.MarkerFootprint(56.0,34.0)
+        } + scene.sessionExplorer?.recordContext?.markers.orEmpty().map {
+            val dimensions = if (it.gapBoundary) (34 * density) to (39 * density)
+                else diaryPinSize(it.label, density, endpoint = true).let { size -> size.first.toFloat() to size.second.toFloat() }
+            it.point to com.daengs.app.map.layout.MarkerFootprint(dimensions.first/density.toDouble(),dimensions.second/density.toDouble(),.5,0.0)
+        }
+        NaverDetachedMomentLayer(naverMap, recordMoments + diaryMoments, viewportSize, density, layerOrder,
+            onSelectMomentGroup, scene.completedRoute.paths + scene.sessionExplorer?.observedParts.orEmpty().map { it.path },
+            visibilityQuery, bottomPaddingPx, obstacles,
+            onBounds = { diaryMarkerBounds = it; recordMarkerBounds = emptyList() }, onVisibility = onVisibility)
+    } else {
     NaverGroupedMomentLayer(naverMap, recordMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
         topInset = topPaddingPx, bottomInset = bottomPaddingPx, onBounds = { recordMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
     NaverGroupedMomentLayer(naverMap, diaryMoments, viewportSize, density, layerOrder, onSelectMomentGroup,
         query = visibilityQuery.takeIf { scene.moments.any { it.diaryPin != null } },
         onVisibility = onVisibility, onBounds = { diaryMarkerBounds = it }, fixedMarkers = fixedMarkerFootprints)
+    }
 
     NaverMomentLayer(naverMap, visibleMoments, onSelectMoment, diagnostics, layerOrder.markers)
 
@@ -365,7 +379,8 @@ fun NaverMapSurface(
     NaverSessionRouteExplorer(naverMap, scene.sessionExplorer, scene.completedRoute.paths,
         scene.moments.filter { it.diaryPin == null && it.recordPin == null }.map { it.point } + scene.routeEndpointStamps().map { it.point } +
             scene.sessionExplorer?.recordContext?.markers.orEmpty().map { it.point },
-        viewportSize, bottomPaddingPx, density, onRouteDirectionCount, recordMarkerBounds + diaryMarkerBounds)
+        viewportSize, bottomPaddingPx, density, onRouteDirectionCount, recordMarkerBounds + diaryMarkerBounds,
+        cursorAvatarRes = avatarRes, cursorAvatarPhoto = avatarPhoto)
 
     DisposableEffect(naverMap, visibleGaps) {
         val map = naverMap

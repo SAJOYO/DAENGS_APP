@@ -7,7 +7,7 @@ data class MapVisibilityQuery(val revisionKey: String, val targets: List<MapLoca
     val bottomOcclusionPx: Int, val topLeftCoverWidthPx: Int = 0, val topLeftCoverHeightPx: Int = 0,
     val topRightCoverPx: Int = 0, val topRightCoverTopPx: Int = 0)
 /** null visibleIds means the map is moving or its size/projection is not ready. */
-data class MapVisibilityResult(val query: MapVisibilityQuery, val visibleIds: Set<String>?)
+data class MapVisibilityResult(val query: MapVisibilityQuery, val visibleIds: Set<String>?, val unplacedIds: Set<String> = emptySet())
 
 data class MapScreenPoint(val x: Float, val y: Float)
 data class MapScreenSize(val width: Float, val height: Float)

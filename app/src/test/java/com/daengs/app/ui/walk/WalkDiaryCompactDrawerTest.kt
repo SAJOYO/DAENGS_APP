@@ -53,7 +53,7 @@ class WalkDiaryCompactDrawerTest {
         compose.onNodeWithText("저장한 장면을 읽었어요.").assertIsDisplayed()
         fold()
         sceneTab().assertIsDisplayed()
-        compose.onNodeWithText("동선 탐색").assertIsDisplayed()
+        compose.onNodeWithText("걸어온 길").assertIsDisplayed()
         compose.onNodeWithText(scene.title).assertIsNotDisplayed()
         compose.onNodeWithText("저장한 장면을 읽었어요.").assertIsNotDisplayed()
         compose.onNodeWithText("동선 확대").assertIsNotDisplayed()
@@ -177,7 +177,7 @@ class WalkDiaryCompactDrawerTest {
                 onContextDismiss = state::overview,
                 explorerPanel = { WalkRouteExplorerPanel(state, {}) }, map = { Box(Modifier.fillMaxSize()) }) }
         }
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithContentDescription("재생 속도").performClick()
         compose.onNodeWithText("16×").performClick()
         compose.onNodeWithText("동선 재생").performClick()
@@ -200,7 +200,7 @@ class WalkDiaryCompactDrawerTest {
             assertEquals(64_000L, state.elapsed)
             assertNotNull(recordPresentationLayer(state, detail, null).cursor)
         }
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.onNodeWithText("일시정지").assertIsDisplayed()
         compose.onNodeWithText("16×").assertIsDisplayed()
         compose.runOnIdle { assertTrue(state.playing); assertEquals(64_000L, state.elapsed) }

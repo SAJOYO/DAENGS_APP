@@ -15,8 +15,9 @@ internal fun WalkSessionDetailRoute(
     sessionId: String, history: WalkHistory, onBack: () -> Unit,
     modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
     origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
 ) {
-    WalkDiaryMapScreen(sessionId, history, onBack, modifier, pets, origin)
+    WalkDiaryMapScreen(sessionId, history, onBack, modifier, pets, origin, photoOf)
 }
 
 @Composable
@@ -24,6 +25,7 @@ internal fun WalkDiaryMapScreen(
     sessionId: String, history: WalkHistory, onBack: () -> Unit,
     modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
     origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
 ) {
     val app = LocalContext.current.applicationContext as DaengsApp
     val account by app.sessionProvider.accountScope.collectAsState()
@@ -43,6 +45,6 @@ internal fun WalkDiaryMapScreen(
         val backupSource = remember(app, account) { app.routeBackupSource(account) }
         WalkDiaryMapForAccount(sessionId, data, data, onBack, modifier, pets, origin, account,
             backupAction = { backupSource?.let { WalkRouteBackupStatus(sessionId, it) } },
-            readComparison = { DiaryComparisonFiles.read(app, it) })
+            readComparison = { DiaryComparisonFiles.read(app, it) }, photoOf = photoOf)
     }
 }

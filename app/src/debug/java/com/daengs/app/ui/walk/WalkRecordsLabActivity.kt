@@ -32,7 +32,7 @@ import com.daengs.app.ui.walk.records.WalkRecordsScreen
 import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.walk.records.WalkRecord
 
-/** Uses the real explorer and map renderer with an explicitly labelled synthetic source. */
+/** Uses the real explorer and map renderer with an in-memory synthetic source. */
 class WalkRecordsLabActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,7 +56,7 @@ internal fun WalkRecordsLab(onBack: () -> Unit = {}, densePins: Boolean = false)
             RetainedWalkRecords(state) {
                 WalkRecordsScreen(source = if (densePins) WalkRecordsDenseLabFixture else WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
                     onBack = { state.captureRecords(); onBack() }, onOpen = state::open,
-                    sampleLabel = if (densePins) "가상 산책 12회 · 밀집 액션 144건" else "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
+                    today = WalkRecordsLabFixture.today)
             }
             Surface(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
                 shape = MaterialTheme.shapes.small) {
