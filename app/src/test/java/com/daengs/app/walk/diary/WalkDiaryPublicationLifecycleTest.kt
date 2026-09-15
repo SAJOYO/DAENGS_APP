@@ -43,11 +43,12 @@ class WalkDiaryPublicationLifecycleTest {
         val responseStarted = CompletableDeferred<Unit>()
         val syncFinished = CompletableDeferred<Unit>()
         var response: suspend () -> JSONObject = { diaryBoardFixture() }
+        var formats = listOf(ServerDiaryBoard.FORMAT)
         val now get() = ended + clock.currentTime
         val sync = WalkDiarySync(dao, { owner }, nowMillis = { now }, request = { _, path, method, _ ->
             requests++
             assertEquals("GET", method)
-            if (path.endsWith("capabilities")) JSONObject().put("diary_formats", org.json.JSONArray(listOf(ServerDiaryBoard.FORMAT)))
+            if (path.endsWith("capabilities")) JSONObject().put("diary_formats", org.json.JSONArray(formats))
             else { responseStarted.complete(Unit); response() }
         })
 
@@ -204,5 +205,30 @@ class WalkDiaryPublicationLifecycleTest {
         assertEquals(state.baseBundle, publication().publishedBundle)
         assertEquals(state.deadlineAtMillis, publication().publishedAtMillis)
         assertFalse(visible().single().preparing)
+    }
+
+    @Test fun `relational selection keeps timer from publishing old prose and recovers after restart`() = checkPublication {
+        prepare()
+        formats = listOf(com.daengs.app.walk.diary.relational.RelationalDiaryResponse.FORMAT)
+        val blocked = CompletableDeferred<Unit>()
+        response = { blocked.await(); error("cancelled before response") }
+        publisher().start(id)
+        test.runCurrent()
+        assertTrue(responseStarted.isCompleted)
+        assertTrue(dao.isRelationalDiary(id))
+        advance(20_000)
+        assertNull(publication().publishedBundle)
+        assertFalse(syncFinished.isCompleted)
+        jobs.single().cancelAndJoin()
+        val ready = com.daengs.app.walk.diary.relational.relationalFixture().put("session_id", id)
+            .put("entry_revisions", JSONObject().put("note", 1).put("action", 1))
+        ready.getJSONObject("bundle").put("client_session_id", id)
+        response = { ready }
+        publisher().recover()
+        test.runCurrent()
+        assertEquals(3, requests) // Capability, interrupted GET, recovery GET. No extra POST.
+        assertEquals(ready.toString(), dao.readRelationalDiary(id, "owner")!!.published!!.rawJson)
+        assertNull(publication().publishedBundle)
+        assertTrue(dao.pendingRelationalDiaries("owner").isEmpty())
     }
 }

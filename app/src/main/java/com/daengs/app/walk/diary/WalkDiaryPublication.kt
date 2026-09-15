@@ -22,17 +22,26 @@ class WalkDiaryPublication(
         scope.launch(dispatcher) {
             try {
                 val account = owner()
+                if (dao.isRelationalDiary(id)) {
+                    if (dao.session(id)?.ownerId == account) sync(id)
+                    return@launch
+                }
                 val state = dao.prepareLocalDiary(id, account) ?: return@launch
                 if (state.publishedBundle != null) return@launch
                 val remaining = (state.deadlineAtMillis - now()).coerceIn(0, DIARY_PREPARATION_BUDGET_MS)
+                var syncing: Job? = null
                 if (remaining > 0) {
                     // Upload/auth must never hold the local deadline job.
-                    scope.launch(dispatcher) {
+                    syncing = scope.launch(dispatcher) {
                         try { if (owner() == account) sync(id) }
                         catch (e: CancellationException) { throw e }
                         catch (_: Exception) { /* The durable upload worker retries separately. */ }
                     }
                     delay(remaining)
+                }
+                if (dao.isRelationalDiary(id)) {
+                    syncing?.join()
+                    return@launch
                 }
                 if (owner() == account && dao.session(id)?.ownerId == account)
                     dao.publishDiaryBase(id, now())
@@ -45,5 +54,7 @@ class WalkDiaryPublication(
         }
     }
 
-    suspend fun recover() { dao.pendingDiaryPublications().forEach(::start) }
+    suspend fun recover() {
+        (dao.pendingDiaryPublications() + dao.pendingRelationalDiaries(owner())).distinct().forEach(::start)
+    }
 }

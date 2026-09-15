@@ -5,6 +5,7 @@ import com.daengs.app.walk.diary.DIARY_PREPARATION_BUDGET_MS
 import com.daengs.app.walk.diary.ServerDiaryBundle
 import com.daengs.app.walk.diary.ServerDiaryBoard
 import com.daengs.app.walk.diary.storyboardHash
+import com.daengs.app.walk.diary.relational.RelationalDiaryResponse
 import com.daengs.app.walk.store.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -31,25 +32,44 @@ class WalkDiarySync(
     },
     private val pause: suspend () -> Unit = { delay(2_000) },
     private val nowMillis: () -> Long = System::currentTimeMillis,
-    private val request: suspend (String, String, String, JSONObject?) -> JSONObject = { token, path, method, body ->
-        WalkApi.call(token, path, method, body, parse = ::JSONObject).getOrThrow()
-    },
+    private val request: suspend (String, String, String, JSONObject?) -> JSONObject = ::diaryHttpRequest,
+    private val relationalPause: suspend () -> Unit = { delay(RELATIONAL_POLL_INTERVAL_MS) },
 ) {
     private val mutex = Mutex()
+    @Volatile private var activeSessionId: String? = null
 
-    suspend fun sync(token: String, sessionId: String, walkId: String, refresh: Boolean = false) = mutex.withLock {
+    suspend fun sync(token: String, sessionId: String, walkId: String, refresh: Boolean = false) {
+        // A tap queued behind this same walk confirms its result; it must not regenerate on unlock.
+        val requestedRefresh = refresh && activeSessionId != sessionId
+        mutex.withLock {
+            activeSessionId = sessionId
+            try { syncSelected(token, sessionId, walkId, requestedRefresh) }
+            finally { activeSessionId = null }
+        }
+    }
+
+    private suspend fun syncSelected(token: String, sessionId: String, walkId: String, refresh: Boolean) {
         val account = owner()
         val walk = dao.session(sessionId)
-        if (account.isBlank() || walk?.ownerId != account || walk.serverWalkId != walkId || walk.endedAtMillis == null) return@withLock
+        if (account.isBlank() || walk?.ownerId != account || walk.serverWalkId != walkId || walk.endedAtMillis == null) return
         val publication = dao.diaryPublication(sessionId)
         suspend fun closed() = publication != null && (nowMillis() >= publication.deadlineAtMillis ||
             dao.diaryPublication(sessionId)?.publishedBundle != null)
-        if (closed()) return@withLock
+        // Stored selection survives capability/network failure; never silently downgrade its writer.
+        if (dao.isRelationalDiary(sessionId)) {
+            RelationalDiarySync(dao, owner, request, relationalPause, nowMillis).sync(token, sessionId, walkId, refresh)
+            return
+        }
         val capabilities = try { request(token, "/storyboard/capabilities", "GET", null) }
         catch (e: WalkHttpException) { if (e.statusCode == 404) null else throw e }
-        if (owner() != account) return@withLock
+        if (owner() != account) return
         val formats = capabilities?.getJSONArray("diary_formats")
         val offered = formats?.let { (0 until it.length()).map(it::getString).toSet() }.orEmpty()
+        if (RelationalDiaryResponse.FORMAT in offered) {
+            RelationalDiarySync(dao, owner, request, relationalPause, nowMillis).sync(token, sessionId, walkId, refresh)
+            return
+        }
+        if (closed()) return
         val selectedFormat = when {
             ServerDiaryBoard.FORMAT in offered -> ServerDiaryBoard.FORMAT
             ServerDiaryBundle.FORMAT in offered -> ServerDiaryBundle.FORMAT
@@ -59,9 +79,9 @@ class WalkDiarySync(
         val serverBudget = (publicationCapability?.optLong("budget_ms", 10_000) ?: 10_000)
             .coerceIn(0, DIARY_PREPARATION_BUDGET_MS)
         if (selectedFormat == null) {
-            if (publication != null) return@withLock
+            if (publication != null) return
             legacy(token, sessionId, walkId, refresh)
-            return@withLock
+            return
         }
         val rows = dao.entries(sessionId)
         if (rows.any { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null ||
@@ -75,7 +95,7 @@ class WalkDiarySync(
         val stamp = diaryInputStamp(rows, photos, dao.photos(sessionId))
         val before = dao.sceneAnalysis(sessionId)
         if (!dao.acceptSceneAnalysis(WalkSceneAnalysisRow(sessionId, before?.generation ?: 0, stamp,
-                before?.inputRevision.orEmpty(), "running", null, null), account, nowMillis())) return@withLock
+                before?.inputRevision.orEmpty(), "running", null, null), account, nowMillis())) return
         val expected = JSONObject().apply { rows.forEach { put(it.id, it.revision) } }
         val path = "/$walkId/storyboard"
         val query = "$path?bundle_format=$selectedFormat&target_scene_count=${ServerDiaryBundle.TARGET_SCENES}"
@@ -154,31 +174,31 @@ class WalkDiarySync(
                 current()
                 require(response.getString("session_id") == sessionId)
                 if (response.getString("status") != "ready") {
-                    if (publication != null) return@withLock
+                    if (publication != null) return
                     legacy(token, sessionId, walkId, false)
-                    return@withLock
+                    return
                 }
                 acceptLegacy(response)
-                return@withLock
+                return
             }
             current(); validate(response)
             if (regenerate || response.getString("status") in setOf("pending", "stale", "failed", "running")) {
-                response = generate(response) ?: return@withLock
+                response = generate(response) ?: return
             }
             accept(response)
             var polls = 0
             while (polls++ < if (publication != null) 10 else 8) {
                 val status = response.getString("status")
                 if (status != "running" && !(publication != null && status == "pending")) break
-                if (closed()) return@withLock
+                if (closed()) return
                 pause(); current()
-                if (closed()) return@withLock
+                if (closed()) return
                 response = request(token, query, "GET", null)
                 accept(response)
                 // Context preparation can return pending before an LLM reservation exists.
                 // Reading alone cannot start it once the context becomes available.
                 if (publication != null && response.getString("status") == "pending") {
-                    response = generate(response) ?: return@withLock
+                    response = generate(response) ?: return
                     accept(response)
                 }
             }

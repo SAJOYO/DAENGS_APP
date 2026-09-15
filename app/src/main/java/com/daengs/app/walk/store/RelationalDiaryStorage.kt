@@ -9,6 +9,7 @@ import org.json.JSONObject
 data class RelationalDiaryCache(
     val latest: RelationalDiaryResponse,
     val published: RelationalDiaryResponse?,
+    val submissionPending: Boolean = false,
 )
 
 /** Dedicated format in the existing JSON column; no legacy board conversion or publication job. */
@@ -21,6 +22,27 @@ internal object RelationalDiaryStorage {
 
     suspend fun currentStamp(dao: WalkDao, sessionId: String): String =
         stamp(dao.entries(sessionId), dao.photoSync(sessionId), dao.photos(sessionId))
+
+    /** Durable format choice is made before the first GET, not inferred from a model result. */
+    suspend fun select(dao: WalkDao, sessionId: String, walkId: String, ownerId: String): Boolean {
+        val walk = dao.session(sessionId) ?: return false
+        if (ownerId.isBlank() || walk.ownerId != ownerId || walk.serverWalkId != walkId || walk.endedAtMillis == null) return false
+        if (dao.isRelationalDiary(sessionId)) return true
+        dao.saveSceneAnalysis(WalkSceneAnalysisRow(sessionId, 0, currentStamp(dao, sessionId), "", "pending", null, null))
+        return true
+    }
+
+    suspend fun markSubmission(dao: WalkDao, sessionId: String, walkId: String, ownerId: String, stamp: String): Boolean {
+        val walk = dao.session(sessionId) ?: return false
+        if (ownerId.isBlank() || walk.ownerId != ownerId || walk.serverWalkId != walkId || currentStamp(dao, sessionId) != stamp) return false
+        val row = dao.sceneAnalysis(sessionId) ?: return false
+        if (!row.entryStamp.startsWith(STAMP_PREFIX) || row.entryStamp != stamp || decode(row, walkId) == null) return false
+        dao.saveSceneAnalysis(row.copy(bundle = JSONObject(requireNotNull(row.bundle)).put("submission_pending", true).toString()))
+        return true
+    }
+
+    fun submissionPending(row: WalkSceneAnalysisRow?): Boolean = row?.takeIf { it.entryStamp.startsWith(STAMP_PREFIX) }
+        ?.bundle?.let { runCatching { JSONObject(it).optBoolean("submission_pending", false) }.getOrDefault(false) } ?: false
 
     /** Called inside the DAO transaction: ownership, revisions and current source are checked atomically. */
     suspend fun accept(dao: WalkDao, raw: String, sessionId: String, walkId: String,
@@ -38,6 +60,7 @@ internal object RelationalDiaryStorage {
         if (previous?.status == "ready" && previous.generation == response.generation &&
             previous.entryStamp == expectedStamp && response.status in setOf(RelationalStatus.PENDING, RelationalStatus.RUNNING)) return false
         if (previous?.status == "stale" && previous.generation == response.generation &&
+            previous.entryStamp == expectedStamp && response.status != RelationalStatus.STALE &&
             previous.inputRevision != response.inputRevision) return false
         val old = previous?.takeIf { it.entryStamp == expectedStamp }?.let { decode(it, walkId) }
         val published = when (response.status) {
@@ -46,6 +69,7 @@ internal object RelationalDiaryStorage {
             else -> old?.published?.takeIf { it.inputRevision == response.inputRevision }
         }
         val cache = JSONObject().put("format", CACHE_FORMAT).put("server_walk_id", walkId).put("latest", raw)
+            .put("submission_pending", submissionPending(previous) && response.status in setOf(RelationalStatus.PENDING, RelationalStatus.RUNNING))
             .put("published", published?.rawJson ?: JSONObject.NULL).toString()
         dao.saveSceneAnalysis(WalkSceneAnalysisRow(sessionId, response.generation, expectedStamp,
             response.inputRevision, response.status.name.lowercase(java.util.Locale.ROOT), cache,
@@ -84,6 +108,6 @@ internal object RelationalDiaryStorage {
         require(latest.status.name.lowercase(java.util.Locale.ROOT) == row.status)
         require(published == null || (published.sessionId == row.sessionId && published.status == RelationalStatus.READY &&
             published.generation <= latest.generation && published.inputRevision == latest.inputRevision && row.bundleEntryStamp == row.entryStamp))
-        RelationalDiaryCache(latest, published)
+        RelationalDiaryCache(latest, published, raw.optBoolean("submission_pending", false))
     }.getOrNull()
 }

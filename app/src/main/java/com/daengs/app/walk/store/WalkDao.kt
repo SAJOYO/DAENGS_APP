@@ -129,7 +129,8 @@ interface WalkDao {
     @Query("SELECT * FROM walk_diary_publication WHERE sessionId = :id")
     fun observeDiaryPublication(id: String): kotlinx.coroutines.flow.Flow<WalkDiaryPublicationRow?>
 
-    @Query("SELECT sessionId FROM walk_diary_publication WHERE publishedBundle IS NULL")
+    @Query("SELECT sessionId FROM walk_diary_publication WHERE publishedBundle IS NULL " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_scene_analysis a WHERE a.sessionId = walk_diary_publication.sessionId AND a.entryStamp LIKE 'diary:relational:%')")
     suspend fun pendingDiaryPublications(): List<String>
 
     @Query("SELECT COUNT(publishedBundle) FROM walk_diary_publication")
@@ -139,11 +140,13 @@ interface WalkDao {
     suspend fun freezeDiaryBase(id: String, bundle: String)
 
     @Query("UPDATE walk_diary_publication SET publishedBundle = :bundle, publishedAtMillis = :now " +
-        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now < deadlineAtMillis")
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now < deadlineAtMillis " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_scene_analysis a WHERE a.sessionId = :id AND a.entryStamp LIKE 'diary:relational:%')")
     suspend fun publishDiaryCandidate(id: String, bundle: String, now: Long): Int
 
     @Query("UPDATE walk_diary_publication SET publishedBundle = baseBundle, publishedAtMillis = :now " +
-        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now >= deadlineAtMillis")
+        "WHERE sessionId = :id AND publishedBundle IS NULL AND baseBundle IS NOT NULL AND :now >= deadlineAtMillis " +
+        "AND NOT EXISTS (SELECT 1 FROM walk_scene_analysis a WHERE a.sessionId = :id AND a.entryStamp LIKE 'diary:relational:%')")
     suspend fun publishDiaryBase(id: String, now: Long): Int
 
     @androidx.room.Transaction
@@ -159,6 +162,7 @@ interface WalkDao {
 
     @androidx.room.Transaction
     suspend fun prepareLocalDiary(id: String, ownerId: String): WalkDiaryPublicationRow? {
+        if (isRelationalDiary(id)) return null
         val row = diaryPublication(id) ?: return null
         val walk = session(id)?.takeIf { it.ownerId == ownerId && it.endedAtMillis != null } ?: return null
         if (row.baseBundle == null) {
@@ -419,6 +423,25 @@ interface WalkDao {
     suspend fun saveSceneAnalysis(row: WalkSceneAnalysisRow)
     @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
     suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM walk_scene_analysis WHERE sessionId = :id AND entryStamp LIKE 'diary:relational:%')")
+    suspend fun isRelationalDiary(id: String): Boolean
+
+    @Query("SELECT a.sessionId FROM walk_scene_analysis a INNER JOIN walk_session w ON w.id = a.sessionId " +
+        "WHERE w.ownerId = :ownerId AND w.endedAtMillis IS NOT NULL AND a.entryStamp LIKE 'diary:relational:%' " +
+        "AND (a.status IN ('pending', 'running') OR a.bundle LIKE '%\"submission_pending\":true%')")
+    suspend fun pendingRelationalDiaries(ownerId: String): List<String>
+
+    @androidx.room.Transaction
+    suspend fun selectRelationalDiary(sessionId: String, walkId: String, ownerId: String): Boolean =
+        RelationalDiaryStorage.select(this, sessionId, walkId, ownerId)
+
+    @androidx.room.Transaction
+    suspend fun markRelationalSubmission(sessionId: String, walkId: String, ownerId: String, stamp: String): Boolean =
+        RelationalDiaryStorage.markSubmission(this, sessionId, walkId, ownerId, stamp)
+
+    suspend fun relationalSubmissionPending(sessionId: String): Boolean =
+        RelationalDiaryStorage.submissionPending(sceneAnalysis(sessionId))
     @androidx.room.Transaction
     suspend fun relationalDiaryInputStamp(sessionId: String): String =
         RelationalDiaryStorage.currentStamp(this, sessionId)
