@@ -22,9 +22,10 @@ internal fun WalkRecordsTotals(count: Int?, distanceMeters: Double, activeDurati
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(count?.let { "산책 ${it}회" } ?: if (failed) "산책 기록" else "불러오는 중",
-            Modifier.testTag("records-count").alignByBaseline(), style = MaterialTheme.typography.labelLarge)
+            Modifier.testTag("records-count").alignByBaseline(),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (count != null) {
-            Text("· ${formatWalkDistance(distanceMeters)}", Modifier.alignByBaseline(),
+            Text("· 합계 ${formatWalkDistance(distanceMeters)}", Modifier.alignByBaseline(),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("· ${formatRecordsTotalDuration(activeDurationMillis)}", Modifier.alignByBaseline(),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

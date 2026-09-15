@@ -69,7 +69,7 @@ class WalkRecordsScreenTest {
             WalkRecordsScreen(source, pets, {}, {}, today = today)
         } } }
         waitText("1 페이지")
-        compose.onNodeWithText("· 4.0km").assertExists()
+        compose.onNodeWithText("· 합계 4.0km").assertExists()
         compose.onNodeWithText("· 1시간 20분").assertExists()
         compose.onNodeWithTag("records-view-overview").performClick()
         // The only trace belongs to page two, but the map uses the full selection.
@@ -77,7 +77,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-view-walks").performClick()
         compose.onNodeWithText("다음 ›").performClick()
         waitText("2 페이지")
-        compose.onNodeWithText("· 4.0km").assertExists()
+        compose.onNodeWithText("· 합계 4.0km").assertExists()
         compose.onNodeWithText("· 1시간 20분").assertExists()
         val reads = queries.size
         compose.onNodeWithTag("records-view-overview").performClick()
