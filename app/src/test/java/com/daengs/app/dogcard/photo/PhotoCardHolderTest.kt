@@ -22,22 +22,27 @@ class PhotoCardHolderTest {
         var throwOnCreate = false
         var createError: String? = null
         var gets = 0
+        var remaining: Int? = null
+        var lastTitleName: String? = null
         val urls = mutableMapOf<String, String>()
         var onDownload: (suspend () -> Unit)? = null
         var onCreate: (suspend () -> Unit)? = null
         var onList: (suspend () -> Unit)? = null
 
-        override suspend fun create(token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Result<PhotoCard> {
+        override suspend fun create(
+            token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String?,
+        ): Result<PhotoCard> {
             onCreate?.invoke()
+            lastTitleName = titleName
             if (throwOnCreate) throw IllegalStateException("만드는 중 예외")
             createError?.let { return Result.failure(IllegalStateException(it)) }
             val made = card("new-$month", month, PhotoCardStatus.Generating, at = 1_000L)
             server.add(0, made)
             return Result.success(made)
         }
-        override suspend fun list(token: String): Result<List<PhotoCard>> {
+        override suspend fun list(token: String): Result<PhotoCardList> {
             onList?.invoke()
-            return if (failList) Result.failure(IllegalStateException("서버에 닿지 못했어요.")) else Result.success(server.toList())
+            return if (failList) Result.failure(IllegalStateException("서버에 닿지 못했어요.")) else Result.success(PhotoCardList(server.toList(), remaining))
         }
         override suspend fun get(token: String, id: String): Result<PhotoCardDetail> {
             gets++
@@ -399,5 +404,63 @@ class PhotoCardHolderTest {
         h.forget()
         assertTrue(h.unrevealed.isEmpty())
         assertTrue(log.load().isEmpty())
+    }
+
+    /** 도감 머리말 · 만들기 화면이 「오늘 1번 남았어요」 를 이걸로 띄운다 (docs §9.2). */
+    @Test
+    fun `목록의 남은 횟수를 들고 있는다`() = runTest {
+        val remote = FakeRemote().apply { remaining = 1 }
+        val h = holder(remote)
+        h.load()
+        assertEquals(1, h.dailyRemaining)
+    }
+
+    /** 한도는 서버가 완성되는 순간 쓴다 — 그림을 받아 칸이 바뀌는 순간 앱도 하나 줄인다 (docs §9.2). */
+    @Test
+    fun `완성돼 그림을 받으면 남은 횟수를 하나 줄인다`() = runTest {
+        val remote = FakeRemote().apply { remaining = 1 }
+        val h = holder(remote)
+        h.load()
+        h.create(4, "콩이", null, byteArrayOf(9))
+        remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
+        remote.urls["new-4"] = "https://x/n.png"
+        h.pollOnce()
+        assertEquals(0, h.dailyRemaining)
+    }
+
+    /** #543 배포 전에는 남은 횟수를 모른다 — 그때는 막지 않는다 (docs §9.1). */
+    @Test
+    fun `남은 횟수를 모르면 줄이지 않는다`() = runTest {
+        val remote = FakeRemote().apply { remaining = null }
+        val h = holder(remote)
+        h.load()
+        h.create(4, "콩이", null, byteArrayOf(9))
+        remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
+        remote.urls["new-4"] = "https://x/n.png"
+        h.pollOnce()
+        assertNull(h.dailyRemaining)
+    }
+
+    @Test
+    fun `제목 이름을 서버로 넘긴다`() = runTest {
+        val remote = FakeRemote()
+        val h = holder(remote)
+        h.create(4, "안녕", "d-1", byteArrayOf(9), "NEO")
+        assertEquals("NEO", remote.lastTitleName)
+    }
+
+    /** 달 막기는 고른 강아지의 `Ready`·`Generating` 카드만 본다 — `Failed` 는 다시 만들 수 있어야 한다 (docs §9.2). */
+    @Test
+    fun `강아지별로 이미 있는 달을 모은다`() = runTest {
+        val remote = FakeRemote().apply {
+            server += card("a", 4, PhotoCardStatus.Ready).copy(dogId = "d-1")
+            server += card("b", 9, PhotoCardStatus.Failed).copy(dogId = "d-1")
+            server += card("c", 9, PhotoCardStatus.Generating).copy(dogId = "d-2")
+        }
+        val h = holder(remote)
+        h.load()
+        assertEquals(setOf(4), h.takenMonths("d-1"))
+        assertEquals(setOf(9), h.takenMonths("d-2"))
+        assertTrue(h.takenMonths(null).isEmpty())
     }
 }

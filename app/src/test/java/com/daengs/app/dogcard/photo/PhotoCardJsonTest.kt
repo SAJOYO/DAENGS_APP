@@ -49,7 +49,18 @@ class PhotoCardJsonTest {
     @Test
     fun `목록을 읽는다`() {
         val list = parsePhotoCardList("""{"cards":[$generating,$generating]}""")
-        assertEquals(2, list.size)
+        assertEquals(2, list.cards.size)
+    }
+
+    /** #543 배포 전에는 `daily_remaining` 이 안 온다 — 그때는 앱이 막지 않는다 (docs §9.1). */
+    @Test
+    fun `남은 횟수를 읽는다`() {
+        val withRemaining = parsePhotoCardList("""{"cards":[],"daily_limit":1,"daily_remaining":0}""")
+        assertEquals(0, withRemaining.dailyRemaining)
+        val absent = parsePhotoCardList("""{"cards":[]}""")
+        assertNull(absent.dailyRemaining)
+        val explicitNull = parsePhotoCardList("""{"cards":[],"daily_limit":null,"daily_remaining":null}""")
+        assertNull(explicitNull.dailyRemaining)
     }
 
     @Test
@@ -63,6 +74,14 @@ class PhotoCardJsonTest {
     fun `쿼리는 한글 이름을 인코딩하고 강아지가 없으면 뺀다`() {
         assertEquals("month=4&dog_name=%EC%BD%A9%EC%9D%B4", photoCardQuery(4, "콩이", null))
         assertEquals("month=9&dog_name=a+b&dog_id=d-1", photoCardQuery(9, "a b", "d-1"))
+    }
+
+    /** 제목 이름은 앞뒤 공백을 걷고, 걷은 뒤 비면 아예 안 보낸다 (§9.2). */
+    @Test
+    fun `쿼리는 제목 이름을 걷어서 보내고 비었으면 뺀다`() {
+        assertEquals("month=9&dog_name=%EC%95%88%EB%85%95&dog_id=d-1&title_name=NEO", photoCardQuery(9, "안녕", "d-1", " NEO "))
+        assertEquals("month=9&dog_name=%EC%95%88%EB%85%95&dog_id=d-1", photoCardQuery(9, "안녕", "d-1", "  "))
+        assertEquals("month=9&dog_name=%EC%95%88%EB%85%95&dog_id=d-1", photoCardQuery(9, "안녕", "d-1", null))
     }
 
     /** 서버 `message` 는 앱이 그대로 띄우는 문장이다. */

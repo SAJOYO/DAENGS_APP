@@ -60,16 +60,34 @@ fun parsePhotoCardDetail(body: String): PhotoCardDetail {
     return PhotoCardDetail(parsePhotoCard(json), json.optStringOrNull("image_url"))
 }
 
-fun parsePhotoCardList(body: String): List<PhotoCard> {
-    val arr = JSONObject(body).getJSONArray("cards")
-    return (0 until arr.length()).map { parsePhotoCard(arr.getJSONObject(it)) }
+/**
+ * 목록 응답. `dailyRemaining` 은 #543 배포 뒤에만 온다 — 없거나 `null` 이면
+ * 배포 전이라는 뜻이라 앱은 막지 않는다 (docs/photo-cards.md §9.1).
+ */
+data class PhotoCardList(val cards: List<PhotoCard>, val dailyRemaining: Int?)
+
+fun parsePhotoCardList(body: String): PhotoCardList {
+    val json = JSONObject(body)
+    val arr = json.getJSONArray("cards")
+    val cards = (0 until arr.length()).map { parsePhotoCard(arr.getJSONObject(it)) }
+    val remaining = if (!json.has("daily_remaining") || json.isNull("daily_remaining")) {
+        null
+    } else {
+        json.optInt("daily_remaining")
+    }
+    return PhotoCardList(cards, remaining)
 }
 
-/** 메타는 쿼리다 (본문은 사진 원시 바이트). 한글 이름은 UTF-8 로 인코딩한다. */
-fun photoCardQuery(month: Int, dogName: String, dogId: String?): String = buildString {
+/**
+ * 메타는 쿼리다 (본문은 사진 원시 바이트). 한글 이름은 UTF-8 로 인코딩한다.
+ * `titleName` 은 앞뒤 공백을 걷어 비어 있으면 아예 안 보낸다 (docs/photo-cards.md §9.2).
+ */
+fun photoCardQuery(month: Int, dogName: String, dogId: String?, titleName: String? = null): String = buildString {
     append("month=").append(month)
     append("&dog_name=").append(URLEncoder.encode(dogName, "UTF-8"))
     if (dogId != null) append("&dog_id=").append(URLEncoder.encode(dogId, "UTF-8"))
+    val trimmedTitle = titleName?.trim()
+    if (!trimmedTitle.isNullOrEmpty()) append("&title_name=").append(URLEncoder.encode(trimmedTitle, "UTF-8"))
 }
 
 /** 서버 `{"detail": {"code", "message"}}` 의 문장을 그대로. 못 읽으면 상태 코드. */

@@ -15,6 +15,9 @@ const val PHOTO_POLL_MS = 5_000L
  */
 const val PHOTO_STALE_MS = 10 * 60_000L
 
+/** 달을 막는 데 세는 상태 — `Failed` 는 다시 만들 수 있어야 하니 뺀다 (docs/photo-cards.md §9.2). */
+private val TAKEN_STATUSES = setOf(PhotoCardStatus.Ready, PhotoCardStatus.Generating)
+
 /**
  * 포토 카드를 들고 있는 자리. `CardHolder` 와 같은 결이다 (`mutableStateOf` 홀더).
  *
@@ -59,6 +62,14 @@ class PhotoCardHolder(
     var unrevealed: Set<String> by mutableStateOf(reveals.load())
         private set
 
+    /**
+     * 오늘 남은 하루 한도. `null` 이면 **#543 배포 전이거나 무제한** — 그때는 막지 않는다
+     * (docs/photo-cards.md §9.1). 카드가 완성돼 그림을 받는 순간 하나 줄이고, 다음 목록에서
+     * 서버 값으로 다시 맞춘다.
+     */
+    var dailyRemaining: Int? by mutableStateOf(null)
+        private set
+
     /** 도감이 「완성됐어요」 로 알릴 카드 — 결과를 안 봤고, 완성이고, 그림까지 받은 것. */
     val readyToReveal: PhotoCard?
         get() = cards.firstOrNull { it.id in unrevealed && it.status == PhotoCardStatus.Ready && it.id in images }
@@ -80,6 +91,19 @@ class PhotoCardHolder(
 
     val latestFailure: PhotoCard? get() = cards.firstOrNull { it.status == PhotoCardStatus.Failed }
 
+    /**
+     * 그 강아지가 이미 `Ready`·`Generating` 카드를 가진 달 — 만들기 화면이 칸을 막는 데 쓴다
+     * (docs/photo-cards.md §9.2). **보호자마다 따로 센다**(결정 14) — `cards` 는 이미 이
+     * 보호자의 목록이라 그대로 세면 된다. `dogId` 가 없으면(강아지를 아직 안 골랐으면) 빈 집합.
+     */
+    fun takenMonths(dogId: String?): Set<Int> {
+        if (dogId == null) return emptySet()
+        return cards
+            .filter { it.dogId == dogId && it.status in TAKEN_STATUSES }
+            .map { it.month }
+            .toSet()
+    }
+
     fun clearCreateError() { createError = null }
 
     fun clearError() { error = null }
@@ -99,17 +123,18 @@ class PhotoCardHolder(
         val started = epoch
         val list = remote.list(token).getOrNull() ?: return
         if (epoch != started) return
-        cards = list
-        val kept = unrevealed.filter { id -> list.any { it.id == id && it.status != PhotoCardStatus.Failed } }.toSet()
+        cards = list.cards
+        dailyRemaining = list.dailyRemaining
+        val kept = unrevealed.filter { id -> list.cards.any { it.id == id && it.status != PhotoCardStatus.Failed } }.toSet()
         if (kept != unrevealed) rememberUnrevealed(kept)
-        files.keepOnly(list.map { it.id }.toSet())
+        files.keepOnly(list.cards.map { it.id }.toSet())
         images = files.existing()
         // keepOnly 가 걸린 동안 비워졌을 수 있다 — 그 사이 온 그림을 또 받지 않는다.
         if (epoch != started) return
         fetchImages(token)
     }
 
-    suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray): String? {
+    suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null): String? {
         val token = accessToken() ?: run {
             createError = "로그인하면 포토 카드를 만들 수 있어요"
             return null
@@ -120,7 +145,7 @@ class PhotoCardHolder(
         creating = true
         createError = null
         return try {
-            val result = remote.create(token, month, dogName, dogId, jpeg)
+            val result = remote.create(token, month, dogName, dogId, jpeg, titleName)
             if (epoch != started) return null
             result.fold(
                 onSuccess = { made ->
@@ -150,6 +175,11 @@ class PhotoCardHolder(
             // 받던 그림이 끊겨 칸이 계속 「만드는 중」 으로 남는다. 못 받으면 다음 조회에서 다시 받는다.
             if (detail.card.status == PhotoCardStatus.Ready && !store(detail)) return@forEach
             cards = cards.map { if (it.id == detail.card.id) detail.card else it }
+            // 서버가 한도를 쓰는 건 완성되는 순간이다 — 그림을 받아 칸이 완성으로 바뀌는
+            // 지금 하나 줄이고, 다음 목록에서 서버 값으로 다시 맞춘다 (docs §9.2).
+            if (detail.card.status == PhotoCardStatus.Ready) {
+                dailyRemaining = dailyRemaining?.let { (it - 1).coerceAtLeast(0) }
+            }
         }
     }
 
@@ -183,6 +213,7 @@ class PhotoCardHolder(
         epoch++
         cards = emptyList()
         images = emptyMap()
+        dailyRemaining = null
         createError = null
         error = null
         rememberUnrevealed(emptySet())

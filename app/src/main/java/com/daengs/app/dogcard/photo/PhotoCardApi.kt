@@ -10,9 +10,14 @@ import java.net.URL
  * 포토 카드 서버 경계. **홀더는 이 인터페이스만 본다** — 테스트가 가짜로 갈아 끼운다.
  */
 interface PhotoCardRemote {
-    /** 만들기를 **시작한다.** 202 와 `generating` 이 온다. 30~60초 뒤 [get] 이 `ready` 를 준다. */
-    suspend fun create(token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Result<PhotoCard>
-    suspend fun list(token: String): Result<List<PhotoCard>>
+    /**
+     * 만들기를 **시작한다.** 202 와 `generating` 이 온다. 30~60초 뒤 [get] 이 `ready` 를 준다.
+     * `titleName` 이 있으면 서버가 제목을 `<카드명> <titleName>` 으로 짓는다 (docs §9.1).
+     */
+    suspend fun create(
+        token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null,
+    ): Result<PhotoCard>
+    suspend fun list(token: String): Result<PhotoCardList>
     suspend fun get(token: String, id: String): Result<PhotoCardDetail>
     /** 없는 카드(404)도 성공으로 본다 — 이미 지워졌다는 뜻이라 기기에서도 지우면 된다. */
     suspend fun delete(token: String, id: String): Result<Unit>
@@ -25,12 +30,12 @@ object HttpPhotoCardRemote : PhotoCardRemote {
     val configured: Boolean get() = BuildConfig.API_BASE_URL.isNotBlank()
 
     override suspend fun create(
-        token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray,
-    ): Result<PhotoCard> = call(token, "?${photoCardQuery(month, dogName, dogId)}", "POST", jpeg) {
+        token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String?,
+    ): Result<PhotoCard> = call(token, "?${photoCardQuery(month, dogName, dogId, titleName)}", "POST", jpeg) {
         parsePhotoCard(org.json.JSONObject(it))
     }
 
-    override suspend fun list(token: String): Result<List<PhotoCard>> =
+    override suspend fun list(token: String): Result<PhotoCardList> =
         call(token, "", "GET") { parsePhotoCardList(it) }
 
     override suspend fun get(token: String, id: String): Result<PhotoCardDetail> =
