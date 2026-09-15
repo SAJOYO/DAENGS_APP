@@ -1,0 +1,89 @@
+package com.daengs.app.walk.store
+
+import com.daengs.app.walk.diary.relational.RelationalDiaryResponse
+import com.daengs.app.walk.diary.relational.RelationalStatus
+import com.daengs.app.walk.sync.diaryInputStamp
+import org.json.JSONObject
+
+/** Latest attempt and last publication are separate, so a failed refresh need not erase prose. */
+data class RelationalDiaryCache(
+    val latest: RelationalDiaryResponse,
+    val published: RelationalDiaryResponse?,
+)
+
+/** Dedicated format in the existing JSON column; no legacy board conversion or publication job. */
+internal object RelationalDiaryStorage {
+    const val STAMP_PREFIX = "diary:relational:"
+    private const val CACHE_FORMAT = "walk-relational-diary-cache-v1"
+
+    fun stamp(entries: List<WalkEntryRow>, photos: WalkPhotoSyncRow?, images: List<WalkPhotoRow>): String =
+        STAMP_PREFIX + diaryInputStamp(entries, photos, images).removePrefix("diary:")
+
+    suspend fun currentStamp(dao: WalkDao, sessionId: String): String =
+        stamp(dao.entries(sessionId), dao.photoSync(sessionId), dao.photos(sessionId))
+
+    /** Called inside the DAO transaction: ownership, revisions and current source are checked atomically. */
+    suspend fun accept(dao: WalkDao, raw: String, sessionId: String, walkId: String,
+        ownerId: String, expectedStamp: String): Boolean {
+        val response = RelationalDiaryResponse.parse(raw)
+        require(response.sessionId == sessionId) { "다른 산책의 일기 응답이에요." }
+        val walk = dao.session(sessionId) ?: return false
+        if (ownerId.isBlank() || walk.ownerId != ownerId || walk.endedAtMillis == null || walk.serverWalkId != walkId) return false
+        if (currentStamp(dao, sessionId) != expectedStamp) return false
+        if (!matchesSources(dao, response, ownerId)) return false
+        val before = dao.sceneAnalysis(sessionId)
+        val previous = before?.takeIf { it.entryStamp.startsWith(STAMP_PREFIX) }
+        if (previous != null && previous.generation > response.generation) return false
+        // A delayed poll must not regress a publication from the same generation/input.
+        if (previous?.status == "ready" && previous.generation == response.generation &&
+            previous.entryStamp == expectedStamp && response.status in setOf(RelationalStatus.PENDING, RelationalStatus.RUNNING)) return false
+        if (previous?.status == "stale" && previous.generation == response.generation &&
+            previous.inputRevision != response.inputRevision) return false
+        val old = previous?.takeIf { it.entryStamp == expectedStamp }?.let { decode(it, walkId) }
+        val published = when (response.status) {
+            RelationalStatus.READY -> response
+            RelationalStatus.STALE -> null
+            else -> old?.published?.takeIf { it.inputRevision == response.inputRevision }
+        }
+        val cache = JSONObject().put("format", CACHE_FORMAT).put("server_walk_id", walkId).put("latest", raw)
+            .put("published", published?.rawJson ?: JSONObject.NULL).toString()
+        dao.saveSceneAnalysis(WalkSceneAnalysisRow(sessionId, response.generation, expectedStamp,
+            response.inputRevision, response.status.name.lowercase(java.util.Locale.ROOT), cache,
+            response.errorCode, if (published != null) expectedStamp else null))
+        return true
+    }
+
+    /** Read the saved response only. A changed/deleted record never reappears from the cache. */
+    suspend fun read(dao: WalkDao, sessionId: String, ownerId: String): RelationalDiaryCache? {
+        val walk = dao.session(sessionId) ?: return null
+        if (ownerId.isBlank() || walk.ownerId != ownerId || walk.endedAtMillis == null) return null
+        val row = dao.sceneAnalysis(sessionId) ?: return null
+        if (!row.entryStamp.startsWith(STAMP_PREFIX) || row.entryStamp != currentStamp(dao, sessionId)) return null
+        val cache = decode(row, walk.serverWalkId ?: return null) ?: return null
+        if (!matchesSources(dao, cache.latest, ownerId)) return null
+        return cache
+    }
+
+    private suspend fun matchesSources(dao: WalkDao, response: RelationalDiaryResponse, ownerId: String): Boolean {
+        val entries = dao.entries(response.sessionId)
+        if (entries.any { it.dirty || it.pinDirty || it.pendingRequest != null || it.syncError != null ||
+                it.pinPayload?.let { pin -> JSONObject(pin).optString("state") == "provisional" } == true }) return false
+        if (entries.associate { it.id to it.revision.toLong() } != response.entryRevisions) return false
+        val photos = dao.photoSync(response.sessionId)
+        if (photos == null) return dao.photos(response.sessionId).isEmpty()
+        return photos.ownerId == ownerId && photos.pendingPayload == null && photos.revision == photos.acknowledgedRevision &&
+            response.photoManifest?.let { it.publisherId == photos.publisherId && it.revision == photos.acknowledgedRevision } == true
+    }
+
+    private fun decode(row: WalkSceneAnalysisRow, walkId: String): RelationalDiaryCache? = runCatching {
+        val raw = JSONObject(requireNotNull(row.bundle))
+        require(raw.getString("format") == CACHE_FORMAT && raw.getString("server_walk_id") == walkId)
+        val latest = RelationalDiaryResponse.parse(raw.getString("latest"))
+        val published = if (raw.isNull("published")) null else RelationalDiaryResponse.parse(raw.getString("published"))
+        require(latest.sessionId == row.sessionId && latest.generation == row.generation && latest.inputRevision == row.inputRevision)
+        require(latest.status.name.lowercase(java.util.Locale.ROOT) == row.status)
+        require(published == null || (published.sessionId == row.sessionId && published.status == RelationalStatus.READY &&
+            published.generation <= latest.generation && published.inputRevision == latest.inputRevision && row.bundleEntryStamp == row.entryStamp))
+        RelationalDiaryCache(latest, published)
+    }.getOrNull()
+}

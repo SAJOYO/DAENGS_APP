@@ -420,6 +420,19 @@ interface WalkDao {
     @Query("UPDATE walk_scene_analysis SET status = 'failed', error = :error WHERE sessionId = :sessionId AND entryStamp = :stamp AND status != 'ready'")
     suspend fun failSceneAnalysis(sessionId: String, stamp: String, error: String)
     @androidx.room.Transaction
+    suspend fun relationalDiaryInputStamp(sessionId: String): String =
+        RelationalDiaryStorage.currentStamp(this, sessionId)
+
+    @androidx.room.Transaction
+    suspend fun acceptRelationalDiary(raw: String, sessionId: String, walkId: String,
+        ownerId: String, expectedStamp: String): Boolean =
+        RelationalDiaryStorage.accept(this, raw, sessionId, walkId, ownerId, expectedStamp)
+
+    @androidx.room.Transaction
+    suspend fun readRelationalDiary(sessionId: String, ownerId: String): RelationalDiaryCache? =
+        RelationalDiaryStorage.read(this, sessionId, ownerId)
+
+    @androidx.room.Transaction
     suspend fun acceptSceneAnalysis(row: WalkSceneAnalysisRow, ownerId: String, nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (session(row.sessionId)?.ownerId != ownerId) return false
         val stamp = if (row.entryStamp.startsWith("diary:"))
@@ -427,6 +440,8 @@ interface WalkDao {
             else com.daengs.app.walk.sync.storyboardEntryStamp(entries(row.sessionId))
         if (stamp != row.entryStamp) return false
         val current = sceneAnalysis(row.sessionId)
+        // An old in-flight sync must not replace the new format or trigger legacy base publication.
+        if (current?.entryStamp?.startsWith(RelationalDiaryStorage.STAMP_PREFIX) == true) return false
         if (current != null && current.generation > row.generation) return false
         // A pending/failed/stale response must not erase the last successful source or relabel it
         // as belonging to the new input. Acceptance of that input is still checked above.
