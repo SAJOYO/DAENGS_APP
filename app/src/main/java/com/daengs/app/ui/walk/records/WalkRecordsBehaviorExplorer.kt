@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
@@ -53,6 +54,7 @@ internal fun WalkRecordsBehaviorExplorer(
     traceLoading: Boolean = false,
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
 ) {
     var selectedEntryKey by state.selectedEntryKey
     var hiddenWalkIds by state.hiddenWalkIds
@@ -185,7 +187,7 @@ internal fun WalkRecordsBehaviorExplorer(
             onToggleHidden = { id -> if (id in hideableIds) {
                 hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
             } }, onRestoreAll = { hiddenWalkIds = emptySet() }, onClearSelection = { selectedWalkId = null },
-            onOpen = onOpen, listState = state.walkListState, camera = camera, onCamera = { camera = it },
+            onOpen = onOpen, onOpenAction = onOpenAction, listState = state.walkListState, camera = camera, onCamera = { camera = it },
             fitBounds = focusBounds ?: initialBounds.orEmpty(), cameraRequest = cameraRequest,
             overlapOnly = overlapOnly, minimumWalks = minimumWalks,
             overlapHit = hit, overlapMiss = overlapMiss,
@@ -283,7 +285,7 @@ internal fun WalkRecordsBehaviorExplorer(
             else BehaviorRecordList(result.records, pets, selectedEntryKey, hidden, hideableIds,
                 { onSelect(it, false) }, { id ->
                     if (id in hideableIds) hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
-                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null)
+                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null, onOpenAction = onOpenAction)
         })
 }
 

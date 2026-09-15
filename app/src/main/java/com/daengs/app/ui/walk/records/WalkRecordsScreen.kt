@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -79,6 +80,7 @@ fun WalkRecordsScreen(
     today: LocalDate = LocalDate.now(),
     petsLoaded: Boolean = true,
     photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
 ) {
     var dogIds by rememberSaveable(stateSaver = RecordsDogIdsSaver) { mutableStateOf<Set<String>?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
@@ -241,7 +243,7 @@ fun WalkRecordsScreen(
                 } else if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
-                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source, onOpenAction = onOpenAction,
                         view = behaviorView, onView = { behaviorView = it }, state = behaviorState, actionPinState = actionPinState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
@@ -285,7 +287,7 @@ fun WalkRecordsScreen(
                             }
                         },
                         onClearOverlap = { overlapPoint = null; overlapMiss = false; selectedId = null },
-                        onOpen = onOpen, listState = overviewScroll,
+                        onOpen = onOpen, onOpenAction = onOpenAction, listState = overviewScroll,
                         camera = camera, onCamera = { camera = it },
                         fitBounds = focusBounds ?: prepared?.bounds.orEmpty(), cameraRequest = cameraRequest,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },

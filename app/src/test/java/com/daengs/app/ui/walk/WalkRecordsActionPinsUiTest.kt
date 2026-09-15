@@ -41,9 +41,9 @@ class WalkRecordsActionPinsUiTest {
     private fun await(tag: String) = compose.waitUntil(10000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
 
     @Test fun `pin types change pins only and unlocated action can open its original walk`() {
-        val opened = mutableListOf<String>()
+        val opened = mutableListOf<com.daengs.app.walk.diary.DiaryActionTarget>()
         compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
-            WalkRecordsScreen(source, emptyList(), {}, opened::add, today = LocalDate.of(2026,9,13))
+            WalkRecordsScreen(source, emptyList(), {}, { error("Lost action identity") }, today = LocalDate.of(2026,9,13), onOpenAction = opened::add)
         } } }
         await("records-count")
         compose.onNodeWithTag("records-view-overview").performClick()
@@ -55,7 +55,7 @@ class WalkRecordsActionPinsUiTest {
         compose.onNodeWithTag("records-behavior-list").performScrollToNode(hasTestTag("records-behavior-entry-$key"))
         compose.onNodeWithTag("records-behavior-entry-$key").performClick()
         compose.onNodeWithTag("records-behavior-open-$key").performScrollTo().performClick()
-        assertEquals(listOf("second"), opened)
+        assertEquals(listOf(com.daengs.app.walk.diary.DiaryActionTarget("second", "second-0")), opened)
         compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
         compose.onNodeWithTag("records-count").assertTextEquals("산책 2회")
         compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 1건")

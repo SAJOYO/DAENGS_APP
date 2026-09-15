@@ -55,6 +55,16 @@ class WalkDiaryAssemblyTest {
         assertNull(diaryTitle("s", input.source()))
     }
 
+    @Test fun `pending publication keeps original actions addressable without exposing draft scenes`() {
+        val action = WalkEntry("sniff", "s", WalkMomentType.SNIFFING, 1000)
+        val diary = assemble(empty.copy(entries = listOf(row(note), row(action)),
+            publication = WalkDiaryPublicationRow("s", 10000, 30000, baseBundle = "not yet prepared")))
+        val reading = requireNotNull(DiaryActionTarget("s", "sniff").resolve(diary))
+        assertEquals(action.copy(baseVersion = com.daengs.app.walk.WalkEntryVersion(1, "sniff")), reading.entry)
+        assertNull(reading.scene)
+        assertTrue(diary.scenes.isEmpty())
+    }
+
     @Test fun `publication keeps saved prose and explicit edits while reconciling live entries and photos`() {
         val changed = note.copy(id = "changed", recordedAtMillis = 2000)
         val removed = note.copy(id = "removed", recordedAtMillis = 3000)

@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -79,6 +80,7 @@ internal fun WalkRecordsOverview(
     routeSource: WalkRecordsSource? = null,
     actionPinState: WalkRecordsActionPinState = rememberWalkRecordsActionPinState(),
     pinBehavior: WalkMomentType? = null,
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
 ) {
     val selected = selection.records.firstOrNull { it.summary.sessionId == selectedId }
     val highlighted = selected?.takeUnless { it.summary.sessionId in hiddenIds }
@@ -318,7 +320,7 @@ internal fun WalkRecordsOverview(
                 else BehaviorRecordList(pinRecords, pets, actionPinState.selectedKey.value, hiddenIds,
                     displayableWalkIds,
                     { key -> pinRecords.firstOrNull { it.key == key }?.let(choosePin) }, onToggleHidden,
-                    onOpen, listModifier, actionPinState.listState)
+                    onOpen, listModifier, actionPinState.listState, onOpenAction = onOpenAction)
             } else WalkRecordsMapList(relatedRecords, pets, selectedId, hiddenIds, displayableWalkIds,
                 { setExpanded(true); onSelect(it) }, onToggleHidden, onOpen, listModifier, listState)
         })

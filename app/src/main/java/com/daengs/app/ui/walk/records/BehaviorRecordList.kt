@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +47,7 @@ internal fun BehaviorRecordList(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     availabilityChecked: Boolean = true,
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
 ) {
     LazyColumn(modifier.testTag("records-behavior-list"), state = listState,
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
@@ -53,7 +55,7 @@ internal fun BehaviorRecordList(
         items(records, key = { it.key }) { record ->
             val id = record.walk.summary.sessionId
             BehaviorRecordCard(record, pets, record.key == selectedKey, id in hiddenIds,
-                id in hideableIds, availabilityChecked, { onSelect(record.key) }, { onToggleHidden(id) }, { onOpen(id) })
+                id in hideableIds, availabilityChecked, { onSelect(record.key) }, { onToggleHidden(id) }, { onOpenAction(DiaryActionTarget(id, record.entry.id)) })
         }
     }
 }
