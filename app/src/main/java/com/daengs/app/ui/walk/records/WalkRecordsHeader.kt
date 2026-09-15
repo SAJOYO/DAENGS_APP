@@ -29,6 +29,7 @@ internal fun WalkRecordsHeader(
     query: WalkRecordsQuery, pets: List<Pet>, overview: Boolean, behavior: WalkMomentType?,
     onBack: () -> Unit, onOverview: (Boolean) -> Unit, onConditions: () -> Unit,
     today: LocalDate = LocalDate.now(),
+    countLabel: String? = null,
 ) {
     val dogLabel = query.dogIds?.let { ids ->
         if (ids.size == 1) pets.firstOrNull { it.id in ids }?.name ?: "선택한 강아지" else "${ids.size}마리"
@@ -53,6 +54,11 @@ internal fun WalkRecordsHeader(
                     DaengsIconView(DaengsIcon.ChevronRight, Modifier.size(24.dp).rotate(180f), MaterialTheme.colorScheme.onSurface)
                 }
                 Text("산책 기록", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                countLabel?.let {
+                    Text(it, Modifier.padding(start = 12.dp, end = 8.dp).testTag("records-count"),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             Surface(onClick = onConditions, color = PinkFaint, shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp)
@@ -85,5 +91,5 @@ internal fun WalkRecordsHeader(
 @Preview(showBackground = true, widthDp = 320, fontScale = 1.5f)
 @Composable
 private fun RecordsHeaderPreview() {
-    DaengsTheme { WalkRecordsHeader(WalkRecordsQuery(), recordsPreviewPets(), false, null, {}, {}, {}) }
+    DaengsTheme { WalkRecordsHeader(WalkRecordsQuery(), recordsPreviewPets(), false, null, {}, {}, {}, countLabel = "산책 12회") }
 }

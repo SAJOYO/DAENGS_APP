@@ -114,17 +114,20 @@ internal fun WalkRecordCardHeader(record: WalkRecord, pets: List<Pet>, compact: 
         if (names.size > 2) " 외 ${names.size - 2}마리" else ""
     val weather = if (WalkDepartureWeather.of(walk.weather?.weatherCode) == WalkDepartureWeather.UNKNOWN)
         "출발 날씨 정보 없음" else "출발 ${weatherLabel(requireNotNull(walk.weather))}"
-    Row(Modifier.padding(if (compact) 10.dp else 14.dp), horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
+    Row(Modifier.padding(horizontal = if (compact) 12.dp else 14.dp, vertical = if (compact) 6.dp else 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
+        // The shared endpoint label (출발·도착) needs the existing 48dp minimum.
         WalkRouteThumbnail(walk, Modifier.size(if (compact) 48.dp else 84.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 6.dp)) {
             Text(walkDiaryTitle(walk, record.title?.takeIf { it.isNotBlank() }),
                 style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
-            Text(companions, Modifier.semantics {
-                contentDescription = if (names.isEmpty()) companions else "동행견: ${names.joinToString(", ")}"
-            }, style = MaterialTheme.typography.labelMedium,
+            Text(if (compact) "$companions · $weather" else companions, Modifier.semantics {
+                contentDescription = (if (names.isEmpty()) companions else "동행견: ${names.joinToString(", ")}") +
+                    if (compact) " · $weather" else ""
+            }, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
-            Text("${formatWalkClock(walk.startedAtMillis)} · $weather",
+            if (!compact) Text("${formatWalkClock(walk.startedAtMillis)} · $weather",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

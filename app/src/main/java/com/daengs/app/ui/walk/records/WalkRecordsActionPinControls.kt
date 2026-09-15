@@ -30,16 +30,16 @@ internal fun WalkRecordsActionPinControls(state: WalkRecordsActionPinState, beha
 internal fun WalkRecordsActionSearch(state: WalkRecordsActionPinState, behavior: WalkMomentType? = null,
     modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     if (!state.enabled.value) return
-    Row(modifier.horizontalScroll(rememberScrollState()).testTag("records-action-filter"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier.horizontalScroll(rememberScrollState()).testTag("records-action-filter"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         val types = if (behavior != null) listOf(behavior) else listOf(null) + RECORD_ACTION_TYPES
         types.forEach { type ->
-            FilterChip(label = { Text(type?.label ?: "전체") }, selected = (behavior ?: state.type.value) == type,
+            FilterChip(label = { Text(type?.label ?: "전체", style = MaterialTheme.typography.labelMedium) }, selected = (behavior ?: state.type.value) == type,
                 leadingIcon = type?.let { { Image(painterResource(when (type) {
                     WalkMomentType.SNIFFING -> R.drawable.ic_walk_sniffing
                     WalkMomentType.EXCRETION -> R.drawable.ic_walk_excretion
                     WalkMomentType.BARKING -> R.drawable.ic_walk_barking
                     else -> R.drawable.ic_walk_note
-                }), null, Modifier.size(20.dp)) } },
+                }), null, Modifier.size(16.dp)) } },
                 onClick = { state.type.value = type; state.clearInspection(); onSearch() },
                 modifier = Modifier.testTag("records-pins-type-${type?.behaviorCode ?: "all"}"))
         }

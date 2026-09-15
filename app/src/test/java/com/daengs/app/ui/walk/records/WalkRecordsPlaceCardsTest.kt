@@ -114,4 +114,58 @@ class WalkRecordsPlaceCardsTest {
         compose.onNodeWithTag("records-place-next").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("records-place-peek-open").performScrollTo().assertIsDisplayed()
     }
+
+    @Test fun `empty action filter explains the result in collapsed card and can restore all actions`() {
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsOverview(WalkRecordsSelection(WalkRecordsQuery(), records), emptyList(), null, emptyList(), null,
+                {}, null, emptySet(), {}, {}, {}, {}, {}, rememberLazyListState(), null, {}, emptyList(), 0)
+        } } }
+        compose.onNodeWithTag("records-pins-type-excretion").performClick()
+        compose.onNodeWithText("배설 기록이 없어요.").assertIsDisplayed()
+        compose.onNodeWithTag("records-map-sheet-toggle").performClick()
+        compose.onNodeWithTag("records-actions-empty").assertIsDisplayed()
+        compose.onNodeWithTag("records-actions-empty-action").assertTextContains("모든 행동 보기").performClick()
+        compose.onNodeWithTag("records-place-index").assertTextEquals("1 / 2 산책")
+        compose.onNodeWithTag("records-actions-empty").assertDoesNotExist()
+    }
+
+    @Test fun `unlocated action remains explicit in compact card and opens its original diary`() {
+        val unlocated = records.take(1).map { walk -> walk.copy(entries = walk.entries.map { it.copy(point = null) }) }
+        val opened = mutableListOf<DiaryActionTarget>()
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            WalkRecordsOverview(WalkRecordsSelection(WalkRecordsQuery(), unlocated), emptyList(), null, emptyList(), null,
+                {}, null, emptySet(), {}, {}, {}, {}, {}, rememberLazyListState(), null, {}, emptyList(), 0,
+                onOpenAction = opened::add)
+        } } }
+        compose.onNodeWithTag("records-place-index").assertTextContains("위치 없음", substring = true)
+        compose.onNodeWithTag("records-place-peek-open").assertIsDisplayed().performClick()
+        assertEquals(listOf(DiaryActionTarget("recent", "action-0")), opened)
+    }
+
+    @Test fun `route failure retry remains accessible above expanded cards and preserves selected action`() {
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val selection = WalkRecordsSelection(WalkRecordsQuery(), records)
+        val source = object : WalkRecordsSource {
+            override suspend fun select(query: WalkRecordsQuery) = selection
+            override suspend fun loadRoute(record: WalkRecord): WalkSummary {
+                if (reads.incrementAndGet() == 1) error("route unavailable")
+                return record.summary
+            }
+        }
+        var pins: WalkRecordsActionPinState? = null
+        compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
+            val state = rememberWalkRecordsActionPinState()
+            SideEffect { pins = state }
+            WalkRecordsOverview(selection, emptyList(), null, emptyList(), null,
+                {}, "recent", emptySet(), {}, {}, {}, {}, {}, rememberLazyListState(), null, {}, emptyList(), 0,
+                routeSource = source, expanded = true, actionPinState = state)
+        } } }
+        compose.runOnIdle { pins!!.inspect(walkRecordsActionPins(selection).groups.single()) }
+        val selected = pins!!.selectedKey.value
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-route-error").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("records-route-retry").performScrollTo().assertIsDisplayed().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-route-error").fetchSemanticsNodes().isEmpty() }
+        compose.runOnIdle { assertEquals(selected, pins!!.selectedKey.value); assertEquals(2, reads.get()) }
+        compose.onNodeWithTag("records-place-walk-recent").assertExists()
+    }
 }

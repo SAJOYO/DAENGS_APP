@@ -209,20 +209,17 @@ fun WalkRecordsScreen(
         if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
     }
     BackHandler(onBack = onBack)
+    val current = remember(selection, behavior) {
+        selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
+    }
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
             onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
-            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today)
+            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today,
+            countLabel = current?.let { "산책 ${it.records.size}회" } ?: if (error != null) "산책 기록" else "불러오는 중")
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        val current = remember(selection, behavior) {
-            selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
-        }
-        WalkRecordsTotals(current?.records?.size,
-            current?.records?.sumOf { it.summary.distanceMeters } ?: 0.0,
-            current?.records?.sumOf { it.summary.activeDurationMillis } ?: 0L,
-            failed = error != null)
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))

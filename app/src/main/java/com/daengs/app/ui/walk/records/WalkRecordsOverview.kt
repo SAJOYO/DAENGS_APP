@@ -144,6 +144,17 @@ internal fun WalkRecordsOverview(
     var localExpanded by rememberSaveable { mutableStateOf(false) }
     val sheetExpanded = expanded ?: localExpanded
     val setExpanded: (Boolean) -> Unit = { localExpanded = it; onExpanded(it) }
+    val emptyActions: @Composable () -> Unit = {
+        val canClearType = pinBehavior == null && actionPinState.type.value != null
+        WalkRecordsEmptyActions(
+            "${(pinBehavior ?: actionPinState.type.value)?.label ?: "행동"} 기록이 없어요.",
+            if (canClearType) "모든 행동 보기" else "산책 목록 보기",
+            onAction = {
+                actionPinState.clearInspection(); onInspect(null)
+                if (canClearType) { actionPinState.type.value = null; actionPinState.allRecords() }
+                else { actionPinState.browsing.value = false; setExpanded(true) }
+            })
+    }
     val choosePin: (WalkBehaviorRecord) -> Unit = { record ->
         actionPinState.selectedKey.value = record.key
         if (record.walk.summary.sessionId !in hiddenIds) {
@@ -292,6 +303,11 @@ internal fun WalkRecordsOverview(
             }
         },
         details = {
+            if (routeError != null) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                .testTag("records-route-error"), verticalAlignment = Alignment.CenterVertically) {
+                Text(routeError, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                TextButton(onClick = routePresentation.retry, Modifier.testTag("records-route-retry")) { Text("다시 시도") }
+            }
             if (actionPinState.browsing.value && pinGroup != null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (pinRecords.mapNotNull { it.point }.distinct().size > 1 && (camera?.zoom ?: 16.0) < 21.0) {
@@ -337,7 +353,7 @@ internal fun WalkRecordsOverview(
         },
         records = { listModifier ->
             if (actionPinState.browsing.value) {
-                if (pinRecords.isEmpty()) RecordsMessage("표시할 액션 기록이 없어요.", modifier = listModifier)
+                if (pinRecords.isEmpty()) Box(listModifier, contentAlignment = Alignment.Center) { emptyActions() }
                 else if (pinGroup != null) WalkRecordsPlaceList(visits, pets, actionPinState.selectedKey.value,
                     selectPlaceAction, { record -> choosePin(record); setExpanded(false) },
                     onOpenAction, routeSource, listModifier, actionPinState.listState)
@@ -349,8 +365,10 @@ internal fun WalkRecordsOverview(
                 { setExpanded(true); onSelect(it) }, onToggleHidden, onOpen, listModifier, listState)
         },
         // Reserve this height before a pin is picked so inspection never shifts the map or drawer.
-        collapsedHeight = 192.dp,
-        collapsedContent = if (peek != null && actionPinState.enabled.value && !overlapOnly && unplacedCount == 0) ({
+        collapsedHeight = 156.dp,
+        // Zooming can move native pins outside the viewport; the inspected place stays readable.
+        collapsedContent = if (peek != null && actionPinState.enabled.value && !overlapOnly &&
+            (unplacedCount == 0 || pinGroup != null)) ({
             WalkRecordsPlacePeek(visits, peek, pets, selectPlaceAction, {
                 selectPlaceAction(peek); setExpanded(true)
                 pinScope.launch {
@@ -359,7 +377,7 @@ internal fun WalkRecordsOverview(
                     actionPinState.listState.scrollToItem(index.coerceAtLeast(0))
                 }
             }, onOpenAction)
-        }) else null)
+        }) else if (actionPinState.browsing.value && pinRecords.isEmpty() && actionPinState.enabled.value && !overlapOnly) emptyActions else null)
 }
 
 /** Network availability is separate from brush rendering and never replaces the local record list. */

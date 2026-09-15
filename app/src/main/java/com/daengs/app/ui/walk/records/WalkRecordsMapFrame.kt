@@ -48,13 +48,13 @@ internal fun WalkRecordsMapFrame(
         val density = LocalDensity.current
         var controlsHeight by remember { mutableIntStateOf(0) }
         val insets = with(density) { RecordsMapInsets(
-            top = (controlsHeight + 24.dp.roundToPx()).coerceAtMost((maxHeight * .28f).roundToPx()),
+            top = (controlsHeight + 16.dp.roundToPx()).coerceAtMost((maxHeight * .28f).roundToPx()),
             bottom = if (wide) 0 else panelHeight.roundToPx()) }
         // Mount with final overlay insets; a second initial fit would overwrite a restored camera.
         if (controlsHeight > 0) CompositionLocalProvider(LocalRecordsMapInsets provides insets) {
             map(Modifier.fillMaxSize().padding(end = if (wide) panelWidth else 0.dp))
         }
-        Surface(Modifier.align(Alignment.TopStart).padding(12.dp)
+        Surface(Modifier.align(Alignment.TopStart).padding(horizontal = 12.dp, vertical = 8.dp)
             .widthIn(max = (maxWidth - if (wide) panelWidth else 0.dp) - 24.dp),
             shape = RoundedCornerShape(12.dp), shadowElevation = 2.dp) {
             Column(Modifier.testTag("records-map-controls").onSizeChanged { controlsHeight = it.height }

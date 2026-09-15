@@ -57,7 +57,7 @@ internal fun WalkRecordsPlacePeek(visits: List<PlaceWalk>, current: WalkBehavior
                 modifier = Modifier.width(48.dp).testTag("records-place-previous")
                     .semantics { contentDescription = "이전 산책" }) { Text("‹") }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("${index + 1} / ${visits.size} 산책", style = MaterialTheme.typography.labelSmall,
+                Text("${index + 1} / ${visits.size} 산책" + if (current.point == null) " · 위치 없음" else "", style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.testTag("records-place-index"))
                 Text("${placeActionDay(current)} ${formatWalkClock(current.entry.recordedAtMillis)} · ${current.entry.type.label}", maxLines = 1,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall,
@@ -123,7 +123,21 @@ internal fun WalkRecordsPlaceList(visits: List<PlaceWalk>, pets: List<Pet>, sele
 private fun placeActionDay(record: WalkBehaviorRecord) = Instant.ofEpochMilli(record.entry.recordedAtMillis)
     .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("M월 d일"))
 
+@Composable
+internal fun WalkRecordsEmptyActions(message: String, action: String, onAction: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("records-actions-empty"),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onAction, modifier = Modifier.testTag("records-actions-empty-action")) { Text(action) }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 320, fontScale = 1.5f)
+@Composable
+private fun EmptyActionsPreview() { DaengsTheme { WalkRecordsEmptyActions("킁킁 기록이 없어요.", "모든 행동 보기", {}) } }
+
 @Preview(showBackground = true, widthDp = 390)
+@Preview(showBackground = true, widthDp = 320, fontScale = 1.5f)
 @Composable
 private fun PlacePeekPreview() { DaengsTheme {
     val visits = placeWalks(previewRecordBehaviors().records)
