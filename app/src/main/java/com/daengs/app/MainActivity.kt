@@ -79,6 +79,7 @@ import com.daengs.app.ui.screening.ScreeningHistoryScreen
 import com.daengs.app.ui.pet.PetFormScreen
 import com.daengs.app.ui.chat.ChatScreen
 import com.daengs.app.ui.dex.CardDexScreen
+import com.daengs.app.ui.dex.OwnedCard
 import com.daengs.app.ui.dogcard.CutoutLabScreen
 import com.daengs.app.ui.home.HomeScreen
 import com.daengs.app.ui.home.PetNeed
@@ -1313,7 +1314,10 @@ class MainActivity : ComponentActivity() {
                                     frameCardId = null
                                     roomStore.saveFrameCardId(null)
                                 }
-                                cards.remove(card.id)
+                                when (card) {
+                                    is OwnedCard.Drawn -> cards.remove(card.id)
+                                    is OwnedCard.Photo -> Unit // Task 7
+                                }
                             }
                         },
                         draw = { done ->

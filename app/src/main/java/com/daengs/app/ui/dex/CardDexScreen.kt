@@ -96,6 +96,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
+import com.daengs.app.dogcard.photo.PhotoCard
+import java.io.File
 
 // ---------------------------------------------------------------------------
 // 네오 채소 도감
@@ -179,6 +181,38 @@ private fun DrawScope.drawLock() {
     )
 }
 
+/**
+ * 그림이 없는 포토 칸. **잠긴 칸이거나 서버가 아직 그리는 중이다.**
+ *
+ * 달별 틀 그림은 앱에 없다(서버에만 있다). 그래서 카드 비율의 어두운 판을 깔고, 잠겼으면
+ * 자물쇠를, 만드는 중이면 한 줄을 얹는다. 높이를 먼저 맞추는 것은 [HoloCard] 와 같다 —
+ * 옆 칸과 줄이 안 어긋난다.
+ */
+@Composable
+private fun PhotoBlank(locked: Boolean, label: String?, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .aspectRatio(PHOTO_RATIO, matchHeightConstraintsFirst = true)
+            .clip(RoundedCornerShape(8.dp))
+            .background(CardLock),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (locked) Canvas(Modifier.matchParentSize()) { drawLock() }
+        label?.let {
+            Text(it, color = CardWhite, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(8.dp))
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF6E9E3)
+@Composable
+private fun PhotoBlankPreview() {
+    Row(Modifier.height(220.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PhotoBlank(locked = true, label = null)
+        PhotoBlank(locked = false, label = "만드는 중…")
+    }
+}
+
 /** 뽑은 날. 기기 시간대로 읽는다 — 뽑은 사람의 하루가 기준이다. */
 private fun drawnOn(millis: Long): String =
     java.time.Instant.ofEpochMilli(millis)
@@ -209,6 +243,10 @@ fun CardDexScreen(
     onToggleImmersiveOrientation: (() -> Unit)? = null,
     /** 내가 뽑은 카드. 비어 있으면 열두 칸이 다 잠긴다 */
     drawn: List<DrawnCard> = emptyList(),
+    /** 서버 포토 카드. 실패한 것도 들어온다 — 칸에는 안 넣는다 (`dexSlots`) */
+    photos: List<PhotoCard> = emptyList(),
+    /** 받아 둔 포토 그림. 없으면 그 장은 만드는 중으로 그린다 */
+    photoFiles: Map<String, File> = emptyMap(),
     /**
      * 뽑기 화면을 띄운다. null 이면 "카드 뽑기" 자리가 안 보인다 —
      * `@Preview` 와 테스트가 그렇게 부른다.
@@ -234,13 +272,13 @@ fun CardDexScreen(
      *
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
-    onFrame: ((DrawnCard?) -> Unit)? = null,
+    onFrame: ((OwnedCard?) -> Unit)? = null,
     /**
      * 카드 한 장을 지운다. **되돌릴 수 없다.**
      *
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
-    onDelete: ((DrawnCard) -> Unit)? = null,
+    onDelete: ((OwnedCard) -> Unit)? = null,
 ) {
     var opened by remember { mutableStateOf<Int?>(null) }
     // **어느 장면인지가 곧 이머시브인지 여부다.** 예전에는 켜짐/꺼짐 불리언 하나였는데,
@@ -270,8 +308,8 @@ fun CardDexScreen(
         removedNote = null
     }
     // 확대 뷰는 지우면 곧 닫히므로, 알림은 **도감 겹**에 둔다.
-    val deleteAndTell: ((DrawnCard) -> Unit)? = onDelete?.let { go ->
-        { card: DrawnCard ->
+    val deleteAndTell: ((OwnedCard) -> Unit)? = onDelete?.let { go ->
+        { card: OwnedCard ->
             go(card)
             removedNote = "삭제되었습니다"
         }
@@ -280,7 +318,9 @@ fun CardDexScreen(
     // `opened` 는 그 리스트의 **인덱스**라, 탭을 그리드 안에만 두면 확대 뷰가 엉뚱한
     // 카드를 연다.
     var deck by rememberSaveable { mutableStateOf(DexDeck.Veggie) }
-    val all = remember(drawn) { dexSlots(drawn = drawn) }
+    val all = remember(drawn, photos, photoFiles) {
+        dexSlots(cards = DEX_CARDS + PHOTO_CARDS, drawn = drawn, photos = photos, photoFiles = photoFiles)
+    }
     val slots = remember(all, deck) { all.filter { it.card.deck == deck } }
 
     BackHandler {
@@ -431,7 +471,8 @@ private fun DexGrid(
                 of = slots.size,
                 total = slots.ownedTotal(),
                 onClose = onClose,
-                onDraw = onDraw,
+                // **포토 탭에서는 안 띄운다.** 만들기 버튼은 Task 6 이 그 자리에 단다.
+                onDraw = onDraw.takeIf { deck != DexDeck.Photo },
             )
         }
         itemsIndexed(slots) { index, slot ->
@@ -493,7 +534,7 @@ private fun DexHeader(
             // **여기가 오래 거짓말을 하던 자리다.** 분자·분모가 둘 다 `DEX_CARDS.size` 라
             // 뽑지도 않은 카드를 12/12 수집이라고 말했다.
             if (kinds == 0) {
-                "카드를 뽑아 도감을 채워 보세요"
+                if (deck == DexDeck.Photo) "포토 카드를 만들어 도감을 채워 보세요" else "카드를 뽑아 도감을 채워 보세요"
             } else {
                 "$kinds / $of 수집 · 내 카드 ${total}장"
             },
@@ -569,15 +610,13 @@ private fun GridCard(
     // **표지는 가장 최근에 뽑은 것이다.** 방금 뽑은 카드가 도감에 안 보이면 뽑은 것
     // 같지가 않다. 아직 안 뽑았으면 카탈로그 원화를 어둡게 덮는다.
     val mine = slot.owned.firstOrNull()
-    // **얼굴 한 장이 곧 카드가 아니다.** 자리를 비운 원화 위에 얼굴을 깔고 글자를
-    // 얹어야 카드가 된다 — 뽑기 화면이 하는 것과 같은 순서다.
-    val drawn = if (mine != null) rememberDrawnCardArt(mine) else null
-    val cover = when {
-        drawn == null -> card.artSource
-        drawn.composed -> CardArt.Asset(drawn.template!!.art)
-        else -> drawn.fallback
-    }
+    // **그림 얻기만 누끼와 포토가 갈린다** (`rememberOwnedCardArt`). 누끼는 자리를 비운 원화 위에
+    // 얼굴을 깔고 글자를 얹어야 카드가 되고, 포토는 서버가 다 그린 한 장이다.
+    val owned = rememberOwnedCardArt(mine)
+    val drawn = owned?.drawn
+    val cover = coverOf(card, owned)
     val art = rememberCardImage(cover, sample = 2)
+    val pending = (mine as? OwnedCard.Photo)?.pending == true
     val measurer = rememberTextMeasurer()
 
     // 이머시브가 **이 카드 자리에서** 출발하도록 화면 위 사각형을 들고 있는다.
@@ -607,40 +646,52 @@ private fun GridCard(
         // 같은 정렬" 이라고 부르는 배치를 그대로 쓴다 — 높이는 같고 폭만 비율만큼
         // 달라지며, 그림은 한 픽셀도 안 잘린다.
         BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            HoloCard(
-                art = art,
-                foil = card.foil,
-                input = rub.input,
-                // 그리드에서는 기울이지 않는다. 열두 장이 한꺼번에 도는 건 산만하다.
-                tilt = false,
-                // 꾹 누르는 동안 차오르는 테두리. **없으면 카드가 멈춘 줄 안다** —
-                // 꾹 누르기는 눌러보기 전엔 알 수가 없다.
-                hold = rub.hold,
-                holdColor = card.accent,
-                veil = if (slot.locked) CardLock else null,
-                quiet = foilQuietFor(card.id),
-                beneath = if (drawn?.composed == true) {
-                    { drawCardFace(drawn.face!!, drawn.template!!) }
-                } else {
-                    null
-                },
-                above = if (drawn?.composed == true) {
-                    { drawCardText(measurer, drawn.template!!, drawn.name, drawn.code) }
-                } else {
-                    null
-                },
-                // 칸 폭의 4:5. 웹판 `.slot .frame` 과 같은 비율이다.
-                modifier = Modifier
-                    .height(maxWidth * SLOT_RATIO)
-                    .onGloballyPositioned { at = it.boundsInWindow() }
-                    // **드래그를 안 먹는다.** 먹으면 카드를 짚고 쓸어내릴 때 목록이
-                    // 안 움직인다.
-                    .rubbable(rub, consume = false),
-            )
-            // **잠긴 카드에는 자물쇠를 얹는다.** 통째로 덮고 나면 그냥 검은 네모라
-            // 그림을 못 받아 온 칸인지 안 뽑은 칸인지 구분이 안 된다.
-            if (slot.locked) {
-                Canvas(Modifier.matchParentSize()) { drawLock() }
+            if (cover == null) {
+                // **포토 카드는 앱에 틀 그림이 없다.** 잠긴 칸이거나 아직 만드는 중이면
+                // 빈 판 + 자물쇠(또는 안내 한 줄)로 대신한다.
+                PhotoBlank(
+                    locked = slot.locked,
+                    label = if (pending) "만드는 중…" else null,
+                    modifier = Modifier.height(maxWidth * SLOT_RATIO),
+                )
+            } else {
+                HoloCard(
+                    art = art,
+                    foil = card.foil,
+                    // 포토 포일은 표 한 곳(`PHOTO_FOIL`)에 모아 둔다 — 손볼 때 그 표만 고친다.
+                    tune = if (card.isPhoto) PHOTO_FOIL.getValue(card.no).tune else FoilTune(),
+                    input = rub.input,
+                    // 그리드에서는 기울이지 않는다. 열두 장이 한꺼번에 도는 건 산만하다.
+                    tilt = false,
+                    // 꾹 누르는 동안 차오르는 테두리. **없으면 카드가 멈춘 줄 안다** —
+                    // 꾹 누르기는 눌러보기 전엔 알 수가 없다.
+                    hold = rub.hold,
+                    holdColor = card.accent,
+                    veil = if (slot.locked) CardLock else null,
+                    quiet = foilQuietFor(card.id),
+                    beneath = if (drawn?.composed == true) {
+                        { drawCardFace(drawn.face!!, drawn.template!!) }
+                    } else {
+                        null
+                    },
+                    above = if (drawn?.composed == true) {
+                        { drawCardText(measurer, drawn.template!!, drawn.name, drawn.code) }
+                    } else {
+                        null
+                    },
+                    // 칸 폭의 4:5. 웹판 `.slot .frame` 과 같은 비율이다.
+                    modifier = Modifier
+                        .height(maxWidth * SLOT_RATIO)
+                        .onGloballyPositioned { at = it.boundsInWindow() }
+                        // **드래그를 안 먹는다.** 먹으면 카드를 짚고 쓸어내릴 때 목록이
+                        // 안 움직인다.
+                        .rubbable(rub, consume = false),
+                )
+                // **잠긴 카드에는 자물쇠를 얹는다.** 통째로 덮고 나면 그냥 검은 네모라
+                // 그림을 못 받아 온 칸인지 안 뽑은 칸인지 구분이 안 된다.
+                if (slot.locked) {
+                    Canvas(Modifier.matchParentSize()) { drawLock() }
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -659,7 +710,7 @@ private fun GridCard(
             )
             // 어느 야채인지는 여기 남긴다. 그림과 번호만으로는 헷갈린다.
             Text(
-                "${card.ko} · ${card.statLine}",
+                card.gridCaption,
                 color = TextMuted,
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
@@ -712,13 +763,13 @@ private fun CardViewer(
     startIndex: Int,
     onClose: () -> Unit,
     framedCardId: String? = null,
-    onFrame: ((DrawnCard?) -> Unit)? = null,
+    onFrame: ((OwnedCard?) -> Unit)? = null,
     /**
      * 카드 한 장을 지운다. **되돌릴 수 없다.**
      *
      * null 이면 그 자리가 안 뜬다 — `@Preview` 와 테스트가 그렇게 부른다.
      */
-    onDelete: ((DrawnCard) -> Unit)? = null,
+    onDelete: ((OwnedCard) -> Unit)? = null,
     /**
      * 꾹 눌러 카드 **안으로** 들어간다.
      *
@@ -739,14 +790,12 @@ private fun CardViewer(
     // 종류를 넘기는 것은 좌우라, 같은 칸 안은 위아래로 넘긴다.
     var copy by remember(index) { mutableIntStateOf(0) }
     val mine = slot.owned.getOrNull(copy)
-    val drawn = if (mine != null) rememberDrawnCardArt(mine) else null
-    val cover = when {
-        drawn == null -> card.artSource
-        drawn.composed -> CardArt.Asset(drawn.template!!.art)
-        else -> drawn.fallback
-    }
+    val owned = rememberOwnedCardArt(mine)
+    val drawn = owned?.drawn
+    val cover = coverOf(card, owned)
     // 확대 뷰는 한 장뿐이라 원본 해상도로 읽는다.
     val art = rememberCardImage(cover)
+    val pending = (mine as? OwnedCard.Photo)?.pending == true
     val measurer = rememberTextMeasurer()
     // 카드를 파일로 꺼낸다. 뽑은 카드가 있을 때만 쓸 자리가 생긴다.
     val saver = rememberCardSaver()
@@ -853,9 +902,19 @@ private fun CardViewer(
             // 안 먹혀서 카드를 눌렀을 때 뒤의 "밖을 눌러 닫기" 가 대신 발동한다 —
             // 실기기에서 그렇게 나왔다. 겹을 따로 둔다.
             Box(Modifier.fillMaxWidth().graphicsLayer { alpha = cardAlpha }) {
+            if (cover == null) {
+                // 포토 카드는 앱에 틀 그림이 없다. 잠긴 칸이거나 만드는 중이면 빈 판이다.
+                PhotoBlank(
+                    locked = slot.locked,
+                    label = if (pending) "만드는 중이에요. 잠시 뒤 다시 열어 보세요" else null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
             HoloCard(
                 art = art,
                 foil = card.foil,
+                // 포토 포일은 표 한 곳(`PHOTO_FOIL`)에 모아 둔다 — 손볼 때 그 표만 고친다.
+                tune = if (card.isPhoto) PHOTO_FOIL.getValue(card.no).tune else FoilTune(),
                 input = input,
                 // 잠긴 카드는 안 기울인다. 포일도 안 도는데 기울면 그냥 흔들리는 검은 판이다.
                 tilt = !slot.locked,
@@ -898,16 +957,21 @@ private fun CardViewer(
                 Canvas(Modifier.matchParentSize()) { drawLock() }
             }
             }
+            }
 
             if (showDetail) {
                 // 내보낼 한 장. **그림을 다 읽은 뒤에만 만들어진다** — 아직 안 읽혔는데
                 // 눌리면 빈 카드가 나간다. 저장과 공유가 이 하나를 같이 쓴다.
-                val shot = if (mine != null && art != null) {
+                val shot = if (mine != null && art != null && !pending) {
                     CardShot(
                         fileName = cardFileName(
-                            templateId = mine.templateId,
+                            // 포토는 칸 id(`photo-04`)를 틀 자리에 쓴다 — 파일 이름에 달이 남는다.
+                            templateId = when (mine) {
+                                is OwnedCard.Drawn -> mine.card.templateId
+                                is OwnedCard.Photo -> card.id
+                            },
                             cardId = mine.id,
-                            at = mine.drawnAtMillis,
+                            at = mine.madeAtMillis,
                         ),
                         art = art,
                         // 얼굴이 없는 카드(시드 열두 장)는 원화가 곧 그림이라
@@ -915,7 +979,7 @@ private fun CardViewer(
                         template = if (drawn?.composed == true) drawn.template else null,
                         face = drawn?.face,
                         name = mine.dogName,
-                        code = mine.codeText,
+                        code = (mine as? OwnedCard.Drawn)?.card?.codeText.orEmpty(),
                     )
                 } else {
                     null
@@ -931,7 +995,7 @@ private fun CardViewer(
                     saveNote = saver.note,
                     // 이 카드가 지금 액자에 걸려 있나. 걸려 있으면 내리는 자리가 된다.
                     framed = mine != null && mine.id == framedCardId,
-                    onFrame = if (mine != null && onFrame != null) {
+                    onFrame = if (mine != null && onFrame != null && !pending) {
                         { onFrame(if (mine.id == framedCardId) null else mine) }
                     } else {
                         null
@@ -968,7 +1032,7 @@ private fun CardViewer(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                "${card.ko} · ${card.statLine}",
+                                card.gridCaption,
                                 color = Color(0xFFD9C9C3),
                                 fontSize = 12.sp,
                             )
@@ -989,8 +1053,12 @@ private fun CardViewer(
                     Spacer(Modifier.height(6.dp))
                     Text(
                         // 벌 이름은 갈래에서 가져온다. 과일 칸에서 "이 야채로" 라고 하면
-                        // 무엇을 세는 말인지가 흐려진다.
-                        "${copy + 1} / ${slot.count} · 이 ${slot.card.deck.label}로 ${slot.drawnCount}장 뽑았어요",
+                        // 무엇을 세는 말인지가 흐려진다. 포토는 "뽑았다" 가 아니라 "만들었다" 다.
+                        if (card.isPhoto) {
+                            "${copy + 1} / ${slot.count} · 이 달로 ${slot.drawnCount}장 만들었어요"
+                        } else {
+                            "${copy + 1} / ${slot.count} · 이 ${slot.card.deck.label}로 ${slot.drawnCount}장 뽑았어요"
+                        },
                         color = Color(0xFF9E8B84),
                         fontSize = 12.sp,
                     )
@@ -1120,7 +1188,7 @@ private fun CardDetailSheet(
      */
     of: Int = DEX_CARDS.size,
     /** 이 칸에서 지금 보고 있는 내 카드. null 이면 카탈로그 설명만 보여 준다 */
-    mine: DrawnCard? = null,
+    mine: OwnedCard? = null,
     /** 이미지로 내보낸다. null 이면 그 줄이 안 뜬다 — 아직 안 뽑은 칸이 그렇다 */
     onSave: (() -> Unit)? = null,
     /** 다른 앱으로 보낸다. null 이면 그 줄이 안 뜬다 */
@@ -1192,7 +1260,7 @@ private fun CardDetailSheet(
             mine?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${drawnOn(it.drawnAtMillis)}에 뽑았어요",
+                    "${drawnOn(it.madeAtMillis)}에 ${if (card.isPhoto) "만들었어요" else "뽑았어요"}",
                     color = Color(0xFF9E8B84),
                     fontSize = 12.sp,
                 )
@@ -1203,7 +1271,12 @@ private fun CardDetailSheet(
             // 인쇄된 값이고, 우리 카드에는 아이 생일에서 만든 번호가 찍혀 있다.
             // 번호판은 **내 카드의 것만** 보여 준다. 카탈로그의 `NEO-0824` 는 저쪽
             // 카드에 인쇄돼 있던 값이라 우리 화면에 나올 이유가 없다.
-            card.detailRows(total = of, code = mine?.codeText).forEach { row ->
+            val rows = if (card.isPhoto) {
+                card.photoDetailRows(likeness = (mine as? OwnedCard.Photo)?.card?.likeness, total = of)
+            } else {
+                card.detailRows(total = of, code = (mine as? OwnedCard.Drawn)?.card?.codeText)
+            }
+            rows.forEach { row ->
                 Row(Modifier.padding(vertical = 3.dp)) {
                     Text(
                         row.label,
@@ -1226,14 +1299,16 @@ private fun CardDetailSheet(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
-            Text(
-                card.flavor,
-                color = Color(0xFFD9C9C3),
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                fontStyle = FontStyle.Italic,
-            )
+            if (card.flavor.isNotBlank()) {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    card.flavor,
+                    color = Color(0xFFD9C9C3),
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    fontStyle = FontStyle.Italic,
+                )
+            }
             Spacer(Modifier.height(10.dp))
             Text(
                 card.edition,
@@ -1367,7 +1442,7 @@ private fun DeleteCardDialog(
  */
 @Composable
 private fun CopyStrip(
-    owned: List<DrawnCard>,
+    owned: List<OwnedCard>,
     picked: Int,
     onPick: (Int) -> Unit,
 ) {
@@ -1376,11 +1451,15 @@ private fun CopyStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         owned.forEachIndexed { i, card ->
-            val thumb = rememberComposedCard(card, width = COPY_THUMB_PX)
+            // 누끼는 조립해서 굽고, 포토는 받아 둔 그림을 작게 읽는다.
+            val thumb = when (card) {
+                is OwnedCard.Drawn -> rememberComposedCard(card.card, width = COPY_THUMB_PX)
+                is OwnedCard.Photo -> rememberCardImage(card.file?.let { CardArt.Local(it) }, sample = 8)
+            }
             Box(
                 Modifier
                     .height(52.dp)
-                    .aspectRatio(COPY_THUMB_RATIO)
+                    .aspectRatio(if (card is OwnedCard.Photo) PHOTO_RATIO else COPY_THUMB_RATIO)
                     .clip(RoundedCornerShape(6.dp))
                     .background(Color(0x22FFFFFF))
                     // 고른 것만 테두리를 두른다. 밝기로만 가르면 포일 위에서 안 보인다.
