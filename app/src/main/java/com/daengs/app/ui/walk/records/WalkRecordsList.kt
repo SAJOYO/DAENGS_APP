@@ -107,7 +107,8 @@ private fun WalkRecordCard(record: WalkRecord, pets: List<Pet>, onOpen: () -> Un
 
 /** Shared with map inspection; the default layout is the existing walk-list card. */
 @Composable
-internal fun WalkRecordCardHeader(record: WalkRecord, pets: List<Pet>, compact: Boolean = false) {
+internal fun WalkRecordCardHeader(record: WalkRecord, pets: List<Pet>, compact: Boolean = false,
+    compactMeta: String? = null) {
     val walk = record.summary
     val names = walk.dogIds.distinct().map { id -> pets.firstOrNull { it.id == id }?.name ?: "이름 미확인" }
     val companions = if (names.isEmpty()) "동행견 미기록" else names.take(2).joinToString(" · ") +
@@ -129,6 +130,8 @@ internal fun WalkRecordCardHeader(record: WalkRecord, pets: List<Pet>, compact: 
                 color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
             if (!compact) Text("${formatWalkClock(walk.startedAtMillis)} · $weather",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else compactMeta?.let { Text(it, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

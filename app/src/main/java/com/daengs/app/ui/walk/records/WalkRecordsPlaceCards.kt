@@ -50,26 +50,28 @@ internal fun WalkRecordsPlacePeek(visits: List<PlaceWalk>, current: WalkBehavior
     Column(Modifier.testTag("records-place-peek")) {
         Surface(onClick = onExpand, color = MaterialTheme.colorScheme.surface,
             modifier = Modifier.fillMaxWidth().testTag("records-place-peek-card")) {
-            WalkRecordCardHeader(current.walk, pets, compact = true)
+            WalkRecordCardHeader(current.walk, pets, compact = true,
+                compactMeta = "${placeActionDay(current)} ${formatWalkClock(current.entry.recordedAtMillis)} · ${current.entry.type.label}" +
+                    if (current.point == null) " · 위치 없음" else "")
         }
+        HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.background)
         Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { onSelect(visits[index - 1].actions.first()) }, enabled = index > 0,
-                modifier = Modifier.width(48.dp).testTag("records-place-previous")
-                    .semantics { contentDescription = "이전 산책" }) { Text("‹") }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("${index + 1} / ${visits.size} 산책" + if (current.point == null) " · 위치 없음" else "", style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.testTag("records-place-index"))
-                Text("${placeActionDay(current)} ${formatWalkClock(current.entry.recordedAtMillis)} · ${current.entry.type.label}", maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            TextButton(onClick = { onSelect(visits[index + 1].actions.first()) }, enabled = index < visits.lastIndex,
-                modifier = Modifier.width(48.dp).testTag("records-place-next")
-                    .semantics { contentDescription = "다음 산책" }) { Text("›") }
             TextButton(onClick = {
                 onSelect(current)
                 onOpen(DiaryActionTarget(current.entry.sessionId, current.entry.id))
-            }, modifier = Modifier.testTag("records-place-peek-open")) { Text("일기 보기") }
+            }, modifier = Modifier.testTag("records-place-peek-open")) { Text("이 산책 일기") }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { onSelect(visits[index - 1].actions.first()) }, enabled = index > 0,
+                modifier = Modifier.width(48.dp).testTag("records-place-previous")
+                    .semantics { contentDescription = "이전 산책" }) { Text("‹") }
+            Text("${index + 1} / ${visits.size}", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("records-place-index").semantics {
+                    contentDescription = "${visits.size}개 산책 중 ${index + 1}번째"
+                })
+            TextButton(onClick = { onSelect(visits[index + 1].actions.first()) }, enabled = index < visits.lastIndex,
+                modifier = Modifier.width(48.dp).testTag("records-place-next")
+                    .semantics { contentDescription = "다음 산책" }) { Text("›") }
         }
     }
 }

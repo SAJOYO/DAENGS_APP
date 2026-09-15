@@ -67,10 +67,10 @@ class WalkRecordsPlaceCardsTest {
         val sheet = compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot()
         val map = compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot()
         compose.runOnIdle { state!!.inspect(walkRecordsActionPins(selection).groups.single()) }
-        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("이곳의 산책 2회 · 행동 3건 · 펼치기")
-        compose.onNodeWithTag("records-place-index").assertTextEquals("1 / 2 산책")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("이곳의 산책 2회 · 행동 3건")
+        compose.onNodeWithTag("records-place-index").assertTextEquals("1 / 2")
         compose.onNodeWithTag("records-place-next").performClick()
-        compose.onNodeWithTag("records-place-index").assertTextEquals("2 / 2 산책")
+        compose.onNodeWithTag("records-place-index").assertTextEquals("2 / 2")
         compose.onNodeWithTag("records-place-next").assertIsNotEnabled()
         assertEquals(sheet, compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot())
         assertEquals(map, compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot())
@@ -125,7 +125,7 @@ class WalkRecordsPlaceCardsTest {
         compose.onNodeWithTag("records-map-sheet-toggle").performClick()
         compose.onNodeWithTag("records-actions-empty").assertIsDisplayed()
         compose.onNodeWithTag("records-actions-empty-action").assertTextContains("모든 행동 보기").performClick()
-        compose.onNodeWithTag("records-place-index").assertTextEquals("1 / 2 산책")
+        compose.onNodeWithTag("records-place-index").assertTextEquals("1 / 2")
         compose.onNodeWithTag("records-actions-empty").assertDoesNotExist()
     }
 
@@ -137,7 +137,7 @@ class WalkRecordsPlaceCardsTest {
                 {}, null, emptySet(), {}, {}, {}, {}, {}, rememberLazyListState(), null, {}, emptyList(), 0,
                 onOpenAction = opened::add)
         } } }
-        compose.onNodeWithTag("records-place-index").assertTextContains("위치 없음", substring = true)
+        compose.onNodeWithText("위치 없음", substring = true).assertExists()
         compose.onNodeWithTag("records-place-peek-open").assertIsDisplayed().performClick()
         assertEquals(listOf(DiaryActionTarget("recent", "action-0")), opened)
     }

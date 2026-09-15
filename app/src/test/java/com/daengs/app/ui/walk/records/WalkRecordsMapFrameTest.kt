@@ -54,7 +54,8 @@ class WalkRecordsMapFrameTest {
         assertTrue(map.bottom - map.top > (sheet.bottom - sheet.top) * 2f)
         val controls = compose.onNodeWithTag("records-map-controls").getUnclippedBoundsInRoot()
         assertTrue((controls.bottom - controls.top).value <= 56f)
-        assertTrue((sheet.bottom - sheet.top).value <= 156f)
+        assertTrue((sheet.bottom - sheet.top).value <= 168f)
+        assertTrue(sheet.left > map.left && sheet.right < map.right && sheet.bottom < map.bottom)
         assertEquals(compose.onNodeWithTag("records-header").getUnclippedBoundsInRoot().bottom, map.top)
         capture("collapsed")
         compose.onNodeWithTag("records-map-sheet-toggle").performTouchInput {

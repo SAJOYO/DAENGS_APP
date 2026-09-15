@@ -365,7 +365,7 @@ internal fun WalkRecordsOverview(
                 { setExpanded(true); onSelect(it) }, onToggleHidden, onOpen, listModifier, listState)
         },
         // Reserve this height before a pin is picked so inspection never shifts the map or drawer.
-        collapsedHeight = 156.dp,
+        collapsedHeight = 180.dp,
         // Zooming can move native pins outside the viewport; the inspected place stays readable.
         collapsedContent = if (peek != null && actionPinState.enabled.value && !overlapOnly &&
             (unplacedCount == 0 || pinGroup != null)) ({
