@@ -3,6 +3,7 @@ package com.daengs.app.dogcard.photo
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -136,7 +137,7 @@ class PhotoCardHolderTest {
     @Test
     fun `만들면 맨 앞에 만드는 중으로 온다`() = runTest {
         val h = holder(FakeRemote())
-        assertTrue(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNotNull(h.create(4, "콩이", null, byteArrayOf(9)))
         assertEquals(PhotoCardStatus.Generating, h.cards.first().status)
         assertTrue(h.generating)
         assertFalse(h.creating)
@@ -147,7 +148,7 @@ class PhotoCardHolderTest {
     fun `만들기가 거절되면 문장을 남기고 목록은 그대로다`() = runTest {
         val remote = FakeRemote().apply { createError = "오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요." }
         val h = holder(remote)
-        assertFalse(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNull(h.create(4, "콩이", null, byteArrayOf(9)))
         assertEquals("오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요.", h.createError)
         assertTrue(h.cards.isEmpty())
         h.clearCreateError()
@@ -160,7 +161,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote()
         val h = holder(remote)
         remote.onCreate = { h.forget() }
-        assertFalse(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNull(h.create(4, "콩이", null, byteArrayOf(9)))
         assertTrue(h.cards.isEmpty())
         assertFalse(h.creating)
     }
@@ -171,7 +172,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote().apply { createError = "오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요." }
         val h = holder(remote)
         remote.onCreate = { h.forget() }
-        assertFalse(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNull(h.create(4, "콩이", null, byteArrayOf(9)))
         assertNull(h.createError)
     }
 
@@ -348,5 +349,55 @@ class PhotoCardHolderTest {
         files.write("a", byteArrayOf(1, 2, 3))
         val h = PhotoCardHolder(FakeRemote(), files, { "t" }, { 0L })
         assertTrue(h.images.containsKey("a"))
+    }
+
+    @Test
+    fun `만들면 결과를 안 본 카드로 기억한다`() = runTest {
+        val log = MemoryRevealLog()
+        val h = PhotoCardHolder(FakeRemote(), PhotoCardFiles(tmp.newFolder()), { "t" }, { 2_000L }, log)
+        val id = h.create(4, "콩이", null, byteArrayOf(9))
+        assertEquals(setOf(id), h.unrevealed)
+        assertEquals(setOf(id), log.load())
+        assertNull("아직 그리는 중이라 알릴 카드는 없다", h.readyToReveal)
+    }
+
+    @Test
+    fun `완성되고 그림까지 받아야 알릴 카드가 되고 결과를 보면 빠진다`() = runTest {
+        val remote = FakeRemote()
+        val log = MemoryRevealLog()
+        val h = PhotoCardHolder(remote, PhotoCardFiles(tmp.newFolder()), { "t" }, { 2_000L }, log)
+        val id = h.create(4, "콩이", null, byteArrayOf(9))!!
+        remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
+        remote.urls[id] = "https://x/n.png"
+        h.pollOnce()
+        assertEquals(id, h.readyToReveal?.id)
+        h.markRevealed(id)
+        assertNull(h.readyToReveal)
+        assertTrue(log.load().isEmpty())
+    }
+
+    @Test
+    fun `켜질 때 기억해 둔 카드를 이어받고 목록에 없거나 실패한 id 는 버린다`() = runTest {
+        val remote = FakeRemote().apply {
+            server += card("a", 4, PhotoCardStatus.Ready)
+            server += card("f", 9, PhotoCardStatus.Failed)
+            urls["a"] = "https://x/a.png"
+        }
+        val log = MemoryRevealLog(setOf("a", "f", "gone"))
+        val h = PhotoCardHolder(remote, PhotoCardFiles(tmp.newFolder()), { "t" }, { 2_000L }, log)
+        assertEquals(setOf("a", "f", "gone"), h.unrevealed)
+        h.load()
+        assertEquals(setOf("a"), h.unrevealed)
+        assertEquals(setOf("a"), log.load())
+        assertEquals("a", h.readyToReveal?.id)
+    }
+
+    @Test
+    fun `로그아웃하면 결과 안 본 기억도 비운다`() = runTest {
+        val log = MemoryRevealLog(setOf("a"))
+        val h = PhotoCardHolder(FakeRemote(), PhotoCardFiles(tmp.newFolder()), { "t" }, { 2_000L }, log)
+        h.forget()
+        assertTrue(h.unrevealed.isEmpty())
+        assertTrue(log.load().isEmpty())
     }
 }

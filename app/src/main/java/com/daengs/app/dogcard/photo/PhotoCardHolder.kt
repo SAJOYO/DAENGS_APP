@@ -26,6 +26,7 @@ class PhotoCardHolder(
     private val files: PhotoCardFiles,
     private val accessToken: suspend () -> String?,
     private val now: () -> Long = System::currentTimeMillis,
+    private val reveals: PhotoRevealLog = MemoryRevealLog(),
 ) {
     /** 최근이 앞이다. 실패한 카드도 들고 있는다 — 머리말의 실패 한 줄이 쓴다. */
     var cards: List<PhotoCard> by mutableStateOf(emptyList())
@@ -54,6 +55,24 @@ class PhotoCardHolder(
     var error: String? by mutableStateOf(null)
         private set
 
+    /** 결과를 아직 안 본 카드. 만든 직후 넣고, 결과 화면을 보면 뺀다 (§8.3). */
+    var unrevealed: Set<String> by mutableStateOf(reveals.load())
+        private set
+
+    /** 도감이 「완성됐어요」 로 알릴 카드 — 결과를 안 봤고, 완성이고, 그림까지 받은 것. */
+    val readyToReveal: PhotoCard?
+        get() = cards.firstOrNull { it.id in unrevealed && it.status == PhotoCardStatus.Ready && it.id in images }
+
+    fun markRevealed(id: String) {
+        if (id !in unrevealed) return
+        rememberUnrevealed(unrevealed - id)
+    }
+
+    private fun rememberUnrevealed(ids: Set<String>) {
+        unrevealed = ids
+        reveals.save(ids)
+    }
+
     /** 비우거나 지우기 도중 받던 그림이 되살아나지 않도록. */
     private var epoch = 0
 
@@ -81,6 +100,8 @@ class PhotoCardHolder(
         val list = remote.list(token).getOrNull() ?: return
         if (epoch != started) return
         cards = list
+        val kept = unrevealed.filter { id -> list.any { it.id == id && it.status != PhotoCardStatus.Failed } }.toSet()
+        if (kept != unrevealed) rememberUnrevealed(kept)
         files.keepOnly(list.map { it.id }.toSet())
         images = files.existing()
         // keepOnly 가 걸린 동안 비워졌을 수 있다 — 그 사이 온 그림을 또 받지 않는다.
@@ -88,10 +109,10 @@ class PhotoCardHolder(
         fetchImages(token)
     }
 
-    suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Boolean {
+    suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray): String? {
         val token = accessToken() ?: run {
             createError = "로그인하면 포토 카드를 만들 수 있어요"
-            return false
+            return null
         }
         // 비우는 동안(로그아웃·탈퇴) 요청이 끝나면 이전 사람의 카드나 오류 문장이 다음
         // 사람 화면에 남는다 — `store()` 와 같은 이유로 세대 번호를 찍어 둔다.
@@ -100,10 +121,14 @@ class PhotoCardHolder(
         createError = null
         return try {
             val result = remote.create(token, month, dogName, dogId, jpeg)
-            if (epoch != started) return false
+            if (epoch != started) return null
             result.fold(
-                onSuccess = { made -> cards = listOf(made) + cards.filterNot { it.id == made.id }; true },
-                onFailure = { createError = it.message ?: "카드를 만들지 못했어요."; false },
+                onSuccess = { made ->
+                    cards = listOf(made) + cards.filterNot { it.id == made.id }
+                    rememberUnrevealed(unrevealed + made.id)
+                    made.id
+                },
+                onFailure = { createError = it.message ?: "카드를 만들지 못했어요."; null },
             )
         } finally {
             creating = false
@@ -146,6 +171,7 @@ class PhotoCardHolder(
                 cards = cards.filterNot { it.id == id }
                 images = images - id
                 files.delete(id)
+                if (id in unrevealed) rememberUnrevealed(unrevealed - id)
                 true
             },
             onFailure = { error = it.message ?: "카드를 지우지 못했어요."; false },
@@ -159,6 +185,7 @@ class PhotoCardHolder(
         images = emptyMap()
         createError = null
         error = null
+        rememberUnrevealed(emptySet())
         files.clear()
     }
 

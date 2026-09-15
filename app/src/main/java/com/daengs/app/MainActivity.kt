@@ -1390,7 +1390,7 @@ class MainActivity : ComponentActivity() {
                                 error = photos.createError,
                                 onSubmit = { month, dog, jpeg ->
                                     scope.launch {
-                                        if (photos.create(month, dog.name, dog.id, jpeg)) done()
+                                        if (photos.create(month, dog.name, dog.id, jpeg) != null) done()
                                     }
                                 },
                                 onCancel = done,

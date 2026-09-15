@@ -193,7 +193,7 @@ logcat 으로 확인한다(카드 생성 비용이 들어 사용자에게 먼저
 | --- | --- |
 | `ui/dex/PhotoReveal.kt` (새) | `PhotoCardBack`(반짝이는 뒷면) · `PhotoFlip`(뒤집기) · `PhotoResult`(결과 화면). 만들기 화면과 도감이 같이 쓴다 |
 | `dogcard/photo/PhotoCardHolder.kt` | `unrevealed: Set<String>` · `markRevealed(id)` · 만든 직후 기록 · `forget()` 에서 비움 |
-| `dogcard/photo/PhotoRevealStore.kt` (새) | `unrevealed` 를 기기에 남기는 작은 저장소 (SharedPreferences, 계정별 키) |
+| `dogcard/photo/PhotoRevealLog.kt` | `unrevealed` 를 기기에 남기는 작은 저장소 (SharedPreferences 한 키, 로그아웃하면 홀더가 비운다). JVM 테스트는 `MemoryRevealLog` |
 | `ui/dex/PhotoCardMakeScreen.kt` | 사진 고르기 → 그리는 중 → 뒤집기 → 결과 / 실패 단계 |
 | `ui/dex/CardDexScreen.kt` | 만드는 중 칸 뒷면 · 완성 알림 한 줄 · 알림에서 여는 결과 오버레이 |
 
