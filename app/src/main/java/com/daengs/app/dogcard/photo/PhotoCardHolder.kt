@@ -75,10 +75,14 @@ class PhotoCardHolder(
             createError = "로그인하면 포토 카드를 만들 수 있어요"
             return false
         }
+        // 비우는 동안(로그아웃·탈퇴) 요청이 끝나면 이전 사람의 카드나 오류 문장이 다음
+        // 사람 화면에 남는다 — `store()` 와 같은 이유로 세대 번호를 찍어 둔다.
+        val started = epoch
         creating = true
         createError = null
         return try {
             val result = remote.create(token, month, dogName, dogId, jpeg)
+            if (epoch != started) return false
             result.fold(
                 onSuccess = { made -> cards = listOf(made) + cards.filterNot { it.id == made.id }; true },
                 onFailure = { createError = it.message ?: "카드를 만들지 못했어요."; false },

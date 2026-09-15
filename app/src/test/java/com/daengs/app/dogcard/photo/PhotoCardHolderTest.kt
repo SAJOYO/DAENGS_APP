@@ -23,8 +23,10 @@ class PhotoCardHolderTest {
         var gets = 0
         val urls = mutableMapOf<String, String>()
         var onDownload: (suspend () -> Unit)? = null
+        var onCreate: (suspend () -> Unit)? = null
 
         override suspend fun create(token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray): Result<PhotoCard> {
+            onCreate?.invoke()
             if (throwOnCreate) throw IllegalStateException("만드는 중 예외")
             createError?.let { return Result.failure(IllegalStateException(it)) }
             val made = card("new-$month", month, PhotoCardStatus.Generating, at = 1_000L)
@@ -123,6 +125,27 @@ class PhotoCardHolderTest {
         assertEquals("오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요.", h.createError)
         assertTrue(h.cards.isEmpty())
         h.clearCreateError()
+        assertNull(h.createError)
+    }
+
+    /** 로그아웃하는 사이 만들기가 성공으로 끝나면 다음 사람 목록에 이전 사람 카드가 얹힌다. */
+    @Test
+    fun `만들기 요청 사이 비우면 새 카드가 목록에 안 들어온다`() = runTest {
+        val remote = FakeRemote()
+        val h = holder(remote)
+        remote.onCreate = { h.forget() }
+        assertFalse(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertTrue(h.cards.isEmpty())
+        assertFalse(h.creating)
+    }
+
+    /** 로그아웃하는 사이 만들기가 거절로 끝나면 이전 사람의 오류 문장이 다음 사람 화면에 뜬다. */
+    @Test
+    fun `만들기가 거절된 사이 비우면 이전 사람의 문장이 안 남는다`() = runTest {
+        val remote = FakeRemote().apply { createError = "오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요." }
+        val h = holder(remote)
+        remote.onCreate = { h.forget() }
+        assertFalse(h.create(4, "콩이", null, byteArrayOf(9)))
         assertNull(h.createError)
     }
 
