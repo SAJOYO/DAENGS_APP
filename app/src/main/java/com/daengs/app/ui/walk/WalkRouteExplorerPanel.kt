@@ -146,7 +146,6 @@ private fun WalkExplorerRouteDetails(state: WalkRouteExplorerState, onSection: (
         }
     }
     if (review.sections.isEmpty()) Text("이어지는 보행선이 없어요. 확인된 위치는 지도에서 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
-    Text("지도에서 겹친 길을 누르면 통과 시각을 골라 볼 수 있어요.", style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
