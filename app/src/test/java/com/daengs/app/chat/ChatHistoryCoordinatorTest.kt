@@ -1,6 +1,7 @@
 package com.daengs.app.chat
 
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.location.GeoPoint
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -66,6 +67,30 @@ class ChatHistoryCoordinatorTest {
         assertEquals(ChatApiError.ACTIVE_DOG_MISMATCH, failed.error.code)
         assertFalse(coordinator.send(TOKEN, "질문"))
         assertTrue(gateway.sendCalls.isEmpty())
+    }
+
+    @Test
+    fun `피부 판정 이어 묻기는 저장 질문에도 기록 id 를 그대로 싣는다`() = runTest {
+        val gateway = FakeHistoryGateway()
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+
+        assertTrue(coordinator.send(TOKEN, "이 결과가 무슨 뜻이에요?", screening = ScreeningFollowUp("rec-1")))
+        advanceUntilIdle()
+
+        assertEquals(ScreeningFollowUp("rec-1"), gateway.sendCalls.single().screening)
+    }
+
+    @Test
+    fun `보통 저장 질문에는 이어 묻기가 실리지 않는다`() = runTest {
+        val gateway = FakeHistoryGateway()
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+
+        assertTrue(coordinator.send(TOKEN, "밤에 짖어요"))
+        advanceUntilIdle()
+
+        assertEquals(null, gateway.sendCalls.single().screening)
     }
 
     @Test
@@ -326,6 +351,7 @@ class ChatHistoryCoordinatorTest {
         val text: String,
         val activeDogId: String?,
         val persistence: ChatPersistence,
+        val screening: ScreeningFollowUp? = null,
     )
 
     private class FakeHistoryGateway : ChatHistoryGateway {
@@ -367,8 +393,9 @@ class ChatHistoryCoordinatorTest {
             where: GeoPoint?,
             activeDogId: String?,
             persistence: ChatPersistence,
+            screening: ScreeningFollowUp?,
         ): Result<AssistantResponse> {
-            sendCalls += SendCall(text, activeDogId, persistence)
+            sendCalls += SendCall(text, activeDogId, persistence, screening)
             pendingSend?.let { return withContext(NonCancellable) { it.await() } }
             return if (sendResults.isEmpty()) Result.success(RESPONSE) else sendResults.removeFirst()
         }

@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -95,6 +96,7 @@ fun WalkRecordsScreen(
     today: LocalDate = LocalDate.now(),
     petsLoaded: Boolean = true,
     photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
     sharedWalks: SharedWalksHolder? = null,
     /** 로그인한 사람의 app user id. 보호자 조건의 "나" 다. 없으면 공동 보호자 산책을 섞지 않는다. */
     myId: String? = null,
@@ -234,42 +236,39 @@ fun WalkRecordsScreen(
     }
     val selectedCarers = carerIds
     BackHandler(onBack = onBack)
+    val current = remember(selection, behavior) {
+        selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
+    }
+    // 보호자 조건에 내가 빠졌으면 「산책별」에 내 산책을 두지 않는다.
+    val includeMine = holder == null || selectedCarers == null || myId in selectedCarers
+    val zone = remember { ZoneId.systemDefault() }
+    val feedQuery = remember(holder, query, selectedCarers, behavior) {
+        if (holder == null) null else sharedFeedQueryOf(query, selectedCarers, myId!!, behavior != null, zone)
+    }
+    val feedLoaded = feedQuery != null && holder?.feedQuery == feedQuery
+    val sharedTotals = if (feedLoaded) holder?.totals else null
+    val sharedStatus = if (feedQuery != null) holder?.status else null
+    val sharedStopped = sharedStatus is SharedWalksStatus.Failed || sharedStatus == SharedWalksStatus.Unsupported
+    val sharedList = if (feedLoaded) holder!!.walks else emptyList()
+    val mineRecords = if (includeMine) current?.records.orEmpty() else emptyList()
+    val walksPage = unifiedWalkPage(mineRecords, sharedList, sharedTotals?.count ?: sharedList.size,
+        sharedExhausted = feedQuery == null || sharedStopped || (sharedTotals != null && holder?.nextCursor == null),
+        pageIndex, PAGE_SIZE)
+    LaunchedEffect(feedQuery, walksPage.pageIndex, view) {
+        if (feedQuery != null && view == RecordsView.WALKS) holder?.ensure(feedQuery, sharedWalksNeededFor(walksPage.pageIndex, PAGE_SIZE))
+    }
+    val hasCondition = query.dogIds != null || query.filter.active || behavior != null || selectedCarers != null
+    val showAll = { dogIds = null; filter = WalkHistoryFilter(); behavior = null; carerIds = null }
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
             onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
             onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today,
+            // 횟수는 페이지가 아니라 조건 전체 — 내 산책(기기) + 공동 보호자 산책(서버 합계).
+            countLabel = current?.let { "산책 ${walksPage.total}회" } ?: if (error != null) "산책 기록" else "불러오는 중",
             carerLabel = holder?.let { carerSummary(selectedCarers, it.carers, myId!!) })
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        val current = remember(selection, behavior) {
-            selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
-        }
-        // 보호자 조건에 내가 빠졌으면 「산책별」에 내 산책을 두지 않는다.
-        val includeMine = holder == null || selectedCarers == null || myId in selectedCarers
-        val zone = remember { ZoneId.systemDefault() }
-        val feedQuery = remember(holder, query, selectedCarers, behavior) {
-            if (holder == null) null else sharedFeedQueryOf(query, selectedCarers, myId!!, behavior != null, zone)
-        }
-        val feedLoaded = feedQuery != null && holder?.feedQuery == feedQuery
-        val sharedTotals = if (feedLoaded) holder?.totals else null
-        val sharedStatus = if (feedQuery != null) holder?.status else null
-        val sharedStopped = sharedStatus is SharedWalksStatus.Failed || sharedStatus == SharedWalksStatus.Unsupported
-        val sharedList = if (feedLoaded) holder!!.walks else emptyList()
-        val mineRecords = if (includeMine) current?.records.orEmpty() else emptyList()
-        val walksPage = unifiedWalkPage(mineRecords, sharedList, sharedTotals?.count ?: sharedList.size,
-            sharedExhausted = feedQuery == null || sharedStopped || (sharedTotals != null && holder?.nextCursor == null),
-            pageIndex, PAGE_SIZE)
-        LaunchedEffect(feedQuery, walksPage.pageIndex, view) {
-            if (feedQuery != null && view == RecordsView.WALKS) holder?.ensure(feedQuery, sharedWalksNeededFor(walksPage.pageIndex, PAGE_SIZE))
-        }
-        // 합계는 페이지가 아니라 조건 전체 — 내 산책(기기) + 공동 보호자 산책(서버 합계).
-        WalkRecordsTotals(current?.let { mineRecords.size + (sharedTotals?.count ?: 0) },
-            mineRecords.sumOf { it.summary.distanceMeters } + (sharedTotals?.distanceM ?: 0L).toDouble(),
-            mineRecords.sumOf { it.summary.activeDurationMillis } + (sharedTotals?.durationS ?: 0L) * 1_000L,
-            failed = error != null)
-        val hasCondition = query.dogIds != null || query.filter.active || behavior != null || selectedCarers != null
-        val showAll = { dogIds = null; filter = WalkHistoryFilter(); behavior = null; carerIds = null }
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))
@@ -305,7 +304,7 @@ fun WalkRecordsScreen(
                 if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
-                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source, onOpenAction = onOpenAction,
                         view = behaviorView, onView = { behaviorView = it }, state = behaviorState, actionPinState = actionPinState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
@@ -315,6 +314,7 @@ fun WalkRecordsScreen(
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
+                        onInspect = { selectedId = it },
                         onSelect = { id ->
                             selectedId = id.takeIf { it != selectedId }
                             if (selectedId != null && id !in hiddenIds) {
@@ -349,7 +349,7 @@ fun WalkRecordsScreen(
                             }
                         },
                         onClearOverlap = { overlapPoint = null; overlapMiss = false; selectedId = null },
-                        onOpen = onOpen, listState = overviewScroll,
+                        onOpen = onOpen, onOpenAction = onOpenAction, listState = overviewScroll,
                         camera = camera, onCamera = { camera = it },
                         fitBounds = focusBounds ?: prepared?.bounds.orEmpty(), cameraRequest = cameraRequest,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },

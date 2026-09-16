@@ -38,6 +38,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     backupAction: @Composable () -> Unit,
     readComparison: suspend (DiaryComparisonSnapshot) -> DiaryPlaceComparison?,
     photoOf: (String) -> ImageBitmap? = { null },
+    initialAction: DiaryActionTarget? = null,
 ) {
     val explorer = rememberWalkRouteExplorer(sessionId, null)
     val state = rememberWalkDetailState(source, actions, explorer)
@@ -48,7 +49,11 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     LaunchedEffect(readView) { replayInspection.adopt(readView) }
     LaunchedEffect(replaying, explorer.seekRevision) { replayInspection.clear() }
     val readingMemory = rememberDiaryReadingMemory()
-    RememberWalkExplorationPersistence(source, backupAccount.ownerId.orEmpty(), readView, explorer, readingMemory)
+    var actionTargetConsumed by rememberSaveable(sessionId, initialAction?.entryId) { mutableStateOf(false) }
+    // A fresh lookup supersedes the saved bookmark; recreation resumes the user's subsequent reading.
+    val restorePriorReading = remember { initialAction == null || actionTargetConsumed }
+    RememberWalkExplorationPersistence(source, backupAccount.ownerId.orEmpty(), readView, explorer, readingMemory,
+        restoreAllowed = restorePriorReading)
     val detail = readView?.route?.detail
     val replayPet = replayParticipant(pets, detail?.summary?.dogIds.orEmpty())
     val replayPhoto = replayPet?.let { photoOf(it.id) }?.asAndroidBitmap()
@@ -87,7 +92,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val actionEntries = remember(diary, sessionId) { diary?.sourceEntries.orEmpty().filter {
         it.sessionId == sessionId && it.type != WalkMomentType.NOTE
     }.sortedBy { it.recordedAtMillis } }
-    var selectedActions by remember(sessionId) { mutableStateOf(emptySet<String>()) }
+    var selectedActions by rememberSaveable(sessionId) { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(explorer.mode, explorer.panelOpen) {
         if (explorer.mode != RouteExplorerMode.OVERVIEW || !explorer.panelOpen) selectedActions = emptySet()
     }
@@ -102,7 +107,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         }
     }
     LaunchedEffect(actionEntries, selectedId, diary) {
-        selectedActions = selectedActions.intersect(actionEntries.map { diaryActionKey(it) }.toSet())
+        if (diary != null && readView?.scenesLoading == false)
+            selectedActions = selectedActions.intersect(actionEntries.map { diaryActionKey(it) }.toSet())
     }
     LaunchedEffect(originalScenes, readView?.scenesLoading, readingMemory.groupIds) {
         if (loaded && readView?.scenesLoading == false && diary != null) {
@@ -141,6 +147,25 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         selectedActions = emptySet()
         if (!insideGroup) readingMemory.inspect(emptyList())
         explorer.selectScene(scene.id, fromMap || insideGroup)
+    }
+    LaunchedEffect(initialAction, readView, explorer.userRevision) {
+        val target = initialAction ?: return@LaunchedEffect
+        if (actionTargetConsumed || !source.isCurrentAccount()) return@LaunchedEffect
+        // A late read must not replace a newer choice made in the detail screen.
+        if (explorer.userRevision != 0 || explorer.panelOpen) { actionTargetConsumed = true; return@LaunchedEffect }
+        val current = readView ?: return@LaunchedEffect
+        if (current.scenesLoading || current.diary == null) return@LaunchedEffect
+        if (target.sessionId != sessionId) { actionTargetConsumed = true; return@LaunchedEffect }
+        val reading = target.resolve(current.diary)
+        actionTargetConsumed = true
+        if (reading?.scene != null && navigation.selectScene(current, reading.scene)) {
+            selectedActions = emptySet()
+            readingMemory.inspect(emptyList())
+            explorer.selectScene(reading.scene.id)
+        } else if (reading != null) {
+            selectActions(setOf(diaryActionKey(reading.entry)))
+            navigation.locate(if (reading.entry.pin != null) reading.entry.pin.point else reading.entry.point)
+        }
     }
     val completed = remember(route, chosenPoint) { route?.toCompletedRouteLayerState(chosenPoint) ?: CompletedRouteLayerState() }
     val replaySource by produceState<Pair<WalkDiaryReadView, DiaryReplayTimeline>?>(null, readView) {

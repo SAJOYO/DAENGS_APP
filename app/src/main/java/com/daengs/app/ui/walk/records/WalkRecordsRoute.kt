@@ -101,7 +101,8 @@ internal fun WalkRecordsRoute(
             WalkRecordsScreen(source, pets.orEmpty(), onBack = {
                 state.captureRecords()
                 onBack()
-            }, onOpen = state::open, modifier = Modifier.weight(1f), petsLoaded = pets != null, photoOf = photoOf,
+            }, onOpen = state::open, onOpenAction = state::openAction, modifier = Modifier.weight(1f),
+                petsLoaded = pets != null, photoOf = photoOf,
                 sharedWalks = sharedWalks, myId = accountScope.ownerId,
                 onOpenShared = { walk ->
                     val pet = walk.petIds.firstOrNull()

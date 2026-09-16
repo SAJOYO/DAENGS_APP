@@ -136,34 +136,52 @@ private fun WalkRecordCard(
     distance: String = formatWalkDistance(record.summary.distanceMeters),
 ) {
     val walk = record.summary
-    val names = walk.dogIds.distinct().map { id -> pets.firstOrNull { it.id == id }?.name ?: "이름 미확인" }
-    val companions = if (names.isEmpty()) "동행견 미기록" else names.take(2).joinToString(" · ") +
-        if (names.size > 2) " 외 ${names.size - 2}마리" else ""
-    val weather = if (WalkDepartureWeather.of(walk.weather?.weatherCode) == WalkDepartureWeather.UNKNOWN)
-        "출발 날씨 정보 없음" else "출발 ${weatherLabel(requireNotNull(walk.weather))}"
     Card(onClick = onOpen, shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier.fillMaxWidth().testTag("records-walk-${walk.sessionId}")) {
-        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            WalkRouteThumbnail(walk, Modifier.size(84.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(walkDiaryTitle(walk, record.title?.takeIf { it.isNotBlank() }),
-                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(companions, Modifier.semantics {
-                    contentDescription = if (names.isEmpty()) companions else "동행견: ${names.joinToString(", ")}"
-                }, style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                actor?.let { WalkActorBadge(it, Modifier.testTag("records-walk-actor-${walk.sessionId}")) }
-                Text("${formatWalkClock(walk.startedAtMillis)} · $weather",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        WalkRecordCardHeader(record, pets, actor = actor)
         HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.background)
         FlowRow(Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             RecordMetric(DaengsIcon.Pin, "거리", distance)
             RecordMetric(DaengsIcon.Clock, "시간", formatWalkDuration(walk.activeDurationMillis))
+        }
+    }
+}
+
+/**
+ * Shared with map inspection; the default layout is the existing walk-list card.
+ *
+ * [actor] 가 있으면 강아지 이름 아래에 수행자 배지를 둔다 — 「산책별」 목록 카드만 쓰고, 지도 점검의
+ * 좁은 카드(`compact`)에는 넣지 않는다.
+ */
+@Composable
+internal fun WalkRecordCardHeader(record: WalkRecord, pets: List<Pet>, compact: Boolean = false,
+    compactMeta: String? = null, actor: WalkActorLabel? = null) {
+    val walk = record.summary
+    val names = walk.dogIds.distinct().map { id -> pets.firstOrNull { it.id == id }?.name ?: "이름 미확인" }
+    val companions = if (names.isEmpty()) "동행견 미기록" else names.take(2).joinToString(" · ") +
+        if (names.size > 2) " 외 ${names.size - 2}마리" else ""
+    val weather = if (WalkDepartureWeather.of(walk.weather?.weatherCode) == WalkDepartureWeather.UNKNOWN)
+        "출발 날씨 정보 없음" else "출발 ${weatherLabel(requireNotNull(walk.weather))}"
+    Row(Modifier.padding(horizontal = if (compact) 12.dp else 14.dp, vertical = if (compact) 6.dp else 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)) {
+        // The shared endpoint label (출발·도착) needs the existing 48dp minimum.
+        WalkRouteThumbnail(walk, Modifier.size(if (compact) 48.dp else 84.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 6.dp)) {
+            Text(walkDiaryTitle(walk, record.title?.takeIf { it.isNotBlank() }),
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
+            Text(if (compact) "$companions · $weather" else companions, Modifier.semantics {
+                contentDescription = (if (names.isEmpty()) companions else "동행견: ${names.joinToString(", ")}") +
+                    if (compact) " · $weather" else ""
+            }, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
+            if (!compact) actor?.let { WalkActorBadge(it, Modifier.testTag("records-walk-actor-${walk.sessionId}")) }
+            if (!compact) Text("${formatWalkClock(walk.startedAtMillis)} · $weather",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else compactMeta?.let { Text(it, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

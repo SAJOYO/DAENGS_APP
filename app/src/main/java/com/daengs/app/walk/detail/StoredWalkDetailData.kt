@@ -30,6 +30,7 @@ internal class StoredWalkDetailData(
     private val syncSession: suspend (token: String, sessionId: String) -> Unit,
     private val refreshStoryboard: suspend (token: String, sessionId: String, remoteId: String) -> Unit,
     private val measurements: com.daengs.app.walk.sync.WalkMeasurementSync? = null,
+    private val prepareOnRead: Boolean = true,
 ) : WalkDetailSource, WalkDetailActions {
     private val reader = WalkDiaryReader(dao, photos) { currentAccount().ownerId.orEmpty() }
     override val changes get() = measurements?.let { kotlinx.coroutines.flow.merge(history.changes, it.changes(sessionId)) } ?: history.changes
@@ -59,6 +60,7 @@ internal class StoredWalkDetailData(
 
     override suspend fun open() {
         checkActive()
+        if (!prepareOnRead) return
         prepareDiary()
         enqueue(sessionId)
         if (measurements != null) {
@@ -70,7 +72,7 @@ internal class StoredWalkDetailData(
     }
 
     override fun prepareDiary() {
-        if (isCurrentAccount()) startPublication(sessionId)
+        if (prepareOnRead && isCurrentAccount()) startPublication(sessionId)
     }
 
     override suspend fun generateDiary() {

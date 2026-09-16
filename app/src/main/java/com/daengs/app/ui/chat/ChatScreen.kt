@@ -115,6 +115,7 @@ import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.screening.ScreeningRecordApi
 import com.daengs.app.screening.ScreeningRun
+import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -186,7 +187,9 @@ internal sealed interface ChatEntry {
     /** 서버에 물어보는 중. 답이 오면 이 자리가 [Report] 나 [Failed] 로 바뀐다. */
     data object Screening : ChatEntry
 
-    data class Report(val report: ScreeningReport) : ChatEntry
+    // [recordId] 가 있으면 판정이 기록으로 남은 것이고, 말풍선 아래에 "이 결과 물어보기" 가
+    // 붙는다 (백엔드 D-079). 옛 경로로 판정만 받았으면 null 이고 칩이 없다 — 서버가 읽을 기록이 없다.
+    data class Report(val report: ScreeningReport, val recordId: String? = null) : ChatEntry
 
     data class Failed(val message: String) : ChatEntry
 
@@ -306,8 +309,8 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
-    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence ->
-        AssistantApi.query(token, text, where, dog, persistence)
+    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence, screening ->
+        AssistantApi.query(token, text, where, dog, persistence, screening = screening)
     },
     onOpenFacilities: (() -> Unit)? = null,
     /**
@@ -435,7 +438,7 @@ fun ChatScreen(
             // ⚠️ **box 를 이제 실제로 보낸다.** 전에는 안 보내서 저쪽이 화면 중앙으로
             //    물러섰고, 1단계는 큰 차이가 없지만 2단계 분포가 학습 크롭과 어긋났다.
             when (val outcome = screeningRun.run(dogId, photo.jpeg, box)) {
-                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report)
+                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report, outcome.recordId)
                 is ScreeningRun.Outcome.Failed -> entries[slot] = ChatEntry.Failed(outcome.message)
             }
         }
@@ -809,7 +812,8 @@ fun ChatScreen(
         }
     }
 
-    val sendQuery: (String) -> Unit = { text ->
+    // [screening] 은 피부 판정 말풍선의 "이 결과 물어보기" 에서만 있다 (백엔드 D-079).
+    val sendQueryWith: (String, ScreeningFollowUp?) -> Unit = { text, screening ->
         entries += ChatEntry.Mine(text)
         val slot = entries.size
         entries += ChatEntry.Thinking
@@ -841,14 +845,14 @@ fun ChatScreen(
                 pendingPersistedSlot = slot
                 pendingPersistedSessionId = selectedSessionId
                 pendingPersistedQuery = text
-                if (!coordinator.send(token, text, where)) {
+                if (!coordinator.send(token, text, where, screening)) {
                     pendingPersistedSlot = null
                     pendingPersistedSessionId = null
                     if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 준비된 뒤 다시 보내 주세요.")
                     asking = false
                 }
             } else {
-                assistantQuery(token, text, where, dogId, null)
+                assistantQuery(token, text, where, dogId, null, screening)
                     .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
@@ -859,6 +863,8 @@ fun ChatScreen(
             }
         }
     }
+
+    val sendQuery: (String) -> Unit = { sendQueryWith(it, null) }
 
     // ── 음성 입력 ───────────────────────────────────────────────────────────
     //
@@ -1023,7 +1029,17 @@ fun ChatScreen(
                         // 사진 진단도 몇 초 걸리는 자리라 같은 말풍선을 쓴다.
                         ChatEntry.Screening -> ThinkingBubble(avatar, "사진 보는 중…")
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
-                        is ChatEntry.Report -> ReportBubble(entry.report, avatar)
+                        is ChatEntry.Report -> {
+                            ReportBubble(entry.report, avatar)
+                            // 판정이 기록으로 남았을 때만 — 서버가 그 기록을 읽어 해설한다 (D-079).
+                            entry.recordId?.let { recordId ->
+                                BesideAvatar {
+                                    ReportFollowUpChip(enabled = !asking) {
+                                        sendQueryWith(REPORT_FOLLOW_UP_QUESTION, ScreeningFollowUp(recordId))
+                                    }
+                                }
+                            }
+                        }
 
                         // 보행 카드는 **말풍선 안에 안 넣는다.** 카드가 이미 흰
                         // 바탕에 테두리를 가져서, 말풍선을 한 겹 더 두르면 흰 상자

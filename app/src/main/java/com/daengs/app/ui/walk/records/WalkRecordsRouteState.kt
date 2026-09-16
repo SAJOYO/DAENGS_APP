@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.daengs.app.auth.AccountScope
 import java.util.UUID
+import com.daengs.app.walk.diary.DiaryActionTarget
 
 // AccountScope.generation starts again at zero in a new process. Its old UI snapshot must not
 // accidentally match a new login then. Configuration recreation keeps this process epoch.
@@ -26,19 +27,29 @@ internal class WalkRecordsRouteState private constructor(
     internal val accountScope: AccountScope,
     private var savedValues: Map<String, List<Any?>> = emptyMap(),
     openedSessionId: String? = null,
+    openedEntryId: String? = null,
 ) {
     var openedSessionId by mutableStateOf(openedSessionId)
         private set
+
+    private var openedEntryId by mutableStateOf(openedEntryId)
+    val openedAction get() = openedSessionId?.let { session -> openedEntryId?.let { DiaryActionTarget(session, it) } }
 
     private var activeRegistry: SaveableStateRegistry? = null
 
     fun open(sessionId: String) {
         require(sessionId.isNotBlank())
         captureRecords()
+        openedEntryId = null
         openedSessionId = sessionId
     }
 
-    fun closeDetail() { openedSessionId = null }
+    fun openAction(target: DiaryActionTarget) {
+        open(target.sessionId)
+        openedEntryId = target.entryId
+    }
+
+    fun closeDetail() { openedSessionId = null; openedEntryId = null }
 
     /** Call before leaving records; disposal happens after child providers may be unregistered. */
     fun captureRecords() {
@@ -68,16 +79,16 @@ internal class WalkRecordsRouteState private constructor(
                 // neither open() nor captureRecords() has been called since the last edit.
                 state.captureRecords()
                 listOf(state.accountScope.ownerId, state.accountScope.generation, processEpoch,
-                    state.savedValues, state.openedSessionId)
+                    state.savedValues, state.openedSessionId, state.openedEntryId)
             },
             restore = { value ->
                 // rememberSaveable(inputs) does not validate the inputs of restored state.
-                if (value.size != 5 || value[0] != scope.ownerId || value[1] != scope.generation ||
+                if (value.size !in 5..6 || value[0] != scope.ownerId || value[1] != scope.generation ||
                     value[2] != processEpoch) null
                 else {
                     @Suppress("UNCHECKED_CAST")
                     val saved = value[3] as? Map<String, List<Any?>>
-                    saved?.let { WalkRecordsRouteState(scope, it, value[4] as? String) }
+                    saved?.let { WalkRecordsRouteState(scope, it, value[4] as? String, value.getOrNull(5) as? String) }
                 }
             },
         )

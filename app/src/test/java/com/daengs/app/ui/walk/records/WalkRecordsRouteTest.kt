@@ -243,7 +243,8 @@ class WalkRecordsRouteTest {
 
         // 모아보기는 내 산책 경로만 — 공동 보호자 산책은 들어가지 않는다.
         compose.onNodeWithTag("records-view-overview").performClick()
-        waitText("선택 산책 8회 · 표시 흔적 8개")
+        waitTag("records-overview-map")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("8회", substring = true)
         compose.onNodeWithTag("records-overview-mine-only-notice").assertExists()
         compose.onNodeWithTag("records-map-record-shared-1").assertDoesNotExist()
     }
@@ -266,7 +267,7 @@ class WalkRecordsRouteTest {
         waitTag("records-overview-mine-only")
         compose.onNodeWithTag("records-overview-map").assertDoesNotExist()
         compose.onNodeWithText("모든 보호자 보기").performClick()
-        waitText("선택 산책 8회 · 표시 흔적 8개")
+        waitTag("records-overview-map")
         compose.onNodeWithTag("records-active-filters", useUnmergedTree = true).assertTextContains("모든 보호자", substring = true)
     }
 
