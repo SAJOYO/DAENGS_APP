@@ -30,6 +30,8 @@ internal fun WalkRecordsHeader(
     onBack: () -> Unit, onOverview: (Boolean) -> Unit, onConditions: () -> Unit,
     today: LocalDate = LocalDate.now(),
     countLabel: String? = null,
+    /** 보호자 조건 요약("모든 보호자"·"키키 외 1명"). null 이면(공동 조회를 못 쓰는 화면) 칸을 두지 않는다. */
+    carerLabel: String? = null,
 ) {
     val dogLabel = query.dogIds?.let { ids ->
         if (ids.size == 1) pets.firstOrNull { it.id in ids }?.name ?: "선택한 강아지" else "${ids.size}마리"
@@ -41,7 +43,7 @@ internal fun WalkRecordsHeader(
         else -> "날짜 지정"
     }
     val summary = buildList {
-        add(dogLabel); add(periodLabel)
+        add(dogLabel); carerLabel?.let { add(it) }; add(periodLabel)
         behavior?.let { add(it.label) }
         if (query.filter.keyword.isNotBlank()) add(query.filter.keyword)
         addAll(query.filter.seasons.sortedBy { it.ordinal }.map { it.label })

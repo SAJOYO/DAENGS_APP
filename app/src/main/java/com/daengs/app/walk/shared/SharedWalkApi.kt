@@ -10,14 +10,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** 서버 기본값과 같다(`services/walk_group.DEFAULT_LIMIT`). */
-const val SHARED_WALK_PAGE_LIMIT = 20
+/** 서버 최대값과 같다(`services/walk_group.MAX_LIMIT`). 한 번에 5쪽 × 2 이상 받아 요청 수를 줄인다. */
+const val SHARED_WALK_PAGE_LIMIT = 50
 
 /** 함께 보기 요청의 결과. **실패를 빈 목록으로 바꾸지 않는다** — "없다" 와 "못 읽었다" 는 다르다. */
 sealed interface SharedWalkResult<out T> {
     data class Ready<T>(val value: T) : SharedWalkResult<T>
 
-    /** 서버에 이 경로가 없다(공동 조회 전 서버). 화면은 쓸 수 없다고만 말한다. */
+    /** 서버에 이 경로가 없다(통합 목록 전 서버). 화면은 쓸 수 없다고만 말한다. */
     data object Unsupported : SharedWalkResult<Nothing>
 
     /** 볼 수 없는 강아지이거나 그 강아지의 산책이 아니다(구성원이 아님·나감·내보내짐). */
@@ -28,18 +28,20 @@ sealed interface SharedWalkResult<out T> {
 
 /** 테스트가 가짜를 넣는 자리. */
 interface SharedWalkReader {
-    suspend fun list(
+    /** 볼 수 있는 강아지 전부의 **공동 보호자** 산책 한 페이지 + 조건 전체 합계 + 보호자 후보. 내 산책은 뺀다. */
+    suspend fun feed(
         accessToken: String,
-        petId: String,
+        query: SharedWalkFeedQuery,
         cursor: String?,
         limit: Int = SHARED_WALK_PAGE_LIMIT,
-    ): SharedWalkResult<SharedWalkPage>
+    ): SharedWalkResult<SharedWalkFeedPage>
 
     suspend fun detail(accessToken: String, petId: String, walkId: String): SharedWalkResult<SharedWalkDetail>
 }
 
 /**
- * 산책 기록 **공동 조회** API — 계약은 SAJOYO/DAENGS_dev#539 `routers/pet_walks.py`.
+ * 산책 기록 **공동 조회** API — 계약은 SAJOYO/DAENGS_dev `routers/pet_walks.py`
+ * (통합 목록 `GET /app/pet-walks`, 상세 `GET /app/pets/{pet_id}/walks/{walk_id}`).
  *
  * **읽기만 한다.** 산책을 올리고 고치고 지우는 길은 계속 `WalkApi`(`/app/walks`, 올린 사람 것)다.
  * 기존 `/app/walks` 목록도 그대로 내 산책만 준다 — 이 API 를 못 쓰는 옛 서버에서도 개인 산책은
@@ -50,17 +52,21 @@ interface SharedWalkReader {
  */
 class SharedWalkApi(private val baseUrl: () -> String = { BuildConfig.API_BASE_URL }) : SharedWalkReader {
 
-    override suspend fun list(
+    override suspend fun feed(
         accessToken: String,
-        petId: String,
+        query: SharedWalkFeedQuery,
         cursor: String?,
         limit: Int,
-    ): SharedWalkResult<SharedWalkPage> {
-        val path = buildString {
-            append("/app/pets/").append(encode(petId)).append("/walks?limit=").append(limit)
-            if (cursor != null) append("&cursor=").append(encode(cursor))
+    ): SharedWalkResult<SharedWalkFeedPage> {
+        val params = buildList {
+            add("limit" to limit.toString())
+            // 내 산책은 기기 기록(Room)이 이미 갖고 있다 — 서버에서 또 받으면 합계가 두 번 센다.
+            add("exclude_mine" to "true")
+            addAll(query.params())
+            if (cursor != null) add("cursor" to cursor)
         }
-        return get(accessToken, path) { SharedWalkPage.parse(JSONObject(it)) }
+        val path = "/app/pet-walks?" + params.joinToString("&") { (key, value) -> "$key=${encode(value)}" }
+        return get(accessToken, path) { SharedWalkFeedPage.parse(JSONObject(it)) }
     }
 
     override suspend fun detail(accessToken: String, petId: String, walkId: String): SharedWalkResult<SharedWalkDetail> =
