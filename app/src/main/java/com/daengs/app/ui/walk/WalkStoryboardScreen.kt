@@ -132,7 +132,7 @@ fun WalkStoryboardScreen(sessionId: String, history: WalkHistory, pets: List<Pet
         onReview = { save(current.copy(reviewed = snapshot)) }, connectionNotice = notice,
         onAnalyze = { analyze(refresh = analysisView.canReview) }, analyzing = analyzing,
         selectionNotice = bundle?.selection?.description(), petNames = pets.associate { it.id to it.name },
-        diaryTitle = walkDiaryTitle(summary, bundle?.title))
+        diaryTitle = walkDiaryTitle(summary))
     editing?.let { scene ->
         var title by remember(scene.id) { mutableStateOf(scene.title) }
         var body by remember(scene.id) { mutableStateOf(scene.sceneBody()) }

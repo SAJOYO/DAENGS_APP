@@ -30,6 +30,28 @@ class RelationalDiaryReadingTest {
             board.copy(scenes=board.scenes.filter { it.boundaryKind() == null })
         }
 
+    @Test fun `scene titles survive reopening and never invalidate user body edits`() {
+        val before = read().scenes.first().source!!
+        val draft = StoryboardDraft().edit(before, title = "내 제목", body = "내 본문", acknowledge = true).toJson()
+        val json = JSONObject(raw)
+        val card = json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(0)
+        card.put("title", "길에서 남긴 순간").put("title_status", "returned")
+        val parsed = RelationalDiaryResponse.parse(json.toString())
+        val reopened = RelationalDiaryResponse.parse(parsed.rawJson)
+        val generated = read(input(reopened)).scenes.first()
+        assertEquals("길에서 남긴 순간", generated.title)
+        assertEquals(before.fingerprint, generated.source!!.fingerprint)
+        val edited = read(input(reopened), draft = draft).scenes.first()
+        assertEquals("내 제목", edited.title)
+        assertEquals("내 본문", edited.body)
+        assertFalse(edited.needsReview)
+        assertEquals("산책 장면 2", read(input(reopened)).scenes[1].title)
+        // This is the exact data-class representation used by already saved drafts.
+        val legacy = reopened.bundle!!.cards.first().toString()
+            .removeSuffix(", title=길에서 남긴 순간, titleStatus=RETURNED)") + ")"
+        assertEquals(storyboardHash(legacy), generated.source!!.fingerprint)
+    }
+
     @Test fun `relational board includes editable local bookends without altering provider cards`() {
         val board=assembleDiary(walk,input(),emptyList(),null,emptyList())
         assertEquals(DiarySceneKind.START,board.scenes.first().boundaryKind())

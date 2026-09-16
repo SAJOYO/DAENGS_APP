@@ -192,7 +192,7 @@ internal fun WalkRecordsOverview(
         val latestVisibilityQuery by rememberUpdatedState(visibilityQuery)
         Box(mapModifier.background(CreamBg).testTag("records-overview-map").semantics {
             stateDescription = highlighted?.takeIf { route.paths.any { it.isNotEmpty() } }
-                ?.let { "강조한 산책: ${walkDiaryTitle(it.summary, it.title)}" }
+                ?.let { "강조한 산책: ${walkDiaryTitle(it.summary)}" }
                 ?: "강조한 산책 없음"
         }) {
             when {
@@ -403,7 +403,7 @@ internal fun WalkRecordsTraceStatus(
                 if (missing.isNotEmpty()) Text("흔적이 없는 산책도 목록에서 볼 수 있어요.")
                 if (error != null) Text(error, Modifier.padding(top = 12.dp))
                 missing.forEach { record ->
-                    Text(walkDiaryTitle(record.summary, record.title), Modifier.padding(top = 16.dp),
+                    Text(walkDiaryTitle(record.summary), Modifier.padding(top = 16.dp),
                         style = MaterialTheme.typography.titleSmall)
                     Text(traceStateExplanation(record.effectiveTraceState), style = MaterialTheme.typography.bodySmall)
                 }

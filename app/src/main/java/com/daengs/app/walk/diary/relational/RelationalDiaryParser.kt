@@ -80,10 +80,17 @@ internal object RelationalDiaryParser {
         // Check the server's part/body contract; keep its original string rather than replacing it.
         require(body == listOf(space.text, action.text).filter { it.isNotEmpty() }.joinToString("\n"))
         val originals = obj.getJSONArray("originals").objects(::original)
+        // Old publications have neither field; never copy the walk title to a card.
+        require(obj.has("title") == obj.has("title_status"))
+        val title = obj.optionalText("title")
+        val titleStatus = if (obj.has("title_status")) obj.enumValue<RelationalPartStatus>("title_status")
+            else RelationalPartStatus.NOT_REQUESTED
+        require((titleStatus == RelationalPartStatus.RETURNED) == (title != null))
+        require(title == null || (title.codePointCount(0, title.length) <= 30 && body.isNotBlank()))
         val behaviors = originals.filter { !it.deleted && it.content is RelationalRecordContent.Behavior }
         require(behaviors.size <= 1 && behaviors.all { it.anchor == anchor })
         return RelationalDiaryCard(id, anchor, header, space, action, body, context,
-            obj.optionalText("comparison_scene_id"), originals)
+            obj.optionalText("comparison_scene_id"), originals, title, titleStatus)
     }
 
     private fun part(obj: JSONObject): RelationalDiaryPart {
