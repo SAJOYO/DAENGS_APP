@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.gait.GaitRecord
 import com.daengs.app.gait.GaitSampleRecords
+import com.daengs.app.ui.common.SheetFrame
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
 import com.daengs.app.ui.theme.CardWhite
@@ -193,84 +194,6 @@ fun GaitPairPickSheet(
 
 /** 한 번에 고르는 수. 비교는 둘을 나란히 놓는 일이라 둘이다. */
 private const val PAIR = 2
-
-/**
- * 시트의 틀 — 어둠 · 손잡이 · 제목 · 닫기. 두 시트가 같은 틀을 쓴다.
- *
- * @param subtitle 제목 오른쪽 작은 글자. 몇 개 골랐는지 같은 것
- */
-@Composable
-private fun SheetFrame(
-    title: String,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-    subtitle: String? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    BackHandler(onBack = onDismiss)
-
-    Box(modifier.fillMaxSize()) {
-        // 바깥을 눌러도 닫힌다. 물결(ripple)은 끈다 — 시트 뒤 어둠이 눌린 것처럼
-        // 번쩍이면 그쪽에 뭔가 있는 줄 안다.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(TextDark.copy(alpha = 0.34f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
-        )
-
-        Surface(
-            color = CardWhite,
-            shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                // 시트가 화면을 다 먹지 않게 막는다. 뒤에 대화가 조금이라도
-                // 보여야 "위에 얹힌 것" 으로 읽힌다.
-                .heightIn(max = 560.dp)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
-        ) {
-            Column(Modifier.padding(horizontal = 18.dp)) {
-                // 손잡이. 끌어 내릴 수 있어 보이라고 두는 것이 아니라, 여기가
-                // 시트의 위쪽이라는 표시다.
-                Box(
-                    Modifier
-                        .padding(top = 10.dp)
-                        .align(Alignment.CenterHorizontally)
-                        .width(42.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(DaengsColors.BorderNeutral),
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        title,
-                        color = TextDark,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (subtitle != null) {
-                        Text(subtitle, color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.width(10.dp))
-                    }
-                    Box(
-                        Modifier.size(34.dp).clip(RoundedCornerShape(50)).clickable(onClick = onDismiss),
-                        contentAlignment = Alignment.Center,
-                    ) { DaengsIconView(DaengsIcon.Close, Modifier.size(16.dp), tint = TextMuted) }
-                }
-                content()
-            }
-        }
-    }
-}
 
 /** 고를 것이 없을 때의 한 줄. */
 @Composable
