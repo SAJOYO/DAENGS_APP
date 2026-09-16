@@ -67,8 +67,12 @@ class PlaceDogAssistantUiTest {
         compose.onNodeWithText("서버가 돌려준 답변").assertExists()
         assertEquals(inputBounds, fixedTags.map { compose.onNodeWithTag(it).fetchSemanticsNode().boundsInWindow })
         assertEquals(before, compose.onNodeWithTag("place-dog-anchor").fetchSemanticsNode().boundsInRoot)
-        compose.onNodeWithText("다시 말 걸기").performClick()
-        compose.onNodeWithTag("place-dog-input").assertExists()
+        compose.onNodeWithText("다시 말 걸기").assertDoesNotExist()
+        compose.onNodeWithTag("place-dog-input").assertIsDisplayed().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString(""))).assertIsNotFocused()
+        compose.onNodeWithTag("place-dog-input").performTextInput("응")
+        compose.onNodeWithText("서버가 돌려준 답변").assertIsDisplayed()
+        compose.onNodeWithContentDescription("말해주기").performClick()
+        assertEquals(listOf("카페 찾아줘", "응"), queries)
     }
 
     @Test fun nameTagAndPortraitOpenTheSameConversation() {
@@ -131,8 +135,9 @@ class PlaceDogAssistantUiTest {
         compose.onNodeWithContentDescription("말해주기").performClick()
         compose.onNodeWithText(answer).assertExists()
         compose.onNodeWithContentDescription("닫기").assertIsDisplayed()
-        compose.onNodeWithText("다시 말 걸기").assertIsDisplayed().performClick()
-        compose.onNodeWithTag("place-dog-input").assertTextContains("카페")
+        compose.onNodeWithTag("place-dog-input").assertIsDisplayed().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+        compose.onNodeWithTag("place-dog-input").performTextInput("주차도 돼?")
+        compose.onNodeWithText(answer).assertExists()
         assertEquals(before, compose.onNodeWithTag("place-dog-bubble").fetchSemanticsNode().boundsInWindow)
     }
 
@@ -154,6 +159,10 @@ class PlaceDogAssistantUiTest {
         assertEquals(1, submitted)
         compose.onNodeWithTag("place-dog-bubble").assertDoesNotExist()
         compose.onNodeWithTag("place-dog-anchor").performClick()
-        compose.onNodeWithTag("place-dog-input").assertTextContains("주차 카페")
+        compose.onNodeWithTag("place-dog-input").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+        compose.onNodeWithTag("place-dog-input").performTextInput("아직 안 보낸 질문")
+        compose.onNodeWithContentDescription("닫기").performClick()
+        compose.onNodeWithTag("place-dog-anchor").performClick()
+        compose.onNodeWithTag("place-dog-input").assertTextContains("아직 안 보낸 질문")
     }
 }

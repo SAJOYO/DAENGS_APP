@@ -42,10 +42,8 @@ internal fun PlaceDogAssistant(
     val density = LocalDensity.current
     val keyboard = LocalSoftwareKeyboardController.current
     var draft by rememberSaveable { mutableStateOf("") }
-    var composing by rememberSaveable { mutableStateOf(false) }
     Box {
         PlaceDogAssistantEntry {
-            composing = !replyAvailable
             onOpen(!open)
         }
         if (open) {
@@ -78,13 +76,13 @@ internal fun PlaceDogAssistant(
                 SideEffect { popupView = view; popupImeVisible = imeVisible }
                 val width = (LocalConfiguration.current.screenWidthDp - 24).coerceIn(120, 324).dp
                 PlaceDogDialogue(
-                    busy = busy, composing = composing || !replyAvailable,
+                    busy = busy, composing = !replyAvailable,
                     draft = draft, onDraft = { draft = it }, searchContext = searchContext,
                     onClose = ::close, onCancel = { onCancel(); close() }, onUndo = onUndo,
-                    onCompose = { composing = true },
                     onSubmit = {
                         if (!busy && draft.isNotBlank()) {
-                            hideKeyboard(); composing = false; onSubmit(draft.trim())
+                            val query = draft.trim()
+                            hideKeyboard(); draft = ""; onSubmit(query)
                         }
                     },
                     tailX = placement.tailX, modifier = Modifier.width(width),
