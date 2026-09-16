@@ -52,6 +52,23 @@ class PetGroupOwnerTest {
         assertEquals(pet.isOwner, pet.isGroupOwner)
     }
 
+    @Test
+    fun `has_other_carers 를 읽는다`() {
+        val co = Pet.parse(JSONObject("""{"id":"p1","name":"몽몽이","breed":"beagle","is_primary":true,"is_owner":true,"is_group_owner":true,"has_other_carers":true}"""))
+        val solo = Pet.parse(JSONObject("""{"id":"p2","name":"네옹","breed":"beagle","is_primary":false,"is_owner":true,"is_group_owner":true,"has_other_carers":false}"""))
+
+        assertTrue(co.hasOtherCarers)
+        assertFalse(solo.hasOtherCarers)
+    }
+
+    /** 구 서버 응답에는 칸이 없다. 파싱이 깨지지 않고 false 로 떨어진다. */
+    @Test
+    fun `has_other_carers 가 없으면 false 다`() {
+        val pet = Pet.parse(JSONObject(base(isOwner = true, isGroupOwner = true)))
+
+        assertFalse(pet.hasOtherCarers)
+    }
+
     /** 이름 바꾸기는 전체 PUT 이 아니라 이름 한 칸만 보낸다 — 공통 정보를 덮으면 안 된다. */
     @Test
     fun `이름 수정 본문은 이름 한 칸뿐이다`() {

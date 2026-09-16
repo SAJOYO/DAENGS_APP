@@ -68,13 +68,20 @@ class InviteAcceptHolder(
      *
      * 미리보기를 받았으면 **다 골라야** 한다 — 묶음에서 선택이 빠지면 서버가 409 로 막고,
      * 한 마리여도 화면에 고르는 자리를 냈으면 다 고르게 하는 편이 일관된다.
-     * 미리보기를 못 받은 옛 서버에서는 붙여넣은 링크만 있으면 된다.
+     * 경로가 없는 옛 서버([PreviewOutcome.Unsupported])에서는 링크만 있으면 된다.
+     *
+     * **미리보기를 아직 못 물어봤거나(로그인·망 문제) 실패·만료·없는 초대면 누를 수 없다.**
+     * 예전에는 그때도 버튼이 살아 있어서, 세션을 못 받은 채 누르면 아무 일도 안 일어났다.
      */
     val canAccept: Boolean
         get() = !busy &&
             parsed is InvitePaste.Result.Found &&
             outcome !is AcceptOutcome.Joined &&
-            (!previewed || allChosen)
+            when (preview) {
+                is PreviewOutcome.Ready -> allChosen
+                PreviewOutcome.Unsupported -> true
+                else -> false
+            }
 
     /** 이미 다른 항목이 가져간 기존 아이. 화면이 그 후보를 잠근다. */
     fun takenBy(petId: String): Set<String> =
@@ -91,6 +98,19 @@ class InviteAcceptHolder(
         outcome = null
         preview = null
         choices = emptyMap()
+    }
+
+    /**
+     * App Links 로 이미 검증된 토큰을 그대로 심는다. **사용자가 붙여넣지 않아도** 미리보기로
+     * 이어진다 — 링크를 연 것 자체가 그 토큰을 골랐다는 뜻이기 때문이다.
+     *
+     * **같은 토큰이 다시 오면 아무것도 안 한다.** 같은 링크가 두 번 전달돼도(연타·재실행)
+     * 이미 보고 있는 미리보기·고른 선택을 지우지 않는다. **다른 토큰**이면 [paste] 와 같이
+     * 앞 시도를 지운다 — 새 초대가 섞이면 안 된다.
+     */
+    fun acceptFromLink(token: String) {
+        if ((parsed as? InvitePaste.Result.Found)?.token == token) return
+        paste("https://${InviteLink.HOST}${InviteLink.PATH}#$token")
     }
 
     /**
@@ -128,6 +148,26 @@ class InviteAcceptHolder(
         if (choice is PetChoice.Link && choice.existingPetId in takenBy(petId)) return false
         choices = choices + (petId to choice)
         return true
+    }
+
+    /**
+     * 「연결 없이 참여」 — 연결이 막힌(`has_other_carers`) 선택을 새로 참여로 바꾸고 안내를 닫는다.
+     *
+     * 서버가 거절된 초대 강아지 id 를 줬으면 그 줄만, 못 가르면 연결로 고른 줄 전부를 바꾼다.
+     * **수락을 다시 부르지 않는다** — 사용자가 바뀐 선택을 보고 최종 수락 버튼을 눌러야 한다.
+     */
+    fun joinInsteadOfBlockedLink() {
+        val blocked = outcome as? AcceptOutcome.Conflict ?: return
+        if (!blocked.linkBlockedByOtherCarers) return
+        val targets = blocked.petId?.takeIf { it in choices }?.let { setOf(it) }
+            ?: choices.filterValues { it is PetChoice.Link }.keys
+        choices = choices + targets.associateWith { PetChoice.Join }
+        outcome = null
+    }
+
+    /** 「확인」 — 연결 차단 안내만 닫는다. 선택은 그대로 둔다. */
+    fun dismissBlockedLink() {
+        if ((outcome as? AcceptOutcome.Conflict)?.linkBlockedByOtherCarers == true) outcome = null
     }
 
     /** 화면을 닫거나 로그아웃할 때. **입력과 토큰을 같이 버린다.** */

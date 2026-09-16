@@ -286,6 +286,27 @@ class CareLogSectionTest {
         )
     }
 
+    /** 다른 보호자가 다녀온 산책도 누가 다녀왔는지 같이 보인다. 산책 줄에는 지우기가 없다. */
+    @Test
+    fun `오늘 산책은 누가 다녀왔는지 같이 보여 주고 지우기는 없다`() {
+        val walks = listOf(
+            com.daengs.app.care.CareWalkRow("w1", 1_756_681_200_000L, CareActor("u2", "키키")),
+            com.daengs.app.care.CareWalkRow("w2", 1_756_717_200_000L, CareActor("u3", null)),
+        )
+        compose.setContent {
+            CareLogSection(
+                state = CareLogState("pet", today = ChatLoadState.Ready(summary().copy(walkRows = walks))),
+                zone = SEOUL,
+            )
+        }
+
+        compose.onNodeWithText("산책 · 08:00").assertIsDisplayed()
+        compose.onNodeWithText("키키").assertIsDisplayed()
+        compose.onNodeWithText("산책 · 18:00").assertIsDisplayed()
+        compose.onNodeWithText("이전 보호자").assertIsDisplayed()
+        compose.onAllNodesWithText("삭제").assertCountEquals(0)
+    }
+
     private companion object {
         val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
 

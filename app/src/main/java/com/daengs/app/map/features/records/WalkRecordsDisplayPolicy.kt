@@ -33,8 +33,9 @@ class TraceDensityScale(bands: List<TraceDensityBand>) {
     override fun toString() = bands.joinToString { "${it.minimum}:${it.opacity}" }
 
     companion object {
-        val Default = TraceDensityScale(listOf(TraceDensityBand(1, .04f), TraceDensityBand(2, .12f),
-            TraceDensityBand(3, .22f), TraceDensityBand(5, .34f), TraceDensityBand(8, .46f)))
+        // Absolute distinct-session counts: filtering never normalises the remaining range.
+        val Default = TraceDensityScale(listOf(
+            TraceDensityBand(1, .24f), TraceDensityBand(2, .49f), TraceDensityBand(3, .77f)))
     }
 }
 

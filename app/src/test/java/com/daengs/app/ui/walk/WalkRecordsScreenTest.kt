@@ -69,15 +69,19 @@ class WalkRecordsScreenTest {
             WalkRecordsScreen(source, pets, {}, {}, today = today)
         } } }
         waitText("1 페이지")
+        compose.onNodeWithText("· 합계 4.0km").assertDoesNotExist()
+        compose.onNodeWithText("· 1시간 20분").assertDoesNotExist()
         compose.onNodeWithTag("records-view-overview").performClick()
         // The only trace belongs to page two, but the map uses the full selection.
         waitTagText("records-map-count", "선택 산책 8회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-view-walks").performClick()
         compose.onNodeWithText("다음 ›").performClick()
         waitText("2 페이지")
+        compose.onNodeWithText("· 합계 4.0km").assertDoesNotExist()
+        compose.onNodeWithText("· 1시간 20분").assertDoesNotExist()
         val reads = queries.size
         compose.onNodeWithTag("records-view-overview").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 8회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 8회")
         // Only the oldest walk has a trace. It must be included even when it is not on page one.
         waitTagText("records-map-count", "선택 산책 8회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-view-walks").performClick()
@@ -114,13 +118,13 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-dog-dog-1").performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
-        waitText("선택 산책 4회")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 4회")
+        waitText("산책 4회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 4회")
         assertEquals(setOf("dog-1"), queries.last().dogIds)
         assertEquals(setOf(WalkDepartureWeather.RAIN), queries.last().filter.weather)
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("선택 산책 4회 · 표시 흔적 0개")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 4회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 4회")
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-conditions-reset").performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
@@ -130,7 +134,7 @@ class WalkRecordsScreenTest {
         assertEquals(WalkHistoryFilter(), queries.last().filter)
         compose.onNodeWithTag("records-view-walks").performClick()
         waitText("1 페이지")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 8회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 8회")
     }
 
     @Test fun `late previous responses cannot replace current search and retry preserves its query`() {
@@ -215,7 +219,7 @@ class WalkRecordsScreenTest {
         compose.onNode(hasText("기록-8") and !hasSetTextAction()).assertDoesNotExist()
         recovery.complete(Unit)
         waitCard("기록-8")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 1회")
     }
 
     @Test fun `trace loading and retry preserve local behavior pins and never refetch on tab changes`() {
@@ -248,7 +252,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-behavior-count").assertTextEquals("행동 기록 4건 · 관련 산책 3회")
         compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
         compose.onNodeWithTag("records-view-walks").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         assertEquals(1, calls.get())
         compose.onNodeWithTag("records-view-overview").performClick()
         // Finish the pending tab round trip before releasing the background response. Otherwise
@@ -259,7 +263,7 @@ class WalkRecordsScreenTest {
         waitText("3회 중 0회 흔적 준비 · 자세히")
         compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
         compose.onNodeWithTag("records-view-walks").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("3회 중 0회 흔적 준비 · 자세히")
         compose.onNodeWithTag("records-behavior-display-count").assertTextEquals("위치 있는 기록 3건 · 표시 3건")
@@ -273,7 +277,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-behavior-view-traces").performClick()
         waitText("선택 산책 3회 · 표시 흔적 1개")
         compose.onNodeWithTag("records-view-walks").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("선택 산책 3회 · 표시 흔적 1개")
         assertEquals(2, calls.get())
@@ -292,6 +296,8 @@ class WalkRecordsScreenTest {
         waitText("1 페이지")
         compose.onNodeWithTag("records-view-overview").performClick()
         expandMapList()
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         waitText("흔적을 불러오고 있어요.")
         compose.onNodeWithText("확인").performClick()
@@ -338,9 +344,8 @@ class WalkRecordsScreenTest {
         chooseMapRecord("record-2")
         compose.onNodeWithTag("records-map-record-record-2").assertIsSelected()
         assertEquals(mapBeforeSelection, compose.onNodeWithTag("records-overview-map").getUnclippedBoundsInRoot())
-        compose.onNodeWithTag("records-map-clear-selection").assertIsDisplayed()
-        assertTrue(compose.onNodeWithTag("records-map-clear-selection").getUnclippedBoundsInRoot().top >=
-            compose.onNodeWithTag("records-map-sheet").getUnclippedBoundsInRoot().top)
+        compose.onNodeWithTag("records-map-clear-selection").assertDoesNotExist()
+        compose.onNodeWithTag("records-inspection-summary").assertDoesNotExist()
         compose.onNodeWithText("상세: record-2").assertDoesNotExist()
         compose.onNodeWithTag("records-overview-map").assert(
             SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "강조한 산책: 기록-2"))
@@ -353,7 +358,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithText("돌아가기").performClick()
         compose.onNodeWithTag("records-map-record-record-2").assertIsSelected()
         compose.onNodeWithTag("records-view-walks").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("선택 산책 3회 · 표시 흔적 1개")
         assertEquals(1, queries.size)
@@ -408,6 +413,7 @@ class WalkRecordsScreenTest {
         waitText("선택 산책 3회 · 표시 흔적 2개")
         compose.onNodeWithTag("records-overlap-legend").assertDoesNotExist()
         compose.onNodeWithTag("records-map-display").performClick()
+        assertFixedOverlapLegend()
         compose.onNodeWithTag("records-traces-overlap").performClick()
         waitText("선택 산책 3회 · 겹침 표시 2회")
         assertFixedOverlapLegend()
@@ -427,7 +433,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-overview-map").assertExists()
         compose.onNodeWithTag("records-view-walks").performClick()
         waitText("1 페이지")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         compose.onNodeWithTag("records-map-display").assertTextContains("겹친 구간 · 5회 이상 ▾")
         compose.onNodeWithTag("records-map-display").performClick()
@@ -448,10 +454,9 @@ class WalkRecordsScreenTest {
 
     private fun assertFixedOverlapLegend() {
         compose.onNodeWithTag("records-overlap-legend").assertIsDisplayed()
-        listOf(Triple("1", "1회", 4), Triple("2", "2회", 12), Triple("3-4", "3–4회", 22),
-            Triple("5-7", "5–7회", 34), Triple("8", "8회 이상", 46)).forEach { (tag, label, opacity) ->
+        listOf(Triple("1", "1회", 24), Triple("2", "2회", 49), Triple("3", "3회 이상", 77)).forEach { (tag, label, opacity) ->
             compose.onNodeWithTag("records-overlap-legend-$tag").assertTextEquals(label)
-                .assertContentDescriptionEquals("$label 그림자 농도 ${opacity}퍼센트")
+                .assertContentDescriptionEquals("$label 흔적 농도 ${opacity}퍼센트")
         }
     }
 
@@ -470,7 +475,7 @@ class WalkRecordsScreenTest {
             }),
             WalkRecordsSelection(selection.query, sample.map { it.copy(trace = null, traceState = WalkTraceState.EMPTY) }))
         val preparedStages = runBlocking { stages.map { prepareWalkRecordsTraces(it) } }
-        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2, style = com.daengs.app.map.features.records.TraceDisplayPolicy(com.daengs.app.ui.theme.WalkTraceShadow.RGB)) } }
+        val tileStages = runBlocking { preparedStages.map { it.compose(hidden, minimumOverlapWalks = 2, style = com.daengs.app.map.features.records.TraceDisplayPolicy(com.daengs.app.ui.theme.WalkTraceIndigo.RGB)) } }
         val initialPoint = preparedStages.first().hitTestOverlap(SpatialDiaryHexGrid.center(cell, 8.0), 2)!!.point
         val stage = mutableStateOf(0)
         val selectedPoint = mutableStateOf<GeoPoint?>(initialPoint)
@@ -497,6 +502,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-hide-record-1").assertTextEquals("지도에 다시 표시")
         compose.onNodeWithTag("records-map-open-record-1").performScrollTo().performClick()
         assertEquals("record-1", opened.get())
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         compose.onNodeWithTag("records-traces-refresh").performClick()
         waitText("흔적을 불러오고 있어요.")
@@ -506,11 +513,15 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-list").performScrollToNode(hasTestTag("records-map-record-record-3"))
         compose.onNodeWithTag("records-map-record-record-3").assertExists()
         compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 2 }
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         waitText("흔적 조회 실패")
         compose.onNodeWithText("확인").performClick()
         compose.onNodeWithTag("records-overlap-clear").assertDoesNotExist()
         compose.runOnIdle { assertEquals(initialPoint, selectedPoint.value); stage.value = 3 }
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         compose.onAllNodes(hasText("서버에서 흔적 계산 중") and hasAnyAncestor(isDialog())).assertCountEquals(2)
         compose.onNodeWithText("확인").performClick()
@@ -522,6 +533,8 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-record-record-3").assertDoesNotExist()
         // Successfully checked empty sheets do prove removal; a later load must not resurrect it.
         compose.runOnIdle { stage.value = 4 }
+        if (compose.onAllNodesWithTag("records-traces-status").fetchSemanticsNodes().isEmpty())
+            compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-traces-status").performClick()
         waitText("3회 중 0회 흔적이 준비됐어요.")
         compose.onNodeWithText("확인").performClick()
@@ -606,13 +619,13 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-behavior-barking").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
         compose.onNodeWithTag("records-view-walks").assertIsSelected()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 1회")
         compose.onNodeWithText("기록-2").assertExists()
         compose.onNodeWithText("기록-1").assertDoesNotExist()
         val count = compose.onNodeWithTag("records-count").getUnclippedBoundsInRoot()
         compose.onNodeWithTag("records-view-overview").performClick()
         waitText("행동 기록 1건 · 관련 산책 1회")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 1회")
         assertEquals(header, compose.onNodeWithTag("records-header").getUnclippedBoundsInRoot())
         assertEquals(count, compose.onNodeWithTag("records-count").getUnclippedBoundsInRoot())
     }
@@ -628,7 +641,7 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-behavior-sniffing").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-cancel").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         chooseBehavior("sniffing")
         compose.onNodeWithTag("records-view-overview").assertIsSelected()
         compose.onNodeWithTag("records-map-display").assertTextContains("행동 위치 ▾")
@@ -637,20 +650,25 @@ class WalkRecordsScreenTest {
         compose.onNodeWithTag("records-map-display").performClick()
         compose.onNodeWithTag("records-behavior-view-traces").performClick()
         compose.onNodeWithTag("records-view-walks").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
         assertEquals(1, reads.get())
         restore.emulateSavedInstanceStateRestore()
         waitText("산책 기록")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-map-sheet-toggle").fetchSemanticsNodes().isNotEmpty() }
+        expandMapList()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
         chooseBehavior("barking")
         compose.onNodeWithTag("records-map-display").assertTextContains("전체 흔적 ▾")
+        expandMapList()
         compose.onNodeWithTag("records-behavior-count").assertTextContains("1건", substring = true)
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-behavior-all").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-place-peek").fetchSemanticsNodes().isNotEmpty() }
+        expandMapList()
         waitText("선택 산책 3회 · 표시 흔적 1개")
     }
 
@@ -677,7 +695,7 @@ class WalkRecordsScreenTest {
         waitText("상세: record-1")
         compose.onNodeWithText("돌아가기").performClick()
         compose.onNodeWithTag("records-view-walks").performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 3회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 3회")
         compose.onNodeWithTag("records-view-overview").performClick()
         compose.onNodeWithTag("records-behavior-entry-$located").assertIsSelected()
         compose.onNodeWithTag("records-behavior-hide-$located").assertTextContains("다시 표시", substring = true)
@@ -711,12 +729,14 @@ class WalkRecordsScreenTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-behavior-count").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("records-behavior-count").assertTextContains("2건", substring = true)
         chooseBehavior("excretion")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 0회")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 0회")
         compose.onNodeWithText("조건에 맞는 산책이 없어요.").assertExists()
         compose.onNodeWithTag("records-conditions").assertIsEnabled()
         compose.onNodeWithTag("records-conditions").performClick()
         compose.onNodeWithTag("records-behavior-all").performScrollTo().performClick()
         compose.onNodeWithTag("records-conditions-apply").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("records-place-peek").fetchSemanticsNodes().isNotEmpty() }
+        expandMapList()
         waitText("선택 산책 3회 · 표시 흔적 1개")
     }
 

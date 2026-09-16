@@ -63,3 +63,15 @@ fun rememberComposedCard(card: DrawnCard?, width: Int = 360): ImageBitmap? {
     }
     return made
 }
+
+/**
+ * 방 액자에 넣을 그림 한 장. 누끼 카드면 조립하고, **포토 카드면 받아 둔 파일을 그대로** 읽는다.
+ *
+ * 둘 다 null 이면 null — 액자는 발자국으로 돌아간다.
+ */
+@Composable
+fun rememberFramePicture(drawn: DrawnCard?, photoFile: java.io.File?): ImageBitmap? {
+    val composed = rememberComposedCard(drawn)
+    val photo = rememberCardImage(photoFile?.let { CardArt.Local(it) }, sample = 2)
+    return if (drawn != null) composed else photo
+}

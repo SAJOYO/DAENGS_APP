@@ -25,6 +25,12 @@ data class MapScene(
     val allowRegionalOverview: Boolean = false,
     val sessionExplorer: com.daengs.app.map.layers.completedroute.SessionRouteExplorerLayerState? = null,
     val walkPresentation: WalkLayerPresentation? = null,
+    /** Completed diary only: jointly pack scene/action objects beside the real route. */
+    val detachedDiaryPins: Boolean = false,
+    /** Records reuse diary action packing without changing diary-specific endpoint semantics. */
+    val detachedRecordPins: Boolean = false,
+    /** Real route segments used only as marker obstacles, never drawn or joined across gaps. */
+    val markerAvoidancePaths: List<List<GeoPoint>> = emptyList(),
 )
 
 /** Multiple historical walks may span cities; active and single-walk maps keep their local zoom. */

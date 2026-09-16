@@ -22,6 +22,14 @@ class WalkDiaryPhotoUiTest {
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
     private val photo = WalkPhoto("p", "s", 2000, GeoPoint(37.5, 127.0), File("missing.jpg"))
 
+    @Test fun `모아보기 사진 열람은 삭제 없이 닫을 수 있다`() {
+        var closed = false
+        compose.setContent { DaengsTheme { WalkPhotoDialog(photo, null) { closed = true } } }
+        compose.onNodeWithText("사진 삭제").assertDoesNotExist()
+        compose.onNodeWithText("닫기").performClick()
+        assertTrue(closed)
+    }
+
     @Test fun `저장한 JPEG를 상세에서 읽어 사진을 표시한다`() {
         val file = File(compose.activity.cacheDir, "diary-display-test.jpg")
         val bitmap = android.graphics.Bitmap.createBitmap(180, 120, android.graphics.Bitmap.Config.ARGB_8888)

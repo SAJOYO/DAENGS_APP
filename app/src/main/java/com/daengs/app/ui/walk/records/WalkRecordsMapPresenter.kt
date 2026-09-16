@@ -5,14 +5,14 @@ import com.daengs.app.map.features.records.*
 import com.daengs.app.map.layers.traces.TraceRasterTile
 import com.daengs.app.map.style.WalkRouteAppearance
 import com.daengs.app.map.style.rememberWalkStyle
-import com.daengs.app.ui.theme.WalkTraceShadow
+import com.daengs.app.ui.theme.WalkTraceIndigo
 import com.daengs.app.walk.WalkSummary
 import com.daengs.app.walk.records.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
-internal val DefaultRecordsTracePolicy = TraceDisplayPolicy(WalkTraceShadow.RGB)
+internal val DefaultRecordsTracePolicy = TraceDisplayPolicy(WalkTraceIndigo.RGB)
 internal val LocalRecordsTracePolicy = staticCompositionLocalOf { DefaultRecordsTracePolicy }
 
 @Composable
@@ -20,7 +20,7 @@ internal fun rememberWalkRecordsDisplayPolicy(): WalkRecordsDisplayPolicy {
     val selected by rememberWalkStyle()
     val trace = LocalRecordsTracePolicy.current
     val diagnostics = com.daengs.app.map.provider.naver.LocalWalkMapDiagnostics.current
-    SideEffect { diagnostics?.details?.set("scale", "셀로판 단계 ${trace.density}") }
+    SideEffect { diagnostics?.details?.set("scale", "산책 누적 농도 ${trace.density}") }
     return remember(trace, selected) { WalkRecordsDisplayPolicy(trace, WalkRouteAppearance(selected.policy, selected.themeId)) }
 }
 

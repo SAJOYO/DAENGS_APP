@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.pet.AcceptOutcome
 import com.daengs.app.pet.AcceptedInvite
 import com.daengs.app.pet.AcceptResult
+import com.daengs.app.pet.InviteAuthProblem
 import com.daengs.app.pet.InvitePaste
 import com.daengs.app.pet.PreviewOutcome
 import com.daengs.app.pet.PetChoice
@@ -80,11 +81,33 @@ fun InviteAcceptScreen(
     preview: PreviewOutcome? = null,
     /** 아이마다 고른 것. 키가 없으면 아직 안 고른 것이다. */
     choices: Map<String, PetChoice> = emptyMap(),
+    /**
+     * App Links 로 링크를 눌러서 바로 들어왔나.
+     *
+     * **참이면 붙여넣기 칸·안내 문구·"초대 링크를 찾았어요" 를 숨긴다.** 이미 링크를
+     * 눌러서 왔으니 다시 찾아 달라고 하거나 찾았다고 말할 이유가 없다 — 보낸 사람·
+     * 강아지·선택·최종 수락 버튼은 그대로 보여 준다. 거짓이면(수동 붙여넣기 경로) 예전과
+     * 같다.
+     */
+    autoEntered: Boolean = false,
+    /**
+     * 미리보기·수락에 쓸 로그인을 못 받았다. 있으면 이유와 할 일(다시 시도·다시 로그인)을
+     * 말하고 수락 버튼을 막는다 — 예전에는 버튼이 살아 있는데 눌러도 아무 일도 안 일어났다.
+     */
+    authProblem: InviteAuthProblem? = null,
     /** 다른 항목이 이미 가져간 기존 아이. 그 후보를 잠근다. */
     takenBy: (String) -> Set<String> = { emptySet() },
     onPaste: (String) -> Unit = {},
     onChoose: (String, PetChoice) -> Unit = { _, _ -> },
     onAccept: () -> Unit = {},
+    /** 미리보기를 다시 부른다. **수락은 안 부른다.** */
+    onRetry: () -> Unit = {},
+    /** 로그인이 만료됐을 때 다시 로그인하러 간다. */
+    onSignIn: () -> Unit = {},
+    /** 연결 차단(`has_other_carers`) 안내의 「연결 없이 참여」. 선택만 바꾸고 **수락은 안 부른다.** */
+    onJoinWithoutLink: () -> Unit = {},
+    /** 연결 차단 안내의 「확인」. 닫기만 한다. */
+    onDismissBlockedLink: () -> Unit = {},
     onDone: () -> Unit = {},
     onBack: () -> Unit = {},
 ) {
@@ -118,18 +141,26 @@ fun InviteAcceptScreen(
             return@Column
         }
 
-        Text(
-            "받은 초대 링크를 붙여넣어 주세요. 카카오톡에서 복사한 메시지를 통째로 붙여넣어도 괜찮아요.",
-            color = TextMuted,
-            fontSize = 13.sp,
-        )
+        if (!autoEntered) {
+            Text(
+                "받은 초대 링크를 붙여넣어 주세요. 카카오톡에서 복사한 메시지를 통째로 붙여넣어도 괜찮아요.",
+                color = TextMuted,
+                fontSize = 13.sp,
+            )
 
-        PasteField(value = pasted, onChange = onPaste, enabled = !busy)
+            PasteField(value = pasted, onChange = onPaste, enabled = !busy)
+        }
 
         // 입력 상태를 그대로 말해 준다 — 왜 버튼이 안 눌리는지 화면이 설명해야 한다.
+        // **Found 는 자동 진입에서 숨긴다** — 링크를 눌러서 왔다는 사실 자체가 "찾았다"는
+        // 뜻이라, 붙여넣기 칸도 없는 화면에 그 안내만 남으면 무엇을 찾았다는 건지 안 보인다.
+        // NoLink·Ambiguous 는 자동 진입 경로에서 나올 일이 없다 — 여기 오는 토큰은
+        // `InviteLink.tokenOf` 로 이미 검증됐다. 그래도 방어적으로 그대로 둔다.
         when (parsed) {
             is InvitePaste.Result.Empty -> Unit
-            is InvitePaste.Result.Found -> Notice("초대 링크를 찾았어요.", tag = "accept-link-ok", tint = DaengPink)
+            is InvitePaste.Result.Found -> if (!autoEntered) {
+                Notice("초대 링크를 찾았어요.", tag = "accept-link-ok", tint = DaengPink)
+            }
             is InvitePaste.Result.NoLink -> Notice(
                 "초대 링크를 찾지 못했어요. 받은 메시지를 다시 복사해 붙여넣어 주세요.",
                 tag = "accept-no-link",
@@ -141,6 +172,28 @@ fun InviteAcceptScreen(
         }
 
         val invite = (preview as? PreviewOutcome.Ready)?.preview
+
+        // **세션을 못 받았으면 그 이유부터 말한다.** 미리보기가 안 불렸으니 아래에 그릴 것이
+        // 없고 수락 버튼도 막힌다 — 무엇을 하면 되는지를 여기서 알려 줘야 한다.
+        when (authProblem) {
+            null -> Unit
+            InviteAuthProblem.Unreachable -> {
+                Notice(
+                    "지금 서버에 연결하지 못했어요. 연결을 확인하고 다시 시도해 주세요.",
+                    tag = "accept-unreachable",
+                    tint = DaengsColors.Error,
+                )
+                Box(Modifier.testTag("accept-retry")) { DaengsTextAction("다시 시도", onRetry, tint = DaengPinkDeep) }
+            }
+            InviteAuthProblem.LoginRequired -> {
+                Notice(
+                    "로그인이 만료됐어요. 다시 로그인하면 이 초대를 이어서 볼 수 있어요.",
+                    tag = "accept-login-required",
+                    tint = DaengsColors.Error,
+                )
+                DaengsWideButton(label = "다시 로그인", onClick = onSignIn, modifier = Modifier.testTag("accept-sign-in"))
+            }
+        }
 
         when (preview) {
             null, is PreviewOutcome.Ready, PreviewOutcome.Unsupported -> Unit
@@ -156,7 +209,13 @@ fun InviteAcceptScreen(
                 tag = "accept-error",
                 tint = DaengsColors.Error,
             )
-            is PreviewOutcome.Failed -> Notice(preview.message, tag = "accept-error", tint = DaengsColors.Error)
+            is PreviewOutcome.Failed -> {
+                Notice(preview.message, tag = "accept-error", tint = DaengsColors.Error)
+                // 망이 흔들린 것이면 다시 물어보면 된다. 수락은 여전히 버튼으로만 한다.
+                if (authProblem == null) {
+                    Box(Modifier.testTag("accept-retry")) { DaengsTextAction("다시 시도", onRetry, tint = DaengPinkDeep) }
+                }
+            }
         }
 
         invite?.let { InvitedBy(it) }
@@ -177,13 +236,19 @@ fun InviteAcceptScreen(
         DaengsWideButton(
             label = acceptLabel(invite?.pets?.size ?: 0),
             onClick = onAccept,
-            enabled = canAccept,
+            enabled = canAccept && authProblem == null,
             busy = busy,
             accent = true,
             modifier = Modifier.testTag("accept-submit"),
         )
 
         outcome?.let { Failure(it) }
+
+        // **연결 차단(has_other_carers)은 문장 한 줄이 아니라 고를 수 있는 안내다.** 고른 내 강아지를
+        // 다른 공동 보호자가 함께 돌보고 있어 서버가 막았다 — 사용자가 할 수 있는 일(연결 없이 참여)을 준다.
+        if ((outcome as? AcceptOutcome.Conflict)?.linkBlockedByOtherCarers == true) {
+            BlockedLinkDialog(onJoinWithoutLink = onJoinWithoutLink, onDismiss = onDismissBlockedLink)
+        }
     }
 }
 
@@ -415,7 +480,8 @@ private fun Failure(outcome: AcceptOutcome) {
         // 404 와 410 을 한 문장으로 묶지 않는다 — 뒤쪽은 새 초대를 받으면 되고 앞쪽은 아니다.
         is AcceptOutcome.NotFound -> "사용할 수 없는 초대예요. 링크가 잘못됐거나 다른 분이 이미 사용했어요."
         is AcceptOutcome.Expired -> "만료된 초대예요. 대표 보호자에게 새 초대를 요청해 주세요."
-        is AcceptOutcome.Conflict -> outcome.message // 서버가 사용자에게 보여 줄 문장으로 써 놨다.
+        // 연결 차단(has_other_carers)은 문장 대신 [BlockedLinkDialog] 가 말한다 — 두 번 보이면 안 된다.
+        is AcceptOutcome.Conflict -> if (outcome.linkBlockedByOtherCarers) return else outcome.message // 서버가 사용자에게 보여 줄 문장으로 써 놨다.
         // 422 는 사용자 잘못이 아니다 — 화면이 중복 선택을 막고 있으므로, 여기까지 왔으면
         // 미리보기 이후 상태가 바뀐 것이다. 다시 불러오라고만 말한다.
         is AcceptOutcome.Invalid -> outcome.message
@@ -427,6 +493,55 @@ private fun Failure(outcome: AcceptOutcome) {
 @Composable
 private fun Notice(text: String, tag: String, tint: androidx.compose.ui.graphics.Color = TextMuted) {
     Text(text, color = tint, fontSize = 13.sp, modifier = Modifier.testTag(tag))
+}
+
+/**
+ * 고른 내 강아지를 **다른 공동 보호자가 함께 돌보고 있어** 연결이 막혔을 때(서버 `has_other_carers`).
+ * 연결하면 그 사람의 기록이 동의 없이 새 그룹에 열리므로 MVP 에서는 연결하지 않는다.
+ *
+ * 「연결 없이 참여」는 **선택만** 새 참여로 바꾼다 — 수락은 사용자가 최종 버튼을 다시 눌러야 나간다.
+ */
+@Composable
+private fun BlockedLinkDialog(onJoinWithoutLink: () -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("이 강아지는 바로 연결할 수 없어요") },
+        text = {
+            Text(
+                "선택한 강아지를 함께 돌보는 보호자가 있어 다른 공동 돌봄 그룹과 연결할 수 없습니다. " +
+                    "연결하지 않고 초대를 수락하거나, 기존 공동 돌봄 관계를 정리한 후 다시 시도해 주세요.",
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onJoinWithoutLink, modifier = Modifier.testTag("blocked-link-join")) {
+                Text("연결 없이 참여", color = DaengPinkDeep)
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.testTag("blocked-link-ok")) {
+                Text("확인", color = TextMuted)
+            }
+        },
+        modifier = Modifier.testTag("blocked-link-dialog"),
+    )
+}
+
+@Preview(name = "연결 차단 — 다른 공동 보호자")
+@Composable
+private fun AcceptBlockedLinkPreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            autoEntered = true,
+            outcome = AcceptOutcome.Conflict(
+                "선택한 아이는 연결할 수 없어요.",
+                "link_not_allowed",
+                reason = "has_other_carers",
+                petId = "p1",
+            ),
+        )
+    }
 }
 
 // -- @Preview -----------------------------------------------------------------
@@ -447,6 +562,45 @@ private fun AcceptFoundPreview() {
             pasted = PREVIEW_LINK,
             parsed = InvitePaste.Result.Found("preview-token"),
             canAccept = true,
+        )
+    }
+}
+
+@Preview(name = "App Links 로 자동 진입")
+@Composable
+private fun AcceptAutoEnteredPreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            canAccept = true,
+            autoEntered = true,
+        )
+    }
+}
+
+@Preview(name = "세션 문제 — 서버에 못 닿음")
+@Composable
+private fun AcceptUnreachablePreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            autoEntered = true,
+            authProblem = InviteAuthProblem.Unreachable,
+        )
+    }
+}
+
+@Preview(name = "세션 문제 — 로그인 만료")
+@Composable
+private fun AcceptLoginRequiredPreview() {
+    DaengsTheme {
+        InviteAcceptScreen(
+            pasted = PREVIEW_LINK,
+            parsed = InvitePaste.Result.Found("preview-token"),
+            autoEntered = true,
+            authProblem = InviteAuthProblem.LoginRequired,
         )
     }
 }

@@ -8,11 +8,21 @@ enum class DiarySceneKind(val label: String) {
     SNIFFING("킁킁 기록"), EXCRETION("배설 기록"), BARKING("짖기 기록"), NOTE("직접 남긴 메모"),
     PHOTO("사진 기록"), DWELL("머무른 구간"), FAST("이동이 빨라진 구간"), SLOW("이동이 느려진 구간"),
     GENERAL("산책 장면"),
+    START("산책 시작"), END("산책 끝"),
+}
+
+/** Role comes from the stable source identity, never from user-written prose. */
+internal fun DiaryScene.boundaryKind(): DiarySceneKind? {
+    if (entryId != null || photo != null || source?.entryReference != null) return null
+    val key = listOfNotNull(source?.id?.removePrefix("geo:"), id.removePrefix("$sessionId/").removePrefix("geo:"))
+        .firstOrNull { it == "start" || it == "end" }
+    return when (key) { "start" -> DiarySceneKind.START; "end" -> DiarySceneKind.END; else -> null }
 }
 
 /** The caller must supply the entries from the same DiaryWalk emission, not a live entry stream. */
 internal fun diarySceneKind(scene: DiaryScene, entries: List<WalkEntry>, sessionId: String): DiarySceneKind {
     val unknown = DiarySceneKind.GENERAL
+    if (scene.sessionId == sessionId) scene.boundaryKind()?.let { return it }
     if (scene.sessionId != sessionId || scene.needsReview ||
         scene.source?.let { !it.available || it.hidden } == true) return unknown
     val reference = scene.source?.entryReference

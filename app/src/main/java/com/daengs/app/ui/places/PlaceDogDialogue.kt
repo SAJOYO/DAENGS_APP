@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -29,6 +30,9 @@ import androidx.compose.ui.unit.*
 import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import kotlinx.coroutines.delay
+
+/** 지도 안의 도우미견 입력만 키보드가 배경 위를 덮는 배치에 참여한다. */
+internal val LocalPlaceAssistantInputFocus = compositionLocalOf<(Boolean) -> Unit> { {} }
 
 /** 246dp 대화판 안에서 대사·조건·행동 영역을 고정한다. 긴 응답은 안쪽만 스크롤한다. */
 @Composable
@@ -127,10 +131,13 @@ internal fun PlaceDogDialogue(
 
 @Composable
 private fun DogDialogueInput(draft: String, onDraft: (String) -> Unit, onSubmit: () -> Unit) {
+    val onInputFocus = LocalPlaceAssistantInputFocus.current
+    DisposableEffect(onInputFocus) { onDispose { onInputFocus(false) } }
     Row(Modifier.fillMaxSize().border(1.dp, DaengsColors.BorderNeutral, RoundedCornerShape(17.dp))
         .background(DaengsColors.Surface, RoundedCornerShape(17.dp)).padding(start = 12.dp, end = 3.dp),
         verticalAlignment = Alignment.CenterVertically) {
         BasicTextField(draft, onDraft, modifier = Modifier.weight(1f).testTag("place-dog-input")
+            .onFocusChanged { onInputFocus(it.isFocused) }
             .semantics { contentDescription = "강아지에게 말하기" },
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = DaengsColors.TextPrimary),
             singleLine = true, cursorBrush = SolidColor(DaengsColors.BrandPrimary),

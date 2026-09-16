@@ -42,6 +42,8 @@ class WalkRecordsPresenterTest {
             androidx.compose.foundation.text.BasicText("${currentRoute.summary?.sessionId}:${currentTraces.tiles?.size}")
         }
         compose.waitUntil(10000) { traces?.tiles != null && route?.summary != null }
+        assertEquals(0x7263B6, policy.value.rgb)
+        assertTrue(traces!!.tiles!!.all { tile -> tile.rgb!!.all { it == 0x7263B6 } })
         val prepared = traces!!.prepared
         compose.runOnIdle { policy.value = policy.value.copy(density = TraceDensityScale(listOf(TraceDensityBand(1, .01f)))) }
         compose.waitForIdle()

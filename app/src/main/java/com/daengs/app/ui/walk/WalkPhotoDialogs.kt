@@ -93,7 +93,7 @@ internal fun WalkPhotoCaptureDialog(beginCapture: () -> WalkPhotoCapture?,
 }
 
 @Composable
-internal fun WalkPhotoDialog(photo: WalkPhoto, onDelete: suspend (String) -> Unit, onDismiss: () -> Unit) {
+internal fun WalkPhotoDialog(photo: WalkPhoto, onDelete: (suspend (String) -> Unit)?, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember(photo.id) { mutableStateOf(false) }
@@ -120,8 +120,8 @@ internal fun WalkPhotoDialog(photo: WalkPhoto, onDelete: suspend (String) -> Uni
             }
         },
         confirmButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("닫기") } },
-        dismissButton = { TextButton(enabled = !busy, onClick = { confirmDelete = true }) { Text("사진 삭제") } })
-    if (confirmDelete) AlertDialog(onDismissRequest = { if (!busy) confirmDelete = false },
+        dismissButton = { if (onDelete != null) TextButton(enabled = !busy, onClick = { confirmDelete = true }) { Text("사진 삭제") } })
+    if (confirmDelete && onDelete != null) AlertDialog(onDismissRequest = { if (!busy) confirmDelete = false },
         title = { Text("이 사진을 삭제할까요?") }, text = { Text("사진과 사진 Pin이 함께 지워져요.") },
         confirmButton = { TextButton(enabled = !busy, onClick = {
             busy = true

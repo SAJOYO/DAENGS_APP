@@ -1,5 +1,6 @@
 package com.daengs.app.chat
 
+import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.assistant.AssistantResponse
 import com.daengs.app.location.GeoPoint
@@ -72,13 +73,15 @@ interface ChatHistoryGateway {
         where: GeoPoint?,
         activeDogId: String?,
         persistence: ChatPersistence,
+        /** 피부 판정 말풍선에서 이어 물을 때만 있다 (백엔드 D-079). */
+        screening: ScreeningFollowUp?,
     ): Result<AssistantResponse>
 }
 
 class RemoteChatHistoryGateway(
     private val chatApi: ChatApi = ChatApi(),
-    private val assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence ->
-        AssistantApi.query(token, text, where, dog, persistence)
+    private val assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence, screening ->
+        AssistantApi.query(token, text, where, dog, persistence, screening = screening)
     },
 ) : ChatHistoryGateway {
     override suspend fun createSession(accessToken: String, petId: String) =
@@ -99,7 +102,8 @@ class RemoteChatHistoryGateway(
         where: GeoPoint?,
         activeDogId: String?,
         persistence: ChatPersistence,
-    ) = assistantQuery(accessToken, text, where, activeDogId, persistence)
+        screening: ScreeningFollowUp?,
+    ) = assistantQuery(accessToken, text, where, activeDogId, persistence, screening)
 }
 
 /**
@@ -290,7 +294,13 @@ class ChatHistoryCoordinator(
      * 저장 질문을 한 번만 보낸다. 성공은 커밋된 응답이므로 현재 상세와 최근 목록을
      * 서버에서 모두 다시 받는다. 새 대화의 활성화·제목·최대 5개 정리는 서버 결과다.
      */
-    fun send(accessToken: String, text: String, where: GeoPoint? = null): Boolean {
+    fun send(
+        accessToken: String,
+        text: String,
+        where: GeoPoint? = null,
+        /** 피부 판정 말풍선에서 이어 물을 때만 있다 (백엔드 D-079). */
+        screening: ScreeningFollowUp? = null,
+    ): Boolean {
         val before = mutableState.value
         val petId = before.selectedPetId ?: return false
         val detail = before.detail ?: return false
@@ -307,7 +317,7 @@ class ChatHistoryCoordinator(
         }
         sendJob = scope.launch {
             val result = try {
-                gateway.send(accessToken, text, where, petId, persistence)
+                gateway.send(accessToken, text, where, petId, persistence, screening)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
