@@ -297,16 +297,21 @@ class MainActivity : ComponentActivity() {
                 // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
                 // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
                 val facilityAssistantQuery: com.daengs.app.assistant.AssistantQuery = remember(app) {
-                    // 피부 판정 이어 묻기(백엔드 D-079)는 장소 문맥과 무관해서 시설 대화를 거치지 않는다.
-                    if (BuildConfig.FACILITY_CONVERSATION) { token, text, where, dog, persistence, screening ->
-                        if (screening != null) {
-                            com.daengs.app.assistant.AssistantApi.query(token, text, where, dog, persistence, screening = screening)
+                    // 피부 판정(D-079) · 보행 비교(D-080) 이어 묻기는 장소 문맥과 무관해서
+                    // 시설 대화를 거치지 않는다.
+                    if (BuildConfig.FACILITY_CONVERSATION) { token, text, where, dog, persistence, screening, gait ->
+                        if (screening != null || gait != null) {
+                            com.daengs.app.assistant.AssistantApi.query(
+                                token, text, where, dog, persistence, screening = screening, gait = gait,
+                            )
                         } else {
                             app.facilityAssistant.query(token, text, where, dog, persistence)
                         }
                     }
-                    else { token, text, where, dog, persistence, screening ->
-                        com.daengs.app.assistant.AssistantApi.query(token, text, where, dog, persistence, screening = screening)
+                    else { token, text, where, dog, persistence, screening, gait ->
+                        com.daengs.app.assistant.AssistantApi.query(
+                            token, text, where, dog, persistence, screening = screening, gait = gait,
+                        )
                     }
                 }
                 val chatHistory = remember(scope) { ChatHistoryCoordinator(scope,

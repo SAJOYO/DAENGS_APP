@@ -45,6 +45,7 @@ object AssistantApi {
      * @param persistence 이 문답을 남길 대화. null 이면 무상태 — 답은 오고 남지 않는다.
      *   실패는 [ChatApiError] 로 온다 (무상태도 마찬가지, 문장은 그대로다).
      * @param screening 피부 판정 말풍선에서 이어 묻는 질문일 때만 있다 ([ScreeningFollowUp]).
+     * @param gait 보행 비교 말풍선에서 이어 묻는 질문일 때만 있다 ([GaitFollowUp]).
      */
     suspend fun query(
         accessToken: String,
@@ -54,6 +55,7 @@ object AssistantApi {
         persistence: ChatPersistence? = null,
         facility: kotlinx.serialization.json.JsonObject? = null,
         screening: ScreeningFollowUp? = null,
+        gait: GaitFollowUp? = null,
     ): Result<AssistantResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -61,7 +63,7 @@ object AssistantApi {
                 val conn = open()
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
                 conn.use {
-                    it.send(requestBody(text, where, activeDogId, persistence, facility, screening))
+                    it.send(requestBody(text, where, activeDogId, persistence, facility, screening, gait))
                     AssistantResponse.parse(it.readJson())
                 }
             }.recoverCatching { cause ->
@@ -82,6 +84,10 @@ object AssistantApi {
      * 판정 뒤에 사용자가 직접 친 질문은 `screening_record_id` 만 싣는다. 뒤쪽까지 신호를
      * 보내면 산책·생활 질문이 전부 피부 해설로 끌려간다 — 누가 답할지는 서버 라우터가 정하고,
      * 기록 id 는 "이 판정 이야기를 하는 중" 이라는 재료로만 간다.
+     *
+     * **[gait] 도 신호를 싣는다** (백엔드 D-080). 비교 말풍선의 칩에서만 오고, 사용자가
+     * 그 칩을 눌러 뜻을 밝혔기 때문이다 — 그래서 갈래가 없다. 싣는 것은 **기록 id 둘**
+     * 이고 비교는 저쪽이 다시 한다 ([GaitFollowUp]).
      *
      * `active_dog_id` 는 저쪽이 **그 id 로 `pets` 를 읽어 견종·나이를 Life 프롬프트에
      * 얹는 데 쓴다** (`SAJOYO/DAENGS_dev#202`). 예전에는 서버가 받기만 하고 아무 기능도
@@ -112,6 +118,7 @@ object AssistantApi {
         persistence: ChatPersistence?,
         facility: kotlinx.serialization.json.JsonObject?,
         screening: ScreeningFollowUp?,
+        gait: GaitFollowUp?,
     ): String =
         JSONObject().put("query", text).apply {
             facility?.let { put("facility", JSONObject(it.toString())) }
@@ -126,6 +133,17 @@ object AssistantApi {
             screening?.let {
                 if (it.explicit) put("requested_capability", "skin")
                 put("screening_record_id", it.recordId)
+            }
+            // 기록 id 둘은 **한 칸에 같이** 간다. 저쪽 `GaitCompareRef` 가 둘 다
+            // 필수라 한쪽만 실으면 422 이고, 애초에 하나로는 비교가 성립하지 않는다.
+            gait?.let {
+                put("requested_capability", "gait")
+                put(
+                    "gait_compare",
+                    JSONObject()
+                        .put("recent_record_id", it.recentId)
+                        .put("past_record_id", it.pastId),
+                )
             }
         }.toString()
 
