@@ -327,10 +327,96 @@ class VetVisitCoordinatorTest {
         assertNull(state(coordinator).deleteError)
     }
 
+
+    // -- 기간 (PR #416) -------------------------------------------------
+
+    @Test
+    fun `기본 기간은 최근 1년이고 그 창으로 부른다`() = runTest {
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token)
+        advanceUntilIdle()
+
+        assertEquals(VetRange.RecentYear, state(coordinator).range)
+        assertEquals(
+            VetWindow(LocalDate.of(2025, 9, 16), LocalDate.of(2026, 9, 16)),
+            gateway.listedWindow,
+        )
+    }
+
+    @Test
+    fun `기간을 바꾸면 그 창으로 다시 부르고 고른 기간이 상태에 남는다`() = runTest {
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token)
+        advanceUntilIdle()
+
+        coordinator.load(token, VetRange.Year(2024))
+        advanceUntilIdle()
+
+        assertEquals(VetRange.Year(2024), state(coordinator).range)
+        assertEquals(
+            VetWindow(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 12, 31)),
+            gateway.listedWindow,
+        )
+    }
+
+    @Test
+    fun `전체는 0001-01-01 부터 부른다`() = runTest {
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token, VetRange.All)
+        advanceUntilIdle()
+
+        assertEquals(LocalDate.of(1, 1, 1), gateway.listedWindow?.from)
+    }
+
+    /** 서버가 준 창과 오래된 기록 수는 **목록과 같은 칸에 함께** 들어와야 한다. */
+    @Test
+    fun `조회된 창과 오래된 기록 수가 목록과 같이 담긴다`() = runTest {
+        gateway.listResult = Result.success(
+            page(listOf(visit("v1")), olderCount = 3, start = LocalDate.of(2025, 9, 15)),
+        )
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token)
+        advanceUntilIdle()
+
+        val loaded = (state(coordinator).visits as ChatLoadState.Ready).value
+        assertEquals(3, loaded.olderCount)
+        assertEquals(LocalDate.of(2025, 9, 15), loaded.start)
+    }
+
+    /**
+     * 아이를 바꾸면 **기간도 처음으로 돌아간다.** 앞의 아이에서 「2024년」을 보던 상태로
+     * 다음 아이의 목록을 열면, 칩은 2024년인데 그 아이의 최근 기록이 없어 빈 화면이 된다.
+     */
+    @Test
+    fun `강아지를 바꾸면 기간이 최근 1년으로 돌아간다`() = runTest {
+        val coordinator = coordinator(this)
+        coordinator.selectPet("pet")
+        coordinator.load(token, VetRange.All)
+        advanceUntilIdle()
+
+        coordinator.selectPet("other")
+
+        assertEquals(VetRange.RecentYear, state(coordinator).range)
+    }
+
     // -- 배관 -----------------------------------------------------------
 
+
+    /** **오늘을 고정한다.** 서버는 KST 로 오늘을 정하고, 테스트는 제 기기 시간대를 본다. */
+    private val today = LocalDate.of(2026, 9, 16)
+
     private fun coordinator(scope: TestScope) =
-        VetVisitCoordinator(scope, gateway, newId = sequenceIds())
+        VetVisitCoordinator(scope, gateway, newId = sequenceIds(), today = { today })
+
+    private fun page(
+        visits: List<VetVisit>,
+        olderCount: Int = 0,
+        start: LocalDate? = null,
+    ) = VetVisitPage(start = start, end = null, olderCount = olderCount, visits = visits)
 
     private fun sequenceIds(): () -> String {
         var n = 0
@@ -340,7 +426,7 @@ class VetVisitCoordinatorTest {
     private fun state(c: VetVisitCoordinator) = c.state.value
 
     private fun visits(c: VetVisitCoordinator): List<VetVisit> =
-        (c.state.value.visits as ChatLoadState.Ready).value
+        (c.state.value.visits as ChatLoadState.Ready).value.visits
 
     @Test
     fun `나눠 확정하면 행마다 다른 키가 간다 — 같은 키면 기록이 한 벌만 남는다`() = runTest {
@@ -500,10 +586,14 @@ class VetVisitCoordinatorTest {
             confirmation: VetVisitConfirmation,
         ) = confirmResult.also { confirmedWith += confirmation.splits.map { row -> row.clientEventId } }
 
-        var listResult: Result<List<VetVisit>> = Result.success(listOf(visit("v1")))
+        var listResult: Result<VetVisitPage> = Result.success(page(listOf(visit("v1"))))
         var deleteResult: Result<Unit> = Result.success(Unit)
 
-        override suspend fun list(accessToken: String, petId: String) = listResult
+        /** 마지막으로 요청된 창. **기간 프리셋이 실제로 나가는지** 를 여기서 본다. */
+        var listedWindow: VetWindow? = null
+
+        override suspend fun list(accessToken: String, petId: String, window: VetWindow) =
+            listResult.also { listedWindow = window }
 
         override suspend fun reasonOptions(accessToken: String, petId: String) = optionsResult
 

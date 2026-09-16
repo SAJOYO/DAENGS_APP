@@ -111,7 +111,9 @@ data class SplitEdit(
 
 data class VetVisitState(
     val selectedPetId: String? = null,
-    val visits: ChatLoadState<List<VetVisit>> = ChatLoadState.Idle,
+    val visits: ChatLoadState<VetVisitPage> = ChatLoadState.Idle,
+    /** 지금 보고 있는 기간. 칩이 이걸로 선택 표시를 그린다. */
+    val range: VetRange = VetRange.RecentYear,
     /** 코드 → 표시명. **목록도 이걸로 라벨을 그린다** — 확정 응답에는 코드만 온다. */
     val reasonLabels: Map<String, String> = emptyMap(),
     /** 드롭다운 순서 그대로 (이 강아지가 최근 쓴 사유가 앞). */
@@ -130,7 +132,7 @@ interface VetVisitGateway {
         draftId: String,
         confirmation: VetVisitConfirmation,
     ): Result<List<VetVisit>>
-    suspend fun list(accessToken: String, petId: String): Result<List<VetVisit>>
+    suspend fun list(accessToken: String, petId: String, window: VetWindow): Result<VetVisitPage>
     suspend fun reasonOptions(accessToken: String, petId: String): Result<List<VetReasonOption>>
     suspend fun delete(accessToken: String, visitId: String): Result<Unit>
 }
@@ -145,7 +147,8 @@ private class RemoteVetVisitGateway(private val api: VetVisitApi = VetVisitApi()
         draftId: String,
         confirmation: VetVisitConfirmation,
     ) = api.confirm(accessToken, draftId, confirmation)
-    override suspend fun list(accessToken: String, petId: String) = api.list(accessToken, petId)
+    override suspend fun list(accessToken: String, petId: String, window: VetWindow) =
+        api.list(accessToken, petId, window)
     override suspend fun reasonOptions(accessToken: String, petId: String) =
         api.reasonOptions(accessToken, petId)
     override suspend fun delete(accessToken: String, visitId: String) = api.delete(accessToken, visitId)
@@ -178,6 +181,11 @@ class VetVisitCoordinator(
     private val scope: CoroutineScope,
     private val gateway: VetVisitGateway = RemoteVetVisitGateway(),
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    /**
+     * **`Asia/Seoul` 의 오늘.** 기간 프리셋이 이걸로 창을 계산한다 — 저쪽이 KST 로 오늘을
+     * 정하므로 기기 시간대로 재면 날짜가 하루 어긋난다 (PR #416 「알아 둘 것」).
+     */
+    private val today: () -> LocalDate = { LocalDate.now(java.time.ZoneId.of("Asia/Seoul")) },
 ) {
     private val mutableState = MutableStateFlow(VetVisitState())
     val state: StateFlow<VetVisitState> = mutableState.asStateFlow()
@@ -208,15 +216,18 @@ class VetVisitCoordinator(
      * 둘을 **나란히** 부른다. 직렬로 하면 라벨을 받는 30초 타임아웃이 기록 목록까지 같이
      * 묶는다 — 라벨은 있으면 좋은 값이고 기록이 본체다.
      */
-    fun load(accessToken: String): Boolean {
+    fun load(accessToken: String, range: VetRange = mutableState.value.range): Boolean {
         val petId = mutableState.value.selectedPetId ?: return false
         val generation = petGeneration
         loadJob?.cancel()
-        mutableState.update { it.copy(visits = ChatLoadState.Loading) }
+        // **고른 기간을 먼저 세운다.** 칩의 선택 표시는 결과를 기다리지 않는다 —
+        // 누른 칩이 응답이 올 때까지 안 눌린 것처럼 보이면 유저가 한 번 더 누른다.
+        mutableState.update { it.copy(visits = ChatLoadState.Loading, range = range) }
+        val window = range.window(today())
         loadJob = scope.launch {
             val (options, visits) = coroutineScope {
                 val opts = async { gateway.reasonOptions(accessToken, petId).getOrNull() }
-                val list = async { gateway.list(accessToken, petId) }
+                val list = async { gateway.list(accessToken, petId, window) }
                 opts.await() to list.await()
             }
             if (!isCurrentPet(petId, generation)) return@launch
@@ -512,18 +523,18 @@ private fun ReceiptEdits.toConfirmation(flow: ReceiptFlow) = VetVisitConfirmatio
 )
 
 /** 방금 확정한 기록들을 맨 앞에 넣는다. 아직 목록을 못 읽었으면 그대로 둔다. */
-private fun ChatLoadState<List<VetVisit>>.withVisits(
+private fun ChatLoadState<VetVisitPage>.withVisits(
     added: List<VetVisit>,
-): ChatLoadState<List<VetVisit>> {
-    val visits = (this as? ChatLoadState.Ready)?.value ?: return this
-    val fresh = added.filterNot { new -> visits.any { it.id == new.id } }
+): ChatLoadState<VetVisitPage> {
+    val page = (this as? ChatLoadState.Ready)?.value ?: return this
+    val fresh = added.filterNot { new -> page.visits.any { it.id == new.id } }
     if (fresh.isEmpty()) return this
-    return ChatLoadState.Ready(fresh + visits)
+    return ChatLoadState.Ready(page.copy(visits = fresh + page.visits))
 }
 
-private fun ChatLoadState<List<VetVisit>>.without(visitId: String): ChatLoadState<List<VetVisit>> {
-    val visits = (this as? ChatLoadState.Ready)?.value ?: return this
-    return ChatLoadState.Ready(visits.filterNot { it.id == visitId })
+private fun ChatLoadState<VetVisitPage>.without(visitId: String): ChatLoadState<VetVisitPage> {
+    val page = (this as? ChatLoadState.Ready)?.value ?: return this
+    return ChatLoadState.Ready(page.copy(visits = page.visits.filterNot { it.id == visitId }))
 }
 
 private fun Throwable.asVetError(): ChatApiError =

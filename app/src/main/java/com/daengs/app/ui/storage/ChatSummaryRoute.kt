@@ -65,6 +65,8 @@ fun ChatSummaryRoute(
     accessTokenProvider: suspend () -> String?,
     onOpenSource: (String) -> Unit,
     onOpenCitation: (ChatCitation) -> Unit,
+    /** 진료비 요약 카드의 [전체보기]. 화면을 **밀어 올린다** — 모달이 아니다. */
+    onOpenVetVisits: () -> Unit,
     modifier: Modifier = Modifier,
     currentUserId: String? = null,
     /**
@@ -163,12 +165,11 @@ fun ChatSummaryRoute(
                         pickingReceipt = true
                     },
                     onRetryLoad = { withToken { vetCoordinator.load(it) } },
-                    onConfirmDelete = { visit -> withToken { vetCoordinator.delete(it, visit.id) } },
                     onDismissError = {
                         receiptStartError = null
                         vetCoordinator.clearErrors()
                     },
-                    onCallHospital = { phone -> dial(context, phone) },
+                    onOpenAll = onOpenVetVisits,
                 )
             }
         }
@@ -251,8 +252,12 @@ fun ChatSummaryRoute(
     }
 }
 
-/** 눌러서 거는 자리. 숫자가 아닌 글자는 떼고 넘긴다 (`PlacesScreen` 과 같은 규칙). */
-private fun dial(context: Context, phone: String) {
+/**
+ * 눌러서 거는 자리. 숫자가 아닌 글자는 떼고 넘긴다 (`PlacesScreen` 과 같은 규칙).
+ *
+ * 전체보기 화면도 같은 번호를 건다 — 두 벌이 되면 한쪽만 고쳐질 자리다.
+ */
+internal fun dial(context: Context, phone: String) {
     val safe = phone.filter { it.isDigit() || it in "+*#," }
     if (safe.isNotBlank()) context.startActivity(Intent(Intent.ACTION_DIAL, "tel:$safe".toUri()))
 }
@@ -282,6 +287,7 @@ private fun ChatSummaryRoutePreview() {
             accessTokenProvider = { null },
             onOpenSource = {},
             onOpenCitation = {},
+            onOpenVetVisits = {},
         )
     }
 }

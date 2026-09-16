@@ -39,6 +39,9 @@ object DaengsColors {
     // [Error] 를 옅게 뽑았다. M3 의 errorContainer 자리에 들어간다 — 안 주면
     // 기본 빨강·보라가 크림·핑크 사이로 튀어나온다 (Theme.kt 참고).
     val ErrorSoft = Color(0xFFFBE3E3)
+
+    /** [Warning] 을 바탕으로 깔 때. [Error] : [ErrorSoft] 와 같은 비율로 뽑았다. */
+    val WarningSoft = Color(0xFFFFF4E4)
 }
 
 // 시안(design/home-screen.png)에서 뽑은 파스텔 팔레트.
