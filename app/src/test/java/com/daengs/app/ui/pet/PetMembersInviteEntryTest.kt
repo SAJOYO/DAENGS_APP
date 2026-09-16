@@ -17,10 +17,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * 보호자 목록에서 초대 관리로 가는 자리.
+ * 보호자 목록 아래의 「새 돌보미 초대」.
  *
- * **대표 판정은 내 줄의 `isOwner` 로 한다** — 목록에 대표가 있는지만 보면 늘 참이라
- * 돌보미에게도 버튼이 뜬다.
+ * **주보호자 판정은 내 줄로 한다** — 목록에 주보호자가 있는지만 보면 늘 참이라
+ * 돌보미에게도 버튼이 뜬다. 실제 배선은 `Pet.isGroupOwner` 를 넘기고
+ * ([isOwnedBy] 는 목록만 있는 자리의 같은 판정이다), 화면은 그 값으로 가른다.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -39,18 +40,19 @@ class PetMembersInviteEntryTest {
                 members = members,
                 petName = "네옹",
                 currentUserId = currentUserId,
-                onOpenInvites = onOpen.takeIf { members.isOwnedBy(currentUserId) },
+                isGroupOwner = members.isOwnedBy(currentUserId),
+                onOpenInvites = onOpen,
             )
         }
     }
 
     @Test
-    fun `대표에게 초대 관리 자리가 뜬다`() {
+    fun `주보호자에게 초대 자리가 뜬다`() {
         var opened = false
         screen(currentUserId = "owner", onOpen = { opened = true })
 
-        compose.onNodeWithText("보호자 초대").assertIsDisplayed()
-        compose.onNodeWithText("보호자 초대").performClick()
+        compose.onNodeWithText("새 돌보미 초대").assertIsDisplayed()
+        compose.onNodeWithText("새 돌보미 초대").performClick()
 
         assertTrue(opened)
     }
@@ -59,19 +61,19 @@ class PetMembersInviteEntryTest {
     fun `돌보미에게는 안 뜬다`() {
         screen(currentUserId = "me")
 
-        compose.onAllNodesWithText("보호자 초대").assertCountEquals(0)
+        compose.onAllNodesWithText("새 돌보미 초대").assertCountEquals(0)
     }
 
     @Test
     fun `로그인 정보가 없으면 안 뜬다`() {
         screen(currentUserId = null)
 
-        compose.onAllNodesWithText("보호자 초대").assertCountEquals(0)
+        compose.onAllNodesWithText("새 돌보미 초대").assertCountEquals(0)
     }
 
-    /** 목록에 대표가 "있다" 는 사실만으로 판정하면 돌보미가 통과한다. */
+    /** 목록에 주보호자가 "있다" 는 사실만으로 판정하면 돌보미가 통과한다. */
     @Test
-    fun `대표 판정이 목록 존재가 아니라 내 줄을 본다`() {
+    fun `주보호자 판정이 목록 존재가 아니라 내 줄을 본다`() {
         assertTrue(members.isOwnedBy("owner"))
         assertFalse(members.isOwnedBy("me"))
         assertFalse(members.isOwnedBy("stranger"))

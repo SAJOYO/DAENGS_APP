@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
  * 초대를 **보내는** 자리로 가는 길. 받는 쪽은 [InviteAcceptEntryTest] 다.
  *
  * **마이에는 보내는 자리를 두지 않는다.** 「누구를 부를까」는 그 아이의 맥락에서 시작하는
- * 일이라 강아지 카드 안(「함께 돌보는 사람」 → 「보호자 초대」)에서 들어간다. 마이에
+ * 일이라 강아지 카드 안(「함께 돌보는 사람」 → 「새 돌보미 초대」)에서 들어간다. 마이에
  * 나란히 두면 「초대받기/초대하기」가 한 글자만 달라 서로 헷갈린다 — 실제로 헷갈렸다.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -70,6 +70,7 @@ class InviteBundleEntryTest {
                 members = emptyList(),
                 petName = "네옹",
                 currentUserId = "me",
+                isGroupOwner = true,
                 onOpenInvites = { opened = true },
             )
         }

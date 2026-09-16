@@ -66,6 +66,7 @@ import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.makeDevCard
 import com.daengs.app.pet.Pet
+import com.daengs.app.pet.PetMember
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.SessionRestore
@@ -1093,16 +1094,48 @@ class MainActivity : ComponentActivity() {
                             petMembers.load(token, pet.id)
                         }
                         val members = petMembers.members.takeIf { petMembers.petId == pet.id }
+                        val me = session?.appUserId
                         PetMembersScreen(
                             members = members,
                             petName = pet.name,
-                            currentUserId = session?.appUserId,
+                            currentUserId = me,
                             busy = petMembers.busy,
                             error = petMembers.error,
-                            // **그룹 주보호자에게만 넘긴다** — null 이면 그 줄 자체가 안 뜬다.
-                            // 연결된 아이에서는 `isOwner` 가 참이어도 그룹 주보호자는
-                            // 초대한 쪽이라, 그 기준으로 열면 눌러 봐야 서버가 막는다.
+                            // **그룹 주보호자인지로 가른다.** 연결된 아이에서는 `isOwner` 가
+                            // 참이어도 그룹 주보호자는 초대한 쪽이라, 그 기준으로 열면 눌러
+                            // 봐야 서버가 막는다.
+                            isGroupOwner = pet.isGroupOwner,
+                            actionBusy = petMembers.actionBusy,
+                            actionError = petMembers.actionError,
                             onOpenInvites = { invitingFor = pet }.takeIf { pet.isGroupOwner },
+                            // **카드가 들고 있는 표시 행 id 를 쓴다** — 목록을 받아 온 것과
+                            // 같은 값이라야 방금 본 명단에서 뺀 사람이 그 명단에서 빠진다.
+                            onRemove = if (pet.isGroupOwner) {
+                                { member: PetMember ->
+                                    scope.launch {
+                                        val token = freshToken() ?: return@launch
+                                        // 성공하면 홀더가 목록을 다시 받는다. 강아지 목록도
+                                        // 같이 받는다 — 마지막 돌보미를 내보내면 카드의
+                                        // 「공동 돌봄」 뱃지가 빠져야 한다.
+                                        if (petMembers.remove(token, pet.id, member.appUserId)) {
+                                            pets.refresh(token)
+                                        }
+                                    }
+                                }
+                            } else null,
+                            // 나가면 그 아이가 내 목록에서 사라진다. **화면부터 닫는다** —
+                            // 남아 있으면 권한이 없어진 아이의 보호자 목록을 다시 읽는다.
+                            onLeave = if (!pet.isGroupOwner && me != null) {
+                                {
+                                    scope.launch {
+                                        val token = freshToken() ?: return@launch
+                                        if (petMembers.leave(token, pet.id, me)) {
+                                            membersFor = null
+                                            pets.refresh(token)
+                                        }
+                                    }
+                                }
+                            } else null,
                             onBack = { membersFor = null },
                         )
                     } else HomeScreen(
