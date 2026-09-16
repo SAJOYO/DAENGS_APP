@@ -3,18 +3,16 @@ package com.daengs.app.walk.shared
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 
-/** 함께 보기 목록의 상태. */
+/** 공동 보호자 산책 읽기의 상태. */
 sealed interface SharedWalksStatus {
     data object Idle : SharedWalksStatus
     data object Loading : SharedWalksStatus
     data object Ready : SharedWalksStatus
 
-    /** 공동 조회 전 서버. 화면은 쓸 수 없다고만 말한다. */
+    /** 통합 목록 전 서버. 화면은 쓸 수 없다고만 말한다. */
     data object Unsupported : SharedWalksStatus
-
-    /** 그 강아지를 볼 수 없다(구성원이 아님·나감·내보내짐). */
-    data class NotFound(val message: String) : SharedWalksStatus
 
     data class Failed(val message: String) : SharedWalksStatus
 }
@@ -30,14 +28,16 @@ sealed interface SharedWalkDetailStatus {
 }
 
 /**
- * 다른 보호자가 다녀온 산책을 **읽기 전용으로** 모아 보는 상태.
+ * 산책 기록 「산책별」에 섞어 보여 줄 **공동 보호자 산책**을 읽기 전용으로 들고 있는 상태.
  *
- * **기기 기록(Room)과 섞지 않는다.** 이 목록은 서버에서 읽은 것을 메모리에만 들고, 내가 올린
- * 산책(`is_mine`)은 기기 기록 목록에 이미 있으니 뺀다. 여기서 산책을 고치거나 지우는 길은 없다.
+ * **기기 기록(Room)을 고치지 않는다.** 서버에서 읽은 것을 메모리에만 들고, 내가 올린 산책(`is_mine`)은
+ * 기기 기록에 이미 있으니 담지 않는다. 합치기·페이지 나누기는 화면(`unifiedWalkPage`)이 한다.
+ *
+ * **조건마다 처음부터다.** [ensure] 가 받은 조건이 앞과 다르면 받아 둔 목록·커서·합계를 버린다 — 앞
+ * 조건의 산책이 새 조건 화면에 섞이면 안 된다.
  *
  * **한 로그인에 하나다.** 부르는 쪽이 계정(AccountScope)마다 새로 만들고, 기다리는 사이 계정이
- * 바뀌면 [isCurrentAccount] 로 알아채 늦게 온 결과를 버린다 — 이전 계정의 산책이 다음 계정
- * 화면에 남으면 안 된다.
+ * 바뀌면 [isCurrentAccount] 로 알아채 늦게 온 결과를 버린다.
  */
 class SharedWalksHolder(
     private val reader: SharedWalkReader,
@@ -45,10 +45,15 @@ class SharedWalksHolder(
     private val accessToken: suspend () -> String?,
     private val isCurrentAccount: () -> Boolean,
 ) {
-    var petId: String? by mutableStateOf(null)
+    var feedQuery: SharedWalkFeedQuery? by mutableStateOf(null)
         private set
 
+    /** 받은 순서(최근 순) 그대로의 공동 보호자 산책. */
     var walks: List<SharedWalk> by mutableStateOf(emptyList())
+        private set
+
+    /** 지금 조건 전체의 합계. 첫 페이지를 받기 전이면 null. */
+    var totals: SharedWalkTotals? by mutableStateOf(null)
         private set
 
     var nextCursor: String? by mutableStateOf(null)
@@ -57,78 +62,108 @@ class SharedWalksHolder(
     var status: SharedWalksStatus by mutableStateOf(SharedWalksStatus.Idle)
         private set
 
+    /** 보호자 조건 후보. 조건과 무관하게 볼 수 있는 강아지 전부 기준이다. */
+    var carers: List<SharedWalkCarer> by mutableStateOf(emptyList())
+        private set
+
     var detail: SharedWalkDetailStatus by mutableStateOf(SharedWalkDetailStatus.Closed)
         private set
 
+    private var carersLoaded = false
     private var listGeneration = 0
     private var detailGeneration = 0
+    private var detailPetId: String? = null
 
-    /** 그 강아지의 첫 페이지. 다른 강아지였으면 앞 목록을 버린다. */
-    suspend fun open(petId: String) {
-        this.petId = petId
-        walks = emptyList()
-        nextCursor = null
-        closeDetail()
-        load(petId, cursor = null)
+    /** 이 조건으로 [atLeast] 건 이상 받아 두거나, 끝까지 받는다. 실패·미지원이면 [retry] 전까지 멈춘다. */
+    suspend fun ensure(query: SharedWalkFeedQuery, atLeast: Int) {
+        if (query != feedQuery) {
+            listGeneration++
+            feedQuery = query
+            walks = emptyList()
+            totals = null
+            nextCursor = null
+            status = SharedWalksStatus.Idle
+        }
+        while (true) {
+            if (status is SharedWalksStatus.Failed || status == SharedWalksStatus.Unsupported) return
+            val loaded = totals != null
+            if (loaded && (walks.size >= atLeast || nextCursor == null)) return
+            if (!load(query, if (loaded) nextCursor else null)) return
+        }
     }
 
-    suspend fun loadMore() {
-        val pet = petId ?: return
-        val cursor = nextCursor ?: return
-        if (status == SharedWalksStatus.Loading) return
-        load(pet, cursor)
+    /** 실패한 자리부터 다시 — 받아 둔 목록은 지키고 그 커서부터 읽는다. */
+    suspend fun retry(query: SharedWalkFeedQuery, atLeast: Int) {
+        if (query == feedQuery && status is SharedWalksStatus.Failed) status = SharedWalksStatus.Idle
+        ensure(query, atLeast)
+    }
+
+    /** 보호자 후보만. 목록을 아직 한 번도 안 받았을 때(검색 조건 등으로 공동 산책을 묻지 않는 동안) 쓴다. */
+    suspend fun loadCarers() {
+        if (carersLoaded) return
+        val token = accessToken() ?: return
+        if (!isCurrentAccount()) return forget()
+        val result = reader.feed(token, SharedWalkFeedQuery(), cursor = null, limit = 1)
+        if (!isCurrentAccount()) return forget()
+        if (result is SharedWalkResult.Ready && !carersLoaded) {
+            carers = result.value.carers
+            carersLoaded = true
+        }
+    }
+
+    /** 한 페이지를 받는다. 이어서 더 받아도 되면 true. */
+    private suspend fun load(query: SharedWalkFeedQuery, cursor: String?): Boolean {
+        val generation = ++listGeneration
+        status = SharedWalksStatus.Loading
+        try {
+            val token = accessToken()
+            if (generation != listGeneration) return false
+            if (!isCurrentAccount()) return false.also { forget() }
+            if (token == null) {
+                status = SharedWalksStatus.Failed("로그인 정보를 확인해 주세요.")
+                return false
+            }
+            val result = reader.feed(token, query, cursor)
+            // 기다리는 사이 조건이 바뀌었거나 계정이 바뀌었으면 늦게 온 답을 버린다.
+            if (generation != listGeneration || query != feedQuery) return false
+            if (!isCurrentAccount()) return false.also { forget() }
+            return when (result) {
+                is SharedWalkResult.Ready -> {
+                    val known = if (cursor == null) emptyList() else walks
+                    val fresh = result.value.walks.filter { walk -> !walk.isMine && known.none { it.id == walk.id } }
+                    walks = known + fresh
+                    nextCursor = result.value.nextCursor
+                    totals = result.value.totals
+                    carers = result.value.carers
+                    carersLoaded = true
+                    status = SharedWalksStatus.Ready
+                    // 빈 페이지에 커서만 오는 일은 없지만, 오면 같은 자리를 계속 부르지 않는다.
+                    result.value.walks.isNotEmpty()
+                }
+                SharedWalkResult.Unsupported -> {
+                    walks = emptyList()
+                    nextCursor = null
+                    totals = null
+                    status = SharedWalksStatus.Unsupported
+                    false
+                }
+                // 받아 둔 것은 남긴다 — 이어 읽기에서 망이 흔들린 것이면 다시 시도하면 된다.
+                is SharedWalkResult.NotFound -> false.also { status = SharedWalksStatus.Failed(result.message) }
+                is SharedWalkResult.Failed -> false.also { status = SharedWalksStatus.Failed(result.message) }
+            }
+        } catch (e: CancellationException) {
+            // 조건이 바뀌어 화면이 요청을 거둔 것이다 — 멈춘 채 "불러오는 중" 으로 남기지 않는다.
+            if (generation == listGeneration) status = SharedWalksStatus.Idle
+            throw e
+        }
     }
 
     /**
-     * 다시 읽는다. 이어 읽기에서 실패했으면(받은 것이 있고 다음 커서가 남아 있으면) 그 자리부터,
-     * 아니면 첫 페이지부터 — 이어 읽을 커서가 없는데 이어 읽기로 가면 아무것도 안 부른다.
+     * 한 건과 그 경로. [petId] 는 그 산책이 태그된 **내 화면의 강아지** 하나다 — 서버가 그 강아지로
+     * 볼 수 있는 산책인지 다시 확인한다. 볼 수 없으면 서버 문장을 남긴다.
      */
-    suspend fun retry() {
-        val pet = petId ?: return
-        if (status is SharedWalksStatus.Failed && walks.isNotEmpty() && nextCursor != null) loadMore()
-        else load(pet, cursor = null)
-    }
-
-    private suspend fun load(pet: String, cursor: String?) {
-        val generation = ++listGeneration
-        status = SharedWalksStatus.Loading
-        val token = accessToken()
-        if (generation != listGeneration) return
-        if (!isCurrentAccount()) return forget()
-        if (token == null) {
-            status = SharedWalksStatus.Failed("로그인 정보를 확인해 주세요.")
-            return
-        }
-        val result = reader.list(token, pet, cursor)
-        // 기다리는 사이 다른 강아지를 골랐거나 계정이 바뀌었으면 늦게 온 답을 버린다.
-        if (generation != listGeneration) return
-        if (!isCurrentAccount()) return forget()
-        when (result) {
-            is SharedWalkResult.Ready -> {
-                val known = if (cursor == null) emptyList() else walks
-                val fresh = result.value.walks.filter { walk -> !walk.isMine && known.none { it.id == walk.id } }
-                walks = known + fresh
-                nextCursor = result.value.nextCursor
-                status = SharedWalksStatus.Ready
-            }
-            SharedWalkResult.Unsupported -> {
-                walks = emptyList()
-                nextCursor = null
-                status = SharedWalksStatus.Unsupported
-            }
-            is SharedWalkResult.NotFound -> {
-                walks = emptyList()
-                nextCursor = null
-                status = SharedWalksStatus.NotFound(result.message)
-            }
-            // 받아 둔 것은 남긴다 — 이어 읽기에서 망이 흔들린 것이면 다시 시도하면 된다.
-            is SharedWalkResult.Failed -> status = SharedWalksStatus.Failed(result.message)
-        }
-    }
-
-    /** 한 건과 그 경로. 볼 수 없으면 서버 문장을 남긴다. */
-    suspend fun openDetail(walkId: String) {
-        val pet = petId ?: return
+    suspend fun openDetail(petId: String, walkId: String) {
+        detailPetId = petId
         val generation = ++detailGeneration
         detail = SharedWalkDetailStatus.Loading(walkId)
         val token = accessToken()
@@ -138,7 +173,7 @@ class SharedWalksHolder(
             detail = SharedWalkDetailStatus.Unavailable(walkId, "로그인 정보를 확인해 주세요.", retryable = true)
             return
         }
-        val result = reader.detail(token, pet, walkId)
+        val result = reader.detail(token, petId, walkId)
         if (generation != detailGeneration) return
         if (!isCurrentAccount()) return forget()
         detail = when (result) {
@@ -150,6 +185,12 @@ class SharedWalksHolder(
         }
     }
 
+    suspend fun retryDetail() {
+        val current = detail as? SharedWalkDetailStatus.Unavailable ?: return
+        val pet = detailPetId ?: return
+        openDetail(pet, current.walkId)
+    }
+
     fun closeDetail() {
         detailGeneration++
         detail = SharedWalkDetailStatus.Closed
@@ -159,10 +200,14 @@ class SharedWalksHolder(
     fun forget() {
         listGeneration++
         detailGeneration++
-        petId = null
+        feedQuery = null
         walks = emptyList()
+        totals = null
         nextCursor = null
         status = SharedWalksStatus.Idle
+        carers = emptyList()
+        carersLoaded = false
         detail = SharedWalkDetailStatus.Closed
+        detailPetId = null
     }
 }

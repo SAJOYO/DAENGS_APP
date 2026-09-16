@@ -39,7 +39,7 @@ internal val LocalPlaceAssistantInputFocus = compositionLocalOf<(Boolean) -> Uni
 internal fun PlaceDogDialogue(
     busy: Boolean, composing: Boolean, draft: String, onDraft: (String) -> Unit,
     searchContext: String?, onClose: () -> Unit, onCancel: () -> Unit, onUndo: (() -> Unit)?,
-    onCompose: () -> Unit, onSubmit: () -> Unit, tailX: Float,
+    onSubmit: () -> Unit, tailX: Float,
     modifier: Modifier = Modifier, details: (@Composable () -> Unit)? = null,
     reply: @Composable () -> Unit,
 ) {
@@ -64,7 +64,7 @@ internal fun PlaceDogDialogue(
                 Box(Modifier.padding(start = 22.dp, end = 22.dp, top = 35.dp).fillMaxWidth()
                     .height(speechHeight).testTag("place-dog-speech").clip(RoundedCornerShape(4.dp))
                     .verticalScroll(rememberScrollState())) {
-                    ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 29.sp,
+                    ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 21.sp,
                         fontWeight = FontWeight.Medium, color = DaengsColors.TextPrimary)) {
                         when {
                             busy -> DogDialogueText("킁킁, 조건에 맞는 곳을\n찾아보고 있어!")
@@ -96,16 +96,10 @@ internal fun PlaceDogDialogue(
                             DogSearchSteps(Modifier.weight(1f))
                             TextButton(onClick = onCancel) { Text("대기 그만", fontSize = 12.sp) }
                         }
-                        composing -> DogDialogueInput(draft, onDraft, onSubmit)
                         else -> {
                             if (onUndo != null) TextButton(onClick = onUndo) { Text("되돌리기", fontSize = 12.sp) }
-                            Button(onClick = onCompose, modifier = Modifier.weight(1f).fillMaxHeight(),
-                                shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(horizontal = 10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = DaengsColors.BrandPrimarySoft,
-                                    contentColor = DaengsColors.TextPrimary)) {
-                                DogDialoguePaw(Modifier.size(13.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("다시 말 걸기", fontSize = 12.sp)
+                            Box(Modifier.weight(1f)) {
+                                DogDialogueInput(draft, onDraft, onSubmit)
                             }
                         }
                     }
@@ -144,7 +138,7 @@ private fun DogDialogueInput(draft: String, onDraft: (String) -> Unit, onSubmit:
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) onSubmit() }),
             decorationBox = { field -> Box {
-                if (draft.isEmpty()) Text("주차 가능한 카페 찾아줘", color = DaengsColors.TextSecondary, fontSize = 12.sp)
+                if (draft.isEmpty()) Text("도우미견에게 말해 주세요", color = DaengsColors.TextSecondary, fontSize = 12.sp)
                 field()
             } })
         IconButton(onClick = onSubmit, enabled = draft.isNotBlank(), modifier = Modifier.size(48.dp)
@@ -216,7 +210,7 @@ private fun DogDialoguePreview() {
     DaengsTheme { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         listOf("input", "busy", "reply").forEach { state ->
             PlaceDogDialogue(state == "busy", state == "input", "", {}, "현재 검색 지역 · 반경 3km",
-                {}, {}, {}, {}, {}, 280f, Modifier.fillMaxWidth()) {
+                {}, {}, {}, {}, 280f, Modifier.fillMaxWidth()) {
                 DogDialogueText("주차 가능한 카페를 찾았어.\n아래 카드에서 골라 봐, 멍!")
             }
         }

@@ -10,6 +10,15 @@ package com.daengs.app.assistant
  * **판정 내용은 싣지 않는다** — 기록 id 만 보내고 판정은 서버가 소유를 확인해 DB 에서
  * 읽는다. 응답이 대화로 저장되므로, 앱이 보낸 판정을 믿으면 지난 대화에서 되돌릴 수 없다.
  *
+ * **[explicit] 가 가르는 것은 "누가 답할지를 앱이 정하는가" 다** (백엔드 `#569`).
+ *
+ * - `true` — 판정 말풍선의 "이 결과 물어보기". `requested_capability="skin"` 을 함께 보내
+ *   서버가 묻지도 따지지도 않고 해설로 보낸다. 사용자가 그 버튼을 눌러 뜻을 밝혔기 때문이다.
+ * - `false` — 판정 뒤에 사용자가 **직접 친 질문**. 기록 id 만 보낸다. 누가 답할지는 서버의
+ *   의미 라우터가 정하고, 피부 이야기일 때만 해설이 받는다. 신호까지 보내면 "산책 언제 가?"
+ *   까지 피부가 가로챈다.
+ *
  * @param recordId 판정이 남은 기록의 id (`ScreeningRun.Outcome.Screened.recordId`).
+ * @param explicit 피부 해설을 **지목**하는가. 칩은 true, 이어서 친 질문은 false.
  */
-data class ScreeningFollowUp(val recordId: String)
+data class ScreeningFollowUp(val recordId: String, val explicit: Boolean)

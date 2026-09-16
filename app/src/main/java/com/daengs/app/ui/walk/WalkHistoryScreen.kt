@@ -124,10 +124,8 @@ internal fun WalkHistoryPageContent(
                         WalkRouteThumbnail(walk, Modifier.size(88.dp))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(walkDiaryTitle(walk, titles[walk.sessionId]), fontWeight = FontWeight.SemiBold,
+                            Text(walkDiaryTitle(walk), fontWeight = FontWeight.SemiBold,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (titles[walk.sessionId] != null) Text(formatWalkDay(walk.startedAtMillis),
-                                style = MaterialTheme.typography.labelSmall, color = TextMuted)
                             val names = dogNames(walk.dogIds, pets)
                             if (names.isNotEmpty()) Text(names.joinToString(" · "), color = DaengPinkDeep,
                                 style = MaterialTheme.typography.labelSmall)
@@ -151,8 +149,7 @@ internal fun WalkHistoryPageContent(
     }
 }
 
-internal fun walkDiaryTitle(walk: WalkSummary, title: String?): String =
-    title ?: "${formatWalkDay(walk.startedAtMillis)} 산책"
+internal fun walkDiaryTitle(walk: WalkSummary): String = "${formatWalkDay(walk.startedAtMillis)} 산책"
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 780)
 @Composable
