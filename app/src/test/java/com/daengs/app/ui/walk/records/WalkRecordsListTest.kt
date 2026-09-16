@@ -132,7 +132,10 @@ class WalkRecordsListTest {
         compose.onNodeWithContentDescription("내 산책").assertIsDisplayed()
         compose.onNodeWithText("측정 전").assertExists()
         compose.onNodeWithText("출발 비", substring = true).assertExists()
-        compose.onNodeWithText("${formatWalkDay(shared.startedAtMs)} 산책").assertExists()
+        // dev 가 카드 제목을 장면 제목 기준으로 바꾼 뒤로 내 카드도 같은 날짜 기본 제목을 쓴다 —
+        // 제목만으로는 두 카드가 갈리지 않으므로 공동 보호자 카드 안에서 찾는다.
+        compose.onNode(hasText("${formatWalkDay(shared.startedAtMs)} 산책")
+            and hasAnyAncestor(hasTestTag("records-walk-shared-1")), useUnmergedTree = true).assertExists()
         // 배지는 카드 안에 합쳐진 노드라 합치기 전 트리에서 찾는다.
         val sharedBadge = compose.onNodeWithTag("records-walk-actor-shared-1", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val myBadge = compose.onNodeWithTag("records-walk-actor-mine", useUnmergedTree = true).getUnclippedBoundsInRoot()
