@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.chat.ChatCitation
+import com.daengs.app.pet.Pet
 import com.daengs.app.chat.ChatHistoryState
 import com.daengs.app.chat.ChatLoadState
 import com.daengs.app.chat.ChatSummary
@@ -73,6 +74,13 @@ fun ChatSummaryRoute(
      * 그룹 전체를 합쳐 주므로 남의 행에 달린 기록이 같은 목록에 섞여 온다.
      */
     ownsPetRow: (String) -> Boolean = { true },
+    /**
+     * 계정의 강아지들. **영수증 확인 화면의 아이별 분할이 여기서 고른다** — 이 화면이
+     * 아는 강아지 하나로는 둘째 블록을 누구에게 붙일지 물을 수가 없다.
+     *
+     * 배웅한 아이도 뺴지 않는다 — 영수증은 그때의 기록이라 그 아이 밑에 남아야 한다.
+     */
+    pets: List<Pet> = emptyList(),
 ) {
     val state by coordinator.state.collectAsState()
     val careState by careCoordinator.state.collectAsState()
@@ -232,6 +240,7 @@ fun ChatSummaryRoute(
             options = vetState.reasonOptions,
             step = flow.step,
             error = flow.error,
+            pets = pets,
             onConfirm = { edits -> withToken { vetCoordinator.confirm(it, edits) } },
             // ⚠️ 확정이 실패한 뒤에는 여기가 아니라 [확인] 을 다시 누르는 자리다 —
             //    코디네이터의 재시도 표대로다. 그쪽이 거절하면 아무 일도 안 일어난다.

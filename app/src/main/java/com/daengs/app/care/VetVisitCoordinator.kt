@@ -52,19 +52,61 @@ data class ReceiptFlow(
      * 확정 뒤에 남지도 않는다. 올릴 바이트([pendingJpeg])와 같은 배열을 가리킨다.
      */
     val photo: PreparedPhoto? = null,
-)
+    /**
+     * 블록마다 하나씩인 확정 키. **`patient_index` 로 찾아 쓴다** (자리 순서가 아니다).
+     *
+     * 초안이 와서 블록 수를 알게 된 순간 한 번 만들고, 이 흐름이 끝날 때까지 안 바뀐다 —
+     * 저쪽 멱등 키가 행 단위라(`UNIQUE (app_user_id, client_event_id)`) 재시도에 새 uuid
+     * 를 만들면 **기록이 두 벌 생긴다.**
+     *
+     * 0번은 [clientEventId] 를 그대로 쓴다. 한 마리 경로가 지금까지 쓰던 키 그대로여야,
+     * 이미 저장된 확정이 있을 때 저쪽이 그것을 도로 준다.
+     */
+    val splitEventIds: List<String> = emptyList(),
+) {
+    /**
+     * 이 블록이 쓸 확정 키. 모르는 블록(`null`)은 첫 키를 쓴다 — 나누지 않고 한 줄로
+     * 확정하는 경우라 그 줄이 곧 이 영수증이다.
+     */
+    fun eventIdFor(patientIndex: Int?): String =
+        splitEventIds.getOrNull(patientIndex ?: 0) ?: clientEventId
+}
 
-/** 유저가 확인 화면에서 고친 값. `client_event_id` 는 화면이 모른다 — 흐름이 들고 있다. */
+/**
+ * 유저가 확인 화면에서 고친 값. `client_event_id` 는 화면이 모른다 — 흐름이 들고 있다.
+ *
+ * 날짜·총액·병원과 [isEmergency] 는 **영수증 단위**다. 야간·응급·공휴일은 영수증에 찍힌
+ * 할증이라 아이마다 다를 수가 없다 — 새벽에 갔으면 두 아이 다 새벽이다. 나머지는 아이마다
+ * 다르므로 [splits] 안에 있다.
+ */
 data class ReceiptEdits(
-    val reasonCode: String,
-    val reasonDetail: String?,
     val visitedOn: LocalDate,
+    /** 영수증에 인쇄된 총액. 저쪽이 [splits] 의 합과 대조한다. */
     val totalKrw: Int,
     val hospitalName: String?,
     val hospitalAddress: String?,
     val hospitalPhone: String?,
     val isEmergency: Boolean,
+    /** **길이 1 이상.** 안 나눈 영수증은 특수 케이스가 아니라 길이 1 이다. */
+    val splits: List<SplitEdit>,
+)
+
+/**
+ * 블록 하나에서 유저가 고른 것. **이 한 줄이 기록 하나가 된다.**
+ *
+ * 사유와 종양은 아이마다 다르다 — 한 영수증에 찍힌 두 아이가 같은 이유로 갔을 까닭이 없고,
+ * 종양은 임상 판단이라 더 그렇다. 여기를 영수증 단위로 접으면 **그 아이의 병력에 남는 값이
+ * 조용히 틀린다.**
+ */
+data class SplitEdit(
+    /** 비우면 저쪽이 초안을 만들 때 고른 강아지를 쓴다. */
+    val petId: String?,
+    val reasonCode: String,
+    val reasonDetail: String?,
+    val totalKrw: Int,
     val isOncology: Boolean,
+    /** 몇 번째 `동물명` 블록이었나. **모르면 `null` 이다 — 0 으로 접지 말 것.** */
+    val patientIndex: Int?,
 )
 
 data class VetVisitState(
@@ -87,7 +129,7 @@ interface VetVisitGateway {
         accessToken: String,
         draftId: String,
         confirmation: VetVisitConfirmation,
-    ): Result<VetVisit>
+    ): Result<List<VetVisit>>
     suspend fun list(accessToken: String, petId: String): Result<List<VetVisit>>
     suspend fun reasonOptions(accessToken: String, petId: String): Result<List<VetReasonOption>>
     suspend fun delete(accessToken: String, visitId: String): Result<Unit>
@@ -265,13 +307,16 @@ class VetVisitCoordinator(
         mutableState.update { it.copy(receipt = flow.copy(step = ReceiptStep.CONFIRMING, error = null)) }
         receiptJob = scope.launch {
             val result = runSafely {
-                gateway.confirm(accessToken, draftId, edits.toConfirmation(flow.clientEventId))
+                gateway.confirm(accessToken, draftId, edits.toConfirmation(flow))
             }
             if (!isCurrentPet(petId, generation) || !isCurrentFlow(flow)) return@launch
             result.fold(
-                onSuccess = { visit ->
+                onSuccess = { confirmed ->
                     pendingJpeg = null
-                    mutableState.update { it.copy(receipt = null, visits = it.visits.withVisit(visit)) }
+                    // **형제의 기록도 같이 돌아온다.** 이 목록은 고른 아이 하나의 목록이라,
+                    // 남의 행을 여기 붙이면 그 아이 밑에 다른 아이의 진료비가 앉는다.
+                    val mine = confirmed.filter { it.petId == petId }
+                    mutableState.update { it.copy(receipt = null, visits = it.visits.withVisits(mine)) }
                 },
                 onFailure = { error ->
                     mutableState.update {
@@ -382,6 +427,12 @@ class VetVisitCoordinator(
                         step = ReceiptStep.READY,
                         draft = draft,
                         error = null,
+                        // 블록 수를 지금 알게 됐다. 키는 여기서 한 번만 만든다.
+                        splitEventIds = current.splitEventIds.ifEmpty {
+                            List(draft.patientCount) { index ->
+                                if (index == 0) current.clientEventId else newId()
+                            }
+                        },
                     ),
                     // 초안이 실어 온 사유 목록이 더 최신이다 (이 강아지의 최근 사유가 앞).
                     reasonOptions = draft.reasonOptions.ifEmpty { state.reasonOptions },
@@ -437,24 +488,37 @@ class VetVisitCoordinator(
     }
 }
 
-private fun ReceiptEdits.toConfirmation(clientEventId: String) = VetVisitConfirmation(
-    clientEventId = clientEventId,
-    reasonCode = reasonCode,
-    reasonDetail = reasonDetail,
+private fun ReceiptEdits.toConfirmation(flow: ReceiptFlow) = VetVisitConfirmation(
     visitedOn = visitedOn,
     totalKrw = totalKrw,
     hospitalName = hospitalName,
     hospitalAddress = hospitalAddress,
     hospitalPhone = hospitalPhone,
-    isEmergency = isEmergency,
-    isOncology = isOncology,
+    splits = splits.map { row ->
+        VetVisitSplit(
+            // **자리 순서가 아니라 블록 번호로 찾는다.** 유저가 블록을 빼면 자리가
+            // 밀리는데, 그때 키가 같이 밀리면 지운 블록의 키로 남은 블록이 저장된다.
+            clientEventId = flow.eventIdFor(row.patientIndex),
+            petId = row.petId,
+            reasonCode = row.reasonCode,
+            reasonDetail = row.reasonDetail,
+            totalKrw = row.totalKrw,
+            // 영수증 단위 — 모든 행에 같은 값이 간다.
+            isEmergency = isEmergency,
+            isOncology = row.isOncology,
+            patientIndex = row.patientIndex,
+        )
+    },
 )
 
-/** 방금 확정한 기록을 맨 앞에 넣는다. 아직 목록을 못 읽었으면 그대로 둔다. */
-private fun ChatLoadState<List<VetVisit>>.withVisit(visit: VetVisit): ChatLoadState<List<VetVisit>> {
+/** 방금 확정한 기록들을 맨 앞에 넣는다. 아직 목록을 못 읽었으면 그대로 둔다. */
+private fun ChatLoadState<List<VetVisit>>.withVisits(
+    added: List<VetVisit>,
+): ChatLoadState<List<VetVisit>> {
     val visits = (this as? ChatLoadState.Ready)?.value ?: return this
-    if (visits.any { it.id == visit.id }) return this
-    return ChatLoadState.Ready(listOf(visit) + visits)
+    val fresh = added.filterNot { new -> visits.any { it.id == new.id } }
+    if (fresh.isEmpty()) return this
+    return ChatLoadState.Ready(fresh + visits)
 }
 
 private fun ChatLoadState<List<VetVisit>>.without(visitId: String): ChatLoadState<List<VetVisit>> {

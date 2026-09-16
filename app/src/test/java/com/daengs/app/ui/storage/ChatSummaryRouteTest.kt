@@ -109,7 +109,7 @@ class ChatSummaryRouteTest {
             accessToken: String,
             draftId: String,
             confirmation: VetVisitConfirmation,
-        ): Result<VetVisit> = Result.failure(IllegalStateException("이 테스트는 안 부른다"))
+        ): Result<List<VetVisit>> = Result.failure(IllegalStateException("이 테스트는 안 부른다"))
         override suspend fun list(accessToken: String, petId: String) = Result.success(emptyList<VetVisit>())
         override suspend fun reasonOptions(accessToken: String, petId: String) =
             Result.success(emptyList<VetReasonOption>())

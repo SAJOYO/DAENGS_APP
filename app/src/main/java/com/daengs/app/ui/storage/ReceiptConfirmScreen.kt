@@ -62,6 +62,10 @@ import com.daengs.app.care.MAX_HOSPITAL_NAME
 import com.daengs.app.care.MAX_REASON_DETAIL
 import com.daengs.app.care.MAX_TOTAL_KRW
 import com.daengs.app.care.ReceiptEdits
+import com.daengs.app.care.SplitEdit
+import com.daengs.app.care.receiptBlocks
+import com.daengs.app.care.remainderKrw
+import com.daengs.app.pet.Pet
 import com.daengs.app.care.ReceiptItem
 import com.daengs.app.care.ReceiptStep
 import com.daengs.app.care.UnreadableReason
@@ -133,6 +137,11 @@ fun ReceiptConfirmScreen(
     step: ReceiptStep,
     error: ChatApiError?,
     modifier: Modifier = Modifier,
+    /**
+     * 계정의 강아지들. **분할은 여기서 고른다** — 확인 화면이 아는 강아지 하나로는
+     * 둘째 블록을 누구에게 붙일지 물을 수가 없다. 한 마리뿐이면 분할 자체를 안 띄운다.
+     */
+    pets: List<Pet> = emptyList(),
     onConfirm: (ReceiptEdits) -> Unit = {},
     onRetry: () -> Unit = {},
     onDismiss: () -> Unit = {},
@@ -199,7 +208,7 @@ fun ReceiptConfirmScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("영수증을 읽고 있어요", color = TextMuted, fontSize = 14.sp)
             }
-            else -> ReceiptForm(draft, options, step, error, onConfirm, onRetry, today)
+            else -> ReceiptForm(draft, options, step, error, pets, onConfirm, onRetry, today)
         }
     }
 }
@@ -264,6 +273,7 @@ private fun ReceiptForm(
     options: List<VetReasonOption>,
     step: ReceiptStep,
     error: ChatApiError?,
+    pets: List<Pet>,
     onConfirm: (ReceiptEdits) -> Unit,
     onRetry: () -> Unit,
     today: LocalDate,
@@ -283,9 +293,27 @@ private fun ReceiptForm(
         mutableStateOf(draft.suggestedReasonCode?.takeIf { code -> options.any { it.code == code } })
     }
 
+    val blocks = remember(draft) { draft.receiptBlocks() }
+    /**
+     * 나눌 수 있나. **둘 다여야 한다** — 영수증이 여러 아이를 찍었고, 계정에 아이가
+     * 여럿이어야 한다. `patient_count` 가 2 로 잘못 세어져도 한 마리 계정에는 물어볼
+     * 이유가 없다 (카드 "꼭 지켜야 하는 것" 4).
+     */
+    val canSplit = draft.patientCount > 1 && pets.size > 1
+    var splitting by remember(draft) { mutableStateOf(canSplit) }
+    var rows by remember(draft) { mutableStateOf(initialSplitRows(blocks)) }
+
     val phoneOk = phoneLooksValid(phone)
     val amount = total.toIntOrNull()
-    val valid = reason != null && amount != null && amount in 0..MAX_TOTAL_KRW && phoneOk
+    // **미래 날짜는 여기서 막는다.** 저쪽도 422 를 내지만, 유저가 [확인] 을 눌러 본 뒤에
+    // 알게 하면 안 된다 — 합계 규칙과 같은 결이다. 날짜 휠은 올해까지 열려 있어서 오늘
+    // 뒤를 고를 수 있다.
+    val futureDate = visitedOn.isAfter(today)
+    val splitAmounts = rows.amountsOrNull()
+    val splitBalanced = amount != null && splitAmounts != null && remainderKrw(splitAmounts, amount) == 0
+    val splitReady = rows.allChosen() && splitBalanced
+    val valid = amount != null && amount in 0..MAX_TOTAL_KRW && phoneOk && !futureDate &&
+        if (splitting) splitReady else reason != null
 
     draft.noticeText()?.let { ReceiptNotice(it, TextMuted) }
     if (draft.possibleDuplicate) {
@@ -299,6 +327,13 @@ private fun ReceiptForm(
 
     FieldLabel("방문 날짜")
     DateWheel(visitedOn, { visitedOn = it })
+    if (futureDate) {
+        Text(
+            "영수증 날짜가 오늘보다 뒤예요. 날짜를 고쳐 주세요.",
+            color = DaengsColors.Error,
+            fontSize = 13.sp,
+        )
+    }
 
     FieldLabel("총액")
     TextInput(total, { total = it.filter(Char::isDigit).take(9) }, "숫자만", KeyboardType.Number, "총액")
@@ -313,47 +348,99 @@ private fun ReceiptForm(
         Text("금액이 너무 커요. 다시 확인해 주세요.", color = DaengsColors.Error, fontSize = 13.sp)
     }
 
-    FieldLabel("무엇 때문에 갔나")
-    FlowRow(
-        Modifier
-            .fillMaxWidth()
-            .height(REASON_ROWS_HEIGHT)
-            .verticalScroll(rememberScrollState())
-            // 안쪽이 끝에 닿아도 바깥 폼이 따라 움직이지 않게 남은 스크롤을 먹는다.
-            // 안 붙이면 두 스크롤이 서로 밀고, 테스트의 클릭도 엉뚱한 자리에 떨어진다.
-            .nestedScroll(KeepScrollInside),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        options.forEach { option ->
-            Chip(option.label, option.code == reason) { reason = option.code }
-        }
-    }
-    TextInput(detail, { detail = it }, "한 줄 메모 (선택)", label = "메모", maxLength = MAX_REASON_DETAIL)
-
+    // **영수증 단위다.** 야간·응급·공휴일은 영수증에 찍힌 할증이라 아이마다 다를 수
+    // 없다 — 새벽에 갔으면 두 아이 다 새벽이다. 그래서 분할 밖에 둔다.
     ToggleRow("야간·응급·공휴일이었어요", emergency) { emergency = !emergency }
-    ToggleRow("종양 진료였어요", oncology) { oncology = !oncology }
 
-    if (draft.items.isNotEmpty()) {
-        FieldLabel("영수증에서 읽은 항목")
-        ReceiptItems(draft.items)
+    if (canSplit) {
+        ToggleRow("아이별로 나누기", splitting) { splitting = !splitting }
+        Text(
+            "영수증에서 동물명 블록 ${draft.patientCount}개를 찾았어요.",
+            color = TextMuted,
+            fontSize = 13.sp,
+        )
+    }
+
+    if (splitting) {
+        ReceiptSplitSection(
+            rows = rows,
+            blocks = blocks,
+            pets = pets,
+            options = options,
+            totalKrw = amount,
+            onRows = { rows = it },
+        )
+    } else {
+        FieldLabel("무엇 때문에 갔나")
+        FlowRow(
+            Modifier
+                .fillMaxWidth()
+                .height(REASON_ROWS_HEIGHT)
+                .verticalScroll(rememberScrollState())
+                // 안쪽이 끝에 닿아도 바깥 폼이 따라 움직이지 않게 남은 스크롤을 먹는다.
+                // 안 붙이면 두 스크롤이 서로 밀고, 테스트의 클릭도 엉뚱한 자리에 떨어진다.
+                .nestedScroll(KeepScrollInside),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { option ->
+                Chip(option.label, option.code == reason) { reason = option.code }
+            }
+        }
+        TextInput(detail, { detail = it }, "한 줄 메모 (선택)", label = "메모", maxLength = MAX_REASON_DETAIL)
+
+        ToggleRow("종양 진료였어요", oncology) { oncology = !oncology }
+
+        if (draft.items.isNotEmpty()) {
+            FieldLabel("영수증에서 읽은 항목")
+            ReceiptItems(draft.items)
+        }
     }
 
     Spacer(Modifier.height(2.dp))
     DaengsWideButton(
         label = "확인",
         onClick = {
+            val receiptTotal = amount ?: return@DaengsWideButton
+            val split = if (splitting) {
+                rows.map { row ->
+                    SplitEdit(
+                        petId = row.petId ?: return@DaengsWideButton,
+                        reasonCode = row.reasonCode ?: return@DaengsWideButton,
+                        reasonDetail = row.detail.blankToNull(),
+                        totalKrw = row.amount.toIntOrNull() ?: return@DaengsWideButton,
+                        isOncology = row.oncology,
+                        patientIndex = row.patientIndex,
+                    )
+                }
+            } else {
+                listOf(
+                    SplitEdit(
+                        // 안 나눌 때는 저쪽이 초안의 강아지를 쓴다.
+                        petId = null,
+                        reasonCode = reason ?: return@DaengsWideButton,
+                        reasonDetail = detail.blankToNull(),
+                        totalKrw = receiptTotal,
+                        isOncology = oncology,
+                        /*
+                         * **블록이 하나일 때만 0 이다.** 여러 블록이 찍힌 영수증을 안 나누고
+                         * 한 줄로 확정하면, 이 기록이 어느 블록의 것인지 우리는 모른다 —
+                         * 0 이라고 하면 첫 블록의 항목만 이 기록에 붙는다. 저쪽은 `null`
+                         * 이면 항목을 하나도 안 넣는데, 그게 일부러 그렇게 한 것이다.
+                         */
+                        patientIndex = if (draft.patientCount == 1) 0 else null,
+                    ),
+                )
+            }
             onConfirm(
                 ReceiptEdits(
-                    reasonCode = reason ?: return@DaengsWideButton,
-                    reasonDetail = detail.blankToNull(),
                     visitedOn = visitedOn,
-                    totalKrw = amount ?: return@DaengsWideButton,
+                    totalKrw = receiptTotal,
                     hospitalName = name.blankToNull(),
                     hospitalAddress = address.blankToNull(),
                     hospitalPhone = phone.blankToNull(),
                     isEmergency = emergency,
-                    isOncology = oncology,
+                    splits = split,
                 ),
             )
         },
@@ -385,7 +472,7 @@ private fun ReceiptNotice(
 }
 
 @Composable
-private fun ReceiptItems(items: List<ReceiptItem>) {
+internal fun ReceiptItems(items: List<ReceiptItem>) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -405,7 +492,7 @@ private fun ReceiptItems(items: List<ReceiptItem>) {
 }
 
 @Composable
-private fun FieldLabel(text: String) {
+internal fun FieldLabel(text: String) {
     Text(text, color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
 }
 
@@ -414,7 +501,7 @@ private fun FieldLabel(text: String) {
  * 두 번 쓰지 않고, 이게 없으면 테스트가 자리표시자 글자를 칸으로 착각한다.
  */
 @Composable
-private fun TextInput(
+internal fun TextInput(
     value: String,
     onChange: (String) -> Unit,
     hint: String,
@@ -446,7 +533,7 @@ private fun TextInput(
 }
 
 @Composable
-private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         label,
         color = if (selected) TextDark else TextMuted,
@@ -465,7 +552,7 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ToggleRow(label: String, on: Boolean, onToggle: () -> Unit) {
+internal fun ToggleRow(label: String, on: Boolean, onToggle: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -483,9 +570,9 @@ private fun ToggleRow(label: String, on: Boolean, onToggle: () -> Unit) {
 
 private val WON = NumberFormat.getIntegerInstance(Locale.KOREA)
 
-private fun wonOf(amount: Int): String = "${WON.format(amount)}원"
+internal fun wonOf(amount: Int): String = "${WON.format(amount)}원"
 
-private fun String.blankToNull(): String? = trim().takeIf { it.isNotEmpty() }
+internal fun String.blankToNull(): String? = trim().takeIf { it.isNotEmpty() }
 
 /** 미리보기 높이. 여기서는 알아보기만 하고, 읽는 것은 눌러서 크게 보는 쪽이 한다. */
 private val PREVIEW_HEIGHT = 200.dp
@@ -496,7 +583,7 @@ private val PREVIEW_HEIGHT = 200.dp
  * 두 줄이 온전히 보이고 **세 번째 줄이 살짝 걸친다** — `BreedGrid` 가 같은 이유로 잡아 둔
  * 규칙이다. 딱 두 줄로 끊으면 아래에 더 있다는 게 안 보여서 스크롤할 생각을 못 한다.
  */
-private val REASON_ROWS_HEIGHT = 128.dp
+internal val REASON_ROWS_HEIGHT = 128.dp
 
 private const val READ_FAILED = "영수증을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요."
 private const val SAVE_FAILED = "기록을 저장하지 못했어요. 다시 시도해 주세요."
@@ -515,6 +602,7 @@ private fun previewDraft() = VetVisitDraft(
     hospitalName = "압구정동물병원", hospitalAddress = "서울 강남구 압구정로",
     hospitalPhone = "02-543-0075",
     items = listOf(ReceiptItem("초진료", 5_500), ReceiptItem("주사-비오칸엠", 46_200)),
+    patientCount = 1,
     suggestedReasonCode = "vaccination", isEmergency = false, possibleDuplicate = false,
     reasonOptions = PREVIEW_OPTIONS,
 )
