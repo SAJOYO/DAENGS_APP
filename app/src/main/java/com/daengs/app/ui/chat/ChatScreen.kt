@@ -417,6 +417,15 @@ fun ChatScreen(
 
     // 진단 한 번. **새 계약이 되면 기록이 남고, 안 되면 옛 경로로 판정만 받는다.**
     val screeningRun = remember(accessTokenProvider) { ScreeningRun(accessTokenProvider) }
+    // 이 대화에서 마지막으로 받은 피부 판정 기록 (백엔드 `#569`).
+    //
+    // **판정 뒤에 직접 친 질문에도 이 값을 싣는다.** 칩 한 번으로 끝나면 "그럼 언제 다시
+    // 찍어?" 같은 이어지는 질문이 판정을 모르는 답으로 떨어진다. 신호(`skin`)는 안 싣기
+    // 때문에 산책·생활 질문은 그대로 각자의 기능이 답한다 — 서버 라우터가 정한다.
+    //
+    // 새 판정을 받으면 그것으로 바뀐다. 서버 이력에서 복원한 대화에는 판정 카드가 없어서
+    // 값도 없다 — 그때는 이 기능이 생기기 전과 같게 동작한다.
+    var lastScreeningRecordId by remember { mutableStateOf<String?>(null) }
 
     // 프레임까지 맞춘 사진을 대화에 올리고 서버에 물어본다.
     //
@@ -438,7 +447,10 @@ fun ChatScreen(
             // ⚠️ **box 를 이제 실제로 보낸다.** 전에는 안 보내서 저쪽이 화면 중앙으로
             //    물러섰고, 1단계는 큰 차이가 없지만 2단계 분포가 학습 크롭과 어긋났다.
             when (val outcome = screeningRun.run(dogId, photo.jpeg, box)) {
-                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report, outcome.recordId)
+                is ScreeningRun.Outcome.Screened -> {
+                    entries[slot] = ChatEntry.Report(outcome.report, outcome.recordId)
+                    lastScreeningRecordId = outcome.recordId
+                }
                 is ScreeningRun.Outcome.Failed -> entries[slot] = ChatEntry.Failed(outcome.message)
             }
         }
@@ -731,6 +743,7 @@ fun ChatScreen(
     // 두 번 누르면 90초짜리 요청이 둘 뜬 채 답이 뒤섞여 돌아온다.
     var asking by remember { mutableStateOf(false) }
 
+
     val showResponse: (Int, AssistantResponse, String) -> Unit = { slot, response, asked ->
         if (slot in entries.indices) {
             entries[slot] = ChatEntry.Theirs(response.walkSentence() ?: response.bubbleMessage())
@@ -864,7 +877,10 @@ fun ChatScreen(
         }
     }
 
-    val sendQuery: (String) -> Unit = { sendQueryWith(it, null) }
+    val sendQuery: (String) -> Unit = { text ->
+        // 판정을 받은 뒤라면 기록 id 를 실어 보낸다. 신호는 안 보내므로 누가 답할지는 서버가 정한다.
+        sendQueryWith(text, lastScreeningRecordId?.let { ScreeningFollowUp(it, explicit = false) })
+    }
 
     // ── 음성 입력 ───────────────────────────────────────────────────────────
     //
@@ -1035,7 +1051,10 @@ fun ChatScreen(
                             entry.recordId?.let { recordId ->
                                 BesideAvatar {
                                     ReportFollowUpChip(enabled = !asking) {
-                                        sendQueryWith(REPORT_FOLLOW_UP_QUESTION, ScreeningFollowUp(recordId))
+                                        sendQueryWith(
+                                            REPORT_FOLLOW_UP_QUESTION,
+                                            ScreeningFollowUp(recordId, explicit = true),
+                                        )
                                     }
                                 }
                             }

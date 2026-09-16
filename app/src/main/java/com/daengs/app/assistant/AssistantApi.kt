@@ -77,9 +77,11 @@ object AssistantApi {
      *
      * `requested_capability` 는 넣지 않는다 — 자연어 해석은 서버 의미 라우터에게
      * 그대로 맡긴다.
-     * **예외는 [screening] 하나다** (백엔드 D-079). 피부 판정 말풍선에서 이어 물을 때만
-     * `requested_capability="skin"` 과 `screening_record_id` 를 **함께** 싣는다 — 한쪽만
-     * 가면 저쪽은 판정을 모른 채 "피부 사진을 등록해 주세요" 안내로 답한다.
+     * **예외는 [screening] 하나다** (백엔드 D-079 · `#569`). 판정 말풍선의 칩
+     * ([ScreeningFollowUp.explicit] = true)일 때만 `requested_capability="skin"` 을 싣고,
+     * 판정 뒤에 사용자가 직접 친 질문은 `screening_record_id` 만 싣는다. 뒤쪽까지 신호를
+     * 보내면 산책·생활 질문이 전부 피부 해설로 끌려간다 — 누가 답할지는 서버 라우터가 정하고,
+     * 기록 id 는 "이 판정 이야기를 하는 중" 이라는 재료로만 간다.
      *
      * `active_dog_id` 는 저쪽이 **그 id 로 `pets` 를 읽어 견종·나이를 Life 프롬프트에
      * 얹는 데 쓴다** (`SAJOYO/DAENGS_dev#202`). 예전에는 서버가 받기만 하고 아무 기능도
@@ -122,7 +124,7 @@ object AssistantApi {
                 put("client_message_id", it.clientMessageId)
             }
             screening?.let {
-                put("requested_capability", "skin")
+                if (it.explicit) put("requested_capability", "skin")
                 put("screening_record_id", it.recordId)
             }
         }.toString()
