@@ -94,7 +94,7 @@ private fun BehaviorRecordCard(
             Text(Instant.ofEpochMilli(record.entry.recordedAtMillis).atZone(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("M월 d일")) + " · " + dog,
                 style = MaterialTheme.typography.labelSmall, color = TextMuted)
-            Text(walkDiaryTitle(walk.summary, walk.title), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(walkDiaryTitle(walk.summary), style = MaterialTheme.typography.labelSmall, color = TextMuted)
             Spacer(Modifier.height(10.dp))
             BehaviorRecordReading(record, readingSource)
             if (hidden) Text("이 산책은 지도에서 숨김", style = MaterialTheme.typography.labelSmall, color = TextMuted)
@@ -105,7 +105,7 @@ private fun BehaviorRecordCard(
                 Text("${record.entry.type.label} · $dog", fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(time, style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                Text(walkDiaryTitle(walk.summary, walk.title), style = MaterialTheme.typography.labelSmall,
+                Text(walkDiaryTitle(walk.summary), style = MaterialTheme.typography.labelSmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, color = TextMuted)
                 Text(status, style = MaterialTheme.typography.labelSmall,
                     color = if (hidden || isSelected) DaengPinkDeep else TextMuted)

@@ -2,12 +2,14 @@ package com.daengs.app.walk.shared
 
 import com.daengs.app.auth.AuthApi
 import com.daengs.app.care.CareActor
+import com.daengs.app.location.GeoPoint
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 함께 돌보는 강아지의 산책 한 건 — 서버 `GET /app/pets/{pet_id}/walks` 의 항목
- * (SAJOYO/DAENGS_dev#539 `schemas/walk_group.py`).
+ * 함께 돌보는 강아지의 산책 한 건 — 서버 통합 목록 `GET /app/pet-walks` 의 항목
+ * (SAJOYO/DAENGS_dev `schemas/walk_group.py` `GroupWalkFeedItem`). 상세
+ * `GET /app/pets/{pet_id}/walks/{walk_id}`(#539) 도 같은 칸을 앞부분에 갖는다.
  *
  * **읽기 전용이다.** 이 모델로 기기 저장소(Room)의 내 산책을 만들거나 고치지 않는다 — 산책의
  * 소유·수정·삭제는 올린 사람의 `/app/walks` 에만 있다.
@@ -25,10 +27,16 @@ data class SharedWalk(
     val movingS: Int?,
     /** 다녀온 사람. 지금 그 그룹의 구성원이 아니면 닉네임이 없고 "이전 보호자" 로 그린다. */
     val actor: CareActor,
-    /** 내가 올린 산책인가. 내 것은 기기 기록 목록에 이미 있으니 함께 보기에서 뺀다. */
+    /** 내가 올린 산책인가. 내 것은 기기 기록 목록에 이미 있으니 통합 목록에서 뺀다. */
     val isMine: Boolean,
-    /** 내가 볼 수 있는 강아지만. */
+    /** 내가 볼 수 있는 강아지만. 통합 목록에서는 **내 화면의 강아지 id** 다. */
     val petIds: List<String>,
+    /** 출발 날씨 WMO 코드. 통합 목록에서만 온다(상세에는 없다). */
+    val weatherCode: Int? = null,
+    val isDay: Boolean? = null,
+    val temperatureC: Float? = null,
+    /** 카드 썸네일용으로 줄인 경로 — 끊긴 구간마다 따로. 통합 목록에서만 온다. 상세 경로가 아니다. */
+    val routePreview: List<List<GeoPoint>> = emptyList(),
 ) {
     companion object {
         fun parse(json: JSONObject): SharedWalk = SharedWalk(
@@ -41,6 +49,10 @@ data class SharedWalk(
             actor = CareActor.parse(json.getJSONObject("actor")),
             isMine = json.getBoolean("is_mine"),
             petIds = json.optJSONArray("pet_ids").strings(),
+            weatherCode = json.optIntOrNull("weather_code"),
+            isDay = if (json.isNull("is_day")) null else json.getBoolean("is_day"),
+            temperatureC = if (json.isNull("temperature_c")) null else json.decimal("temperature_c").toFloat(),
+            routePreview = json.optJSONArray("route_preview").segments(),
         )
     }
 }
@@ -62,14 +74,50 @@ data class SharedWalkDetail(val walk: SharedWalk, val points: List<SharedWalkPoi
     }
 }
 
-/** 목록 한 페이지. [nextCursor] 가 있으면 그대로 다음 요청의 `cursor` 로 넘긴다. */
-data class SharedWalkPage(val petId: String, val walks: List<SharedWalk>, val nextCursor: String?) {
+/** 조건 **전체**의 합계(페이지가 아니다). 거리는 계산 전 산책을 0 으로 센다. */
+data class SharedWalkTotals(val count: Int, val distanceM: Long, val durationS: Long) {
     companion object {
-        fun parse(json: JSONObject): SharedWalkPage {
-            val raw = json.optJSONArray("walks")
-            return SharedWalkPage(
-                petId = json.getString("pet_id"),
-                walks = List(raw?.length() ?: 0) { SharedWalk.parse(raw!!.getJSONObject(it)) },
+        fun parse(json: JSONObject) = SharedWalkTotals(json.getInt("count"), json.getLong("distance_m"), json.getLong("duration_s"))
+    }
+}
+
+/** 보호자 조건 후보. 서버가 사람 단위로 중복을 없애 준다. */
+data class SharedWalkCarer(
+    val appUserId: String,
+    /** 지금 구성원이 아니면(드묾) null. */
+    val nickname: String?,
+    val isMe: Boolean,
+    /** 이 사람과 함께 돌보는 내 화면의 강아지 id. */
+    val petIds: List<String>,
+) {
+    /** 본인은 닉네임 대신 "나" 다. */
+    val displayName: String get() = if (isMe) "나" else nickname ?: "이전 보호자"
+
+    companion object {
+        fun parse(json: JSONObject) = SharedWalkCarer(
+            appUserId = json.getString("app_user_id"),
+            nickname = if (json.isNull("nickname")) null else json.optString("nickname").ifBlank { null },
+            isMe = json.getBoolean("is_me"),
+            petIds = json.optJSONArray("pet_ids").strings(),
+        )
+    }
+}
+
+/** 통합 목록 한 페이지. [nextCursor] 가 있으면 같은 조건 그대로 다음 요청의 `cursor` 로 넘긴다. */
+data class SharedWalkFeedPage(
+    val walks: List<SharedWalk>,
+    val totals: SharedWalkTotals,
+    val carers: List<SharedWalkCarer>,
+    val nextCursor: String?,
+) {
+    companion object {
+        fun parse(json: JSONObject): SharedWalkFeedPage {
+            val walks = json.optJSONArray("walks")
+            val carers = json.optJSONArray("carers")
+            return SharedWalkFeedPage(
+                walks = List(walks?.length() ?: 0) { SharedWalk.parse(walks!!.getJSONObject(it)) },
+                totals = SharedWalkTotals.parse(json.getJSONObject("totals")),
+                carers = List(carers?.length() ?: 0) { SharedWalkCarer.parse(carers!!.getJSONObject(it)) },
                 nextCursor = if (json.isNull("next_cursor")) null else json.optString("next_cursor").ifBlank { null },
             )
         }
@@ -86,3 +134,8 @@ private fun JSONObject.decimal(key: String): Double = when (val value = get(key)
 }
 
 private fun JSONArray?.strings(): List<String> = List(this?.length() ?: 0) { this!!.getString(it) }
+
+private fun JSONArray?.segments(): List<List<GeoPoint>> = List(this?.length() ?: 0) { i ->
+    val segment = this!!.getJSONArray(i)
+    List(segment.length()) { j -> segment.getJSONObject(j).let { GeoPoint(it.decimal("lat"), it.decimal("lng")) } }
+}

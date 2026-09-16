@@ -40,7 +40,7 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
             temperatureC = temperature?.celsius, temperatureObservation = temperature)
         // This carrier supports the existing local edit/hide UI only; it is not a legacy bundle.
         val source = StoryboardScene("relational:${card.sceneId}", anchor.eventAt.toEpochMilli(),
-            "산책 장면 ${index + 1}", card.body, "", storyboardHash(card.toString()), diary = content,
+            card.title ?: "산책 장면 ${index + 1}", card.body, "", relationalBodyFingerprint(card), diary = content,
             observation = anchor.sourceFixes.singleOrNull()?.takeIf {
                 anchor.method in setOf(RelationalPositionMethod.OBSERVED, RelationalPositionMethod.LAST_KNOWN) &&
                     anchor.point != null && anchor.locationAt == it.at &&
@@ -66,6 +66,12 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
         .thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { it.id }), notice, bundle.title,
         published = true, sourceEntries = input.entries)
 }
+
+/** Preserve the pre-title edit identity exactly. A new title cannot invalidate a body edit. */
+internal fun relationalBodyFingerprint(card: RelationalDiaryCard): String = storyboardHash(
+    "RelationalDiaryCard(sceneId=${card.sceneId}, anchor=${card.anchor}, header=${card.header}, " +
+        "space=${card.space}, action=${card.action}, body=${card.body}, currentContext=${card.currentContext}, " +
+        "comparisonSceneId=${card.comparisonSceneId}, originals=${card.originals})")
 
 internal fun relationalPartNotice(card: RelationalDiaryCard): String {
     val spaceFailed = card.space.status == RelationalPartStatus.FAILED

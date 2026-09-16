@@ -84,6 +84,8 @@ data class RelationalDiaryCard(
     val currentContext: RelationalSceneSnapshot,
     val comparisonSceneId: String?,
     val originals: List<RelationalOriginal>,
+    val title: String? = null,
+    val titleStatus: RelationalPartStatus = RelationalPartStatus.NOT_REQUESTED,
 )
 data class RelationalDiaryBundle(
     val clientSessionId: String,

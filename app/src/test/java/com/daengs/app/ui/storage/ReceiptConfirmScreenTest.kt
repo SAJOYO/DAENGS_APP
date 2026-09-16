@@ -20,6 +20,7 @@ import com.daengs.app.care.ReceiptStep
 import com.daengs.app.care.UnreadableReason
 import com.daengs.app.care.VetReasonOption
 import com.daengs.app.care.VetVisitDraft
+import com.daengs.app.pet.Pet
 import com.daengs.app.screening.PreparedPhoto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -77,7 +78,7 @@ class ReceiptConfirmScreenTest {
         pickReason("피부")
         compose.onNodeWithText("확인").performScrollTo().performClick()
 
-        assertEquals("skin", confirmed?.reasonCode)
+        assertEquals("skin", confirmed?.splits?.single()?.reasonCode)
     }
 
     @Test
@@ -87,7 +88,7 @@ class ReceiptConfirmScreenTest {
 
         compose.onNodeWithText("확인").performScrollTo().performClick()
 
-        assertEquals("vaccination", confirmed?.reasonCode)
+        assertEquals("vaccination", confirmed?.splits?.single()?.reasonCode)
         assertEquals(61_700, confirmed?.totalKrw)
         assertEquals(LocalDate.of(2026, 9, 10), confirmed?.visitedOn)
         assertEquals("압구정동물병원", confirmed?.hospitalName)
@@ -101,7 +102,7 @@ class ReceiptConfirmScreenTest {
         pickReason("피부")
         compose.onNodeWithText("확인").performScrollTo().performClick()
 
-        assertEquals("skin", confirmed?.reasonCode)
+        assertEquals("skin", confirmed?.splits?.single()?.reasonCode)
     }
 
     @Test
@@ -133,7 +134,7 @@ class ReceiptConfirmScreenTest {
 
         compose.onNodeWithText("확인").performScrollTo().performClick()
 
-        assertEquals(false, confirmed?.isOncology)
+        assertEquals(false, confirmed?.splits?.single()?.isOncology)
     }
 
     @Test
@@ -146,7 +147,7 @@ class ReceiptConfirmScreenTest {
         compose.onNodeWithText("같은 날 같은 금액의 기록이 이미 있어요.").assertExists()
         compose.onNodeWithText("확인").performScrollTo().performClick()
 
-        assertEquals("막는 게 아니라 되묻는 것이다", "skin", confirmed?.reasonCode)
+        assertEquals("막는 게 아니라 되묻는 것이다", "skin", confirmed?.splits?.single()?.reasonCode)
     }
 
     @Test
@@ -202,6 +203,135 @@ class ReceiptConfirmScreenTest {
         assertEquals(true, retried)
     }
 
+    @Test
+    fun `강아지가 한 마리뿐인 계정에는 분할을 안 묻는다`() {
+        // patient_count 가 2 로 잘못 세어져도(보호자명·수의사명 오인) 물어볼 이유가 없다.
+        compose.setContent { screen(twoPetDraft(), pets = listOf(pet("p1", "초코"))) }
+
+        compose.onAllNodesWithText("아이별로 나누기").assertCountEquals(0)
+    }
+
+    @Test
+    fun `블록이 하나면 분할을 안 묻는다`() {
+        compose.setContent { screen(okDraft(suggested = "skin"), pets = twoPets()) }
+
+        compose.onAllNodesWithText("아이별로 나누기").assertCountEquals(0)
+    }
+
+    @Test
+    fun `블록마다 항목을 더한 금액이 미리 채워져 있다`() {
+        compose.setContent { screen(twoPetDraft(), pets = twoPets()) }
+
+        compose.onNodeWithText("109200").assertExists()
+        compose.onNodeWithText("82100").assertExists()
+    }
+
+    @Test
+    fun `아이를 안 고른 블록이 있으면 확인이 잠긴다`() {
+        compose.setContent { screen(twoPetDraft(), pets = twoPets()) }
+
+        // 금액은 맞지만 둘째 블록의 아이를 아직 안 골랐다.
+        compose.onNodeWithText("확인").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun `합이 영수증 총액과 다르면 모자란 금액을 말하고 확인을 잠근다`() {
+        compose.setContent { screen(twoPetDraft(), pets = twoPets()) }
+        pickPet(block = 1, name = "초코")
+        pickPet(block = 2, name = "보리")
+
+        compose.onNodeWithContentDescription("블록 1 금액").performTextClearance()
+        compose.onNodeWithContentDescription("블록 1 금액").performTextInput("100000")
+
+        compose.onNodeWithText("9,200원이 남았어요.", substring = true).assertExists()
+        compose.onNodeWithText("확인").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun `나눠서 확인하면 블록 수만큼 행이 가고 아이와 금액이 따라간다`() {
+        var confirmed: ReceiptEdits? = null
+        compose.setContent { screen(twoPetDraft(), pets = twoPets(), onConfirm = { confirmed = it }) }
+        pickPet(block = 1, name = "초코")
+        pickPet(block = 2, name = "보리")
+        pickBlockReason(block = 1, label = "피부")
+        pickBlockReason(block = 2, label = "예방접종")
+
+        compose.onNodeWithText("확인").performScrollTo().performClick()
+
+        assertEquals(2, confirmed?.splits?.size)
+        assertEquals(listOf("p1", "p2"), confirmed?.splits?.map { it.petId })
+        assertEquals(listOf(109_200, 82_100), confirmed?.splits?.map { it.totalKrw })
+        assertEquals(listOf(0, 1), confirmed?.splits?.map { it.patientIndex })
+        assertEquals("영수증 총액은 그대로 간다", 191_300, confirmed?.totalKrw)
+    }
+
+    @Test
+    fun `나눌 때는 사유를 미리 골라 주지 않는다 — 한 제안을 모든 아이에게 복사하지 않는다`() {
+        // 제안은 영수증 하나에 하나뿐인데 블록마다 사유는 다르다. 미리 채워 두면 유저가
+        // 그대로 넘겨 **둘째 아이의 병력에 첫째 아이의 사유가** 남는다. 실기기에서 실제로
+        // 그렇게 눌렸다 — 예방접종을 맞은 아이의 기록이 "귀" 로 저장됐다.
+        var confirmed: ReceiptEdits? = null
+        compose.setContent { screen(twoPetDraft(), pets = twoPets(), onConfirm = { confirmed = it }) }
+        pickPet(block = 1, name = "초코")
+        pickPet(block = 2, name = "보리")
+
+        // 아이도 금액도 다 맞지만 사유를 아직 안 골랐다.
+        compose.onNodeWithText("확인").performScrollTo().assertIsNotEnabled()
+        assertNull(confirmed)
+    }
+
+    @Test
+    fun `분할을 끄면 한 줄로 확정하고 어느 블록인지는 말하지 않는다`() {
+        // patient_count 가 높게 세어졌을 때 유저가 끄는 길이다. 이때 블록 번호를 0 으로
+        // 접으면 첫 블록의 항목만 이 기록에 붙는다 — 모른다고 말하는 편이 맞다.
+        var confirmed: ReceiptEdits? = null
+        compose.setContent { screen(twoPetDraft(), pets = twoPets(), onConfirm = { confirmed = it }) }
+
+        compose.onNodeWithText("아이별로 나누기").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithText("확인").performScrollTo().performClick()
+
+        assertEquals(1, confirmed?.splits?.size)
+        assertEquals(191_300, confirmed?.splits?.single()?.totalKrw)
+        assertNull(confirmed?.splits?.single()?.patientIndex)
+    }
+
+    @Test
+    fun `항목 합이 총액과 안 맞으면 금액을 제안하지 않는다`() {
+        // 추출이 항목을 놓친 것이라, 그럴듯한 틀린 금액을 미리 채우지 않는다.
+        val draft = twoPetDraft().copy(
+            items = listOf(ReceiptItem("진료-초진", 10_000, 0), ReceiptItem("종합백신", 20_000, 1)),
+        )
+        compose.setContent { screen(draft, pets = twoPets()) }
+
+        compose.onAllNodesWithText("109200").assertCountEquals(0)
+        compose.onNodeWithText("확인").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun `블록을 빼면 그 돈이 남고 확인은 잠긴 채로 있다`() {
+        // patient_count 가 높게 세어졌거나 남의 아이가 섞여 찍힌 경우다. 뺀 블록의 돈을
+        // 말없이 다른 아이에게 옮기지 않는다 — 합이 비는 것을 보여 주고 유저가 정하게 한다.
+        compose.setContent { screen(twoPetDraft(), pets = twoPets()) }
+        pickPet(block = 1, name = "초코")
+
+        compose.onNodeWithContentDescription("블록 2 빼기")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        compose.onNodeWithText("82,100원이 남았어요.", substring = true).assertExists()
+        compose.onNodeWithText("확인").performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun `미래 날짜면 확인이 잠긴다 — 눌러 보고 422 를 받게 하지 않는다`() {
+        compose.setContent {
+            screen(okDraft(suggested = "skin").copy(visitedOn = LocalDate.of(2026, 12, 25)))
+        }
+
+        compose.onNodeWithText("영수증 날짜가 오늘보다 뒤예요.", substring = true).assertExists()
+        compose.onNodeWithText("확인").performScrollTo().assertIsNotEnabled()
+    }
+
     // -- 배관 -----------------------------------------------------------
 
     /**
@@ -213,6 +343,16 @@ class ReceiptConfirmScreenTest {
      * 조용히 빗나간다. 여기서 재려는 것은 "칩이 눌리면 그 사유가 확정에 실린다" 이고,
      * 칩이 화면 어디에 놓이는가는 실기기가 본다.
      */
+    private fun pickBlockReason(block: Int, label: String) {
+        compose.onNodeWithContentDescription("블록 $block 사유 $label")
+            .performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    private fun pickPet(block: Int, name: String) {
+        compose.onNodeWithContentDescription("블록 $block 아이 $name")
+            .performSemanticsAction(SemanticsActions.OnClick)
+    }
+
     private fun pickReason(label: String) {
         compose.onNodeWithText(label).performSemanticsAction(SemanticsActions.OnClick)
     }
@@ -223,6 +363,7 @@ class ReceiptConfirmScreenTest {
         step: ReceiptStep = ReceiptStep.READY,
         error: com.daengs.app.chat.ChatApiError? = null,
         photo: PreparedPhoto? = null,
+        pets: List<Pet> = listOf(pet("p1", "초코")),
         onConfirm: (ReceiptEdits) -> Unit = {},
         onRetry: () -> Unit = {},
     ) = ReceiptConfirmScreen(
@@ -231,10 +372,28 @@ class ReceiptConfirmScreenTest {
         options = OPTIONS,
         step = step,
         error = error,
+        pets = pets,
         onConfirm = onConfirm,
         onRetry = onRetry,
         today = LocalDate.of(2026, 9, 10),
     )
+
+    private fun pet(id: String, name: String) = Pet(
+        id = id, name = name, breed = "mix", sex = null, neutered = null,
+        weightKg = null, birthDate = null, birthDateKind = null, isPrimary = id == "p1",
+    )
+
+    /** 두 아이가 찍힌 영수증. 카드의 실측 판독값과 같은 숫자다. */
+    private fun twoPetDraft() = okDraft(suggested = "vaccination").copy(
+        totalKrw = 191_300,
+        patientCount = 2,
+        items = listOf(
+            ReceiptItem("진료-초진", 109_200, 0),
+            ReceiptItem("종합백신 5차", 82_100, 1),
+        ),
+    )
+
+    private fun twoPets() = listOf(pet("p1", "초코"), pet("p2", "보리"))
 
     /** 세로로 긴 영수증 한 장. 실물과 같은 비율(대략 1:2.2)로 만든다. */
     private fun preparedPhoto(): PreparedPhoto {
@@ -251,6 +410,7 @@ class ReceiptConfirmScreenTest {
         hospitalName = "압구정동물병원", hospitalAddress = "서울 강남구",
         hospitalPhone = "02-543-0075",
         items = listOf(ReceiptItem("초진료", 5_500)),
+        patientCount = 1,
         suggestedReasonCode = suggested, isEmergency = false, possibleDuplicate = false,
         reasonOptions = OPTIONS,
     )
@@ -265,6 +425,7 @@ class ReceiptConfirmScreenTest {
         draftId = "d2", petId = "p1", status = ExtractionStatus.UNREADABLE,
         unreadableReason = UnreadableReason.BLURRY, visitedOn = null, totalKrw = null,
         hospitalName = null, hospitalAddress = null, hospitalPhone = null, items = emptyList(),
+        patientCount = 1,
         suggestedReasonCode = null, isEmergency = false, possibleDuplicate = false,
         reasonOptions = OPTIONS,
     )

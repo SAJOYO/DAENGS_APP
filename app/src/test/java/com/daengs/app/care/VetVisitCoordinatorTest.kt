@@ -254,7 +254,7 @@ class VetVisitCoordinatorTest {
         advanceUntilIdle()
         assertEquals(ReceiptStep.READY, state(coordinator).receipt?.step)
 
-        gateway.confirmResult = Result.success(visit())
+        gateway.confirmResult = Result.success(listOf(visit()))
         coordinator.confirm(token, edits())
         advanceUntilIdle()
 
@@ -342,29 +342,122 @@ class VetVisitCoordinatorTest {
     private fun visits(c: VetVisitCoordinator): List<VetVisit> =
         (c.state.value.visits as ChatLoadState.Ready).value
 
-    private fun edits() = ReceiptEdits(
-        reasonCode = "skin",
-        reasonDetail = null,
+    @Test
+    fun `나눠 확정하면 행마다 다른 키가 간다 — 같은 키면 기록이 한 벌만 남는다`() = runTest {
+        val coordinator = coordinator(this)
+        gateway.extractResult = Result.success(draft(patientCount = 2))
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        coordinator.confirm(
+            token,
+            edits(listOf(splitEdit(patientIndex = 0), splitEdit(patientIndex = 1))),
+        )
+        advanceUntilIdle()
+
+        assertEquals(2, gateway.confirmedWith.size)
+        assertEquals("행마다 제 키다", 2, gateway.confirmedWith.toSet().size)
+        assertEquals("첫 행은 촬영에서 만든 키를 그대로 쓴다", "id-1", gateway.confirmedWith.first())
+    }
+
+    @Test
+    fun `나눠 확정하다 실패해도 블록마다 같은 키로 다시 보낸다`() = runTest {
+        val coordinator = coordinator(this)
+        gateway.extractResult = Result.success(draft(patientCount = 2))
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+        val rows = listOf(splitEdit(patientIndex = 0), splitEdit(patientIndex = 1))
+
+        gateway.confirmResult = Result.failure(ChatApiError.unreachable("못 저장했어요", IOException()))
+        coordinator.confirm(token, edits(rows))
+        advanceUntilIdle()
+        val first = gateway.confirmedWith.toList()
+
+        gateway.confirmResult = Result.success(listOf(visit()))
+        coordinator.confirm(token, edits(rows))
+        advanceUntilIdle()
+
+        assertEquals("새 uuid 를 만들면 기록이 두 벌 생긴다", first, gateway.confirmedWith.drop(2))
+    }
+
+    @Test
+    fun `블록을 빼도 남은 블록의 키는 안 바뀐다`() = runTest {
+        val coordinator = coordinator(this)
+        gateway.extractResult = Result.success(draft(patientCount = 2))
+        coordinator.selectPet("pet")
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        gateway.confirmResult = Result.failure(ChatApiError.unreachable("못 저장했어요", IOException()))
+        coordinator.confirm(token, edits(listOf(splitEdit(patientIndex = 0), splitEdit(patientIndex = 1))))
+        advanceUntilIdle()
+        val secondBlockKey = gateway.confirmedWith[1]
+
+        // 첫 블록을 빼고 둘째만 남겨 다시 보낸다. 자리로 키를 세면 여기서 키가 밀린다.
+        gateway.confirmResult = Result.success(listOf(visit()))
+        coordinator.confirm(token, edits(listOf(splitEdit(patientIndex = 1))))
+        advanceUntilIdle()
+
+        assertEquals(secondBlockKey, gateway.confirmedWith.last())
+    }
+
+    @Test
+    fun `아이 수만큼 생긴 기록 중 이 아이 것만 목록에 붙는다`() = runTest {
+        val coordinator = coordinator(this)
+        gateway.extractResult = Result.success(draft(patientCount = 2))
+        coordinator.selectPet("pet")
+        coordinator.load(token)
+        advanceUntilIdle()
+        coordinator.beginReceipt(token, jpeg)
+        advanceUntilIdle()
+
+        // 형제의 기록도 같이 돌아온다. 이 목록은 이 아이의 목록이다.
+        gateway.confirmResult = Result.success(
+            listOf(visit(id = "v-mine"), visit(id = "v-sibling", petId = "other-pet")),
+        )
+        coordinator.confirm(token, edits(listOf(splitEdit(patientIndex = 0), splitEdit(patientIndex = 1))))
+        advanceUntilIdle()
+
+        assertEquals(listOf("v-mine", "v1"), visits(coordinator).map { it.id })
+    }
+
+    private fun edits(splits: List<SplitEdit> = listOf(splitEdit())) = ReceiptEdits(
         visitedOn = LocalDate.of(2026, 9, 10),
         totalKrw = 61_700,
         hospitalName = null,
         hospitalAddress = null,
         hospitalPhone = null,
         isEmergency = false,
-        isOncology = false,
+        splits = splits,
     )
 
-    private fun draft() = VetVisitDraft(
+    private fun splitEdit(
+        petId: String? = null,
+        totalKrw: Int = 61_700,
+        patientIndex: Int? = 0,
+    ) = SplitEdit(
+        petId = petId,
+        reasonCode = "skin",
+        reasonDetail = null,
+        totalKrw = totalKrw,
+        isOncology = false,
+        patientIndex = patientIndex,
+    )
+
+    private fun draft(patientCount: Int = 1) = VetVisitDraft(
         draftId = "draft-1", petId = "pet", status = ExtractionStatus.OK,
         unreadableReason = null, visitedOn = LocalDate.of(2026, 9, 10), totalKrw = 61_700,
         hospitalName = "압구정동물병원", hospitalAddress = null, hospitalPhone = "02-543-0075",
-        items = emptyList(), suggestedReasonCode = "vaccination", isEmergency = false,
+        items = emptyList(), patientCount = patientCount,
+        suggestedReasonCode = "vaccination", isEmergency = false,
         possibleDuplicate = false,
         reasonOptions = listOf(VetReasonOption("skin", "피부"), VetReasonOption("ear", "귀")),
     )
 
-    private fun visit(id: String = "v-new") = VetVisit(
-        id = id, petId = "pet", visitedOn = LocalDate.of(2026, 9, 10), totalKrw = 61_700,
+    private fun visit(id: String = "v-new", petId: String = "pet") = VetVisit(
+        id = id, petId = petId, visitedOn = LocalDate.of(2026, 9, 10), totalKrw = 61_700,
         hospitalName = null, hospitalAddress = null, hospitalPhone = null,
         reasonCode = "skin", reasonDetail = null, isEmergency = false, isOncology = false,
         clientEventId = "id-1",
@@ -380,7 +473,7 @@ class VetVisitCoordinatorTest {
 
         var uploadResult: Result<Unit> = Result.success(Unit)
         var extractResult: Result<VetVisitDraft> = Result.success(draft())
-        var confirmResult: Result<VetVisit> = Result.success(visit())
+        var confirmResult: Result<List<VetVisit>> = Result.success(listOf(visit()))
         var optionsResult: Result<List<VetReasonOption>> =
             Result.success(listOf(VetReasonOption("skin", "피부"), VetReasonOption("ear", "귀")))
 
@@ -405,7 +498,7 @@ class VetVisitCoordinatorTest {
             accessToken: String,
             draftId: String,
             confirmation: VetVisitConfirmation,
-        ) = confirmResult.also { confirmedWith += confirmation.clientEventId }
+        ) = confirmResult.also { confirmedWith += confirmation.splits.map { row -> row.clientEventId } }
 
         var listResult: Result<List<VetVisit>> = Result.success(listOf(visit("v1")))
         var deleteResult: Result<Unit> = Result.success(Unit)

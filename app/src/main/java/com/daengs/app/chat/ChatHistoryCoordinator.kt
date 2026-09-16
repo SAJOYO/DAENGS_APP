@@ -1,5 +1,6 @@
 package com.daengs.app.chat
 
+import com.daengs.app.assistant.GaitFollowUp
 import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.assistant.AssistantApi
 import com.daengs.app.assistant.AssistantResponse
@@ -75,14 +76,17 @@ interface ChatHistoryGateway {
         persistence: ChatPersistence,
         /** 피부 판정 말풍선에서 이어 물을 때만 있다 (백엔드 D-079). */
         screening: ScreeningFollowUp?,
+        /** 보행 비교 말풍선에서 이어 물을 때만 있다 (백엔드 D-080). */
+        gait: GaitFollowUp?,
     ): Result<AssistantResponse>
 }
 
 class RemoteChatHistoryGateway(
     private val chatApi: ChatApi = ChatApi(),
-    private val assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence, screening ->
-        AssistantApi.query(token, text, where, dog, persistence, screening = screening)
-    },
+    private val assistantQuery: com.daengs.app.assistant.AssistantQuery =
+        { token, text, where, dog, persistence, screening, gait ->
+            AssistantApi.query(token, text, where, dog, persistence, screening = screening, gait = gait)
+        },
 ) : ChatHistoryGateway {
     override suspend fun createSession(accessToken: String, petId: String) =
         chatApi.createSession(accessToken, petId)
@@ -103,7 +107,8 @@ class RemoteChatHistoryGateway(
         activeDogId: String?,
         persistence: ChatPersistence,
         screening: ScreeningFollowUp?,
-    ) = assistantQuery(accessToken, text, where, activeDogId, persistence, screening)
+        gait: GaitFollowUp?,
+    ) = assistantQuery(accessToken, text, where, activeDogId, persistence, screening, gait)
 }
 
 /**
@@ -300,6 +305,8 @@ class ChatHistoryCoordinator(
         where: GeoPoint? = null,
         /** 피부 판정 말풍선에서 이어 물을 때만 있다 (백엔드 D-079). */
         screening: ScreeningFollowUp? = null,
+        /** 보행 비교 말풍선에서 이어 물을 때만 있다 (백엔드 D-080). */
+        gait: GaitFollowUp? = null,
     ): Boolean {
         val before = mutableState.value
         val petId = before.selectedPetId ?: return false
@@ -317,7 +324,7 @@ class ChatHistoryCoordinator(
         }
         sendJob = scope.launch {
             val result = try {
-                gateway.send(accessToken, text, where, petId, persistence, screening)
+                gateway.send(accessToken, text, where, petId, persistence, screening, gait)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {

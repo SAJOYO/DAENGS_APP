@@ -127,7 +127,8 @@ class VetVisitApiTest {
 
     @Test
     fun `확정은 POST confirm 이고 항목을 안 싣는다`() = runBlocking {
-        transport.reply = HttpReply(200, VISIT_JSON)
+        // 확정 응답은 언제나 배열이다 — 한 마리여도 길이 1 이다.
+        transport.reply = HttpReply(200, "[$VISIT_JSON]")
         api.confirm(token, draftId, confirmation()).getOrThrow()
 
         val call = transport.only()
@@ -135,7 +136,24 @@ class VetVisitApiTest {
         val body = JSONObject(call.body!!)
         assertFalse("항목은 초안에서만 읽는다 — 본문에 자리가 없다", body.has("items"))
         assertFalse(body.has("raw_ocr_items"))
-        assertEquals(clientEventId, body.getString("client_event_id"))
+        assertEquals(clientEventId, body.getJSONArray("splits").getJSONObject(0).getString("client_event_id"))
+    }
+
+    @Test
+    fun `확정 응답은 배열이다 — 아이 수만큼 기록이 생긴다`() = runBlocking {
+        transport.reply = HttpReply(200, TWO_VISITS_JSON)
+
+        val visits = api.confirm(token, draftId, confirmation(rows = 2)).getOrThrow()
+
+        assertEquals(listOf("v-a", "v-b"), visits.map { it.id })
+        assertEquals(listOf("pet-a", "pet-b"), visits.map { it.petId })
+    }
+
+    @Test
+    fun `한 마리를 확정해도 배열 한 줄로 온다`() = runBlocking {
+        transport.reply = HttpReply(200, "[$VISIT_JSON]")
+
+        assertEquals(1, api.confirm(token, draftId, confirmation()).getOrThrow().size)
     }
 
     @Test
@@ -184,17 +202,24 @@ class VetVisitApiTest {
         created = true,
     )
 
-    private fun confirmation() = VetVisitConfirmation(
-        clientEventId = clientEventId,
-        reasonCode = "skin",
-        reasonDetail = null,
+    private fun confirmation(rows: Int = 1) = VetVisitConfirmation(
         visitedOn = LocalDate.of(2026, 9, 10),
         totalKrw = 61_700,
         hospitalName = null,
         hospitalAddress = null,
         hospitalPhone = null,
-        isEmergency = false,
-        isOncology = false,
+        splits = List(rows) { index ->
+            VetVisitSplit(
+                clientEventId = if (index == 0) clientEventId else "$clientEventId-$index",
+                petId = null,
+                reasonCode = "skin",
+                reasonDetail = null,
+                totalKrw = 61_700 / rows,
+                isEmergency = false,
+                isOncology = false,
+                patientIndex = index,
+            )
+        },
     )
 
     private class FakeTransport : HttpTransport {
@@ -223,6 +248,17 @@ class VetVisitApiTest {
     }
 
     private companion object {
+        const val TWO_VISITS_JSON = """
+            [{"id": "v-a", "pet_id": "pet-a", "visited_on": "2026-09-15", "total_krw": 109200,
+              "hospital_name": null, "hospital_address": null, "hospital_phone": null,
+              "reason_code": "ear", "reason_detail": null, "is_emergency": false,
+              "is_oncology": false, "client_event_id": "id-0"},
+             {"id": "v-b", "pet_id": "pet-b", "visited_on": "2026-09-15", "total_krw": 82100,
+              "hospital_name": null, "hospital_address": null, "hospital_phone": null,
+              "reason_code": "vaccination", "reason_detail": null, "is_emergency": false,
+              "is_oncology": false, "client_event_id": "id-1"}]
+        """
+
         const val TICKET_JSON = """
             {"draft_id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
              "pet_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
