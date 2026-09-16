@@ -27,7 +27,7 @@ internal data class SceneBindingKey(val ownerId: String, val sessionId: String, 
                 content?.point, content?.locationAtMillis, content?.locationMethod, content?.positionState,
                 photo?.id, photo?.sessionId, photo?.capturedAtMillis, photo?.point,
                 entry?.id, entry?.sessionId, entry?.recordedAtMillis, entry?.point, entry?.locationCapturedAtMillis,
-                pin?.point, pin?.method, pin?.state, pin?.payload)
+                pin?.point, pin?.method, pin?.state, pin?.payload, scene.relational?.anchor?.toString())
             val sceneRevision = revision(scene.title, scene.body, scene.evidence, scene.needsReview,
                 source?.fingerprint, source?.available, source?.hidden, content?.recordText, content?.recordKind,
                 content?.locationLabel, content?.address, content?.order, entry?.note, entry?.petId)

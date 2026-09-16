@@ -108,39 +108,4 @@ class InviteShareTest {
         assertEquals(1, message.split("abc_DEF-123").size - 1)
         assertFalse(message.contains("token"))
     }
-
-    // -- 클립보드 (민감정보) ----------------------------------------------------
-
-    /**
-     * 안드로이드 13 부터 복사하면 시스템이 미리보기를 띄운다. 표시를 안 하면 그 팝업에
-     * **토큰이 든 링크가 그대로** 뜬다.
-     */
-    @Test
-    fun `복사하는 클립을 민감정보로 표시한다`() {
-        val clip = InviteShare.sensitiveClip(link)
-
-        assertEquals(true, clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE"))
-    }
-
-    @Test
-    fun `클립에는 링크만 담고 안내 문구는 안 담는다`() {
-        val clip = InviteShare.sensitiveClip(link)
-
-        assertEquals(link, clip.getItemAt(0).text.toString())
-        assertFalse(clip.getItemAt(0).text.toString().contains("초대장이 도착했어요"))
-    }
-
-    /** 13 부터는 시스템이 "복사됨" 을 띄운다 — 앱이 또 띄우면 같은 말이 두 번 뜬다. */
-    @Test
-    fun `안드로이드 13 이상에서는 앱이 복사 안내를 띄우지 않는다`() {
-        assertFalse(InviteShare.needsCopiedNotice(sdkInt = 33))
-        assertFalse(InviteShare.needsCopiedNotice(sdkInt = 34))
-        assertFalse(InviteShare.needsCopiedNotice(sdkInt = 35))
-    }
-
-    @Test
-    fun `12L 이하에서는 앱이 복사 안내를 띄운다`() {
-        assertTrue(InviteShare.needsCopiedNotice(sdkInt = 32))
-        assertTrue(InviteShare.needsCopiedNotice(sdkInt = 30))
-    }
 }

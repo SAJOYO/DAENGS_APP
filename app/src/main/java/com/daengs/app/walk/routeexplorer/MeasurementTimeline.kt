@@ -96,12 +96,22 @@ internal class MeasurementTimeline(private val detail: WalkSessionDetail, privat
     }
     fun frameAt(millis: Long): RouteReplayFrame {
         val address = address(millis) ?: return RouteReplayFrame(null, null, true)
-        // Exact points are not invented, including an isolated usable observation.
-        val exact = exactFixes[Triple(address.sourceEpoch, address.clockEpoch, address.elapsedNanos)]?.singleOrNull()
-        exact?.let { return RouteReplayFrame(GeoPoint(it.lat, it.lng), it.atMillis, false) }
         val edges = replayEdges[address.sourceEpoch].orEmpty()
         val found = edges.binarySearch { requireNotNull(it.first.elapsedRealtimeNanos).compareTo(address.elapsedNanos) }
         val candidate = edges.getOrNull(if (found >= 0) found else -found - 2)
+        // Exact points are not invented, including an isolated usable observation.
+        val exact = exactFixes[Triple(address.sourceEpoch, address.clockEpoch, address.elapsedNanos)]?.singleOrNull()
+        exact?.let {
+            val speed = candidate?.takeIf { (a, b) ->
+                a.clockEpochId == address.clockEpoch && b.clockEpochId == address.clockEpoch &&
+                    a.sourceEpoch == address.sourceEpoch && b.sourceEpoch == address.sourceEpoch &&
+                    (a.elapsedRealtimeNanos == address.elapsedNanos || b.elapsedRealtimeNanos == address.elapsedNanos)
+            }?.let { (a, b) ->
+                val span = requireNotNull(b.elapsedRealtimeNanos) - requireNotNull(a.elapsedRealtimeNanos)
+                if (span > 0) GeoPoint(a.lat, a.lng).distanceTo(GeoPoint(b.lat, b.lng)) / (span / 1_000_000_000.0) else null
+            }
+            return RouteReplayFrame(GeoPoint(it.lat, it.lng), it.atMillis, false, speed)
+        }
         candidate?.let { (a, b) ->
             if (a.sourceEpoch != address.sourceEpoch || b.sourceEpoch != address.sourceEpoch ||
                 a.clockEpochId != address.clockEpoch || b.clockEpochId != address.clockEpoch) return@let
@@ -112,7 +122,8 @@ internal class MeasurementTimeline(private val detail: WalkSessionDetail, privat
             val point = GeoPoint(a.lat + (b.lat - a.lat) * t, ((a.lng + lng * t + 540) % 360) - 180)
             val wall = if (abs((b.atMillis - a.atMillis) - (end - start) / 1_000_000) <= 1_000)
                 a.atMillis + ((b.atMillis - a.atMillis) * t).toLong() else null
-            return RouteReplayFrame(point, wall, false)
+            return RouteReplayFrame(point, wall, false,
+                GeoPoint(a.lat, a.lng).distanceTo(GeoPoint(b.lat, b.lng)) / ((end - start) / 1_000_000_000.0))
         }
         return RouteReplayFrame(null, null, true)
     }

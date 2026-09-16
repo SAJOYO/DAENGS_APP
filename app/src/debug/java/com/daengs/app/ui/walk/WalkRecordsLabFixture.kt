@@ -18,6 +18,7 @@ import com.daengs.app.walk.records.WalkRecordsQuery
 import com.daengs.app.walk.records.WalkRecordsSelection
 import com.daengs.app.walk.records.WalkRecordsSource
 import com.daengs.app.walk.records.selectWalkRecords
+import kotlinx.coroutines.flow.emitAll
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.ceil
@@ -79,6 +80,11 @@ internal object WalkRecordsLabFixture : WalkRecordsSource {
             ), trace = if (index == 3) null else WalkTraceSheet(id, TRACE_RADIUS_U, traceCells(paths)))
                 .let { record -> record.copy(entries = behaviorEntries(record, index)) }
         }
+    }
+
+    override fun observeDiary(record: WalkRecord) = kotlinx.coroutines.flow.flow {
+        val data = WalkRecordsLabDetailData(record)
+        emitAll(data.observeDiary(data.load()))
     }
 
     override suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection =

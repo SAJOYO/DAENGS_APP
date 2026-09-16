@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,10 +45,9 @@ internal fun WalkRecordsTraceControls(
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         TextButton(onClick = { open = true }, modifier = Modifier.testTag("records-map-display")) {
-            Text(if (overlapOnly) "겹친 구간 · ${minimumWalks}회 이상 ▾" else "전체 흔적 ▾")
+            Text(if (overlapOnly) "겹친 구간 · ${minimumWalks}회 이상 ▾" else "전체 흔적 ▾", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = 220.dp, max = 280.dp)) {
             DropdownMenuItem(text = { Text("전체 흔적") }, onClick = { onOverlapOnly(false); open = false },
                 modifier = Modifier.testTag("records-traces-all"))
             DropdownMenuItem(text = { Text("겹친 구간") }, onClick = { onOverlapOnly(true) },
@@ -55,7 +55,7 @@ internal fun WalkRecordsTraceControls(
             if (overlapOnly) Box(Modifier.padding(horizontal = 16.dp)) {
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
             }
-            if (!overlapOnly) ShadowLegend(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            TraceDensityLegend(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             menuExtras()
         }
     }
@@ -73,7 +73,6 @@ internal fun WalkRecordsOverlapOptions(minimumWalks: Int, onMinimumWalks: (Int) 
                     modifier = Modifier.testTag("records-overlap-min-$minimum"))
             }
         }
-        ShadowLegend(Modifier.padding(bottom = 4.dp))
     }
 }
 
@@ -86,18 +85,18 @@ private fun WalkRecordsOverlapOptionsPreview() {
 /** Fixed visible-session strength scale; changing the minimum never rescales it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ShadowLegend(modifier: Modifier = Modifier) {
+internal fun TraceDensityLegend(modifier: Modifier = Modifier) {
     val policy = LocalRecordsTracePolicy.current
     FlowRow(modifier.fillMaxWidth().testTag("records-overlap-legend"),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("산책이 쌓일수록 짙게", style = MaterialTheme.typography.labelSmall,
+        Text("서로 다른 산책이 쌓일수록 짙게", Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         policy.density.legend().forEach { item ->
             val bucket = item.key
             val label = item.label
             val opacity = item.opacity
             Row(Modifier.testTag("records-overlap-legend-$bucket").semantics(mergeDescendants = true) {
-                contentDescription = "$label 그림자 농도 ${(opacity * 100).toInt()}퍼센트"
+                contentDescription = "$label 흔적 농도 ${(opacity * 100).toInt()}퍼센트"
             }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 val shape = RoundedCornerShape(2.dp)
                 Box(Modifier.size(12.dp).background(tracePigmentColor(policy.rgb).copy(alpha = opacity), shape)
@@ -126,8 +125,8 @@ private fun WideWalkRecordsTraceControlsPreview() {
     DaengsTheme { WalkRecordsTraceControls(true, 5, {}, {}, Modifier.padding(horizontal = 18.dp)) }
 }
 
-@Preview(name = "산책 그림자 농도 범례", showBackground = true, widthDp = 390)
+@Preview(name = "산책 누적 농도 범례", showBackground = true, widthDp = 260)
 @Composable
-private fun ShadowLegendPreview() {
-    DaengsTheme { ShadowLegend(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) }
+private fun TraceDensityLegendPreview() {
+    DaengsTheme { TraceDensityLegend(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
 }

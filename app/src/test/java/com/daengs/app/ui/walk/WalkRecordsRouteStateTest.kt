@@ -101,6 +101,23 @@ class WalkRecordsRouteStateTest {
         assertNull(WalkRecordsRouteState.saver(account, processEpoch = "new-process").restore(saved))
     }
 
+    @Test fun `action address survives restoration but ordinary walk open clears it`() {
+        val scope = AccountScope("owner", 1)
+        val target = com.daengs.app.walk.diary.DiaryActionTarget("walk", "second-sniff")
+        val state = WalkRecordsRouteState.initial(scope).also { it.openAction(target) }
+        val saver = WalkRecordsRouteState.saver(scope)
+        val canSave = object : SaverScope { override fun canBeSaved(value: Any) = true }
+        val saved = with(saver) { requireNotNull(canSave.save(state)) }
+        val restored = requireNotNull(saver.restore(saved))
+        org.junit.Assert.assertEquals(target, restored.openedAction)
+        assertNull(WalkRecordsRouteState.saver(AccountScope("owner", 2)).restore(saved))
+        restored.closeDetail()
+        assertNull(restored.openedAction)
+        restored.openAction(target)
+        restored.open("walk")
+        assertNull(restored.openedAction)
+    }
+
     @Composable
     private fun Harness(scope: AccountScope) {
         val state = rememberWalkRecordsRouteState(scope)

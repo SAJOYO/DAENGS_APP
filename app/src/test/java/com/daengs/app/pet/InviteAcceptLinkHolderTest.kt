@@ -181,6 +181,114 @@ class InviteAcceptLinkHolderTest {
         }
     }
 
+    /** 링크로 들어와 미리보기를 받고 다 골라도, 수락 요청은 버튼([accept])에서만 나간다. */
+    @Test
+    fun `링크 진입과 미리보기와 선택만으로는 수락 요청이 안 나간다`() = runTest {
+        val stub = Stub()
+        try {
+            stub.preview(200, TWO_PETS)
+            stub.accept(200, ACCEPTED)
+            val holder = holder(stub)
+
+            holder.acceptFromLink(token)
+            holder.loadPreview("t")
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+
+            assertTrue(holder.canAccept)
+            assertEquals(0, stub.acceptCalls)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    // -- 다른 공동 보호자 때문에 막힌 연결 (has_other_carers) ---------------------------
+
+    private val blockedLinkBody = """{"detail":{"code":"link_not_allowed","message":"선택한 아이는 연결할 수 없어요.",""" +
+        """"pet_id":"p2","link_to_pet_id":"m1","reason":"has_other_carers"}}"""
+
+    /** 「연결 없이 참여」는 막힌 줄만 새 참여로 바꾸고 안내를 닫는다. **수락은 다시 부르지 않는다.** */
+    @Test
+    fun `연결 없이 참여는 막힌 줄만 새 참여로 바꾸고 다시 수락하지 않는다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, blockedLinkBody)
+            assertNull(holder.accept("t"))
+            assertTrue((holder.outcome as AcceptOutcome.Conflict).linkBlockedByOtherCarers)
+
+            holder.joinInsteadOfBlockedLink()
+
+            assertEquals(mapOf("p1" to PetChoice.Join, "p2" to PetChoice.Join), holder.choices)
+            assertNull(holder.outcome)
+            assertEquals("처음 누른 한 번뿐이다", 1, stub.acceptCalls)
+            assertTrue("사용자가 다시 누를 수 있다", holder.canAccept)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    @Test
+    fun `확인은 안내만 닫고 선택을 그대로 둔다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, blockedLinkBody)
+            holder.accept("t")
+
+            holder.dismissBlockedLink()
+
+            assertEquals(PetChoice.Link("m1"), holder.choices["p2"])
+            assertNull(holder.outcome)
+            assertEquals(1, stub.acceptCalls)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 서버가 어느 줄인지 안 주면 연결로 고른 줄을 전부 새 참여로 바꾼다 — 막힌 연결이 남으면 또 409 다. */
+    @Test
+    fun `막힌 줄을 모르면 연결로 고른 줄을 전부 새 참여로 바꾼다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, """{"detail":{"code":"link_not_allowed","message":"x","reason":"has_other_carers"}}""")
+            holder.accept("t")
+
+            holder.joinInsteadOfBlockedLink()
+
+            assertEquals(mapOf("p1" to PetChoice.Join, "p2" to PetChoice.Join), holder.choices)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 다른 409(상한 등)에는 「연결 없이 참여」가 아무것도 바꾸지 않는다. */
+    @Test
+    fun `다른 409 에는 연결 없이 참여가 선택을 바꾸지 않는다`() = runTest {
+        val stub = Stub()
+        try {
+            val holder = ready(stub)
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Link("m1"))
+            stub.accept(409, """{"detail":"돌보는 아이가 너무 많습니다."}""")
+            holder.accept("t")
+
+            holder.joinInsteadOfBlockedLink()
+
+            assertEquals(PetChoice.Link("m1"), holder.choices["p2"])
+            assertTrue(holder.outcome is AcceptOutcome.Conflict)
+        } finally {
+            stub.stop()
+        }
+    }
+
     /** 다 고르기 전에 눌러도 요청이 안 나가야 한다 — 나가면 서버가 409 를 낸다. */
     @Test
     fun `선택이 빠진 채로는 요청하지 않는다`() = runTest {
@@ -231,6 +339,54 @@ class InviteAcceptLinkHolderTest {
             holder.loadPreview("t")
 
             assertTrue("고를 것이 없으니 바로 수락할 수 있다", holder.canAccept)
+        } finally {
+            stub.stop()
+        }
+    }
+
+    /** 미리보기가 실패·만료·없는 초대면 눌러도 할 수 있는 일이 없다 — 버튼을 살려 두지 않는다. */
+    @Test
+    fun `미리보기가 실패하거나 만료되거나 없는 초대면 수락할 수 없다`() = runTest {
+        for ((status, body) in listOf(
+            500 to """{"detail":"서버 오류"}""",
+            410 to """{"detail":"만료된 초대입니다."}""",
+            404 to """{"detail":"초대를 찾을 수 없습니다."}""",
+        )) {
+            val stub = Stub()
+            try {
+                stub.preview(status, body)
+                stub.accept(200, ACCEPTED)
+                val holder = holder(stub)
+                holder.acceptFromLink(token)
+
+                holder.loadPreview("t")
+
+                assertFalse("미리보기 $status 뒤", holder.canAccept)
+                assertEquals(0, stub.acceptCalls)
+            } finally {
+                stub.stop()
+            }
+        }
+    }
+
+    /** 망이 흔들린 뒤 다시 물어봐서 받으면 그때부터 고르고 누를 수 있다. 다시 묻기만으로 수락은 안 나간다. */
+    @Test
+    fun `미리보기 실패 뒤 다시 받으면 수락할 수 있게 된다`() = runTest {
+        val stub = Stub()
+        try {
+            stub.preview(500, """{"detail":"서버 오류"}""")
+            val holder = holder(stub)
+            holder.acceptFromLink(token)
+            holder.loadPreview("t")
+            assertFalse(holder.canAccept)
+
+            stub.preview(200, TWO_PETS)
+            holder.loadPreview("t")
+            holder.choose("p1", PetChoice.Join)
+            holder.choose("p2", PetChoice.Join)
+
+            assertTrue(holder.canAccept)
+            assertEquals(0, stub.acceptCalls)
         } finally {
             stub.stop()
         }

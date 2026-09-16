@@ -157,6 +157,9 @@ class WalkDetailDataUiTest {
         // Close the menu without changing a camera or introducing a provider call.
         compose.onNodeWithText("전체 동선 보기").performClick()
         compose.runOnIdle { result.completeExceptionally(IllegalStateException("offline")) }
+        // Notices are a lazy item after the scenes and can be below the compact drawer viewport.
+        compose.onNodeWithTag("diary-scene-list").performScrollToNode(
+            hasText("일기를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요."))
         compose.onNodeWithText("일기를 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요.").assertExists()
         actions.generate = {}
         menu(); compose.onNodeWithText("일기 생성·갱신").performClick()

@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
@@ -53,6 +54,7 @@ internal fun WalkRecordsBehaviorExplorer(
     traceLoading: Boolean = false,
     traceError: String? = null,
     onReloadTraces: () -> Unit = {},
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
 ) {
     var selectedEntryKey by state.selectedEntryKey
     var hiddenWalkIds by state.hiddenWalkIds
@@ -168,13 +170,19 @@ internal fun WalkRecordsBehaviorExplorer(
     val controls: @Composable () -> Unit = {
         BehaviorViewControls(view, changeView, minimumWalks = minimumWalks, onMinimumWalks = {
             minimumWalks = it; overlapPoint = null; overlapMiss = false; selectedWalkId = null
-        }, menuExtras = { if (view != BehaviorRecordsView.RECORD_LOCATIONS) WalkRecordsActionPinControls(actionPinState, result.behavior) })
+        }, menuExtras = {
+            if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
+                WalkRecordsActionPinControls(actionPinState, result.behavior)
+                WalkRecordsTraceStatus(result.related.records, traceLoading, traceError, onReloadTraces, compact = true)
+            }
+        })
     }
     if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
         WalkRecordsOverview(result.related, pets, prepared, tiles, preparationError ?: compositionError,
             routeSource = routeSource, actionPinState = actionPinState, pinBehavior = result.behavior,
             onRetry = tracePresentation.retry,
             selectedId = selectedWalkId, hiddenIds = hidden,
+            onInspect = { selectedWalkId = it },
             onSelect = { id ->
                 selectedWalkId = id.takeIf { it != selectedWalkId }
                 if (selectedWalkId != null && id !in hidden) {
@@ -185,7 +193,7 @@ internal fun WalkRecordsBehaviorExplorer(
             onToggleHidden = { id -> if (id in hideableIds) {
                 hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
             } }, onRestoreAll = { hiddenWalkIds = emptySet() }, onClearSelection = { selectedWalkId = null },
-            onOpen = onOpen, listState = state.walkListState, camera = camera, onCamera = { camera = it },
+            onOpen = onOpen, onOpenAction = onOpenAction, listState = state.walkListState, camera = camera, onCamera = { camera = it },
             fitBounds = focusBounds ?: initialBounds.orEmpty(), cameraRequest = cameraRequest,
             overlapOnly = overlapOnly, minimumWalks = minimumWalks,
             overlapHit = hit, overlapMiss = overlapMiss,
@@ -271,19 +279,14 @@ internal fun WalkRecordsBehaviorExplorer(
                     Modifier.testTag("records-behavior-status"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
             }
 
-            if (selected != null) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(selected.locationLabel, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-                TextButton(onClick = { selectedEntryKey = null },
-                    modifier = Modifier.testTag("records-behavior-clear-selection")) { Text("강조 해제") }
-            }
+
         },
         records = { listModifier ->
             if (result.records.isEmpty()) RecordsMessage("이 조건의 산책에 ${result.behavior.label} 기록이 없어요.", modifier = listModifier)
             else BehaviorRecordList(result.records, pets, selectedEntryKey, hidden, hideableIds,
                 { onSelect(it, false) }, { id ->
                     if (id in hideableIds) hiddenWalkIds = if (id in hidden) hidden - id else hidden + id
-                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null)
+                }, onOpen, listModifier, listState, availabilityChecked = initialBounds != null, onOpenAction = onOpenAction, readingSource = routeSource)
         })
 }
 
@@ -301,10 +304,9 @@ private fun BehaviorViewControls(
                 BehaviorRecordsView.RECORD_LOCATIONS -> "행동 위치 ▾"
                 BehaviorRecordsView.WALK_TRACES -> "전체 흔적 ▾"
                 BehaviorRecordsView.WALK_OVERLAP -> "겹친 구간 · ${minimumWalks}회 이상 ▾"
-            })
+            }, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text("지도 표시", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = 220.dp, max = 280.dp)) {
             listOf(Triple(BehaviorRecordsView.WALK_TRACES, "전체 흔적", "traces"),
                 Triple(BehaviorRecordsView.WALK_OVERLAP, "겹친 구간", "overlap"),
                 Triple(BehaviorRecordsView.RECORD_LOCATIONS, "행동 위치", "locations")).forEach { (mode, label, tag) ->
@@ -313,6 +315,9 @@ private fun BehaviorViewControls(
             }
             if (view == BehaviorRecordsView.WALK_OVERLAP) Box(Modifier.padding(horizontal = 16.dp)) {
                 WalkRecordsOverlapOptions(minimumWalks, { onMinimumWalks(it); open = false })
+            }
+            if (view != BehaviorRecordsView.RECORD_LOCATIONS) {
+                TraceDensityLegend(Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
             menuExtras()
         }

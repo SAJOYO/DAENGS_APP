@@ -80,6 +80,12 @@ object InviteErrorCode {
     /** 409 — 고른 기존 강아지가 연결 조건에 안 맞는다. `reason` 이 같이 온다. */
     const val LINK_NOT_ALLOWED = "link_not_allowed"
 
+    /**
+     * [LINK_NOT_ALLOWED] 의 `reason` — 고른 내 강아지를 **다른 공동 보호자가 함께 돌보고 있다.**
+     * 연결하면 그 사람의 기록이 동의 없이 새 그룹에 열리므로 서버가 막는다(MVP 정책).
+     */
+    const val REASON_HAS_OTHER_CARERS = "has_other_carers"
+
     /** 409 — 연결된 보호자에게는 아직 대표를 넘길 수 없다. */
     const val LINKED_OWNER_TRANSFER_UNSUPPORTED = "linked_owner_transfer_unsupported"
 

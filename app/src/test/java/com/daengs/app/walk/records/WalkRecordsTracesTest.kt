@@ -3,7 +3,7 @@ package com.daengs.app.walk.records
 import com.daengs.app.location.GeoPoint
 import com.daengs.app.location.LocationSample
 import com.daengs.app.map.layers.traces.TraceBrush
-import com.daengs.app.ui.theme.WalkTraceShadow
+import com.daengs.app.ui.theme.WalkTraceIndigo
 import com.daengs.app.map.layers.traces.TraceRasterTile
 import com.daengs.app.map.layers.traces.WalkTraceProvenance
 import com.daengs.app.map.layers.traces.WalkTraceSheet
@@ -22,7 +22,7 @@ import kotlin.math.floor
 import kotlin.math.sqrt
 
 class WalkRecordsTracesTest {
-    private val traceStyle = com.daengs.app.map.features.records.TraceDisplayPolicy(WalkTraceShadow.RGB)
+    private val traceStyle = com.daengs.app.map.features.records.TraceDisplayPolicy(WalkTraceIndigo.RGB)
     @Test fun `changing scale invalidates opacity cache while changing pigment preserves geometry and alpha`() = runBlocking {
         val cells = (-3..3).flatMap { q -> (-3..3).map { r -> SpatialDiaryCellId(q, r) } }.toSet()
         val prepared = prepareWalkRecordsTraces(selection(record("a", cells), record("b", cells)))
@@ -53,8 +53,8 @@ class WalkRecordsTracesTest {
         val originalPixels = original.map { it.alpha.copyOf() }
         val one = prepared.composeForTest(setOf("b"))
 
-        assertEquals(0.12f, original.maxOf { tile -> tile.alpha.max() }, 0.000001f)
-        assertEquals(0.04f, one.maxOf { tile -> tile.alpha.max() }, 0.000001f)
+        assertEquals(0.49f, original.maxOf { tile -> tile.alpha.max() }, 0.000001f)
+        assertEquals(0.24f, one.maxOf { tile -> tile.alpha.max() }, 0.000001f)
         // Returned tiles belong to the composition, not to the cached per-walk masks.
         original.forEach { it.alpha.fill(0f) }
         val restored = prepared.composeForTest()
@@ -175,10 +175,10 @@ class WalkRecordsTracesTest {
         val original = prepared.composeForTest(minimumOverlapWalks = 2)
         assertTrue(prepared.composeForTest().any { it.tileX >= 3 })
         assertTrue(original.none { it.tileX >= 3 })
-        assertTrue(original.all { tile -> tile.alpha.all { it <= 0.460001f } })
+        assertTrue(original.all { tile -> tile.alpha.all { it <= 0.770001f } })
         val hidden = prepared.composeForTest(setOf("b", "c", "d", "e"), minimumOverlapWalks = 5)
         assertTrue(hidden.isNotEmpty())
-        assertTrue(hidden.all { tile -> tile.alpha.all { it <= 0.040001f } })
+        assertTrue(hidden.all { tile -> tile.alpha.all { it <= 0.240001f } })
         assertTrue(prepared.composeForTest(allIds, minimumOverlapWalks = 5).isEmpty())
         assertTrue(prepared.hasOverlap(5))
         assertEquals(allIds, prepared.overlapWalkIds(5))
@@ -267,7 +267,7 @@ class WalkRecordsTracesTest {
     }
 
     @Test
-    fun `shadow pigment stays neutral while distinct counts control strength and thresholds preserve evidence`() = runBlocking {
+    fun `trace pigment stays indigo while distinct counts control strength and thresholds preserve evidence`() = runBlocking {
         val two = SpatialDiaryCellId(0, 0)
         val three = SpatialDiaryCellId(8, 0)
         val four = SpatialDiaryCellId(16, 0)
@@ -279,9 +279,9 @@ class WalkRecordsTracesTest {
         val colored = prepared.composeForTest(minimumOverlapWalks = 2)
         val byTile = colored.associateBy { it.tileX to it.tileY }
         val originalColors = byTile.mapValues { requireNotNull(it.value.rgb).copyOf() }
-        assertTrue(overall.all { tile -> requireNotNull(tile.rgb).all { it == WalkTraceShadow.RGB } })
-        mapOf(two to WalkTraceShadow.RGB, three to WalkTraceShadow.RGB,
-            four to WalkTraceShadow.RGB, five to WalkTraceShadow.RGB).forEach { (cell, color) ->
+        assertTrue(overall.all { tile -> requireNotNull(tile.rgb).all { it == WalkTraceIndigo.RGB } })
+        mapOf(two to WalkTraceIndigo.RGB, three to WalkTraceIndigo.RGB,
+            four to WalkTraceIndigo.RGB, five to WalkTraceIndigo.RGB).forEach { (cell, color) ->
             val (tile, index) = pixelAt(colored, cell)
             assertTrue(tile.alpha[index] > 0f)
             assertEquals(color, requireNotNull(tile.rgb)[index])
@@ -295,11 +295,11 @@ class WalkRecordsTracesTest {
             assertArrayEquals(expectedAlpha, byTile.getValue(tile.tileX to tile.tileY).alpha, 0f)
         }
         val hidden = prepared.composeForTest(setOf("b", "c", "d", "e"), minimumOverlapWalks = 2)
-        assertTrue(hidden.all { tile -> tile.alpha.all { it <= 0.040001f } })
+        assertTrue(hidden.all { tile -> tile.alpha.all { it <= 0.240001f } })
         hidden.forEach { tile -> assertArrayEquals(originalColors.getValue(tile.tileX to tile.tileY), requireNotNull(tile.rgb)) }
         val minimumFive = prepared.composeForTest(minimumOverlapWalks = 5)
         minimumFive.forEach { tile -> assertArrayEquals(originalColors.getValue(tile.tileX to tile.tileY), requireNotNull(tile.rgb)) }
-        assertTrue(minimumFive.all { tile -> tile.alpha.all { it <= 0.460001f } })
+        assertTrue(minimumFive.all { tile -> tile.alpha.all { it <= 0.770001f } })
         assertEquals(5, prepared.hitTestOverlap(SpatialDiaryHexGrid.center(five, 8.0), 5,
             hiddenIds = setOf("b", "c", "d", "e"))!!.walkIds.size)
         assertTrue(prepared.composeForTest(setOf("a", "b", "c", "d", "e"), minimumOverlapWalks = 2).isEmpty())
@@ -311,17 +311,34 @@ class WalkRecordsTracesTest {
     }
 
     @Test
-    fun `shadow strength uses fixed count steps without saturating early or normalising sparse selections`() = runBlocking {
+    fun `trace strength caps at three distinct walks without normalising sparse selections`() = runBlocking {
         val patch = (-3..3).flatMap { q -> (-3..3).map { r -> SpatialDiaryCellId(q, r) } }.toSet()
-        for ((count, expected) in listOf(1 to .04f, 2 to .12f, 3 to .22f, 4 to .22f,
-            5 to .34f, 7 to .34f, 8 to .46f, 12 to .46f)) {
+        for ((count, expected) in listOf(1 to .24f, 2 to .49f, 3 to .77f, 4 to .77f,
+            5 to .77f, 7 to .77f, 8 to .77f, 12 to .77f)) {
             val records = (1..count).map { record("walk-$it", patch) }
             val prepared = prepareWalkRecordsTraces(selection(*records.toTypedArray()))
             val tiles = prepared.composeForTest()
             assertEquals("$count walks", expected, tiles.maxOf { it.alpha.max() }, .000001f)
             assertTrue(tiles.all { tile -> tile.alpha.all { it in 0f..(expected + .000001f) } })
             val single = prepared.composeForTest((2..count).map { "walk-$it" }.toSet())
-            assertEquals(.04f, single.maxOf { it.alpha.max() }, .000001f)
+            assertEquals(.24f, single.maxOf { it.alpha.max() }, .000001f)
+        }
+    }
+
+    @Test
+    fun `return passes stay at one walk and only another session darkens the same support`() = runBlocking {
+        val cells = (-3..3).map { SpatialDiaryCellId(it, 0) }
+        val route = cells.map { SpatialDiaryHexGrid.center(it, 8.0) }
+        val once = record("a", cells.toSet(), route)
+        val repeated = record("a", (cells + cells.reversed() + cells).toSet(), route + route.reversed() + route)
+        val one = prepareWalkRecordsTraces(selection(once)).composeForTest()
+        val repeats = prepareWalkRecordsTraces(selection(repeated))
+        assertSameTiles(one, repeats.composeForTest())
+        assertFalse(repeats.hasOverlap(2))
+        val two = prepareWalkRecordsTraces(selection(repeated, record("b", cells.toSet(), route)))
+        assertTrue(two.hasOverlap(2))
+        one.zip(two.composeForTest()).forEach { (before, after) ->
+            assertArrayEquals(before.alpha.map { it * (.49f / .24f) }.toFloatArray(), after.alpha, .000001f)
         }
     }
 
@@ -331,7 +348,7 @@ class WalkRecordsTracesTest {
             record("a", setOf(SpatialDiaryCellId(0, 0))),
             record("b", setOf(SpatialDiaryCellId(1, 0)))))
         assertFalse(prepared.hasOverlap(2))
-        assertTrue(prepared.composeForTest().all { tile -> tile.alpha.all { it <= .040001f } })
+        assertTrue(prepared.composeForTest().all { tile -> tile.alpha.all { it <= .240001f } })
         assertTrue(prepared.composeForTest(minimumOverlapWalks = 2).isEmpty())
     }
 
@@ -342,7 +359,7 @@ class WalkRecordsTracesTest {
         val prepared = prepareWalkRecordsTraces(selection(a, b.copy(trace = b.trace!!.copy(radiusU = 16.0))))
         assertNotNull(prepared.overlapUnavailableReason)
         assertTrue(prepared.composeForTest().all { tile ->
-            tile.alpha.all { it <= .040001f } && requireNotNull(tile.rgb).all { it == WalkTraceShadow.RGB }
+            tile.alpha.all { it <= .240001f } && requireNotNull(tile.rgb).all { it == WalkTraceIndigo.RGB }
         })
     }
 

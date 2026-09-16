@@ -56,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -105,6 +106,8 @@ import com.daengs.app.gait.GaitCompletions
 import com.daengs.app.gait.GaitStatus
 import com.daengs.app.gait.rememberGaitHolder
 import com.daengs.app.gait.work.GaitAnalysisWorker
+import com.daengs.app.gait.work.GaitWatchTags
+import com.daengs.app.gait.work.pendingGaitRecords
 import com.daengs.app.gait.work.scheduleGaitAnalysisWatch
 import com.daengs.app.location.FusedLocationSource
 import com.daengs.app.miniroom.art.DogBreed
@@ -112,6 +115,7 @@ import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.screening.ScreeningRecordApi
 import com.daengs.app.screening.ScreeningRun
+import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
 import com.daengs.app.ui.DaengsIconView
@@ -183,7 +187,9 @@ internal sealed interface ChatEntry {
     /** 서버에 물어보는 중. 답이 오면 이 자리가 [Report] 나 [Failed] 로 바뀐다. */
     data object Screening : ChatEntry
 
-    data class Report(val report: ScreeningReport) : ChatEntry
+    // [recordId] 가 있으면 판정이 기록으로 남은 것이고, 말풍선 아래에 "이 결과 물어보기" 가
+    // 붙는다 (백엔드 D-079). 옛 경로로 판정만 받았으면 null 이고 칩이 없다 — 서버가 읽을 기록이 없다.
+    data class Report(val report: ScreeningReport, val recordId: String? = null) : ChatEntry
 
     data class Failed(val message: String) : ChatEntry
 
@@ -303,8 +309,8 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
-    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence ->
-        AssistantApi.query(token, text, where, dog, persistence)
+    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence, screening ->
+        AssistantApi.query(token, text, where, dog, persistence, screening = screening)
     },
     onOpenFacilities: (() -> Unit)? = null,
     /**
@@ -432,7 +438,7 @@ fun ChatScreen(
             // ⚠️ **box 를 이제 실제로 보낸다.** 전에는 안 보내서 저쪽이 화면 중앙으로
             //    물러섰고, 1단계는 큰 차이가 없지만 2단계 분포가 학습 크롭과 어긋났다.
             when (val outcome = screeningRun.run(dogId, photo.jpeg, box)) {
-                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report)
+                is ScreeningRun.Outcome.Screened -> entries[slot] = ChatEntry.Report(outcome.report, outcome.recordId)
                 is ScreeningRun.Outcome.Failed -> entries[slot] = ChatEntry.Failed(outcome.message)
             }
         }
@@ -629,6 +635,43 @@ fun ChatScreen(
         }
     }
 
+    // 챗을 나갔다 오면 **진행 중인 분석 카드도 되살린다.**
+    //
+    // 대화는 서버 이력에서 다시 그려지는데 보행 카드는 거기 없어서, 예전에는 뒤로 갔다
+    // 들어오면 "분석 중" 카드가 사라져 분석이 도는지 확인할 길이 없었다. 진행 중인지는
+    // WorkManager 가 들고 있으므로 따로 저장하지 않고 거기서 찾는다 — 작업마다 강아지 ·
+    // 기록 tag 가 달려 있다 ([GaitWatchTags]).
+    //
+    // 무엇을 붙이는지는 [pendingGaitRecords] 에 있다: 이 강아지 것만 · 아직 안 끝난 것만 ·
+    // 이미 대화에 있는 기록은 빼고. 끝난 것은 위의 알림 완료 경로가 맡는다. 되살린 카드는
+    // 위쪽 관찰이 그대로 받아서, 끝나면 완료 말풍선과 결과 카드로 바뀐다.
+    //
+    // 복원이 끝난 뒤여야 하는 이유는 위 완료 붙이기와 같다 (`displayedSessionId`).
+    val petWatches = if (dogId == null) {
+        emptyList<WorkInfo>()
+    } else {
+        key(dogId) {
+            remember { WorkManager.getInstance(context).getWorkInfosByTagFlow(GaitWatchTags.pet(dogId)) }
+                .collectAsState(initial = emptyList())
+                .value
+        }
+    }
+    LaunchedEffect(displayedSessionId, dogId, petWatches) {
+        if (displayedSessionId == null) return@LaunchedEffect
+        val shown = entries.mapNotNullTo(mutableSetOf()) {
+            when (it) {
+                is ChatEntry.GaitSubmitted -> it.recordId
+                is ChatEntry.GaitDone -> it.recordId
+                else -> null
+            }
+        }
+        pendingGaitRecords(petWatches, dogId, shown).forEach { recordId ->
+            // 제목은 목록에 그 기록이 있으면 쓴다. 없으면 제목 없는 카드("완료되면
+            // 알려드릴게요")로 둔다 — 제목 하나 때문에 여기서 목록을 부르지 않는다.
+            entries += ChatEntry.GaitSubmitted(recordId, gait.find(recordId)?.title)
+        }
+    }
+
     val startGaitAnalysis: (PreparedVideo, String?) -> Unit = { video, title ->
         scope.launch {
             entries += ChatEntry.Note("영상이 준비되었어요!\n이제 보행 분석을 시작할게요.")
@@ -644,7 +687,7 @@ fun ChatScreen(
                     gait.clearError()
                 }
                 // 아주 짧은 영상이면 접수 직후에 이미 끝나 있다. 그때는 Worker 를 걸 것
-                // 없이 바로 결과로 간다 — 20초를 기다렸다 알림을 띄우면 더 이상하다.
+                // 없이 바로 결과로 간다 — 보고 있는 화면에 알림까지 띄우면 더 이상하다.
                 submission.settled -> {
                     dogId?.let { gait.load(it) }
                     entries[slot] = ChatEntry.Note("분석이 완료되었어요!\n결과를 확인해볼까요?")
@@ -769,7 +812,8 @@ fun ChatScreen(
         }
     }
 
-    val sendQuery: (String) -> Unit = { text ->
+    // [screening] 은 피부 판정 말풍선의 "이 결과 물어보기" 에서만 있다 (백엔드 D-079).
+    val sendQueryWith: (String, ScreeningFollowUp?) -> Unit = { text, screening ->
         entries += ChatEntry.Mine(text)
         val slot = entries.size
         entries += ChatEntry.Thinking
@@ -801,14 +845,14 @@ fun ChatScreen(
                 pendingPersistedSlot = slot
                 pendingPersistedSessionId = selectedSessionId
                 pendingPersistedQuery = text
-                if (!coordinator.send(token, text, where)) {
+                if (!coordinator.send(token, text, where, screening)) {
                     pendingPersistedSlot = null
                     pendingPersistedSessionId = null
                     if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 준비된 뒤 다시 보내 주세요.")
                     asking = false
                 }
             } else {
-                assistantQuery(token, text, where, dogId, null)
+                assistantQuery(token, text, where, dogId, null, screening)
                     .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
@@ -819,6 +863,8 @@ fun ChatScreen(
             }
         }
     }
+
+    val sendQuery: (String) -> Unit = { sendQueryWith(it, null) }
 
     // ── 음성 입력 ───────────────────────────────────────────────────────────
     //
@@ -983,7 +1029,17 @@ fun ChatScreen(
                         // 사진 진단도 몇 초 걸리는 자리라 같은 말풍선을 쓴다.
                         ChatEntry.Screening -> ThinkingBubble(avatar, "사진 보는 중…")
                         is ChatEntry.Failed -> AssistantBubble(entry.message, avatar)
-                        is ChatEntry.Report -> ReportBubble(entry.report, avatar)
+                        is ChatEntry.Report -> {
+                            ReportBubble(entry.report, avatar)
+                            // 판정이 기록으로 남았을 때만 — 서버가 그 기록을 읽어 해설한다 (D-079).
+                            entry.recordId?.let { recordId ->
+                                BesideAvatar {
+                                    ReportFollowUpChip(enabled = !asking) {
+                                        sendQueryWith(REPORT_FOLLOW_UP_QUESTION, ScreeningFollowUp(recordId))
+                                    }
+                                }
+                            }
+                        }
 
                         // 보행 카드는 **말풍선 안에 안 넣는다.** 카드가 이미 흰
                         // 바탕에 테두리를 가져서, 말풍선을 한 겹 더 두르면 흰 상자

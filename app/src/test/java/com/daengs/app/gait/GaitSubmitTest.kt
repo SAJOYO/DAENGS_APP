@@ -3,6 +3,7 @@ package com.daengs.app.gait
 import android.app.Application
 import android.net.Uri
 import com.daengs.app.gait.work.GaitAnalysisWorker
+import com.daengs.app.gait.work.GaitWatchTags
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,7 +14,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.util.concurrent.TimeUnit
 
 /**
  * 접수만 하고 빠지는 계약 (#220).
@@ -124,38 +124,59 @@ class GaitSubmitTest {
 
     /**
      * 되풀이가 끝이 있어야 한다. `Result.retry()` 는 스스로 안 멈춘다 —
-     * `runAttemptCount` 를 보는 쪽이 없으면 영영 돈다.
+     * `runAttemptCount` 를 보는 쪽이 없으면 영영 돈다. 한 번의 실행 안에서 묻는 시간과
+     * 간격은 `GaitWatchTest` 가 잡는다.
      */
     @Test
-    fun `되풀이 상한이 있고 그 안에 분석이 끝날 만큼은 기다린다`() {
-        val n = GaitAnalysisWorker.MAX_ATTEMPTS
-        assertTrue("상한이 있어야 한다", n in 1..100)
-
-        // 선형 backoff 의 누적 대기: 10 + 20 + … + 10n
-        val backoff = GaitAnalysisWorker.BACKOFF_SECONDS
-        val total = GaitAnalysisWorker.INITIAL_DELAY_SECONDS + (1..n).sumOf { it * backoff }
-
-        assertTrue(
-            "실측 2분짜리 분석을 넉넉히 덮어야 한다 (지금 ${total}초)",
-            total >= TimeUnit.MINUTES.toSeconds(10),
-        )
+    fun `실행 횟수 상한이 있다`() {
+        assertTrue("상한이 있어야 한다", GaitAnalysisWorker.MAX_ATTEMPTS in 1..10)
     }
 
     /**
-     * 첫 확인을 너무 일찍 하면 "아직" 이라는 답만 받고 시도만 하나 쓴다.
-     * 너무 늦으면 짧은 영상이 끝났는데도 한참 모른다.
+     * **첫 지연을 두지 않는다.** 제출 직후 앱이 아직 앞에 있을 때 시작해야 시스템이
+     * 미루지 않는다 — 20초 지연을 두었을 때 실기기에서 background 알림이 몇 분씩 늦었다.
      */
     @Test
-    fun `첫 확인은 곧바로도 한참 뒤도 아니다`() {
-        val delay = GaitAnalysisWorker.INITIAL_DELAY_SECONDS
-        assertTrue("너무 이르다 (${delay}초)", delay >= 10)
-        assertTrue("너무 늦다 (${delay}초)", delay <= 60)
+    fun `제출 직후 바로 시작한다`() {
+        val request = GaitAnalysisWorker.request("rec-1", "pet-1")
+        assertEquals(0L, request.workSpec.initialDelay)
+    }
+
+    @Test
+    fun `지켜볼 기록과 강아지를 실어 보낸다`() {
+        val input = GaitAnalysisWorker.request("rec-1", "pet-1").workSpec.input
+        assertEquals("rec-1", input.getString(GaitAnalysisWorker.KEY_RECORD_ID))
+        assertEquals("pet-1", input.getString(GaitAnalysisWorker.KEY_PET_ID))
     }
 
     /** WorkManager 가 허용하는 최소 backoff 가 10초다. 그보다 작게 적으면 조용히 올려 버린다. */
     @Test
     fun `backoff 는 WorkManager 최소치 아래로 내려가지 않는다`() {
         assertTrue(GaitAnalysisWorker.BACKOFF_SECONDS >= 10)
+    }
+
+    /**
+     * 챗에 다시 들어왔을 때 진행 중인 카드를 되살리는 근거다. `WorkInfo` 는 입력 데이터를
+     * 안 주고 tag 만 주므로, 강아지와 기록이 tag 에 없으면 되살릴 수 없다.
+     *
+     * `WorkRequest.tags` 는 라이브러리 내부용(`@RestrictTo`)이라 WorkManager 를 올릴 때
+     * 깨질 수 있다. 등록 결과를 읽는 공개 API 가 없어서 이렇게 본다.
+     */
+    @Test
+    fun `작업에 강아지와 기록 tag 를 단다`() {
+        val tags = GaitAnalysisWorker.request("rec-1", "pet-1").tags
+
+        assertTrue(GaitWatchTags.record("rec-1") in tags)
+        assertTrue(GaitWatchTags.pet("pet-1") in tags)
+        assertEquals("rec-1", GaitWatchTags.recordIdOf(tags))
+    }
+
+    @Test
+    fun `강아지를 모르면 강아지 tag 는 달지 않는다`() {
+        val tags = GaitAnalysisWorker.request("rec-1", petId = null).tags
+
+        assertTrue(GaitWatchTags.record("rec-1") in tags)
+        assertFalse(tags.any { it.startsWith(GaitWatchTags.pet("")) })
     }
 
 

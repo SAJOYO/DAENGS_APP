@@ -107,6 +107,35 @@ class CareEventTest {
         assertEquals(emptyList<CareEvent>(), summary.events)
     }
 
+    /** 다른 보호자가 다녀온 산책도 그날 요약에 들어온다 — 누가 다녀왔는지까지 읽는다. */
+    @Test
+    fun `하루 요약의 산책 줄에서 누가 다녀왔는지 읽는다`() {
+        val summary = CareDaySummary.parse(
+            JSONObject(SUMMARY_JSON).put(
+                "walk_rows",
+                org.json.JSONArray(
+                    """[
+                        {"walk_id": "w1", "started_at": "2025-09-01T08:00:00+09:00",
+                         "actor": {"app_user_id": "u2", "nickname": "키키"}},
+                        {"walk_id": "w2", "started_at": "2025-09-01T18:00:00+09:00",
+                         "actor": {"app_user_id": "u3", "nickname": null}}
+                    ]""",
+                ),
+            ),
+        )
+
+        assertEquals(listOf("w1", "w2"), summary.walkRows.map { it.walkId })
+        assertEquals(1_756_681_200_000L, summary.walkRows[0].startedAtMs)
+        assertEquals("키키", summary.walkRows[0].actor.displayName)
+        assertEquals("u3", summary.walkRows[1].actor.appUserId)
+        assertEquals("이전 보호자", summary.walkRows[1].actor.displayName)
+    }
+
+    @Test
+    fun `산책 줄이 없는 옛 응답도 읽는다`() {
+        assertEquals(emptyList<CareWalkRow>(), CareDaySummary.parse(JSONObject(SUMMARY_JSON)).walkRows)
+    }
+
     private companion object {
         const val EVENT_JSON = """
             {"id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",

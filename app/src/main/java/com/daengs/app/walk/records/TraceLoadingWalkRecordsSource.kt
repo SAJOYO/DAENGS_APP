@@ -1,5 +1,7 @@
 package com.daengs.app.walk.records
 
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.collect
 import com.daengs.app.auth.Session
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -22,6 +24,11 @@ internal class TraceLoadingWalkRecordsSource(
     override suspend fun loadRoute(record: WalkRecord): com.daengs.app.walk.WalkSummary {
         checkAccount()
         return local.loadRoute(record).also { checkAccount() }
+    }
+
+    override fun observeDiary(record: WalkRecord) = flow {
+        checkAccount()
+        local.observeDiary(record).collect { diary -> checkAccount(); emit(diary) }
     }
 
     override suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection {

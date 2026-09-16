@@ -44,6 +44,7 @@ object AssistantApi {
      *   않는다** — 안 넘기면 조용히 예전 동작으로 돌아가서, 부르는 쪽이 매번 정하게 한다.
      * @param persistence 이 문답을 남길 대화. null 이면 무상태 — 답은 오고 남지 않는다.
      *   실패는 [ChatApiError] 로 온다 (무상태도 마찬가지, 문장은 그대로다).
+     * @param screening 피부 판정 말풍선에서 이어 묻는 질문일 때만 있다 ([ScreeningFollowUp]).
      */
     suspend fun query(
         accessToken: String,
@@ -52,6 +53,7 @@ object AssistantApi {
         activeDogId: String?,
         persistence: ChatPersistence? = null,
         facility: kotlinx.serialization.json.JsonObject? = null,
+        screening: ScreeningFollowUp? = null,
     ): Result<AssistantResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -59,7 +61,7 @@ object AssistantApi {
                 val conn = open()
                 conn.setRequestProperty("Authorization", "Bearer $accessToken")
                 conn.use {
-                    it.send(requestBody(text, where, activeDogId, persistence, facility))
+                    it.send(requestBody(text, where, activeDogId, persistence, facility, screening))
                     AssistantResponse.parse(it.readJson())
                 }
             }.recoverCatching { cause ->
@@ -75,6 +77,9 @@ object AssistantApi {
      *
      * `requested_capability` 는 넣지 않는다 — 자연어 해석은 서버 의미 라우터에게
      * 그대로 맡긴다.
+     * **예외는 [screening] 하나다** (백엔드 D-079). 피부 판정 말풍선에서 이어 물을 때만
+     * `requested_capability="skin"` 과 `screening_record_id` 를 **함께** 싣는다 — 한쪽만
+     * 가면 저쪽은 판정을 모른 채 "피부 사진을 등록해 주세요" 안내로 답한다.
      *
      * `active_dog_id` 는 저쪽이 **그 id 로 `pets` 를 읽어 견종·나이를 Life 프롬프트에
      * 얹는 데 쓴다** (`SAJOYO/DAENGS_dev#202`). 예전에는 서버가 받기만 하고 아무 기능도
@@ -104,6 +109,7 @@ object AssistantApi {
         activeDogId: String?,
         persistence: ChatPersistence?,
         facility: kotlinx.serialization.json.JsonObject?,
+        screening: ScreeningFollowUp?,
     ): String =
         JSONObject().put("query", text).apply {
             facility?.let { put("facility", JSONObject(it.toString())) }
@@ -114,6 +120,10 @@ object AssistantApi {
             persistence?.let {
                 put("chat_session_id", it.sessionId)
                 put("client_message_id", it.clientMessageId)
+            }
+            screening?.let {
+                put("requested_capability", "skin")
+                put("screening_record_id", it.recordId)
             }
         }.toString()
 
