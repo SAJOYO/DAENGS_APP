@@ -143,6 +143,72 @@ class SessionProviderTest {
         assertEquals(AccountScope(null, before.generation + 1), provider.accountScope.value)
     }
 
+    /** 서버가 refresh 를 거절했다 — 다시 로그인해야 하지만, 앱이 먼저 지우지는 않는다. */
+    @Test
+    fun `refresh 가 401 이면 다시 로그인하라고 알리고 저장 세션은 그대로 둔다`() = runBlocking {
+        var stored: Session? = expiredSession()
+        val provider = provider(
+            load = { stored },
+            save = { stored = it },
+            clear = { stored = null },
+            refresh = { Result.failure(AuthApi.HttpStatusException(401, "만료된 세션입니다")) },
+        )
+
+        assertEquals(SessionCheck.LoginRequired, provider.checkSession())
+        assertEquals(expiredSession(), stored)
+    }
+
+    /** 망이 끊겼거나 서버가 죽었다 — 일시적인 실패로 로그아웃시키지 않는다. */
+    @Test
+    fun `refresh 가 망 실패나 5xx 면 연결 실패로 알리고 세션을 지우지 않는다`() = runBlocking {
+        for (failure in listOf(java.io.IOException("timeout"), AuthApi.HttpStatusException(503, "서버 오류 (503)"))) {
+            var stored: Session? = expiredSession()
+            val provider = provider(
+                load = { stored },
+                save = { stored = it },
+                clear = { stored = null },
+                refresh = { Result.failure(failure) },
+            )
+
+            assertEquals(SessionCheck.Unreachable, provider.checkSession())
+            assertEquals(expiredSession(), stored)
+            assertNull(provider.freshSession())
+        }
+    }
+
+    /**
+     * 서버 계약상 refresh 실패는 전부 401 이다. 403 은 카카오 로그인의 정지 회원에게만 쓰는 값이라,
+     * refresh 에서 오더라도 "로그인 만료" 로 읽어 다시 로그인시키지 않는다.
+     */
+    @Test
+    fun `refresh 가 401 이 아닌 거절이면 로그인 만료로 보지 않는다`() = runBlocking {
+        var stored: Session? = expiredSession()
+        val provider = provider(
+            load = { stored },
+            save = { stored = it },
+            clear = { stored = null },
+            refresh = { Result.failure(AuthApi.HttpStatusException(403, "이용이 정지된 계정입니다.")) },
+        )
+
+        assertEquals(SessionCheck.Unreachable, provider.checkSession())
+        assertEquals(expiredSession(), stored)
+    }
+
+    @Test
+    fun `저장된 세션이 없으면 로그인이 필요하다`() = runBlocking {
+        val provider = provider(load = { null }, save = {}, clear = {}, refresh = { error("부르면 안 된다") })
+
+        assertEquals(SessionCheck.LoginRequired, provider.checkSession())
+    }
+
+    @Test
+    fun `살아 있는 access 는 refresh 없이 그대로 쓴다`() = runBlocking {
+        val alive = aliveSession("now")
+        val provider = provider(load = { alive }, save = {}, clear = {}, refresh = { error("부르면 안 된다") })
+
+        assertEquals(SessionCheck.Fresh(alive), provider.checkSession())
+    }
+
     private fun provider(
         load: () -> Session?,
         save: (Session) -> Unit,

@@ -41,24 +41,25 @@ class WalkRecordsActionPinsUiTest {
     private fun await(tag: String) = compose.waitUntil(10000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
 
     @Test fun `pin types change pins only and unlocated action can open its original walk`() {
-        val opened = mutableListOf<String>()
+        val opened = mutableListOf<com.daengs.app.walk.diary.DiaryActionTarget>()
         compose.setContent { DaengsTheme { CompositionLocalProvider(LocalInspectionMode provides true) {
-            WalkRecordsScreen(source, emptyList(), {}, opened::add, today = LocalDate.of(2026,9,13))
+            WalkRecordsScreen(source, emptyList(), {}, { error("Lost action identity") }, today = LocalDate.of(2026,9,13), onOpenAction = opened::add)
         } } }
         await("records-count")
         compose.onNodeWithTag("records-view-overview").performClick()
-        await("records-pins-browse")
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 2회")
+        await("records-place-peek")
+        compose.onNodeWithTag("records-map-sheet-toggle").performClick()
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 2회")
         compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 3건").performClick()
         compose.onNodeWithTag("records-pins-summary").assertTextEquals("핀 표시 2건 · 위치 없음 1건")
         val key = WalkBehaviorRecord(records[1].entries.single(), records[1]).key
         compose.onNodeWithTag("records-behavior-list").performScrollToNode(hasTestTag("records-behavior-entry-$key"))
         compose.onNodeWithTag("records-behavior-entry-$key").performClick()
         compose.onNodeWithTag("records-behavior-open-$key").performScrollTo().performClick()
-        assertEquals(listOf("second"), opened)
+        assertEquals(listOf(com.daengs.app.walk.diary.DiaryActionTarget("second", "second-0")), opened)
         compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
-        compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 2회")
-        compose.onNodeWithTag("records-pins-browse").assertTextContains("액션 1건")
+        compose.onNodeWithTag("records-count").assertTextEquals("산책 2회")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("액션 기록 1건 · 접기")
     }
 
     @Test fun `native group inspection lists every action and preserves the selected action after restoration`() {
@@ -75,12 +76,12 @@ class WalkRecordsActionPinsUiTest {
                 null, {}, emptyList(), 0, expanded = true, actionPinState = state)
         } } }
         compose.runOnIdle { pinState!!.inspect(walkRecordsActionPins(selection).groups.single()) }
-        compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 위치의 액션 2건")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("이곳의 산책 1회 · 행동 2건 · 접기")
         val key = WalkBehaviorRecord(records[0].entries[1], records[0]).key
         compose.onNodeWithTag("records-behavior-entry-$key").performClick()
         compose.runOnIdle { assertEquals("first", highlighted) }
         restore.emulateSavedInstanceStateRestore()
-        compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 위치의 액션 2건")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("이곳의 산책 1회 · 행동 2건 · 접기")
         compose.onNodeWithTag("records-behavior-entry-$key").assertIsSelected()
         compose.onNodeWithTag("records-behavior-open-$key").assertExists()
     }
@@ -104,10 +105,10 @@ class WalkRecordsActionPinsUiTest {
             val entries = walkRecordsActionPins(selection, setOf(WalkMomentType.SNIFFING)).records
             pinState!!.inspect(WalkActionPinGroup(point, entries))
         }
-        compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 구간의 액션 2건")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("이곳의 산책 2회 · 행동 2건 · 접기")
         compose.onNodeWithTag("records-pins-expand").assertExists()
         restore.emulateSavedInstanceStateRestore()
-        compose.onNodeWithTag("records-pins-summary").assertTextEquals("이 구간의 액션 2건")
+        compose.onNodeWithTag("records-map-sheet-toggle").assertTextContains("이곳의 산책 2회 · 행동 2건 · 접기")
         compose.runOnIdle { assertEquals(2, pinState!!.groupKeys.value.size) }
         compose.onNodeWithTag("records-pins-type-barking").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(pinState!!.groupKeys.value.isEmpty()) }

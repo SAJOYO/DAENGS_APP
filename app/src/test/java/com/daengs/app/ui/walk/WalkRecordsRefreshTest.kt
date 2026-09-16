@@ -55,7 +55,7 @@ class WalkRecordsRefreshTest {
                 compose.onNodeWithText("산책 기록을 찾고 있어요.").assertDoesNotExist()
                 compose.onNodeWithText("2 페이지").assertExists()
                 compose.onNodeWithText("기록-3").assertExists()
-                compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 8회")
+                compose.onNodeWithTag("records-count").assertTextEquals("산책 8회")
                 gate.complete(Unit)
                 compose.waitUntil(10_000) { source.completed.get() > before }
                 compose.waitForIdle()
@@ -152,7 +152,7 @@ class WalkRecordsRefreshTest {
             nextGate.complete(Unit)
             waitText("기록-2")
             compose.onNodeWithText("기록-1").assertDoesNotExist()
-            compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 1회")
+            compose.onNodeWithTag("records-count").assertTextEquals("산책 1회")
         } finally {
             oldGate.complete(Unit)
             nextGate.complete(Unit)
@@ -179,7 +179,7 @@ class WalkRecordsRefreshTest {
             oldGate.complete(Unit)
             compose.waitForIdle()
             compose.onNodeWithText("기록-1").assertDoesNotExist()
-            compose.onNodeWithTag("records-count").assertTextEquals("선택 산책 0회")
+            compose.onNodeWithTag("records-count").assertTextEquals("산책 0회")
             assertEquals(3, source.reads.get())
         } finally {
             oldGate.complete(Unit)

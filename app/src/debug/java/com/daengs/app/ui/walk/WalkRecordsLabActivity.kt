@@ -32,7 +32,7 @@ import com.daengs.app.ui.walk.records.WalkRecordsScreen
 import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.walk.records.WalkRecord
 
-/** Uses the real explorer and map renderer with an explicitly labelled synthetic source. */
+/** Uses the real explorer and map renderer with an in-memory synthetic source. */
 class WalkRecordsLabActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,15 +48,15 @@ internal fun WalkRecordsLab(onBack: () -> Unit = {}, densePins: Boolean = false)
     val diagnostics = remember { WalkMapDiagnostics() }
     var showDiagnostics by remember { mutableStateOf(false) }
     if (opened != null) {
-        WalkRecordsLabDetail(opened, state::closeDetail)
+        WalkRecordsLabDetail(opened, state::closeDetail, state.openedAction)
         return
     }
     CompositionLocalProvider(LocalWalkMapDiagnostics provides diagnostics) {
         Box(Modifier.fillMaxSize()) {
             RetainedWalkRecords(state) {
                 WalkRecordsScreen(source = if (densePins) WalkRecordsDenseLabFixture else WalkRecordsLabFixture, pets = WalkRecordsLabFixture.pets,
-                    onBack = { state.captureRecords(); onBack() }, onOpen = state::open,
-                    sampleLabel = if (densePins) "가상 산책 12회 · 밀집 액션 144건" else "가상 산책 12회 · 화면 시연", today = WalkRecordsLabFixture.today)
+                    onBack = { state.captureRecords(); onBack() }, onOpen = state::open, onOpenAction = state::openAction,
+                    today = WalkRecordsLabFixture.today)
             }
             Surface(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
                 shape = MaterialTheme.shapes.small) {
@@ -106,10 +106,11 @@ private fun WalkLayerDiagnosticsPreview() {
 
 /** Same session/diary screen as MainActivity. Only its data source is synthetic. */
 @Composable
-internal fun WalkRecordsLabDetail(record: WalkRecord, onBack: () -> Unit) {
+internal fun WalkRecordsLabDetail(record: WalkRecord, onBack: () -> Unit,
+    initialAction: com.daengs.app.walk.diary.DiaryActionTarget? = null) {
     val data = remember(record.summary.sessionId) { WalkRecordsLabDetailData(record) }
     WalkDiaryMapForAccount(record.summary.sessionId, data, data, onBack, Modifier.fillMaxSize(),
-        WalkRecordsLabFixture.pets, WalkSessionOrigin.RECORDS, AccountScope("records-lab", 0), {}, { null })
+        WalkRecordsLabFixture.pets, WalkSessionOrigin.RECORDS, AccountScope("records-lab", 0), {}, { null }, initialAction = initialAction)
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)

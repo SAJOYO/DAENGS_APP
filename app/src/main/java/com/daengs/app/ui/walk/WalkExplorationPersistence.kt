@@ -62,7 +62,7 @@ internal fun rememberDiaryReadingMemory(): DiaryReadingMemory {
 /** Reads once; later evidence can validate the address, but cannot overwrite a user's newer action. */
 @Composable
 internal fun RememberWalkExplorationPersistence(source: WalkDetailSource, owner: String,
-    view: WalkDiaryReadView?, explorer: WalkRouteExplorerState, reading: DiaryReadingMemory) {
+    view: WalkDiaryReadView?, explorer: WalkRouteExplorerState, reading: DiaryReadingMemory, restoreAllowed: Boolean = true) {
     val currentView by rememberUpdatedState(view)
     LaunchedEffect(source, owner, explorer, reading) {
         var touchedReading = false
@@ -74,7 +74,7 @@ internal fun RememberWalkExplorationPersistence(source: WalkDetailSource, owner:
             val payload = try { source.loadExploration() }
                 catch (e: CancellationException) { throw e }
                 catch (_: Exception) { null }
-            var consumed = initialRevision != 0
+            var consumed = !restoreAllowed || initialRevision != 0
             snapshotFlow { Triple(currentView, explorer.userRevision, WalkExplorationBookmarkSnapshot(explorer, reading)) }
                 .conflate().collect { (read, revision, _) ->
                     if (!source.isCurrentAccount()) throw CancellationException("account changed")

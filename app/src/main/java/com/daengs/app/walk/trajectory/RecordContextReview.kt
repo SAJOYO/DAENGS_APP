@@ -141,7 +141,8 @@ internal class RecordContextReview(private val detail: WalkSessionDetail, observ
         val t = (at - path.fromMillis).toDouble() / (path.toMillis - path.fromMillis)
         val deltaLng = ((path.b.longitude - path.a.longitude + 540) % 360) - 180
         return RouteReplayFrame(GeoPoint(path.a.latitude + (path.b.latitude - path.a.latitude) * t,
-            ((path.a.longitude + deltaLng * t + 540) % 360) - 180), at, false)
+            ((path.a.longitude + deltaLng * t + 540) % 360) - 180), at, false,
+            path.a.distanceTo(path.b) / ((path.toMillis - path.fromMillis) / 1000.0))
     }
 }
 

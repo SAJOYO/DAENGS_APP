@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,8 +45,6 @@ import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.HistoryFilterSaver
-import com.daengs.app.ui.walk.formatWalkDistance
-import com.daengs.app.ui.walk.formatWalkDuration
 import com.daengs.app.ui.walk.previewDiarySummary
 import com.daengs.app.walk.WalkHistoryFilter
 import com.daengs.app.walk.WalkMomentType
@@ -54,11 +54,19 @@ import com.daengs.app.walk.records.WalkRecordsSelection
 import com.daengs.app.walk.records.WalkRecordsSource
 import com.daengs.app.walk.records.WalkTraceState
 import com.daengs.app.walk.records.WalkTraceOverlapHit
+import com.daengs.app.walk.records.carerSummary
 import com.daengs.app.walk.records.selectWalkRecords
+import com.daengs.app.walk.records.sharedWalksNeededFor
+import com.daengs.app.walk.records.unifiedWalkPage
 import com.daengs.app.walk.records.PreparedWalkRecordsTraces
 import com.daengs.app.map.features.records.TraceView
 import com.daengs.app.walk.records.walkRecordFocusBounds
 import com.daengs.app.walk.records.selectWalkRecordBehaviors
+import com.daengs.app.walk.shared.SharedWalk
+import com.daengs.app.walk.shared.SharedWalksHolder
+import com.daengs.app.walk.shared.SharedWalksStatus
+import com.daengs.app.walk.shared.sharedFeedQueryOf
+import com.daengs.app.walk.shared.sharedWalksExcludedByText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -66,10 +74,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.ZoneId
 
-/** One query and complete selection, viewed either as paginated records or combined traces. */
+/**
+ * One query and complete selection, viewed either as paginated records or combined traces.
+ *
+ * [sharedWalks] 가 있으면 「산책별」은 기기의 내 산책과 서버의 공동 보호자 산책을 한 목록으로 섞는다
+ * (보호자 조건도 여기에만 적용). 「모아보기」 지도는 계속 내 산책 경로만 그린다.
+ */
 @Composable
 fun WalkRecordsScreen(
     source: WalkRecordsSource,
@@ -81,8 +96,15 @@ fun WalkRecordsScreen(
     today: LocalDate = LocalDate.now(),
     petsLoaded: Boolean = true,
     photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
+    sharedWalks: SharedWalksHolder? = null,
+    /** 로그인한 사람의 app user id. 보호자 조건의 "나" 다. 없으면 공동 보호자 산책을 섞지 않는다. */
+    myId: String? = null,
+    onOpenShared: (SharedWalk) -> Unit = {},
 ) {
     var dogIds by rememberSaveable(stateSaver = RecordsDogIdsSaver) { mutableStateOf<Set<String>?>(null) }
+    // 보호자 조건. null = 모든 보호자. 「산책별」에만 적용된다.
+    var carerIds by rememberSaveable(stateSaver = RecordsDogIdsSaver) { mutableStateOf<Set<String>?>(null) }
     var filter by rememberSaveable(stateSaver = HistoryFilterSaver) { mutableStateOf(WalkHistoryFilter()) }
     val query = remember(dogIds, filter) { WalkRecordsQuery(dogIds, filter) }
     var view by rememberSaveable { mutableStateOf(RecordsView.WALKS) }
@@ -93,7 +115,7 @@ fun WalkRecordsScreen(
     val behaviorState = rememberWalkRecordsBehaviorState(query, behavior)
     val actionPinState = rememberWalkRecordsActionPinState(query, behavior)
     var activeFilter by rememberSaveable { mutableStateOf<RecordsFilter?>(null) }
-    var pageIndex by rememberSaveable(query, behavior) { mutableIntStateOf(0) }
+    var pageIndex by rememberSaveable(query, behavior, carerIds) { mutableIntStateOf(0) }
     var camera by rememberSaveable(query, stateSaver = CameraSnapshotSaver) { mutableStateOf<MapCameraSnapshot?>(null) }
     var selectedId by rememberSaveable(query) { mutableStateOf<String?>(null) }
     var hiddenIds by rememberSaveable(query, stateSaver = HiddenWalkIdsSaver) { mutableStateOf(emptySet<String>()) }
@@ -107,11 +129,12 @@ fun WalkRecordsScreen(
     var focusBounds by remember(query) { mutableStateOf<List<GeoPoint>?>(null) }
     var cameraRequest by remember(query) { mutableIntStateOf(0) }
     val focusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
     var retry by remember { mutableIntStateOf(0) }
     // Reset synchronously with the query so an earlier query's records never flash underneath it.
     var selection by remember(source, query, retry) { mutableStateOf<WalkRecordsSelection?>(null) }
     var error by remember(source, query, retry) { mutableStateOf<String?>(null) }
-    val savedLists = key(query, behavior) { rememberSaveableStateHolder() }
+    val savedLists = key(query, behavior, carerIds) { rememberSaveableStateHolder() }
     LaunchedEffect(source, query, retry) {
         try {
             if (query.filter.keyword.isNotBlank()) delay(250)
@@ -154,6 +177,9 @@ fun WalkRecordsScreen(
             hiddenIds = hiddenIds.intersect(current.sessionIds.toSet())
         }
     }
+    // 공동 보호자 산책은 로그인한 사람을 알 때만 섞는다.
+    val holder = sharedWalks?.takeIf { !myId.isNullOrBlank() }
+    LaunchedEffect(holder) { holder?.loadCarers() }
 
     // Opening the other view never selects records again or changes the current list page.
     var mapRequested by remember(source, query, selection) { mutableStateOf(false) }
@@ -208,48 +234,77 @@ fun WalkRecordsScreen(
     LaunchedEffect(overlapHit) {
         if (overlapHit != null && selectedId !in overlapHit.walkIds) selectedId = null
     }
+    val selectedCarers = carerIds
     BackHandler(onBack = onBack)
+    val current = remember(selection, behavior) {
+        selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
+    }
+    // 보호자 조건에 내가 빠졌으면 「산책별」에 내 산책을 두지 않는다.
+    val includeMine = holder == null || selectedCarers == null || myId in selectedCarers
+    val zone = remember { ZoneId.systemDefault() }
+    val feedQuery = remember(holder, query, selectedCarers, behavior) {
+        if (holder == null) null else sharedFeedQueryOf(query, selectedCarers, myId!!, behavior != null, zone)
+    }
+    val feedLoaded = feedQuery != null && holder?.feedQuery == feedQuery
+    val sharedTotals = if (feedLoaded) holder?.totals else null
+    val sharedStatus = if (feedQuery != null) holder?.status else null
+    val sharedStopped = sharedStatus is SharedWalksStatus.Failed || sharedStatus == SharedWalksStatus.Unsupported
+    val sharedList = if (feedLoaded) holder!!.walks else emptyList()
+    val mineRecords = if (includeMine) current?.records.orEmpty() else emptyList()
+    val walksPage = unifiedWalkPage(mineRecords, sharedList, sharedTotals?.count ?: sharedList.size,
+        sharedExhausted = feedQuery == null || sharedStopped || (sharedTotals != null && holder?.nextCursor == null),
+        pageIndex, PAGE_SIZE)
+    LaunchedEffect(feedQuery, walksPage.pageIndex, view) {
+        if (feedQuery != null && view == RecordsView.WALKS) holder?.ensure(feedQuery, sharedWalksNeededFor(walksPage.pageIndex, PAGE_SIZE))
+    }
+    val hasCondition = query.dogIds != null || query.filter.active || behavior != null || selectedCarers != null
+    val showAll = { dogIds = null; filter = WalkHistoryFilter(); behavior = null; carerIds = null }
     Column(modifier.fillMaxSize().background(CreamBg)
         .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
         WalkRecordsHeader(query, pets, view == RecordsView.OVERVIEW, behavior,
             onBack = onBack, onOverview = { view = if (it) RecordsView.OVERVIEW else RecordsView.WALKS },
-            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today)
+            onConditions = { focusManager.clearFocus(); activeFilter = RecordsFilter.ALL }, today = today,
+            // 횟수는 페이지가 아니라 조건 전체 — 내 산책(기기) + 공동 보호자 산책(서버 합계).
+            countLabel = current?.let { "산책 ${walksPage.total}회" } ?: if (error != null) "산책 기록" else "불러오는 중",
+            carerLabel = holder?.let { carerSummary(selectedCarers, it.carers, myId!!) })
         sampleLabel?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = TextMuted) }
-        val current = remember(selection, behavior) {
-            selection?.let { base -> behavior?.let { selectWalkRecordBehaviors(base, it).related } ?: base }
-        }
-        run {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(current?.let { "선택 산책 ${it.records.size}회" } ?: if (error != null) "산책 기록" else "불러오는 중", Modifier.testTag("records-count"),
-                    style = MaterialTheme.typography.titleSmall)
-                Text(current?.let { rows ->
-                    "${formatWalkDistance(rows.records.sumOf { it.summary.distanceMeters })} · ${formatWalkDuration(rows.records.sumOf { it.summary.activeDurationMillis })}"
-                } ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
         when {
             error != null -> RecordsMessage(error!!, "다시 시도", { retry++ }, Modifier.weight(1f))
             current == null -> RecordsMessage("산책 기록을 찾고 있어요.", modifier = Modifier.weight(1f))
+            view == RecordsView.WALKS -> {
+                val sharedLoading = feedQuery != null && sharedTotals == null && !sharedStopped
+                SharedWalksNotice(
+                    excluded = holder != null && sharedWalksExcludedByText(query, selectedCarers, myId!!, behavior != null),
+                    status = sharedStatus, loading = sharedLoading,
+                    onRetry = { feedQuery?.let { q -> scope.launch { holder?.retry(q, sharedWalksNeededFor(walksPage.pageIndex, PAGE_SIZE)) } } })
+                if (walksPage.total == 0 && !sharedLoading) RecordsMessage(
+                    if (hasCondition) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
+                    if (hasCondition) "전체 기록 보기" else null, showAll, Modifier.weight(1f),
+                ) else {
+                    val currentPage = walksPage.pageIndex
+                    savedLists.SaveableStateProvider(currentPage) {
+                        WalkRecordRowsList(walksPage.rows, currentPage + 1, walksPage.pageCount,
+                            { pageIndex = currentPage - 1 }, { pageIndex = currentPage + 1 },
+                            onOpen, onOpenShared, pets, Modifier.weight(1f), showActor = holder != null)
+                    }
+                }
+            }
+            // 모아보기는 내 산책 경로만 그린다 — 보호자 조건에서 내가 빠졌는데 내 경로를 그리면 모순이다.
+            !includeMine -> RecordsMessage("모아보기는 내 산책 경로만 표시돼요. 보호자에 '나'를 넣으면 볼 수 있어요.",
+                "모든 보호자 보기", { carerIds = null }, Modifier.weight(1f).testTag("records-overview-mine-only"))
             current.records.isEmpty() -> RecordsMessage(
-                if (query.dogIds != null || query.filter.active || behavior != null) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
-                if (query.dogIds != null || query.filter.active || behavior != null) "전체 기록 보기" else null,
-                { dogIds = null; filter = WalkHistoryFilter(); behavior = null }, Modifier.weight(1f),
+                if (hasCondition) "조건에 맞는 산책이 없어요." else "아직 산책 기록이 없어요.",
+                if (hasCondition) "전체 기록 보기" else null, showAll, Modifier.weight(1f),
             )
             else -> {
-                if (view == RecordsView.WALKS) {
-                    val currentPage = pageIndex.coerceAtMost((current.records.size - 1) / PAGE_SIZE)
-                    val rows = current.page(currentPage, PAGE_SIZE)
-                    savedLists.SaveableStateProvider(currentPage) {
-                        WalkRecordsList(rows, currentPage + 1, (current.records.size + PAGE_SIZE - 1) / PAGE_SIZE,
-                            { pageIndex = currentPage - 1 }, { pageIndex = currentPage + 1 },
-                            onOpen, pets, Modifier.weight(1f))
-                    }
-                } else if (behavior != null) {
+                if (holder?.carers?.any { !it.isMe } == true) Text("모아보기는 내 산책 경로만 표시돼요.",
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("records-overview-mine-only-notice"),
+                    style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                if (behavior != null) {
                     val mapRecords = mappedSelection ?: current
                     val behaviorResult = remember(mapRecords, behavior) { selectWalkRecordBehaviors(mapRecords, requireNotNull(behavior)) }
-                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source,
+                    WalkRecordsBehaviorExplorer(behaviorResult, pets, onOpen, routeSource = source, onOpenAction = onOpenAction,
                         view = behaviorView, onView = { behaviorView = it }, state = behaviorState, actionPinState = actionPinState,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
                         modifier = Modifier.weight(1f))
@@ -259,6 +314,7 @@ fun WalkRecordsScreen(
                         expanded = overviewExpanded, onExpanded = { overviewExpanded = it },
                         onRetry = tracePresentation.retry,
                         selectedId = selectedId, hiddenIds = hiddenIds,
+                        onInspect = { selectedId = it },
                         onSelect = { id ->
                             selectedId = id.takeIf { it != selectedId }
                             if (selectedId != null && id !in hiddenIds) {
@@ -293,7 +349,7 @@ fun WalkRecordsScreen(
                             }
                         },
                         onClearOverlap = { overlapPoint = null; overlapMiss = false; selectedId = null },
-                        onOpen = onOpen, listState = overviewScroll,
+                        onOpen = onOpen, onOpenAction = onOpenAction, listState = overviewScroll,
                         camera = camera, onCamera = { camera = it },
                         fitBounds = focusBounds ?: prepared?.bounds.orEmpty(), cameraRequest = cameraRequest,
                         traceLoading = traceLoading, traceError = traceError, onReloadTraces = { traceRequest++ },
@@ -311,7 +367,31 @@ fun WalkRecordsScreen(
                     if (behavior == null) behaviorView = BehaviorRecordsView.RECORD_LOCATIONS
                     behavior = next
                 }
-            })
+            },
+            carers = holder?.carers, myId = myId, carerIds = carerIds,
+            onCarersApply = { next -> carerIds = next })
+    }
+}
+
+/**
+ * 「산책별」 위의 공동 보호자 산책 한 줄 안내. 실패해도 **내 산책은 그대로** 두고 다시 시도만 보탠다.
+ */
+@Composable
+private fun SharedWalksNotice(excluded: Boolean, status: SharedWalksStatus?, loading: Boolean, onRetry: () -> Unit) {
+    val (text, tag) = when {
+        excluded -> "검색어·행동 조건에서는 내 산책만 찾아요." to "records-shared-excluded"
+        status is SharedWalksStatus.Failed ->
+            "함께 돌보는 보호자의 산책을 불러오지 못했어요. 내 산책은 그대로 볼 수 있어요." to "records-shared-failed"
+        status == SharedWalksStatus.Unsupported ->
+            "지금 서버에서는 함께 돌보는 보호자의 산책을 볼 수 없어요." to "records-shared-unsupported"
+        loading -> "함께 돌보는 보호자의 산책을 불러오고 있어요." to "records-shared-loading"
+        else -> return
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, Modifier.weight(1f).testTag(tag), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+        if (!excluded && status is SharedWalksStatus.Failed) {
+            TextButton(onClick = onRetry, modifier = Modifier.testTag("records-shared-retry")) { Text("다시 시도") }
+        }
     }
 }
 

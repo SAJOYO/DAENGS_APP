@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.map.features.places.placeMarkerId
 import com.daengs.app.map.features.places.categoryLabel
+import com.daengs.app.map.features.places.PlaceCategoryIcon
 import com.daengs.app.map.features.places.toCardPresentation
 import com.daengs.app.place.*
 import com.daengs.app.ui.theme.DaengsColors
@@ -46,8 +47,13 @@ internal fun PlaceResultRow(hit: PlaceSearchHit, selected: Boolean, onOpen: () -
         Row(Modifier.heightIn(min = 108.dp).padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(hit.place.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                    color = DaengsColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PlaceCategoryIcon(hit.place.match.kind, Modifier.size(22.dp), DaengsColors.TextSecondary)
+                    Text(hit.place.name, modifier = Modifier.weight(1f), fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold, color = DaengsColors.TextPrimary,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 Text(if (showDistance) hit.toCardPresentation().meta else categoryLabel(hit.place.match.kind) + " · 거리 미확인", fontSize = 12.sp, color = DaengsColors.TextSecondary)
                 Text("$mark $registration", fontSize = 12.sp, color = DaengsColors.TextPrimary,
                     modifier = Modifier.semantics { contentDescription = registration })

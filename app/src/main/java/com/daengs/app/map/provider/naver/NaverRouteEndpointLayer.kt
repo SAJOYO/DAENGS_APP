@@ -9,6 +9,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -33,27 +34,31 @@ internal fun NaverRouteEndpointLayer(
     onSelect: (String) -> Unit,
     globalZ: Int = NaverWalkLayerOrder.MARKERS,
 ) {
+    val density = LocalDensity.current.density
     if (LocalInspectionMode.current) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            endpoints.forEach { Image(painterResource(it.kind.iconRes), it.label) }
+            endpoints.forEach {
+                if (it.compact) Image(diaryPinBitmap(it.label, it.selected, density, endpoint = true,
+                    tailBelow = it.abovePoint).asImageBitmap(), it.label)
+                else Image(painterResource(it.kind.iconRes), it.label)
+            }
         }
         return
     }
     val diagnostics = LocalWalkMapDiagnostics.current
     val context = LocalContext.current
-    val density = LocalDensity.current.density
     val latestSelect by rememberUpdatedState(onSelect)
     DisposableEffect(map, endpoints, context.resources.configuration.densityDpi, density, diagnostics, globalZ) {
         val markers = if (map == null) emptyList() else endpoints.map { endpoint ->
             val resource = endpoint.kind.iconRes
             // Vector intrinsic dimensions are dp-aware and are also used by Preview.
             val art = requireNotNull(context.getDrawable(resource))
-            val compact = if (endpoint.compact) diaryPinBitmap(endpoint.label, endpoint.selected, density, endpoint = true) else null
-            Marker().apply {
+            val compact = if (endpoint.compact) diaryPinBitmap(endpoint.label, endpoint.selected, density, endpoint = true, tailBelow = endpoint.abovePoint) else null
+            val marker = Marker().apply {
                 position = LatLng(endpoint.point.latitude, endpoint.point.longitude)
                 width = compact?.width ?: art.intrinsicWidth
                 height = compact?.height ?: art.intrinsicHeight
-                anchor = PointF(0.5f, if (compact == null) 0.5f else 0f)
+                anchor = PointF(0.5f, if (endpoint.abovePoint) 1f else if (compact == null) 0.5f else 0f)
                 icon = compact?.let(OverlayImage::fromBitmap) ?: OverlayImage.fromResource(resource)
                 captionText = endpoint.label.takeIf { endpoint.selected && !endpoint.compact }.orEmpty()
                 captionMinZoom = 0.0
@@ -61,13 +66,14 @@ internal fun NaverRouteEndpointLayer(
                 isHideCollidedMarkers = false
                 setOnClickListener {
                     if (!endpoint.compact) captionText = if (captionText.isEmpty()) endpoint.label else ""
-                    if (endpoint.id != LIVE_ROUTE_START_ID) latestSelect(endpoint.id)
+                    if (endpoint.id != LIVE_ROUTE_START_ID && !endpoint.abovePoint) latestSelect(endpoint.id)
                     true
                 }
                 applyNativeWalkOrder(globalZ, { globalZIndex = it }, { globalZIndex })
                 this.map = map
                 diagnostics?.attached(this, NativeWalkLayerReading("마커", globalZIndex, "출발·도착"))
             }
+            marker
         }
         onDispose { markers.forEach { it.map = null; diagnostics?.detached(it) } }
     }
@@ -87,5 +93,15 @@ private fun RouteEndpointStampsPreview() {
         RouteEndpointMarkerState("start", point, "출발", RouteEndpointKind.START),
         RouteEndpointMarkerState("end", point, "도착", RouteEndpointKind.END),
         RouteEndpointMarkerState("both", point, "출발 · 도착", RouteEndpointKind.START_END),
+    ), {})
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun FixedDiaryEndpointsPreview() {
+    val point = GeoPoint(37.5, 127.0)
+    NaverRouteEndpointLayer(null, listOf(
+        RouteEndpointMarkerState("start", point, "산책 시작", RouteEndpointKind.START, compact = true, abovePoint = true),
+        RouteEndpointMarkerState("end", point, "산책 끝", RouteEndpointKind.END, compact = true, abovePoint = true),
     ), {})
 }

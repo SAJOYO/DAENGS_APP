@@ -125,7 +125,16 @@ sealed interface AcceptOutcome {
         val missingPetIds: List<String> = emptyList(),
         /** `link_not_allowed` 일 때 서버가 준 사유. */
         val reason: String? = null,
-    ) : AcceptOutcome
+        /** `link_not_allowed` 일 때 거절된 선택의 **초대 쪽** 강아지 id. */
+        val petId: String? = null,
+    ) : AcceptOutcome {
+        /**
+         * 고른 내 강아지에 다른 공동 보호자가 있어 연결이 막혔나(서버 `has_other_carers`).
+         * 이때는 문장 한 줄이 아니라 "연결 없이 참여"를 고를 수 있는 안내를 띄운다.
+         */
+        val linkBlockedByOtherCarers: Boolean
+            get() = code == InviteErrorCode.LINK_NOT_ALLOWED && reason == InviteErrorCode.REASON_HAS_OTHER_CARERS
+    }
 
     /**
      * 422 — 앱이 잘못 보냈다. 초대에 없는 id 이거나 같은 대상을 두 번 골랐다.

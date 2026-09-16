@@ -1,5 +1,6 @@
 package com.daengs.app.ui.walk.records
 
+import com.daengs.app.walk.diary.DiaryActionTarget
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import com.daengs.app.ui.theme.PinkFaint
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.walk.WalkRouteThumbnail
 import com.daengs.app.ui.walk.walkDiaryTitle
+import com.daengs.app.walk.records.WalkRecordsSource
 import com.daengs.app.walk.records.WalkBehaviorRecord
 import com.daengs.app.walk.records.WalkTraceState
 import java.time.Instant
@@ -46,6 +48,8 @@ internal fun BehaviorRecordList(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     availabilityChecked: Boolean = true,
+    onOpenAction: (DiaryActionTarget) -> Unit = { onOpen(it.sessionId) },
+    readingSource: WalkRecordsSource? = null,
 ) {
     LazyColumn(modifier.testTag("records-behavior-list"), state = listState,
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
@@ -53,7 +57,7 @@ internal fun BehaviorRecordList(
         items(records, key = { it.key }) { record ->
             val id = record.walk.summary.sessionId
             BehaviorRecordCard(record, pets, record.key == selectedKey, id in hiddenIds,
-                id in hideableIds, availabilityChecked, { onSelect(record.key) }, { onToggleHidden(id) }, { onOpen(id) })
+                id in hideableIds, availabilityChecked, { onSelect(record.key) }, { onToggleHidden(id) }, { onOpenAction(DiaryActionTarget(id, record.entry.id)) }, readingSource)
         }
     }
 }
@@ -69,6 +73,7 @@ private fun BehaviorRecordCard(
     onSelect: () -> Unit,
     onToggleHidden: () -> Unit,
     onOpen: () -> Unit,
+    readingSource: WalkRecordsSource?,
 ) {
     val walk = record.walk
     val time = Instant.ofEpochMilli(record.entry.recordedAtMillis).atZone(ZoneId.systemDefault())
@@ -76,7 +81,7 @@ private fun BehaviorRecordCard(
     val dog = record.entry.petId?.let { id -> pets.firstOrNull { it.id == id }?.name ?: "강아지 정보 없음" }
         ?: "강아지 미지정"
     val status = if (hidden) "이 산책은 지도에서 숨김" else record.locationLabel
-    OutlinedCard(onClick = onSelect,
+    OutlinedCard(onClick = { if (!isSelected) onSelect() },
         modifier = Modifier.fillMaxWidth().testTag("records-behavior-entry-${record.key}").semantics {
             selected = isSelected
             stateDescription = status
@@ -85,14 +90,22 @@ private fun BehaviorRecordCard(
             if (isSelected) DaengPink else MaterialTheme.colorScheme.outlineVariant),
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (isSelected) PinkFaint else MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (isSelected) Column(Modifier.padding(16.dp)) {
+            Text(Instant.ofEpochMilli(record.entry.recordedAtMillis).atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("M월 d일")) + " · " + dog,
+                style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(walkDiaryTitle(walk.summary), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Spacer(Modifier.height(10.dp))
+            BehaviorRecordReading(record, readingSource)
+            if (hidden) Text("이 산책은 지도에서 숨김", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+        } else Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             WalkRouteThumbnail(walk.summary, Modifier.size(58.dp))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("${record.entry.type.label} · $dog", fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(time, style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                Text(walkDiaryTitle(walk.summary, walk.title), style = MaterialTheme.typography.labelSmall,
+                Text(walkDiaryTitle(walk.summary), style = MaterialTheme.typography.labelSmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, color = TextMuted)
                 Text(status, style = MaterialTheme.typography.labelSmall,
                     color = if (hidden || isSelected) DaengPinkDeep else TextMuted)
@@ -112,7 +125,7 @@ private fun BehaviorRecordCard(
                     Text(if (hidden) "지도에 다시 표시" else "이 산책 숨기기")
                 }
                 TextButton(onClick = onOpen, modifier = Modifier.testTag("records-behavior-open-${record.key}")) {
-                    Text("이 산책 보기")
+                    Text("일기에서 이어 보기")
                 }
             }
         }

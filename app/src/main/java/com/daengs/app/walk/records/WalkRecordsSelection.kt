@@ -87,6 +87,9 @@ fun interface WalkRecordsSource {
     suspend fun select(query: WalkRecordsQuery): WalkRecordsSelection
     /** Original route timestamps for one highlighted session; thumbnail samples must not drive speed colour. */
     suspend fun loadRoute(record: WalkRecord): WalkSummary = record.summary
+    /** Observe only the selected walk's saved diary. No generation, network calls or route preparation. */
+    fun observeDiary(record: WalkRecord): Flow<com.daengs.app.walk.diary.DiaryWalk?> =
+        flowOf(com.daengs.app.walk.diary.DiaryWalk(record.summary, emptyList(), "", sourceEntries = record.entries))
     /** Enrich the fixed local selection only when its map is requested. */
     suspend fun loadTraces(selection: WalkRecordsSelection): WalkRecordsSelection = selection
 }

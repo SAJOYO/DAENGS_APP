@@ -118,6 +118,38 @@ class WalkRecordsListTest {
         capture("large-text")
     }
 
+    @Test fun `actor badges sit in the same place on my and co-carer cards and each opens its own detail`() {
+        val openedMine = AtomicReference<String>()
+        val openedShared = AtomicReference<com.daengs.app.walk.shared.SharedWalk>()
+        val shared = com.daengs.app.walk.shared.SharedWalk("shared-1", atStart + 60_000, atStart + 960_000, 900, null, null,
+            com.daengs.app.care.CareActor("u2", "키키"), false, listOf("dog-0"), weatherCode = 61, isDay = true)
+        val rows = listOf(WalkRecordRow.Shared(shared), WalkRecordRow.Mine(record("mine", "아침 동네 한 바퀴")))
+        compose.setContent { DaengsTheme {
+            WalkRecordRowsList(rows, 1, 1, {}, {}, openedMine::set, openedShared::set, pets, Modifier.fillMaxSize(),
+                showActor = true)
+        } }
+        compose.onNodeWithContentDescription("키키의 산책").assertIsDisplayed()
+        compose.onNodeWithContentDescription("내 산책").assertIsDisplayed()
+        compose.onNodeWithText("측정 전").assertExists()
+        compose.onNodeWithText("출발 비", substring = true).assertExists()
+        // dev 가 카드 제목을 장면 제목 기준으로 바꾼 뒤로 내 카드도 같은 날짜 기본 제목을 쓴다 —
+        // 제목만으로는 두 카드가 갈리지 않으므로 공동 보호자 카드 안에서 찾는다.
+        compose.onNode(hasText("${formatWalkDay(shared.startedAtMs)} 산책")
+            and hasAnyAncestor(hasTestTag("records-walk-shared-1")), useUnmergedTree = true).assertExists()
+        // 배지는 카드 안에 합쳐진 노드라 합치기 전 트리에서 찾는다.
+        val sharedBadge = compose.onNodeWithTag("records-walk-actor-shared-1", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val myBadge = compose.onNodeWithTag("records-walk-actor-mine", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(sharedBadge.left, myBadge.left)
+        val sharedCard = compose.onNodeWithTag("records-walk-shared-1").getUnclippedBoundsInRoot()
+        val myCard = compose.onNodeWithTag("records-walk-mine").getUnclippedBoundsInRoot()
+        assertEquals(sharedBadge.top - sharedCard.top, myBadge.top - myCard.top)
+        compose.onNodeWithTag("records-walk-shared-1").performClick()
+        assertEquals("shared-1", openedShared.get().id)
+        compose.onNodeWithTag("records-walk-mine").performClick()
+        assertEquals("mine", openedMine.get())
+        capture("actor-badges")
+    }
+
     private fun record(id: String, title: String? = "동네 한 바퀴", at: Long = atStart): WalkRecord =
         WalkRecord(previewDiarySummary().copy(sessionId = id, dogIds = listOf("dog-0", "dog-1"),
             startedAtMillis = at, endedAtMillis = at + 900_000, weather = RecordedWeather(0, true, 23f)), title)

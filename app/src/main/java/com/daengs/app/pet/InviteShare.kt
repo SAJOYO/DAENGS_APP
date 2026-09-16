@@ -1,12 +1,7 @@
 package com.daengs.app.pet
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import android.os.PersistableBundle
-import androidx.core.content.getSystemService
 
 /**
  * 초대장을 밖으로 내보내는 자리 — 공유 문구와 안드로이드 공유창.
@@ -54,46 +49,14 @@ object InviteShare {
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, message)
 
-    /** 공유창을 띄운다. 받을 앱이 하나도 없으면 false — 화면이 대신 복사를 권한다. */
+    /**
+     * 공유창을 띄운다. 받을 앱이 하나도 없으면 false.
+     *
+     * **보내는 쪽에는 클립보드 복사를 두지 않는다** — 한 초대장은 한 사람만 수락하는데,
+     * 복사 버튼이 따로 있으면 여럿에게 돌리는 공용 링크로 읽혔다 (`InviteTicket`).
+     */
     fun share(context: Context, message: String): Boolean = runCatching {
         context.startActivity(Intent.createChooser(intent(message), null))
         true
     }.getOrDefault(false)
-
-    /**
-     * 링크를 클립보드에 담는다. **사용자가 「링크 복사」를 누를 때만 부른다** —
-     * 화면에 떴다는 이유로 미리 담아 두면 토큰이 다른 앱에 새어 나간다.
-     */
-    fun copy(context: Context, inviteLink: String): Boolean = runCatching {
-        val clipboard = context.getSystemService<ClipboardManager>() ?: return false
-        clipboard.setPrimaryClip(sensitiveClip(inviteLink))
-        true
-    }.getOrDefault(false)
-
-    /**
-     * 민감한 클립으로 표시한다.
-     *
-     * **안드로이드 13(API 33)부터 복사하면 시스템이 미리보기를 띄운다.** 아무 표시도 안 하면
-     * 그 팝업에 초대 링크가 **토큰째로** 뜬다 — 어깨너머로 읽히고 스크린샷에 남는다.
-     * `EXTRA_IS_SENSITIVE` 를 켜면 시스템이 내용을 가리고 "복사됨" 만 보여 준다.
-     *
-     * 상수는 API 33 에 생겼지만 **키는 문자열이라 낮은 기기에서도 넣어 두면 그만이다** —
-     * 모르는 키는 무시된다. 그래서 버전 분기 없이 항상 켠다.
-     */
-    internal fun sensitiveClip(inviteLink: String): ClipData =
-        ClipData.newPlainText("공동 돌봄 초대 링크", inviteLink).apply {
-            description.extras = PersistableBundle().apply {
-                putBoolean("android.content.extra.IS_SENSITIVE", true)
-            }
-        }
-
-    /**
-     * 복사한 뒤 앱이 따로 알려야 하나.
-     *
-     * **안드로이드 13부터는 시스템이 알려 준다.** 그 위에 토스트를 얹으면 같은 말이 두 번
-     * 뜬다(구글의 클립보드 가이드가 명시적으로 하지 말라고 하는 것이다). 12L 이하만 앱이
-     * 말한다.
-     */
-    fun needsCopiedNotice(sdkInt: Int = Build.VERSION.SDK_INT): Boolean =
-        sdkInt < Build.VERSION_CODES.TIRAMISU
 }

@@ -142,16 +142,18 @@ open class WalkHttpApi internal constructor(private val baseUrl: String) {
         body: JSONObject? = null,
         v2: Boolean = false,
         maxResponseBytes: Int? = null,
+        readTimeoutMillis: Int = READ_TIMEOUT_MS,
         parse: (String) -> T,
     ): Result<T> = withContext(Dispatchers.IO) {
         runCatching {
             check(configured) { "서버 주소가 없습니다. local.properties 의 daengs.apiBaseUrl 을 채우세요." }
+            require(readTimeoutMillis in 1..300_000)
             val conn = (URL("${baseUrl.trimEnd('/')}/app/${if (v2) "v2/" else ""}walks$path")
                 .openConnection() as HttpURLConnection).apply {
                 requestMethod = method
                 connectTimeout = TIMEOUT_MS
                 // 좌표 수천 점이 오갈 수 있어 읽기는 넉넉히 준다.
-                readTimeout = READ_TIMEOUT_MS
+                readTimeout = readTimeoutMillis
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Authorization", "Bearer $accessToken")
             }
@@ -165,7 +167,7 @@ open class WalkHttpApi internal constructor(private val baseUrl: String) {
                 parse(if (it.responseCode == 204) "" else if (maxResponseBytes == null)
                     it.inputStream.bufferedReader(Charsets.UTF_8).use { r -> r.readText() }
                 else it.inputStream.use { stream ->
-                    require(maxResponseBytes in 1..1_000_000)
+                    require(maxResponseBytes in 1..4_000_000)
                     val bytes = java.io.ByteArrayOutputStream()
                     val buffer = ByteArray(8192)
                     while (true) {

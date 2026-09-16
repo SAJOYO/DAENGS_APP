@@ -64,7 +64,7 @@ class WalkRangeContextUiTest {
         compose.waitForIdle()
         val top = compose.onNodeWithTag("diary-sheet").fetchSemanticsNode().boundsInRoot.top
         compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithText("경로 정보 · 구간과 전후 관계").performScrollTo().performClick()
+        compose.onNodeWithText("기록 상세").performScrollTo().performClick()
         compose.onNodeWithText("동선 1", substring = true).performScrollTo()
         var offset = 0
         compose.runOnIdle { offset = reading.explorer.value; assertTrue(offset > 0) }
@@ -72,7 +72,7 @@ class WalkRangeContextUiTest {
         compose.onNodeWithTag("diary-scene-list").performScrollToNode(hasText("관련 장면 12"))
         compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).performClick()
         compose.runOnIdle { assertEquals(scenes[11].id, state.selectedSceneId); assertNotNull(state.returnRange) }
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.runOnIdle {
             assertEquals(12_000L, state.selectedSlice!!.from); assertEquals(65_000L, state.selectedSlice!!.until)
             assertEquals(offset, reading.explorer.value); assertFalse(state.playing)
@@ -86,7 +86,7 @@ class WalkRangeContextUiTest {
         compose.runOnIdle { mounted = true }
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(scenes[11].id, state.selectedSceneId); assertNotNull(state.returnRange) }
-        compose.onNodeWithText("동선 탐색").performClick()
+        compose.onNodeWithText("걸어온 길").performClick()
         compose.runOnIdle { assertEquals(offset, reading.explorer.value); assertEquals(65_000L, state.selectedSlice!!.until) }
         compose.onNodeWithText("관련 장면 12", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText("동선 1", substring = true).assertIsDisplayed()

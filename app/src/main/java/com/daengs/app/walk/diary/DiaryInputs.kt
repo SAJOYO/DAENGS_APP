@@ -17,6 +17,9 @@ internal data class DiaryPublicationInput(val baseBundle: String?, val published
 internal data class DiaryBoardSource(
     val analysis: StoryboardAnalysisView,
     val publication: DiaryPublicationInput?,
+    val relationalSelected: Boolean = false,
+    val relational: com.daengs.app.walk.store.RelationalDiaryCache? = null,
+    val relationalStatus: String? = null,
 )
 
 /** Full assembly receives already decoded entries, distinct from the lightweight title source. */
@@ -24,7 +27,9 @@ internal data class DiaryBoardInput(
     val entries: List<WalkEntry>,
     val source: DiaryBoardSource,
     val photoIds: Set<String>,
+    val photos: List<DiaryPhotoInput> = emptyList(),
 )
 
 /** A recorded photo's facts; local board generation does not need files or upload state. */
-data class DiaryPhotoInput(val id: String, val capturedAtMillis: Long, val point: GeoPoint)
+data class DiaryPhotoInput(val id: String, val capturedAtMillis: Long, val point: GeoPoint,
+    val locationAtMillis: Long = capturedAtMillis)

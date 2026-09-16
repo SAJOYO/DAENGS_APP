@@ -8,6 +8,7 @@ import com.daengs.app.pet.Pet
 import com.daengs.app.walk.WalkHistory
 import com.daengs.app.walk.detail.StoredWalkDetailData
 import com.daengs.app.walk.diary.DiaryComparisonFiles
+import com.daengs.app.walk.diary.DiaryActionTarget
 
 /** App wiring stays here; the detail screen only sees a session's read/action contracts. */
 @Composable
@@ -15,8 +16,10 @@ internal fun WalkSessionDetailRoute(
     sessionId: String, history: WalkHistory, onBack: () -> Unit,
     modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
     origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    initialAction: DiaryActionTarget? = null,
 ) {
-    WalkDiaryMapScreen(sessionId, history, onBack, modifier, pets, origin)
+    WalkDiaryMapScreen(sessionId, history, onBack, modifier, pets, origin, photoOf, initialAction)
 }
 
 @Composable
@@ -24,10 +27,12 @@ internal fun WalkDiaryMapScreen(
     sessionId: String, history: WalkHistory, onBack: () -> Unit,
     modifier: Modifier = Modifier, pets: List<Pet> = emptyList(),
     origin: WalkSessionOrigin = WalkSessionOrigin.RECORDS,
+    photoOf: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    initialAction: DiaryActionTarget? = null,
 ) {
     val app = LocalContext.current.applicationContext as DaengsApp
     val account by app.sessionProvider.accountScope.collectAsState()
-    key(sessionId, account) {
+    key(sessionId, account, initialAction) {
         val data = remember(app, sessionId, history, account) {
             StoredWalkDetailData(sessionId, account, { app.sessionProvider.accountScope.value },
                 history, app.walkEntryDao, app.walkEntries, app.walkPhotos,
@@ -38,11 +43,11 @@ internal fun WalkDiaryMapScreen(
                 },
                 refreshStoryboard = { token, id, remoteId ->
                     app.walkStoryboardSync.sync(token, id, remoteId, refresh = true)
-                }, measurements = app.walkMeasurements)
+                }, measurements = app.walkMeasurements, prepareOnRead = initialAction == null)
         }
         val backupSource = remember(app, account) { app.routeBackupSource(account) }
         WalkDiaryMapForAccount(sessionId, data, data, onBack, modifier, pets, origin, account,
             backupAction = { backupSource?.let { WalkRouteBackupStatus(sessionId, it) } },
-            readComparison = { DiaryComparisonFiles.read(app, it) })
+            readComparison = { DiaryComparisonFiles.read(app, it) }, photoOf = photoOf, initialAction = initialAction)
     }
 }

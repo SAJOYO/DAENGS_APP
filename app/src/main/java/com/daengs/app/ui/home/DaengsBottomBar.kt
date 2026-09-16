@@ -64,7 +64,7 @@ enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Storage("저장소", DaengsIcon.Camera),
 }
 
-private val BarHeight = 64.dp
+private val BarHeight = 56.dp
 private val FabSize = 58.dp
 private val FabLift = 22.dp
 

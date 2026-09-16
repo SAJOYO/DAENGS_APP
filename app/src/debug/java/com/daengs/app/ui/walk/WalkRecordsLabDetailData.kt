@@ -22,6 +22,17 @@ internal class WalkRecordsLabDetailData(private val record: WalkRecord) : WalkDe
         diaryWalk(detail.summary, current, emptyList(), edits,
             StoryboardAnalysisView(null, false, "가상 산책 · 변경은 이 화면을 나가면 초기화돼요."))
             .copy(title = record.title, sourceEntries = current)
+            .let { diary -> diary.copy(scenes = diary.scenes.map { scene ->
+                // Fictional saved prose, shared by both readers; explicit lab edits still win.
+                if (scene.entryId == null || edits.edits.any { it.id == scene.source?.id }) scene
+                else {
+                    val body = if (scene.entryId == record.entries.firstOrNull()?.id)
+                        "나무 그늘 아래에서 잠깐 멈췄다. 두부는 풀숲 냄새를 천천히 맡았다."
+                    else "돌아오는 길에 같은 나무 앞에 다시 섰다. 이번에는 조금 더 오래 머물렀다."
+                    scene.copy(body = body, source = scene.source?.copy(body = body))
+                }
+            }) }
+            .withBoundaryScenes(edits)
     }
     override suspend fun open() = Unit
     override fun prepareDiary() { revision.value++ }
