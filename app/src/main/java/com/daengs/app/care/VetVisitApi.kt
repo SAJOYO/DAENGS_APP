@@ -124,18 +124,25 @@ class VetVisitApi internal constructor(
             readTimeoutMs = EXTRACT_TIMEOUT_MS,
         ) { _, body -> VetVisitDraft.parse(JSONObject(body)) }
 
-    /** ④ 확정. **`vet_visits` 에 행이 생기는 유일한 자리다.** */
+    /**
+     * ④ 확정. **`vet_visits` 에 행이 생기는 유일한 자리다.**
+     *
+     * ⚠️ **응답이 배열이다.** 저쪽은 요청 모양을 따라가지만([VetVisitConfirmation] 은
+     *    언제나 `splits` 로 보낸다), 우리는 늘 배열만 받는다. 한 마리여도 길이 1 의
+     *    배열이지 단일 객체가 아니다 — 옛 평평한 본문을 보낼 때만 객체가 오고, 그 경로는
+     *    이 앱에 더 없다.
+     */
     suspend fun confirm(
         accessToken: String,
         draftId: String,
         confirmation: VetVisitConfirmation,
-    ): Result<VetVisit> =
+    ): Result<List<VetVisit>> =
         call(
             accessToken,
             "POST",
             "/${encode(draftId)}/confirm",
             body = confirmation.toJson(),
-        ) { _, body -> VetVisit.parse(JSONObject(body)) }
+        ) { _, body -> JSONArray(body).toObjectList(VetVisit::parse) }
 
     /** 목록, 최근 먼저. 창을 안 보내면 저쪽 기본값(최근 1년)이다. */
     suspend fun list(accessToken: String, petId: String): Result<List<VetVisit>> =

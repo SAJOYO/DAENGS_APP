@@ -1129,6 +1129,7 @@ class MainActivity : ComponentActivity() {
                         storageContent = { storageModifier ->
                             ChatSummaryRoute(
                                 petId = pets.primary?.id.takeIf { session != null },
+                                pets = if (session != null) pets.pets.orEmpty() else emptyList(),
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
                                 careCoordinator = careLog,

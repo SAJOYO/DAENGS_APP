@@ -33,9 +33,7 @@ import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
-import java.text.NumberFormat
 import java.time.LocalDate
-import java.util.Locale
 
 /**
  * 저장소 탭 "진료비". 영수증을 찍으면 금액·병원·사유가 남는다 (SAJOYO/DAENGS_APP#258).
@@ -177,10 +175,6 @@ private fun headlineOf(visit: VetVisit, labels: Map<String, String>): String =
     "${dayLabelOf(visit.visitedOn)} · ${labels[visit.reasonCode] ?: visit.reasonCode} · ${wonOf(visit.totalKrw)}"
 
 private fun dayLabelOf(day: LocalDate): String = "${day.monthValue}월 ${day.dayOfMonth}일"
-
-private val WON = NumberFormat.getIntegerInstance(Locale.KOREA)
-
-private fun wonOf(amount: Int): String = "${WON.format(amount)}원"
 
 // -- 미리보기 ---------------------------------------------------------------
 
