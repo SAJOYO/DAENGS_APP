@@ -24,6 +24,23 @@ fun relationalBehaviorFixture(): JSONObject = relationalFixture().apply {
 }
 
 class RelationalDiaryParserTest {
+    @Test fun `card titles are optional for history but strict when supplied`() {
+        assertTrue(RelationalDiaryResponse.parse(relationalFixture().toString()).bundle!!.cards.all { it.title == null })
+        for ((title, status) in listOf("제목" to "returned", null to "failed", null to "not_requested")) {
+            val json = relationalFixture()
+            json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(0)
+                .put("title", title ?: JSONObject.NULL).put("title_status", status)
+            val parsed = RelationalDiaryResponse.parse(json.toString())
+            assertEquals(title, RelationalDiaryResponse.parse(parsed.rawJson).bundle!!.cards[0].title)
+        }
+        for ((title, status) in listOf(null to "returned", "제목" to "failed", " " to "returned", "가".repeat(31) to "returned")) {
+            val json = relationalFixture()
+            json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(0)
+                .put("title", title ?: JSONObject.NULL).put("title_status", status)
+            assertThrows(IllegalArgumentException::class.java) { RelationalDiaryResponse.parse(json.toString()) }
+        }
+    }
+
     @Test fun `behavior references preserve identity and reject mismatched revision anchor or duplicates`() {
         val value = RelationalDiaryResponse.parse(relationalBehaviorFixture().toString())
         val original = value.bundle!!.cards[1].originals.single()

@@ -169,7 +169,7 @@ internal fun WalkRecordCardHeader(record: WalkRecord, pets: List<Pet>, compact: 
         // The shared endpoint label (출발·도착) needs the existing 48dp minimum.
         WalkRouteThumbnail(walk, Modifier.size(if (compact) 48.dp else 84.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 6.dp)) {
-            Text(walkDiaryTitle(walk, record.title?.takeIf { it.isNotBlank() }),
+            Text(walkDiaryTitle(walk),
                 style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
             Text(if (compact) "$companions · $weather" else companions, Modifier.semantics {

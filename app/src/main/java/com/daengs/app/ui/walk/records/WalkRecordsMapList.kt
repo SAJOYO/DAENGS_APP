@@ -120,7 +120,7 @@ private fun WalkRecordMapCard(
             WalkRouteThumbnail(walk, Modifier.size(72.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(walkDiaryTitle(walk, record.title), fontWeight = FontWeight.SemiBold,
+                Text(walkDiaryTitle(walk), fontWeight = FontWeight.SemiBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium)
                 if (record.title != null) {
