@@ -19,8 +19,9 @@ import org.robolectric.annotation.Config
 /**
  * 카드 안의 「함께 돌보는 사람」 줄.
  *
- * **프로필 수정과 다른 동작이어야 한다.** 공동 돌봄 아이는 카드 본체(수정)가 막혀 있는데,
- * 그 줄까지 같이 막히면 돌보미에게는 보호자 목록으로 갈 길이 아예 없어진다.
+ * **카드 본체와 다른 곳으로 가야 한다.** 카드를 누르면 그 아이의 프로필이고, 이 줄은
+ * 그 아이를 함께 돌보는 **사람들**이다. 둘이 같은 곳으로 가면 돌보미에게는 보호자
+ * 목록으로 갈 길이 아예 없어진다.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -87,7 +88,7 @@ class PetCardMembersRowTest {
     }
 
     @Test
-    fun `프로필 수정이 막힌 공동 돌봄 아이에서도 줄이 눌린다`() {
+    fun `공동 돌봄 아이에서도 줄이 프로필이 아니라 보호자 목록으로 간다`() {
         var opened: Pet? = null
         var edited: Pet? = null
         screen(
@@ -99,7 +100,7 @@ class PetCardMembersRowTest {
         compose.onNodeWithText("함께 돌보는 사람").performClick()
 
         assertEquals("shared", opened?.id)
-        assertNull("보호자 줄이 프로필 수정을 부르면 안 된다", edited)
+        assertNull("보호자 줄이 프로필을 열면 안 된다", edited)
     }
 
     @Test

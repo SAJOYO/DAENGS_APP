@@ -156,17 +156,6 @@ fun MyScreen(
     onOpenMembers: ((Pet) -> Unit)? = null,
     /** 받은 초대 링크를 붙여넣어 공동 보호자가 되러 간다. null 이면 그 줄이 안 뜬다. */
     onAcceptInvite: (() -> Unit)? = null,
-    /**
-     * 연결된 아이의 **내 이름**만 바꾼다 (`PATCH /app/pets/{id}/display`). null 이면 버튼이
-     * 안 뜬다.
-     *
-     * **[onEditPet] 과 다른 길이다.** 그쪽은 견종·몸무게·건강정보까지 고치는 공통 정보라
-     * 그룹 주보호자에게만 열고, 이름은 보호자마다 자기 값이라 행의 대표면 된다.
-     */
-    onRenamePet: ((Pet, String) -> Unit)? = null,
-    renamePetBusy: Boolean = false,
-    renamePetError: String? = null,
-    onDismissRenamePet: () -> Unit = {},
     /** 이미 배웅한 아이의 날짜. 없으면 아직 함께 있는 아이다 */
     farewellOf: (Pet) -> java.time.LocalDate? = { null },
     deleteBusy: Boolean,
@@ -188,22 +177,6 @@ fun MyScreen(
     // 어느 아이를 지우려는지. **카드가 아니라 화면이 들고 있다** — 목록이 새로
     // 오면서 카드가 다시 만들어져도 창이 안 닫힌다.
     var deleting by remember { mutableStateOf<Pet?>(null) }
-    // 이름을 바꾸려는 아이. 삭제 창과 같은 이유로 화면이 들고 있다.
-    var renaming by remember { mutableStateOf<Pet?>(null) }
-    // **요청이 한 번 돌았는지.** 저장을 누른 직후에는 요청이 아직 시작되지 않아 busy 가
-    // false 일 수 있다 — 그걸 "끝났다" 로 읽고 닫으면 실패를 보여 줄 기회를 잃는다.
-    var renameSawBusy by remember { mutableStateOf(false) }
-    LaunchedEffect(renamePetBusy, renamePetError) {
-        if (renaming == null) return@LaunchedEffect
-        if (renamePetBusy) {
-            renameSawBusy = true
-        } else if (renameSawBusy) {
-            renameSawBusy = false
-            // 성공이면 닫는다. 실패면 창과 친 글자를 그대로 둔다.
-            if (renamePetError == null) renaming = null
-        }
-    }
-
     // 지워지고 나면 창을 닫는다. 목록에서 사라진 것이 곧 성공이다 — 따로 신호를
     // 받지 않아서, 이걸 안 하면 지운 뒤에도 창이 그대로 떠 있다.
     LaunchedEffect(pets) {
@@ -247,7 +220,6 @@ fun MyScreen(
                 onEdit = onEditPet,
                 onPickPrimary = onPickPrimary,
                 onDelete = { deleting = it },
-                onRename = onRenamePet?.let { { pet: Pet -> renaming = pet } },
                 onFarewell = onFarewell,
                 farewellOf = farewellOf,
                 onOpenMembers = onOpenMembers,
@@ -334,20 +306,6 @@ fun MyScreen(
                     onDismissDelete()
                     it(pet)
                 }
-            },
-        )
-    }
-
-    renaming?.let { pet ->
-        RenamePetDialog(
-            pet = pet,
-            busy = renamePetBusy,
-            error = renamePetError,
-            onConfirm = { name -> onRenamePet?.invoke(pet, name) },
-            onDismiss = {
-                renaming = null
-                renameSawBusy = false
-                onDismissRenamePet()
             },
         )
     }
@@ -457,81 +415,6 @@ private fun DeletePetDialog(
                         DaengsTextAction("삭제", onConfirm, tint = DaengsColors.Error)
                         Spacer(Modifier.width(6.dp))
                         DaengsTextAction("취소", onDismiss)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * 연결된 아이의 **내 이름** 바꾸기 (`PATCH /app/pets/{id}/display`).
- *
- * **이름 한 칸뿐이다.** 견종·몸무게·건강정보는 그룹 주보호자의 공통 정보라 여기서 못 고친다.
- *
- * - 실패해도 **친 글자가 남는다** — 아이가 바뀔 때만 새로 채운다.
- * - 진행 중에는 저장 자리가 진행 표시로 바뀌고 밖을 눌러도 안 닫힌다 — 두 번 보내지 않는다.
- * - 빈 이름은 저장이 안 눌린다. 40자를 넘기면 더 안 들어간다(서버 1~40자).
- */
-@Composable
-private fun RenamePetDialog(
-    pet: Pet,
-    busy: Boolean,
-    error: String?,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var text by rememberSaveable(pet.id) { mutableStateOf(pet.name) }
-    val canSave = text.isNotBlank()
-
-    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
-        Surface(
-            color = CardWhite,
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.testTag("rename-pet-dialog"),
-        ) {
-            Column(Modifier.padding(22.dp)) {
-                Text("이름 바꾸기", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(10.dp))
-                Surface(color = PinkFaint, shape = RoundedCornerShape(12.dp)) {
-                    Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                        BasicTextField(
-                            value = text,
-                            onValueChange = { if (it.length <= PET_NAME_MAX) text = it },
-                            enabled = !busy,
-                            singleLine = true,
-                            textStyle = TextStyle(color = TextDark, fontSize = 15.sp),
-                            cursorBrush = SolidColor(DaengPink),
-                            modifier = Modifier.fillMaxWidth().testTag("rename-pet-input"),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "내 목록에서만 바뀌어요. 함께 돌보는 사람에게는 각자 정한 이름이 보여요.",
-                    color = TextMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp,
-                )
-                if (error != null) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(error, color = DaengsColors.Error, fontSize = 13.sp, lineHeight = 19.sp)
-                }
-                Spacer(Modifier.height(18.dp))
-                if (busy) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                        CircularProgressIndicator(Modifier.size(20.dp), color = DaengPink, strokeWidth = 2.dp)
-                    }
-                } else {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        DaengsTextAction("취소", onDismiss)
-                        Spacer(Modifier.width(6.dp))
-                        DaengsTextAction(
-                            "저장",
-                            { if (canSave) onConfirm(text) },
-                            modifier = Modifier.testTag("rename-pet-save"),
-                            tint = if (canSave) DaengPink else TextMuted,
-                        )
                     }
                 }
             }
@@ -701,7 +584,6 @@ private fun PetSection(
     onEdit: (Pet) -> Unit,
     onPickPrimary: (Pet) -> Unit,
     onDelete: (Pet) -> Unit,
-    onRename: ((Pet) -> Unit)?,
     onFarewell: ((Pet) -> Unit)?,
     farewellOf: (Pet) -> java.time.LocalDate?,
     onOpenMembers: ((Pet) -> Unit)?,
@@ -728,26 +610,23 @@ private fun PetSection(
                 inRoom = pet.id !in hiddenRoomPetIds,
                 onToggleRoom = onToggleRoomPet?.takeIf { canToggleRoomPet(pet) }
                     ?.let { go -> { go(pet) } },
-                // **배웅한 아이는 수정이 아니라 그 아이의 자리로.** 몸무게를 고치라고
-                // 묻는 화면은 떠난 아이에게 할 말이 아니다.
+                // **카드를 누르면 프로필이다 — 역할과 무관하게 열린다.** 돌보미에게는
+                // 고치는 자리가 없는 프로필이 열린다(`PetFormScreen` 의 권한 깃발). 예전에는
+                // 아예 안 열려서, 함께 돌보는 아이의 생일·먹는 약을 볼 길이 없었다.
                 //
-                // **`isGroupOwner` 로 가린다.** 공통 정보를 고치는 일이라 연결된 아이에서는
-                // 그룹 주보호자만 된다 — `isOwner` 로 열면 폼을 다 채우고 저장을 눌러야
-                // 실패를 안다 (서버 409 `not_group_owner`).
-                onEdit = if (!pet.isGroupOwner) null else {
-                    {
-                        if (farewellOf(pet) != null && onFarewell != null) onFarewell(pet)
-                        else onEdit(pet)
+                // **배웅한 아이는 그 아이의 자리로.** 몸무게를 고치라고 묻는 화면은 떠난
+                // 아이에게 할 말이 아니다. 다만 배웅은 전체 PUT 으로 나가는 일이라
+                // **그룹 주보호자에게만** 그 자리를 연다 — 아니면 눌러 봐야 서버가 409 다.
+                onEdit = {
+                    if (farewellOf(pet) != null && onFarewell != null && pet.isGroupOwner) {
+                        onFarewell(pet)
+                    } else {
+                        onEdit(pet)
                     }
                 },
                 onPickPrimary = { onPickPrimary(pet) },
                 // 삭제도 공통 정보다. 서버가 409 로 막고 `?confirm=true` 로도 안 뚫린다.
                 onDelete = if (pet.isGroupOwner) ({ onDelete(pet) }) else null,
-                // **이름은 따로 연다.** 공통 정보(위 onEdit)는 그룹 주보호자만이지만, 이름은
-                // 보호자마다 자기 값이라 행의 대표면 된다 — 서버 `update_display` 는
-                // `get_owned` 만 본다. 그룹 주보호자는 카드를 눌러 전체 편집으로 가므로 여기서
-                // 또 열지 않고, 돌보미(행의 대표가 아님)는 서버가 404 라 열지 않는다.
-                onRename = onRename?.takeIf { pet.isOwner && !pet.isGroupOwner }?.let { go -> { go(pet) } },
                 sentOn = farewellOf(pet),
                 onOpenMembers = onOpenMembers?.let { go -> { go(pet) } },
             )
@@ -798,13 +677,11 @@ private fun PetCard(
     onEdit: (() -> Unit)?,
     onPickPrimary: () -> Unit,
     onDelete: (() -> Unit)?,
-    /** 내 이름만 바꾸는 창을 연다. null 이면 안 뜬다 — 연결된 보호자에게만 온다 */
-    onRename: (() -> Unit)? = null,
     /** 배웅한 날. 있으면 이 아이는 떠난 아이다 */
     sentOn: java.time.LocalDate? = null,
     /**
-     * 이 아이를 함께 돌보는 사람을 보러 간다. **[onEdit] 과 다른 자리다** — 프로필 수정은
-     * 대표만 할 수 있지만 보호자 목록은 돌보미도 본다. null 이면 그 줄이 안 뜬다.
+     * 이 아이를 함께 돌보는 사람을 보러 간다. **[onEdit] 과 다른 자리다** — 그쪽은 이 아이의
+     * 프로필이고 이쪽은 사람 목록이다. null 이면 그 줄이 안 뜬다.
      */
     onOpenMembers: (() -> Unit)? = null,
 ) {
@@ -922,27 +799,12 @@ private fun PetCard(
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                 )
                             }
-                            // 연결된 보호자의 이름 바꾸기. **삭제와 한 카드에 같이 뜨지 않는다** — 삭제는
-                            // 그룹 주보호자에게만, 이것은 그 반대에게만 온다.
-                            if (onRename != null) {
-                                Text(
-                                    "이름 변경",
-                                    color = TextMuted,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable(onClick = onRename)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                )
-                            }
                         }
                     }
                 }
             }
-        // **프로필 수정과 다른 동작이다.** 카드 본체를 누르면 고치기이고(공동 돌봄
-        // 아이는 그 자리가 막혀 있다), 이 줄은 대표·돌보미 모두 누를 수 있어야 한다.
+        // **프로필과 다른 동작이다.** 카드 본체를 누르면 그 아이의 프로필이고,
+        // 이 줄은 그 아이를 함께 돌보는 **사람들**이다.
         //
         // 눌렀을 때 가는 곳이 다르니 **선으로 갈라 둔다.** 선이 없으면 한 덩어리로 보여
         // 아래 줄을 누르려다 위(수정)를 누르게 된다.
@@ -1094,7 +956,7 @@ private fun PetCardCoCarePreview() {
             )
             PetCard(
                 previewPet("long", "이름이아주아주아주길어서한줄에다안들어가는강아지", isOwner = true, isGroupOwner = false, hasOtherCarers = true),
-                photo = null, onToggleRoom = {}, onEdit = null, onPickPrimary = {}, onDelete = null, onRename = {}, onOpenMembers = {},
+                photo = null, onToggleRoom = {}, onEdit = {}, onPickPrimary = {}, onDelete = null, onOpenMembers = {},
             )
         }
     }
