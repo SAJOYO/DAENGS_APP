@@ -82,7 +82,6 @@ class PetCardStatusRowTest {
                     onPickPrimary = {},
                     onDeletePet = {},
                     onOpenMembers = {},
-                    onRenamePet = { _, _ -> },
                     deleteBusy = false,
                     deleteError = null,
                     onDismissDelete = {},
@@ -187,14 +186,13 @@ class PetCardStatusRowTest {
         assertSameShape("co", "solo")
         for (id in listOf("co", "solo", "linked")) assertNoOverlapIn(id)
         // 버튼은 빠지지 않는다 — 조건대로 다 떠 있다
-        assertTrue(exists("linked", "이름 변경"))
         assertFalse("연결한 공동 보호자 카드에 삭제는 원래 없다", exists("linked", "삭제"))
         assertTrue(exists("co", "삭제"))
     }
 
     private fun assertNoOverlapIn(id: String) {
         val cardRect = card(id).getUnclippedBoundsInRoot()
-        val rects = listOf("공동 돌봄", "대표로", "방에서 빼기", "삭제", "이름 변경")
+        val rects = listOf("공동 돌봄", "대표로", "방에서 빼기", "삭제")
             .filter { exists(id, it) }
             .map { label ->
                 val node = text(id, label)

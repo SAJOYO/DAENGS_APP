@@ -881,21 +881,39 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    Screen.Onboarding -> PetFormScreen(
+                    Screen.Onboarding -> {
+                    // **이름만 고칠 수 있는 사람이 있다.** 자기 행을 가졌지만 그룹
+                    // 주보호자는 남인 경우(연결한 공동 보호자)라, 그 사람의 저장은 전체
+                    // PUT 이 아니라 `PATCH /app/pets/{id}/display` 로 나간다 — 그 길은
+                    // 서버가 409 로 막고, 뚫리더라도 주보호자의 공통 정보를 덮어쓴다.
+                    val nameOnly = editing?.let { it.isOwner && !it.isGroupOwner } == true
+                    PetFormScreen(
                         initial = editing,
-                        busy = pets.busy,
-                        error = pets.error,
+                        // 이름만 바꾸는 사람은 **다른 진행·오류 값**을 본다. 전체 수정과
+                        // 한 값을 쓰면 삭제나 목록 오류가 이 화면에 뜬다.
+                        busy = if (nameOnly) pets.renameBusy else pets.busy,
+                        error = if (nameOnly) pets.renameError else pets.error,
+                        // 이름·사진은 **자기 행**이면 된다. 공통 정보는 그룹 주보호자만이다.
+                        // 새로 등록할 때는 둘 다 나다.
+                        canEditIdentity = editing?.isOwner != false,
+                        canEditCommon = editing?.isGroupOwner != false,
                         // **첫 등록에도 취소가 있다.** 예전에는 강아지가 없으면 이 손잡이를
                         // 없앴다 — "강아지 없이 갈 곳이 없다" 는 이유였는데, 이제 빈 방이
                         // 갈 곳이다. 빠져나갈 수 없는 화면이 첫 진입 이탈의 큰 몫이었다.
-                        onCancel = { pets.clearError(); editing = null; screen = Screen.Home },
+                        onCancel = {
+                            pets.clearError()
+                            pets.clearRenameError()
+                            editing = null
+                            screen = Screen.Home
+                        },
                         // 첫 등록일 때만 — 고치기로 들어온 사람에게는 초대받기가 할 말이 아니다.
                         onAcceptInvite = if (editing == null) {
                             { pets.clearError(); screen = Screen.Home; inviteEntry.openManually() }
                         } else null,
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
-                        onClearPhoto = editing?.let { pet ->
+                        // 사진도 자기 행의 값이다 — 연결한 공동 보호자는 자기 목록에서 지운다.
+                        onClearPhoto = editing?.takeIf(Pet::isOwner)?.let { pet ->
                             { scope.launch { petPhotos.clear(pet.id, freshToken()) } }
                         },
                         onSubmit = { draft, photo ->
@@ -905,10 +923,15 @@ class MainActivity : ComponentActivity() {
                                 // 새로 등록하면 id 를 서버가 만든다. 목록을 다시 받은
                                 // 뒤에 **늘어난 하나**를 찾아야 사진을 걸 자리를 안다.
                                 val before = pets.pets.orEmpty().map { it.id }.toSet()
-                                val ok = if (target == null) {
-                                    pets.add(token, draft)
-                                } else {
-                                    pets.edit(token, target.id, draft)
+                                val ok = when {
+                                    target == null -> pets.add(token, draft)
+                                    // 그룹 주보호자 — 예전 그대로 전체 PUT 이다.
+                                    target.isGroupOwner -> pets.edit(token, target.id, draft)
+                                    // 연결한 공동 보호자 — **이름만** 나간다. 사진은 아래에서
+                                    // 따로 올라간다 (행의 대표면 서버가 받는다).
+                                    target.isOwner -> pets.rename(token, target.id, draft.name)
+                                    // 여기 올 수 없다 — 읽기만 하는 사람에게는 저장 자리가 없다.
+                                    else -> false
                                 }
                                 if (ok) {
                                     if (photo != null) {
@@ -925,6 +948,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                     )
+                    }
 
                     // 배웅과 사진 고르기는 **마이 위에 덮인다.** 화면을 늘리지 않는 것은
                     // 확대 뷰나 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기
@@ -1243,23 +1267,15 @@ class MainActivity : ComponentActivity() {
                         onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
-                        onEditPet = { pet -> if (pet.isGroupOwner) { editing = pet; screen = Screen.Onboarding } },
+                        // **역할을 안 본다.** 프로필은 누구나 연다 — 무엇을 고칠 수 있는지는
+                        // 그 화면이 권한 깃발로 가른다 (`PetFormScreen`). 예전에는 여기서
+                        // 막아서, 함께 돌보는 아이의 생일·먹는 약을 볼 길이 아예 없었다.
+                        onEditPet = { pet -> editing = pet; screen = Screen.Onboarding },
                         // 배웅은 전체 PUT 으로 나간다 — 수정과 같은 기준으로 가린다.
                         onFarewell = { pet -> if (pet.isGroupOwner) farewell = pet },
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
                         onAcceptInvite = { inviteEntry.openManually() },
-                        // **이름만.** 전체 PUT(`pets.edit`)으로 돌아가지 않는다 — 연결된 아이에서
-                        // 그 길은 서버가 409 로 막고, 뚫리더라도 공통 정보를 덮어쓴다.
-                        onRenamePet = { pet, name ->
-                            scope.launch {
-                                val token = freshToken() ?: return@launch
-                                pets.rename(token, pet.id, name)
-                            }
-                        },
-                        renamePetBusy = pets.renameBusy,
-                        renamePetError = pets.renameError,
-                        onDismissRenamePet = { pets.clearRenameError() },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {

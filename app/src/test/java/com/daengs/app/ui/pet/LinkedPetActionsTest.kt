@@ -14,6 +14,7 @@ import com.daengs.app.pet.PetList
 import com.daengs.app.ui.my.MyScreen
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -33,8 +34,12 @@ import java.time.LocalDate
  * 채우고 저장을 눌러야** 실패를 안다. 서버도 그 요청을 409 `not_group_owner` 로 막는다.
  * 두 기준이 어긋나지 않는지를 여기서 본다.
  *
- * **가리는 것과 아닌 것이 갈린다.** 공통 정보를 바꾸는 일(고치기·삭제·배웅)만 가리고,
- * 내 계정의 표시 설정(대표 강아지)은 그대로 둔다 — `docs/co-care-contract.md` §2.
+ * **가리는 것과 아닌 것이 갈린다.** 공통 정보를 바꾸는 일(삭제·배웅)과 내 계정의 표시
+ * 설정(대표 강아지)이 다르다 — `docs/co-care-contract.md` §2.
+ *
+ * **프로필 진입 자체는 안 가린다.** 카드를 누르면 누구든 그 아이의 프로필이 열리고,
+ * 무엇을 고칠 수 있는지는 그 화면이 권한 깃발로 가른다 ([PetProfilePermissionTest]).
+ * 예전에는 여기서 막아서 함께 돌보는 아이의 생일·먹는 약을 볼 길이 아예 없었다.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -88,31 +93,49 @@ class LinkedPetActionsTest {
         compose.onAllNodesWithText("삭제").assertCountEquals(0)
     }
 
-    /** 카드를 눌러도 고치기 화면이 열리면 안 된다 — 열리면 저장을 눌러야 실패를 안다. */
+    /** 카드를 누르면 프로필이 열린다 — 고칠 수 있는 칸이 있는지는 그 화면이 정한다. */
     @Test
-    fun `연결된 아이는 카드를 눌러도 고치기로 안 간다`() {
+    fun `연결된 아이도 카드를 누르면 프로필로 간다`() {
         var edited: Pet? = null
         // **비대표로 둔다.** 대표 강아지는 이름이 상단 프로필에도 떠서 같은 글자가 둘이 된다.
         my(listOf(pet("linked", "롱롱씨", groupOwner = false, primary = false)), onEditPet = { edited = it })
 
         compose.onNodeWithText("롱롱씨").performScrollTo().performClick()
 
-        assertNull(edited)
+        assertEquals("linked", edited?.id)
     }
 
-    /** 배웅도 전체 PUT 으로 나간다 — 같은 기준으로 막힌다. */
+    /** 배웅은 전체 PUT 으로 나간다 — 연결된 아이에서는 그 자리가 안 열리고 프로필로 간다. */
     @Test
-    fun `연결된 배웅한 아이도 배웅 자리로 안 간다`() {
+    fun `연결된 배웅한 아이는 배웅 자리 대신 프로필로 간다`() {
         var sentOff: Pet? = null
+        var edited: Pet? = null
         my(
             listOf(pet("linked", "롱롱씨", groupOwner = false, primary = false)),
+            onEditPet = { edited = it },
             onFarewell = { sentOff = it },
             farewellOf = { LocalDate.parse("2026-01-01") },
         )
 
         compose.onNodeWithText("롱롱씨").performScrollTo().performClick()
 
-        assertNull(sentOff)
+        assertNull("배웅은 그룹 주보호자만 한다", sentOff)
+        assertEquals("linked", edited?.id)
+    }
+
+    /** 그룹 주보호자의 배웅한 아이는 예전 그대로 배웅 자리로 간다. */
+    @Test
+    fun `배웅한 내 아이는 배웅 자리로 간다`() {
+        var sentOff: Pet? = null
+        my(
+            listOf(pet("mine", "롱이", groupOwner = true, primary = false)),
+            onFarewell = { sentOff = it },
+            farewellOf = { LocalDate.parse("2026-01-01") },
+        )
+
+        compose.onNodeWithText("롱이").performScrollTo().performClick()
+
+        assertEquals("mine", sentOff?.id)
     }
 
     /**
@@ -143,7 +166,7 @@ class LinkedPetActionsTest {
     }
 
     @Test
-    fun `그룹 주보호자인 아이는 카드를 누르면 고치기로 간다`() {
+    fun `그룹 주보호자인 아이는 카드를 누르면 프로필로 간다`() {
         var edited: Pet? = null
         my(listOf(pet("mine", "롱이", groupOwner = true, primary = false)), onEditPet = { edited = it })
 

@@ -66,6 +66,7 @@ import com.daengs.app.miniroom.art.DogBreed
 import com.daengs.app.pet.Pet
 import com.daengs.app.pet.PetWeight
 import com.daengs.app.pet.PetDraft
+import com.daengs.app.pet.PET_NAME_MAX
 import com.daengs.app.ui.DogAvatar
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,8 +124,24 @@ fun PetFormScreen(
     photo: ImageBitmap? = null,
     /** 사진을 지우고 견종 그림으로 되돌린다. null 이면 그 줄이 안 뜬다. */
     onClearPhoto: (() -> Unit)? = null,
+    /**
+     * 이름과 사진을 고칠 수 있나. **자기 행을 가진 사람**(`Pet.isOwner`)이면 참이다 —
+     * 이름과 사진은 보호자마다 자기 값이라(`PATCH /app/pets/{id}/display`) 연결된 공동
+     * 보호자도 자기 목록에서는 바꾼다.
+     */
+    canEditIdentity: Boolean = true,
+    /**
+     * 견종·성별·몸무게·생일·급식·건강정보처럼 **모두가 같이 보는 값**을 고칠 수 있나.
+     * 그룹 주보호자(`Pet.isGroupOwner`)만 참이다 — 서버가 전체 PUT 을 그 사람에게만 연다.
+     *
+     * 거짓이면 입력 칸을 잠그는 것이 아니라 **아예 안 그린다.** 못 누르는 칸을 띄워 두면
+     * 화면이 그 이유를 설명해야 하고, 그 설명은 사용자가 알 바 아닌 서버 사정이다.
+     */
+    canEditCommon: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    // 아무것도 못 고치는 사람 — 연결 없이 돌보미로 참여한 아이다. 보여 주기만 한다.
+    val readOnly = !canEditIdentity && !canEditCommon
     // 고른 사진. **아직 파일이 아니다** — 새로 등록할 때는 저장할 id 가 없어서,
     // 보내고 나서 부르는 쪽이 쓴다.
     var picked by remember { mutableStateOf<Bitmap?>(null) }
@@ -198,153 +215,185 @@ fun PetFormScreen(
     ) {
         Spacer(Modifier.height(20.dp))
         Text(
-            if (initial == null) "강아지를 알려 주세요" else "강아지 정보 고치기",
+            when {
+                initial == null -> "강아지를 알려 주세요"
+                readOnly -> "강아지 정보"
+                else -> "강아지 정보 고치기"
+            },
             color = TextDark,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(6.dp))
+        // **무엇을 할 수 있는 화면인지 먼저 말한다.** 고칠 수 없는 칸을 한참 찾다가
+        // 알게 되면, 화면이 고장 난 것으로 읽힌다.
         Text(
-            "모르는 건 비워 두셔도 돼요. 나중에 고칠 수 있어요.",
+            when {
+                canEditCommon -> "모르는 건 비워 두셔도 돼요. 나중에 고칠 수 있어요."
+                canEditIdentity ->
+                    "이름과 사진은 내 목록에서만 바뀌어요. 나머지는 주보호자가 정해요."
+                else -> "함께 돌보는 아이의 정보예요. 고치는 건 주보호자가 해요."
+            },
             color = TextMuted,
             fontSize = 13.sp,
+            lineHeight = 19.sp,
         )
-        Spacer(Modifier.height(4.dp))
-        // **별표만 두지 않는다.** 별표가 무슨 뜻인지는 아는 사람만 안다.
-        Row {
-            Text("*", color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(" 는 꼭 넣어야 해요.", color = TextMuted, fontSize = 13.sp)
+        if (canEditCommon) {
+            Spacer(Modifier.height(4.dp))
+            // **별표만 두지 않는다.** 별표가 무슨 뜻인지는 아는 사람만 안다.
+            Row {
+                Text("*", color = DaengPinkDeep, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(" 는 꼭 넣어야 해요.", color = TextMuted, fontSize = 13.sp)
+            }
         }
 
         Spacer(Modifier.height(20.dp))
         // **사진이 맨 위다.** 이름보다 먼저 얼굴이 보여야 "내 아이를 등록하는 중" 으로
         // 읽힌다. 안 넣어도 되고, 안 넣으면 견종 그림이 그대로 쓰인다.
-        PhotoRow(
-            picked = picked,
-            saved = photo,
-            breed = DogBreed.ALL.firstOrNull { it.id == breed },
-            onPick = { picking = true },
-            onClear = if (picked != null) {
-                { picked = null }
-            } else {
-                onClearPhoto
-            },
-        )
-
-        Spacer(Modifier.height(22.dp))
-        FieldLabel("이름", required = true)
-        TextInput(name, { name = it }, "네옹", label = "이름")
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("견종", required = true)
-        BreedGrid(breed) { breed = it }
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("성별")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("남아", sex == Pet.Sex.MALE) { sex = toggle(sex, Pet.Sex.MALE) }
-            Chip("여아", sex == Pet.Sex.FEMALE) { sex = toggle(sex, Pet.Sex.FEMALE) }
-        }
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("중성화")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("했어요", neutered == true) { neutered = toggle(neutered, true) }
-            Chip("안 했어요", neutered == false) { neutered = toggle(neutered, false) }
-        }
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("몸무게 (kg)")
-        // **찍히는 것부터 막는다.** 예전에는 숫자와 점만 거르고 길이를 안 봐서 18자리가
-        // 들어갔고, 저장을 누르면 저쪽 검증 오류가 JSON 그대로 화면에 찍혔다.
-        TextInput(
-            weight,
-            { if (PetWeight.accepts(it)) weight = it },
-            "4.2",
-            KeyboardType.Decimal,
-            label = "몸무게 (kg)",
-        )
-        // **이 칸의 잘못은 이 칸 아래에서 말한다.** 화면 맨 아래 서버 오류 줄에 섞으면
-        // 어느 칸 이야기인지가 안 보인다.
-        weightError?.let {
-            Spacer(Modifier.height(6.dp))
-            Text(it, color = DaengsColors.Error, fontSize = 12.sp)
-        }
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("생일")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("생일", dateKind == Pet.BirthDateKind.BIRTHDAY) {
-                dateKind = Pet.BirthDateKind.BIRTHDAY
-            }
-            Chip("가족이 된 날", dateKind == Pet.BirthDateKind.FAMILY_DAY) {
-                dateKind = Pet.BirthDateKind.FAMILY_DAY
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        if (!dateOn) {
-            Text(
-                "+ 날짜 고르기",
-                color = DaengPink,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { dateOn = true }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+        if (canEditIdentity) {
+            PhotoRow(
+                picked = picked,
+                saved = photo,
+                breed = DogBreed.ALL.firstOrNull { it.id == breed },
+                onPick = { picking = true },
+                onClear = if (picked != null) {
+                    { picked = null }
+                } else {
+                    onClearPhoto
+                },
             )
         } else {
-            DateWheel(value = day, onChange = { day = it })
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "모르겠어요",
-                color = TextMuted,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { dateOn = false }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+            // 못 바꾸는 사람에게는 **얼굴만** 보여 준다 — 누를 수 있는 것처럼 보이면 안 된다.
+            PetAvatar(photo = photo, breed = DogBreed.ALL.firstOrNull { it.id == breed }, size = 72.dp)
         }
 
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("급식 방식")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("자율급식", feedingStyle == Pet.FeedingStyle.FREE) {
-                feedingStyle = toggle(feedingStyle, Pet.FeedingStyle.FREE)
-            }
-            Chip("시간제", feedingStyle == Pet.FeedingStyle.SCHEDULED) {
-                feedingStyle = toggle(feedingStyle, Pet.FeedingStyle.SCHEDULED)
-            }
+        Spacer(Modifier.height(22.dp))
+        if (canEditIdentity) {
+            FieldLabel("이름", required = true)
+            // 서버 `PetDisplayUpdate.name`·`PetCreate.name` 이 1~40자다.
+            TextInput(name, { name = it }, "네옹", label = "이름", maxLength = PET_NAME_MAX)
+        } else {
+            FactRow("이름", name)
         }
-        if (feedingStyle == Pet.FeedingStyle.SCHEDULED) {
+
+        if (!canEditCommon) {
+            // 공통 정보는 **읽기만** 한다. 모르는 항목은 줄에서 빠진다 (배웅 화면과 같은 규칙) —
+            // "모름" 을 줄줄이 적어 두면 안 채운 것이 잘못처럼 보인다.
+            Spacer(Modifier.height(18.dp))
+            initial?.let { CommonFacts(it) }
+        } else {
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("견종", required = true)
+            BreedGrid(breed) { breed = it }
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("성별")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("남아", sex == Pet.Sex.MALE) { sex = toggle(sex, Pet.Sex.MALE) }
+                Chip("여아", sex == Pet.Sex.FEMALE) { sex = toggle(sex, Pet.Sex.FEMALE) }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("중성화")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("했어요", neutered == true) { neutered = toggle(neutered, true) }
+                Chip("안 했어요", neutered == false) { neutered = toggle(neutered, false) }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("몸무게 (kg)")
+            // **찍히는 것부터 막는다.** 예전에는 숫자와 점만 거르고 길이를 안 봐서 18자리가
+            // 들어갔고, 저장을 누르면 저쪽 검증 오류가 JSON 그대로 화면에 찍혔다.
+            TextInput(
+                weight,
+                { if (PetWeight.accepts(it)) weight = it },
+                "4.2",
+                KeyboardType.Decimal,
+                label = "몸무게 (kg)",
+            )
+            // **이 칸의 잘못은 이 칸 아래에서 말한다.** 화면 맨 아래 서버 오류 줄에 섞으면
+            // 어느 칸 이야기인지가 안 보인다.
+            weightError?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, color = DaengsColors.Error, fontSize = 12.sp)
+            }
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("생일")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("생일", dateKind == Pet.BirthDateKind.BIRTHDAY) {
+                    dateKind = Pet.BirthDateKind.BIRTHDAY
+                }
+                Chip("가족이 된 날", dateKind == Pet.BirthDateKind.FAMILY_DAY) {
+                    dateKind = Pet.BirthDateKind.FAMILY_DAY
+                }
+            }
             Spacer(Modifier.height(8.dp))
-            FeedingTimes(
-                times = feedingTimes,
-                onAdd = { feedingTimes = (feedingTimes + it).distinct().sorted() },
-                onRemove = { feedingTimes = feedingTimes - it },
+            if (!dateOn) {
+                Text(
+                    "+ 날짜 고르기",
+                    color = DaengPink,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { dateOn = true }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            } else {
+                DateWheel(value = day, onChange = { day = it })
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "모르겠어요",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { dateOn = false }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("급식 방식")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("자율급식", feedingStyle == Pet.FeedingStyle.FREE) {
+                    feedingStyle = toggle(feedingStyle, Pet.FeedingStyle.FREE)
+                }
+                Chip("시간제", feedingStyle == Pet.FeedingStyle.SCHEDULED) {
+                    feedingStyle = toggle(feedingStyle, Pet.FeedingStyle.SCHEDULED)
+                }
+            }
+            if (feedingStyle == Pet.FeedingStyle.SCHEDULED) {
+                Spacer(Modifier.height(8.dp))
+                FeedingTimes(
+                    times = feedingTimes,
+                    onAdd = { feedingTimes = (feedingTimes + it).distinct().sorted() },
+                    onRemove = { feedingTimes = feedingTimes - it },
+                )
+            }
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("앓는 병")
+            TextInput(
+                healthConditions,
+                { healthConditions = it },
+                "예: 슬개골 탈구",
+                label = "앓는 병",
+                maxLength = PetDraft.CARE_TEXT_MAX,
+            )
+
+            Spacer(Modifier.height(18.dp))
+            FieldLabel("먹는 약")
+            TextInput(
+                medications,
+                { medications = it },
+                "예: 관절 영양제, 심장사상충약",
+                label = "먹는 약",
+                maxLength = PetDraft.CARE_TEXT_MAX,
             )
         }
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("앓는 병")
-        TextInput(
-            healthConditions,
-            { healthConditions = it },
-            "예: 슬개골 탈구",
-            label = "앓는 병",
-            maxLength = PetDraft.CARE_TEXT_MAX,
-        )
-
-        Spacer(Modifier.height(18.dp))
-        FieldLabel("먹는 약")
-        TextInput(
-            medications,
-            { medications = it },
-            "예: 관절 영양제, 심장사상충약",
-            label = "먹는 약",
-            maxLength = PetDraft.CARE_TEXT_MAX,
-        )
 
         if (error != null) {
             Spacer(Modifier.height(16.dp))
@@ -352,13 +401,17 @@ fun PetFormScreen(
         }
 
         Spacer(Modifier.height(26.dp))
-        SubmitButton(
-            label = if (initial == null) "등록하기" else "저장하기",
-            // 날짜를 잘못 적었으면 못 보낸다. 그대로 보내면 날짜만 조용히 빠진다.
-            // 몸무게도 같다 — 보내 봐야 서버가 422 로 돌려보낸다.
-            enabled = draft.valid && weightError == null && !dateBad && !busy,
-            busy = busy,
-        ) { onSubmit(draft, picked) }
+        // **읽기만 하는 사람에게는 저장 자리를 안 만든다.** 눌러도 아무 데도 안 가는
+        // 버튼을 두면 사용자는 자기가 뭘 잘못한 줄 안다.
+        if (!readOnly) {
+            SubmitButton(
+                label = if (initial == null) "등록하기" else "저장하기",
+                // 날짜를 잘못 적었으면 못 보낸다. 그대로 보내면 날짜만 조용히 빠진다.
+                // 몸무게도 같다 — 보내 봐야 서버가 422 로 돌려보낸다.
+                enabled = draft.valid && weightError == null && !dateBad && !busy,
+                busy = busy,
+            ) { onSubmit(draft, picked) }
+        }
 
         // **초대받은 사람은 등록할 아이가 없다.** 새로 등록하면 같은 아이가 두 마리가
         // 되므로(서버는 합쳐 주지 않는다), 이 화면에서 바로 빠져나갈 길을 준다.
@@ -466,6 +519,53 @@ private fun PhotoRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * 고칠 수 없는 사람에게 보여 주는 공통 정보.
+ *
+ * **모르는 항목은 줄에서 빠진다** — 배웅 화면(`FarewellScreen` 의 `profile`)과 같은
+ * 규칙이다. "모름" 을 줄줄이 적어 두면 안 채운 것이 잘못처럼 보이고, 그건 남의 아이를
+ * 보러 온 사람이 할 걱정이 아니다.
+ *
+ * **왜 못 고치는지는 설명하지 않는다.** 위 머리말 한 줄("고치는 건 주보호자가 해요")이
+ * 그 자리이고, 항목마다 다시 적으면 화면이 변명처럼 읽힌다.
+ */
+@Composable
+private fun CommonFacts(pet: Pet) {
+    val facts = buildList {
+        add("견종" to (pet.breedArt?.label ?: "믹스"))
+        pet.sex?.let { add("성별" to if (it == Pet.Sex.MALE) "남아" else "여아") }
+        pet.neutered?.let { add("중성화" to if (it) "했어요" else "안 했어요") }
+        pet.weightKg?.let { add("몸무게" to "${trimZero(it)}kg") }
+        pet.birthDate?.let { d ->
+            val label = if (pet.birthDateKind == Pet.BirthDateKind.FAMILY_DAY) "가족이 된 날" else "생일"
+            add(label to "%d년 %d월 %d일".format(d.year, d.monthValue, d.dayOfMonth))
+        }
+        pet.feedingStyle?.let { style ->
+            val label = if (style == Pet.FeedingStyle.FREE) "자율급식" else "시간제"
+            val times = pet.feedingTimes.orEmpty().joinToString(" · ") { it.format(Pet.FEEDING_TIME) }
+            add("급식 방식" to if (times.isBlank()) label else "$label · $times")
+        }
+        pet.healthConditions?.takeIf { it.isNotBlank() }?.let { add("앓는 병" to it) }
+        pet.medications?.takeIf { it.isNotBlank() }?.let { add("먹는 약" to it) }
+    }
+    Column {
+        facts.forEach { (label, value) ->
+            FactRow(label, value)
+            Spacer(Modifier.height(14.dp))
+        }
+    }
+}
+
+/** 고칠 수 없는 값 한 줄. **입력 칸 모양을 흉내 내지 않는다** — 누를 수 있어 보이면 안 된다. */
+@Composable
+private fun FactRow(label: String, value: String) {
+    Column(Modifier.testTag("fact-$label")) {
+        Text(label, color = TextMuted, fontSize = 12.sp)
+        Spacer(Modifier.height(5.dp))
+        Text(value, color = TextDark, fontSize = 15.sp, lineHeight = 21.sp)
     }
 }
 
@@ -839,3 +939,45 @@ private fun PetFormErrorPreview() {
         )
     }
 }
+
+/**
+ * 연결한 공동 보호자가 보는 화면 — **이름과 사진만** 고칠 수 있다.
+ * 공통 정보는 줄로만 보인다 (`docs/co-care-contract.md` §2 권한표).
+ */
+@Preview(widthDp = 411, heightDp = 900, showBackground = true)
+@Composable
+private fun PetFormLinkedCarerPreview() {
+    DaengsTheme {
+        PetFormScreen(
+            onSubmit = { _, _ -> }, onCancel = {}, busy = false, error = null,
+            initial = sharedPetSample,
+            canEditIdentity = true,
+            canEditCommon = false,
+        )
+    }
+}
+
+/** 연결 없이 참여한 돌보미가 보는 화면 — 고치는 자리가 하나도 없다. */
+@Preview(widthDp = 411, heightDp = 900, showBackground = true)
+@Composable
+private fun PetFormReadOnlyPreview() {
+    DaengsTheme {
+        PetFormScreen(
+            onSubmit = { _, _ -> }, onCancel = {}, busy = false, error = null,
+            initial = sharedPetSample,
+            canEditIdentity = false,
+            canEditCommon = false,
+        )
+    }
+}
+
+private val sharedPetSample = Pet(
+    id = "p9", name = "노을이", breed = DogBreed.BEAGLE.id,
+    sex = Pet.Sex.FEMALE, neutered = true, weightKg = 5f,
+    birthDate = LocalDate.of(2022, 3, 2), birthDateKind = Pet.BirthDateKind.FAMILY_DAY,
+    isPrimary = false, isOwner = false, isGroupOwner = false,
+    feedingStyle = Pet.FeedingStyle.SCHEDULED,
+    feedingTimes = listOf(LocalTime.of(8, 0)),
+    healthConditions = "슬개골 탈구",
+    medications = "관절 영양제",
+)
