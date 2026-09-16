@@ -259,12 +259,29 @@ class AssistantApiTest {
                 activeDogId = "dog-1",
                 persistence = null,
                 facility = null,
-                screening = ScreeningFollowUp("rec-1"),
+                screening = ScreeningFollowUp("rec-1", explicit = true),
             ),
         )
         assertEquals("skin", body.getString("requested_capability"))
         assertEquals("rec-1", body.getString("screening_record_id"))
         assertEquals("dog-1", body.getString("active_dog_id"))
+    }
+
+    /** 이어서 친 질문은 기록 id 만 간다 — 신호까지 보내면 산책 질문이 피부로 끌려간다 (`#569`). */
+    @Test
+    fun `이어서 친 질문은 기록 id 만 싣고 신호는 안 싣는다`() {
+        val body = JSONObject(
+            AssistantApi.requestBody(
+                "그럼 언제 다시 찍어?",
+                where = null,
+                activeDogId = null,
+                persistence = null,
+                facility = null,
+                screening = ScreeningFollowUp("rec-1", explicit = false),
+            ),
+        )
+        assertEquals("rec-1", body.getString("screening_record_id"))
+        assertFalse(body.has("requested_capability"))
     }
 
     /** 보통 질문에는 두 칸이 **아예 없다** — 저쪽 스키마가 `extra="forbid"` 라 null 도 안 싣는다. */

@@ -75,10 +75,10 @@ class ChatHistoryCoordinatorTest {
         val coordinator = coordinator(gateway)
         open(coordinator)
 
-        assertTrue(coordinator.send(TOKEN, "이 결과가 무슨 뜻이에요?", screening = ScreeningFollowUp("rec-1")))
+        assertTrue(coordinator.send(TOKEN, "이 결과가 무슨 뜻이에요?", screening = ScreeningFollowUp("rec-1", explicit = true)))
         advanceUntilIdle()
 
-        assertEquals(ScreeningFollowUp("rec-1"), gateway.sendCalls.single().screening)
+        assertEquals(ScreeningFollowUp("rec-1", explicit = true), gateway.sendCalls.single().screening)
     }
 
     @Test
