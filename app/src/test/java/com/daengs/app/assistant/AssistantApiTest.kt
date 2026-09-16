@@ -27,7 +27,7 @@ class AssistantApiTest {
         val facility = kotlinx.serialization.json.Json.parseToJsonElement("""
             {"client_request_id":"22222222-2222-4222-8222-222222222222"}
         """).let { it as kotlinx.serialization.json.JsonObject }
-        val body = JSONObject(AssistantApi.requestBody("카페 찾아줘", null, null, null, facility, null))
+        val body = JSONObject(AssistantApi.requestBody("카페 찾아줘", null, null, null, facility, null, null))
         assertEquals("22222222-2222-4222-8222-222222222222", body.getJSONObject("facility").getString("client_request_id"))
         assertEquals(setOf("query", "facility"), body.keys().asSequence().toSet())
     }
@@ -55,6 +55,7 @@ class AssistantApiTest {
                 activeDogId = 강아지,
                 persistence = null, facility = null,
                 screening = null,
+                gait = null,
             ),
         )
         assertEquals("우리 애 비행기 태울 수 있나요?", body.getString("query"))
@@ -66,7 +67,7 @@ class AssistantApiTest {
     @Test
     fun `무상태 질의는 저장 id 를 싣지 않는다`() {
         val body = JSONObject(
-            AssistantApi.requestBody("밤에 짖어요", where = null, activeDogId = 강아지, persistence = null, facility = null, screening = null),
+            AssistantApi.requestBody("밤에 짖어요", where = null, activeDogId = 강아지, persistence = null, facility = null, screening = null, gait = null),
         )
         assertFalse("무상태인데 chat_session_id 가 실렸다", body.has("chat_session_id"))
         assertFalse("무상태인데 client_message_id 가 실렸다", body.has("client_message_id"))
@@ -83,7 +84,7 @@ class AssistantApiTest {
     fun `대표 강아지가 없으면 칸 자체를 뺀다`() {
         listOf(null, "", "   ").forEach { 없는_값 ->
             val body = JSONObject(
-                AssistantApi.requestBody("질문", where = null, activeDogId = 없는_값, persistence = null, facility = null, screening = null),
+                AssistantApi.requestBody("질문", where = null, activeDogId = 없는_값, persistence = null, facility = null, screening = null, gait = null),
             )
             assertFalse("[$없는_값] 이 실리면 서버가 422 로 질문을 통째로 버린다", body.has("active_dog_id"))
             assertEquals(1, body.keys().asSequence().count())
@@ -122,6 +123,7 @@ class AssistantApiTest {
                 activeDogId = 강아지,
                 persistence = ChatPersistence(대화, 메시지), facility = null,
                 screening = null,
+                gait = null,
             ),
         )
         assertEquals("밤에 짖어요", body.getString("query"))
@@ -152,7 +154,7 @@ class AssistantApiTest {
     @Test
     fun `저장을 얹어도 대표 강아지는 같은 자리에 그대로 있다`() {
         val 무상태 = JSONObject(
-            AssistantApi.requestBody("같은 질문", where = null, activeDogId = 강아지, persistence = null, facility = null, screening = null),
+            AssistantApi.requestBody("같은 질문", where = null, activeDogId = 강아지, persistence = null, facility = null, screening = null, gait = null),
         )
         val 저장 = JSONObject(
             AssistantApi.requestBody(
@@ -161,6 +163,7 @@ class AssistantApiTest {
                 activeDogId = 강아지,
                 persistence = ChatPersistence(대화, 메시지), facility = null,
                 screening = null,
+                gait = null,
             ),
         )
         assertEquals(무상태.getString("active_dog_id"), 저장.getString("active_dog_id"))
@@ -172,14 +175,14 @@ class AssistantApiTest {
     @Test
     fun `저장해도 위치 규칙은 그대로다`() {
         val inside = JSONObject(
-            AssistantApi.requestBody("산책?", 광화문, 강아지, ChatPersistence(대화, 메시지), null, null),
+            AssistantApi.requestBody("산책?", 광화문, 강아지, ChatPersistence(대화, 메시지), null, null, null),
         )
         assertEquals(37.5665, inside.getJSONObject("location").getDouble("lat"), 1e-9)
         assertEquals(5, inside.keys().asSequence().count())
 
         val 도쿄 = GeoPoint(35.6762, 139.6503)
         val outside = JSONObject(
-            AssistantApi.requestBody("산책?", 도쿄, 강아지, ChatPersistence(대화, 메시지), null, null),
+            AssistantApi.requestBody("산책?", 도쿄, 강아지, ChatPersistence(대화, 메시지), null, null, null),
         )
         assertFalse(outside.has("location"))
         assertEquals(대화, outside.getString("chat_session_id"))
@@ -190,7 +193,7 @@ class AssistantApiTest {
     @Test
     fun `좌표도 대표 강아지도 없으면 query 하나만 담는다`() {
         val body = JSONObject(
-            AssistantApi.requestBody("강아지가 손을 물어요", where = null, activeDogId = null, persistence = null, facility = null, screening = null),
+            AssistantApi.requestBody("강아지가 손을 물어요", where = null, activeDogId = null, persistence = null, facility = null, screening = null, gait = null),
         )
         assertEquals("강아지가 손을 물어요", body.getString("query"))
         assertFalse(body.has("requested_capability"))
@@ -210,7 +213,7 @@ class AssistantApiTest {
     @Test
     fun `좌표가 있으면 location 을 같이 담는다`() {
         val body = JSONObject(
-            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 광화문, activeDogId = null, persistence = null, facility = null, screening = null),
+            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 광화문, activeDogId = null, persistence = null, facility = null, screening = null, gait = null),
         )
         assertEquals("오늘 산책 나가도 될까?", body.getString("query"))
         val location = body.getJSONObject("location")
@@ -231,7 +234,7 @@ class AssistantApiTest {
     fun `한국 밖 좌표는 빼고 질문만 보낸다`() {
         val 도쿄 = GeoPoint(35.6762, 139.6503)
         val body = JSONObject(
-            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 도쿄, activeDogId = null, persistence = null, facility = null, screening = null),
+            AssistantApi.requestBody("오늘 산책 나가도 될까?", where = 도쿄, activeDogId = null, persistence = null, facility = null, screening = null, gait = null),
         )
         assertFalse("범위 밖 좌표가 실리면 서버가 422 로 질문을 통째로 버린다", body.has("location"))
         assertEquals("오늘 산책 나가도 될까?", body.getString("query"))
@@ -241,7 +244,7 @@ class AssistantApiTest {
     fun `경계값은 실린다`() {
         listOf(GeoPoint(33.0, 124.0), GeoPoint(39.0, 132.0)).forEach {
             val body = JSONObject(
-                AssistantApi.requestBody("질문", where = it, activeDogId = null, persistence = null, facility = null, screening = null),
+                AssistantApi.requestBody("질문", where = it, activeDogId = null, persistence = null, facility = null, screening = null, gait = null),
             )
             assertTrue("$it 는 한국 범위 안이다", body.has("location"))
         }
@@ -260,6 +263,7 @@ class AssistantApiTest {
                 persistence = null,
                 facility = null,
                 screening = ScreeningFollowUp("rec-1", explicit = true),
+                gait = null,
             ),
         )
         assertEquals("skin", body.getString("requested_capability"))
@@ -278,6 +282,7 @@ class AssistantApiTest {
                 persistence = null,
                 facility = null,
                 screening = ScreeningFollowUp("rec-1", explicit = false),
+                gait = null,
             ),
         )
         assertEquals("rec-1", body.getString("screening_record_id"))
@@ -295,9 +300,73 @@ class AssistantApiTest {
                 persistence = null,
                 facility = null,
                 screening = null,
+                gait = null,
             ),
         )
         assertFalse(body.has("requested_capability"))
+        assertFalse(body.has("screening_record_id"))
+    }
+
+    // ── 보행 비교 이어 묻기 (백엔드 D-080) ─────────────────────────────────
+
+    /** 신호와 기록 참조는 **같이** 간다. 저쪽 `GaitCompareRef` 는 두 id 가 다 있어야 한다. */
+    @Test
+    fun `보행 비교 이어 묻기는 gait 신호와 기록 id 둘을 함께 싣는다`() {
+        val body = JSONObject(
+            AssistantApi.requestBody(
+                "이 변화가 무슨 뜻이에요?",
+                where = null,
+                activeDogId = "dog-1",
+                persistence = null,
+                facility = null,
+                screening = null,
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old"),
+            ),
+        )
+        assertEquals("gait", body.getString("requested_capability"))
+        val compare = body.getJSONObject("gait_compare")
+        assertEquals("rec-new", compare.getString("recent_record_id"))
+        assertEquals("rec-old", compare.getString("past_record_id"))
+        assertEquals("dog-1", body.getString("active_dog_id"))
+    }
+
+    /** 비교 결과가 아니면 **칸 자체가 없다** — 저쪽 스키마가 `extra="forbid"` 라 null 도 안 싣는다. */
+    @Test
+    fun `보행 이어 묻기가 아니면 gait_compare 칸 자체가 없다`() {
+        val body = JSONObject(
+            AssistantApi.requestBody(
+                "밤에 짖어요",
+                where = null,
+                activeDogId = null,
+                persistence = null,
+                facility = null,
+                screening = null,
+                gait = null,
+            ),
+        )
+        assertFalse(body.has("gait_compare"))
+        assertFalse(body.has("requested_capability"))
+    }
+
+    /**
+     * 비교 참조는 **id 둘뿐**이다. 관절 수치나 앱이 지은 판정 문장을 실으면, 저장된 대화에서
+     * 앱이 보낸 비교를 되돌릴 수 없다 — 비교는 서버가 두 기록을 읽어 다시 한다.
+     */
+    @Test
+    fun `보행 이어 묻기는 비교 내용을 싣지 않는다`() {
+        val body = JSONObject(
+            AssistantApi.requestBody(
+                "이 변화가 무슨 뜻이에요?",
+                where = null,
+                activeDogId = null,
+                persistence = null,
+                facility = null,
+                screening = null,
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old"),
+            ),
+        )
+        val compare = body.getJSONObject("gait_compare")
+        assertEquals(setOf("recent_record_id", "past_record_id"), compare.keys().asSequence().toSet())
         assertFalse(body.has("screening_record_id"))
     }
 }

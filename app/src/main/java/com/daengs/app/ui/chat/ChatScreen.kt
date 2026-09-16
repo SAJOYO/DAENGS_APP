@@ -115,6 +115,7 @@ import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
 import com.daengs.app.screening.ScreeningRecordApi
 import com.daengs.app.screening.ScreeningRun
+import com.daengs.app.assistant.GaitFollowUp
 import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.screening.ScreeningReport
 import com.daengs.app.ui.DaengsIcon
@@ -309,9 +310,10 @@ fun ChatScreen(
     accessTokenProvider: suspend () -> String? = { null },
     /** null 이면 기존 무상태 assistant 경로만 쓴다. 실제 앱은 Activity 생애의 조율기를 준다. */
     historyCoordinator: ChatHistoryCoordinator? = null,
-    assistantQuery: com.daengs.app.assistant.AssistantQuery = { token, text, where, dog, persistence, screening ->
-        AssistantApi.query(token, text, where, dog, persistence, screening = screening)
-    },
+    assistantQuery: com.daengs.app.assistant.AssistantQuery =
+        { token, text, where, dog, persistence, screening, gait ->
+            AssistantApi.query(token, text, where, dog, persistence, screening = screening, gait = gait)
+        },
     onOpenFacilities: (() -> Unit)? = null,
     /**
      * 피부 **변화 기록**으로 가는 길. null 이면 그 줄을 안 보여 준다.
@@ -825,8 +827,10 @@ fun ChatScreen(
         }
     }
 
-    // [screening] 은 피부 판정 말풍선의 "이 결과 물어보기" 에서만 있다 (백엔드 D-079).
-    val sendQueryWith: (String, ScreeningFollowUp?) -> Unit = { text, screening ->
+    // [screening] 은 피부 판정 말풍선의 "이 결과 물어보기" 에서만, [gait] 는 보행 비교
+    // 말풍선의 "이 변화 물어보기" 에서만 있다 (백엔드 D-079 · D-080). **둘은 같이 오지
+    // 않는다** — 각각 자기 말풍선 아래 칩에서만 만들어진다.
+    val sendQueryWith: (String, ScreeningFollowUp?, GaitFollowUp?) -> Unit = { text, screening, gait ->
         entries += ChatEntry.Mine(text)
         val slot = entries.size
         entries += ChatEntry.Thinking
@@ -858,14 +862,14 @@ fun ChatScreen(
                 pendingPersistedSlot = slot
                 pendingPersistedSessionId = selectedSessionId
                 pendingPersistedQuery = text
-                if (!coordinator.send(token, text, where, screening)) {
+                if (!coordinator.send(token, text, where, screening, gait)) {
                     pendingPersistedSlot = null
                     pendingPersistedSessionId = null
                     if (slot in entries.indices) entries[slot] = ChatEntry.Failed("대화가 준비된 뒤 다시 보내 주세요.")
                     asking = false
                 }
             } else {
-                assistantQuery(token, text, where, dogId, null, screening)
+                assistantQuery(token, text, where, dogId, null, screening, gait)
                     .onSuccess { response -> if (generation == queryGeneration) showResponse(slot, response, text) }
                     .onFailure {
                         if (generation == queryGeneration && slot in entries.indices) {
@@ -879,7 +883,7 @@ fun ChatScreen(
 
     val sendQuery: (String) -> Unit = { text ->
         // 판정을 받은 뒤라면 기록 id 를 실어 보낸다. 신호는 안 보내므로 누가 답할지는 서버가 정한다.
-        sendQueryWith(text, lastScreeningRecordId?.let { ScreeningFollowUp(it, explicit = false) })
+        sendQueryWith(text, lastScreeningRecordId?.let { ScreeningFollowUp(it, explicit = false) }, null)
     }
 
     // ── 음성 입력 ───────────────────────────────────────────────────────────
@@ -1054,6 +1058,7 @@ fun ChatScreen(
                                         sendQueryWith(
                                             REPORT_FOLLOW_UP_QUESTION,
                                             ScreeningFollowUp(recordId, explicit = true),
+                                            null,
                                         )
                                     }
                                 }
@@ -1121,9 +1126,29 @@ fun ChatScreen(
                             }
                         }
 
-                        is ChatEntry.GaitCompared -> BesideAvatar {
-                            GaitComparedBubble(entry.comparison) {
-                                gaitComparing = entry.comparison
+                        is ChatEntry.GaitCompared -> {
+                            BesideAvatar {
+                                GaitComparedBubble(entry.comparison) {
+                                    gaitComparing = entry.comparison
+                                }
+                            }
+                            // 칩은 **말풍선과 다른 줄**이다 ([BesideAvatar] 속이 Box 라
+                            // 한 줄에 둘을 넣으면 겹쳐 그려진다). 판정 말풍선의 칩과
+                            // 같은 모양으로 붙는다.
+                            //
+                            // 비교는 저장되지 않아서 참조가 **기록 id 둘**이다 (D-080).
+                            // 서버가 그 둘을 다시 읽어 견주고 무엇이 달라졌는지 해설한다.
+                            BesideAvatar {
+                                GaitFollowUpChip(enabled = !asking) {
+                                    sendQueryWith(
+                                        GAIT_FOLLOW_UP_QUESTION,
+                                        null,
+                                        GaitFollowUp(
+                                            recentId = entry.comparison.recent.id,
+                                            pastId = entry.comparison.past.id,
+                                        ),
+                                    )
+                                }
                             }
                         }
                     }
