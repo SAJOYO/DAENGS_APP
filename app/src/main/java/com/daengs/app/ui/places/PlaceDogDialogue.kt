@@ -64,7 +64,7 @@ internal fun PlaceDogDialogue(
                 Box(Modifier.padding(start = 22.dp, end = 22.dp, top = 35.dp).fillMaxWidth()
                     .height(speechHeight).testTag("place-dog-speech").clip(RoundedCornerShape(4.dp))
                     .verticalScroll(rememberScrollState())) {
-                    ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 29.sp,
+                    ProvideTextStyle(MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, lineHeight = 21.sp,
                         fontWeight = FontWeight.Medium, color = DaengsColors.TextPrimary)) {
                         when {
                             busy -> DogDialogueText("킁킁, 조건에 맞는 곳을\n찾아보고 있어!")
