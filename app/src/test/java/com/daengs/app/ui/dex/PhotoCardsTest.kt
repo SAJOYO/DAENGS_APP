@@ -31,9 +31,10 @@ class PhotoCardsTest {
         assertEquals(ids.size, ids.toSet().size)
     }
 
+    /** 서버 `DAENGS_CARDIMAGE_MONTHS` 기본값이 12달이 됐다 (`DAENGS_dev` #572). */
     @Test
-    fun `연 달은 4월과 9월이다`() {
-        assertEquals(setOf(4, 9), OPEN_PHOTO_MONTHS)
+    fun `연 달은 1월부터 12월까지다`() {
+        assertEquals((1..12).toSet(), OPEN_PHOTO_MONTHS)
     }
 
     /** 효과를 나중에 손볼 자리. 한 달이라도 비면 그 달만 포일이 없다. */
