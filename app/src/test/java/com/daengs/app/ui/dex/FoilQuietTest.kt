@@ -165,21 +165,44 @@ class FoilQuietTest {
         }
     }
 
-    /** 경계가 **딱딱하면 안 된다.** 얼굴에 오려 붙인 자국이 생긴다. */
+    /**
+     * 경계가 **딱딱하면 안 된다.** 얼굴에 오려 붙인 자국이 생긴다.
+     *
+     * 한 점이 아니라 **주변 평균을, 포일만 있는 그림과의 비율로** 잰다. 포일이 평평하던
+     * 때는 한 점으로 충분했는데, 웹판 세 겹을 옮기면서(2026-09-18) holo 에 세로 막대와
+     * 0.5dp 스캔라인이 생겨 한 점이 어두운 결에 걸리면 재우기와 상관없이 값이 튄다.
+     * 비율은 무늬를 지우고 재우기만 남긴다.
+     */
     @Test
     fun `가장자리로 갈수록 서서히 돌아온다`() {
-        val bare = render(null)
+        val foilOnly = render(null)
         val quiet = render(FoilQuiet(middle, farHole))
+        fun kept(x: Int) = shiftAround(quiet, x, side / 2) / maxOf(shiftAround(foilOnly, x, side / 2), 1.0)
 
-        val c = shift(quiet, side / 2, side / 2)
         // 중심 → 원 끝 → 그 바깥 순으로 포일이 되살아나야 한다.
         val edgePx = (side * middle.rx / 100f * FoilQuiet(middle, farHole).spread).toInt()
-        val mid = shift(quiet, side / 2 + edgePx * 3 / 4, side / 2)
-        val out = shift(quiet, side / 2 + edgePx + 6, side / 2)
+        val c = kept(side / 2)
+        val mid = kept(side / 2 + edgePx * 3 / 4)
+        val out = kept(side / 2 + edgePx + 6)
 
         assertTrue("가운데가 가장자리보다 세다 (c=$c mid=$mid)", c <= mid)
         assertTrue("바깥이 안 돌아왔다 (mid=$mid out=$out)", mid <= out)
-        assertTrue("바깥이 원래와 다르다", out >= shift(bare, side / 2 + edgePx + 6, side / 2) - 2)
+        assertTrue("바깥이 원래와 다르다 (out=$out)", out >= 0.95)
+    }
+
+    /** [shift] 의 5×5 평균. 무늬 한 줄에 값이 휘둘리지 않게. */
+    private fun shiftAround(bmp: Bitmap, x: Int, y: Int): Double {
+        var sum = 0
+        var n = 0
+        for (dx in -2..2) for (dy in -2..2) {
+            val px = x + dx
+            val py = y + dy
+            if (px in 0 until side && py in 0 until side) {
+                sum += shift(bmp, px, py)
+                n++
+            }
+        }
+        return sum.toDouble() / n
     }
 
     @Test

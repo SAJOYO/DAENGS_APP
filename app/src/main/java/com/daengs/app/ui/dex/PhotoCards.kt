@@ -28,14 +28,12 @@ const val PHOTO_RATIO = 994f / 1582f
 /**
  * 포토 카드 한 달의 포일.
  *
- * **효과를 손볼 때 여기만 고친다** (사용자 결정 2026-09-15 — 이번엔 기본값). 포토 카드는
- * 전면이 사진 같은 그림이라 야채 기본값(`shineOpacity` 0.30)보다 약하게 시작한다.
+ * **효과를 손볼 때 여기만 고친다** (사용자 결정 2026-09-15). 세기는 야채·과일과 같은
+ * 포일별 값([webTune])에서 시작한다 — 예전에는 한꺼번에 0.22 로 눌러 두어 밋밋했다
+ * (2026-09-18). 어느 달이 사진을 날리면 그 달만 `tune` 을 적어 누른다.
  */
 @Immutable
-data class PhotoFoil(val foil: Foil, val tune: FoilTune = PHOTO_TUNE)
-
-/** 포토 기본 세기. 얼굴이 날아가지 않게 야채보다 낮다. */
-val PHOTO_TUNE = FoilTune(shineOpacity = 0.22f, glareOpacity = 0.28f)
+data class PhotoFoil(val foil: Foil, val tune: FoilTune = foil.webTune)
 
 val PHOTO_FOIL: Map<Int, PhotoFoil> = mapOf(
     1 to PhotoFoil(Foil.Gold),

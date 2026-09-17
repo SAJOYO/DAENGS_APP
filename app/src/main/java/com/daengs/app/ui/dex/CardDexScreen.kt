@@ -846,7 +846,7 @@ private fun GridCard(
                     art = art,
                     foil = card.foil,
                     // 포토 포일은 표 한 곳(`PHOTO_FOIL`)에 모아 둔다 — 손볼 때 그 표만 고친다.
-                    tune = if (card.isPhoto) PHOTO_FOIL.getValue(card.no).tune else FoilTune(),
+                    tune = if (card.isPhoto) PHOTO_FOIL.getValue(card.no).tune else card.foil.webTune,
                     input = rub.input,
                     // 그리드에서는 기울이지 않는다. 열두 장이 한꺼번에 도는 건 산만하다.
                     tilt = false,
@@ -1111,7 +1111,7 @@ private fun CardViewer(
                 art = art,
                 foil = card.foil,
                 // 포토 포일은 표 한 곳(`PHOTO_FOIL`)에 모아 둔다 — 손볼 때 그 표만 고친다.
-                tune = if (card.isPhoto) PHOTO_FOIL.getValue(card.no).tune else FoilTune(),
+                tune = if (card.isPhoto) PHOTO_FOIL.getValue(card.no).tune else card.foil.webTune,
                 input = input,
                 // 잠긴 카드는 안 기울인다. 포일도 안 도는데 기울면 그냥 흔들리는 검은 판이다.
                 tilt = !slot.locked,
