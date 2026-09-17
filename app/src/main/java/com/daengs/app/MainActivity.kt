@@ -84,6 +84,9 @@ import com.daengs.app.pet.InviteLink
 import com.daengs.app.pet.InviteShare
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.CoCareEnd
+import com.daengs.app.pet.CoCareEndWatch
+import com.daengs.app.pet.PrefsCoCareLinkLog
 import com.daengs.app.pet.InvitePaste
 import com.daengs.app.pet.rememberPetInviteBundleHolder
 import com.daengs.app.pet.rememberPetMemberHolder
@@ -411,7 +414,24 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(if (saved == null) SessionRestore.Ok else SessionRestore.Pending)
                 }
                 var busy by remember { mutableStateOf(false) }
-                val pets = rememberPetHolder()
+                // 공동 돌봄이 끝나 내 강아지 정보로 돌아온 아이를 한 번 알린다 (#440). **목록 홀더보다
+                // 먼저 둔다** — 홀더가 목록을 받을 때마다 여기에 넘긴다 (`pet/CoCareEnd.kt`).
+                val coCareEnds = remember { CoCareEndWatch(PrefsCoCareLinkLog(context)) }
+                val pets = rememberPetHolder(
+                    currentAccount = { app.sessionProvider.accountScope.value.ownerId },
+                    onListed = coCareEnds::observe,
+                )
+                // **화면마다 두지 않고 여기서 한 번 띄운다.** 내보내진 것은 앱을 켜자마자 목록을 받으며
+                // 알게 되고, 직접 나간 것은 보호자 목록을 닫은 뒤 알게 된다 — 어느 화면에 있든 떠야 한다.
+                // 막는 창이 아니라 짧은 알림이라 하던 일을 끊지 않는다 (포토 지우기 실패와 같은 Toast).
+                LaunchedEffect(coCareEnds.pending, session?.appUserId) {
+                    val notice = coCareEnds.pending ?: return@LaunchedEffect
+                    // 다른 계정 것은 띄우지 않고 버린다.
+                    if (notice.account == session?.appUserId) {
+                        Toast.makeText(context, CoCareEnd.MESSAGE, Toast.LENGTH_LONG).show()
+                    }
+                    coCareEnds.shown()
+                }
                 // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
                 // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
@@ -657,6 +677,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(session) {
                     if (session == null) {
                         pets.forget()
+                        coCareEnds.signOut()
                         // 로그아웃·탈퇴가 모두 여기를 지난다. **붙여넣은 초대 링크와 토큰을
                         // 같이 버린다** — 다음 사람의 화면에 남의 자격증명이 남으면 안 된다.
                         // 링크로 받아 아직 못 넘긴 토큰도 같이 버린다 — 로그아웃한
@@ -1358,6 +1379,8 @@ class MainActivity : ComponentActivity() {
                                         roomStore.clear()
                                         frameCardId = null
                                         pets.forget()
+                                        // 탈퇴한 계정의 연결 기록은 다시 쓸 일이 없다.
+                                        coCareEnds.forgetAccount(old.appUserId)
                                         todayWalks = walkRuntime.history.todayTotals()
                                         // 뽑은 카드도 이 기기에만 있다. 서버에 사본이
                                         // 없으므로 여기서 안 지우면 다음에 로그인한

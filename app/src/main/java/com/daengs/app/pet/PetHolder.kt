@@ -23,6 +23,16 @@ class PetHolder(
      * [listPets] 로 붙어야 기존 호출이 그대로 컴파일된다.
      */
     private val renameDisplay: suspend (String, String, String) -> Result<Pet> = PetApi::updateDisplayName,
+    /** 지금 로그인한 계정. 목록을 받는 사이 바뀌었으면 [onListed] 를 부르지 않는다. */
+    private val currentAccount: () -> String? = { null },
+    /**
+     * 목록을 받는 데 **성공할 때마다** 부른다 (공동 돌봄 종료 알림 #440 — [CoCareEndWatch]).
+     *
+     * 여기서 부르는 이유: 목록을 다시 받는 자리가 나가기·수락·내보내기·새로고침 등 여럿이라,
+     * 부르는 쪽마다 붙이면 새 자리가 생길 때 빠뜨린다.
+     */
+    private val onListed: (account: String, pets: List<Pet>) -> Unit = { _, _ -> },
+    /** 목록을 받는 요청. **맨 뒤에 둔다** — `PetHolder { 목록 }` 의 뒤따르는 람다가 여기로 붙는다. */
     private val listPets: suspend (String) -> Result<PetList> = PetApi::list,
 ) {
     private var refreshGeneration = 0L
@@ -76,6 +86,9 @@ class PetHolder(
     /** 서버에서 목록을 다시 받아 온다. */
     suspend fun refresh(token: String): Boolean {
         val generation = ++refreshGeneration
+        // **요청을 보낼 때의 계정을 잡아 둔다.** 늦게 온 응답을 다른 계정 이름으로 적으면 그 계정에
+        // 남의 아이 id 가 기준으로 남는다.
+        val account = currentAccount()
         busy = true
         error = null
         try {
@@ -85,6 +98,7 @@ class PetHolder(
             result.onSuccess {
                 pets = it.pets
                 maxPets = it.maxPets
+                if (account != null && account == currentAccount()) onListed(account, it.pets)
             }.onFailure { error = it.message ?: "반려견을 불러오지 못했어요." }
             return result.isSuccess
         } finally {
@@ -210,4 +224,7 @@ class PetHolder(
 const val PET_NAME_MAX = 40
 
 @Composable
-fun rememberPetHolder(): PetHolder = remember { PetHolder() }
+fun rememberPetHolder(
+    currentAccount: () -> String? = { null },
+    onListed: (account: String, pets: List<Pet>) -> Unit = { _, _ -> },
+): PetHolder = remember { PetHolder(currentAccount = currentAccount, onListed = onListed) }
