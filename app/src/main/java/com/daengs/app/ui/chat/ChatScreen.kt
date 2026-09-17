@@ -428,6 +428,20 @@ fun ChatScreen(
     // 새 판정을 받으면 그것으로 바뀐다. 서버 이력에서 복원한 대화에는 판정 카드가 없어서
     // 값도 없다 — 그때는 이 기능이 생기기 전과 같게 동작한다.
     var lastScreeningRecordId by remember { mutableStateOf<String?>(null) }
+    /**
+     * 대화에 남긴 **마지막 비교**의 기록 id 둘 (백엔드 D-081).
+     *
+     * 이것이 있으면 보통 질문에도 참조가 실려, 라우터가 보행으로 보낸 질문을 서버가
+     * 등록 카드 대신 **해설**로 돌린다. 신호는 안 싣는다 — 누가 답할지는 서버가 정한다.
+     *
+     * ⚠️ **새 보행 분석을 시작하면 지운다** ([runGait]). 안 지우면 "새로 영상 찍고 싶어"
+     *    까지 해설이 가로채고 등록 카드가 안 뜬다 — 중복을 없애려다 입구를 막는 셈이다.
+     *
+     * ⚠️ **화면을 나갔다 오면 사라진다.** 서버 이력 복원이 비교 말풍선을 되살리지 않고
+     *    ([restoredChatEntries]) 대화를 바꾸면 목록을 비우기 때문이다. 알려진 한계이고,
+     *    없애려면 저쪽이 비교를 turn 에 저장해야 하는데 그건 D-080 을 되돌리는 결정이다.
+     */
+    var lastGaitPair by remember { mutableStateOf<GaitFollowUp?>(null) }
 
     // 프레임까지 맞춘 사진을 대화에 올리고 서버에 물어본다.
     //
@@ -722,6 +736,12 @@ fun ChatScreen(
     // 물을 이유가 없다), 제목 다이얼로그를 띄운 뒤 분석을 시작한다 — 두 경로가 같은
     // 다이얼로그를 타는 이유는 이 함수가 하나라서다. 제목은 서버 `note` 로 같이 올라간다.
     val runGait: (Uri) -> Unit = { uri ->
+        // 새 분석을 시작하면 **예전 비교 참조를 즉시 버린다** (D-081). 안 버리면 새로 찍겠다는
+        // 질문까지 해설이 가로채 예전 비교 이야기를 답하고 등록 카드가 안 뜬다.
+        //
+        // **시트를 여는 순간이 아니라 여기다.** 카메라나 앨범을 열었다 취소한 사람의 문맥까지
+        // 날아가면, 아무것도 안 했는데 이어 묻기가 끊긴다.
+        lastGaitPair = null
         scope.launch {
             GaitVideo.prepare(context, uri)
                 .onFailure { notice = it.message ?: "영상을 읽지 못했어요." }
@@ -883,7 +903,11 @@ fun ChatScreen(
 
     val sendQuery: (String) -> Unit = { text ->
         // 판정을 받은 뒤라면 기록 id 를 실어 보낸다. 신호는 안 보내므로 누가 답할지는 서버가 정한다.
-        sendQueryWith(text, lastScreeningRecordId?.let { ScreeningFollowUp(it, explicit = false) }, null)
+        sendQueryWith(
+            text,
+            lastScreeningRecordId?.let { ScreeningFollowUp(it, explicit = false) },
+            lastGaitPair,
+        )
     }
 
     // ── 음성 입력 ───────────────────────────────────────────────────────────
@@ -1146,6 +1170,8 @@ fun ChatScreen(
                                         GaitFollowUp(
                                             recentId = entry.comparison.recent.id,
                                             pastId = entry.comparison.past.id,
+                                            // 칩을 눌러 뜻을 밝혔다 — 서버가 묻지 않고 해설로 보낸다.
+                                            explicit = true,
                                         ),
                                     )
                                 }
@@ -1382,6 +1408,13 @@ fun ChatScreen(
             onSaveToChat = {
                 gaitComparing = null
                 entries += ChatEntry.GaitCompared(comparison)
+                // 이 뒤의 보통 질문이 이 비교를 가리키게 한다 (D-081). 비교가 대화에 남는
+                // 경로가 여기 하나라, 새 비교를 저장하면 그대로 덮인다 — 갱신이 따로 없다.
+                lastGaitPair = GaitFollowUp(
+                    recentId = comparison.recent.id,
+                    pastId = comparison.past.id,
+                    explicit = false,
+                )
             },
         )
     }

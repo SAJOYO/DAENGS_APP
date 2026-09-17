@@ -320,7 +320,7 @@ class AssistantApiTest {
                 persistence = null,
                 facility = null,
                 screening = null,
-                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old"),
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = true),
             ),
         )
         assertEquals("gait", body.getString("requested_capability"))
@@ -349,6 +349,32 @@ class AssistantApiTest {
     }
 
     /**
+     * 비교를 보고 **직접 친 질문**은 참조만 싣는다 (D-081).
+     *
+     * ⚠️ 매 턴 신호까지 보내면 그 대화의 모든 질문을 보행이 가로챈다 — "산책 언제 가?" 까지
+     * 해설로 끌려간다. 누가 답할지는 서버 라우터가 정하고, 참조는 "이 비교 이야기를 하는 중"
+     * 이라는 재료로만 간다. 피부(`#569`)와 같은 규칙이다.
+     */
+    @Test
+    fun `비교를 보고 이어서 친 질문은 참조만 싣고 신호는 안 싣는다`() {
+        val body = JSONObject(
+            AssistantApi.requestBody(
+                "그럼 다음엔 어떻게 찍어?",
+                where = null,
+                activeDogId = null,
+                persistence = null,
+                facility = null,
+                screening = null,
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = false),
+            ),
+        )
+        val compare = body.getJSONObject("gait_compare")
+        assertEquals("rec-new", compare.getString("recent_record_id"))
+        assertEquals("rec-old", compare.getString("past_record_id"))
+        assertFalse(body.has("requested_capability"))
+    }
+
+    /**
      * 비교 참조는 **id 둘뿐**이다. 관절 수치나 앱이 지은 판정 문장을 실으면, 저장된 대화에서
      * 앱이 보낸 비교를 되돌릴 수 없다 — 비교는 서버가 두 기록을 읽어 다시 한다.
      */
@@ -362,7 +388,7 @@ class AssistantApiTest {
                 persistence = null,
                 facility = null,
                 screening = null,
-                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old"),
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = true),
             ),
         )
         val compare = body.getJSONObject("gait_compare")

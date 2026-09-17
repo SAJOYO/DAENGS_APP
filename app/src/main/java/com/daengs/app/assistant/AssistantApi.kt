@@ -85,9 +85,11 @@ object AssistantApi {
      * 보내면 산책·생활 질문이 전부 피부 해설로 끌려간다 — 누가 답할지는 서버 라우터가 정하고,
      * 기록 id 는 "이 판정 이야기를 하는 중" 이라는 재료로만 간다.
      *
-     * **[gait] 도 신호를 싣는다** (백엔드 D-080). 비교 말풍선의 칩에서만 오고, 사용자가
-     * 그 칩을 눌러 뜻을 밝혔기 때문이다 — 그래서 갈래가 없다. 싣는 것은 **기록 id 둘**
-     * 이고 비교는 저쪽이 다시 한다 ([GaitFollowUp]).
+     * **[gait] 도 같은 갈래를 가진다** (백엔드 D-080 · D-081). 칩([GaitFollowUp.explicit]
+     * = true)일 때만 `requested_capability="gait"` 를 싣고, 비교를 보고 **직접 친 질문**은
+     * `gait_compare` 만 싣는다. 뒤쪽까지 신호를 보내면 그 대화의 모든 질문이 보행으로
+     * 끌려간다 — 누가 답할지는 서버 라우터가 정하고, 참조는 "이 비교 이야기를 하는 중"
+     * 이라는 재료로만 간다. 싣는 것은 **기록 id 둘**이고 비교는 저쪽이 다시 한다.
      *
      * `active_dog_id` 는 저쪽이 **그 id 로 `pets` 를 읽어 견종·나이를 Life 프롬프트에
      * 얹는 데 쓴다** (`SAJOYO/DAENGS_dev#202`). 예전에는 서버가 받기만 하고 아무 기능도
@@ -137,7 +139,7 @@ object AssistantApi {
             // 기록 id 둘은 **한 칸에 같이** 간다. 저쪽 `GaitCompareRef` 가 둘 다
             // 필수라 한쪽만 실으면 422 이고, 애초에 하나로는 비교가 성립하지 않는다.
             gait?.let {
-                put("requested_capability", "gait")
+                if (it.explicit) put("requested_capability", "gait")
                 put(
                     "gait_compare",
                     JSONObject()
