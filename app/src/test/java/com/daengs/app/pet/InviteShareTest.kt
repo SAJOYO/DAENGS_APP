@@ -25,35 +25,38 @@ class InviteShareTest {
     }
 
     /**
-     * **누르라고 하면 안 된다.** App Links 가 없어 링크를 누르면 브라우저가 빈 페이지를
-     * 연다. 받는 사람이 거기서 멈추면 초대가 그대로 죽는다.
+     * **누르는 길과 붙여넣는 길을 둘 다 준다.** App Links 로 설치된 앱은 링크를 누르면
+     * 초대가 열리지만, 카카오톡 안의 브라우저나 옛 버전 앱에서는 안 열린다. 붙여넣기 대안이
+     * 빠지면 받는 사람이 거기서 멈춘다.
      */
     @Test
-    fun `링크를 누르라고 안내하지 않는다`() {
+    fun `링크를 누르는 길과 안 열릴 때 붙여넣는 길을 함께 안내한다`() {
         val message = InviteShare.message("네옹", link)
 
-        assertFalse(message.contains("링크를 눌러 "))
-        assertFalse(message.contains("눌러 참여"))
-        assertFalse(message.contains("클릭"))
-        assertFalse(message.contains("접속"))
-        assertTrue("대신 붙여넣기를 안내한다", message.contains("붙여넣"))
+        assertTrue("링크를 누르면 앱에서 열 수 있다고 안내한다", message.contains("아래 링크를 누르면 앱에서 초대를 열 수 있어요"))
+        assertTrue("안 열리면 붙여넣으라고 안내한다", message.contains("앱이 열리지 않으면"))
+        assertTrue(message.contains("붙여넣"))
+        assertFalse("옛 문구가 남아 있다", message.contains("링크를 눌러도 열리지 않아요"))
+        assertFalse("반드시 열린다고 약속하지 않는다", message.contains("반드시"))
     }
 
     /** 받는 사람이 앱을 깔고 어디로 가야 하는지까지 문구가 데려다줘야 한다. */
     @Test
-    fun `설치부터 붙여넣기까지 순서대로 안내한다`() {
+    fun `설치부터 링크 누르기와 붙여넣기까지 순서대로 안내한다`() {
         val message = InviteShare.message("네옹", link)
 
         val install = message.indexOf("설치")
         val login = message.indexOf("카카오로 로그인")
+        val tap = message.indexOf("아래 링크를 누르면")
         val entry = message.indexOf("「받은 초대 링크 넣기」")
-        val paste = message.indexOf("복사해 붙여넣어")
+        val paste = message.indexOf("붙여넣어")
 
         assertTrue("설치 안내가 있어야 한다", install >= 0)
         assertTrue("카카오 로그인 안내가 있어야 한다", login >= 0)
+        assertTrue("링크 누르기 안내가 있어야 한다", tap >= 0)
         assertTrue("앱 안의 진입점 이름을 그대로 불러 줘야 한다", entry >= 0)
         assertTrue("붙여넣기 안내가 있어야 한다", paste >= 0)
-        assertTrue("설치·로그인 → 진입점 → 붙여넣기 순서", install < entry && entry < paste)
+        assertTrue("설치·로그인 → 링크 누르기 → 진입점·붙여넣기 순서", login < tap && tap < entry && entry < paste)
         assertTrue("메시지 전체를 붙여넣어도 된다고 알려 준다", message.contains("메시지 전체"))
     }
 
