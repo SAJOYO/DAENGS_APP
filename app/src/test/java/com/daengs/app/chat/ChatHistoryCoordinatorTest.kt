@@ -105,13 +105,13 @@ class ChatHistoryCoordinatorTest {
             coordinator.send(
                 TOKEN,
                 "이 변화가 무슨 뜻이에요?",
-                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old"),
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = false),
             ),
         )
         advanceUntilIdle()
 
         val call = gateway.sendCalls.single()
-        assertEquals(GaitFollowUp(recentId = "rec-new", pastId = "rec-old"), call.gait)
+        assertEquals(GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = false), call.gait)
         // 피부와 보행은 같이 오지 않는다 — 각자 자기 말풍선 아래 칩에서만 만들어진다.
         assertEquals(null, call.screening)
     }
