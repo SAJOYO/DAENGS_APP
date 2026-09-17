@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -35,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -192,30 +194,43 @@ private fun StateLine(text: String, tag: String, tint: Color = TextMuted) {
 
 @Composable
 private fun MemberRow(member: PetMember, isMe: Boolean, onRemove: (() -> Unit)?) {
-    Surface(color = CardWhite, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        color = CardWhite,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().testTag("member-${member.appUserId}"),
+    ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            // **줄 높이를 「내보내기」 버튼 높이에 맞춰 둔다.** 버튼에는 누르기 좋게 위아래
+            // 여백이 있어, 안 맞추면 버튼이 있는 줄만 조금 높아져 목록이 들쭉날쭉해 보였다.
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp).heightIn(min = 32.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        // **이름이 없다고 "이전 보호자" 로 그리지 않는다.** 이 목록에 실리는
-                        // 사람은 전부 지금 구성원이라, 그 말은 케어 기록 쪽 규칙이고 여기서는 틀리다.
-                        member.nickname ?: "이름을 확인할 수 없는 보호자",
-                        color = TextDark,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    if (isMe) {
-                        Spacer(Modifier.width(6.dp))
-                        Text("나", color = DaengPink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+            // **사람에 붙은 것(이름 · 나 · 역할)은 한 덩어리로 왼쪽에 모은다.** 역할 배지를
+            // 오른쪽 끝에 두면 「내보내기」가 있는 줄만 배지가 안쪽으로 밀려, 줄마다 배지
+            // 자리가 달라 보였다. 오른쪽 끝은 **동작 하나만** 쓴다.
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    // **이름이 없다고 "이전 보호자" 로 그리지 않는다.** 이 목록에 실리는
+                    // 사람은 전부 지금 구성원이라, 그 말은 케어 기록 쪽 규칙이고 여기서는 틀리다.
+                    member.nickname ?: "이름을 확인할 수 없는 보호자",
+                    color = TextDark,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    // 긴 이름은 **이름만** 줄인다 — 배지와 「내보내기」는 늘 보여야 한다.
+                    // `fill = false` 라 짧은 이름 뒤에 빈칸이 생기지 않고 배지가 바로 붙는다.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).testTag("member-name-${member.appUserId}"),
+                )
+                if (isMe) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("나", color = DaengPink, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                 }
+                Spacer(Modifier.width(8.dp))
+                RoleBadge(isOwner = member.isOwner, modifier = Modifier.testTag("role-${member.appUserId}"))
             }
-            RoleBadge(isOwner = member.isOwner)
             onRemove?.let {
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(8.dp))
                 // 되돌리기 어려운 쪽이라 빨강이다. 누르면 바로 나가지 않고 한 번 더 묻는다.
                 DaengsTextAction(
                     "내보내기",
@@ -229,8 +244,8 @@ private fun MemberRow(member: PetMember, isMe: Boolean, onRemove: (() -> Unit)?)
 }
 
 @Composable
-private fun RoleBadge(isOwner: Boolean) {
-    Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp)) {
+private fun RoleBadge(isOwner: Boolean, modifier: Modifier = Modifier) {
+    Surface(color = PinkFaint, shape = RoundedCornerShape(8.dp), modifier = modifier) {
         Text(
             // **역할 이름을 강아지의 「대표」와 다르게 쓴다.** 카드의 「대표」는 대표 강아지라
             // 뜻이 아예 다른데, 같은 두 글자가 두 화면에 있으면 같은 것으로 읽힌다.
@@ -238,6 +253,8 @@ private fun RoleBadge(isOwner: Boolean) {
             color = DaengPinkDeep,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }
@@ -354,7 +371,8 @@ private fun ConfirmDialog(
     }
 }
 
-@Preview
+/** 배지는 이름 바로 뒤, 「내보내기」는 오른쪽 끝 — 긴 이름은 이름만 줄어든다. */
+@Preview(widthDp = 360)
 @Composable
 private fun PetMembersOwnerPreview() {
     DaengsTheme {
@@ -363,6 +381,7 @@ private fun PetMembersOwnerPreview() {
                 PetMember("u1", "아빠", isOwner = true),
                 PetMember("u2", "나연", isOwner = false),
                 PetMember("u3", null, isOwner = false),
+                PetMember("u4", "이름이아주아주길어서한줄에다안들어가는보호자", isOwner = false),
             ),
             petName = "네옹",
             currentUserId = "u1",
