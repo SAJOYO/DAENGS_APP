@@ -14,7 +14,8 @@ import org.json.JSONArray
 import java.util.UUID
 
 typealias AssistantQuery =
-    suspend (String, String, GeoPoint?, String?, ChatPersistence?, ScreeningFollowUp?) -> Result<AssistantResponse>
+    suspend (String, String, GeoPoint?, String?, ChatPersistence?, ScreeningFollowUp?, GaitFollowUp?)
+    -> Result<AssistantResponse>
 
 data class FacilityAssistantReference(
     val sessionId: String, val revision: Int, val requestId: String, val answer: String,

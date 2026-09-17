@@ -21,10 +21,22 @@ data class VetReasonOption(val code: String, val label: String) {
     }
 }
 
-/** 영수증에서 읽은 진료 항목 한 줄. 화면에 보이기만 하고 확정 본문으로 안 간다. */
-data class ReceiptItem(val name: String, val amountKrw: Int) {
+/**
+ * 영수증에서 읽은 진료 항목 한 줄. 항목 자체는 확정 본문으로 안 간다 — 저쪽이 초안에서만
+ * 읽는다.
+ *
+ * ⚠️ [patientIndex] 는 **몇 번째 `동물명` 블록에서 나온 항목인가**다. 아이별 분할이
+ *    제안하는 금액이 이 값으로 묶어 더한 합이라, 여기가 비면 분할이 아무것도 제안하지
+ *    못한다. **모르는 것(`null`)을 0 으로 접지 말 것** — 어느 아이 것인지 모르는 항목을
+ *    첫째 아이에게 붙이는 셈이 된다.
+ */
+data class ReceiptItem(val name: String, val amountKrw: Int, val patientIndex: Int? = null) {
     companion object {
-        fun parse(json: JSONObject) = ReceiptItem(json.getString("name"), json.getInt("amount_krw"))
+        fun parse(json: JSONObject) = ReceiptItem(
+            json.getString("name"),
+            json.getInt("amount_krw"),
+            if (json.isNull("patient_index")) null else json.optInt("patient_index"),
+        )
     }
 }
 
@@ -87,6 +99,17 @@ data class VetVisitDraft(
     val hospitalPhone: String?,
     val items: List<ReceiptItem>,
     /**
+     * 영수증에서 센 `동물명` 블록의 수. **1 이면 분할을 아예 묻지 않는다.**
+     *
+     * ⚠️ **칸이 없으면 1 이다.** 저쪽 DAENGS_dev#562 전의 서버는 이 칸을 안 싣는데,
+     *    그때 0 이나 null 로 두면 분할 자리가 깨진 모양으로 뜬다 — 안 묻는 쪽이 맞다.
+     *
+     * ⚠️ **"의심되면 높은 쪽"으로 온다** (저쪽 docs §2). 보호자명·수의사명을 동물명으로
+     *    잘못 읽으면 2 가 오고 실제로는 한 마리다. 그래서 유저가 분할을 **끄고** 한
+     *    아이로 확정할 수 있어야 한다.
+     */
+    val patientCount: Int,
+    /**
      * 기계의 제안. **믿을 만하지 않다** — 같은 영수증 3회에 `vaccination` 1 / `skin` 2 가
      * 나왔다(정답은 `vaccination`). 미리 고르기만 하고, 드롭다운은 장식이 아니어야 한다.
      * `null` 이면 아무것도 미리 안 고른다.
@@ -119,10 +142,49 @@ data class VetVisitDraft(
             hospitalAddress = json.optStringOrNull("hospital_address"),
             hospitalPhone = json.optStringOrNull("hospital_phone"),
             items = json.optJSONArray("items").toObjectList(ReceiptItem::parse),
+            patientCount = json.optInt("patient_count", 1).coerceAtLeast(1),
             suggestedReasonCode = json.optStringOrNull("suggested_reason_code"),
             isEmergency = json.optBoolean("is_emergency"),
             possibleDuplicate = json.optBoolean("possible_duplicate"),
             reasonOptions = json.optJSONArray("reason_options").toObjectList(VetReasonOption::parse),
+        )
+    }
+}
+
+/**
+ * 목록 한 쪽 = **조회된 창과 그 안의 기록들** (`VetVisitListResponse`).
+ *
+ * 창을 목록과 **같은 칸에** 담는 이유가 있다. 둘을 나란한 두 칸으로 두면 새 목록 옆에
+ * 옛 창이 남는 순간이 생기고, 그때 안내가 **틀린 날짜**를 말한다 — 안내가 없는 것보다
+ * 나쁘다. 함께 오는 값이니 함께 둔다.
+ */
+data class VetVisitPage(
+    /**
+     * 실제로 조회된 창. **기기 시간대로 다시 환산하지 말 것** — 저쪽이 `Asia/Seoul` 로
+     * 정해 보낸 날짜다 (PR #416 「알아 둘 것」).
+     *
+     * ⚠️ **`null` 을 허용한 것은 실수가 아니다.** 안내는 [olderCount] 가 0 보다 클 때만
+     *    그리므로 창이 없으면 읽을 일이 없는데, `getString` 으로 받으면 **읽을 일이 없는
+     *    바로 그 경우에 파싱이 터져** 목록 전체가 안 보인다. 못 그리는 것과 못 보는 것은
+     *    다르다.
+     */
+    val start: LocalDate?,
+    val end: LocalDate?,
+    /**
+     * [start] 보다 오래된 기록 수. **0 이면 아무것도 띄우지 않는다.**
+     *
+     * 이 칸이 있는 이유가 그것뿐이다. 안내를 늘 띄우면 기록이 1년 안에만 있는 대부분의
+     * 화면에서 그냥 소음이고, **소음이 되면 정작 감춰진 게 있을 때도 안 읽힌다.**
+     */
+    val olderCount: Int,
+    val visits: List<VetVisit>,
+) {
+    companion object {
+        fun parse(json: JSONObject): VetVisitPage = VetVisitPage(
+            start = json.optLocalDate("start"),
+            end = json.optLocalDate("end"),
+            olderCount = json.optInt("older_count", 0).coerceAtLeast(0),
+            visits = json.optJSONArray("visits").toObjectList(VetVisit::parse),
         )
     }
 }
@@ -161,30 +223,65 @@ data class VetVisit(
 }
 
 /**
- * 유저가 [확인] 을 누른 값. **여기 실린 것만 기록이 된다** — 항목(`raw_ocr_items`)은
- * 저쪽이 초안에서만 읽으므로 이 본문에 자리가 없다 (docs §3).
+ * 확정될 기록 한 줄 = **아이 하나** (`VetVisitSplit`).
+ *
+ * ⚠️ **[clientEventId] 는 행마다 하나씩이고, 재시도 때 같은 값을 보낸다.** 저쪽의 멱등
+ *    키가 행 단위라(`UNIQUE (app_user_id, client_event_id)`), 재시도에 새 uuid 를 만들면
+ *    **기록이 두 벌 생긴다.** 반대로 같은 값이면 먼저 저장된 것이 그대로 돌아온다 —
+ *    내용이 달라도 먼저 온 것이 남는다.
+ *
+ * ⚠️ **[patientIndex] 를 접지 말 것.** `null` 이면 저쪽이 이 행에 항목을 하나도 안 넣는데,
+ *    그게 일부러 그렇게 한 것이다 — 어느 아이 것인지 모르는 항목을 아무 아이에게나 붙이면
+ *    OCR 학습 데이터가 틀린다. 그러니 **모를 때는 0 이 아니라 `null` 이 맞다.**
+ *
+ * [petId] 를 안 주면 저쪽이 초안을 만들 때 고른 강아지를 쓴다.
  */
-data class VetVisitConfirmation(
+data class VetVisitSplit(
     val clientEventId: String,
+    val petId: String?,
     val reasonCode: String,
     val reasonDetail: String?,
+    /** 이 아이 몫. **행들의 합이 영수증 총액과 다르면 422 다.** */
+    val totalKrw: Int,
+    val isEmergency: Boolean,
+    val isOncology: Boolean,
+    val patientIndex: Int?,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("client_event_id", clientEventId)
+        .put("reason_code", reasonCode)
+        .put("total_krw", totalKrw)
+        .put("is_emergency", isEmergency)
+        .put("is_oncology", isOncology)
+        .putIfPresent("pet_id", petId)
+        .putIfPresent("reason_detail", reasonDetail)
+        .putIfPresent("patient_index", patientIndex)
+}
+
+/**
+ * 유저가 [확인] 을 누른 값. **여기 실린 것만 기록이 된다** — 항목(`raw_ocr_items`)은
+ * 저쪽이 초안에서만 읽으므로 이 본문에 자리가 없다 (docs §3).
+ *
+ * 날짜·총액·병원은 **영수증 단위**라 아이마다 같고, 나머지는 [splits] 안에 아이마다 있다.
+ * [totalKrw] 는 영수증에 인쇄된 총액이고 저쪽이 `splits` 의 합과 대조한다.
+ *
+ * ⚠️ **[splits] 는 언제나 있고 길이가 1 이상이다.** 한 마리는 특수 케이스가 아니라
+ *    `splits.size == 1` 이다 — 옛 평평한 본문은 저쪽에서 한시적 호환일 뿐이고, 이 앱이
+ *    깔리면 지워진다.
+ */
+data class VetVisitConfirmation(
     val visitedOn: LocalDate,
     val totalKrw: Int,
     val hospitalName: String?,
     val hospitalAddress: String?,
     val hospitalPhone: String?,
-    val isEmergency: Boolean,
-    val isOncology: Boolean,
+    val splits: List<VetVisitSplit>,
 ) {
     /** **빈 칸은 아예 안 보낸다.** 빈 문자열을 보내면 저쪽 패턴 검사가 422 를 낸다. */
     fun toJson(): JSONObject = JSONObject()
-        .put("client_event_id", clientEventId)
-        .put("reason_code", reasonCode)
         .put("visited_on", visitedOn.toString())
         .put("total_krw", totalKrw)
-        .put("is_emergency", isEmergency)
-        .put("is_oncology", isOncology)
-        .putIfPresent("reason_detail", reasonDetail)
+        .put("splits", JSONArray(splits.map { it.toJson() }))
         .putIfPresent("hospital_name", hospitalName)
         .putIfPresent("hospital_address", hospitalAddress)
         .putIfPresent("hospital_phone", hospitalPhone)
@@ -230,8 +327,16 @@ const val MAX_TOTAL_KRW = 100_000_000
 private fun JSONObject.optStringOrNull(key: String): String? =
     if (isNull(key)) null else optString(key).ifBlank { null }
 
+/** 못 읽으면 `null`. 안 오는 날짜가 목록을 통째로 막지 않게 하는 자리에서만 쓴다. */
+private fun JSONObject.optLocalDate(key: String): LocalDate? =
+    optStringOrNull(key)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
 private fun <T> JSONArray?.toObjectList(parse: (JSONObject) -> T): List<T> =
     List(this?.length() ?: 0) { parse(this!!.getJSONObject(it)) }
 
 private fun JSONObject.putIfPresent(key: String, value: String?): JSONObject =
     if (value.isNullOrBlank()) this else put(key, value.trim())
+
+/** 모르는 값은 **칸째로 뺀다.** `null` 을 실어 보내는 것과 안 보내는 것은 저쪽에서 같다. */
+private fun JSONObject.putIfPresent(key: String, value: Int?): JSONObject =
+    if (value == null) this else put(key, value)

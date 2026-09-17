@@ -101,4 +101,148 @@ class PetMemberHolderTest {
         slow.complete(Result.success(list("p2")))
         pending.await()
     }
+
+    // -- 내보내기 / 나가기 -----------------------------------------------------------
+
+    /**
+     * **줄을 먼저 지우지 않는다.** 서버가 막으면 되살려야 하는데, 그 사이 다른 기기에서
+     * 명단이 바뀌었을 수 있어 되살린 것이 진짜인지 알 수 없다 — 성공한 뒤 다시 받는다.
+     */
+    @Test
+    fun `내보내면 목록을 서버에서 다시 받는다`() = runTest {
+        val owner = PetMember("u1", "아빠", isOwner = true)
+        val carer = PetMember("u2", "가연", isOwner = false)
+        var loads = 0
+        var asked: Triple<String, String, String>? = null
+        val holder = PetMemberHolder(
+            removeMember = { token, petId, target ->
+                asked = Triple(token, petId, target)
+                Result.success(Unit)
+            },
+            listMembers = { _, petId ->
+                loads++
+                Result.success(if (loads == 1) list(petId, owner, carer) else list(petId, owner))
+            },
+        )
+        assertTrue(holder.load("token", "display-1"))
+
+        assertTrue(holder.remove("token", "display-1", "u2"))
+
+        assertEquals(Triple("token", "display-1", "u2"), asked)
+        assertEquals(listOf(owner), holder.members)
+        assertNull(holder.actionError)
+        assertFalse(holder.actionBusy)
+    }
+
+    @Test
+    fun `내보내기에 실패하면 목록이 그대로 남고 이유만 남는다`() = runTest {
+        val owner = PetMember("u1", "아빠", isOwner = true)
+        val carer = PetMember("u2", "가연", isOwner = false)
+        val holder = PetMemberHolder(
+            removeMember = { _, _, _ -> Result.failure(IllegalStateException("주보호자만 내보낼 수 있습니다.")) },
+            listMembers = { _, petId -> Result.success(list(petId, owner, carer)) },
+        )
+        holder.load("token", "p1")
+
+        assertFalse(holder.remove("token", "p1", "u2"))
+
+        assertEquals("목록을 건드리면 안 된다", listOf(owner, carer), holder.members)
+        assertEquals("주보호자만 내보낼 수 있습니다.", holder.actionError)
+        assertNull("목록 오류 자리를 쓰지 않는다", holder.error)
+    }
+
+    /**
+     * 나가고 나면 그 아이에 권한이 없다. 목록을 다시 받으면 404 라, 방금 성공한 일이
+     * 화면에서 실패로 보인다.
+     */
+    @Test
+    fun `나가면 목록을 다시 받지 않고 들고 있던 것을 버린다`() = runTest {
+        var loads = 0
+        val holder = PetMemberHolder(
+            removeMember = { _, _, _ -> Result.success(Unit) },
+            listMembers = { _, petId ->
+                loads++
+                Result.success(list(petId, PetMember("me", "나", isOwner = false)))
+            },
+        )
+        holder.load("token", "p1")
+        assertEquals(1, loads)
+
+        assertTrue(holder.leave("token", "p1", "me"))
+
+        assertEquals("나간 뒤에 다시 읽으면 404 다", 1, loads)
+        assertNull(holder.members)
+        assertNull(holder.petId)
+    }
+
+    @Test
+    fun `나가기에 실패하면 목록이 그대로 있다`() = runTest {
+        val me = PetMember("me", "나", isOwner = false)
+        val holder = PetMemberHolder(
+            removeMember = { _, _, _ -> Result.failure(IllegalStateException("서버에 닿지 못했어요.")) },
+            listMembers = { _, petId -> Result.success(list(petId, me)) },
+        )
+        holder.load("token", "p1")
+
+        assertFalse(holder.leave("token", "p1", "me"))
+
+        assertEquals(listOf(me), holder.members)
+        assertEquals("서버에 닿지 못했어요.", holder.actionError)
+    }
+
+    /** 확인 창을 닫고 버튼을 다시 눌러도 같은 사람을 두 번 빼는 요청이 나가면 안 된다. */
+    @Test
+    fun `진행 중에는 두 번째 요청을 안 보낸다`() = runTest {
+        val slow = CompletableDeferred<Result<Unit>>()
+        var calls = 0
+        val holder = PetMemberHolder(
+            removeMember = { _, _, _ ->
+                calls++
+                slow.await()
+            },
+            listMembers = { _, petId -> Result.success(list(petId)) },
+        )
+
+        val pending = async { holder.remove("token", "p1", "u2") }
+        runCurrent()
+        assertFalse("도는 중에는 거절한다", holder.remove("token", "p1", "u2"))
+        slow.complete(Result.success(Unit))
+        pending.await()
+
+        assertEquals(1, calls)
+    }
+
+    /** 화면을 닫았다 다시 들어오면 지난 실패 문구가 새 목록 밑에 남아 있으면 안 된다. */
+    @Test
+    fun `다시 조회하면 지난 실패 문구가 지워진다`() {
+        val me = PetMember("me", "나", isOwner = false)
+        val holder = PetMemberHolder(
+            removeMember = { _, _, _ -> Result.failure(IllegalStateException("안 돼요")) },
+            listMembers = { _, petId -> Result.success(list(petId, me)) },
+        )
+        runTest {
+            holder.load("token", "p1")
+            assertFalse(holder.remove("token", "p1", "u2"))
+            assertEquals("안 돼요", holder.actionError)
+
+            holder.load("token", "p1")
+
+            assertNull(holder.actionError)
+        }
+    }
+
+    /** 로그아웃하면 실패 자국도 같이 지운다 — 다음 사람이 남의 오류를 본다. */
+    @Test
+    fun `잊으면 동작 오류도 지운다`() = runTest {
+        val holder = PetMemberHolder(
+            removeMember = { _, _, _ -> Result.failure(IllegalStateException("안 돼요")) },
+            listMembers = { _, petId -> Result.success(list(petId)) },
+        )
+        holder.remove("token", "p1", "u2")
+        assertEquals("안 돼요", holder.actionError)
+
+        holder.forget()
+
+        assertNull(holder.actionError)
+    }
 }

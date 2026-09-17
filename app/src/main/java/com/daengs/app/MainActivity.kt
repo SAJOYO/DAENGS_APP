@@ -66,6 +66,7 @@ import com.daengs.app.ui.dogcard.DrawDog
 import com.daengs.app.ui.dogcard.birthCode
 import com.daengs.app.dogcard.makeDevCard
 import com.daengs.app.pet.Pet
+import com.daengs.app.pet.PetMember
 import com.daengs.app.ui.startup.LoadingScreen
 import com.daengs.app.ui.startup.StartupTarget
 import com.daengs.app.ui.startup.SessionRestore
@@ -106,6 +107,9 @@ import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
+import com.daengs.app.ui.storage.dial
+import com.daengs.app.ui.storage.VetVisitsScreen
+import com.daengs.app.care.VetRange
 import com.daengs.app.ui.walk.records.WalkRecordsRoute
 import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.ui.walk.WalkOrientation
@@ -150,6 +154,13 @@ private enum class Screen {
     WalkDetail,
     /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
     ScreeningHistory,
+    /**
+     * 진료비 전체보기. 저장소 탭의 요약 카드에서 들어온다.
+     *
+     * **모달이 아니라 화면이다** — 안에 목록·기간 필터·삭제가 다 들어가서, 모달로
+     * 만들면 그 위에 삭제 되묻기와 기간 시트가 겹치고 뒤로가기가 꼬인다 (APP#416).
+     */
+    VetVisits,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -297,16 +308,21 @@ class MainActivity : ComponentActivity() {
                 // Chat 과 Storage 를 오가도 서버에서 고른 대화와 요약 결과를 잃지 않는다.
                 // 토큰은 넣어 두지 않고 매 동작마다 아래 freshToken 경계를 지난다.
                 val facilityAssistantQuery: com.daengs.app.assistant.AssistantQuery = remember(app) {
-                    // 피부 판정 이어 묻기(백엔드 D-079)는 장소 문맥과 무관해서 시설 대화를 거치지 않는다.
-                    if (BuildConfig.FACILITY_CONVERSATION) { token, text, where, dog, persistence, screening ->
-                        if (screening != null) {
-                            com.daengs.app.assistant.AssistantApi.query(token, text, where, dog, persistence, screening = screening)
+                    // 피부 판정(D-079) · 보행 비교(D-080) 이어 묻기는 장소 문맥과 무관해서
+                    // 시설 대화를 거치지 않는다.
+                    if (BuildConfig.FACILITY_CONVERSATION) { token, text, where, dog, persistence, screening, gait ->
+                        if (screening != null || gait != null) {
+                            com.daengs.app.assistant.AssistantApi.query(
+                                token, text, where, dog, persistence, screening = screening, gait = gait,
+                            )
                         } else {
                             app.facilityAssistant.query(token, text, where, dog, persistence)
                         }
                     }
-                    else { token, text, where, dog, persistence, screening ->
-                        com.daengs.app.assistant.AssistantApi.query(token, text, where, dog, persistence, screening = screening)
+                    else { token, text, where, dog, persistence, screening, gait ->
+                        com.daengs.app.assistant.AssistantApi.query(
+                            token, text, where, dog, persistence, screening = screening, gait = gait,
+                        )
                     }
                 }
                 val chatHistory = remember(scope) { ChatHistoryCoordinator(scope,
@@ -880,21 +896,39 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    Screen.Onboarding -> PetFormScreen(
+                    Screen.Onboarding -> {
+                    // **이름만 고칠 수 있는 사람이 있다.** 자기 행을 가졌지만 그룹
+                    // 주보호자는 남인 경우(연결한 공동 보호자)라, 그 사람의 저장은 전체
+                    // PUT 이 아니라 `PATCH /app/pets/{id}/display` 로 나간다 — 그 길은
+                    // 서버가 409 로 막고, 뚫리더라도 주보호자의 공통 정보를 덮어쓴다.
+                    val nameOnly = editing?.let { it.isOwner && !it.isGroupOwner } == true
+                    PetFormScreen(
                         initial = editing,
-                        busy = pets.busy,
-                        error = pets.error,
+                        // 이름만 바꾸는 사람은 **다른 진행·오류 값**을 본다. 전체 수정과
+                        // 한 값을 쓰면 삭제나 목록 오류가 이 화면에 뜬다.
+                        busy = if (nameOnly) pets.renameBusy else pets.busy,
+                        error = if (nameOnly) pets.renameError else pets.error,
+                        // 이름·사진은 **자기 행**이면 된다. 공통 정보는 그룹 주보호자만이다.
+                        // 새로 등록할 때는 둘 다 나다.
+                        canEditIdentity = editing?.isOwner != false,
+                        canEditCommon = editing?.isGroupOwner != false,
                         // **첫 등록에도 취소가 있다.** 예전에는 강아지가 없으면 이 손잡이를
                         // 없앴다 — "강아지 없이 갈 곳이 없다" 는 이유였는데, 이제 빈 방이
                         // 갈 곳이다. 빠져나갈 수 없는 화면이 첫 진입 이탈의 큰 몫이었다.
-                        onCancel = { pets.clearError(); editing = null; screen = Screen.Home },
+                        onCancel = {
+                            pets.clearError()
+                            pets.clearRenameError()
+                            editing = null
+                            screen = Screen.Home
+                        },
                         // 첫 등록일 때만 — 고치기로 들어온 사람에게는 초대받기가 할 말이 아니다.
                         onAcceptInvite = if (editing == null) {
                             { pets.clearError(); screen = Screen.Home; inviteEntry.openManually() }
                         } else null,
                         // 고치기로 들어왔으면 이미 올려 둔 사진을 보여 준다.
                         photo = editing?.let { petPhotos[it.id] },
-                        onClearPhoto = editing?.let { pet ->
+                        // 사진도 자기 행의 값이다 — 연결한 공동 보호자는 자기 목록에서 지운다.
+                        onClearPhoto = editing?.takeIf(Pet::isOwner)?.let { pet ->
                             { scope.launch { petPhotos.clear(pet.id, freshToken()) } }
                         },
                         onSubmit = { draft, photo ->
@@ -904,10 +938,15 @@ class MainActivity : ComponentActivity() {
                                 // 새로 등록하면 id 를 서버가 만든다. 목록을 다시 받은
                                 // 뒤에 **늘어난 하나**를 찾아야 사진을 걸 자리를 안다.
                                 val before = pets.pets.orEmpty().map { it.id }.toSet()
-                                val ok = if (target == null) {
-                                    pets.add(token, draft)
-                                } else {
-                                    pets.edit(token, target.id, draft)
+                                val ok = when {
+                                    target == null -> pets.add(token, draft)
+                                    // 그룹 주보호자 — 예전 그대로 전체 PUT 이다.
+                                    target.isGroupOwner -> pets.edit(token, target.id, draft)
+                                    // 연결한 공동 보호자 — **이름만** 나간다. 사진은 아래에서
+                                    // 따로 올라간다 (행의 대표면 서버가 받는다).
+                                    target.isOwner -> pets.rename(token, target.id, draft.name)
+                                    // 여기 올 수 없다 — 읽기만 하는 사람에게는 저장 자리가 없다.
+                                    else -> false
                                 }
                                 if (ok) {
                                     if (photo != null) {
@@ -924,6 +963,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                     )
+                    }
 
                     // 배웅과 사진 고르기는 **마이 위에 덮인다.** 화면을 늘리지 않는 것은
                     // 확대 뷰나 뽑기와 같은 결이고, 마이에서 들어와 마이로 돌아와야 하기
@@ -1093,16 +1133,48 @@ class MainActivity : ComponentActivity() {
                             petMembers.load(token, pet.id)
                         }
                         val members = petMembers.members.takeIf { petMembers.petId == pet.id }
+                        val me = session?.appUserId
                         PetMembersScreen(
                             members = members,
                             petName = pet.name,
-                            currentUserId = session?.appUserId,
+                            currentUserId = me,
                             busy = petMembers.busy,
                             error = petMembers.error,
-                            // **그룹 주보호자에게만 넘긴다** — null 이면 그 줄 자체가 안 뜬다.
-                            // 연결된 아이에서는 `isOwner` 가 참이어도 그룹 주보호자는
-                            // 초대한 쪽이라, 그 기준으로 열면 눌러 봐야 서버가 막는다.
+                            // **그룹 주보호자인지로 가른다.** 연결된 아이에서는 `isOwner` 가
+                            // 참이어도 그룹 주보호자는 초대한 쪽이라, 그 기준으로 열면 눌러
+                            // 봐야 서버가 막는다.
+                            isGroupOwner = pet.isGroupOwner,
+                            actionBusy = petMembers.actionBusy,
+                            actionError = petMembers.actionError,
                             onOpenInvites = { invitingFor = pet }.takeIf { pet.isGroupOwner },
+                            // **카드가 들고 있는 표시 행 id 를 쓴다** — 목록을 받아 온 것과
+                            // 같은 값이라야 방금 본 명단에서 뺀 사람이 그 명단에서 빠진다.
+                            onRemove = if (pet.isGroupOwner) {
+                                { member: PetMember ->
+                                    scope.launch {
+                                        val token = freshToken() ?: return@launch
+                                        // 성공하면 홀더가 목록을 다시 받는다. 강아지 목록도
+                                        // 같이 받는다 — 마지막 돌보미를 내보내면 카드의
+                                        // 「공동 돌봄」 뱃지가 빠져야 한다.
+                                        if (petMembers.remove(token, pet.id, member.appUserId)) {
+                                            pets.refresh(token)
+                                        }
+                                    }
+                                }
+                            } else null,
+                            // 나가면 그 아이가 내 목록에서 사라진다. **화면부터 닫는다** —
+                            // 남아 있으면 권한이 없어진 아이의 보호자 목록을 다시 읽는다.
+                            onLeave = if (!pet.isGroupOwner && me != null) {
+                                {
+                                    scope.launch {
+                                        val token = freshToken() ?: return@launch
+                                        if (petMembers.leave(token, pet.id, me)) {
+                                            membersFor = null
+                                            pets.refresh(token)
+                                        }
+                                    }
+                                }
+                            } else null,
                             onBack = { membersFor = null },
                         )
                     } else HomeScreen(
@@ -1124,6 +1196,7 @@ class MainActivity : ComponentActivity() {
                         storageContent = { storageModifier ->
                             ChatSummaryRoute(
                                 petId = pets.primary?.id.takeIf { session != null },
+                                pets = if (session != null) pets.pets.orEmpty() else emptyList(),
                                 historyState = chatHistoryState,
                                 coordinator = chatSummaries,
                                 careCoordinator = careLog,
@@ -1142,6 +1215,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                onOpenVetVisits = { screen = Screen.VetVisits },
                                 modifier = storageModifier,
                                 currentUserId = session?.appUserId,
                                 // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
@@ -1210,23 +1284,15 @@ class MainActivity : ComponentActivity() {
                         onPickDevPets = { devPetCount = it },
                         canAddMore = pets.canAddMore,
                         onAddPet = { editing = null; screen = Screen.Onboarding },
-                        onEditPet = { pet -> if (pet.isGroupOwner) { editing = pet; screen = Screen.Onboarding } },
+                        // **역할을 안 본다.** 프로필은 누구나 연다 — 무엇을 고칠 수 있는지는
+                        // 그 화면이 권한 깃발로 가른다 (`PetFormScreen`). 예전에는 여기서
+                        // 막아서, 함께 돌보는 아이의 생일·먹는 약을 볼 길이 아예 없었다.
+                        onEditPet = { pet -> editing = pet; screen = Screen.Onboarding },
                         // 배웅은 전체 PUT 으로 나간다 — 수정과 같은 기준으로 가린다.
                         onFarewell = { pet -> if (pet.isGroupOwner) farewell = pet },
                         // **소유 여부를 안 본다.** 프로필 수정과 달리 돌보미도 들어간다.
                         onOpenMembers = { pet -> membersFor = pet },
                         onAcceptInvite = { inviteEntry.openManually() },
-                        // **이름만.** 전체 PUT(`pets.edit`)으로 돌아가지 않는다 — 연결된 아이에서
-                        // 그 길은 서버가 409 로 막고, 뚫리더라도 공통 정보를 덮어쓴다.
-                        onRenamePet = { pet, name ->
-                            scope.launch {
-                                val token = freshToken() ?: return@launch
-                                pets.rename(token, pet.id, name)
-                            }
-                        },
-                        renamePetBusy = pets.renameBusy,
-                        renamePetError = pets.renameError,
-                        onDismissRenamePet = { pets.clearRenameError() },
                         farewellOf = { it.farewellOn },
                         onPickPrimary = { pet ->
                             scope.launch {
@@ -1389,6 +1455,31 @@ class MainActivity : ComponentActivity() {
                         // 했어도 진단은 할 수 있어서 그 기록이 남아 있다.
                         petId = pets.primary?.id,
                     )
+
+                    Screen.VetVisits -> {
+                        val vetState by vetVisits.state.collectAsState()
+                        VetVisitsScreen(
+                            state = vetState,
+                            // **KST 의 오늘.** 기간 프리셋과 서버의 창이 같은 날을 봐야 한다.
+                            today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")),
+                            // 저장소 탭으로 돌아간다. `homeTab` 은 따로 살아 있어 탭이 유지된다.
+                            // **기본 창으로 다시 읽는다** — 여기서 「2024년」을 보다 나가면
+                            // 요약 카드의 "이번 달" 이 그 창을 세게 된다.
+                            onBack = {
+                                screen = Screen.Home
+                                scope.launch { freshToken()?.let { vetVisits.load(it, VetRange.RecentYear) } }
+                            },
+                            onSelectRange = { range ->
+                                scope.launch { freshToken()?.let { vetVisits.load(it, range) } }
+                            },
+                            onRetryLoad = { scope.launch { freshToken()?.let { vetVisits.load(it) } } },
+                            onConfirmDelete = { visit ->
+                                scope.launch { freshToken()?.let { vetVisits.delete(it, visit.id) } }
+                            },
+                            onCallHospital = { phone -> dial(context, phone) },
+                            onDismissError = { vetVisits.clearErrors() },
+                        )
+                    }
 
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },

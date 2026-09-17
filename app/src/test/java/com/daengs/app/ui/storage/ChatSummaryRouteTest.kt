@@ -15,6 +15,8 @@ import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetReasonOption
 import com.daengs.app.care.VetVisit
 import com.daengs.app.care.VetVisitConfirmation
+import com.daengs.app.care.VetVisitPage
+import com.daengs.app.care.VetWindow
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.care.VetVisitDraft
 import com.daengs.app.care.VetVisitGateway
@@ -91,6 +93,7 @@ class ChatSummaryRouteTest {
             accessTokenProvider = { "token" },
             onOpenSource = {},
             onOpenCitation = {},
+            onOpenVetVisits = {},
         )
     }
 
@@ -109,8 +112,9 @@ class ChatSummaryRouteTest {
             accessToken: String,
             draftId: String,
             confirmation: VetVisitConfirmation,
-        ): Result<VetVisit> = Result.failure(IllegalStateException("이 테스트는 안 부른다"))
-        override suspend fun list(accessToken: String, petId: String) = Result.success(emptyList<VetVisit>())
+        ): Result<List<VetVisit>> = Result.failure(IllegalStateException("이 테스트는 안 부른다"))
+        override suspend fun list(accessToken: String, petId: String, window: VetWindow) =
+            Result.success(VetVisitPage(start = null, end = null, olderCount = 0, visits = emptyList()))
         override suspend fun reasonOptions(accessToken: String, petId: String) =
             Result.success(emptyList<VetReasonOption>())
         override suspend fun delete(accessToken: String, visitId: String) = Result.success(Unit)

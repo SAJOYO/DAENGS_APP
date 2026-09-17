@@ -1,20 +1,7 @@
 package com.daengs.app.ui.chat
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.daengs.app.ui.theme.DaengPinkDeep
-import com.daengs.app.ui.theme.PinkFaint
-import com.daengs.app.ui.theme.TextMuted
 
 /** 판정 말풍선 아래 칩의 글자. */
 internal const val REPORT_FOLLOW_UP_LABEL = "이 결과 물어보기"
@@ -34,20 +21,7 @@ internal const val REPORT_FOLLOW_UP_QUESTION = "이 결과가 무슨 뜻이고, 
  */
 @Composable
 internal fun ReportFollowUpChip(enabled: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
-    Surface(
-        color = PinkFaint,
-        shape = shape,
-        modifier = Modifier.clip(shape).clickable(enabled = enabled, onClick = onClick),
-    ) {
-        Text(
-            REPORT_FOLLOW_UP_LABEL,
-            color = if (enabled) DaengPinkDeep else TextMuted,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-        )
-    }
+    FollowUpChip(REPORT_FOLLOW_UP_LABEL, enabled = enabled, onClick = onClick)
 }
 
 @Preview(showBackground = true)

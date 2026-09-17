@@ -1,6 +1,7 @@
 package com.daengs.app.chat
 
 import com.daengs.app.assistant.AssistantResponse
+import com.daengs.app.assistant.GaitFollowUp
 import com.daengs.app.assistant.ScreeningFollowUp
 import com.daengs.app.location.GeoPoint
 import kotlinx.coroutines.CompletableDeferred
@@ -75,10 +76,10 @@ class ChatHistoryCoordinatorTest {
         val coordinator = coordinator(gateway)
         open(coordinator)
 
-        assertTrue(coordinator.send(TOKEN, "이 결과가 무슨 뜻이에요?", screening = ScreeningFollowUp("rec-1")))
+        assertTrue(coordinator.send(TOKEN, "이 결과가 무슨 뜻이에요?", screening = ScreeningFollowUp("rec-1", explicit = true)))
         advanceUntilIdle()
 
-        assertEquals(ScreeningFollowUp("rec-1"), gateway.sendCalls.single().screening)
+        assertEquals(ScreeningFollowUp("rec-1", explicit = true), gateway.sendCalls.single().screening)
     }
 
     @Test
@@ -91,6 +92,28 @@ class ChatHistoryCoordinatorTest {
         advanceUntilIdle()
 
         assertEquals(null, gateway.sendCalls.single().screening)
+        assertEquals(null, gateway.sendCalls.single().gait)
+    }
+
+    @Test
+    fun `보행 비교 이어 묻기는 저장 질문에도 기록 id 둘을 그대로 싣는다`() = runTest {
+        val gateway = FakeHistoryGateway()
+        val coordinator = coordinator(gateway)
+        open(coordinator)
+
+        assertTrue(
+            coordinator.send(
+                TOKEN,
+                "이 변화가 무슨 뜻이에요?",
+                gait = GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = false),
+            ),
+        )
+        advanceUntilIdle()
+
+        val call = gateway.sendCalls.single()
+        assertEquals(GaitFollowUp(recentId = "rec-new", pastId = "rec-old", explicit = false), call.gait)
+        // 피부와 보행은 같이 오지 않는다 — 각자 자기 말풍선 아래 칩에서만 만들어진다.
+        assertEquals(null, call.screening)
     }
 
     @Test
@@ -352,6 +375,7 @@ class ChatHistoryCoordinatorTest {
         val activeDogId: String?,
         val persistence: ChatPersistence,
         val screening: ScreeningFollowUp? = null,
+        val gait: GaitFollowUp? = null,
     )
 
     private class FakeHistoryGateway : ChatHistoryGateway {
@@ -394,8 +418,9 @@ class ChatHistoryCoordinatorTest {
             activeDogId: String?,
             persistence: ChatPersistence,
             screening: ScreeningFollowUp?,
+            gait: GaitFollowUp?,
         ): Result<AssistantResponse> {
-            sendCalls += SendCall(text, activeDogId, persistence, screening)
+            sendCalls += SendCall(text, activeDogId, persistence, screening, gait)
             pendingSend?.let { return withContext(NonCancellable) { it.await() } }
             return if (sendResults.isEmpty()) Result.success(RESPONSE) else sendResults.removeFirst()
         }

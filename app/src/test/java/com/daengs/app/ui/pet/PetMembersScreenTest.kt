@@ -32,17 +32,17 @@ class PetMembersScreenTest {
         val names = compose.onAllNodesWithText("아빠").fetchSemanticsNodes().size +
             compose.onAllNodesWithText("엄마").fetchSemanticsNodes().size
         assertEquals(2, names)
-        // 대표가 맨 앞이라는 것은 배지의 순서로 본다 — 앱이 재정렬하지 않는다.
-        compose.onNodeWithText("대표").assertIsDisplayed()
-        compose.onAllNodesWithText("돌보미").assertCountEquals(2)
+        // 주보호자가 맨 앞이라는 것은 배지의 순서로 본다 — 앱이 재정렬하지 않는다.
+        compose.onNodeWithText("주보호자").assertIsDisplayed()
+        compose.onAllNodesWithText("공동 돌보미").assertCountEquals(2)
     }
 
     @Test
-    fun `대표와 돌보미를 역할 배지로 가른다`() {
+    fun `주보호자와 공동 돌보미를 역할 배지로 가른다`() {
         compose.setContent { PetMembersScreen(members = listOf(owner, carer)) }
 
-        compose.onNodeWithText("대표").assertIsDisplayed()
-        compose.onNodeWithText("돌보미").assertIsDisplayed()
+        compose.onNodeWithText("주보호자").assertIsDisplayed()
+        compose.onNodeWithText("공동 돌보미").assertIsDisplayed()
     }
 
     @Test
