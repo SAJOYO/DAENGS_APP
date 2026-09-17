@@ -151,6 +151,44 @@ data class VetVisitDraft(
     }
 }
 
+/**
+ * 목록 한 쪽 = **조회된 창과 그 안의 기록들** (`VetVisitListResponse`).
+ *
+ * 창을 목록과 **같은 칸에** 담는 이유가 있다. 둘을 나란한 두 칸으로 두면 새 목록 옆에
+ * 옛 창이 남는 순간이 생기고, 그때 안내가 **틀린 날짜**를 말한다 — 안내가 없는 것보다
+ * 나쁘다. 함께 오는 값이니 함께 둔다.
+ */
+data class VetVisitPage(
+    /**
+     * 실제로 조회된 창. **기기 시간대로 다시 환산하지 말 것** — 저쪽이 `Asia/Seoul` 로
+     * 정해 보낸 날짜다 (PR #416 「알아 둘 것」).
+     *
+     * ⚠️ **`null` 을 허용한 것은 실수가 아니다.** 안내는 [olderCount] 가 0 보다 클 때만
+     *    그리므로 창이 없으면 읽을 일이 없는데, `getString` 으로 받으면 **읽을 일이 없는
+     *    바로 그 경우에 파싱이 터져** 목록 전체가 안 보인다. 못 그리는 것과 못 보는 것은
+     *    다르다.
+     */
+    val start: LocalDate?,
+    val end: LocalDate?,
+    /**
+     * [start] 보다 오래된 기록 수. **0 이면 아무것도 띄우지 않는다.**
+     *
+     * 이 칸이 있는 이유가 그것뿐이다. 안내를 늘 띄우면 기록이 1년 안에만 있는 대부분의
+     * 화면에서 그냥 소음이고, **소음이 되면 정작 감춰진 게 있을 때도 안 읽힌다.**
+     */
+    val olderCount: Int,
+    val visits: List<VetVisit>,
+) {
+    companion object {
+        fun parse(json: JSONObject): VetVisitPage = VetVisitPage(
+            start = json.optLocalDate("start"),
+            end = json.optLocalDate("end"),
+            olderCount = json.optInt("older_count", 0).coerceAtLeast(0),
+            visits = json.optJSONArray("visits").toObjectList(VetVisit::parse),
+        )
+    }
+}
+
 /** 확정된 기록 한 건 (`VetVisitResponse`). 표시명은 없다 — 목록이 사유 목록으로 붙인다. */
 data class VetVisit(
     val id: String,
@@ -288,6 +326,10 @@ const val MAX_TOTAL_KRW = 100_000_000
 
 private fun JSONObject.optStringOrNull(key: String): String? =
     if (isNull(key)) null else optString(key).ifBlank { null }
+
+/** 못 읽으면 `null`. 안 오는 날짜가 목록을 통째로 막지 않게 하는 자리에서만 쓴다. */
+private fun JSONObject.optLocalDate(key: String): LocalDate? =
+    optStringOrNull(key)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
 private fun <T> JSONArray?.toObjectList(parse: (JSONObject) -> T): List<T> =
     List(this?.length() ?: 0) { parse(this!!.getJSONObject(it)) }

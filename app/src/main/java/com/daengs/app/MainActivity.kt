@@ -107,6 +107,9 @@ import com.daengs.app.ui.places.PlacesRoute
 import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
+import com.daengs.app.ui.storage.dial
+import com.daengs.app.ui.storage.VetVisitsScreen
+import com.daengs.app.care.VetRange
 import com.daengs.app.ui.walk.records.WalkRecordsRoute
 import com.daengs.app.ui.walk.records.rememberWalkRecordsRouteState
 import com.daengs.app.ui.walk.WalkOrientation
@@ -151,6 +154,13 @@ private enum class Screen {
     WalkDetail,
     /** 피부 변화 기록. 대화의 AI 기능 선택에서 들어온다. */
     ScreeningHistory,
+    /**
+     * 진료비 전체보기. 저장소 탭의 요약 카드에서 들어온다.
+     *
+     * **모달이 아니라 화면이다** — 안에 목록·기간 필터·삭제가 다 들어가서, 모달로
+     * 만들면 그 위에 삭제 되묻기와 기간 시트가 겹치고 뒤로가기가 꼬인다 (APP#416).
+     */
+    VetVisits,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -1205,6 +1215,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                onOpenVetVisits = { screen = Screen.VetVisits },
                                 modifier = storageModifier,
                                 currentUserId = session?.appUserId,
                                 // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
@@ -1444,6 +1455,31 @@ class MainActivity : ComponentActivity() {
                         // 했어도 진단은 할 수 있어서 그 기록이 남아 있다.
                         petId = pets.primary?.id,
                     )
+
+                    Screen.VetVisits -> {
+                        val vetState by vetVisits.state.collectAsState()
+                        VetVisitsScreen(
+                            state = vetState,
+                            // **KST 의 오늘.** 기간 프리셋과 서버의 창이 같은 날을 봐야 한다.
+                            today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")),
+                            // 저장소 탭으로 돌아간다. `homeTab` 은 따로 살아 있어 탭이 유지된다.
+                            // **기본 창으로 다시 읽는다** — 여기서 「2024년」을 보다 나가면
+                            // 요약 카드의 "이번 달" 이 그 창을 세게 된다.
+                            onBack = {
+                                screen = Screen.Home
+                                scope.launch { freshToken()?.let { vetVisits.load(it, VetRange.RecentYear) } }
+                            },
+                            onSelectRange = { range ->
+                                scope.launch { freshToken()?.let { vetVisits.load(it, range) } }
+                            },
+                            onRetryLoad = { scope.launch { freshToken()?.let { vetVisits.load(it) } } },
+                            onConfirmDelete = { visit ->
+                                scope.launch { freshToken()?.let { vetVisits.delete(it, visit.id) } }
+                            },
+                            onCallHospital = { phone -> dial(context, phone) },
+                            onDismissError = { vetVisits.clearErrors() },
+                        )
+                    }
 
                     Screen.Places -> PlacesRoute(
                         onBack = { screen = Screen.Home },

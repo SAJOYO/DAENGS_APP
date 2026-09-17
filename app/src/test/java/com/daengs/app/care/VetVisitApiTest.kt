@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -29,6 +30,7 @@ class VetVisitApiTest {
     private val pet = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
     private val draftId = "6ba7b811-9dad-11d1-80b4-00c04fd430c8"
     private val clientEventId = "10000000-0000-4000-8000-000000000001"
+    private val window = VetWindow(LocalDate.of(2025, 9, 16), LocalDate.of(2026, 9, 16))
 
     @Test
     fun `초안은 POST 바디에 pet_id·content_type·client_event_id 를 싣는다`() = runBlocking {
@@ -157,12 +159,51 @@ class VetVisitApiTest {
     }
 
     @Test
-    fun `목록은 pet_id 쿼리이고 최근 먼저 온다`() = runBlocking {
+    fun `목록은 pet_id 와 기간을 쿼리에 싣고 최근 먼저 온다`() = runBlocking {
         transport.reply = HttpReply(200, LIST_JSON)
-        val visits = api.list(token, pet).getOrThrow()
+        val page = api.list(token, pet, window).getOrThrow()
 
-        assertEquals("http://server:8000/app/vet-visits?pet_id=$pet", transport.only().url)
-        assertEquals(listOf("v1", "v2"), visits.map { it.id })
+        assertEquals(
+            "http://server:8000/app/vet-visits?pet_id=$pet&from=2025-09-16&to=2026-09-16",
+            transport.only().url,
+        )
+        assertEquals(listOf("v1", "v2"), page.visits.map { it.id })
+    }
+
+    /**
+     * 안내를 그리는 값 셋이다. **`older_count` 가 이 칸의 존재 이유** — 이것 없이는
+     * 앱이 "숨은 게 있는지" 를 알 방법이 없어 안내를 늘 띄우게 된다.
+     */
+    @Test
+    fun `목록은 조회된 창과 그보다 오래된 기록 수를 담아 온다`() = runBlocking {
+        transport.reply = HttpReply(200, OLDER_LIST_JSON)
+        val page = api.list(token, pet, window).getOrThrow()
+
+        assertEquals(LocalDate.of(2025, 9, 15), page.start)
+        assertEquals(LocalDate.of(2026, 9, 15), page.end)
+        assertEquals(3, page.olderCount)
+    }
+
+    /** 칸이 없으면 0 이다. 0 이면 화면이 안내를 **아예 안 그린다.** */
+    @Test
+    fun `older_count 가 없으면 0 이다`() = runBlocking {
+        transport.reply = HttpReply(200, LIST_JSON)
+        assertEquals(0, api.list(token, pet, window).getOrThrow().olderCount)
+    }
+
+    /**
+     * 창을 **엄격하게 읽지 않는 이유.** 안내는 `older_count > 0` 일 때만 그리므로 창이
+     * 없으면 읽을 일도 없다. 그런데 `getString` 으로 받으면 **읽을 일이 없는 바로 그
+     * 경우에 파싱이 터져** 목록 전체가 안 보인다 — 못 그리는 것과 못 보는 것은 다르다.
+     */
+    @Test
+    fun `창이 안 와도 목록은 온다 — 안내를 못 그릴 뿐이다`() = runBlocking {
+        transport.reply = HttpReply(200, NO_WINDOW_LIST_JSON)
+        val page = api.list(token, pet, window).getOrThrow()
+
+        assertNull(page.start)
+        assertNull(page.end)
+        assertEquals(listOf("v1"), page.visits.map { it.id })
     }
 
     @Test
@@ -302,6 +343,23 @@ class VetVisitApiTest {
                 "reason_code": "ear", "reason_detail": null, "suggested_reason_code": null,
                 "is_emergency": false, "is_oncology": false, "client_event_id": "c2",
                 "created_at": "2026-09-02T11:00:00+09:00"}]}
+        """
+
+        /** 창 밖에 3건이 더 있다. 안내가 뜨는 유일한 모양이다. */
+        const val OLDER_LIST_JSON = """
+            {"pet_id": "p1", "start": "2025-09-15", "end": "2026-09-15", "older_count": 3,
+             "visits": []}
+        """
+
+        /** 창을 안 실어 보내는 옛 서버. 목록은 그대로 읽혀야 한다. */
+        const val NO_WINDOW_LIST_JSON = """
+            {"pet_id": "p1",
+             "visits": [
+               {"id": "v1", "pet_id": "p1", "visited_on": "2026-09-10", "total_krw": 61700,
+                "hospital_name": null, "hospital_address": null, "hospital_phone": null,
+                "reason_code": "skin", "reason_detail": null, "suggested_reason_code": null,
+                "is_emergency": false, "is_oncology": false, "client_event_id": "c1",
+                "created_at": "2026-09-10T11:00:00+09:00"}]}
         """
 
         const val OPTIONS_JSON = """

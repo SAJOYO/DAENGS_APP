@@ -144,11 +144,22 @@ class VetVisitApi internal constructor(
             body = confirmation.toJson(),
         ) { _, body -> JSONArray(body).toObjectList(VetVisit::parse) }
 
-    /** 목록, 최근 먼저. 창을 안 보내면 저쪽 기본값(최근 1년)이다. */
-    suspend fun list(accessToken: String, petId: String): Result<List<VetVisit>> =
-        call(accessToken, "GET", "?pet_id=${encode(petId)}") { _, body ->
-            JSONObject(body).optJSONArray("visits").toObjectList(VetVisit::parse)
-        }
+    /**
+     * 목록, 최근 먼저. **창을 늘 둘 다 보낸다** — 한쪽만 보내면 나머지를 저쪽이 채우는데,
+     * 그러면 응답의 `start` 가 우리가 아는 값과 달라질 수 있고 안내가 그 날짜를 읽는다.
+     *
+     * 응답의 `older_count` 가 이 호출의 핵심이다. 그것 없이는 **창 밖에 기록이 있는지**
+     * 를 앱이 알 방법이 없어 안내를 늘 띄우게 된다 ([VetVisitPage.olderCount]).
+     */
+    suspend fun list(
+        accessToken: String,
+        petId: String,
+        window: VetWindow,
+    ): Result<VetVisitPage> = call(
+        accessToken,
+        "GET",
+        "?pet_id=${encode(petId)}&from=${window.from}&to=${window.to}",
+    ) { _, body -> VetVisitPage.parse(JSONObject(body)) }
 
     /**
      * 사유 드롭다운의 목록. 이 강아지가 최근 쓴 사유가 앞이다.
