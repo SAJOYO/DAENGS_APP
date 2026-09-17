@@ -58,7 +58,7 @@ fun HoloCard(
     foil: Foil,
     input: FoilInput,
     modifier: Modifier = Modifier,
-    tune: FoilTune = FoilTune(),
+    tune: FoilTune = foil.webTune,
     tilt: Boolean = true,
     /** 꾹 누르는 중이면 0~1. 카드 테두리를 따라 차오른다. */
     hold: Float = 0f,
