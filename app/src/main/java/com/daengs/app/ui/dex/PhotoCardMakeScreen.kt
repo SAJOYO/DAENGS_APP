@@ -108,6 +108,16 @@ fun choosePhotoMonth(preferred: Int, open: Set<Int>, taken: Set<Int>): Int? =
     if (preferred in open && preferred !in taken) preferred
     else open.sorted().firstOrNull { it !in taken }
 
+/** 달 칸 한 줄에 몇 칸. 넷이면 12달이 달력처럼 세 줄이고, 360dp 폭에서도 「12월」이 한 줄에 들어간다. */
+const val PHOTO_MONTH_COLUMNS = 4
+
+/**
+ * 만들기 화면의 달 칸을 줄로 나눈다. 12달을 한 줄에 늘어놓으면 화면 밖으로 밀려서 격자로 둔다.
+ * 카탈로그에 없는 달은 칸이 안 생긴다 — 이름을 안 보여줘도 열 수 없는 달까지 칸으로 뜨면 안 된다.
+ */
+fun photoMonthRows(open: Set<Int>, columns: Int = PHOTO_MONTH_COLUMNS): List<List<Int>> =
+    open.filter { photoCardFor(it) != null }.sorted().chunked(columns)
+
 /**
  * 포토 카드 만들기 — 달 · 아이 · 사진 한 장.
  *
@@ -272,13 +282,21 @@ private fun PhotoCardMakeContent(
         Spacer(Modifier.height(20.dp))
         Text("어느 카드로 만들까요?", color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OPEN_PHOTO_MONTHS.sorted().forEach { m ->
-                // 카탈로그에 없는 달은 안 보인다 — 이름은 이제 안 보여줘도 열 수 없는
-                // 달까지 칸으로 뜨면 안 된다(사용자 결정, 2026-09-15: 달만 적는다).
-                photoCardFor(m) ?: return@forEach
-                val blocked = m in taken
-                Choice("${m}월", on = m == month, enabled = !blocked) { onMonth(m) }
+        // 칸에는 달만 적는다(사용자 결정, 2026-09-15). 12달이라 한 줄 대신 달력처럼 넷씩 세 줄.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            photoMonthRows(OPEN_PHOTO_MONTHS).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { m ->
+                        Choice(
+                            "${m}월",
+                            on = m == month,
+                            enabled = m !in taken,
+                            modifier = Modifier.weight(1f),
+                        ) { onMonth(m) }
+                    }
+                    // 덜 찬 줄도 칸 폭이 같게 빈자리를 채운다.
+                    repeat(PHOTO_MONTH_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
         // 막힌 달이 있으면 이유를 한 줄로 — 강아지마다 달마다 한 장(§9.2, 사용자 결정 14).
@@ -357,7 +375,13 @@ private fun PhotoCardMakeContent(
 }
 
 @Composable
-private fun Choice(label: String, on: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+private fun Choice(
+    label: String,
+    on: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     Text(
         label,
         color = when {
@@ -367,7 +391,9 @@ private fun Choice(label: String, on: Boolean, enabled: Boolean = true, onClick:
         },
         fontSize = 13.sp,
         fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-        modifier = Modifier
+        // 격자 칸처럼 폭이 넓어지면 글자를 가운데에 둔다. 글자 폭만큼인 칸(아이 이름)은 그대로다.
+        textAlign = TextAlign.Center,
+        modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(
                 when {
@@ -400,18 +426,21 @@ private fun PhotoCardMakeContentPreview() {
     )
 }
 
-/** 강아지에게 이미 9월 카드가 있고 오늘 남은 횟수도 0인 경우 — 달 칸과 만들기 버튼이 함께 막힌다. */
-@Preview(showBackground = true, heightDp = 800)
+/**
+ * 강아지에게 이미 4·9·12월 카드가 있고 오늘 남은 횟수도 0인 경우 — 격자의 세 칸과 만들기 버튼이 함께 막힌다.
+ * 360dp 는 작은 폰 폭이다 — 한 줄 넷 칸에 「12월」이 줄바꿈 없이 들어가는지 본다.
+ */
+@Preview(showBackground = true, widthDp = 360, heightDp = 840)
 @Composable
 private fun PhotoCardMakeContentBlockedPreview() {
     PhotoCardMakeContent(
-        month = 4, onMonth = {},
+        month = 5, onMonth = {},
         dogs = listOf(PhotoDog("a", "안녕", true), PhotoDog("b", "보리", false)),
         dog = PhotoDog("a", "안녕", true), onDog = {},
         preview = null, busy = false,
         error = null,
         remainingText = photoRemainingText(0),
-        taken = setOf(9),
+        taken = setOf(4, 9, 12),
         dogName = "안녕", titleName = "", onTitleName = {},
         onPick = {}, onSubmit = {}, onCancel = {},
         submitEnabled = false,

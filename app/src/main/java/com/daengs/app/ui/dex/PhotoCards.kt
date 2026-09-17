@@ -14,12 +14,13 @@ import androidx.compose.ui.graphics.Color
 // ---------------------------------------------------------------------------
 
 /**
- * 서버가 지금 만들어 주는 달. 저쪽 `DAENGS_CARDIMAGE_MONTHS` 기본값과 같다.
+ * 서버가 지금 만들어 주는 달. 저쪽 `DAENGS_CARDIMAGE_MONTHS` 기본값과 같다 —
+ * 4·9월로 시작해 `DAENGS_dev` #572(2026-09-17 배포)에서 12달이 됐다.
  *
- * ⚠️ **서버에 달 목록 API 가 없다.** 저쪽이 달을 열면 여기 한 줄을 고친다. 닫힌 달을
+ * ⚠️ **서버에 달 목록 API 가 없다.** 저쪽이 달을 열거나 닫으면 여기 한 줄을 고친다. 닫힌 달을
  *    보내면 서버가 `404 month_closed` 문장을 주고, 앱은 그걸 그대로 띄운다.
  */
-val OPEN_PHOTO_MONTHS: Set<Int> = setOf(4, 9)
+val OPEN_PHOTO_MONTHS: Set<Int> = (1..12).toSet()
 
 /** 서버 카드 비율. 야채(3:4)보다 길쭉하다. */
 const val PHOTO_RATIO = 994f / 1582f
