@@ -340,7 +340,9 @@ private fun PhotoCardMakeContent(
             contentAlignment = Alignment.Center,
         ) {
             if (preview != null) {
-                Image(preview, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                // 자르지 않고 칸 안에 다 보인다 — 서버는 사진 전체를 보고 강아지를 찾으므로, 잘라 보여주면
+                // 보내는 사진과 사용자가 본 사진이 달라진다. 남는 자리는 칸 색(CardWhite)으로 둔다.
+                Image(preview, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             } else {
                 Text("＋ 사진 고르기", color = DaengPink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
