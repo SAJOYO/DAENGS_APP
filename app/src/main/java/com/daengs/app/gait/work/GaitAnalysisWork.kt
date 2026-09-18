@@ -1,15 +1,9 @@
 package com.daengs.app.gait.work
 
 import android.app.ActivityManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -19,12 +13,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.daengs.app.DaengsApp
-import com.daengs.app.MainActivity
-import com.daengs.app.R
 import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitStatus
-import com.daengs.app.ui.theme.DaengsColors
-import androidx.compose.ui.graphics.toArgb
+import com.daengs.app.notify.postAnalysisNotice
 import java.util.concurrent.TimeUnit
 
 /**
@@ -158,56 +149,16 @@ class GaitAnalysisWorker(
         text: String,
         recordId: String,
         petId: String?,
-    ): Boolean {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-        ensureChannel(context)
-
-        val open = PendingIntent.getActivity(
-            context,
-            recordId.hashCode(),
-            // **CLEAR_TOP 을 쓰지 않는다.** 그걸 주면 액티비티가 다시 만들어지면서
-            // 보던 화면이 홈으로 초기화된다 — 챗에서 기다리던 사람이 알림을 눌렀는데
-            // 챗이 사라진다(에뮬레이터에서 실제로 그랬다). SINGLE_TOP 은 이미 떠 있는
-            // 것을 그대로 살리므로, 알림은 **앱을 앞으로 데려오기만** 한다.
-            Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                // 챗으로 데려가고, 어느 기록이 끝났는지도 같이 알린다. 화면을 나갔던
-                // 사람은 대화가 서버 이력에서 다시 그려지는데 거기에는 보행 카드가
-                // 없어서, 이 둘이 없으면 결과를 다시 붙일 근거가 없다.
-                .putExtra(EXTRA_OPEN_GAIT_RECORD, recordId)
-                .putExtra(EXTRA_OPEN_GAIT_PET, petId),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_walk_notification)
-            .setContentTitle(title)
-            .setContentText(text)
-            // ⛔ 색은 앱 테마에서만 가져온다 (`docs/design-locks.md` 0절).
-            .setColor(DaengsColors.BrandPrimary.toArgb())
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .build()
-
-        return runCatching {
-            NotificationManagerCompat.from(context).notify(recordId.hashCode(), notification)
-        }.isSuccess
-    }
-
-    private fun ensureChannel(context: Context) {
-        // 산책 기록(`walk_tracking`)과 **다른 채널이다.** 산책은 계속 떠 있는 진행 알림이라
-        // 소리가 없어야 하지만, 보행 완료는 기다리던 사람에게 한 번 알리는 것이라 성격이
-        // 다르다. 한 채널에 묶으면 사용자가 둘 중 하나만 끄지 못한다.
-        context.getSystemService(NotificationManager::class.java)
-            ?.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "보행 분석 완료",
-                    NotificationManager.IMPORTANCE_DEFAULT,
-                ).apply { description = "보행 영상 분석이 끝나면 알려 드립니다." },
-            )
-    }
+    ): Boolean = postAnalysisNotice(
+        context = context,
+        id = recordId.hashCode(),
+        title = title,
+        text = text,
+        // 챗으로 데려가고, 어느 기록이 끝났는지도 같이 알린다. 화면을 나갔던 사람은
+        // 대화가 서버 이력에서 다시 그려지는데 거기에는 보행 카드가 없어서, 이 둘이
+        // 없으면 결과를 다시 붙일 근거가 없다.
+        extras = mapOf(EXTRA_OPEN_GAIT_RECORD to recordId, EXTRA_OPEN_GAIT_PET to petId),
+    )
 
     /** 한 번의 실행에 대한 타이밍 로그. 시작한 뒤 흐른 ms 와 앱이 앞/뒤인지를 붙인다. */
     private class Trace(private val shortId: String, private val startedAt: Long) {
@@ -242,9 +193,6 @@ class GaitAnalysisWorker(
 
         /** 출력 데이터의 열쇠. 값은 [GaitStatus] 의 것이거나, 모르는 채 끝났으면 없다. */
         const val KEY_STATUS = "status"
-
-        /** 알림 채널. 산책(`walk_tracking`)과 가른 이유는 [ensureChannel] 참고. */
-        const val CHANNEL_ID = "gait_analysis"
 
         /** logcat 태그. `adb logcat -s GaitWatch` 로 본다. */
         const val LOG_TAG = "GaitWatch"

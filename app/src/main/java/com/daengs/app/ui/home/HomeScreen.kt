@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
@@ -54,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
+import com.daengs.app.notify.notificationSettingsIntent
 import com.daengs.app.miniroom.DogTapTarget
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
@@ -439,6 +441,8 @@ fun HomeScreen(
     val uprightHeight = flexTop ?: maxHeight
     val rail = usesNavRail(maxWidth, uprightHeight)
     val compactTop = hidesTopBar(uprightHeight)
+    // 종 아이콘이 안드로이드 알림 설정을 여는 데 쓴다.
+    val context = LocalContext.current
     // **창 전체를 쓴다.** 누운 절반도 화면이다 — 거기에 카드와 바가 간다.
     Row(Modifier.fillMaxSize()) {
     if (rail) {
@@ -480,8 +484,13 @@ fun HomeScreen(
             if (compactTop) return@Scaffold
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
-                    // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
-                    onBell = {},
+                    // **안드로이드의 이 앱 알림 설정으로 보낸다.** 앱 안에 스위치 화면을
+                    // 두지 않는 이유는 `notify/DaengsNotifications.kt` 의
+                    // [com.daengs.app.notify.notificationSettingsIntent] 에 적었다 —
+                    // 채널이 하나뿐인데 스위치를 또 두면 시스템 설정과 어긋날 수 있다.
+                    onBell = {
+                        runCatching { context.startActivity(notificationSettingsIntent(context)) }
+                    },
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                     photo = profilePhoto,

@@ -154,6 +154,12 @@ class DaengsApp : Application() {
                 NaverMapSdk.NcpKeyClient(BuildConfig.NAVER_MAP_NCP_KEY_ID)
         }
 
+        // **채널을 여기서 만든다.** 알림을 띄우는 순간에 만들어도 늦지는 않지만, 그러면
+        // 첫 알림이 뜨기 전까지 안드로이드 알림 설정에 **끄고 켤 항목이 하나도 없다** —
+        // 종 아이콘으로 거기까지 간 사용자가 빈 화면을 본다. 옛 채널을 지우는 것도 여기서
+        // 한 번에 끝난다 (`notify/DaengsNotifications.kt`).
+        com.daengs.app.notify.ensureAnalysisChannel(this)
+
         tokenStore = TokenStore(this)
         sessionProvider = SessionProvider(tokenStore)
         facilityScope.launch {
