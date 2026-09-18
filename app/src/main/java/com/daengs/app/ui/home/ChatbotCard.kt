@@ -40,6 +40,14 @@ import com.daengs.app.ui.theme.TextMuted
 @Composable
 fun ChatbotCard(
     onOpenChat: () -> Unit,
+    /**
+     * 마이크를 눌렀을 때. **여기서 듣지 않는다** — 채팅을 열면서 거기서 듣기가
+     * 시작된다 (#451). 인식 로직이 `ChatScreen` 한 곳에만 있어야 설정·권한·정지
+     * 규칙이 갈라지지 않는다.
+     *
+     * null 이면 마이크를 아예 안 그린다 — 미리보기와 옛 호출부가 그대로 돈다.
+     */
+    onVoice: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     /**
      * 챗봇 얼굴의 견종. **null 이면 발자국이다** — 대표가 믹스라 그림이 없는 경우다.
@@ -90,6 +98,18 @@ fun ChatbotCard(
                 else PawAvatar(size = 40.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(HomeDemoData.CHAT_PLACEHOLDER, color = TextMuted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                // **마이크는 전송 왼쪽이다.** 문구가 `weight(1f)` 라 자리는 알아서 나온다.
+                // 테두리 없이 두는 것은 전송(분홍 채움)과 위계를 나누기 위해서다 —
+                // 둘 다 채우면 무엇이 주 행동인지 안 보인다.
+                if (onVoice != null) {
+                    Box(
+                        Modifier.size(40.dp).clip(RoundedCornerShape(50)).clickable(onClick = onVoice),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        DaengsIconView(DaengsIcon.Mic, Modifier.size(20.dp), tint = TextMuted)
+                    }
+                    Spacer(Modifier.width(2.dp))
+                }
                 Box(
                     Modifier.size(40.dp).clip(RoundedCornerShape(50)).background(DaengPink),
                     contentAlignment = Alignment.Center,
@@ -104,5 +124,14 @@ fun ChatbotCard(
 @Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun ChatbotCardPreview() {
-    DaengsTheme { ChatbotCard({}, Modifier.padding(14.dp), avatar = HomeDemoData.DOG_BREED) }
+    // **이름 인자로 부른다.** 위치 인자로 두면 [ChatbotCard] 에 인자가 하나 끼어들 때마다
+    // 조용히 자리가 밀린다 — `onVoice` 를 넣다가 실제로 깨졌다 (#451).
+    DaengsTheme {
+        ChatbotCard(
+            onOpenChat = {},
+            onVoice = {},
+            modifier = Modifier.padding(14.dp),
+            avatar = HomeDemoData.DOG_BREED,
+        )
+    }
 }

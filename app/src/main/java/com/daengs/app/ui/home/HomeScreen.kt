@@ -144,6 +144,15 @@ fun HomeScreen(
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
     onOpenChat: (() -> Unit)? = null,
+    /**
+     * 챗봇 카드의 마이크를 눌렀을 때. 채팅을 열면서 바로 듣기를 시작한다 (#451).
+     *
+     * **홈에서 인식하지 않는다.** 음성은 `ChatScreen` 이 `voiceBase` 누적 · 자동전송
+     * 설정 · 오버레이 정지 · 권한 거부 문구까지 한 덩어리로 갖고 있어서, 여기서 다시
+     * 짜면 같은 로직이 두 곳에 생겨 한쪽만 고쳐진다. 홈은 "음성으로 열어 달라" 만
+     * 말한다.
+     */
+    onOpenChatByVoice: (() -> Unit)? = null,
     /** 내 주변 탭을 눌렀을 때. 병원·카페·펫샵을 지도에서 찾는다. */
     onOpenPlaces: (() -> Unit)? = null,
     /** 방문을 열었을 때. 산책 화면으로 나간다 — **탭이 아니라 문이 산책의 입구다.** */
@@ -625,6 +634,7 @@ fun HomeScreen(
             } else {
                 ChatbotCard(
                     onOpenChat = { onOpenChat?.invoke() },
+                    onVoice = { onOpenChatByVoice?.invoke() },
                     modifier = slot.tourSpot(tourSpots, TourStop.Chat),
                     avatar = profileBreed,
                 )
