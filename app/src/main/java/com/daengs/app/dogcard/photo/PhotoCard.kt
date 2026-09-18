@@ -1,5 +1,6 @@
 package com.daengs.app.dogcard.photo
 
+import org.json.JSONException
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.time.LocalDateTime
@@ -7,7 +8,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 /**
- * 서버가 그려 준 포토 카드 한 장. 계약은 저쪽 `routers/ai_card.py` (#537).
+ * 서버가 그려 준 포토 카드 한 장. 계약은 저쪽 `routers/ai_card.py` (#537, #593).
  *
  * **Room 에 두지 않는다.** 누끼 카드는 오프라인에서 먼저 생겨 기기 표가 필요했지만,
  * 이 카드는 서버에서만 생긴다 — 정본이 서버다 (docs/photo-cards.md §3).
@@ -15,7 +16,8 @@ import java.time.ZoneOffset
 data class PhotoCard(
     val id: String,
     val dogId: String?,
-    val month: Int,
+    /** 무엇을 만들었나 — 달이면 `"4"`, 종류면 `"strawberry"`. 옛 `month` 자리다 ([PhotoCardKey]). */
+    val key: PhotoCardKey,
     val dogName: String,
     /** 서버가 제목판에 찍은 글자. 예: `CHUSEOK 콩이` */
     val title: String,
@@ -43,10 +45,18 @@ enum class PhotoCardStatus {
 /** 단건 조회. **여기서만 그림 주소가 온다** (목록은 늘 null). 주소는 절대 주소다. */
 data class PhotoCardDetail(val card: PhotoCard, val imageUrl: String?)
 
+/**
+ * 한 장을 읽는다. **`card` 를 먼저 보고 없으면 `month` 로 만든다** — #593 배포 전 서버가 남아
+ * 있을 수 있다. 둘 다 없는 행은 그릴 칸을 찾을 수 없어 [JSONException] 으로 튄다(옛 코드가
+ * `getInt("month")` 로 튀던 것과 같은 자리다).
+ */
 fun parsePhotoCard(json: JSONObject): PhotoCard = PhotoCard(
     id = json.getString("id"),
     dogId = json.optStringOrNull("dog_id"),
-    month = json.getInt("month"),
+    key = PhotoCardKey.from(
+        card = json.optStringOrNull("card"),
+        month = if (json.isNull("month")) null else json.optInt("month").takeIf { it in 1..12 },
+    ) ?: throw JSONException("카드 종류가 없는 행 (${json.optString("id")})"),
     dogName = json.optString("dog_name"),
     title = json.optString("title"),
     status = PhotoCardStatus.of(json.optString("status")),
@@ -81,9 +91,12 @@ fun parsePhotoCardList(body: String): PhotoCardList {
 /**
  * 메타는 쿼리다 (본문은 사진 원시 바이트). 한글 이름은 UTF-8 로 인코딩한다.
  * `titleName` 은 앞뒤 공백을 걷어 비어 있으면 아예 안 보낸다 (docs/photo-cards.md §9.2).
+ *
+ * **`card` 만 보내고 `month` 는 안 보낸다** (#593, D-085). 서버는 둘 다 받지만 값이 어긋나면
+ * 400 `card_conflict` 를 주므로, 어긋날 수 있는 길을 아예 안 만든다. 달 카드도 `card=4` 로 간다.
  */
-fun photoCardQuery(month: Int, dogName: String, dogId: String?, titleName: String? = null): String = buildString {
-    append("month=").append(month)
+fun photoCardQuery(card: PhotoCardKey, dogName: String, dogId: String?, titleName: String? = null): String = buildString {
+    append("card=").append(URLEncoder.encode(card.raw, "UTF-8"))
     append("&dog_name=").append(URLEncoder.encode(dogName, "UTF-8"))
     if (dogId != null) append("&dog_id=").append(URLEncoder.encode(dogId, "UTF-8"))
     val trimmedTitle = titleName?.trim()
@@ -103,12 +116,12 @@ fun photoCardErrorMessage(status: Int, body: String?): String {
 /**
  * 뒤에서 실패한 카드를 알리는 한 줄. **실패는 하루 한도에 안 센다** — 그래서 다시 하라고 말한다.
  */
-fun photoFailureText(month: Int, errorCode: String?): String {
+fun photoFailureText(card: PhotoCardKey, errorCode: String?): String {
     val next = when (errorCode) {
         "no_image" -> "강아지가 잘 보이는 다른 사진으로 해 주세요"
         else -> "잠시 뒤 다시 만들어 주세요"
     }
-    return "${month}월 카드를 만들지 못했어요 · $next"
+    return "${card.label} 카드를 만들지 못했어요 · $next"
 }
 
 private fun parseInstantMillis(raw: String): Long? =

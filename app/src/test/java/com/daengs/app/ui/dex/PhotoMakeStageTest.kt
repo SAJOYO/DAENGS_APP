@@ -1,13 +1,15 @@
 package com.daengs.app.ui.dex
 
 import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.PhotoCardKey
 import com.daengs.app.dogcard.photo.PhotoCardStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.File
 
 class PhotoMakeStageTest {
-    private fun card(status: PhotoCardStatus) = PhotoCard("a", null, 9, "안녕", "CHUSEOK 안녕", status, null, null, 0L)
+    private fun card(status: PhotoCardStatus) =
+        PhotoCard("a", null, PhotoCardKey.of(9), "안녕", "CHUSEOK 안녕", status, null, null, 0L)
 
     @Test fun `아직 안 보냈으면 사진 고르기`() = assertEquals(PhotoMakeStage.Pick, photoMakeStage(null, null))
     @Test fun `그리는 중이면 그리는 중`() = assertEquals(PhotoMakeStage.Drawing, photoMakeStage(card(PhotoCardStatus.Generating), null))

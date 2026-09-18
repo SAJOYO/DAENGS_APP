@@ -44,6 +44,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.PhotoCardKey
+import com.daengs.app.dogcard.photo.labelList
 import com.daengs.app.dogcard.photo.photoFailureText
 import com.daengs.app.screening.Photo
 import com.daengs.app.screening.PreparedPhoto
@@ -63,14 +65,32 @@ import java.time.LocalDate
 data class PhotoDog(val id: String, val name: String, val isPrimary: Boolean)
 
 /**
- * 처음 골라 둘 달. **닫힌 달을 기본으로 두지 않는다** — 누르자마자 서버가 404 를 준다.
- * 잠긴 칸을 눌러 왔으면 그 달, 아니면 이번 달, 그것도 닫혔으면 열린 첫 달.
+ * 처음 골라 둘 카드. **닫힌 달을 기본으로 두지 않는다** — 누르자마자 서버가 404 를 준다.
+ * 잠긴 칸을 눌러 왔으면 그 카드, 아니면 이번 달, 그것도 닫혔으면 열린 첫 달.
+ *
+ * 종류 카드(딸기·상추)로 들어왔으면 그대로 쓴다 — 종류에는 닫힘이 없다 (D-085).
+ * **종류를 기본으로 고르지는 않는다** — 아무 데서나 열었을 때는 이번 달이 자연스럽다.
  */
-fun defaultPhotoMonth(start: Int?, today: Int, open: Set<Int> = OPEN_PHOTO_MONTHS): Int = when {
-    start != null && start in open -> start
-    today in open -> today
-    else -> open.min()
+fun defaultPhotoCard(
+    start: PhotoCardKey?,
+    today: Int,
+    openMonths: Set<Int> = OPEN_PHOTO_MONTHS,
+): PhotoCardKey = when {
+    start != null && photoCardSelectable(start, openMonths) -> start
+    today in openMonths -> PhotoCardKey.of(today)
+    else -> PhotoCardKey.of(openMonths.min())
 }
+
+/**
+ * 만들기 화면에 칸이 뜨는 카드인가. 달은 열려 있고 카탈로그에 있어야 하고, 종류는 앱이
+ * 아는 것이어야 한다 — 이름을 모르는 카드는 칸으로 그릴 수가 없다.
+ */
+fun photoCardSelectable(card: PhotoCardKey, openMonths: Set<Int> = OPEN_PHOTO_MONTHS): Boolean =
+    if (card.isKind) card in PhotoCardKey.KINDS else card.month in openMonths && photoCardFor(card) != null
+
+/** 화면이 고를 수 있는 카드 전부 — 열린 달이 앞, 종류가 뒤다. 칸 순서와 같다. */
+fun photoSelectableCards(openMonths: Set<Int> = OPEN_PHOTO_MONTHS): List<PhotoCardKey> =
+    openMonths.sorted().map(PhotoCardKey::of).filter { photoCardFor(it) != null } + PhotoCardKey.KINDS
 
 fun defaultPhotoDog(dogs: List<PhotoDog>): PhotoDog? = dogs.firstOrNull { it.isPrimary } ?: dogs.firstOrNull()
 
@@ -98,15 +118,22 @@ fun photoRemainingText(remaining: Int?): String? = when (remaining) {
 }
 
 /**
- * 강아지가 바뀌거나 처음 화면을 열 때 고를 달.
+ * 강아지가 바뀌거나 처음 화면을 열 때 고를 카드.
  *
- * `preferred` 가 열려 있고 그 강아지에게 아직 없으면 그대로 쓴다. 막혔으면 열린 달 중
- * 안 막힌 첫 달(오름차순)로 넘어간다. 연 달이 다 막혔으면 null — 이때는 고르던 달을
- * 그대로 두고 제출을 막는다(§9.2).
+ * `preferred` 를 고를 수 있고 그 강아지에게 아직 없으면 그대로 쓴다. 막혔으면 **고를 수 있는
+ * 카드 중 안 막힌 첫 장**(달이 앞, 종류가 뒤)으로 넘어간다. 다 막혔으면 null — 이때는
+ * 고르던 카드를 그대로 두고 제출을 막는다(§9.2).
+ *
+ * 달이 다 찼어도 딸기·상추가 남아 있으면 그리로 넘어간다 — 한도가 카드 종류마다라
+ * 「12달을 다 모았으니 이제 못 만든다」 가 아니다 (D-085).
  */
-fun choosePhotoMonth(preferred: Int, open: Set<Int>, taken: Set<Int>): Int? =
-    if (preferred in open && preferred !in taken) preferred
-    else open.sorted().firstOrNull { it !in taken }
+fun choosePhotoCard(
+    preferred: PhotoCardKey,
+    taken: Set<PhotoCardKey>,
+    openMonths: Set<Int> = OPEN_PHOTO_MONTHS,
+): PhotoCardKey? =
+    if (photoCardSelectable(preferred, openMonths) && preferred !in taken) preferred
+    else photoSelectableCards(openMonths).firstOrNull { it !in taken }
 
 /** 달 칸 한 줄에 몇 칸. 넷이면 12달이 달력처럼 세 줄이고, 360dp 폭에서도 「12월」이 한 줄에 들어간다. */
 const val PHOTO_MONTH_COLUMNS = 4
@@ -114,9 +141,12 @@ const val PHOTO_MONTH_COLUMNS = 4
 /**
  * 만들기 화면의 달 칸을 줄로 나눈다. 12달을 한 줄에 늘어놓으면 화면 밖으로 밀려서 격자로 둔다.
  * 카탈로그에 없는 달은 칸이 안 생긴다 — 이름을 안 보여줘도 열 수 없는 달까지 칸으로 뜨면 안 된다.
+ *
+ * **종류 카드는 이 격자에 안 넣는다** — 딸기·상추는 달력이 아니라서 넷씩 끊는 줄에 섞이면
+ * 「12월 · 딸기」 가 한 줄에 서고 달 격자의 달력 모양이 깨진다. 아래 제 줄에 따로 둔다.
  */
 fun photoMonthRows(open: Set<Int>, columns: Int = PHOTO_MONTH_COLUMNS): List<List<Int>> =
-    open.filter { photoCardFor(it) != null }.sorted().chunked(columns)
+    open.filter { photoCardFor(PhotoCardKey.of(it)) != null }.sorted().chunked(columns)
 
 /**
  * 포토 카드 만들기 — 달 · 아이 · 사진 한 장.
@@ -127,7 +157,7 @@ fun photoMonthRows(open: Set<Int>, columns: Int = PHOTO_MONTH_COLUMNS): List<Lis
  */
 @Composable
 fun PhotoCardMakeScreen(
-    startMonth: Int?,
+    startCard: PhotoCardKey?,
     dogs: List<PhotoDog>,
     busy: Boolean,
     error: String?,
@@ -137,9 +167,9 @@ fun PhotoCardMakeScreen(
     watchingFile: File?,
     /** 목록의 `daily_remaining`. null 이면(배포 전·무제한) 안 띄우고 안 막는다(§9.2) */
     remaining: Int? = null,
-    /** 고른 강아지가 이미 가진(ready·generating) 달들 — 화면은 홀더를 모르고 이 함수만 부른다 */
-    takenMonths: (dogId: String) -> Set<Int> = { emptySet() },
-    onSubmit: (month: Int, dog: PhotoDog, jpeg: ByteArray, titleName: String?) -> Unit,
+    /** 고른 강아지가 이미 가진(ready·generating) 카드들 — 화면은 홀더를 모르고 이 함수만 부른다 */
+    takenCards: (dogId: String) -> Set<PhotoCardKey> = { emptySet() },
+    onSubmit: (card: PhotoCardKey, dog: PhotoDog, jpeg: ByteArray, titleName: String?) -> Unit,
     /** 「다 되면 알려 주세요」 · 그리는 중 뒤로가기 — 요청은 서버에 있다, 취소가 아니다 */
     onWaitElsewhere: () -> Unit,
     onRevealed: (String) -> Unit,
@@ -150,23 +180,23 @@ fun PhotoCardMakeScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var month by remember { mutableStateOf(defaultPhotoMonth(startMonth, LocalDate.now().monthValue)) }
+    var card by remember { mutableStateOf(defaultPhotoCard(startCard, LocalDate.now().monthValue)) }
     var dog by remember(dogs) { mutableStateOf(defaultPhotoDog(dogs)) }
     var picked by remember { mutableStateOf<PreparedPhoto?>(null) }
     var reading by remember { mutableStateOf(false) }
     var pickError by remember { mutableStateOf<String?>(null) }
     var titleName by remember { mutableStateOf("") }
-    val taken = dog?.let { takenMonths(it.id) } ?: emptySet()
+    val taken = dog?.let { takenCards(it.id) } ?: emptySet()
 
-    // 강아지가 바뀌면(처음 고른 것 포함) 그 강아지에게 안 막힌 달로 다시 고른다.
+    // 강아지가 바뀌면(처음 고른 것 포함) 그 강아지에게 안 막힌 카드로 다시 고른다.
     // **`taken` 도 키에 넣는다** — 화면이 열릴 때 `cards` 가 아직 안 와서 `taken` 이 비어
-    // 있다가 목록이 늦게 도착하면, `dog?.id` 만 키면 다시 안 돌아 막힌 달이 기본으로 남는다.
-    // **지금 고른 달이 막혔을 때만** 바꾼다 — 사용자가 손으로 고른 안 막힌 달은 그대로 둔다
-    // (막힌 칸은 어차피 못 누르니, 남은 경우는 다 서버가 알려 준 뒤 자동으로 고른 달뿐이다).
-    // 안 막힌 열린 달이 없으면(null) `month` 는 그대로 두고 제출을 막는다.
+    // 있다가 목록이 늦게 도착하면, `dog?.id` 만 키면 다시 안 돌아 막힌 카드가 기본으로 남는다.
+    // **지금 고른 카드가 막혔을 때만** 바꾼다 — 사용자가 손으로 고른 안 막힌 카드는 그대로 둔다
+    // (막힌 칸은 어차피 못 누르니, 남은 경우는 다 서버가 알려 준 뒤 자동으로 고른 카드뿐이다).
+    // 안 막힌 카드가 하나도 없으면(null) `card` 는 그대로 두고 제출을 막는다.
     LaunchedEffect(dog?.id, taken) {
-        if (month in taken) {
-            choosePhotoMonth(month, OPEN_PHOTO_MONTHS, taken)?.let { month = it }
+        if (card in taken) {
+            choosePhotoCard(card, taken)?.let { card = it }
         }
     }
 
@@ -188,8 +218,8 @@ fun PhotoCardMakeScreen(
             // 눌러도 `busy` 면 무시한다.
             BackHandler { if (!busy) onCancel() }
             PhotoCardMakeContent(
-                month = month,
-                onMonth = { month = it },
+                card = card,
+                onCard = { card = it },
                 dogs = dogs,
                 dog = dog,
                 onDog = { dog = it },
@@ -206,36 +236,36 @@ fun PhotoCardMakeScreen(
                     val chosen = dog
                     val photo = picked
                     if (chosen != null && photo != null) {
-                        onSubmit(month, chosen, photo.jpeg, titleName.trim().ifEmpty { null })
+                        onSubmit(card, chosen, photo.jpeg, titleName.trim().ifEmpty { null })
                     }
                 },
                 onCancel = onCancel,
-                submitEnabled = picked != null && dog != null && remaining != 0 && month !in taken,
+                submitEnabled = picked != null && dog != null && remaining != 0 && card !in taken,
             )
         }
         PhotoMakeStage.Drawing -> {
-            val card = watching!!
+            val made = watching!!
             BackHandler { onWaitElsewhere() }
-            PhotoDrawingBody(dogName = card.dogName, month = card.month, onWaitElsewhere = onWaitElsewhere)
+            PhotoDrawingBody(dogName = made.dogName, card = made.key, onWaitElsewhere = onWaitElsewhere)
         }
         PhotoMakeStage.Reveal -> {
-            val card = watching!!
-            val dex = photoCardFor(card.month)
+            val made = watching!!
+            val dex = photoCardFor(made.key)
             BackHandler { onOpenDex() }
             if (dex != null && watchingFile != null) {
-                PhotoRevealFlow(dex, card, watchingFile, onRevealed = onRevealed, onOpenDex = onOpenDex)
+                PhotoRevealFlow(dex, made, watchingFile, onRevealed = onRevealed, onOpenDex = onOpenDex)
             } else if (dex == null) {
-                // 모르는 달이면(카탈로그에 없는 달) 빈 화면에 갇힌다 — 도감으로 보낸다.
-                LaunchedEffect(card.id) { onOpenDex() }
+                // 모르는 카드면(카탈로그에 없는 달·앱이 모르는 종류) 빈 화면에 갇힌다 — 도감으로 보낸다.
+                LaunchedEffect(made.id) { onOpenDex() }
             }
         }
         PhotoMakeStage.Failed -> {
-            val card = watching!!
-            BackHandler { onRetry(card); onCancel() }
+            val made = watching!!
+            BackHandler { onRetry(made); onCancel() }
             PhotoFailedBody(
-                text = photoFailureText(card.month, card.errorCode),
-                onRetry = { onRetry(card) },
-                onCancel = { onRetry(card); onCancel() },
+                text = photoFailureText(made.key, made.errorCode),
+                onRetry = { onRetry(made) },
+                onCancel = { onRetry(made); onCancel() },
             )
         }
     }
@@ -243,8 +273,8 @@ fun PhotoCardMakeScreen(
 
 @Composable
 private fun PhotoCardMakeContent(
-    month: Int,
-    onMonth: (Int) -> Unit,
+    card: PhotoCardKey,
+    onCard: (PhotoCardKey) -> Unit,
     dogs: List<PhotoDog>,
     dog: PhotoDog?,
     onDog: (PhotoDog) -> Unit,
@@ -253,8 +283,8 @@ private fun PhotoCardMakeContent(
     error: String?,
     /** 오늘 남은 횟수 한 줄. null 이면 자리를 차지하지 않는다(§9.2) */
     remainingText: String?,
-    /** 고른 강아지가 이미 가진(ready·generating) 달 — 그 칸을 흐리게 막는다 */
-    taken: Set<Int>,
+    /** 고른 강아지가 이미 가진(ready·generating) 카드 — 그 칸을 흐리게 막는다 */
+    taken: Set<PhotoCardKey>,
     dogName: String?,
     titleName: String,
     onTitleName: (String) -> Unit,
@@ -273,7 +303,7 @@ private fun PhotoCardMakeContent(
     ) {
         Text("포토 카드 만들기", color = TextDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
-        Text("사진 한 장으로 그 달의 카드를 그려 드려요. 1분쯤 걸려요.", color = TextMuted, fontSize = 13.sp)
+        Text("사진 한 장으로 그 카드를 그려 드려요. 1분쯤 걸려요.", color = TextMuted, fontSize = 13.sp)
         remainingText?.let {
             Spacer(Modifier.height(4.dp))
             Text(it, color = if (it.startsWith("오늘은 다 만들었어요")) TextDark else TextMuted, fontSize = 13.sp)
@@ -287,24 +317,40 @@ private fun PhotoCardMakeContent(
             photoMonthRows(OPEN_PHOTO_MONTHS).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { m ->
+                        val key = PhotoCardKey.of(m)
                         Choice(
-                            "${m}월",
-                            on = m == month,
-                            enabled = m !in taken,
+                            key.label,
+                            on = key == card,
+                            enabled = key !in taken,
                             modifier = Modifier.weight(1f),
-                        ) { onMonth(m) }
+                        ) { onCard(key) }
                     }
                     // 덜 찬 줄도 칸 폭이 같게 빈자리를 채운다.
                     repeat(PHOTO_MONTH_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+            // 종류 카드는 달 격자 아래 제 줄에 둔다 (#593, D-085). **달 칸과 폭을 맞춘다** —
+            // 같은 격자의 이어지는 줄처럼 보여야 「또 다른 고를 거리」로 읽힌다.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PhotoCardKey.KINDS.forEach { key ->
+                    Choice(
+                        key.label,
+                        on = key == card,
+                        enabled = key !in taken,
+                        modifier = Modifier.weight(1f),
+                    ) { onCard(key) }
+                }
+                repeat(PHOTO_MONTH_COLUMNS - PhotoCardKey.KINDS.size) { Spacer(Modifier.weight(1f)) }
+            }
         }
-        // 막힌 달이 있으면 이유를 한 줄로 — 강아지마다 달마다 한 장(§9.2, 사용자 결정 14).
-        val blockedMonths = taken.intersect(OPEN_PHOTO_MONTHS).sorted()
-        if (blockedMonths.isNotEmpty()) {
+        // 막힌 카드가 있으면 이유를 한 줄로 — 강아지마다 카드 종류당 한 장(§9.2, D-085).
+        // **화면에 칸이 있는 것만 센다** — 앱이 모르는 카드를 서버가 주면 「이미 ??? 카드가
+        // 있어요」 가 되는데, 그 칸은 화면에 없으니 막혔다고 말할 것도 없다.
+        val blocked = taken.filter { photoCardSelectable(it) }
+        if (blocked.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "${topicName(dogName.orEmpty())} 이미 ${blockedMonths.joinToString("·")}월 카드가 있어요",
+                "${topicName(dogName.orEmpty())} 이미 ${blocked.labelList()} 카드가 있어요",
                 color = TextMuted,
                 fontSize = 12.sp,
             )
@@ -415,7 +461,7 @@ private fun Choice(
 @Composable
 private fun PhotoCardMakeContentPreview() {
     PhotoCardMakeContent(
-        month = 9, onMonth = {},
+        card = PhotoCardKey.of(9), onCard = {},
         dogs = listOf(PhotoDog("a", "콩이", true), PhotoDog("b", "보리", false)),
         dog = PhotoDog("a", "콩이", true), onDog = {},
         preview = null, busy = false,
@@ -429,20 +475,42 @@ private fun PhotoCardMakeContentPreview() {
 }
 
 /**
- * 강아지에게 이미 4·9·12월 카드가 있고 오늘 남은 횟수도 0인 경우 — 격자의 세 칸과 만들기 버튼이 함께 막힌다.
- * 360dp 는 작은 폰 폭이다 — 한 줄 넷 칸에 「12월」이 줄바꿈 없이 들어가는지 본다.
+ * 종류 카드를 고른 모습 — 달 격자 아래 줄에서 「딸기」가 켜져 있다.
+ * 종류 칸이 달 칸과 폭이 같은지, 넷 중 둘만 차서 왼쪽으로 붙는지를 본다.
  */
 @Preview(showBackground = true, widthDp = 360, heightDp = 840)
 @Composable
+private fun PhotoCardMakeContentKindPreview() {
+    PhotoCardMakeContent(
+        card = PhotoCardKey.Strawberry, onCard = {},
+        dogs = listOf(PhotoDog("a", "콩이", true)),
+        dog = PhotoDog("a", "콩이", true), onDog = {},
+        preview = null, busy = false,
+        error = null,
+        remainingText = photoRemainingText(1),
+        taken = emptySet(),
+        dogName = "콩이", titleName = "", onTitleName = {},
+        onPick = {}, onSubmit = {}, onCancel = {},
+        submitEnabled = true,
+    )
+}
+
+/**
+ * 강아지에게 이미 4·9·12월과 상추 카드가 있고 오늘 남은 횟수도 0인 경우 — 격자의 세 칸과
+ * 종류 한 칸, 만들기 버튼이 함께 막힌다. **막힌 줄이 「4월·9월·12월·상추」로 달 먼저 선다.**
+ * 360dp 는 작은 폰 폭이다 — 한 줄 넷 칸에 「12월」이 줄바꿈 없이 들어가는지 본다.
+ */
+@Preview(showBackground = true, widthDp = 360, heightDp = 880)
+@Composable
 private fun PhotoCardMakeContentBlockedPreview() {
     PhotoCardMakeContent(
-        month = 5, onMonth = {},
+        card = PhotoCardKey.of(5), onCard = {},
         dogs = listOf(PhotoDog("a", "안녕", true), PhotoDog("b", "보리", false)),
         dog = PhotoDog("a", "안녕", true), onDog = {},
         preview = null, busy = false,
         error = null,
         remainingText = photoRemainingText(0),
-        taken = setOf(4, 9, 12),
+        taken = setOf(PhotoCardKey.of(4), PhotoCardKey.of(9), PhotoCardKey.of(12), PhotoCardKey.Lettuce),
         dogName = "안녕", titleName = "", onTitleName = {},
         onPick = {}, onSubmit = {}, onCancel = {},
         submitEnabled = false,
@@ -451,7 +519,7 @@ private fun PhotoCardMakeContentBlockedPreview() {
 
 /** 서버가 그리는 동안. 뒷면이 살아 있고, 나가도 된다는 걸 말해 준다. */
 @Composable
-private fun PhotoDrawingBody(dogName: String, month: Int, onWaitElsewhere: () -> Unit) {
+private fun PhotoDrawingBody(dogName: String, card: PhotoCardKey, onWaitElsewhere: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(CreamBg).systemBarsPadding().padding(horizontal = 20.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -461,7 +529,7 @@ private fun PhotoDrawingBody(dogName: String, month: Int, onWaitElsewhere: () ->
         Spacer(Modifier.height(20.dp))
         LinearProgressIndicator(Modifier.fillMaxWidth(0.62f), color = DaengPink, trackColor = PinkFaint)
         Spacer(Modifier.height(16.dp))
-        Text("${dogName}의 ${month}월 카드를 그리는 중이에요", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text("${dogName}의 ${card.label} 카드를 그리는 중이에요", color = TextDark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
         Text("1분쯤 걸려요. 나가도 다 되면 도감에서 알려 드려요.", color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
@@ -487,7 +555,7 @@ private fun PhotoFailedBody(text: String, onRetry: () -> Unit, onCancel: () -> U
 @Preview(showBackground = true, heightDp = 640)
 @Composable
 private fun PhotoDrawingBodyPreview() {
-    PhotoDrawingBody("안녕", 9) {}
+    PhotoDrawingBody("안녕", PhotoCardKey.Strawberry) {}
 }
 
 @Preview(showBackground = true, heightDp = 400)

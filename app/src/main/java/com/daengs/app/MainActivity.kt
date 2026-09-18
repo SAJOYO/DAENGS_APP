@@ -1838,13 +1838,13 @@ class MainActivity : ComponentActivity() {
                             }
                             else -> null
                         },
-                        makePhoto = { startMonth, done ->
+                        makePhoto = { startCard, done ->
                             LaunchedEffect(Unit) { photos.clearCreateError() }
                             // 방금 보낸 카드. 이 오버레이가 떠 있는 동안만 기억한다 — 닫으면 처음부터.
                             var watchId by remember { mutableStateOf<String?>(null) }
                             val watching = watchId?.let { id -> photos.cards.firstOrNull { it.id == id } }
                             PhotoCardMakeScreen(
-                                startMonth = startMonth,
+                                startCard = startCard,
                                 // 대표 강아지가 먼저 보이게 한다 (`sortedByDescending` 은 안정 정렬이라
                                 // 나머지는 서버가 준 순서 그대로다).
                                 dogs = pets.pets.orEmpty()
@@ -1855,17 +1855,20 @@ class MainActivity : ComponentActivity() {
                                 watching = watching,
                                 watchingFile = watching?.let { photos.images[it.id] },
                                 remaining = photos.dailyRemaining,
-                                takenMonths = { id -> photos.takenMonths(id) },
-                                onSubmit = { month, dog, jpeg, titleName ->
+                                takenCards = { id -> photos.takenCards(id) },
+                                onSubmit = { card, dog, jpeg, titleName ->
                                     // **여기서 `done()` 을 부르지 않는다.** 보낸 뒤에도 화면은 열린 채
                                     // 그리는 중 → 뒤집기로 넘어간다 — 나가는 건 「다 되면 알려 주세요」뿐이다.
                                     scope.launch {
-                                        photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { id ->
+                                        photos.create(card, dog.name, dog.id, jpeg, titleName)?.let { id ->
                                             watchId = id
                                             // **앱 밖에서도 지켜본다.** 화면의 폴링은
                                             // `repeatOnLifecycle(STARTED)` 안에 있어서 앱을
                                             // 내리면 멈춘다 — 「다 되면 알려 주세요」의
                                             // 그 약속을 이 Worker 가 지킨다.
+                                            //
+                                            // **달 카드와 종류 카드(딸기·상추)가 같은 자리다** (#453).
+                                            // 만들기 경로가 하나라 지켜보기도 하나면 된다.
                                             schedulePhotoCardWatch(this@MainActivity, id)
                                         }
                                     }
