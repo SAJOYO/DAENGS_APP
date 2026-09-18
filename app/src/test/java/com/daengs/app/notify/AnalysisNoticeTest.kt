@@ -2,22 +2,24 @@ package com.daengs.app.notify
 
 import android.app.NotificationManager
 import androidx.test.core.app.ApplicationProvider
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 
 /**
- * 알림이 **실제로 올라가는지**와, 채널이 갈리는지.
+ * 알림이 **실제로 올라가는지**, 채널이 갈리는지, 그리고 **앱의 알림함에 남는지**.
  *
- * 규격만 재는 테스트로는 못 잡는 것이 하나 있다 — 옛 `gait_analysis` 채널을 지우는 일은
- * 이름 비교가 아니라 `NotificationManager` 를 부르는 일이어서, 부르지 않으면 조용히 안
- * 지워진다.
+ * 규격만 재는 테스트로는 못 잡는 것이 둘이다 — 옛 채널을 지우는 일은 이름 비교가 아니라
+ * `NotificationManager` 를 부르는 일이어서 안 부르면 조용히 안 지워지고, 알림함에 적는
+ * 순서(권한 확인보다 먼저)도 호출 순서라 규격이 아니다.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -26,21 +28,32 @@ class AnalysisNoticeTest {
     private val context = ApplicationProvider.getApplicationContext<android.app.Application>()
     private val manager = context.getSystemService(NotificationManager::class.java)
 
+    @After
+    fun 비운다() {
+        // [NoticeInbox] 는 프로세스에 하나라 테스트 사이에 값이 넘어간다.
+        NoticeInbox.clear(context)
+    }
+
     @Test
     fun `채널을 만들고 옛 채널을 지운다`() {
-        manager.createNotificationChannel(
-            android.app.NotificationChannel(
-                LEGACY_GAIT_CHANNEL_ID,
-                "보행 분석 완료",
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ),
-        )
+        LEGACY_CHANNEL_IDS.forEach { legacy ->
+            manager.createNotificationChannel(
+                android.app.NotificationChannel(legacy, legacy, NotificationManager.IMPORTANCE_DEFAULT),
+            )
+        }
 
         ensureDaengsChannels(context)
 
-        assertNotNull(manager.getNotificationChannel(ANALYSIS_CHANNEL_ID))
+        assertNotNull(manager.getNotificationChannel(RESULT_CHANNEL_ID))
         assertNotNull(manager.getNotificationChannel(WALK_REMINDER_CHANNEL_ID))
-        assertNull(manager.getNotificationChannel(LEGACY_GAIT_CHANNEL_ID))
+        LEGACY_CHANNEL_IDS.forEach { assertNull(manager.getNotificationChannel(it)) }
+    }
+
+    @Test
+    fun `알림을 완성 알림 채널에 띄운다`() {
+        assertTrue(postResultNotice(context, id = 7, title = "제목", text = "본문"))
+
+        assertEquals(RESULT_CHANNEL_ID, shadowOf(manager).allNotifications.single().channelId)
     }
 
     /**
@@ -48,7 +61,7 @@ class AnalysisNoticeTest {
      * 결과는 받고 싶을 수 있다.
      */
     @Test
-    fun `산책 알림은 분석 결과와 다른 채널에 뜬다`() {
+    fun `산책 알림은 완성 알림과 다른 채널에 뜬다`() {
         postDaengsNotice(
             context = context,
             channelId = WALK_REMINDER_CHANNEL_ID,
@@ -58,14 +71,6 @@ class AnalysisNoticeTest {
         )
 
         assertEquals(WALK_REMINDER_CHANNEL_ID, shadowOf(manager).allNotifications.single().channelId)
-    }
-
-    @Test
-    fun `알림을 분석 결과 채널에 띄운다`() {
-        assertTrue(postAnalysisNotice(context, id = 7, title = "제목", text = "본문"))
-
-        val posted = shadowOf(manager).allNotifications.single()
-        assertEquals(ANALYSIS_CHANNEL_ID, posted.channelId)
     }
 
     /**
@@ -88,5 +93,31 @@ class AnalysisNoticeTest {
             shadowOf(manager).allNotifications.single().contentIntent,
         ).savedIntent
         assertEquals("session-1", intent.getStringExtra(EXTRA_OPEN_WALK_DIARY))
+    }
+
+    @Test
+    fun `띄운 알림은 앱의 알림함에도 남는다`() {
+        postWalkDiaryNotice(context, "session-1")
+
+        val notice = NoticeInbox.notices.value.single()
+        assertEquals("session-1", notice.extras[EXTRA_OPEN_WALK_DIARY])
+        assertEquals(RESULT_CHANNEL_ID, notice.channelId)
+        assertFalse(notice.read)
+    }
+
+    /**
+     * **권한을 안 줬어도 알림함에는 남는다.**
+     *
+     * 사용자가 끈 것은 *시스템이 부르지 마라* 였고 *앱에서도 숨겨라* 가 아니다. 이 순서가
+     * 뒤집히면 종을 눌러도 빈 목록이 뜬다.
+     */
+    @Test
+    fun `알림 권한이 꺼져 있어도 알림함에는 남는다`() {
+        shadowOf(manager).setNotificationsEnabled(false)
+
+        assertFalse(postWalkDiaryNotice(context, "session-1"))
+
+        assertEquals(0, shadowOf(manager).allNotifications.size)
+        assertEquals(1, NoticeInbox.notices.value.size)
     }
 }

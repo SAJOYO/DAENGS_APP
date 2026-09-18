@@ -45,7 +45,7 @@ fun diaryNoticeId(sessionId: String): Int = "walk-diary:$sessionId".hashCode()
 
 /** 장면이 준비됐다고 알린다. 실제로 띄웠으면 `true`. */
 fun postWalkDiaryNotice(context: Context, sessionId: String): Boolean =
-    postAnalysisNotice(
+    postResultNotice(
         context = context,
         id = diaryNoticeId(sessionId),
         title = DIARY_READY_TITLE,

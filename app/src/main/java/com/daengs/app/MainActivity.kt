@@ -114,6 +114,8 @@ import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.storage.dial
+import com.daengs.app.dogcard.photo.EXTRA_OPEN_PHOTO_CARD
+import com.daengs.app.dogcard.photo.schedulePhotoCardWatch
 import com.daengs.app.notify.EXTRA_OPEN_WALK
 import com.daengs.app.notify.EXTRA_OPEN_WALK_DIARY
 import com.daengs.app.ui.storage.ChatSummariesScreen
@@ -183,6 +185,9 @@ private enum class Screen {
 
     /** 오늘의 케어 기록 전체보기. 저장소 탭의 「전체보기」에서 들어온다. */
     CareLog,
+
+    /** 알림 목록. 홈 상단바의 종 아이콘에서 들어온다. */
+    Notices,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -215,6 +220,12 @@ class MainActivity : ComponentActivity() {
     private var openWalkRequest by mutableStateOf(0)
 
     /**
+     * 「포토 카드가 완성됐어요」로 들어왔나. 값은 카드 id 다 — 지금은 도감을 열기만 하고,
+     * 어느 카드였는지는 도감이 `PhotoRevealLog` 로 이미 안다.
+     */
+    private var openPhotoCard by mutableStateOf<String?>(null)
+
+    /**
      * 링크로 받은 초대 토큰과 초대받기 화면 상태. `onNewIntent` 때문에 [gaitCompletions] 와
      * 같은 이유로 액티비티가 받아 두고 화면이 읽어 간다 — `setContent` 안에서는 그 순간을
      * 못 본다.
@@ -234,6 +245,7 @@ class MainActivity : ComponentActivity() {
         readGaitNotification(intent)
         readWalkDiaryNotification(intent)
         readWalkReminderNotification(intent)
+        readPhotoCardNotification(intent)
         readInviteLink(intent)
     }
 
@@ -258,6 +270,29 @@ class MainActivity : ComponentActivity() {
         if (intent.getStringExtra(EXTRA_OPEN_WALK) == null) return
         openWalkRequest++
         intent.removeExtra(EXTRA_OPEN_WALK)
+    }
+
+    /** 「포토 카드가 완성됐어요」로 열렸으면 도감으로 보낸다. 뒤집는 자리가 거기다. */
+    private fun readPhotoCardNotification(intent: Intent) {
+        val cardId = intent.getStringExtra(EXTRA_OPEN_PHOTO_CARD) ?: return
+        openPhotoCard = cardId
+        intent.removeExtra(EXTRA_OPEN_PHOTO_CARD)
+    }
+
+    /**
+     * 알림함에서 한 줄을 눌렀다. **알림을 눌러 들어오는 길과 같은 신호를 올린다.**
+     *
+     * 두 길이 갈라지면 같은 알림이 그림자에서는 일기로, 목록에서는 홈으로 가는 일이
+     * 생긴다. 실어 나르는 값도 알림이 쓰는 것과 같은 열쇠다 ([DaengsNotice.extras]).
+     */
+    private fun openNoticeTarget(extras: Map<String, String>) {
+        extras[EXTRA_OPEN_WALK_DIARY]?.let { openWalkDiary = it }
+        if (extras.containsKey(EXTRA_OPEN_WALK)) openWalkRequest++
+        extras[GaitAnalysisWorker.EXTRA_OPEN_GAIT_RECORD]?.let { recordId ->
+            gaitCompletions.remember(extras[GaitAnalysisWorker.EXTRA_OPEN_GAIT_PET], recordId)
+            openChatRequest++
+        }
+        extras[EXTRA_OPEN_PHOTO_CARD]?.let { openPhotoCard = it }
     }
 
     /**
@@ -343,6 +378,7 @@ class MainActivity : ComponentActivity() {
         readGaitNotification(intent)
         readWalkDiaryNotification(intent)
         readWalkReminderNotification(intent)
+        readPhotoCardNotification(intent)
         // **복원이면 초대 링크를 읽지 않는다.** 프로세스가 죽은 뒤 되살릴 때 시스템은 처음
         // 연 링크 인텐트를 그대로 돌려줘서(여기서 지운 것은 이 프로세스 안의 사본뿐이다)
         // 이미 닫거나 수락한 초대가 다시 열린다. 재생성 중인 토큰은 [inviteEntry] 에 있다.
@@ -450,6 +486,13 @@ class MainActivity : ComponentActivity() {
                 // 「오늘 아직 안 나갔어요」를 누르고 들어왔다. 부른 이유가 산책이다.
                 LaunchedEffect(openWalkRequest) {
                     if (openWalkRequest > 0) screen = Screen.Walk
+                }
+                // 「포토 카드가 완성됐어요」를 누르고 들어왔다. 도감이 뒤집기를 띄운다.
+                LaunchedEffect(openPhotoCard) {
+                    if (openPhotoCard != null) {
+                        screen = Screen.Dex
+                        openPhotoCard = null
+                    }
                 }
                 val completedDestination = key(recordsAccount) {
                     com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
@@ -1391,6 +1434,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onToggleWeather = { weatherOpen = !weatherOpen },
                         onOpenMy = { myOpen = true },
+                        onOpenNotices = { screen = Screen.Notices },
                         onCloseMy = { myOpen = false },
                         outside = outside,
                         pets = shownPets,
@@ -1816,7 +1860,14 @@ class MainActivity : ComponentActivity() {
                                     // **여기서 `done()` 을 부르지 않는다.** 보낸 뒤에도 화면은 열린 채
                                     // 그리는 중 → 뒤집기로 넘어간다 — 나가는 건 「다 되면 알려 주세요」뿐이다.
                                     scope.launch {
-                                        photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { watchId = it }
+                                        photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { id ->
+                                            watchId = id
+                                            // **앱 밖에서도 지켜본다.** 화면의 폴링은
+                                            // `repeatOnLifecycle(STARTED)` 안에 있어서 앱을
+                                            // 내리면 멈춘다 — 「다 되면 알려 주세요」의
+                                            // 그 약속을 이 Worker 가 지킨다.
+                                            schedulePhotoCardWatch(this@MainActivity, id)
+                                        }
                                     }
                                 },
                                 onWaitElsewhere = done,
@@ -1928,6 +1979,16 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
+
+                    Screen.Notices -> com.daengs.app.ui.notify.NoticeInboxRoute(
+                        onBack = { screen = Screen.Home },
+                        // **알림을 눌러 들어오는 길과 같은 자리로 보낸다.** 목록에서
+                        // 누르는 것과 알림 그림자에서 누르는 것이 다른 데로 가면 안 된다.
+                        onOpen = { notice ->
+                            screen = Screen.Home
+                            openNoticeTarget(notice.extras)
+                        },
+                    )
 
                     Screen.CareLog -> {
                         // 저장소 탭이 쓰는 것과 **같은 코디네이터**다. 여기서 기록하거나

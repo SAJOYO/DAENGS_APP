@@ -159,6 +159,9 @@ class DaengsApp : Application() {
         // 종 아이콘으로 거기까지 간 사용자가 빈 화면을 본다. 옛 채널을 지우는 것도 여기서
         // 한 번에 끝난다 (`notify/DaengsNotifications.kt`).
         com.daengs.app.notify.ensureDaengsChannels(this)
+        // 종에 불이 들어올지 **첫 화면부터** 알아야 한다. 이걸 안 부르면 알림함이 빈
+        // 목록으로 시작해서, 앱을 껐다 켠 사이에 온 알림이 없던 것처럼 보인다.
+        com.daengs.app.notify.NoticeInbox.load(this)
         // 「오늘 아직 안 나갔어요」의 계획 작업. KEEP 이라 이미 걸려 있으면 그대로 둔다.
         com.daengs.app.notify.scheduleWalkReminderPlan(this)
 

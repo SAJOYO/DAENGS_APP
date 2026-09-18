@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +45,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
@@ -55,7 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
-import com.daengs.app.notify.notificationSettingsIntent
+import com.daengs.app.notify.NoticeInbox
 import com.daengs.app.miniroom.DogTapTarget
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
@@ -228,6 +228,8 @@ fun HomeScreen(
     onOpenDraw: (() -> Unit)? = null,
     onOpenMy: (() -> Unit)? = null,
     onCloseMy: (() -> Unit)? = null,
+    /** 종 아이콘이 여는 알림 목록. null 이면 종이 안 눌린다. */
+    onOpenNotices: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     /** 사람 이름. 「마이」 프로필 머리에 걸린다. null 이면 그 줄이 빠진다 */
@@ -441,8 +443,9 @@ fun HomeScreen(
     val uprightHeight = flexTop ?: maxHeight
     val rail = usesNavRail(maxWidth, uprightHeight)
     val compactTop = hidesTopBar(uprightHeight)
-    // 종 아이콘이 안드로이드 알림 설정을 여는 데 쓴다.
-    val context = LocalContext.current
+    // 종에 불이 들어오나. **여기서 직접 읽는다** — 알림함은 프로세스에 하나뿐인 저장소라
+    // (`VoiceSettings` 처럼) 화면이 바로 읽는다. `MainActivity` 배선이 필요 없다.
+    val unreadNotices = NoticeInbox.notices.collectAsState().value.any { !it.read }
     // **창 전체를 쓴다.** 누운 절반도 화면이다 — 거기에 카드와 바가 간다.
     Row(Modifier.fillMaxSize()) {
     if (rail) {
@@ -484,13 +487,12 @@ fun HomeScreen(
             if (compactTop) return@Scaffold
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
-                    // **안드로이드의 이 앱 알림 설정으로 보낸다.** 앱 안에 스위치 화면을
-                    // 두지 않는 이유는 `notify/DaengsNotifications.kt` 의
-                    // [com.daengs.app.notify.notificationSettingsIntent] 에 적었다 —
-                    // 채널이 하나뿐인데 스위치를 또 두면 시스템 설정과 어긋날 수 있다.
-                    onBell = {
-                        runCatching { context.startActivity(notificationSettingsIntent(context)) }
-                    },
+                    // **알림 목록으로 간다.** 처음에는 안드로이드 알림 설정으로 보냈는데
+                    // 사용자가 짚었다 — *"여기에 알림이 있으면 불이 들어오고 그 내용이
+                    // 떠야하는거 아니야?"*. 종은 「설정」이 아니라 「알림 목록」이다.
+                    // 설정으로 가는 길은 그 목록 맨 아래에 남겼다.
+                    onBell = { onOpenNotices?.invoke() },
+                    hasUnread = unreadNotices,
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                     photo = profilePhoto,

@@ -15,7 +15,7 @@ import androidx.work.workDataOf
 import com.daengs.app.DaengsApp
 import com.daengs.app.gait.GaitApi
 import com.daengs.app.gait.GaitStatus
-import com.daengs.app.notify.postAnalysisNotice
+import com.daengs.app.notify.postResultNotice
 import java.util.concurrent.TimeUnit
 
 /**
@@ -149,7 +149,7 @@ class GaitAnalysisWorker(
         text: String,
         recordId: String,
         petId: String?,
-    ): Boolean = postAnalysisNotice(
+    ): Boolean = postResultNotice(
         context = context,
         id = recordId.hashCode(),
         title = title,
