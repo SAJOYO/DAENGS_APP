@@ -52,6 +52,15 @@ const val ANALYSIS_CHANNEL_ID = "analysis_result"
 const val LEGACY_GAIT_CHANNEL_ID = "gait_analysis"
 
 /**
+ * 「산책 알림」 채널.
+ *
+ * **성격이 다르니 채널을 가른다.** 분석 결과는 사용자가 기다리던 것이고, 이건 **앱이 먼저
+ * 말을 거는 것**이다. 부탁하지 않은 말은 끄고 싶을 수 있고, 그때 분석 결과까지 같이
+ * 꺼지면 안 된다 — 한 채널에 묶으면 사용자가 둘 중 하나만 끄지 못한다.
+ */
+const val WALK_REMINDER_CHANNEL_ID = "walk_reminder"
+
+/**
  * 「분석 결과」 알림을 띄운다. 실제로 띄웠으면 `true`.
  *
  * @param id 알림 자리. 같은 것에 대한 알림은 같은 자리에 덮어쓴다.
@@ -63,9 +72,19 @@ fun postAnalysisNotice(
     title: String,
     text: String,
     extras: Map<String, String?> = emptyMap(),
+): Boolean = postDaengsNotice(context, ANALYSIS_CHANNEL_ID, id, title, text, extras)
+
+/** 채널을 골라 알림을 띄운다. 실제로 띄웠으면 `true`. */
+fun postDaengsNotice(
+    context: Context,
+    channelId: String,
+    id: Int,
+    title: String,
+    text: String,
+    extras: Map<String, String?> = emptyMap(),
 ): Boolean {
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-    ensureAnalysisChannel(context)
+    ensureDaengsChannels(context)
 
     val open = PendingIntent.getActivity(
         context,
@@ -76,7 +95,7 @@ fun postAnalysisNotice(
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    val notification = NotificationCompat.Builder(context, ANALYSIS_CHANNEL_ID)
+    val notification = NotificationCompat.Builder(context, channelId)
         .setSmallIcon(R.drawable.ic_walk_notification)
         .setContentTitle(title)
         .setContentText(text)
@@ -93,7 +112,7 @@ fun postAnalysisNotice(
 }
 
 /** 채널을 만들고 **옛 채널을 지운다.** 지우는 이유는 [LEGACY_GAIT_CHANNEL_ID] 참고. */
-fun ensureAnalysisChannel(context: Context) {
+fun ensureDaengsChannels(context: Context) {
     val manager = context.getSystemService(NotificationManager::class.java) ?: return
     manager.createNotificationChannel(
         NotificationChannel(
@@ -102,18 +121,26 @@ fun ensureAnalysisChannel(context: Context) {
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply { description = "보행 분석과 산책 일기 장면이 준비되면 알려 드립니다." },
     )
+    manager.createNotificationChannel(
+        NotificationChannel(
+            WALK_REMINDER_CHANNEL_ID,
+            "산책 알림",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply { description = "평소 나가는 시각이 지났는데 아직 안 나갔으면 알려 드립니다." },
+    )
     manager.deleteNotificationChannel(LEGACY_GAIT_CHANNEL_ID)
 }
 
 /**
  * 안드로이드의 **이 앱 알림 설정**을 연다. 종 아이콘이 여기로 간다.
  *
- * 앱 안에 스위치 화면을 따로 두지 않는다. 지금 채널이 [ANALYSIS_CHANNEL_ID] 하나인데,
- * 안드로이드 설정이 이미 그 채널을 이름까지 보여 주며 켜고 끄게 한다. 앱에 스위치를 또
- * 두면 **둘이 어긋난 상태**(앱은 켬, 시스템은 끔)를 만들 수 있다 — 그러면 사용자는
- * 켜져 있는 스위치를 보면서 알림을 못 받는다.
+ * 앱 안에 스위치 화면을 따로 두지 않는다. 안드로이드 설정이 이미 채널을 **이름까지
+ * 보여 주며** 켜고 끄게 한다 (실기기에서 「분석 결과」 · 「산책 알림」 · 「산책 기록」으로
+ * 뜨는 것을 확인했다). 앱에 스위치를 또 두면 **둘이 어긋난 상태**(앱은 켬, 시스템은 끔)를
+ * 만들 수 있고, 그러면 사용자는 켜져 있는 스위치를 보면서 알림을 못 받는다.
  *
- * 채널이 여럿이 되면 그때 앱 화면이 값을 한다 (`docs/home-ux-and-notifications.md` 6절).
+ * 앱 화면이 값을 하는 것은 **시스템에 없는 것**을 둘 때다 — 알림함이나, 채널 하나 안에서
+ * 더 잘게 고르는 것 (`docs/home-ux-and-notifications.md` 6절).
  */
 fun notificationSettingsIntent(context: Context): Intent =
     Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)

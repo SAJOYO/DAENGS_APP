@@ -114,6 +114,7 @@ import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.storage.dial
+import com.daengs.app.notify.EXTRA_OPEN_WALK
 import com.daengs.app.notify.EXTRA_OPEN_WALK_DIARY
 import com.daengs.app.ui.storage.ChatSummariesScreen
 import com.daengs.app.ui.storage.CareLogScreen
@@ -208,6 +209,12 @@ class MainActivity : ComponentActivity() {
     private var openWalkDiary by mutableStateOf<String?>(null)
 
     /**
+     * 「오늘 아직 안 나갔어요」로 들어왔나. [openChatRequest] 와 같은 꼴의 신호다 —
+     * 실어 올 값이 없어서 세기만 한다.
+     */
+    private var openWalkRequest by mutableStateOf(0)
+
+    /**
      * 링크로 받은 초대 토큰과 초대받기 화면 상태. `onNewIntent` 때문에 [gaitCompletions] 와
      * 같은 이유로 액티비티가 받아 두고 화면이 읽어 간다 — `setContent` 안에서는 그 순간을
      * 못 본다.
@@ -226,6 +233,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         readGaitNotification(intent)
         readWalkDiaryNotification(intent)
+        readWalkReminderNotification(intent)
         readInviteLink(intent)
     }
 
@@ -240,6 +248,16 @@ class MainActivity : ComponentActivity() {
         val sessionId = intent.getStringExtra(EXTRA_OPEN_WALK_DIARY) ?: return
         openWalkDiary = sessionId
         intent.removeExtra(EXTRA_OPEN_WALK_DIARY)
+    }
+
+    /**
+     * 「오늘 아직 안 나갔어요」로 열렸으면 산책 화면으로 보낸다. 부른 이유가 산책이라,
+     * 홈에 떨어뜨리면 한 번 더 누르게 한다.
+     */
+    private fun readWalkReminderNotification(intent: Intent) {
+        if (intent.getStringExtra(EXTRA_OPEN_WALK) == null) return
+        openWalkRequest++
+        intent.removeExtra(EXTRA_OPEN_WALK)
     }
 
     /**
@@ -324,6 +342,7 @@ class MainActivity : ComponentActivity() {
         // 앱이 꺼져 있다가 알림으로 열린 경우. 떠 있는 동안 온 것은 onNewIntent 가 받는다.
         readGaitNotification(intent)
         readWalkDiaryNotification(intent)
+        readWalkReminderNotification(intent)
         // **복원이면 초대 링크를 읽지 않는다.** 프로세스가 죽은 뒤 되살릴 때 시스템은 처음
         // 연 링크 인텐트를 그대로 돌려줘서(여기서 지운 것은 이 프로세스 안의 사본뿐이다)
         // 이미 닫거나 수락한 초대가 다시 열린다. 재생성 중인 토큰은 [inviteEntry] 에 있다.
@@ -427,6 +446,10 @@ class MainActivity : ComponentActivity() {
                     recordsRouteState.open(sessionId)
                     screen = Screen.WalkHistory
                     openWalkDiary = null
+                }
+                // 「오늘 아직 안 나갔어요」를 누르고 들어왔다. 부른 이유가 산책이다.
+                LaunchedEffect(openWalkRequest) {
+                    if (openWalkRequest > 0) screen = Screen.Walk
                 }
                 val completedDestination = key(recordsAccount) {
                     com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)

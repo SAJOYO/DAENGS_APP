@@ -36,10 +36,28 @@ class AnalysisNoticeTest {
             ),
         )
 
-        ensureAnalysisChannel(context)
+        ensureDaengsChannels(context)
 
         assertNotNull(manager.getNotificationChannel(ANALYSIS_CHANNEL_ID))
+        assertNotNull(manager.getNotificationChannel(WALK_REMINDER_CHANNEL_ID))
         assertNull(manager.getNotificationChannel(LEGACY_GAIT_CHANNEL_ID))
+    }
+
+    /**
+     * **산책 알림은 다른 채널이다.** 앱이 먼저 말을 거는 것이라, 이것만 끄고 기다리던
+     * 결과는 받고 싶을 수 있다.
+     */
+    @Test
+    fun `산책 알림은 분석 결과와 다른 채널에 뜬다`() {
+        postDaengsNotice(
+            context = context,
+            channelId = WALK_REMINDER_CHANNEL_ID,
+            id = WALK_REMINDER_NOTICE_ID,
+            title = WALK_REMINDER_TITLE,
+            text = WALK_REMINDER_TEXT,
+        )
+
+        assertEquals(WALK_REMINDER_CHANNEL_ID, shadowOf(manager).allNotifications.single().channelId)
     }
 
     @Test
