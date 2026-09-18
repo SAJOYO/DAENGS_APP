@@ -330,6 +330,18 @@ fun ChatScreen(
      * 붙일 근거가 없다. 홈 버튼만 눌렀던 경우는 화면이 살아 있어 여기까지 안 온다.
      */
     gaitCompletions: GaitCompletions? = null,
+    /**
+     * 열자마자 듣기를 시작할지. 홈 카드의 마이크로 들어온 경우다 (#451).
+     *
+     * **홈에서 인식하지 않는 이유가 이 인자다.** 음성은 `voiceBase` 누적 · 자동전송
+     * 설정 · 오버레이가 열리면 정지 · 권한 거부 문구가 여기서 한 덩어리로 얽혀 있다.
+     * 홈에서 다시 짜면 같은 로직이 두 곳에 생겨 한쪽만 고쳐진다. 그래서 홈은 이
+     * 깃발만 세우고, 인식은 이 화면 하나가 갖는다.
+     *
+     * 한 번만 발동한다 — 듣다 멈춘 뒤 리컴포지션이 돌 때마다 다시 켜지면 껐는데
+     * 살아나는 것처럼 보인다.
+     */
+    startListening: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -953,6 +965,21 @@ fun ChatScreen(
             voice.listening -> voice.stop()
             hasMicPermission(context) -> beginVoice()
             else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    // **홈 카드의 마이크로 들어왔으면 열자마자 듣는다** (#451).
+    //
+    // `toggleVoice` 를 그대로 쓴다 — 권한이 없으면 먼저 묻고, 받으면 그때 시작한다.
+    // 홈에서 권한을 따로 청하지 않는 이유다: 물어보는 자리가 한 곳이어야 거부했을 때
+    // 나가는 문구도 한 곳이다.
+    //
+    // ⚠️ **한 번만 발동한다.** `startListening` 을 조건으로 매번 걸면, 듣다 멈춘 뒤
+    // 리컴포지션이 돌 때 다시 켜져서 껐는데 살아나는 것처럼 보인다.
+    var voiceAutoStarted by remember { mutableStateOf(false) }
+    LaunchedEffect(startListening) {
+        if (startListening && !voiceAutoStarted) {
+            voiceAutoStarted = true
+            toggleVoice()
         }
     }
     // **무언가가 대화 위에 덮이면 듣기를 멈춘다.** 오버레이는 이 화면을 합성에서 빼지

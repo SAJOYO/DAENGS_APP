@@ -343,6 +343,14 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                // 홈 카드의 마이크로 챗에 들어왔는가 (#451). [Screen] 이 enum 이라 목적지에
+                // 값을 실을 수 없어 깃발을 따로 둔다.
+                //
+                // ⚠️ **`rememberSaveable` 이 아니다.** 프로세스가 죽었다 살아날 때까지
+                // 남으면, 돌아오자마자 마이크가 저절로 켜진다 — 사용자가 켠 적 없는데.
+                // 챗을 나갈 때도 끈다(아래 `onBack`): 안 끄면 다음에 카드를 그냥 눌러도
+                // 듣기가 시작된다.
+                var chatOpensWithVoice by remember { mutableStateOf(false) }
                 // 홈 첫 진입 연출. **여기서 든다** — 홈 안에서 들면 도감·산책을 갔다 올
                 // 때마다 다시 튼다. 로딩을 떠나는 자리에서 한 번 무장하고, 그 뒤 홈은
                 // 몇 번을 다시 합성돼도 안 튼다.
@@ -1214,6 +1222,15 @@ class MainActivity : ComponentActivity() {
                         ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { askPetThen(PetNeed.Chat) { screen = Screen.Chat } },
+                        // **같은 관문을 지난다.** 강아지가 없으면 챗 자체가 안 열리므로
+                        // 음성도 같은 규칙이다 — 마이크만 예외를 두면 등록 안 한 사람이
+                        // 말부터 하게 된다.
+                        onOpenChatByVoice = {
+                            askPetThen(PetNeed.Chat) {
+                                chatOpensWithVoice = true
+                                screen = Screen.Chat
+                            }
+                        },
                         storageContent = { storageModifier ->
                             ChatSummaryRoute(
                                 petId = pets.primary?.id.takeIf { session != null },
@@ -1456,7 +1473,12 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.Chat -> ChatScreen(
-                        onBack = { screen = Screen.Home },
+                        onBack = {
+                            // 나갈 때 깃발을 끈다 — 안 끄면 다음에 카드를 그냥 눌러도
+                            // 듣기가 시작된다.
+                            chatOpensWithVoice = false
+                            screen = Screen.Home
+                        },
                         avatar = artBreed,
                         // 말풍선 얼굴은 안 바뀐다. 보행 촬영 화면에서만 쓴다.
                         avatarPhoto = pets.primary?.let { petPhotos[it.id] },
@@ -1465,6 +1487,7 @@ class MainActivity : ComponentActivity() {
                         historyCoordinator = chatHistory,
                         gaitCompletions = gaitCompletions,
                         assistantQuery = facilityAssistantQuery,
+                        startListening = chatOpensWithVoice,
                         onOpenFacilities = { screen = Screen.Places },
                         // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.
                         onOpenScreeningHistory = { screen = Screen.ScreeningHistory }
