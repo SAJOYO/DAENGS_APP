@@ -11,12 +11,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -146,6 +151,17 @@ fun DeveloperPanel(
     onToggleEmptyRoom: (() -> Unit)? = null,
     /** 지금 빈 방으로 보고 있나 */
     emptyRoom: Boolean = false,
+    /**
+     * 방 가로 늘림 ([com.daengs.app.miniroom.RoomSpec.H_STRETCH], 기본 1.18).
+     *
+     * **한계는 기기마다 다르다.** `RoomGeometry.of` 가 상자 폭에서 자르므로 어느
+     * 지점부터는 올려도 방이 더 안 넓어진다 — Pixel 3 XL(방 상자 335dp)은 1.53,
+     * Pixel 7(452dp)은 1.14 에서 한계다. 그래서 범위를 넉넉히 1.6 까지 둔다.
+     *
+     * **저장하지 않는다.** 값을 정하면 사람이 상수를 고친다.
+     */
+    hStretch: Float = com.daengs.app.miniroom.RoomSpec.H_STRETCH,
+    onPickHStretch: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -173,6 +189,39 @@ fun DeveloperPanel(
                         .background(PanelPick)
                         .clickable(onClick = onOpenCutoutLab)
                         .padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            }
+        }
+
+        // **방 가로 늘림.** 「각 폰에서 방을 최대한 크게」 를 눈으로 고르는 자리다.
+        // 정사각에 가까운 폰(Pixel 3 XL)만 한계까지 모자라고, 길쭉한 폰은 기본값에서
+        // 이미 한계라 올려도 안 변한다. 대가는 러그가 아니라 **모양**이다 —
+        // 아이소메트릭이 옆으로 퍼지고 가로 도트가 굵어지고 개가 상대적으로 작아진다.
+        if (onPickHStretch != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("가로", color = PanelDim, fontSize = 9.sp)
+                Slider(
+                    value = hStretch,
+                    onValueChange = onPickHStretch,
+                    valueRange = 1f..1.6f,
+                    // 0.01 단위로 멈춘다. 연속이면 같은 값으로 돌아올 수가 없어서
+                    // "1.35 가 나았다" 를 확인할 방법이 없다.
+                    steps = 59,
+                    colors = SliderDefaults.colors(
+                        thumbColor = PanelPick,
+                        activeTrackColor = PanelPick,
+                        inactiveTrackColor = PanelDim,
+                    ),
+                    modifier = Modifier.width(140.dp).height(18.dp),
+                )
+                Text(
+                    String.format("%.2f", hStretch),
+                    color = PanelPick,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }

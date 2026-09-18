@@ -42,6 +42,19 @@ fun HomeGameRoute(repository: ActivityRepository, ownerId: String?, petId: Strin
 }
 
 /**
+ * 시즌 한 줄의 높이.
+ *
+ * **재서 정했다.** 글자는 17.4dp 인데 이 줄이 차지하는 띠가 **58dp** 였다
+ * (Pixel 3 XL 실측). `TextButton` 안쪽 `Row` 에 걸린 `ButtonDefaults.MinHeight` 때문이다 —
+ * 아래에서 `LocalMinimumInteractiveComponentSize` 를 풀어 둔 것만으로는 안 줄었다.
+ * 그건 48dp **터치 타깃**을 푸는 것이고 버튼 **최소 높이**는 별개다.
+ * 그래서 높이를 직접 준다.
+ *
+ * 잠금 테스트: `HomeBottomBarLockTest`.
+ */
+internal val HomeGameRowHeight = 28.dp
+
+/**
  * 홈의 시즌 한 줄.
  *
  * **한 줄이다.** 전에는 제목과 본문을 쌓아서, `시즌 현황을 불러오고 있어요` 나
@@ -63,8 +76,13 @@ fun HomeGameCard(title: String, message: String, onOpen: () -> Unit) {
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
     TextButton(
         onClick = onOpen,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        // 높이를 **직접 준다.** 겉에서 고정 제약을 걸면 안쪽 `Row` 의
+        // `defaultMinSize(minHeight = 40.dp)` 가 최대 제약에 막혀 못 부푼다.
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(HomeGameRowHeight)
+            .padding(horizontal = 14.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
     ) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -60,14 +60,33 @@ fun CareLogSection(
     onDismissError: () -> Unit = {},
     canDelete: (CareEvent) -> Boolean = { true },
     zone: ZoneId = ZoneId.systemDefault(),
+    /**
+     * 몇 건까지 그리나. null 이면 전부다.
+     *
+     * 저장소 탭은 [StorageSectionPreview.PREVIEW] 만 그린다 — 전부 펼치면 오늘 챙긴 것이
+     * 쌓이는 만큼 탭이 길어진다. 실기기에서 일곱 건일 때 이 섹션만으로 화면의 60% 를
+     * 먹었다. 전체보기 화면은 null 로 불러 다 그린다.
+     */
+    limit: Int? = null,
+    /** 「전체보기」를 누르면. null 이면 그 줄을 안 그린다 (전체보기 화면 자신이 그렇다). */
+    onOpenAll: (() -> Unit)? = null,
+    /**
+     * 「오늘의 케어 기록」 머리줄을 그리나.
+     *
+     * 전체보기 화면([CareLogScreen])은 상단바가 이미 같은 말을 해서 **제목이 두 번 뜬다.**
+     * 거기서는 false 로 접고 날짜는 상단바가 받는다.
+     */
+    showHeader: Boolean = true,
 ) {
     var pendingDeletion by remember { mutableStateOf<CareEvent?>(null) }
     val summary = (state.today as? ChatLoadState.Ready)?.value
 
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("오늘의 케어 기록", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            summary?.let { Text(dayLabel(it.day), color = TextMuted, fontSize = 13.sp) }
+        if (showHeader) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("오늘의 케어 기록", color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                summary?.let { Text(dayLabel(it.day), color = TextMuted, fontSize = 13.sp) }
+            }
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -104,6 +123,8 @@ fun CareLogSection(
                 zone = zone,
                 onRequestDelete = { pendingDeletion = it },
                 canDelete = canDelete,
+                limit = limit,
+                onOpenAll = onOpenAll,
             )
         }
     }
@@ -132,6 +153,8 @@ private fun CareDayContent(
     zone: ZoneId,
     onRequestDelete: (CareEvent) -> Unit,
     canDelete: (CareEvent) -> Boolean,
+    limit: Int? = null,
+    onOpenAll: (() -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -158,7 +181,10 @@ private fun CareDayContent(
         if (summary.events.isEmpty()) {
             Text("아직 오늘 챙긴 기록이 없어요", color = TextMuted, fontSize = 13.sp)
         } else {
-            summary.events.forEach { event ->
+            // **최근 몇 건만 그린다.** 합계 줄이 위에 있어서 "몇 번 챙겼나" 는 접혀도
+            // 보인다 — 접히는 것은 시각과 누가 챙겼는지뿐이다.
+            val shown = if (limit == null) summary.events else summary.events.take(limit)
+            shown.forEach { event ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(eventLabel(event, zone), color = TextDark, fontSize = 14.sp)
@@ -172,6 +198,13 @@ private fun CareDayContent(
                         DaengsTextAction("삭제", { onRequestDelete(event) }, tint = DaengsColors.Error)
                     }
                 }
+            }
+            if (onOpenAll != null && StorageSectionPreview.showsAll(summary.events.size)) {
+                StorageSeeAllRow(
+                    label = "전체보기",
+                    hint = "+${StorageSectionPreview.hidden(summary.events.size)}건 더",
+                    onClick = onOpenAll,
+                )
             }
         }
     }
@@ -243,7 +276,7 @@ internal fun canDeleteCareEvent(
 }
 
 /** `2025-09-01` → `9월 1일`. 서버가 준 날짜를 못 읽으면 그대로 보여 준다. */
-private fun dayLabel(day: String): String =
+internal fun dayLabel(day: String): String =
     runCatching { LocalDate.parse(day) }.map { "${it.monthValue}월 ${it.dayOfMonth}일" }.getOrDefault(day)
 
 @Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)

@@ -128,6 +128,14 @@ fun MiniRoomCanvas(
      * 불이 켜지는 순간 [herd] 에 마중을 시킨다. 화면을 만지면 건너뛴다.
      */
     intro: RoomIntro? = null,
+    /**
+     * 방 가로 늘림 ([RoomSpec.H_STRETCH]).
+     *
+     * **개발자 패널이 실기기에서 값을 고를 때만** 기본값과 다르다. 릴리스에서는 패널이
+     * 빈 스텁이라 언제나 기본값이다. "각 폰에서 방을 최대한 크게" 의 손잡이이고,
+     * 견딜 만한 값은 눈으로만 알 수 있어서 이렇게 밖에서 넣을 길을 낸다.
+     */
+    hStretch: Float = RoomSpec.H_STRETCH,
 ) {
     val clock = rememberFrameClock()
 
@@ -203,7 +211,7 @@ fun MiniRoomCanvas(
                 val w = coords.size.width.toFloat()
                 val h = coords.size.height.toFloat()
                 if (w <= 0f || h <= 0f) return@onGloballyPositioned
-                val g = RoomGeometry.of(w, h)
+                val g = RoomGeometry.of(w, h, hStretch)
                 val origin = coords.positionInWindow()
                 fun toWindow(r: Rect) = r.translate(origin.x, origin.y)
                 val turntable = state.items
@@ -228,7 +236,7 @@ fun MiniRoomCanvas(
                     // 확대된 그림 위 좌표로 강아지를 잡으려 들면 엉뚱한 아이가 잡히는데,
                     // 건너뛰는 순간 그림이 제자리로 오므로 그대로 둔다.
                     intro?.skip()
-                    val g = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
+                    val g = RoomGeometry.of(size.width.toFloat(), size.height.toFloat(), hStretch)
 
                     // 편집 모드가 아니면 강아지만 만진다.
                     // **그리는 순서와 무관하게 강아지를 먼저 검사**하므로,
@@ -259,7 +267,7 @@ fun MiniRoomCanvas(
                                         slid = true
                                     }
                                     if (slid) {
-                                        val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
+                                        val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat(), hStretch)
                                         val (cf, rf) = gg.toGridF(ch.position)
                                         // 손가락으로도 책상을 뚫지 못한다 — 자율 이동과 같은 규칙
                                         herd.dragTo(hit, Offset(cf, rf) + grab, walls)
@@ -272,7 +280,7 @@ fun MiniRoomCanvas(
                                 herd.draggingId = null
                             }
                             if (!slid) {
-                                val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat())
+                                val gg = RoomGeometry.of(size.width.toFloat(), size.height.toFloat(), hStretch)
                                 dogTapCallback?.invoke(hit.tapTarget(catalog, gg))
                             }
                             return@awaitEachGesture
@@ -354,7 +362,7 @@ fun MiniRoomCanvas(
                             }
                             state.updateDrag(
                                 change.position,
-                                RoomGeometry.of(size.width.toFloat(), size.height.toFloat()),
+                                RoomGeometry.of(size.width.toFloat(), size.height.toFloat(), hStretch),
                                 catalog,
                             )
                             change.consume()
@@ -376,7 +384,7 @@ fun MiniRoomCanvas(
             .drawBehind {
                 // 상태는 전부 draw 람다 **안에서** 읽는다. 그래야 recomposition 없이
                 // draw 단계만 무효화돼 드래그 중에도 프레임이 안 떨어진다.
-                val g = RoomGeometry.of(size.width, size.height)
+                val g = RoomGeometry.of(size.width, size.height, hStretch)
                 val t = frameTimeMs ?: clock.value
                 val d = state.drag
 

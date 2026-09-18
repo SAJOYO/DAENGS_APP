@@ -54,5 +54,7 @@ fun DeveloperPanel(
     devPetCount: Int = 0,
     onToggleEmptyRoom: (() -> Unit)? = null,
     emptyRoom: Boolean = false,
+    hStretch: Float = com.daengs.app.miniroom.RoomSpec.H_STRETCH,
+    onPickHStretch: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) = Unit
