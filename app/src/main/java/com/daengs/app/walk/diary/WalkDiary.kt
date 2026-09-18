@@ -85,7 +85,7 @@ fun diaryWalk(
         val entry = localEntries.firstOrNull { it.id == entryId }
         val point = if (scene.diary != null) {
             if (scene.observation != null) index.resolve(scene.observation) else scene.diary.point
-        } else if (entryId != null) entry?.let { it.pin?.point ?: it.point }
+        } else if (entryId != null) entry?.let { if (it.pin != null) it.pin.point else it.point }
             else index.resolve(scene.observation)
         val image = scene.diary?.photoId?.let { id -> photos.firstOrNull { it.id == id && it.sessionId == walk.sessionId } }
         DiaryScene("${walk.sessionId}/${scene.id}", walk.sessionId, scene.atMillis,

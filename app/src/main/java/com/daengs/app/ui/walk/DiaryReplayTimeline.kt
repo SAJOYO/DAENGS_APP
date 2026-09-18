@@ -20,20 +20,14 @@ internal data class DiaryReplayCheckpoint(val elapsed: Long, val events: List<Di
     val markerIds get() = events.mapTo(hashSetOf()) { it.id }
 }
 
-/** A scene explicitly sourced from an action reads once; both original marker IDs remain selected. */
-internal fun DiaryReplayCheckpoint.readingEvents(): List<DiaryReplayEvent> {
-    val actions = events.mapNotNull { it.action }.associateBy { it.id }
-    val described = events.mapNotNull { it.scene?.entryId }.toSet()
-    return events.mapNotNull { event ->
-        if (event.scene != null) event.copy(action = actions[event.scene.entryId])
-        else event.takeUnless { it.action?.id in described }
-    }
-}
+/** Source binding is resolved before events are built; never merge unrelated/stale records by ID here. */
+internal fun DiaryReplayCheckpoint.readingEvents(): List<DiaryReplayEvent> = events
 
 /** Read-only event projection onto the existing playback axis; never moves a source coordinate. */
 internal class DiaryReplayTimeline(events: List<DiaryReplayEvent>, val unresolvedCount: Int = 0) {
     val checkpoints = events.sortedWith(compareBy<DiaryReplayEvent> { it.elapsed }
-        .thenBy { if (it.scene != null) 0 else 1 }.thenBy { it.id })
+        .thenBy { if (it.scene != null) 0 else 1 }
+        .thenBy { it.ordinal ?: Int.MAX_VALUE }.thenBy { it.id })
         .groupBy { it.elapsed }.map { (elapsed, members) -> DiaryReplayCheckpoint(elapsed, members) }
 
     // Derive from absolute time, not a forward-only queue: reverse seeking and skipped ticks agree.
@@ -87,22 +81,28 @@ internal fun diaryReplayTimeline(read: WalkDiaryReadView): DiaryReplayTimeline {
         return matches.distinct().singleOrNull()
     }
     var unresolved = 0
+    val items = read.scenePresentation.items.filter { it.scene.sessionId == sessionId }
+    val boundActions = items.mapNotNull { it.action?.id }.toSet()
     val events = buildList {
-        var ordinal = 0
-        read.diary?.scenes.orEmpty().filter { it.sessionId == sessionId }
-            .forEach { scene ->
-                val boundary = scene.boundaryKind()
-                val number = if (boundary == null) ++ordinal else null
-                val elapsed = when (boundary) {
-                    DiarySceneKind.START -> 0L
-                    DiarySceneKind.END -> timeline?.durationMillis ?: review.context.durationMillis
-                    else -> if (timeline != null) read.focusFor(scene)?.let(timeline::scenePosition) ?: position(scene.atMillis)
-                        else position(scene.atMillis)
-                }
-                if (elapsed == null) unresolved++ else add(DiaryReplayEvent(scene.id, elapsed, scene, number))
+        items.forEach { item ->
+            val scene = item.scene
+            val boundary = scene.boundaryKind()
+            val elapsed = when (boundary) {
+                DiarySceneKind.START -> 0L
+                DiarySceneKind.END -> timeline?.durationMillis ?: review.context.durationMillis
+                // Prefer the action tap time, but keep the scene readable if that clock cannot be resolved.
+                else -> item.action?.let { position(it.recordedAtMillis) }
+                    ?: if (timeline != null) read.focusFor(scene)?.let(timeline::scenePosition) ?: position(scene.atMillis)
+                    else position(scene.atMillis)
             }
-        read.diary?.sourceEntries.orEmpty().filter { it.sessionId == sessionId && it.type != WalkMomentType.NOTE }.forEach { entry ->
-            // Event time is the tap time, not an earlier location capture or a relocated pin time.
+            if (elapsed == null) unresolved++
+            else add(DiaryReplayEvent(scene.id, elapsed, scene, item.ordinal, item.action))
+        }
+        // Keep raw-only reading for unbound legacy records, without adding any map marker.
+        // Bound records never fall back to a second raw event; the scene above is their one replay identity.
+        read.diary?.sourceEntries.orEmpty().filter {
+            it.sessionId == sessionId && it.type != WalkMomentType.NOTE && it.id !in boundActions
+        }.forEach { entry ->
             val elapsed = position(entry.recordedAtMillis)
             if (elapsed == null) unresolved++ else add(DiaryReplayEvent(diaryActionKey(entry), elapsed, action=entry))
         }

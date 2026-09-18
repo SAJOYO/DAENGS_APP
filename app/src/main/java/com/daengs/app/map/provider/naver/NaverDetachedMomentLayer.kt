@@ -16,7 +16,7 @@ import com.naver.maps.map.NaverMap
 import com.naver.maps.map.overlay.*
 import kotlin.math.roundToInt
 
-/** One packing pass for both families. Group membership and click identities remain separate. */
+/** Numbered and behavior scenes share diary grouping and scene IDs; artwork is presentation only. */
 @Composable
 internal fun NaverDetachedMomentLayer(map: NaverMap?, moments: List<MomentMarkerState>, size: IntSize,
     density: Float, order: NativeWalkStack, onSelect: (List<String>) -> Unit,
@@ -54,15 +54,23 @@ internal fun NaverDetachedMomentLayer(map: NaverMap?, moments: List<MomentMarker
                 val members=group.points.map { source.getValue(it.id) }
                 val chosen=members.firstOrNull { it.selected } ?: members.minBy { it.diaryPin?.ordinal ?: Int.MAX_VALUE }
                 val selected=members.any { it.selected || it.diaryPin?.inspected==true }
-                val bitmap=if (chosen.diaryPin!=null) diaryGroupPinBitmap(chosen.diaryPin.ordinal,members.size,selected,density,detached=true)
+                val bitmap=if (!chosen.usesActionArtwork) diaryGroupPinBitmap(requireNotNull(chosen.diaryPin).ordinal,members.size,selected,density,detached=true)
                     else diaryActionPinBitmap(context,members.flatMap { it.behaviors }.toSet(),
                         members.sumOf { it.recordPin?.count ?: 1 },selected,density)
-                // Reserve the largest selected artwork, including any representative ordinal.
-                val reserved=if (chosen.diaryPin!=null) diaryGroupPinBitmap(members.maxOf { it.diaryPin!!.ordinal },members.size,true,density,detached=true)
-                    else diaryActionPinBitmap(context,members.flatMap { it.behaviors }.toSet(),
-                        members.sumOf { it.recordPin?.count ?: 1 },true,density)
-                Art(OverlayImage.fromBitmap(bitmap),bitmap.width,bitmap.height,
-                    MarkerFootprint(maxOf(bitmap.width,reserved.width)/density.toDouble(),maxOf(bitmap.height,reserved.height)/density.toDouble())).also { reserved.recycle() }
+                // A mixed group can change representative on selection. Reserve both kinds of art
+                // so switching from its number to an action does not silently shrink its footprint.
+                val reserved=buildList {
+                    members.filterNot { it.usesActionArtwork }.mapNotNull { it.diaryPin?.ordinal }.maxOrNull()?.let {
+                        add(diaryGroupPinBitmap(it,members.size,true,density,detached=true))
+                    }
+                    if (members.any { it.usesActionArtwork }) add(diaryActionPinBitmap(context,
+                        members.flatMap { it.behaviors }.toSet(),members.sumOf { it.recordPin?.count ?: 1 },true,density))
+                }
+                val footprint=MarkerFootprint(
+                    maxOf(bitmap.width,reserved.maxOf { it.width })/density.toDouble(),
+                    maxOf(bitmap.height,reserved.maxOf { it.height })/density.toDouble())
+                reserved.forEach { it.recycle() }
+                Art(OverlayImage.fromBitmap(bitmap),bitmap.width,bitmap.height,footprint)
             }
             fun pack(diameter: Double): List<MarkerPlacement> {
                 val groups=points.groupBy { source.getValue(it.id).diaryPin!=null }.values.flatMap { clusterMapMarkers(it,diameter) }
