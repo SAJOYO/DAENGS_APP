@@ -64,6 +64,9 @@ enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Storage("저장소", DaengsIcon.Camera),
 }
 
+// ⚠️ **50dp 로 줄이면 탭 라벨 아래가 깎인다** (2026-09-18 실기기 확인). 아이콘 24dp 에
+// 라벨 한 줄과 위아래 여백을 더한 값이라 더 줄일 자리가 없다. 홈에서 방을 키우려면
+// 여기가 아니라 카드 쪽 간격을 줄인다.
 private val BarHeight = 56.dp
 private val FabSize = 58.dp
 private val FabLift = 22.dp

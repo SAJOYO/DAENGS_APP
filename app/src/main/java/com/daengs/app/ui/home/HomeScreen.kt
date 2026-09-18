@@ -629,7 +629,7 @@ fun HomeScreen(
                     avatar = profileBreed,
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             WalkSummaryCard(
                 Modifier.padding(horizontal = 14.dp),
                 todayWalks,
@@ -637,7 +637,7 @@ fun HomeScreen(
                 onOpenWalkHistory,
             )
             gameContent?.invoke()
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(4.dp))
         }
 
         if (wide) {

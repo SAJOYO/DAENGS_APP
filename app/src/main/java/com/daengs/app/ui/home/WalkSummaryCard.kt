@@ -76,7 +76,7 @@ fun WalkSummaryCard(
         color = CardWhite,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -108,7 +108,7 @@ fun WalkSummaryCard(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
 
             // **좁으면 한 마디를 아래로 내린다.**
             //
@@ -121,7 +121,7 @@ fun WalkSummaryCard(
                     Row(
                         m
                             .background(PinkFaint, RoundedCornerShape(18.dp))
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
                         todayStats(totals).forEachIndexed { i, stat ->
