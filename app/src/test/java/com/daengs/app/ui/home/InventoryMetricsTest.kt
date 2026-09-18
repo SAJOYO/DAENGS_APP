@@ -18,6 +18,23 @@ import org.junit.Test
  */
 class InventoryMetricsTest {
 
+    /**
+     * ⚠️ **탭 줄 높이가 한 번 더 이 버그를 냈다.**
+     *
+     * [InventoryMetrics.TabRow] 를 24dp 로 어림잡았더니 실제 `TabChip`(11sp 글자 +
+     * 위아래 4dp)은 약 30dp 를 먹어서, 슬롯에 63.3dp 만 남고 이름표가 또 떨어져
+     * 나갔다. **그런데 이 테스트는 같은 잘못된 상수로 계산해서 통과했다** —
+     * 실기기에서 `+` 를 눌러 보고서야 알았다.
+     *
+     * 그래서 지금은 [InventoryMetrics.TabRow] 를 `Row(Modifier.height(...))` 로
+     * 레이아웃에 직접 먹인다. 상수가 곧 실제 높이여야 산수가 맞는다. 여기서는 그
+     * 상수가 칩을 담을 만큼인지만 지킨다.
+     */
+    @Test
+    fun `탭 줄 높이는 칩을 담을 만큼이다`() {
+        assertTrue("${InventoryMetrics.TabRow} 에 11sp 칩이 안 들어간다", InventoryMetrics.TabRow >= 28.dp)
+    }
+
     @Test
     fun `패널 높이는 슬롯과 탭 줄을 다 담는다`() {
         val need = InventoryMetrics.PanelPadding * 2 +
