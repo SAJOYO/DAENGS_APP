@@ -8,6 +8,7 @@ import com.daengs.app.ui.theme.TextMuted
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -52,6 +53,14 @@ fun HomeGameRoute(repository: ActivityRepository, ownerId: String?, petId: Strin
  */
 @Composable
 fun HomeGameCard(title: String, message: String, onOpen: () -> Unit) {
+    // **터치 타깃 최소 높이를 푼다.** Material3 는 버튼에 48dp 를 강제하는데, 이 줄은
+    // 글자 한 줄(약 20dp)에 위아래 6dp 라 32dp 다. 모자란 16dp 가 보이지 않는 여백으로
+    // 위아래에 붙어서, 한 줄짜리 줄 밑이 유난히 떠 보였다. 홈은 미니룸이 주인공인
+    // 화면이라 그 자리를 방에 돌려준다.
+    //
+    // 접근성 손실이 작은 이유: 이 줄은 **화면 폭 전체**가 눌리는 자리라, 높이가 32dp 로
+    // 줄어도 손가락이 빗나가기 어렵다. 폭이 좁은 아이콘 버튼이었다면 안 했을 것이다.
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
     TextButton(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
@@ -65,6 +74,7 @@ fun HomeGameCard(title: String, message: String, onOpen: () -> Unit) {
                 color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text("현황 ›", style = MaterialTheme.typography.labelMedium)
+    }
     }
 }
 
