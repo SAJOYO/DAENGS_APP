@@ -28,9 +28,32 @@ class RoomStretchTest {
     /** 1·2 번을 반영한 방 상자(335.3dp). 이 상자에서는 세로가 먼저 걸린다. */
     private val h = 335.3f * 3.504f
 
+    /**
+     * ⛔ **사용자가 실기기에서 고른 값이다** — `docs/design-locks.md` 6절.
+     *
+     * 1.18 → 1.46. 방 그림 폭 306.9 → 380.0dp, 좌우 여백 52 → 15.7dp 다.
+     * STATUS 「다음 결정」 5번의 "시안처럼 좌우 20dp" 목표에 닿는 값이고,
+     * 그 절은 이 목표를 **상자 높이로는 못 간다**고 적어 두었다.
+     */
     @Test
-    fun `기본값은 1_18 이다`() {
-        assertEquals(1.18f, RoomSpec.H_STRETCH, 1e-6f)
+    fun `기본값은 1_46 이다`() {
+        assertEquals(1.46f, RoomSpec.H_STRETCH, 1e-6f)
+    }
+
+    /**
+     * 기본값에서 방이 화면 폭을 거의 채운다.
+     *
+     * 방 그림 폭의 한계는 `화면 폭 × INSET` 이고, 기본값이 그 95% 를 넘어야 "최대한
+     * 크게" 라고 말할 수 있다. 실측 380.0dp / 한계 386.7dp = 98.3% 다.
+     */
+    @Test
+    fun `기본값에서 방이 화면 폭을 거의 채운다`() {
+        val g = RoomGeometry.of(w, h)
+        val limit = w * RoomSpec.INSET
+        assertTrue(
+            "방 ${g.stage.width} 가 한계 $limit 의 95% 에 못 미친다",
+            g.stage.width >= limit * 0.95f,
+        )
     }
 
     @Test
