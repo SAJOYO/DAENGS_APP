@@ -64,9 +64,33 @@ enum class BottomTab(val label: String, val icon: DaengsIcon) {
     Storage("저장소", DaengsIcon.Camera),
 }
 
-private val BarHeight = 56.dp
-private val FabSize = 58.dp
-private val FabLift = 22.dp
+// ⚠️ **50dp 로 줄이면 탭 라벨 아래가 깎인다** (2026-09-18 실기기 확인). 아이콘 24dp 에
+// 라벨 한 줄과 위아래 여백을 더한 값이라 더 줄일 자리가 없다. 홈에서 방을 키우려면
+// 여기가 아니라 [FabLift] 와 카드 쪽 간격을 줄인다.
+//
+// 세 값 모두 `internal` 이다 — 사용자가 실기기에서 정한 값이라 `HomeBottomBarLockTest`
+// 가 직접 읽어 잠근다. `private` 이면 테스트가 소스를 글자로 훑어야 한다.
+internal val BarHeight = 56.dp
+
+/**
+ * 가운데 버튼 지름.
+ *
+ * 58dp 였다. 사용자가 "조금 줄이고" 로 정했다. **48dp 아래로 내리지 않는다** —
+ * 손가락이 닿는 최소치다.
+ */
+internal val FabSize = 52.dp
+
+/**
+ * 가운데 버튼이 흰 바 **위로** 나오는 양.
+ *
+ * **이 숫자 하나가 둘을 같이 움직인다.** 나온 양이 지름의 38%→12% 가 되고, 흰 바
+ * 위쪽의 **투명한 띠**가 그만큼 얇아져 내용 영역이 넓어진다. 그 몫은 방이 받는다
+ * (방이 `weight(1f)` 라 남는 것을 다 가져간다).
+ *
+ * 22dp 였다. 시즌 행과 흰 바 사이가 47.1dp 비어 보이던 원인의 절반이 이것이었다 —
+ * 나머지 절반은 시즌 행 띠가 글자 17.4dp 에 58dp 를 쓰고 있던 것이다.
+ */
+internal val FabLift = 6.dp
 
 /**
  * 하단 네비게이션.

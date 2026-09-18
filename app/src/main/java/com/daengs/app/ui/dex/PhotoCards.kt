@@ -2,24 +2,30 @@ package com.daengs.app.ui.dex
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import com.daengs.app.dogcard.photo.PhotoCardKey
 
 // ---------------------------------------------------------------------------
-// 포토 카드 열두 장 — 서버가 사진 한 장으로 그려 주는 달별 카드
+// 포토 카드 열넷 — 서버가 사진 한 장으로 그려 주는 달 카드 12장 + 종류 카드(딸기·상추)
 //
 // 원본은 `SAJOYO/DAENGS_dev` 의 `backend/src/daengs_cardimage/catalog.py` 다. 카드명은
-// 제목판에 찍히는 영문 그대로다(9월은 원본 HARVEST MOON 이 판에 안 들어가 CHUSEOK).
+// 제목판에 찍히는 영문 그대로다(9월은 원본 HARVEST MOON 이 판에 안 들어가 CHUSEOK,
+// 딸기는 STRAWBERRY 가 아니라 BERRY 다).
 //
 // **그림은 앱에 없다.** 서버가 994×1582 완성 PNG 를 주고, 앱은 받아 둔 파일을 그린다.
 // 잠긴 칸은 빈 판에 자물쇠다 (docs/photo-cards.md §2).
 // ---------------------------------------------------------------------------
 
 /**
- * 서버가 지금 만들어 주는 달. 저쪽 `DAENGS_CARDIMAGE_MONTHS` 기본값과 같다.
+ * 서버가 지금 만들어 주는 달. 저쪽 `DAENGS_CARDIMAGE_MONTHS` 기본값과 같다 —
+ * 4·9월로 시작해 `DAENGS_dev` #572(2026-09-17 배포)에서 12달이 됐다.
  *
- * ⚠️ **서버에 달 목록 API 가 없다.** 저쪽이 달을 열면 여기 한 줄을 고친다. 닫힌 달을
+ * ⚠️ **서버에 달 목록 API 가 없다.** 저쪽이 달을 열거나 닫으면 여기 한 줄을 고친다. 닫힌 달을
  *    보내면 서버가 `404 month_closed` 문장을 주고, 앱은 그걸 그대로 띄운다.
+ *
+ * 종류 카드(딸기·상추)에는 이런 잠금이 **없다** — 저쪽 카탈로그에 있으면 열린 것이다
+ * (D-085). 그래서 짝이 되는 `OPEN_PHOTO_KINDS` 를 두지 않고 [PhotoCardKey.KINDS] 를 그대로 쓴다.
  */
-val OPEN_PHOTO_MONTHS: Set<Int> = setOf(4, 9)
+val OPEN_PHOTO_MONTHS: Set<Int> = (1..12).toSet()
 
 /** 서버 카드 비율. 야채(3:4)보다 길쭉하다. */
 const val PHOTO_RATIO = 994f / 1582f
@@ -27,15 +33,29 @@ const val PHOTO_RATIO = 994f / 1582f
 /**
  * 포토 카드 한 달의 포일.
  *
- * **효과를 손볼 때 여기만 고친다** (사용자 결정 2026-09-15 — 이번엔 기본값). 포토 카드는
- * 전면이 사진 같은 그림이라 야채 기본값(`shineOpacity` 0.30)보다 약하게 시작한다.
+ * **효과를 손볼 때 여기만 고친다** (사용자 결정 2026-09-15). 세기는 야채·과일과 같은
+ * 포일별 값([webTune])에서 시작한다 — 예전에는 한꺼번에 0.22 로 눌러 두어 밋밋했다
+ * (2026-09-18). 어느 달이 사진을 날리면 그 달만 `tune` 을 적어 누른다.
  */
 @Immutable
-data class PhotoFoil(val foil: Foil, val tune: FoilTune = PHOTO_TUNE)
+data class PhotoFoil(val foil: Foil, val tune: FoilTune = foil.webTune)
 
-/** 포토 기본 세기. 얼굴이 날아가지 않게 야채보다 낮다. */
-val PHOTO_TUNE = FoilTune(shineOpacity = 0.22f, glareOpacity = 0.28f)
+/**
+ * 종류 카드의 칸 번호. 달 12장 뒤에 카탈로그 순서대로 붙는다.
+ *
+ * **번호가 아니라 [PhotoCardKey] 가 정본이다** — 이 번호는 도감 칸 순서와 「No. 13 / 14」
+ * 표시에만 쓴다. 저쪽이 종류를 늘리면 여기 한 줄이 늘고 뒷번호가 그만큼 밀린다.
+ *
+ * ⚠️ **[PHOTO_FOIL] 보다 위에 있어야 한다** — 그 표가 이 번호로 칸을 짓는다. 파일 안의 최상위
+ *    값은 적힌 순서대로 초기화돼서, 아래로 내리면 `PHOTO_FOIL` 이 빈 맵을 읽는다.
+ */
+private val KIND_NO: Map<PhotoCardKey, Int> =
+    PhotoCardKey.KINDS.mapIndexed { i, kind -> kind to 12 + i + 1 }.toMap()
 
+/**
+ * 칸 번호([DexCard.no])별 포일. 13·14 는 종류 카드다 — 저쪽 프롬프트가 그리는 것을 따라갔다:
+ * 딸기는 별하늘에 금색 씨앗이 떠다녀 `Cosmos`, 상추는 무지개 홀로 광선이라 `Holo` 다.
+ */
 val PHOTO_FOIL: Map<Int, PhotoFoil> = mapOf(
     1 to PhotoFoil(Foil.Gold),
     2 to PhotoFoil(Foil.Prism),
@@ -49,11 +69,56 @@ val PHOTO_FOIL: Map<Int, PhotoFoil> = mapOf(
     10 to PhotoFoil(Foil.Cosmos),
     11 to PhotoFoil(Foil.Metal),
     12 to PhotoFoil(Foil.Crystal),
+    KIND_NO.getValue(PhotoCardKey.Strawberry) to PhotoFoil(Foil.Cosmos),
+    KIND_NO.getValue(PhotoCardKey.Lettuce) to PhotoFoil(Foil.Holo),
 )
 
-private fun photo(month: Int, name: String, ko: String, tagline: String, accent: Color) = DexCard(
+/**
+ * 칸 id 는 카드 키에서 짓는다 — 달은 `photo-04`, 종류는 `photo-strawberry`.
+ *
+ * **종류를 번호로 짓지 않는다.** 저쪽이 종류를 중간에 끼워 넣어 번호가 밀리면 이미 가진
+ * 카드가 다른 칸으로 옮겨 가는데, 키로 지으면 번호가 밀려도 칸은 그대로다.
+ */
+private fun photoSlotId(key: PhotoCardKey): String =
+    key.month?.let { "photo-%02d".format(it) } ?: "photo-${key.raw}"
+
+/** 도감이 아는 포토 카드 — 달 12장 다음에 종류가 카탈로그 순서대로. [PHOTO_CARDS] 와 같은 순서다. */
+private val PHOTO_KEYS: List<PhotoCardKey> = (1..12).map(PhotoCardKey::of) + PhotoCardKey.KINDS
+
+private val PHOTO_KEY_BY_ID: Map<String, PhotoCardKey> = PHOTO_KEYS.associateBy(::photoSlotId)
+
+private fun photo(month: Int, name: String, ko: String, tagline: String, accent: Color) = photoCard(
+    key = PhotoCardKey.of(month),
     no = month,
-    id = "photo-%02d".format(month),
+    name = name,
+    ko = ko,
+    tagline = tagline,
+    edition = "${MONTH_EN[month - 1]} SPECIAL",
+    accent = accent,
+)
+
+/** 종류 카드 한 장. `edition` 은 달의 「APRIL SPECIAL」 자리라 카드명을 쓴다. */
+private fun kind(key: PhotoCardKey, name: String, ko: String, tagline: String, accent: Color) = photoCard(
+    key = key,
+    no = KIND_NO.getValue(key),
+    name = name,
+    ko = ko,
+    tagline = tagline,
+    edition = "$name SPECIAL",
+    accent = accent,
+)
+
+private fun photoCard(
+    key: PhotoCardKey,
+    no: Int,
+    name: String,
+    ko: String,
+    tagline: String,
+    edition: String,
+    accent: Color,
+) = DexCard(
+    no = no,
+    id = photoSlotId(key),
     name = name,
     ko = ko,
     tagline = tagline,
@@ -63,8 +128,8 @@ private fun photo(month: Int, name: String, ko: String, tagline: String, accent:
     statLabel = "",
     stat = 0,
     flavor = "",
-    edition = "${MONTH_EN[month - 1]} SPECIAL",
-    foil = PHOTO_FOIL.getValue(month).foil,
+    edition = edition,
+    foil = PHOTO_FOIL.getValue(no).foil,
     accent = accent,
 )
 
@@ -86,9 +151,16 @@ val PHOTO_CARDS: List<DexCard> = listOf(
     photo(10, "GHOST", "10월 유령", "이불 유령이 되어 사탕을 받으러 온", Color(0xFF8A6BCF)),
     photo(11, "THANKS", "11월 감사", "고마운 마음을 한 상 차린", Color(0xFFB5763A)),
     photo(12, "SANTA", "12월 산타", "산타 모자를 쓰고 선물을 나르는", Color(0xFFD9443A)),
+    // 종류 카드 (#593, D-085). 설명은 저쪽 `_KIND_CARDS` 의 프롬프트가 그리는 장면을 옮긴 것이다.
+    // **얼굴만 넣는 카드다**(`face_only`) — 몸이 딸기·상추라 옷을 안 입힌다.
+    kind(PhotoCardKey.Strawberry, "BERRY", "딸기", "잎사귀 낙하산을 타고 딸기 속을 날아오르는", Color(0xFFEF5A7A)),
+    kind(PhotoCardKey.Lettuce, "LETTUCE", "상추", "물방울 맺힌 상춧잎에 폭 안긴", Color(0xFF7FC24A)),
 )
 
-fun photoCardFor(month: Int): DexCard? = PHOTO_CARDS.firstOrNull { it.no == month }
+fun photoCardFor(card: PhotoCardKey): DexCard? = PHOTO_CARDS.firstOrNull { it.id == photoSlotId(card) }
+
+/** 칸이 가리키는 카드 키. 포토 칸이 아니면 null — 누끼 카드에는 키가 없다. */
+val DexCard.photoKey: PhotoCardKey? get() = PHOTO_KEY_BY_ID[id]
 
 val DexCard.isPhoto: Boolean get() = deck == DexDeck.Photo
 

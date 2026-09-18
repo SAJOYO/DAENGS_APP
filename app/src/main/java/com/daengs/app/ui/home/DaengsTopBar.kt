@@ -25,6 +25,7 @@ import com.daengs.app.ui.DogAvatar
 import com.daengs.app.ui.PetAvatar
 import com.daengs.app.ui.PawAvatar
 import com.daengs.app.ui.theme.CreamBg
+import com.daengs.app.ui.theme.DaengsColors
 import com.daengs.app.ui.theme.DaengsTheme
 import com.daengs.app.ui.theme.TextMuted
 
@@ -43,6 +44,13 @@ fun DaengsTopBar(
     avatar: DogBreed? = null,
     /** 사용자가 올린 프로필 사진. 있으면 견종 그림 대신 이게 뜬다. */
     photo: ImageBitmap? = null,
+    /**
+     * 안 읽은 알림이 있나. **종에 불이 들어온다.**
+     *
+     * 숫자를 안 붙인다 — 「3」이 뜨면 세 개를 다 처리해야 할 것처럼 보이는데, 이 알림들은
+     * 처리할 일이 아니라 소식이다. 있다/없다만 말한다.
+     */
+    hasUnread: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -62,6 +70,18 @@ fun DaengsTopBar(
             contentAlignment = Alignment.Center,
         ) {
             DaengsIconView(DaengsIcon.Bell, Modifier.size(22.dp), tint = TextMuted)
+            if (hasUnread) {
+                // 종 오른쪽 위. **종을 덮지 않게** 아이콘 바깥으로 살짝 걸친다 —
+                // 가운데에 그리면 종이 고장 난 것처럼 보인다.
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 11.dp, end = 11.dp)
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(DaengsColors.BrandPrimary),
+                )
+            }
         }
         Spacer(Modifier.width(4.dp))
         Row(
@@ -80,5 +100,5 @@ fun DaengsTopBar(
 @Preview(widthDp = 411, showBackground = true, backgroundColor = 0xFFFDF4F0)
 @Composable
 private fun DaengsTopBarPreview() {
-    DaengsTheme { DaengsTopBar({}, {}, avatar = HomeDemoData.DOG_BREED) }
+    DaengsTheme { DaengsTopBar({}, {}, avatar = HomeDemoData.DOG_BREED, hasUnread = true) }
 }

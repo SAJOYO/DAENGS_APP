@@ -8,12 +8,14 @@ import com.daengs.app.walk.WalkMomentType
 internal fun relationalOriginalScenes(walk: WalkSummary, input: DiaryBoardInput,
     photos: List<WalkPhoto>, draft: StoryboardDraft): List<DiaryScene> {
     val entries = input.entries.filter { it.sessionId == walk.sessionId }.map { entry ->
-        val point = entry.pin?.point ?: entry.point
+        // A resolved pin owns display location. An explicit unlocated pin must not fall back
+        // to the older raw content coordinate.
+        val point = if (entry.pin != null) entry.pin.point else entry.point
         val note = entry.type == WalkMomentType.NOTE
         val content = DiarySceneContent("", if (note) "note" else "behavior", point = point, locationLabel = "",
             locationMethod = entry.pin?.method, locationAtMillis = when {
                 entry.pin?.method == "last_known" -> entry.pin.sceneReferences(entry.recordedAtMillis)?.singleOrNull()?.atMillis ?: entry.locationCapturedAtMillis
-                entry.pin?.point != null -> entry.recordedAtMillis
+                entry.pin != null -> if (entry.pin.point != null) entry.recordedAtMillis else null
                 else -> entry.locationCapturedAtMillis
             },
             positionState = entry.pin?.state)

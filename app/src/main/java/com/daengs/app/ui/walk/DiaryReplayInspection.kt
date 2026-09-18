@@ -23,8 +23,7 @@ internal class DiaryReplayInspection(scope: CoroutineScope, dispatcher: Coroutin
     fun clear() { active=false; markerIds=emptySet(); explorer.overview() }
     fun selectMarkers(ids: Set<String>) {
         val current=read ?: return
-        val valid=current.diary?.scenes.orEmpty().filterNot { it.isWalkBoundary() }.map { it.id }.toSet() +
-            current.diary?.sourceEntries.orEmpty().map(::diaryActionKey)
+        val valid=current.scenePresentation.items.filter { it.ordinal != null }.map { it.scene.id }.toSet()
         val chosen=ids.intersect(valid)
         if (chosen.isEmpty()) return
         clear(); markerIds=chosen; active=true
@@ -41,10 +40,8 @@ internal class DiaryReplayInspection(scope: CoroutineScope, dispatcher: Coroutin
     }
     fun events(): List<DiaryReplayEvent> {
         val current=read ?: return emptyList()
-        val scenes=current.diary?.scenes.orEmpty().filterNot { it.isWalkBoundary() }
-        val entries=current.diary?.sourceEntries.orEmpty()
-        return scenes.mapIndexedNotNull { i,scene ->
-            scene.takeIf { it.id in markerIds }?.let { DiaryReplayEvent(it.id,0,it,i+1) }
-        } + entries.filter { diaryActionKey(it) in markerIds }.map { DiaryReplayEvent(diaryActionKey(it),0,action=it) }
+        return current.scenePresentation.items.filter { it.ordinal != null && it.scene.id in markerIds }.map {
+            DiaryReplayEvent(it.scene.id, 0, it.scene, it.ordinal, it.action)
+        }
     }
 }

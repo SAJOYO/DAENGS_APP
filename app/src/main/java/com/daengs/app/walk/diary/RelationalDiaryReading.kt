@@ -25,10 +25,36 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
             preparing = originals.isEmpty() && status in setOf("pending", "running"), sourceEntries = input.entries)
     }
     val draft = StoryboardDraft.parse(draftPayload)
+    val edits = draft.edits.groupBy { it.id }.mapNotNull { (id, values) ->
+        values.singleOrNull()?.let { id to it }
+    }.toMap()
     val editedOriginalIds = draft.edits.map { it.id }.filter { it.startsWith("original:") }.toSet()
+    val behaviorByCard = bundle.cards.map { relationalBehaviorReference(it, input.entries, walk.sessionId) }
+    val behaviorCardCounts = behaviorByCard.mapNotNull { it?.entryId }.groupingBy { it }.eachCount()
+    val originalSources = relationalOriginalScenes(walk, input, photos, StoryboardDraft()).mapNotNull { scene ->
+        scene.source?.let { it.id to it }
+    }.toMap()
+    fun originalEditId(reference: StoryboardEntryReference?) = reference?.entryId
+        ?.takeIf { behaviorCardCounts[it] == 1 }?.let { "original:entry:$it" }
+    val absorbedOriginalEditIds = behaviorByCard.mapNotNull(::originalEditId).filter { it in edits }.toSet()
+
+    fun applyDirectEdit(source: StoryboardScene, edit: SceneEdit): StoryboardScene =
+        source.copy(title = edit.title, body = edit.body, needsReview = edit.sourceFingerprint != source.fingerprint,
+            bodyScope = edit.bodyScope)
+
+    fun carryOriginalEdit(source: StoryboardScene, edit: SceneEdit, original: StoryboardScene?): StoryboardScene {
+        val sameOriginal = original != null && edit.sourceFingerprint == original.fingerprint
+        return source.copy(
+            title = if (sameOriginal && edit.title == original.title) source.title else edit.title,
+            body = if (sameOriginal && edit.body == original.body) source.body else edit.body,
+            needsReview = !sameOriginal,
+            bodyScope = edit.bodyScope,
+        )
+    }
+
     val scenes = bundle.cards.mapIndexedNotNull { index, card ->
         val anchor = card.anchor
-        val behavior = relationalBehaviorReference(card, input.entries, walk.sessionId)
+        val behavior = behaviorByCard[index]
         val originals = card.originals.filterNot { it.deleted ||
             "original:${if (it.ref.store == "walk_photo") "photo" else "entry"}:${it.ref.id}" in editedOriginalIds }
         val temperature = relationalTemperature(card)
@@ -47,10 +73,16 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
                     it.clientSeq in 0..Int.MAX_VALUE.toLong() && it.chainIndex in 0..Int.MAX_VALUE.toLong()
             }?.let { StoryboardObservation(it.clientSeq.toInt(), it.chainIndex.toInt(), it.at.toEpochMilli(), requireNotNull(anchor.point)) },
             entryReference = behavior, bodyScope = SceneBodyScope.SCENE)
-        val edit = draft.edits.singleOrNull { it.id == source.id }
-        if (edit?.hidden == true) return@mapIndexedNotNull null
-        val displayed = if (edit == null) source else source.copy(title = edit.title, body = edit.body,
-            needsReview = edit.sourceFingerprint != source.fingerprint)
+        val directEdit = edits[source.id]
+        val inheritedId = originalEditId(behavior)
+        val inheritedEdit = inheritedId?.let(edits::get)
+        val effectiveEdit = directEdit ?: inheritedEdit
+        if (effectiveEdit?.hidden == true) return@mapIndexedNotNull null
+        val displayed = when {
+            directEdit != null -> applyDirectEdit(source, directEdit)
+            inheritedEdit != null -> carryOriginalEdit(source, inheritedEdit, inheritedId?.let(originalSources::get))
+            else -> source
+        }
         DiaryScene("${walk.sessionId}/${source.id}", walk.sessionId, displayed.atMillis, displayed.title,
             displayed.body, anchor.point, "", needsReview = displayed.needsReview,
             entryId = behavior?.entryId, content = content, source = displayed, relational = card,
@@ -61,7 +93,9 @@ internal fun relationalDiaryWalk(walk: WalkSummary, input: DiaryBoardInput,
                 })
             }, notice = relationalPartNotice(card))
     }
-    val editedOriginals = relationalOriginalScenes(walk, input, photos, draft).filter { it.source?.id in editedOriginalIds }
+    val editedOriginals = relationalOriginalScenes(walk, input, photos, draft).filter {
+        it.source?.id in editedOriginalIds && it.source?.id !in absorbedOriginalEditIds
+    }
     return DiaryWalk(walk, (scenes + editedOriginals).sortedWith(compareBy<DiaryScene> { it.atMillis }
         .thenBy { it.content?.order ?: Int.MAX_VALUE }.thenBy { it.id }), notice, bundle.title,
         published = true, sourceEntries = input.entries)

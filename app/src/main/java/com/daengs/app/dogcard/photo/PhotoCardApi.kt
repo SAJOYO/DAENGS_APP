@@ -15,7 +15,7 @@ interface PhotoCardRemote {
      * `titleName` 이 있으면 서버가 제목을 `<카드명> <titleName>` 으로 짓는다 (docs §9.1).
      */
     suspend fun create(
-        token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null,
+        token: String, card: PhotoCardKey, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null,
     ): Result<PhotoCard>
     suspend fun list(token: String): Result<PhotoCardList>
     suspend fun get(token: String, id: String): Result<PhotoCardDetail>
@@ -30,8 +30,8 @@ object HttpPhotoCardRemote : PhotoCardRemote {
     val configured: Boolean get() = BuildConfig.API_BASE_URL.isNotBlank()
 
     override suspend fun create(
-        token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String?,
-    ): Result<PhotoCard> = call(token, "?${photoCardQuery(month, dogName, dogId, titleName)}", "POST", jpeg) {
+        token: String, card: PhotoCardKey, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String?,
+    ): Result<PhotoCard> = call(token, "?${photoCardQuery(card, dogName, dogId, titleName)}", "POST", jpeg) {
         parsePhotoCard(org.json.JSONObject(it))
     }
 

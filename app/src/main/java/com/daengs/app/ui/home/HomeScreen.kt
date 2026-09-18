@@ -30,9 +30,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.BuildConfig
+import com.daengs.app.notify.NoticeInbox
 import com.daengs.app.miniroom.DogTapTarget
 import com.daengs.app.miniroom.MiniRoomCanvas
 import com.daengs.app.miniroom.MiniRoomState
@@ -57,6 +63,7 @@ import com.daengs.app.miniroom.RoomIntro
 import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
+import com.daengs.app.miniroom.RoomSpec
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.RoomTheme
@@ -74,19 +81,45 @@ import kotlinx.coroutines.delay
 import com.daengs.app.ui.dogcard.CardTemplate
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.storage.StorageComingSoon
+import com.daengs.app.ui.motion.ScreenFadeThrough
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
 
 /**
- * 챗봇 카드와 인벤토리 패널이 함께 쓰는 슬롯 높이.
+ * 홈 자리에서 **실제로 보이는 것 셋.**
  *
- * 둘의 높이가 다르면 방이 `weight(1f)` 로 남는 높이를 가져가기 때문에,
- * 인벤토리를 열고 닫을 때마다 방 크기가 그 차이만큼 튄다.
- * 높이 제약은 컴포넌트 안이 아니라 이 배치 지점에 둔다 — 그래야 두 카드를
- * 다른 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
+ * 하단 탭 넷 중 도감·내 주변은 `screen` 을 바꾸므로 바깥 화면 전환이 잇는다
+ * (`MainActivity` 의 `when (screen)`). 홈과 저장소는 이 화면 안에서 갈리고, 마이는
+ * 그 위에 덮인다 — 그 셋을 한 값으로 모아 같은 모션을 태운다.
+ *
+ * 순수 함수라 테스트로 잡는다. **마이가 저장소를 이긴다** — 마이는 어느 탭 위에도
+ * 덮이는 화면이라, 저장소 탭에서 프로필을 눌러도 마이가 떠야 한다.
  */
-internal val CardSlotHeight = 104.dp
+internal enum class HomeFace { My, Storage, Room }
+
+internal fun homeFace(myOpen: Boolean, tab: BottomTab): HomeFace = when {
+    myOpen -> HomeFace.My
+    tab == BottomTab.Storage -> HomeFace.Storage
+    else -> HomeFace.Room
+}
+
+/**
+ * 챗봇 카드가 쓰는 칸 높이.
+ *
+ * **예전에는 인벤토리 패널과 같은 칸이었다.** 둘의 높이가 다르면 방이 `weight(1f)` 로
+ * 남는 높이를 가져가기 때문에, 인벤토리를 열고 닫을 때마다 방이 그 차이만큼 튄다 —
+ * 그걸 막으려고 같은 높이로 강제했다. 그런데 **그 대가로 인벤토리 슬롯의 이름과 개수가
+ * 배치되지 않았다** (104dp 칸에 88dp 짜리 슬롯). 지금은 떼어내고 높이 변화를
+ * `animateDpAsState` 로 잇는다 — 튀는 게 아니라 미끄러지면 "편집 도구가 올라온다" 로
+ * 읽힌다.
+ *
+ * 104dp 였다. 안에 든 것은 `패딩 7×2 + 제목줄 25 + Spacer 5 + 입력줄 44` 다.
+ *
+ * 높이 제약은 컴포넌트 안이 아니라 이 배치 지점에 둔다 — 그래야 두 카드를 다른
+ * 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
+ */
+internal val CardSlotHeight = 88.dp
 
 /**
  * 강아지 목록이 늦을 때 "불러오는 중" 을 띄우기까지 기다리는 시간.
@@ -144,6 +177,15 @@ fun HomeScreen(
     /** 방 벽의 액자를 눌렀을 때. 도감으로 들어간다. */
     onOpenDex: (() -> Unit)? = null,
     onOpenChat: (() -> Unit)? = null,
+    /**
+     * 챗봇 카드의 마이크를 눌렀을 때. 채팅을 열면서 바로 듣기를 시작한다 (#451).
+     *
+     * **홈에서 인식하지 않는다.** 음성은 `ChatScreen` 이 `voiceBase` 누적 · 자동전송
+     * 설정 · 오버레이 정지 · 권한 거부 문구까지 한 덩어리로 갖고 있어서, 여기서 다시
+     * 짜면 같은 로직이 두 곳에 생겨 한쪽만 고쳐진다. 홈은 "음성으로 열어 달라" 만
+     * 말한다.
+     */
+    onOpenChatByVoice: (() -> Unit)? = null,
     /** 내 주변 탭을 눌렀을 때. 병원·카페·펫샵을 지도에서 찾는다. */
     onOpenPlaces: (() -> Unit)? = null,
     /** 방문을 열었을 때. 산책 화면으로 나간다 — **탭이 아니라 문이 산책의 입구다.** */
@@ -186,6 +228,8 @@ fun HomeScreen(
     onOpenDraw: (() -> Unit)? = null,
     onOpenMy: (() -> Unit)? = null,
     onCloseMy: (() -> Unit)? = null,
+    /** 종 아이콘이 여는 알림 목록. null 이면 종이 안 눌린다. */
+    onOpenNotices: (() -> Unit)? = null,
     /** 카카오로 로그인한 상태인가. 개발자 패널이 로그아웃을 띄울지 정한다. */
     signedIn: Boolean = false,
     /** 사람 이름. 「마이」 프로필 머리에 걸린다. null 이면 그 줄이 빠진다 */
@@ -399,6 +443,9 @@ fun HomeScreen(
     val uprightHeight = flexTop ?: maxHeight
     val rail = usesNavRail(maxWidth, uprightHeight)
     val compactTop = hidesTopBar(uprightHeight)
+    // 종에 불이 들어오나. **여기서 직접 읽는다** — 알림함은 프로세스에 하나뿐인 저장소라
+    // (`VoiceSettings` 처럼) 화면이 바로 읽는다. `MainActivity` 배선이 필요 없다.
+    val unreadNotices = NoticeInbox.notices.collectAsState().value.any { !it.read }
     // **창 전체를 쓴다.** 누운 절반도 화면이다 — 거기에 카드와 바가 간다.
     Row(Modifier.fillMaxSize()) {
     if (rail) {
@@ -440,8 +487,12 @@ fun HomeScreen(
             if (compactTop) return@Scaffold
             Box(Modifier.background(CreamBg).statusBarsPadding()) {
                 DaengsTopBar(
-                    // 알림 화면이 아직 없다. 없는 데로 보내는 것보다 안 눌리는 게 낫다.
-                    onBell = {},
+                    // **알림 목록으로 간다.** 처음에는 안드로이드 알림 설정으로 보냈는데
+                    // 사용자가 짚었다 — *"여기에 알림이 있으면 불이 들어오고 그 내용이
+                    // 떠야하는거 아니야?"*. 종은 「설정」이 아니라 「알림 목록」이다.
+                    // 설정으로 가는 길은 그 목록 맨 아래에 남겼다.
+                    onBell = { onOpenNotices?.invoke() },
+                    hasUnread = unreadNotices,
                     onProfile = { onOpenMy?.invoke() },
                     avatar = profileBreed,
                     photo = profilePhoto,
@@ -472,7 +523,16 @@ fun HomeScreen(
             )
         },
     ) { inner ->
-        if (myOpen) {
+        // **홈 안에서 갈리는 셋도 같은 박자로 잇는다.** 바깥 화면 전환과 같은
+        // fade-through 다 (`ui/motion/ScreenFadeThrough.kt`). 예전에는 이른
+        // `return@Scaffold` 두 번으로 갈렸는데, 분기를 `AnimatedContent` 가 들어야
+        // 해서 `when` 으로 바꿨다 — 람다를 하나 더 거치면 그 `return` 은 컴파일도 안 된다.
+        ScreenFadeThrough(
+            target = homeFace(myOpen, tab),
+            modifier = Modifier.fillMaxSize(),
+        ) { face ->
+        when (face) {
+        HomeFace.My ->
             MyScreen(
                 // 마이는 홈 위에 덮이는 화면이라, 다시 보기를 누르면 마이를 닫고
                 // 방 위에서 둘러보기가 열려야 한다.
@@ -512,14 +572,13 @@ fun HomeScreen(
                 onDismissWithdraw = { onDismissWithdraw?.invoke() },
                 modifier = Modifier.padding(inner),
             )
-            return@Scaffold
-        }
 
-        if (tab == BottomTab.Storage) {
+        HomeFace.Storage -> {
             val storageModifier = Modifier.padding(inner)
             if (storageContent == null) StorageComingSoon(storageModifier) else storageContent(storageModifier)
-            return@Scaffold
         }
+
+        HomeFace.Room -> {
 
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
@@ -609,8 +668,22 @@ fun HomeScreen(
         // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
         // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
         val cards: @Composable ColumnScope.() -> Unit = {
-            val slot = Modifier.padding(horizontal = 14.dp).height(CardSlotHeight)
+            // **칸 높이가 두 값 사이를 오간다.** 방이 `weight(1f)` 로 남는 높이를
+            // 가져가므로 이 한 값이 곧 방 크기다. 예전에는 두 카드를 같은 높이로
+            // 강제해 이 값이 안 움직이게 했는데, 그 대가가 잘린 이름표였다
+            // ([CardSlotHeight] 주석). 이제 움직이게 두고 튀지 않게 잇는다.
+            val slotHeight by animateDpAsState(
+                targetValue = if (inventoryOpen) InventoryMetrics.Panel else CardSlotHeight,
+                animationSpec = tween(durationMillis = 220),
+                label = "카드 칸 높이",
+            )
+            val slot = Modifier.padding(horizontal = 14.dp).height(slotHeight)
             if (inventoryOpen) {
+                // **자라는 동안 내용을 같이 띄운다.** 칸이 88→114 로 커지는 220ms 사이에
+                // 그냥 그리면 그 동안만 이름·개수가 다시 잘려 보인다 — 방금 고친 바로
+                // 그 증상이라 혼란스럽다. 알파로 덮어 커진 뒤에 드러나게 한다.
+                val appear = remember { Animatable(0f) }
+                LaunchedEffect(Unit) { appear.animateTo(1f, tween(durationMillis = 220)) }
                 InventoryPanel(
                     catalog = catalog,
                     available = { roomState.availableCount(it) },
@@ -620,16 +693,17 @@ fun HomeScreen(
                         themeId = it.id
                         store.saveThemeId(it.id)
                     },
-                    modifier = slot,
+                    modifier = slot.graphicsLayer { alpha = appear.value },
                 )
             } else {
                 ChatbotCard(
                     onOpenChat = { onOpenChat?.invoke() },
+                    onVoice = { onOpenChatByVoice?.invoke() },
                     modifier = slot.tourSpot(tourSpots, TourStop.Chat),
                     avatar = profileBreed,
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             WalkSummaryCard(
                 Modifier.padding(horizontal = 14.dp),
                 todayWalks,
@@ -637,7 +711,9 @@ fun HomeScreen(
                 onOpenWalkHistory,
             )
             gameContent?.invoke()
-            Spacer(Modifier.height(10.dp))
+            // 시즌 행 아래 여백은 **0 이다.** 하단바 상자 위쪽의 투명한 띠
+            // ([FabLift] 6dp)가 이미 그 몫을 한다 — 여기에 더 두면 시즌 행이 바에서
+            // 떠 보인다. 예전에는 4dp 였고, 투명한 띠가 22dp 라 합쳐서 26dp 였다.
         }
 
         if (wide) {
@@ -710,6 +786,9 @@ fun HomeScreen(
                 room(Modifier.fillMaxWidth().weight(1f))
                 cards()
             }
+        }
+        }
+        }
         }
         }
     }
@@ -824,6 +903,12 @@ private fun RoomSection(
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
     var developer by remember { mutableStateOf(false) }
+    // 방 가로 늘림. 개발자 패널에서 실기기의 진짜 화면을 보며 값을 고르려고 둔다.
+    // 저장하지 않는 세션 한정 값이고, 릴리스에서는 패널이 빈 스텁이라 안 바뀐다.
+    //
+    // **방 그림과 이름표·문 배지가 같은 값을 써야 한다** — 아래 세 곳에 다 넘긴다.
+    // 방만 넓히면 이름표가 방 그림 기준 백분율에서 어긋나 배경 위로 떠 버린다.
+    var hStretch by remember { mutableStateOf(RoomSpec.H_STRETCH) }
     // 턴테이블 판. 방을 덮지 않고 아래에서 올라온다 — 이 방의 전축을 튼 것이라
     // 방과 턴테이블이 계속 보여야 그 맥락이 산다.
     var turntableOpen by remember { mutableStateOf(false) }
@@ -887,6 +972,7 @@ private fun RoomSection(
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
             intro = intro,
+            hStretch = hStretch,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —
             // 탭 하나에 두 가지 뜻을 담으면 헷갈리고, 실수로 사라지면 곤란하다.
             // 편집 모드에서 탭 = 선택. 돌리기/치우기는 버튼으로 뺐다.
@@ -993,6 +1079,8 @@ private fun RoomSection(
                 devPetCount = devPetCount,
                 onToggleEmptyRoom = onToggleEmptyRoom,
                 emptyRoom = waitsForPet,
+                hStretch = hStretch,
+                onPickHStretch = { hStretch = it },
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,
@@ -1018,9 +1106,12 @@ private fun RoomSection(
                 .align(Alignment.BottomCenter)
                 .offset {
                     if (boxSize.width == 0) return@offset IntOffset.Zero
+                    // **방 그림과 같은 늘림을 쓴다.** 안 맞추면 이름표가 방 그림
+                    // 기준 백분율에서 어긋나 배경 위로 뜬다.
                     val g = RoomGeometry.of(
                         boxSize.width.toFloat(),
                         boxSize.height.toFloat(),
+                        hStretch,
                     )
                     // 가로는 안 건드린다. BottomCenter 가 방 상자의 가운데를 잡아
                     // 주는데, 방 그림도 상자 가운데에 놓이므로 결과가 같다.
@@ -1086,7 +1177,7 @@ private fun RoomSection(
         val selected = state.items.firstOrNull { it.instanceId == state.selectedId }
         val selectedArt = selected?.let { catalog[it.itemId] }
         if (inventoryOpen && selected != null && selectedArt != null && boxSize.width > 0) {
-            val g = RoomGeometry.of(boxSize.width.toFloat(), boxSize.height.toFloat())
+            val g = RoomGeometry.of(boxSize.width.toFloat(), boxSize.height.toFloat(), hStretch)
             val c = g.footprintCenter(
                 selected.col, selected.row, selectedArt.box.footprintFacing(selected.facing),
             )

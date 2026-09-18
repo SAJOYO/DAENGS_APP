@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daengs.app.miniroom.RoomDefaults
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import com.daengs.app.miniroom.RoomTheme
 import com.daengs.app.miniroom.art.ItemArt
 import com.daengs.app.miniroom.art.ItemCatalog
@@ -56,7 +58,52 @@ import com.daengs.app.ui.theme.TextDark
 import com.daengs.app.ui.theme.TextMuted
 
 /**
+ * 인벤토리 패널의 치수 — **한 곳에 모아 테스트로 잡는다.**
+ *
+ * 흩어 두었더니 칸 높이(104dp)와 슬롯이 필요한 높이(88dp)가 어긋난 것을 아무도 못
+ * 봤다. 슬롯에 55.6dp 만 남아서 **이름과 개수가 배치조차 안 됐는데**, 눈으로는
+ * "썸네일만 있는 깔끔한 줄" 이라 버그로 보이지 않았다. `InventoryMetricsTest` 가 잡는다.
+ *
+ * **이름과 개수를 한 줄로 합쳤다** (`러그 ×2`). 두 줄로 두면 패널이 136dp 가 되어 `+` 를
+ * 누를 때 방이 48dp 움직이는데, 사용자가 그 절반쯤으로 정했다 — 지금 30dp 다.
+ * 원래 주석이 개수를 아래로 내린 이유는 *"썸네일 위에 0 을 겹쳐 쓰면 중복"* 이었고,
+ * 한 줄로 합치는 것은 그 이야기가 아니라 걸리지 않는다.
+ */
+internal object InventoryMetrics {
+    val PanelPadding = 8.dp
+
+    /**
+     * 탭 줄(「아이템 · 테마」) 높이.
+     *
+     * ⚠️ **여기를 24dp 로 어림잡았다가 고친 자리다.** `TabChip` 은 11sp 글자에 위아래
+     * 4dp 패딩이라 실제로 약 30dp 를 먹는다. 24dp 로 계산하니 슬롯에 63.3dp 만 남아
+     * **이름표가 또 떨어져 나갔고**, 테스트는 같은 잘못된 상수로 계산해서 통과했다.
+     *
+     * 그래서 이제 이 값을 **레이아웃에 직접 먹인다** (`Row(Modifier.height(TabRow))`).
+     * 어림잡은 값이 아니라 **실제로 그렇게 그려지는 값**이어야 산수가 맞는다.
+     * 글자 배율은 [com.daengs.app.ui.theme.DaengsTheme] 이 `fontScale = 1f` 로 고정하므로
+     * 기기에 따라 변하지 않는다.
+     */
+    val TabRow = 30.dp
+    val Gap = 4.dp
+    val SlotPadding = 4.dp
+
+    /** 픽셀 아트라 여기서 더 줄이면 러그와 방석을 구분할 수 없다. */
+    val Thumb = 44.dp
+
+    /** `러그 ×2` 한 줄. 10sp 글자가 들어가는 실측값이다. */
+    val Label = 16.dp
+
+    /** 슬롯도 이 높이를 **직접 받는다** — 위 [TabRow] 와 같은 이유다. */
+    val Slot: Dp = SlotPadding * 2 + Thumb + Label
+    val Panel: Dp = PanelPadding * 2 + TabRow + Gap + Slot
+}
+
+/**
  * 인벤토리 패널.
+ *
+ * **칸 높이는 [InventoryMetrics.Panel] 이다.** 예전에는 챗봇 카드와 같은 칸
+ * ([CardSlotHeight])을 강제로 썼는데, 그 대가로 슬롯의 이름·개수가 잘려 나갔다.
  *
  * 방 위에 겹쳐서 뜬다 — 한 화면 안에 다 넣어야 해서 아래에 자리를 새로 낼 수 없다.
  * 열려 있는 동안이 곧 **편집 모드**다: 방의 아이템을 톡 누르면 인벤토리로 돌아가고,
@@ -81,10 +128,17 @@ fun InventoryPanel(
     ) {
         // 슬롯 높이가 고정이므로 내용은 가운데 정렬한다.
         Column(
-            Modifier.fillMaxHeight().padding(horizontal = 12.dp, vertical = 10.dp),
+            Modifier
+                .fillMaxHeight()
+                .padding(horizontal = 12.dp, vertical = InventoryMetrics.PanelPadding),
             verticalArrangement = Arrangement.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // 높이를 **직접 먹인다.** 어림잡은 상수와 실제가 어긋나면 아래 슬롯이
+            // 조용히 잘린다 — 이름표가 두 번 사라진 자리다.
+            Row(
+                Modifier.height(InventoryMetrics.TabRow),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 TabChip("아이템", tab == 0) { tab = 0 }
                 Spacer(Modifier.width(6.dp))
                 TabChip("테마", tab == 1) { tab = 1 }
@@ -95,7 +149,7 @@ fun InventoryPanel(
                     fontSize = 9.sp,
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(InventoryMetrics.Gap))
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -128,27 +182,44 @@ private fun InventorySlot(
     Column(
         Modifier
             .width(60.dp)
+            .height(InventoryMetrics.Slot)
             .clip(RoundedCornerShape(14.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .background(if (enabled) PinkFaint else PinkFaint.copy(alpha = 0.4f))
-            .padding(vertical = 7.dp),
+            .padding(vertical = InventoryMetrics.SlotPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // 개수는 아래 "x0" 하나로 충분하다. 썸네일 위에 0 을 겹쳐 쓰면 중복이다.
-        ItemThumb(art, Modifier.size(46.dp).alpha(if (enabled) 1f else 0.3f))
-        Spacer(Modifier.height(2.dp))
-        Text(
-            ItemLabels[id] ?: id,
-            color = if (enabled) TextDark else TextMuted,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-        )
-        Text(
-            "x$count",
-            color = if (enabled) DaengPinkDeep else TextMuted,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        // 개수는 아래 한 줄로 충분하다. 썸네일 위에 0 을 겹쳐 쓰면 중복이다.
+        ItemThumb(art, Modifier.size(InventoryMetrics.Thumb).alpha(if (enabled) 1f else 0.3f))
+        // **이름과 개수를 한 줄로 합친다.** 두 줄이면 슬롯이 88dp 가 되어 패널이 136dp 로
+        // 커지고, `+` 를 누를 때 방이 48dp 움직인다. 한 줄이면 30dp 다.
+        //
+        // **줄어드는 쪽은 이름이고 개수는 늘 보인다.** 한 덩어리 글자로 두었더니
+        // 「장난감 바구니 ×0」 이 60dp 를 넘어 **개수가 잘려 나갔다** (실기기 확인).
+        // 이름에 `weight(1f, fill = false)` 를 줘서 남는 만큼만 쓰게 하고, 개수는
+        // 자기 폭을 먼저 챙긴다 — `HomeGameCard` 의 제목·본문과 같은 방식이다.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 3.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                ItemLabels[id] ?: id,
+                color = if (enabled) TextDark else TextMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(
+                " ×$count",
+                color = if (enabled) DaengPinkDeep else TextMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -222,6 +293,9 @@ private fun InventoryPanelPreview() {
             onPick = {},
             currentTheme = RoomTheme.DEFAULT,
             onPickTheme = {},
+            // **실제 칸 높이를 준다.** 이름·개수가 잘려 있던 것을 여기서 봐야 한다 —
+            // 높이를 안 주면 패널이 자기 크기대로 그려져서 늘 멀쩡해 보인다.
+            modifier = Modifier.padding(14.dp).height(InventoryMetrics.Panel),
         )
     }
 }
@@ -251,13 +325,17 @@ private fun TabChip(label: String, selected: Boolean, onClick: () -> Unit) {
  */
 @Composable
 private fun ThemeSwatch(theme: RoomTheme, selected: Boolean, onClick: () -> Unit) {
+    // **아이템 슬롯과 같은 높이 예산을 쓴다** — 둘이 같은 줄에 번갈아 서므로,
+    // 한쪽만 크면 패널 높이를 넘어 조용히 잘린다. 여백 7->4, 간격 3->2 로 줄여
+    // 4x2 + 그림 40 + 2 + 이름 16 = 66dp 로 [InventoryMetrics.Slot] 안에 들어온다.
     Column(
         Modifier
             .width(60.dp)
+            .height(InventoryMetrics.Slot)
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .background(if (selected) PinkSoft else PinkFaint)
-            .padding(vertical = 7.dp),
+            .padding(vertical = InventoryMetrics.SlotPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Canvas(Modifier.size(46.dp, 40.dp)) {
@@ -295,7 +373,7 @@ private fun ThemeSwatch(theme: RoomTheme, selected: Boolean, onClick: () -> Unit
                 androidx.compose.ui.geometry.CornerRadius(tw * 0.08f, tw * 0.08f),
             )
         }
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             theme.label,
             color = if (selected) DaengPinkDeep else TextDark,

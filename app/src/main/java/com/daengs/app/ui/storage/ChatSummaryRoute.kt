@@ -67,6 +67,15 @@ fun ChatSummaryRoute(
     onOpenCitation: (ChatCitation) -> Unit,
     /** 진료비 요약 카드의 [전체보기]. 화면을 **밀어 올린다** — 모달이 아니다. */
     onOpenVetVisits: () -> Unit,
+    /**
+     * 대화 보관함 전체보기로 간다.
+     *
+     * 탭에는 최근 [StorageSectionPreview.PREVIEW] 건만 두고 나머지는 저쪽이 받는다 —
+     * 전부 펼치면 요약이 쌓이는 만큼 저장소 탭이 길어진다.
+     */
+    onOpenSummaries: () -> Unit,
+    /** 오늘의 케어 기록 전체보기로 간다. 탭에는 합계와 최근 몇 건만 둔다. */
+    onOpenCareLog: () -> Unit,
     modifier: Modifier = Modifier,
     currentUserId: String? = null,
     /**
@@ -117,10 +126,9 @@ fun ChatSummaryRoute(
     }
 
     val summaries = (state.summaries as? ChatLoadState.Ready)?.value?.summaries.orEmpty()
-    LaunchedEffect(state.selectedSummaryId, summaries) {
-        val index = summaries.indexOfFirst { it.id == state.selectedSummaryId }
-        if (index >= 0) listState.animateScrollToItem(index + HEADER_ITEMS)
-    }
+    // 선택한 요약으로 찾아가는 일은 **전체보기 화면이 한다.** 여기서 하려면 보관함 앞의
+    // 항목 수를 손으로 세어 더해야 했고(`animateScrollToItem(index + HEADER_ITEMS)`),
+    // 섹션을 하나 넣을 때마다 밟을 자리였다. 저쪽은 목록이 하나뿐이라 셀 것이 없다.
 
     val source = historyState.detail?.takeIf { detail ->
         detail.session.petId == petId &&
@@ -137,7 +145,6 @@ fun ChatSummaryRoute(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // ⚠️ 보관함 앞의 항목 수는 [HEADER_ITEMS] 와 같아야 한다 — 선택된 요약으로 스크롤할 때 더한다.
         item(key = "care") {
             if (petId == null) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -152,6 +159,10 @@ fun ChatSummaryRoute(
                     onConfirmDelete = { event -> withToken { careCoordinator.delete(it, event.id) } },
                     onDismissError = { careCoordinator.clearErrors() },
                     canDelete = { event -> canDeleteCareEvent(event, currentUserId, ownsPetRow) },
+                    // **합계와 최근 몇 건만.** 이 섹션 하나가 화면의 60% 를 먹고 있었다
+                    // (실기기 실측 131 → 약 620dp). 자세한 것은 전체보기가 받는다.
+                    limit = StorageSectionPreview.PREVIEW,
+                    onOpenAll = onOpenCareLog,
                 )
             }
         }
@@ -197,6 +208,9 @@ fun ChatSummaryRoute(
             }
         }
         if (petId != null) {
+            // **최근 몇 건만 보여 주고 나머지는 전체보기가 받는다.** 예전에는 요약을 전부
+            // 항목으로 펼쳐서, 쌓이는 만큼 저장소 탭이 길어졌다 — 진료비만 이미 접혀
+            // 있었고 보관함은 그 규칙 밖이었다 (`StorageSectionPreview` 머리말).
             chatSummaryItems(
                 state = state.summaries,
                 onRetry = { withToken { coordinator.load(it) } },
@@ -204,7 +218,17 @@ fun ChatSummaryRoute(
                 onOpenCitation = onOpenCitation,
                 onRequestDelete = { pendingDeletion = it },
                 selectedSummaryId = state.selectedSummaryId,
+                limit = StorageSectionPreview.PREVIEW,
             )
+            if (StorageSectionPreview.showsAll(summaries.size)) {
+                item(key = "summaries-all") {
+                    StorageSeeAllRow(
+                        label = "전체보기",
+                        hint = "+${StorageSectionPreview.hidden(summaries.size)}개 더",
+                        onClick = onOpenSummaries,
+                    )
+                }
+            }
         }
         item(key = "photos") { StoragePhotosNotice(Modifier.fillMaxWidth()) }
     }
@@ -263,7 +287,6 @@ internal fun dial(context: Context, phone: String) {
 }
 
 /** 보관함 요약 목록 앞에 놓인 항목 수 (케어 기록 · 진료비 · 보관함 머리). */
-private const val HEADER_ITEMS = 3
 
 @Composable
 private fun SummaryActionError(message: String, onRetry: () -> Unit) {
@@ -288,6 +311,8 @@ private fun ChatSummaryRoutePreview() {
             onOpenSource = {},
             onOpenCitation = {},
             onOpenVetVisits = {},
+            onOpenSummaries = {},
+            onOpenCareLog = {},
         )
     }
 }

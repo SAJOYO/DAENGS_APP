@@ -94,6 +94,8 @@ class ChatSummaryRouteTest {
             onOpenSource = {},
             onOpenCitation = {},
             onOpenVetVisits = {},
+            onOpenSummaries = {},
+            onOpenCareLog = {},
         )
     }
 

@@ -3,6 +3,7 @@ package com.daengs.app.ui.dex
 import androidx.compose.ui.unit.IntRect
 import com.daengs.app.dogcard.DrawnCard
 import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.PhotoCardKey
 import com.daengs.app.dogcard.photo.PhotoCardStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -110,12 +111,38 @@ class DexSlotsTest {
         assertEquals(1, cabbage.count)
     }
 
-    private fun photo(id: String, month: Int, status: PhotoCardStatus, at: Long) = PhotoCard(
-        id = id, dogId = null, month = month, dogName = "콩이", title = "T",
+    private fun photo(id: String, month: Int, status: PhotoCardStatus, at: Long) =
+        photo(id, PhotoCardKey.of(month), status, at)
+
+    private fun photo(id: String, key: PhotoCardKey, status: PhotoCardStatus, at: Long) = PhotoCard(
+        id = id, dogId = null, key = key, dogName = "콩이", title = "T",
         status = status, errorCode = null, likeness = null, createdAtMillis = at,
     )
 
     private val all = DEX_CARDS + PHOTO_CARDS
+
+    /** 종류 카드는 달이 없다 — 달로 칸을 찾던 때라면 모두 한 칸에 겹쳤을 것들이다 (#593, D-085). */
+    @Test
+    fun `종류 카드는 제 칸에 들어간다`() {
+        val slots = dexSlots(
+            all,
+            emptyList(),
+            listOf(
+                photo("s", PhotoCardKey.Strawberry, PhotoCardStatus.Ready, 10),
+                photo("l", PhotoCardKey.Lettuce, PhotoCardStatus.Ready, 20),
+            ),
+        )
+        assertEquals(listOf("s"), slots.first { it.card.id == "photo-strawberry" }.owned.map { it.id })
+        assertEquals(listOf("l"), slots.first { it.card.id == "photo-lettuce" }.owned.map { it.id })
+        assertTrue(slots.first { it.card.id == "photo-04" }.locked)
+    }
+
+    /** 앱이 모르는 종류를 서버가 먼저 열면 그릴 칸이 없다 — 조용히 버린다(칸도 수집 수도 안 는다). */
+    @Test
+    fun `모르는 카드 키는 조용히 버린다`() {
+        val slots = dexSlots(all, emptyList(), listOf(photo("t", PhotoCardKey("tomato"), PhotoCardStatus.Ready, 10)))
+        assertEquals(0, slots.ownedTotal())
+    }
 
     @Test
     fun `포토는 달 칸에 겹치고 최근이 앞이다`() {
@@ -162,7 +189,7 @@ class DexSlotsTest {
 
     @Test
     fun `포토 표지는 파일이고 파일이 없으면 빈 판이다`() {
-        val april = photoCardFor(4)!!
+        val april = photoCardFor(PhotoCardKey.of(4))!!
         assertEquals(null, coverOf(april, null))
         assertEquals(null, coverOf(april, OwnedCardArt(drawn = null, photoFile = null)))
         val f = java.io.File("a.png")

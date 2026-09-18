@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -18,6 +19,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.rotate
+import com.daengs.app.ui.DaengsIcon
+import com.daengs.app.ui.DaengsIconView
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +95,14 @@ fun LazyListScope.chatSummaryItems(
     onOpenCitation: (ChatCitation) -> Unit,
     onRequestDelete: (ChatSummary) -> Unit,
     selectedSummaryId: String? = null,
+    /**
+     * 몇 개까지 그리나. null 이면 전부다.
+     *
+     * 저장소 탭은 [StorageSectionPreview.PREVIEW] 만 그리고 나머지는 전체보기 화면이
+     * 받는다 — 전부 펼치면 요약이 쌓이는 만큼 탭이 길어진다. 전체보기 화면은 null 로
+     * 불러 다 그린다.
+     */
+    limit: Int? = null,
 ) {
     when (state) {
         ChatLoadState.Idle, ChatLoadState.Loading -> item(key = "summaries-loading") { ChatSummariesLoading() }
@@ -93,7 +110,8 @@ fun LazyListScope.chatSummaryItems(
         is ChatLoadState.Ready -> if (state.value.summaries.isEmpty()) {
             item(key = "summaries-empty") { ChatSummariesEmpty() }
         } else {
-            items(state.value.summaries, key = { it.id }) { summary ->
+            val shown = if (limit == null) state.value.summaries else state.value.summaries.take(limit)
+            items(shown, key = { it.id }) { summary ->
                 ChatSummaryCard(
                     summary = summary,
                     onOpenSource = onOpenSource,
@@ -173,9 +191,11 @@ fun ChatSummaryListContent(
 @Composable
 fun ChatSummaryCard(
     summary: ChatSummary,
-    onOpenSource: (String) -> Unit,
-    onOpenCitation: (ChatCitation) -> Unit,
-    onDelete: (ChatSummary) -> Unit,
+    // 세 콜백에 기본값을 둔다 — 미리보기와 접힘/펼침 테스트는 카드만 그리면 되고,
+    // 거기까지 가짜 람다를 써 넣게 하면 테스트가 실제와 멀어진다.
+    onOpenSource: (String) -> Unit = {},
+    onOpenCitation: (ChatCitation) -> Unit = {},
+    onDelete: (ChatSummary) -> Unit = {},
     modifier: Modifier = Modifier,
     selected: Boolean = false,
 ) {
@@ -192,10 +212,27 @@ fun ChatSummaryCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // **접힌 상태가 기본이다.** 카드 한 장에 물어본 내용·답변 요약·핵심·주의·출처·
+        // 원본 대화가 다 들어 있어서, 펼친 채로 두면 한 장만으로도 화면을 넘는다.
+        // 제목 줄을 누르면 펼쳐진다 — 지우기는 접힌 채로도 된다.
+        //
+        // 챗에서 골라 들어온 요약([selected])은 **펼친 채로 시작한다.** 보러 온 것을
+        // 한 번 더 누르게 하지 않는다.
+        var expanded by remember(summary.id) { mutableStateOf(selected) }
+
+        Row(
+            Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(summary.title, color = TextDark, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            DaengsIconView(
+                DaengsIcon.ChevronRight,
+                Modifier.size(16.dp).rotate(if (expanded) 270f else 90f),
+                tint = TextMuted,
+            )
             DaengsTextAction("삭제", { onDelete(summary) }, tint = DaengsColors.Error)
         }
+        if (expanded) {
         SummarySection("물어본 내용", summary.questionSummary)
         SummarySection("답변 요약", summary.answerSummary)
         if (summary.keyPoints.isNotEmpty()) SummaryBulletSection("핵심", summary.keyPoints)
@@ -214,6 +251,7 @@ fun ChatSummaryCard(
         summary.sourceSessionId?.let { sourceId ->
             Spacer(Modifier.height(2.dp))
             DaengsTextAction("원본 대화 보기", { onOpenSource(sourceId) })
+        }
         }
     }
 }

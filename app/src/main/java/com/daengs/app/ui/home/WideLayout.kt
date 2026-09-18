@@ -77,11 +77,11 @@ val ROOM_MIN_HEIGHT: Dp = 200.dp
 /**
  * 방 아래 카드 덩어리가 먹는 높이. **실측값이다.**
  *
- * `CardSlotHeight` 104 + 사이 10 + 산책 요약 120 + 아래 10 = 244.
+ * `CardSlotHeight` 104 + 사이 6 + 산책 요약 110 + 아래 4 = 224.
  * 산책 요약은 내용에 따라 늘어나므로 상수로 못 박을 수 없고, 여기 값은
  * "한 화면에 들어가나" 를 가르는 데만 쓴다 — 배치에는 안 쓴다.
  */
-val CARDS_BLOCK_HEIGHT: Dp = 244.dp
+val CARDS_BLOCK_HEIGHT: Dp = 224.dp
 
 /**
  * 홈을 **스크롤 한 칸**으로 돌릴 만큼 세로가 짧은가.

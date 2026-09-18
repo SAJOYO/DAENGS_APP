@@ -24,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
+import com.daengs.app.ui.motion.ScreenFadeThrough
+import com.daengs.app.ui.motion.screenTransitionAnimates
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -84,6 +87,9 @@ import com.daengs.app.pet.InviteLink
 import com.daengs.app.pet.InviteShare
 import com.daengs.app.pet.photoTargetId
 import com.daengs.app.pet.rememberPetHolder
+import com.daengs.app.pet.CoCareEnd
+import com.daengs.app.pet.CoCareEndWatch
+import com.daengs.app.pet.PrefsCoCareLinkLog
 import com.daengs.app.pet.InvitePaste
 import com.daengs.app.pet.rememberPetInviteBundleHolder
 import com.daengs.app.pet.rememberPetMemberHolder
@@ -108,6 +114,13 @@ import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.storage.dial
+import com.daengs.app.dogcard.photo.EXTRA_OPEN_PHOTO_CARD
+import com.daengs.app.dogcard.photo.schedulePhotoCardWatch
+import com.daengs.app.notify.EXTRA_OPEN_WALK
+import com.daengs.app.notify.EXTRA_OPEN_WALK_DIARY
+import com.daengs.app.ui.storage.ChatSummariesScreen
+import com.daengs.app.ui.storage.CareLogScreen
+import com.daengs.app.ui.storage.canDeleteCareEvent
 import com.daengs.app.ui.storage.VetVisitsScreen
 import com.daengs.app.care.VetRange
 import com.daengs.app.ui.walk.records.WalkRecordsRoute
@@ -161,6 +174,20 @@ private enum class Screen {
      * 만들면 그 위에 삭제 되묻기와 기간 시트가 겹치고 뒤로가기가 꼬인다 (APP#416).
      */
     VetVisits,
+
+    /**
+     * 대화 보관함 전체보기. 저장소 탭의 「전체보기」에서 들어온다.
+     *
+     * 탭에는 최근 몇 건만 두고 나머지를 여기가 받는다 — 전부 펼치면 요약이 쌓이는 만큼
+     * 저장소 탭이 길어진다 (`ui/storage/StorageSectionPreview.kt`).
+     */
+    ChatSummaries,
+
+    /** 오늘의 케어 기록 전체보기. 저장소 탭의 「전체보기」에서 들어온다. */
+    CareLog,
+
+    /** 알림 목록. 홈 상단바의 종 아이콘에서 들어온다. */
+    Notices,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -180,6 +207,25 @@ class MainActivity : ComponentActivity() {
     private var openChatRequest by mutableStateOf(0)
 
     /**
+     * 「산책 일기 장면이 준비됐어요」 알림이 실어 보낸 산책. [gaitCompletions] 와 같은
+     * 이유로 액티비티가 받아 두고 화면이 읽어 간다 — `onNewIntent` 는 `setContent` 안에서
+     * 볼 수 없다. 읽은 화면이 `null` 로 내린다.
+     */
+    private var openWalkDiary by mutableStateOf<String?>(null)
+
+    /**
+     * 「오늘 아직 안 나갔어요」로 들어왔나. [openChatRequest] 와 같은 꼴의 신호다 —
+     * 실어 올 값이 없어서 세기만 한다.
+     */
+    private var openWalkRequest by mutableStateOf(0)
+
+    /**
+     * 「포토 카드가 완성됐어요」로 들어왔나. 값은 카드 id 다 — 지금은 도감을 열기만 하고,
+     * 어느 카드였는지는 도감이 `PhotoRevealLog` 로 이미 안다.
+     */
+    private var openPhotoCard by mutableStateOf<String?>(null)
+
+    /**
      * 링크로 받은 초대 토큰과 초대받기 화면 상태. `onNewIntent` 때문에 [gaitCompletions] 와
      * 같은 이유로 액티비티가 받아 두고 화면이 읽어 간다 — `setContent` 안에서는 그 순간을
      * 못 본다.
@@ -197,7 +243,56 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         readGaitNotification(intent)
+        readWalkDiaryNotification(intent)
+        readWalkReminderNotification(intent)
+        readPhotoCardNotification(intent)
         readInviteLink(intent)
+    }
+
+    /**
+     * 일기 장면 알림으로 열렸으면 어느 산책인지 꺼낸다.
+     *
+     * **인텐트에서 지운다** — [readGaitNotification] 과 같은 이유다. 안 지우면 액티비티가
+     * 다시 만들어질 때 같은 인텐트를 다시 읽어, 사용자가 다른 화면에 있는데 한 번 더
+     * 일기로 끌려간다.
+     */
+    private fun readWalkDiaryNotification(intent: Intent) {
+        val sessionId = intent.getStringExtra(EXTRA_OPEN_WALK_DIARY) ?: return
+        openWalkDiary = sessionId
+        intent.removeExtra(EXTRA_OPEN_WALK_DIARY)
+    }
+
+    /**
+     * 「오늘 아직 안 나갔어요」로 열렸으면 산책 화면으로 보낸다. 부른 이유가 산책이라,
+     * 홈에 떨어뜨리면 한 번 더 누르게 한다.
+     */
+    private fun readWalkReminderNotification(intent: Intent) {
+        if (intent.getStringExtra(EXTRA_OPEN_WALK) == null) return
+        openWalkRequest++
+        intent.removeExtra(EXTRA_OPEN_WALK)
+    }
+
+    /** 「포토 카드가 완성됐어요」로 열렸으면 도감으로 보낸다. 뒤집는 자리가 거기다. */
+    private fun readPhotoCardNotification(intent: Intent) {
+        val cardId = intent.getStringExtra(EXTRA_OPEN_PHOTO_CARD) ?: return
+        openPhotoCard = cardId
+        intent.removeExtra(EXTRA_OPEN_PHOTO_CARD)
+    }
+
+    /**
+     * 알림함에서 한 줄을 눌렀다. **알림을 눌러 들어오는 길과 같은 신호를 올린다.**
+     *
+     * 두 길이 갈라지면 같은 알림이 그림자에서는 일기로, 목록에서는 홈으로 가는 일이
+     * 생긴다. 실어 나르는 값도 알림이 쓰는 것과 같은 열쇠다 ([DaengsNotice.extras]).
+     */
+    private fun openNoticeTarget(extras: Map<String, String>) {
+        extras[EXTRA_OPEN_WALK_DIARY]?.let { openWalkDiary = it }
+        if (extras.containsKey(EXTRA_OPEN_WALK)) openWalkRequest++
+        extras[GaitAnalysisWorker.EXTRA_OPEN_GAIT_RECORD]?.let { recordId ->
+            gaitCompletions.remember(extras[GaitAnalysisWorker.EXTRA_OPEN_GAIT_PET], recordId)
+            openChatRequest++
+        }
+        extras[EXTRA_OPEN_PHOTO_CARD]?.let { openPhotoCard = it }
     }
 
     /**
@@ -281,6 +376,9 @@ class MainActivity : ComponentActivity() {
         val walkController = walkRuntime.controller
         // 앱이 꺼져 있다가 알림으로 열린 경우. 떠 있는 동안 온 것은 onNewIntent 가 받는다.
         readGaitNotification(intent)
+        readWalkDiaryNotification(intent)
+        readWalkReminderNotification(intent)
+        readPhotoCardNotification(intent)
         // **복원이면 초대 링크를 읽지 않는다.** 프로세스가 죽은 뒤 되살릴 때 시스템은 처음
         // 연 링크 인텐트를 그대로 돌려줘서(여기서 지운 것은 이 프로세스 안의 사본뿐이다)
         // 이미 닫거나 수락한 초대가 다시 열린다. 재생성 중인 토큰은 [inviteEntry] 에 있다.
@@ -340,6 +438,14 @@ class MainActivity : ComponentActivity() {
                 var screen by rememberSaveable {
                     mutableStateOf(if (saved == null) Screen.Landing else Screen.Loading)
                 }
+                // 홈 카드의 마이크로 챗에 들어왔는가 (#451). [Screen] 이 enum 이라 목적지에
+                // 값을 실을 수 없어 깃발을 따로 둔다.
+                //
+                // ⚠️ **`rememberSaveable` 이 아니다.** 프로세스가 죽었다 살아날 때까지
+                // 남으면, 돌아오자마자 마이크가 저절로 켜진다 — 사용자가 켠 적 없는데.
+                // 챗을 나갈 때도 끈다(아래 `onBack`): 안 끄면 다음에 카드를 그냥 눌러도
+                // 듣기가 시작된다.
+                var chatOpensWithVoice by remember { mutableStateOf(false) }
                 // 홈 첫 진입 연출. **여기서 든다** — 홈 안에서 들면 도감·산책을 갔다 올
                 // 때마다 다시 튼다. 로딩을 떠나는 자리에서 한 번 무장하고, 그 뒤 홈은
                 // 몇 번을 다시 합성돼도 안 튼다.
@@ -369,6 +475,25 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 val recordsRouteState = key(recordsAccount) { rememberWalkRecordsRouteState(recordsAccount) }
+                // 「산책 일기 장면이 준비됐어요」를 누르고 들어왔다. **그 산책까지 데려간다** —
+                // 기록 목록에 떨어뜨리면 준비된 것이 어느 산책인지 사용자가 다시 찾아야 한다.
+                LaunchedEffect(openWalkDiary, recordsRouteState) {
+                    val sessionId = openWalkDiary?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+                    recordsRouteState.open(sessionId)
+                    screen = Screen.WalkHistory
+                    openWalkDiary = null
+                }
+                // 「오늘 아직 안 나갔어요」를 누르고 들어왔다. 부른 이유가 산책이다.
+                LaunchedEffect(openWalkRequest) {
+                    if (openWalkRequest > 0) screen = Screen.Walk
+                }
+                // 「포토 카드가 완성됐어요」를 누르고 들어왔다. 도감이 뒤집기를 띄운다.
+                LaunchedEffect(openPhotoCard) {
+                    if (openPhotoCard != null) {
+                        screen = Screen.Dex
+                        openPhotoCard = null
+                    }
+                }
                 val completedDestination = key(recordsAccount) {
                     com.daengs.app.ui.walk.rememberWalkSessionDestination(recordsAccount)
                 }
@@ -411,7 +536,24 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(if (saved == null) SessionRestore.Ok else SessionRestore.Pending)
                 }
                 var busy by remember { mutableStateOf(false) }
-                val pets = rememberPetHolder()
+                // 공동 돌봄이 끝나 내 강아지 정보로 돌아온 아이를 한 번 알린다 (#440). **목록 홀더보다
+                // 먼저 둔다** — 홀더가 목록을 받을 때마다 여기에 넘긴다 (`pet/CoCareEnd.kt`).
+                val coCareEnds = remember { CoCareEndWatch(PrefsCoCareLinkLog(context)) }
+                val pets = rememberPetHolder(
+                    currentAccount = { app.sessionProvider.accountScope.value.ownerId },
+                    onListed = coCareEnds::observe,
+                )
+                // **화면마다 두지 않고 여기서 한 번 띄운다.** 내보내진 것은 앱을 켜자마자 목록을 받으며
+                // 알게 되고, 직접 나간 것은 보호자 목록을 닫은 뒤 알게 된다 — 어느 화면에 있든 떠야 한다.
+                // 막는 창이 아니라 짧은 알림이라 하던 일을 끊지 않는다 (포토 지우기 실패와 같은 Toast).
+                LaunchedEffect(coCareEnds.pending, session?.appUserId) {
+                    val notice = coCareEnds.pending ?: return@LaunchedEffect
+                    // 다른 계정 것은 띄우지 않고 버린다.
+                    if (notice.account == session?.appUserId) {
+                        Toast.makeText(context, CoCareEnd.MESSAGE, Toast.LENGTH_LONG).show()
+                    }
+                    coCareEnds.shown()
+                }
                 // 프로필 사진. **원본은 서버이고 기기에 있는 것은 캐시다**
                 // (`pet/PetPhotos.kt`). 그래서 폰을 바꿔도 사진이 따라온다.
                 val petPhotos = rememberPetPhotoHolder()
@@ -657,6 +799,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(session) {
                     if (session == null) {
                         pets.forget()
+                        coCareEnds.signOut()
                         // 로그아웃·탈퇴가 모두 여기를 지난다. **붙여넣은 초대 링크와 토큰을
                         // 같이 버린다** — 다음 사람의 화면에 남의 자격증명이 남으면 안 된다.
                         // 링크로 받아 아직 못 넘긴 토큰도 같이 버린다 — 로그아웃한
@@ -817,7 +960,24 @@ class MainActivity : ComponentActivity() {
                     inviteEntry.openFromLink()
                 }
 
-                when (screen) {
+                // **화면 전환을 한 겹으로 잇는다.** 이 앱에는 내비게이션 라이브러리가
+                // 없어서 이 `when` 하나가 화면 열여덟 개를 갈아 끼우고, 그래서 전환이
+                // 늘 "팍" 이었다. `ui/motion/ScreenFadeThrough.kt` 머리말에 왜 슬라이드가
+                // 아니라 fade 인지 적어 뒀다.
+                //
+                // **감싸도 안전한 이유:** 이 `when` 안에서 `screen` 을 **읽는 곳이 하나도
+                // 없다** (전부 대입이다). 그래서 바깥 값이 먼저 바뀌어도, 빠져 나가는
+                // 화면이 새 값으로 다른 분기를 그리는 일이 없다. 읽는 곳이 생기면
+                // 그 화면은 `current` 를 봐야 한다.
+                ScreenFadeThrough(
+                    target = screen,
+                    modifier = Modifier.fillMaxSize(),
+                    // 로딩에서 넘어올 때는 크림 막이 이미 잇는다 (`HomeIntroVeil`).
+                    animates = { from, to ->
+                        screenTransitionAnimates(from == Screen.Loading, to == Screen.Loading)
+                    },
+                ) { current ->
+                when (current) {
                     Screen.Loading -> LoadingScreen()
 
                     Screen.Landing -> LandingScreen(
@@ -1193,6 +1353,15 @@ class MainActivity : ComponentActivity() {
                         ),
                         onOpenDex = { screen = Screen.Dex },
                         onOpenChat = { askPetThen(PetNeed.Chat) { screen = Screen.Chat } },
+                        // **같은 관문을 지난다.** 강아지가 없으면 챗 자체가 안 열리므로
+                        // 음성도 같은 규칙이다 — 마이크만 예외를 두면 등록 안 한 사람이
+                        // 말부터 하게 된다.
+                        onOpenChatByVoice = {
+                            askPetThen(PetNeed.Chat) {
+                                chatOpensWithVoice = true
+                                screen = Screen.Chat
+                            }
+                        },
                         storageContent = { storageModifier ->
                             ChatSummaryRoute(
                                 petId = pets.primary?.id.takeIf { session != null },
@@ -1216,6 +1385,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onOpenVetVisits = { screen = Screen.VetVisits },
+                                onOpenSummaries = { screen = Screen.ChatSummaries },
+                                onOpenCareLog = { screen = Screen.CareLog },
                                 modifier = storageModifier,
                                 currentUserId = session?.appUserId,
                                 // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
@@ -1263,6 +1434,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onToggleWeather = { weatherOpen = !weatherOpen },
                         onOpenMy = { myOpen = true },
+                        onOpenNotices = { screen = Screen.Notices },
                         onCloseMy = { myOpen = false },
                         outside = outside,
                         pets = shownPets,
@@ -1358,6 +1530,8 @@ class MainActivity : ComponentActivity() {
                                         roomStore.clear()
                                         frameCardId = null
                                         pets.forget()
+                                        // 탈퇴한 계정의 연결 기록은 다시 쓸 일이 없다.
+                                        coCareEnds.forgetAccount(old.appUserId)
                                         todayWalks = walkRuntime.history.todayTotals()
                                         // 뽑은 카드도 이 기기에만 있다. 서버에 사본이
                                         // 없으므로 여기서 안 지우면 다음에 로그인한
@@ -1433,7 +1607,12 @@ class MainActivity : ComponentActivity() {
                     )
 
                     Screen.Chat -> ChatScreen(
-                        onBack = { screen = Screen.Home },
+                        onBack = {
+                            // 나갈 때 깃발을 끈다 — 안 끄면 다음에 카드를 그냥 눌러도
+                            // 듣기가 시작된다.
+                            chatOpensWithVoice = false
+                            screen = Screen.Home
+                        },
                         avatar = artBreed,
                         // 말풍선 얼굴은 안 바뀐다. 보행 촬영 화면에서만 쓴다.
                         avatarPhoto = pets.primary?.let { petPhotos[it.id] },
@@ -1442,6 +1621,7 @@ class MainActivity : ComponentActivity() {
                         historyCoordinator = chatHistory,
                         gaitCompletions = gaitCompletions,
                         assistantQuery = facilityAssistantQuery,
+                        startListening = chatOpensWithVoice,
                         onOpenFacilities = { screen = Screen.Places },
                         // 로그인해야 기록이 있다. 안 됐으면 길 자체를 안 보여 준다.
                         onOpenScreeningHistory = { screen = Screen.ScreeningHistory }
@@ -1658,13 +1838,13 @@ class MainActivity : ComponentActivity() {
                             }
                             else -> null
                         },
-                        makePhoto = { startMonth, done ->
+                        makePhoto = { startCard, done ->
                             LaunchedEffect(Unit) { photos.clearCreateError() }
                             // 방금 보낸 카드. 이 오버레이가 떠 있는 동안만 기억한다 — 닫으면 처음부터.
                             var watchId by remember { mutableStateOf<String?>(null) }
                             val watching = watchId?.let { id -> photos.cards.firstOrNull { it.id == id } }
                             PhotoCardMakeScreen(
-                                startMonth = startMonth,
+                                startCard = startCard,
                                 // 대표 강아지가 먼저 보이게 한다 (`sortedByDescending` 은 안정 정렬이라
                                 // 나머지는 서버가 준 순서 그대로다).
                                 dogs = pets.pets.orEmpty()
@@ -1675,12 +1855,22 @@ class MainActivity : ComponentActivity() {
                                 watching = watching,
                                 watchingFile = watching?.let { photos.images[it.id] },
                                 remaining = photos.dailyRemaining,
-                                takenMonths = { id -> photos.takenMonths(id) },
-                                onSubmit = { month, dog, jpeg, titleName ->
+                                takenCards = { id -> photos.takenCards(id) },
+                                onSubmit = { card, dog, jpeg, titleName ->
                                     // **여기서 `done()` 을 부르지 않는다.** 보낸 뒤에도 화면은 열린 채
                                     // 그리는 중 → 뒤집기로 넘어간다 — 나가는 건 「다 되면 알려 주세요」뿐이다.
                                     scope.launch {
-                                        photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { watchId = it }
+                                        photos.create(card, dog.name, dog.id, jpeg, titleName)?.let { id ->
+                                            watchId = id
+                                            // **앱 밖에서도 지켜본다.** 화면의 폴링은
+                                            // `repeatOnLifecycle(STARTED)` 안에 있어서 앱을
+                                            // 내리면 멈춘다 — 「다 되면 알려 주세요」의
+                                            // 그 약속을 이 Worker 가 지킨다.
+                                            //
+                                            // **달 카드와 종류 카드(딸기·상추)가 같은 자리다** (#453).
+                                            // 만들기 경로가 하나라 지켜보기도 하나면 된다.
+                                            schedulePhotoCardWatch(this@MainActivity, id)
+                                        }
                                     }
                                 },
                                 onWaitElsewhere = done,
@@ -1753,7 +1943,85 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    Screen.ChatSummaries -> {
+                        // 저장소 탭이 쓰는 것과 **같은 코디네이터**다. 탭에서 최근 몇 건만
+                        // 보고 여기서 전부 보는 것이라, 상태가 갈라지면 방금 지운 요약이
+                        // 한쪽에 남는다.
+                        val summaryState by chatSummaries.state.collectAsState()
+                        var pendingSummaryDeletion by remember {
+                            mutableStateOf<com.daengs.app.chat.ChatSummary?>(null)
+                        }
+                        ChatSummariesScreen(
+                            state = summaryState.summaries,
+                            pendingDeletion = pendingSummaryDeletion,
+                            selectedSummaryId = summaryState.selectedSummaryId,
+                            // 저장소 탭으로 돌아간다. `homeTab` 이 따로 살아 있어 탭이 유지된다.
+                            onBack = { screen = Screen.Home },
+                            onRetry = {
+                                scope.launch { freshToken()?.let { chatSummaries.load(it) } }
+                            },
+                            // 저장소 탭과 **같은 길이다** — 원본 대화를 열고 챗으로 간다.
+                            onOpenSource = { sessionId ->
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    if (chatHistory.openSession(token, sessionId)) screen = Screen.Chat
+                                }
+                            },
+                            onOpenCitation = { citation ->
+                                citation.url?.let { url ->
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    }
+                                }
+                            },
+                            onRequestDelete = { pendingSummaryDeletion = it },
+                            onDismissDelete = { pendingSummaryDeletion = null },
+                            onConfirmDelete = { summary ->
+                                pendingSummaryDeletion = null
+                                scope.launch { freshToken()?.let { chatSummaries.delete(it, summary.id) } }
+                            },
+                        )
+                    }
+
+                    Screen.Notices -> com.daengs.app.ui.notify.NoticeInboxRoute(
+                        onBack = { screen = Screen.Home },
+                        // **알림을 눌러 들어오는 길과 같은 자리로 보낸다.** 목록에서
+                        // 누르는 것과 알림 그림자에서 누르는 것이 다른 데로 가면 안 된다.
+                        onOpen = { notice ->
+                            screen = Screen.Home
+                            openNoticeTarget(notice.extras)
+                        },
+                    )
+
+                    Screen.CareLog -> {
+                        // 저장소 탭이 쓰는 것과 **같은 코디네이터**다. 여기서 기록하거나
+                        // 지운 것이 탭의 합계 줄에 바로 보여야 한다.
+                        val careState by careLog.state.collectAsState()
+                        CareLogScreen(
+                            state = careState,
+                            // 저장소 탭으로 돌아간다. `homeTab` 이 따로 살아 있어 탭이 유지된다.
+                            onBack = { screen = Screen.Home },
+                            onRecord = { kind ->
+                                scope.launch { freshToken()?.let { careLog.record(it, kind) } }
+                            },
+                            onRetryLoad = { scope.launch { freshToken()?.let { careLog.load(it) } } },
+                            onConfirmDelete = { event ->
+                                scope.launch { freshToken()?.let { careLog.delete(it, event.id) } }
+                            },
+                            onDismissError = { careLog.clearErrors() },
+                            // 저장소 탭과 **같은 판정**이다 (거기 호출부 참고) — 내가 남긴
+                            // 기록이거나, 이 강아지 행의 주인일 때만 지울 수 있다.
+                            canDelete = { event ->
+                                canDeleteCareEvent(
+                                    event,
+                                    session?.appUserId,
+                                ) { petId -> ownsPetRow(pets.pets.orEmpty(), petId) }
+                            },
+                        )
+                    }
+
                     Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
+                }
                 }
 
                 // **화면 밖에 둔다.** 문은 홈에서만 뜨는 것이 아니라(챗봇 카드 · 방문 ·

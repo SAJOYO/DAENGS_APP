@@ -50,6 +50,14 @@ class WalkDiaryTest {
         assertFalse(hidden.scenes.any { it.id == "s/entry:a" })
     }
 
+    @Test fun `위치 없음 핀은 기존 원본 좌표보다 우선한다`() {
+        val pin = com.daengs.app.walk.pin.ActionPin(org.json.JSONObject()
+            .put("state", "unlocated").put("method", "none").put("point", org.json.JSONObject.NULL).toString())
+        val recorded = entry().copy(pin = pin)
+        val result = diaryWalk(walk(), listOf(recorded), emptyList(), StoryboardDraft(), noAnalysis)
+        assertNull(result.scenes.single { it.id == "s/entry:a" }.point)
+    }
+
     @Test fun `자동 장면은 거리 정보가 있어도 좌표를 추측하지 않는다`() {
         val bundle = GeoStoryboardBundle.parse(javaClass.getResource("/storyboard/pinless.json")!!.readText())
         val result = diaryWalk(walk(), emptyList(), emptyList(), StoryboardDraft(),

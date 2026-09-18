@@ -13,6 +13,8 @@ import androidx.work.WorkerParameters
 import androidx.work.await
 import androidx.work.workDataOf
 import com.daengs.app.DaengsApp
+import com.daengs.app.notify.diarySceneBecameReady
+import com.daengs.app.notify.postWalkDiaryNotice
 import com.daengs.app.walk.WalkFixLog
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -98,8 +100,16 @@ class WalkDeliveryWorker(
             return if (app.tokenStore.load() == null) Result.success() else Result.retry()
         }
 
+        // 왕복 **전** 장면 상태. 성공만으로는 장면이 준비됐는지 알 수 없어서(서버가 아직
+        // `running` 일 수 있다) 전후를 비교한다 — `notify/WalkDiaryNotice.kt` 참고.
+        val sceneBefore = app.walkEntryDao.sceneAnalysis(sessionId)?.status
+
         return try {
             app.walkRuntime.sync.syncPendingSession(session.accessToken, sessionId)
+            val sceneAfter = app.walkEntryDao.sceneAnalysis(sessionId)?.status
+            if (diarySceneBecameReady(sceneBefore, sceneAfter)) {
+                postWalkDiaryNotice(applicationContext, sessionId)
+            }
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled

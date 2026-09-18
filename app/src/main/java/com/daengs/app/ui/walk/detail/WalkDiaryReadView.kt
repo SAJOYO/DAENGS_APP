@@ -3,6 +3,8 @@ package com.daengs.app.ui.walk.detail
 import com.daengs.app.walk.WalkSessionDetail
 import com.daengs.app.walk.diary.DiaryWalk
 import com.daengs.app.walk.diary.DiaryScene
+import com.daengs.app.walk.diary.DiaryScenePresentation
+import com.daengs.app.walk.diary.scenePresentation
 import com.daengs.app.walk.routeexplorer.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -19,7 +21,12 @@ internal class PreparedDiaryRoute(val detail: WalkSessionDetail,
 
 internal data class WalkDiaryReadView(val route: PreparedDiaryRoute, val diary: DiaryWalk?,
     val sceneFocus: Map<String, SceneRouteFocus> = emptyMap(), val scenesLoading: Boolean = false,
-    val revisionKey: String = UUID.randomUUID().toString())
+    val revisionKey: String = UUID.randomUUID().toString()) {
+    /** One immutable reading projection shared by map, playback and map inspection. */
+    val scenePresentation: DiaryScenePresentation by lazy {
+        diary?.scenePresentation() ?: DiaryScenePresentation(emptyList())
+    }
+}
 
 /** Resolve against the current read at click time; a callback from an older scene cannot move the map. */
 internal fun WalkDiaryReadView.focusFor(scene: DiaryScene): SceneRouteFocus? {
