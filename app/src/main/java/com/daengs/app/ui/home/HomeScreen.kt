@@ -79,9 +79,28 @@ import kotlinx.coroutines.delay
 import com.daengs.app.ui.dogcard.CardTemplate
 import com.daengs.app.ui.my.MyScreen
 import com.daengs.app.ui.storage.StorageComingSoon
+import com.daengs.app.ui.motion.ScreenFadeThrough
 import com.daengs.app.ui.theme.CreamBg
 import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
+
+/**
+ * 홈 자리에서 **실제로 보이는 것 셋.**
+ *
+ * 하단 탭 넷 중 도감·내 주변은 `screen` 을 바꾸므로 바깥 화면 전환이 잇는다
+ * (`MainActivity` 의 `when (screen)`). 홈과 저장소는 이 화면 안에서 갈리고, 마이는
+ * 그 위에 덮인다 — 그 셋을 한 값으로 모아 같은 모션을 태운다.
+ *
+ * 순수 함수라 테스트로 잡는다. **마이가 저장소를 이긴다** — 마이는 어느 탭 위에도
+ * 덮이는 화면이라, 저장소 탭에서 프로필을 눌러도 마이가 떠야 한다.
+ */
+internal enum class HomeFace { My, Storage, Room }
+
+internal fun homeFace(myOpen: Boolean, tab: BottomTab): HomeFace = when {
+    myOpen -> HomeFace.My
+    tab == BottomTab.Storage -> HomeFace.Storage
+    else -> HomeFace.Room
+}
 
 /**
  * 챗봇 카드가 쓰는 칸 높이.
@@ -493,7 +512,16 @@ fun HomeScreen(
             )
         },
     ) { inner ->
-        if (myOpen) {
+        // **홈 안에서 갈리는 셋도 같은 박자로 잇는다.** 바깥 화면 전환과 같은
+        // fade-through 다 (`ui/motion/ScreenFadeThrough.kt`). 예전에는 이른
+        // `return@Scaffold` 두 번으로 갈렸는데, 분기를 `AnimatedContent` 가 들어야
+        // 해서 `when` 으로 바꿨다 — 람다를 하나 더 거치면 그 `return` 은 컴파일도 안 된다.
+        ScreenFadeThrough(
+            target = homeFace(myOpen, tab),
+            modifier = Modifier.fillMaxSize(),
+        ) { face ->
+        when (face) {
+        HomeFace.My ->
             MyScreen(
                 // 마이는 홈 위에 덮이는 화면이라, 다시 보기를 누르면 마이를 닫고
                 // 방 위에서 둘러보기가 열려야 한다.
@@ -533,14 +561,13 @@ fun HomeScreen(
                 onDismissWithdraw = { onDismissWithdraw?.invoke() },
                 modifier = Modifier.padding(inner),
             )
-            return@Scaffold
-        }
 
-        if (tab == BottomTab.Storage) {
+        HomeFace.Storage -> {
             val storageModifier = Modifier.padding(inner)
             if (storageContent == null) StorageComingSoon(storageModifier) else storageContent(storageModifier)
-            return@Scaffold
         }
+
+        HomeFace.Room -> {
 
         // 스크롤 없음 — 전부 한 화면에 들어간다.
         // 카드 두 장은 필요한 만큼만 쓰고, 남는 세로는 방이 전부 가져간다.
@@ -748,6 +775,9 @@ fun HomeScreen(
                 room(Modifier.fillMaxWidth().weight(1f))
                 cards()
             }
+        }
+        }
+        }
         }
         }
     }
