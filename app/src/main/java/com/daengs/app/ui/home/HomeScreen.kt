@@ -30,6 +30,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -79,14 +83,21 @@ import com.daengs.app.ui.theme.TextMuted
 import com.daengs.app.ui.theme.DaengsTheme
 
 /**
- * 챗봇 카드와 인벤토리 패널이 함께 쓰는 슬롯 높이.
+ * 챗봇 카드가 쓰는 칸 높이.
  *
- * 둘의 높이가 다르면 방이 `weight(1f)` 로 남는 높이를 가져가기 때문에,
- * 인벤토리를 열고 닫을 때마다 방 크기가 그 차이만큼 튄다.
- * 높이 제약은 컴포넌트 안이 아니라 이 배치 지점에 둔다 — 그래야 두 카드를
- * 다른 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
+ * **예전에는 인벤토리 패널과 같은 칸이었다.** 둘의 높이가 다르면 방이 `weight(1f)` 로
+ * 남는 높이를 가져가기 때문에, 인벤토리를 열고 닫을 때마다 방이 그 차이만큼 튄다 —
+ * 그걸 막으려고 같은 높이로 강제했다. 그런데 **그 대가로 인벤토리 슬롯의 이름과 개수가
+ * 배치되지 않았다** (104dp 칸에 88dp 짜리 슬롯). 지금은 떼어내고 높이 변화를
+ * `animateDpAsState` 로 잇는다 — 튀는 게 아니라 미끄러지면 "편집 도구가 올라온다" 로
+ * 읽힌다.
+ *
+ * 104dp 였다. 안에 든 것은 `패딩 7×2 + 제목줄 25 + Spacer 5 + 입력줄 44` 다.
+ *
+ * 높이 제약은 컴포넌트 안이 아니라 이 배치 지점에 둔다 — 그래야 두 카드를 다른
+ * 화면에서 재사용할 때 자기 크기대로 쓸 수 있다.
  */
-internal val CardSlotHeight = 104.dp
+internal val CardSlotHeight = 88.dp
 
 /**
  * 강아지 목록이 늦을 때 "불러오는 중" 을 띄우기까지 기다리는 시간.
@@ -618,8 +629,22 @@ fun HomeScreen(
         // 인벤토리를 방 위에 겹치면 바닥을 가려서 방금 놓은 물건이 안 보인다.
         // 편집 중에는 챗봇 카드 자리를 대신 쓴다 — 방은 그대로 다 보인다.
         val cards: @Composable ColumnScope.() -> Unit = {
-            val slot = Modifier.padding(horizontal = 14.dp).height(CardSlotHeight)
+            // **칸 높이가 두 값 사이를 오간다.** 방이 `weight(1f)` 로 남는 높이를
+            // 가져가므로 이 한 값이 곧 방 크기다. 예전에는 두 카드를 같은 높이로
+            // 강제해 이 값이 안 움직이게 했는데, 그 대가가 잘린 이름표였다
+            // ([CardSlotHeight] 주석). 이제 움직이게 두고 튀지 않게 잇는다.
+            val slotHeight by animateDpAsState(
+                targetValue = if (inventoryOpen) InventoryMetrics.Panel else CardSlotHeight,
+                animationSpec = tween(durationMillis = 220),
+                label = "카드 칸 높이",
+            )
+            val slot = Modifier.padding(horizontal = 14.dp).height(slotHeight)
             if (inventoryOpen) {
+                // **자라는 동안 내용을 같이 띄운다.** 칸이 88→114 로 커지는 220ms 사이에
+                // 그냥 그리면 그 동안만 이름·개수가 다시 잘려 보인다 — 방금 고친 바로
+                // 그 증상이라 혼란스럽다. 알파로 덮어 커진 뒤에 드러나게 한다.
+                val appear = remember { Animatable(0f) }
+                LaunchedEffect(Unit) { appear.animateTo(1f, tween(durationMillis = 220)) }
                 InventoryPanel(
                     catalog = catalog,
                     available = { roomState.availableCount(it) },
@@ -629,7 +654,7 @@ fun HomeScreen(
                         themeId = it.id
                         store.saveThemeId(it.id)
                     },
-                    modifier = slot,
+                    modifier = slot.graphicsLayer { alpha = appear.value },
                 )
             } else {
                 ChatbotCard(
