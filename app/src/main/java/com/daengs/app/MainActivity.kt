@@ -24,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
+import com.daengs.app.ui.motion.ScreenFadeThrough
+import com.daengs.app.ui.motion.screenTransitionAnimates
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -846,7 +849,24 @@ class MainActivity : ComponentActivity() {
                     inviteEntry.openFromLink()
                 }
 
-                when (screen) {
+                // **화면 전환을 한 겹으로 잇는다.** 이 앱에는 내비게이션 라이브러리가
+                // 없어서 이 `when` 하나가 화면 열여덟 개를 갈아 끼우고, 그래서 전환이
+                // 늘 "팍" 이었다. `ui/motion/ScreenFadeThrough.kt` 머리말에 왜 슬라이드가
+                // 아니라 fade 인지 적어 뒀다.
+                //
+                // **감싸도 안전한 이유:** 이 `when` 안에서 `screen` 을 **읽는 곳이 하나도
+                // 없다** (전부 대입이다). 그래서 바깥 값이 먼저 바뀌어도, 빠져 나가는
+                // 화면이 새 값으로 다른 분기를 그리는 일이 없다. 읽는 곳이 생기면
+                // 그 화면은 `current` 를 봐야 한다.
+                ScreenFadeThrough(
+                    target = screen,
+                    modifier = Modifier.fillMaxSize(),
+                    // 로딩에서 넘어올 때는 크림 막이 이미 잇는다 (`HomeIntroVeil`).
+                    animates = { from, to ->
+                        screenTransitionAnimates(from == Screen.Loading, to == Screen.Loading)
+                    },
+                ) { current ->
+                when (current) {
                     Screen.Loading -> LoadingScreen()
 
                     Screen.Landing -> LandingScreen(
@@ -1800,6 +1820,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     Screen.CutoutLab -> CutoutLabScreen(onBack = { screen = Screen.Home })
+                }
                 }
 
                 // **화면 밖에 둔다.** 문은 홈에서만 뜨는 것이 아니라(챗봇 카드 · 방문 ·
