@@ -83,10 +83,26 @@ object RoomSpec {
      * 좌우에 큰 여백이 남는다 — 1080 폭 화면에서 방이 691px 이라 양쪽에 195px 씩
      * 놀았다. 그 여백을 방에 준다.
      *
-     * **강아지와 소품은 안 늘어난다.** 그쪽은 [RoomGeometry.scale] 을 쓰고 이 값은
-     * [RoomGeometry.stage] 에만 걸리기 때문이다. 방이 넓어져도 개는 개 모양이다.
-     * 대신 격자가 같이 늘어나므로 여러 칸을 차지하는 소품(러그 5x5)은 자기 칸을
-     * 다 덮지 못한다 — 늘릴수록 그 어긋남이 커진다.
+     * **소품은 같이 늘어나고 강아지는 안 늘어난다** ([RoomGeometry.scaleX] 참고).
+     * 방과 격자가 가로로 늘어나면 여러 칸짜리 소품(러그 5x5)이 자기 칸을 못 덮으므로
+     * 소품은 같이 늘리고, 강아지까지 늘리면 개가 뚱뚱해지므로 강아지는 놔둔다.
+     *
+     * ⚠️ **예전 주석은 "강아지와 소품은 안 늘어난다" 였고, 러그가 칸을 못 덮는 것을
+     * 지금의 대가로 적어 두었다.** [RoomGeometry.scaleX] 가 나중에 추가되면서 그 문제는
+     * 해결됐는데 이 주석만 그 전 상태로 남아 있었다. 두 주석이 서로 모순했고, 낡은
+     * 쪽을 읽으면 "늘리면 러그가 깨진다" 는 **틀린 근거로 판단하게 된다** — 2026-09-18
+     * 에 실제로 그럴 뻔했다.
+     *
+     * 늘림의 진짜 대가는 **모양**이다. 아이소메트릭 원근이 가로로 퍼지고, 픽셀 아트의
+     * 가로 도트가 세로보다 굵어지고, 안 늘어나는 강아지가 방 대비 작아 보이고,
+     * 창문·문도 [RoomGeometry.stage] 백분율이라 같이 퍼진다. 전부 "예쁜지" 라서
+     * 테스트로 못 잡는다 — **견딜 만한 값은 실기기에서 눈으로 고른다** (개발자 패널에
+     * 가로 슬라이더가 있다).
+     *
+     * **한계는 기기마다 다르다.** 방 그림 폭의 상한은 `화면 폭 × INSET = 386.7dp` 로
+     * 모든 폰에서 같은데(합성 폭이 늘 411dp 다), 거기 닿는 데 필요한 값은 방 상자
+     * 높이에 달렸다 — Pixel 3 XL(335dp)은 1.53, Pixel 7(452dp)은 1.14 다. 그래서
+     * **길쭉한 폰은 이 값을 올려도 변화가 없다.**
      *
      * 넘치게 잡아도 상자 폭에서 잘린다([RoomGeometry.of] 가 min 을 건다).
      */
@@ -337,11 +353,20 @@ data class RoomGeometry(
          * **어느 쪽으로도 넘치지 않는다.** 잘림이 없는 건 값을 잘 골라서가 아니라
          * 이 식의 성질이다 — s 는 contain 을 넘을 수 없다.
          */
-        fun of(widthPx: Float, heightPx: Float): RoomGeometry {
+        fun of(
+            widthPx: Float,
+            heightPx: Float,
+            /**
+             * 가로만 더 늘리는 배율. 기본은 [RoomSpec.H_STRETCH] 이고, **개발자 패널이
+             * 실기기에서 값을 고를 때만** 다른 값이 들어온다. 릴리스에서는 패널이 빈
+             * 스텁이라 언제나 기본값이다.
+             */
+            hStretch: Float = RoomSpec.H_STRETCH,
+        ): RoomGeometry {
             val contain = min(widthPx / RoomSpec.ROOM_PNG_W, heightPx / RoomSpec.ROOM_PNG_H)
             val s = contain * RoomSpec.INSET
             // 가로만 더 준다. 상자 폭을 넘지 않게 잘라서, 값을 크게 잡아도 잘리지 않는다.
-            val sx = min(s * RoomSpec.H_STRETCH, widthPx * RoomSpec.INSET / RoomSpec.ROOM_PNG_W)
+            val sx = min(s * hStretch, widthPx * RoomSpec.INSET / RoomSpec.ROOM_PNG_W)
             val w = RoomSpec.ROOM_PNG_W * sx
             val h = RoomSpec.ROOM_PNG_H * s
             // 놓는 기준은 공칭 사각형이 아니라 **칠해진 부분**이다. 그림 위쪽 39px 이
@@ -354,6 +379,7 @@ data class RoomGeometry(
         }
 
         /** 가로만 아는 경우 — 그림 비율대로 세로를 잡는다. */
-        fun of(widthPx: Float): RoomGeometry = of(widthPx, widthPx / RoomSpec.ASPECT)
+        fun of(widthPx: Float, hStretch: Float = RoomSpec.H_STRETCH): RoomGeometry =
+            of(widthPx, widthPx / RoomSpec.ASPECT, hStretch)
     }
 }

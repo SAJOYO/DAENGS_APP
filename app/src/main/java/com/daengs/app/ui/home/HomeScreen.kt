@@ -61,6 +61,7 @@ import com.daengs.app.miniroom.RoomIntro
 import com.daengs.app.miniroom.RoomDefaults
 import com.daengs.app.miniroom.rememberDogHerd
 import com.daengs.app.miniroom.RoomGeometry
+import com.daengs.app.miniroom.RoomSpec
 import com.daengs.app.miniroom.OutsideSnapshot
 import com.daengs.app.miniroom.OutsideView
 import com.daengs.app.miniroom.RoomTheme
@@ -861,6 +862,12 @@ private fun RoomSection(
 ) {
     // 개발자 도구는 **저장하지 않는다.** 실수로 켠 채 배포되면 안 된다.
     var developer by remember { mutableStateOf(false) }
+    // 방 가로 늘림. 개발자 패널에서 실기기의 진짜 화면을 보며 값을 고르려고 둔다.
+    // 저장하지 않는 세션 한정 값이고, 릴리스에서는 패널이 빈 스텁이라 안 바뀐다.
+    //
+    // **방 그림과 이름표·문 배지가 같은 값을 써야 한다** — 아래 세 곳에 다 넘긴다.
+    // 방만 넓히면 이름표가 방 그림 기준 백분율에서 어긋나 배경 위로 떠 버린다.
+    var hStretch by remember { mutableStateOf(RoomSpec.H_STRETCH) }
     // 턴테이블 판. 방을 덮지 않고 아래에서 올라온다 — 이 방의 전축을 튼 것이라
     // 방과 턴테이블이 계속 보여야 그 맥락이 산다.
     var turntableOpen by remember { mutableStateOf(false) }
@@ -924,6 +931,7 @@ private fun RoomSection(
             frameTimeMs = frameTimeMs ?: previewFrame,
             developer = developer,
             intro = intro,
+            hStretch = hStretch,
             // 톡 누르면 방향 돌리기. 치우기는 "방 밖으로 끌어내기"로 분리했다 —
             // 탭 하나에 두 가지 뜻을 담으면 헷갈리고, 실수로 사라지면 곤란하다.
             // 편집 모드에서 탭 = 선택. 돌리기/치우기는 버튼으로 뺐다.
@@ -1030,6 +1038,8 @@ private fun RoomSection(
                 devPetCount = devPetCount,
                 onToggleEmptyRoom = onToggleEmptyRoom,
                 emptyRoom = waitsForPet,
+                hStretch = hStretch,
+                onPickHStretch = { hStretch = it },
                 outside = outside,
                 onPickOutside = onPickOutside,
                 onOpenCutoutLab = onOpenCutoutLab,
@@ -1055,9 +1065,12 @@ private fun RoomSection(
                 .align(Alignment.BottomCenter)
                 .offset {
                     if (boxSize.width == 0) return@offset IntOffset.Zero
+                    // **방 그림과 같은 늘림을 쓴다.** 안 맞추면 이름표가 방 그림
+                    // 기준 백분율에서 어긋나 배경 위로 뜬다.
                     val g = RoomGeometry.of(
                         boxSize.width.toFloat(),
                         boxSize.height.toFloat(),
+                        hStretch,
                     )
                     // 가로는 안 건드린다. BottomCenter 가 방 상자의 가운데를 잡아
                     // 주는데, 방 그림도 상자 가운데에 놓이므로 결과가 같다.
@@ -1123,7 +1136,7 @@ private fun RoomSection(
         val selected = state.items.firstOrNull { it.instanceId == state.selectedId }
         val selectedArt = selected?.let { catalog[it.itemId] }
         if (inventoryOpen && selected != null && selectedArt != null && boxSize.width > 0) {
-            val g = RoomGeometry.of(boxSize.width.toFloat(), boxSize.height.toFloat())
+            val g = RoomGeometry.of(boxSize.width.toFloat(), boxSize.height.toFloat(), hStretch)
             val c = g.footprintCenter(
                 selected.col, selected.row, selectedArt.box.footprintFacing(selected.facing),
             )
