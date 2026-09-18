@@ -114,6 +114,9 @@ import com.daengs.app.care.CareLogCoordinator
 import com.daengs.app.care.VetVisitCoordinator
 import com.daengs.app.ui.storage.ChatSummaryRoute
 import com.daengs.app.ui.storage.dial
+import com.daengs.app.ui.storage.ChatSummariesScreen
+import com.daengs.app.ui.storage.CareLogScreen
+import com.daengs.app.ui.storage.canDeleteCareEvent
 import com.daengs.app.ui.storage.VetVisitsScreen
 import com.daengs.app.care.VetRange
 import com.daengs.app.ui.walk.records.WalkRecordsRoute
@@ -167,6 +170,17 @@ private enum class Screen {
      * 만들면 그 위에 삭제 되묻기와 기간 시트가 겹치고 뒤로가기가 꼬인다 (APP#416).
      */
     VetVisits,
+
+    /**
+     * 대화 보관함 전체보기. 저장소 탭의 「전체보기」에서 들어온다.
+     *
+     * 탭에는 최근 몇 건만 두고 나머지를 여기가 받는다 — 전부 펼치면 요약이 쌓이는 만큼
+     * 저장소 탭이 길어진다 (`ui/storage/StorageSectionPreview.kt`).
+     */
+    ChatSummaries,
+
+    /** 오늘의 케어 기록 전체보기. 저장소 탭의 「전체보기」에서 들어온다. */
+    CareLog,
     /** 카드 실험실. **디버그 빌드의 개발자 패널에서만** 열린다. 사용자 흐름에 없다. */
     CutoutLab,
 }
@@ -1274,6 +1288,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onOpenVetVisits = { screen = Screen.VetVisits },
+                                onOpenSummaries = { screen = Screen.ChatSummaries },
+                                onOpenCareLog = { screen = Screen.CareLog },
                                 modifier = storageModifier,
                                 currentUserId = session?.appUserId,
                                 // **기록이 달린 행마다 따로 본다.** 대표 강아지 하나로
@@ -1816,6 +1832,73 @@ class MainActivity : ComponentActivity() {
                         revealCard = photos.readyToReveal,
                         revealFile = photos.readyToReveal?.let { photos.images[it.id] },
                         onRevealed = { photos.markRevealed(it) },
+                        )
+                    }
+
+                    Screen.ChatSummaries -> {
+                        // 저장소 탭이 쓰는 것과 **같은 코디네이터**다. 탭에서 최근 몇 건만
+                        // 보고 여기서 전부 보는 것이라, 상태가 갈라지면 방금 지운 요약이
+                        // 한쪽에 남는다.
+                        val summaryState by chatSummaries.state.collectAsState()
+                        var pendingSummaryDeletion by remember {
+                            mutableStateOf<com.daengs.app.chat.ChatSummary?>(null)
+                        }
+                        ChatSummariesScreen(
+                            state = summaryState.summaries,
+                            pendingDeletion = pendingSummaryDeletion,
+                            selectedSummaryId = summaryState.selectedSummaryId,
+                            // 저장소 탭으로 돌아간다. `homeTab` 이 따로 살아 있어 탭이 유지된다.
+                            onBack = { screen = Screen.Home },
+                            onRetry = {
+                                scope.launch { freshToken()?.let { chatSummaries.load(it) } }
+                            },
+                            // 저장소 탭과 **같은 길이다** — 원본 대화를 열고 챗으로 간다.
+                            onOpenSource = { sessionId ->
+                                scope.launch {
+                                    val token = freshToken() ?: return@launch
+                                    if (chatHistory.openSession(token, sessionId)) screen = Screen.Chat
+                                }
+                            },
+                            onOpenCitation = { citation ->
+                                citation.url?.let { url ->
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    }
+                                }
+                            },
+                            onRequestDelete = { pendingSummaryDeletion = it },
+                            onDismissDelete = { pendingSummaryDeletion = null },
+                            onConfirmDelete = { summary ->
+                                pendingSummaryDeletion = null
+                                scope.launch { freshToken()?.let { chatSummaries.delete(it, summary.id) } }
+                            },
+                        )
+                    }
+
+                    Screen.CareLog -> {
+                        // 저장소 탭이 쓰는 것과 **같은 코디네이터**다. 여기서 기록하거나
+                        // 지운 것이 탭의 합계 줄에 바로 보여야 한다.
+                        val careState by careLog.state.collectAsState()
+                        CareLogScreen(
+                            state = careState,
+                            // 저장소 탭으로 돌아간다. `homeTab` 이 따로 살아 있어 탭이 유지된다.
+                            onBack = { screen = Screen.Home },
+                            onRecord = { kind ->
+                                scope.launch { freshToken()?.let { careLog.record(it, kind) } }
+                            },
+                            onRetryLoad = { scope.launch { freshToken()?.let { careLog.load(it) } } },
+                            onConfirmDelete = { event ->
+                                scope.launch { freshToken()?.let { careLog.delete(it, event.id) } }
+                            },
+                            onDismissError = { careLog.clearErrors() },
+                            // 저장소 탭과 **같은 판정**이다 (거기 호출부 참고) — 내가 남긴
+                            // 기록이거나, 이 강아지 행의 주인일 때만 지울 수 있다.
+                            canDelete = { event ->
+                                canDeleteCareEvent(
+                                    event,
+                                    session?.appUserId,
+                                ) { petId -> ownsPetRow(pets.pets.orEmpty(), petId) }
+                            },
                         )
                     }
 
