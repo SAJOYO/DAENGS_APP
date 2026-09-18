@@ -647,7 +647,9 @@ fun HomeScreen(
                 onOpenWalkHistory,
             )
             gameContent?.invoke()
-            Spacer(Modifier.height(4.dp))
+            // 시즌 행 아래 여백은 **0 이다.** 하단바 상자 위쪽의 투명한 띠
+            // ([FabLift] 6dp)가 이미 그 몫을 한다 — 여기에 더 두면 시즌 행이 바에서
+            // 떠 보인다. 예전에는 4dp 였고, 투명한 띠가 22dp 라 합쳐서 26dp 였다.
         }
 
         if (wide) {
