@@ -3,7 +3,7 @@ package com.daengs.app.ui.walk
 import com.daengs.app.ui.walk.detail.PreparedDiaryRoute
 import com.daengs.app.ui.walk.detail.WalkDiaryReadView
 import com.daengs.app.walk.*
-import com.daengs.app.walk.diary.DiaryWalk
+import com.daengs.app.walk.diary.*
 import com.daengs.app.walk.routeexplorer.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -33,16 +33,58 @@ class DiaryReplayTimelineTest {
         assertEquals(setOf(end.id),DiaryReplayTimeline(listOf(prior,end)).current(20,20)!!.markerIds)
     }
 
-    @Test fun `an action described by a scene reads once without merging original marker identities`() {
-        val scene=explorerPanelPreviewRead().diary!!.scenes[1].copy(entryId="a")
-        val action=WalkEntry("a",scene.sessionId,WalkMomentType.SNIFFING,scene.atMillis)
-        val checkpoint=DiaryReplayCheckpoint(15_000,listOf(DiaryReplayEvent(scene.id,15_000,scene,1),
-            DiaryReplayEvent(diaryActionKey(action),15_000,action=action)))
-        assertEquals(setOf(scene.id,diaryActionKey(action)),checkpoint.markerIds)
-        assertEquals(scene,checkpoint.readingEvents().single().scene)
+    @Test fun `an action scene creates one event and selects only its scene marker at tap time`() {
+        val base=explorerPanelPreviewRead()
+        val scene=base.diary!!.scenes[1].copy(entryId="a", source=null, content=null)
+        val action=WalkEntry("a",scene.sessionId,WalkMomentType.SNIFFING,7_500,
+            point=scene.point,locationCapturedAtMillis=0)
+        val read=base.copy(diary=base.diary.copy(scenes=listOf(scene),sourceEntries=listOf(action)))
+        val timeline=diaryReplayTimeline(read)
+        val checkpoint=timeline.checkpoints.single()
+        assertEquals(7_500L,checkpoint.elapsed)
+        assertEquals(setOf(scene.id),checkpoint.markerIds)
+        assertEquals(scene,checkpoint.events.single().scene)
         assertEquals(action,checkpoint.readingEvents().single().action)
-        val unrelated=checkpoint.copy(events=checkpoint.events.map { if(it.scene!=null) it.copy(scene=scene.copy(entryId=null)) else it })
-        assertEquals(2,unrelated.readingEvents().size)
+        assertEquals(1,checkpoint.events.single().ordinal)
+        assertEquals(0,timeline.unresolvedCount)
+        assertNull(timeline.at(7_499))
+        assertEquals(setOf(scene.id),timeline.at(15_000)!!.markerIds)
+    }
+
+    @Test fun `source-reference-only scene is joined before replay events are built`() {
+        val base=explorerPanelPreviewRead()
+        val source=StoryboardScene("card",15_000,"","","","source",
+            entryReference=StoryboardEntryReference("a",null,null))
+        val scene=base.diary!!.scenes[1].copy(entryId=null,source=source,content=null)
+        val action=WalkEntry("a",scene.sessionId,WalkMomentType.BARKING,15_000)
+        val read=base.copy(diary=base.diary.copy(scenes=listOf(scene),sourceEntries=listOf(action)))
+        val event=diaryReplayTimeline(read).checkpoints.single().events.single()
+        assertEquals(scene.id,event.id)
+        assertEquals(action,event.action)
+    }
+
+    @Test fun `same-time scenes keep diary order instead of sorting by marker id`() {
+        val base=explorerPanelPreviewRead()
+        val scene=base.diary!!.scenes[1].copy(source=null,content=null,entryId=null)
+        val first=scene.copy(id="${scene.sessionId}/z-first")
+        val second=scene.copy(id="${scene.sessionId}/a-second")
+        val read=base.copy(diary=base.diary.copy(scenes=listOf(first,second),sourceEntries=emptyList()))
+        val events=diaryReplayTimeline(read).checkpoints.single().events
+        assertEquals(listOf(first.id,second.id),events.map { it.id })
+        assertEquals(listOf(1,2),events.map { it.ordinal })
+    }
+
+    @Test fun `unresolved bound action keeps one scene event by falling back to scene timing`() {
+        val base=explorerPanelPreviewRead()
+        val scene=base.diary!!.scenes[1].copy(entryId="a",source=null,content=null)
+        val action=WalkEntry("a",scene.sessionId,WalkMomentType.SNIFFING,Long.MAX_VALUE)
+        val read=base.copy(diary=base.diary.copy(scenes=listOf(scene),sourceEntries=listOf(action)))
+        val timeline=diaryReplayTimeline(read)
+        val event=timeline.checkpoints.single().events.single()
+        assertEquals(scene.id,event.id)
+        assertEquals(scene,event.scene)
+        assertEquals(action,event.action)
+        assertEquals(0,timeline.unresolvedCount)
     }
 
     @Test fun `actions use event time and editable boundaries keep ordinary scene numbering`() {
@@ -98,8 +140,11 @@ class DiaryReplayTimelineTest {
         val read=explorerPanelPreviewRead()
         val scenes=read.diary!!.scenes
         val action=WalkEntry("a",scenes[0].sessionId,WalkMomentType.SNIFFING,0,scenes[0].point,0)
-        val base=diarySceneMarkers(scenes,scenes[0].id) + diaryActionObjects(listOf(action),action.sessionId,emptySet())
-        val selected=setOf(scenes[1].id,diaryActionKey(action))
+        val diary=read.diary.copy(scenes=scenes.mapIndexed { index,scene ->
+            if(index==0) scene.copy(entryId=action.id,source=null,content=null) else scene
+        },sourceEntries=listOf(action))
+        val base=diarySceneMarkers(diary.scenePresentation(),scenes[0].id)
+        val selected=setOf(scenes[1].id,scenes[0].id)
         val marked=diaryReplayMarkers(base,selected)
         assertEquals(selected,marked.filter { it.selected }.map { it.id }.toSet())
         assertEquals(base.map { it.id to it.point },marked.map { it.id to it.point })

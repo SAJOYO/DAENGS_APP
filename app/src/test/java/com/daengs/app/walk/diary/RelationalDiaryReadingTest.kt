@@ -113,6 +113,52 @@ class RelationalDiaryReadingTest {
         assertEquals(DiarySceneKind.SNIFFING, diarySceneKind(failedScene, listOf(entry), entry.sessionId))
     }
 
+    @Test fun `an edited original behavior is absorbed into its generated scene without losing generated prose`() {
+        val parsed = RelationalDiaryResponse.parse(relationalBehaviorFixture().toString())
+        val card = parsed.bundle!!.cards[1]
+        val ref = card.originals.single().ref
+        val entry = WalkEntry(ref.id, parsed.sessionId, WalkMomentType.SNIFFING, card.anchor.eventAt.toEpochMilli(),
+            baseVersion = WalkEntryVersion(ref.version.toInt(), "m"))
+        val source = input(parsed).copy(entries = listOf(entry))
+        val original = relationalOriginalScenes(walk, source, emptyList(), StoryboardDraft())
+            .single { it.entryId == entry.id }
+        val draft = StoryboardDraft().edit(requireNotNull(original.source), title = "내 행동 제목",
+            acknowledge = true).toJson()
+
+        val generated = read(source, draft = draft)
+        val scene = generated.scenes.single { it.entryId == entry.id }
+        assertEquals(1, generated.scenes.count { it.entryId == entry.id })
+        assertTrue(scene.source!!.id.startsWith("relational:"))
+        assertEquals("내 행동 제목", scene.title)
+        assertEquals(card.body, scene.body)
+        assertEquals(entry, generated.scenePresentation().items.single { it.scene.id == scene.id }.action)
+
+        val afterGeneration = StoryboardDraft.parse(draft).edit(scene.source!!,
+            title = "생성 후 제목", body = "생성 후 본문", acknowledge = true).toJson()
+        val reopened = read(source, draft = afterGeneration)
+        val edited = reopened.scenes.single { it.entryId == entry.id }
+        assertEquals("생성 후 제목", edited.title)
+        assertEquals("생성 후 본문", edited.body)
+        assertEquals(1, reopened.scenes.count { it.entryId == entry.id })
+    }
+
+    @Test fun `an explicitly unlocated action never reuses its older raw coordinate`() {
+        val oldPoint = GeoPoint(37.5, 127.0)
+        val pin = com.daengs.app.walk.pin.ActionPin(JSONObject()
+            .put("state", "unlocated").put("method", "none").put("point", JSONObject.NULL).toString())
+        val entry = WalkEntry("unlocated-action", walk.sessionId, WalkMomentType.BARKING,
+            walk.startedAtMillis + 1, point = oldPoint, locationCapturedAtMillis = walk.startedAtMillis, pin = pin)
+        val source = input().copy(entries = listOf(entry))
+        val scene = relationalOriginalScenes(walk, source, emptyList(), StoryboardDraft()).single()
+
+        assertNull(scene.point)
+        assertNull(scene.content!!.point)
+        assertNull(scene.content.locationAtMillis)
+        assertEquals("unlocated", scene.content.positionState)
+        val diary = DiaryWalk(walk, listOf(scene), "", sourceEntries = listOf(entry))
+        assertEquals(entry, diary.scenePresentation().items.single().action)
+    }
+
     @Test fun `administrative header uses existing address label and survives saved response parsing`() {
         val json = JSONObject(raw)
         val first = json.getJSONObject("bundle").getJSONArray("cards").getJSONObject(0)

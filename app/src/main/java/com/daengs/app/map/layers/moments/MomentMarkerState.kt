@@ -17,7 +17,7 @@ data class MomentMarkerState(
     val behaviors: Set<WalkMomentType> = emptySet(),
     /** Opt-in policy for the records overview; legacy diary markers retain their own presentation. */
     val recordPin: RecordPinAppearance? = null,
-    /** Diary ordinals and inspection membership never share action counts or behavior styling. */
+    /** Scene order and inspection survive even when behavior artwork replaces the visible number. */
     val diaryPin: DiaryPinAppearance? = null,
 )
 
@@ -30,3 +30,7 @@ internal fun momentGroupPriority(members: List<MomentMarkerState>): Int = when {
     members.any { it.diaryPin?.inspected == true } -> 1
     else -> 0
 }
+
+/** Behavior scenes retain diaryPin metadata but use the existing action artwork. */
+internal val MomentMarkerState.usesActionArtwork: Boolean
+    get() = diaryPin == null || behaviors.isNotEmpty()

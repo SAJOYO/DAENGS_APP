@@ -89,6 +89,7 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
         else -> onBack()
     } }
     val originalScenes = remember(diary) { diary?.scenes.orEmpty() }
+    val scenePresentation = readView?.scenePresentation
     val actionEntries = remember(diary, sessionId) { diary?.sourceEntries.orEmpty().filter {
         it.sessionId == sessionId && it.type != WalkMomentType.NOTE
     }.sortedBy { it.recordedAtMillis } }
@@ -96,10 +97,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     LaunchedEffect(explorer.mode, explorer.panelOpen) {
         if (explorer.mode != RouteExplorerMode.OVERVIEW || !explorer.panelOpen) selectedActions = emptySet()
     }
-    fun selectActions(ids: Set<String>, fromMap: Boolean = false) {
-        if (fromMap && replaying) {
-            replayInspection.adopt(readView); replayInspection.selectMarkers(ids); return
-        }
+    // Original-only fallback remains available from an external action lookup, not as a map object.
+    fun selectActions(ids: Set<String>) {
         selectedActions = ids.intersect(actionEntries.map { diaryActionKey(it) }.toSet())
         if (selectedActions.isNotEmpty()) {
             editors.cancelAdding(); readingMemory.inspect(emptyList()); explorer.choosePanel(true); explorer.overview()
@@ -177,8 +176,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
     val replayCheckpoint = if (replaying) replayTimeline.current(explorer.elapsed, explorer.duration,
         explorer.selectedSlice?.from ?: 0L, explorer.selectedSlice?.until ?: explorer.duration) else null
     val replayIds = if (replayInspection.active) replayInspection.markerIds else replayCheckpoint?.markerIds.orEmpty()
-    val markers = remember(originalScenes, selectedId, readingMemory.groupIds, actionEntries, selectedActions, replaying, replayIds) {
-        val base = diarySceneMarkers(originalScenes, selectedId, readingMemory.groupIds) + diaryActionObjects(actionEntries, sessionId, selectedActions)
+    val markers = remember(scenePresentation, selectedId, readingMemory.groupIds, replaying, replayIds) {
+        val base = scenePresentation?.let { diarySceneMarkers(it, selectedId, readingMemory.groupIds) }.orEmpty()
         if (!replaying) base else diaryReplayMarkers(base, replayIds)
     }
     val currentReview = readView?.route?.review
@@ -302,7 +301,8 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                     recordContent = { if (selectedActions.isEmpty() && explorer.mode == RouteExplorerMode.OVERVIEW)
                         DiaryReplayReading(replayTimeline, explorer)
                     else DiaryActionObjectsReading(actionEntries, selectedActions,
-                        visibility?.takeIf { it.query.revisionKey == readView?.revisionKey }?.unplacedIds.orEmpty().count { it.startsWith("diary-action:") },
+                        scenePresentation?.items.orEmpty().count { item -> item.action != null &&
+                            item.scene.id in visibility?.takeIf { it.query.revisionKey == readView?.revisionKey }?.unplacedIds.orEmpty() },
                         { selectActions(setOf(it)) }, { selectedActions = emptySet() }) },
                     readingNotices = notices,
                     reading = readingMemory,
@@ -347,16 +347,15 @@ internal fun WalkDiaryMapForAccount(sessionId: String, source: WalkDetailSource,
                         onSelectMomentGroup = { ids ->
                             if (replaying) {
                                 replayInspection.adopt(readView); replayInspection.selectMarkers(ids.toSet())
-                            } else if (ids.any { it.startsWith("diary-action:") }) selectActions(ids.toSet(), fromMap=true)
-                            else {
-                            selectedActions = emptySet()
-                            val members = originalScenes.filter { it.id in ids }
-                            if (members.size == 1) selectScene(members.single(), fromMap = true)
-                            else if (members.isNotEmpty()) {
-                                editors.cancelAdding(); explorer.choosePanel(false)
-                                readingMemory.inspect(members.map { it.id })
-                                readingMemory.groupList.requestScrollToItem(0)
-                            }
+                            } else {
+                                selectedActions = emptySet()
+                                val members = originalScenes.filter { it.id in ids }
+                                if (members.size == 1) selectScene(members.single(), fromMap = true)
+                                else if (members.isNotEmpty()) {
+                                    editors.cancelAdding(); explorer.choosePanel(false)
+                                    readingMemory.inspect(members.map { it.id })
+                                    readingMemory.groupList.requestScrollToItem(0)
+                                }
                             }
                         },
                         onSelectRecordContext = { id -> currentReview?.context?.context(id)?.let { selectContext(it, fromMap = true) } },
