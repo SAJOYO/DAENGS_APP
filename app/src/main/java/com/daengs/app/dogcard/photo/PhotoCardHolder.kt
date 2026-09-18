@@ -15,7 +15,7 @@ const val PHOTO_POLL_MS = 5_000L
  */
 const val PHOTO_STALE_MS = 10 * 60_000L
 
-/** 달을 막는 데 세는 상태 — `Failed` 는 다시 만들 수 있어야 하니 뺀다 (docs/photo-cards.md §9.2). */
+/** 카드를 막는 데 세는 상태 — `Failed` 는 다시 만들 수 있어야 하니 뺀다 (docs/photo-cards.md §9.2). */
 private val TAKEN_STATUSES = setOf(PhotoCardStatus.Ready, PhotoCardStatus.Generating)
 
 /**
@@ -92,15 +92,18 @@ class PhotoCardHolder(
     val latestFailure: PhotoCard? get() = cards.firstOrNull { it.status == PhotoCardStatus.Failed }
 
     /**
-     * 그 강아지가 이미 `Ready`·`Generating` 카드를 가진 달 — 만들기 화면이 칸을 막는 데 쓴다
+     * 그 강아지가 이미 `Ready`·`Generating` 카드를 가진 카드 — 만들기 화면이 칸을 막는 데 쓴다
      * (docs/photo-cards.md §9.2). **보호자마다 따로 센다**(결정 14) — `cards` 는 이미 이
      * 보호자의 목록이라 그대로 세면 된다. `dogId` 가 없으면(강아지를 아직 안 골랐으면) 빈 집합.
+     *
+     * **카드 종류마다 센다** (#593, D-085) — 4월 카드가 딸기를 막지 않고 딸기가 상추를 막지
+     * 않는다. 서버의 `repositories/ai_card.py::has_card` 와 같은 단위다.
      */
-    fun takenMonths(dogId: String?): Set<Int> {
+    fun takenCards(dogId: String?): Set<PhotoCardKey> {
         if (dogId == null) return emptySet()
         return cards
             .filter { it.dogId == dogId && it.status in TAKEN_STATUSES }
-            .map { it.month }
+            .map { it.key }
             .toSet()
     }
 
@@ -154,7 +157,7 @@ class PhotoCardHolder(
             }
     }
 
-    suspend fun create(month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null): String? {
+    suspend fun create(card: PhotoCardKey, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String? = null): String? {
         val token = accessToken() ?: run {
             createError = "로그인하면 포토 카드를 만들 수 있어요"
             return null
@@ -165,7 +168,7 @@ class PhotoCardHolder(
         creating = true
         createError = null
         return try {
-            val result = remote.create(token, month, dogName, dogId, jpeg, titleName)
+            val result = remote.create(token, card, dogName, dogId, jpeg, titleName)
             if (epoch != started) return null
             result.fold(
                 onSuccess = { made ->

@@ -24,19 +24,22 @@ class PhotoCardHolderTest {
         var gets = 0
         var remaining: Int? = null
         var lastTitleName: String? = null
+        var lastCard: PhotoCardKey? = null
         val urls = mutableMapOf<String, String>()
         var onDownload: (suspend () -> Unit)? = null
         var onCreate: (suspend () -> Unit)? = null
         var onList: (suspend () -> Unit)? = null
 
         override suspend fun create(
-            token: String, month: Int, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String?,
+            token: String, card: PhotoCardKey, dogName: String, dogId: String?, jpeg: ByteArray, titleName: String?,
         ): Result<PhotoCard> {
             onCreate?.invoke()
+            lastCard = card
             lastTitleName = titleName
             if (throwOnCreate) throw IllegalStateException("만드는 중 예외")
             createError?.let { return Result.failure(IllegalStateException(it)) }
-            val made = card("new-$month", month, PhotoCardStatus.Generating, at = 1_000L)
+            // `Companion.` 을 붙인다 — 여기 `card` 는 위 매개변수라 함수 이름과 글자가 같다.
+            val made = Companion.card("new-${card.raw}", card, PhotoCardStatus.Generating, at = 1_000L)
             server.add(0, made)
             return Result.success(made)
         }
@@ -62,8 +65,12 @@ class PhotoCardHolderTest {
     }
 
     companion object {
-        fun card(id: String, month: Int, status: PhotoCardStatus, at: Long = 0L) = PhotoCard(
-            id = id, dogId = null, month = month, dogName = "콩이", title = "BLOSSOM 콩이",
+        /** 달 카드 한 장. 달로 부르는 자리가 많아 남겨 둔다. */
+        fun card(id: String, month: Int, status: PhotoCardStatus, at: Long = 0L) =
+            card(id, PhotoCardKey.of(month), status, at)
+
+        fun card(id: String, key: PhotoCardKey, status: PhotoCardStatus, at: Long = 0L) = PhotoCard(
+            id = id, dogId = null, key = key, dogName = "콩이", title = "BLOSSOM 콩이",
             status = status, errorCode = if (status == PhotoCardStatus.Failed) "upstream" else null,
             likeness = if (status == PhotoCardStatus.Ready) 5 else null, createdAtMillis = at,
         )
@@ -142,7 +149,7 @@ class PhotoCardHolderTest {
     @Test
     fun `만들면 맨 앞에 만드는 중으로 온다`() = runTest {
         val h = holder(FakeRemote())
-        assertNotNull(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNotNull(h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9)))
         assertEquals(PhotoCardStatus.Generating, h.cards.first().status)
         assertTrue(h.generating)
         assertFalse(h.creating)
@@ -153,7 +160,7 @@ class PhotoCardHolderTest {
     fun `만들기가 거절되면 문장을 남기고 목록은 그대로다`() = runTest {
         val remote = FakeRemote().apply { createError = "오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요." }
         val h = holder(remote)
-        assertNull(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNull(h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9)))
         assertEquals("오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요.", h.createError)
         assertTrue(h.cards.isEmpty())
         h.clearCreateError()
@@ -166,7 +173,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote()
         val h = holder(remote)
         remote.onCreate = { h.forget() }
-        assertNull(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNull(h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9)))
         assertTrue(h.cards.isEmpty())
         assertFalse(h.creating)
     }
@@ -177,7 +184,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote().apply { createError = "오늘은 카드를 더 만들 수 없어요. 내일 다시 시도해 주세요." }
         val h = holder(remote)
         remote.onCreate = { h.forget() }
-        assertNull(h.create(4, "콩이", null, byteArrayOf(9)))
+        assertNull(h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9)))
         assertNull(h.createError)
     }
 
@@ -185,7 +192,7 @@ class PhotoCardHolderTest {
     fun `조회해서 완성되면 바꿔 끼우고 그림을 받는다`() = runTest {
         val remote = FakeRemote()
         val h = holder(remote)
-        h.create(4, "콩이", null, byteArrayOf(9))
+        h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))
         remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready, likeness = 4)
         remote.urls["new-4"] = "https://x/n.png"
         h.pollOnce()
@@ -203,7 +210,7 @@ class PhotoCardHolderTest {
     fun `그림을 받는 동안에는 아직 완성으로 바꾸지 않는다`() = runTest {
         val remote = FakeRemote()
         val h = holder(remote)
-        h.create(4, "콩이", null, byteArrayOf(9))
+        h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))
         remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready, likeness = 4)
         remote.urls["new-4"] = "https://x/n.png"
         var seen: PhotoCardStatus? = null
@@ -218,7 +225,7 @@ class PhotoCardHolderTest {
     fun `그림을 못 받으면 만드는 중으로 남아 다음 조회에서 다시 받는다`() = runTest {
         val remote = FakeRemote()
         val h = holder(remote)
-        h.create(4, "콩이", null, byteArrayOf(9))
+        h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))
         remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
         remote.urls["new-4"] = "https://x/n.png"
         remote.failDownload = true
@@ -325,7 +332,7 @@ class PhotoCardHolderTest {
     fun `만들기 도중 예외가 나도 만드는 중 표시가 풀린다`() = runTest {
         val remote = FakeRemote().apply { throwOnCreate = true }
         val h = holder(remote)
-        runCatching { h.create(4, "콩이", null, byteArrayOf(9)) }
+        runCatching { h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9)) }
         assertFalse(h.creating)
     }
 
@@ -381,7 +388,7 @@ class PhotoCardHolderTest {
     fun `만들면 결과를 안 본 카드로 기억한다`() = runTest {
         val log = MemoryRevealLog()
         val h = PhotoCardHolder(FakeRemote(), PhotoCardFiles(tmp.newFolder()), { "t" }, { 2_000L }, log)
-        val id = h.create(4, "콩이", null, byteArrayOf(9))
+        val id = h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))
         assertEquals(setOf(id), h.unrevealed)
         assertEquals(setOf(id), log.load())
         assertNull("아직 그리는 중이라 알릴 카드는 없다", h.readyToReveal)
@@ -392,7 +399,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote()
         val log = MemoryRevealLog()
         val h = PhotoCardHolder(remote, PhotoCardFiles(tmp.newFolder()), { "t" }, { 2_000L }, log)
-        val id = h.create(4, "콩이", null, byteArrayOf(9))!!
+        val id = h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))!!
         remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
         remote.urls[id] = "https://x/n.png"
         h.pollOnce()
@@ -442,7 +449,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote().apply { remaining = 1 }
         val h = holder(remote)
         h.load()
-        h.create(4, "콩이", null, byteArrayOf(9))
+        h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))
         remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
         remote.urls["new-4"] = "https://x/n.png"
         h.pollOnce()
@@ -455,7 +462,7 @@ class PhotoCardHolderTest {
         val remote = FakeRemote().apply { remaining = null }
         val h = holder(remote)
         h.load()
-        h.create(4, "콩이", null, byteArrayOf(9))
+        h.create(PhotoCardKey.of(4), "콩이", null, byteArrayOf(9))
         remote.server[0] = remote.server[0].copy(status = PhotoCardStatus.Ready)
         remote.urls["new-4"] = "https://x/n.png"
         h.pollOnce()
@@ -466,13 +473,13 @@ class PhotoCardHolderTest {
     fun `제목 이름을 서버로 넘긴다`() = runTest {
         val remote = FakeRemote()
         val h = holder(remote)
-        h.create(4, "안녕", "d-1", byteArrayOf(9), "NEO")
+        h.create(PhotoCardKey.of(4), "안녕", "d-1", byteArrayOf(9), "NEO")
         assertEquals("NEO", remote.lastTitleName)
     }
 
-    /** 달 막기는 고른 강아지의 `Ready`·`Generating` 카드만 본다 — `Failed` 는 다시 만들 수 있어야 한다 (docs §9.2). */
+    /** 카드 막기는 고른 강아지의 `Ready`·`Generating` 카드만 본다 — `Failed` 는 다시 만들 수 있어야 한다 (docs §9.2). */
     @Test
-    fun `강아지별로 이미 있는 달을 모은다`() = runTest {
+    fun `강아지별로 이미 있는 카드를 모은다`() = runTest {
         val remote = FakeRemote().apply {
             server += card("a", 4, PhotoCardStatus.Ready).copy(dogId = "d-1")
             server += card("b", 9, PhotoCardStatus.Failed).copy(dogId = "d-1")
@@ -480,8 +487,35 @@ class PhotoCardHolderTest {
         }
         val h = holder(remote)
         h.load()
-        assertEquals(setOf(4), h.takenMonths("d-1"))
-        assertEquals(setOf(9), h.takenMonths("d-2"))
-        assertTrue(h.takenMonths(null).isEmpty())
+        assertEquals(setOf(PhotoCardKey.of(4)), h.takenCards("d-1"))
+        assertEquals(setOf(PhotoCardKey.of(9)), h.takenCards("d-2"))
+        assertTrue(h.takenCards(null).isEmpty())
+    }
+
+    /**
+     * **한도가 카드 종류마다다** (#593, D-085) — 4월 카드가 딸기를 막지 않는다.
+     * 종류 카드는 달이 없어서, 달로 세던 때라면 같은 「달 없음」 칸에 겹쳤을 것들이다.
+     */
+    @Test
+    fun `종류 카드는 달 카드와 따로 막힌다`() = runTest {
+        val remote = FakeRemote().apply {
+            server += card("a", 4, PhotoCardStatus.Ready).copy(dogId = "d-1")
+            server += card("b", PhotoCardKey.Strawberry, PhotoCardStatus.Generating).copy(dogId = "d-1")
+            server += card("c", PhotoCardKey.Lettuce, PhotoCardStatus.Failed).copy(dogId = "d-1")
+        }
+        val h = holder(remote)
+        h.load()
+        // 상추는 실패라 안 센다 — 다시 만들 수 있어야 한다.
+        assertEquals(setOf(PhotoCardKey.of(4), PhotoCardKey.Strawberry), h.takenCards("d-1"))
+    }
+
+    /** 보낸 카드 키가 그대로 서버로 간다 — 종류를 골랐는데 달이 가면 다른 카드가 나온다. */
+    @Test
+    fun `고른 카드를 서버로 넘긴다`() = runTest {
+        val remote = FakeRemote()
+        val h = holder(remote)
+        h.create(PhotoCardKey.Lettuce, "안녕", "d-1", byteArrayOf(9))
+        assertEquals(PhotoCardKey.Lettuce, remote.lastCard)
+        assertEquals(PhotoCardKey.Lettuce, h.cards.first().key)
     }
 }

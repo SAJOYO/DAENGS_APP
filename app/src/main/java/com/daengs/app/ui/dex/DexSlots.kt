@@ -71,7 +71,7 @@ data class DexSlot(
 }
 
 /**
- * 카탈로그에 내가 가진 것을 겹친다. 누끼는 `templateId`, 포토는 달로 칸을 찾는다.
+ * 카탈로그에 내가 가진 것을 겹친다. 누끼는 `templateId`, 포토는 카드 키로 칸을 찾는다.
  *
  * 카탈로그에 없는 `templateId` 는 **조용히 버린다.** 저쪽이 카드를 갈아엎으면 생길
  * 수 있는데, 그릴 칸이 없으니 그릴 수가 없다. 다만 [ownedTotal] 에서도 빼서 "내 카드
@@ -88,12 +88,12 @@ fun dexSlots(
     val byTemplate: Map<String, List<OwnedCard>> = drawn
         .map { OwnedCard.Drawn(it) }
         .groupBy { it.card.templateId }
-    val byMonth: Map<String, List<OwnedCard>> = photos
+    val byCard: Map<String, List<OwnedCard>> = photos
         .filter { it.status != PhotoCardStatus.Failed }
-        .mapNotNull { p -> photoCardFor(p.month)?.let { it.id to OwnedCard.Photo(p, photoFiles[p.id]) } }
+        .mapNotNull { p -> photoCardFor(p.key)?.let { it.id to OwnedCard.Photo(p, photoFiles[p.id]) } }
         .groupBy({ it.first }, { it.second })
     return cards.map { card ->
-        val mine = (byTemplate[card.id].orEmpty() + byMonth[card.id].orEmpty())
+        val mine = (byTemplate[card.id].orEmpty() + byCard[card.id].orEmpty())
             .sortedByDescending { it.madeAtMillis }
         DexSlot(card, mine)
     }

@@ -98,6 +98,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import com.daengs.app.dogcard.photo.PhotoCard
+import com.daengs.app.dogcard.photo.PhotoCardKey
 import com.daengs.app.dogcard.photo.photoFailureText
 import java.io.File
 
@@ -216,11 +217,11 @@ private fun PhotoBlankPreview() {
 }
 
 /**
- * 「9월 카드가 완성됐어요 · 보기」. **저절로 사라지지 않는다** — 결과를 보면(`onRevealed`) 홀더가 지운다.
+ * 「딸기 카드가 완성됐어요 · 보기」. **저절로 사라지지 않는다** — 결과를 보면(`onRevealed`) 홀더가 지운다.
  * 화면을 저절로 바꾸지 않는 이유는 다른 카드를 보던 중에 튀기 때문이다 (docs/photo-cards.md §8 결정 9).
  */
 @Composable
-private fun PhotoReadyNotice(month: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+private fun PhotoReadyNotice(card: PhotoCardKey, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier
             .clip(RoundedCornerShape(999.dp))
@@ -229,7 +230,7 @@ private fun PhotoReadyNotice(month: Int, onOpen: () -> Unit, modifier: Modifier 
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("${month}월 카드가 완성됐어요", color = CardWhite, fontSize = 13.sp)
+        Text("${card.label} 카드가 완성됐어요", color = CardWhite, fontSize = 13.sp)
         Spacer(Modifier.width(10.dp))
         Text("보기", color = PinkSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
@@ -237,7 +238,7 @@ private fun PhotoReadyNotice(month: Int, onOpen: () -> Unit, modifier: Modifier 
 
 @Preview(showBackground = true, backgroundColor = 0xFFF6E9E3)
 @Composable
-private fun PhotoReadyNoticePreview() = PhotoReadyNotice(9, {})
+private fun PhotoReadyNoticePreview() = PhotoReadyNotice(PhotoCardKey.Strawberry, {})
 
 /** 뽑은 날. 기기 시간대로 읽는다 — 뽑은 사람의 하루가 기준이다. */
 private fun drawnOn(millis: Long): String =
@@ -309,7 +310,7 @@ fun CardDexScreen(
      * 포토 만들기 화면을 띄운다. null 이면 「＋ 포토 카드 만들기」 자리가 안 보인다 —
      * `@Preview` 와 테스트가 그렇게 부른다. 잠긴 칸에서 왔으면 `startMonth` 로 그 달을 들고 간다.
      */
-    makePhoto: (@Composable (startMonth: Int?, onDone: () -> Unit) -> Unit)? = null,
+    makePhoto: (@Composable (startCard: PhotoCardKey?, onDone: () -> Unit) -> Unit)? = null,
     /** 포토 만들기를 막고 대신 부를 것. null 이면 그냥 만들기 화면이 뜬다. */
     onMakePhotoBlocked: (() -> Unit)? = null,
     /** 목록의 `daily_remaining`. null 이면(배포 전·무제한) 머리말에 아무것도 안 띄운다(§9.2) */
@@ -367,10 +368,10 @@ fun CardDexScreen(
     // 카드를 연다.
     // 포토 만들기도 뽑기처럼 **도감 위에 덮는다.** 잠긴 칸에서 왔으면 그 달을 들고 간다.
     var makingPhoto by remember { mutableStateOf(false) }
-    var makingMonth by remember { mutableStateOf<Int?>(null) }
-    val startMake: (Int?) -> Unit = { month ->
+    var makingCard by remember { mutableStateOf<PhotoCardKey?>(null) }
+    val startMake: (PhotoCardKey?) -> Unit = { card ->
         onMakePhotoBlocked?.invoke() ?: run {
-            makingMonth = month
+            makingCard = card
             makingPhoto = true
         }
     }
@@ -401,12 +402,12 @@ fun CardDexScreen(
     }
 
     if (makingPhoto && makePhoto != null) {
-        makePhoto(makingMonth) { makingPhoto = false }
+        makePhoto(makingCard) { makingPhoto = false }
         return
     }
 
     revealing?.let { (card, file) ->
-        val dex = photoCardFor(card.month)
+        val dex = photoCardFor(card.key)
         if (dex != null) {
             PhotoRevealFlow(
                 dex = dex,
@@ -467,10 +468,12 @@ fun CardDexScreen(
                 sceneFace = theirFace
             },
             onMakePhoto = makePhoto?.let { { startMake(null) } },
-            // **안 연 달은 막는다** — 누르면 서버가 404 를 준다. 연 달이면 그 달로 만들러 간다.
+            // **안 연 달은 막는다** — 누르면 서버가 404 를 준다. 연 카드면 그 카드로 만들러 간다.
+            // 종류 카드(딸기·상추)에는 닫힘이 없다 — 칸이 있으면 언제나 열린 것이다 (D-085).
             onLockedPhoto = { card ->
-                if (card.no in OPEN_PHOTO_MONTHS && makePhoto != null) startMake(card.no)
-                else removedNote = "준비 중인 달이에요"
+                val key = card.photoKey
+                if (key != null && photoCardSelectable(key) && makePhoto != null) startMake(key)
+                else removedNote = "준비 중인 카드예요"
             },
             photoFailure = photoFailure,
             onDismissPhotoFailure = onDismissPhotoFailure,
@@ -506,7 +509,7 @@ fun CardDexScreen(
         // 버튼을 가린다. 한 곳에 모아 둔 조건을 아래 지운 알림 자리와도 같이 쓴다.
         readyNotice?.let { (card, file) ->
             PhotoReadyNotice(
-                month = card.month,
+                card = card.key,
                 onOpen = { revealing = card to file },
                 modifier = Modifier.align(Alignment.BottomCenter).systemBarsPadding().padding(bottom = 28.dp),
             )
@@ -701,7 +704,7 @@ private fun DexHeader(
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    photoFailureText(failed.month, failed.errorCode),
+                    photoFailureText(failed.key, failed.errorCode),
                     color = TextDark,
                     fontSize = 12.sp,
                     modifier = Modifier.weight(1f),
@@ -765,11 +768,12 @@ private fun DeckTabsPreview() {
 @Composable
 private fun DexHeaderPhotoPreview() {
     DexHeader(
-        deck = DexDeck.Photo, onDeck = {}, kinds = 1, of = 12, total = 2, onClose = {},
+        deck = DexDeck.Photo, onDeck = {}, kinds = 1, of = PHOTO_CARDS.size, total = 2, onClose = {},
         onMakePhoto = {},
         remaining = 1,
+        // 실패한 것이 종류 카드다 — 머리말 한 줄이 「딸기 카드를 만들지 못했어요」로 나와야 한다.
         failure = com.daengs.app.dogcard.photo.PhotoCard(
-            "x", null, 9, "콩이", "CHUSEOK 콩이",
+            "x", null, PhotoCardKey.Strawberry, "콩이", "BERRY 콩이",
             com.daengs.app.dogcard.photo.PhotoCardStatus.Failed, "no_image", null, 0L,
         ),
         onDismissFailure = {},

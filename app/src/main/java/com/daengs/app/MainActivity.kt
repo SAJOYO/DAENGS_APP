@@ -1704,13 +1704,13 @@ class MainActivity : ComponentActivity() {
                             }
                             else -> null
                         },
-                        makePhoto = { startMonth, done ->
+                        makePhoto = { startCard, done ->
                             LaunchedEffect(Unit) { photos.clearCreateError() }
                             // 방금 보낸 카드. 이 오버레이가 떠 있는 동안만 기억한다 — 닫으면 처음부터.
                             var watchId by remember { mutableStateOf<String?>(null) }
                             val watching = watchId?.let { id -> photos.cards.firstOrNull { it.id == id } }
                             PhotoCardMakeScreen(
-                                startMonth = startMonth,
+                                startCard = startCard,
                                 // 대표 강아지가 먼저 보이게 한다 (`sortedByDescending` 은 안정 정렬이라
                                 // 나머지는 서버가 준 순서 그대로다).
                                 dogs = pets.pets.orEmpty()
@@ -1721,12 +1721,12 @@ class MainActivity : ComponentActivity() {
                                 watching = watching,
                                 watchingFile = watching?.let { photos.images[it.id] },
                                 remaining = photos.dailyRemaining,
-                                takenMonths = { id -> photos.takenMonths(id) },
-                                onSubmit = { month, dog, jpeg, titleName ->
+                                takenCards = { id -> photos.takenCards(id) },
+                                onSubmit = { card, dog, jpeg, titleName ->
                                     // **여기서 `done()` 을 부르지 않는다.** 보낸 뒤에도 화면은 열린 채
                                     // 그리는 중 → 뒤집기로 넘어간다 — 나가는 건 「다 되면 알려 주세요」뿐이다.
                                     scope.launch {
-                                        photos.create(month, dog.name, dog.id, jpeg, titleName)?.let { watchId = it }
+                                        photos.create(card, dog.name, dog.id, jpeg, titleName)?.let { watchId = it }
                                     }
                                 },
                                 onWaitElsewhere = done,
